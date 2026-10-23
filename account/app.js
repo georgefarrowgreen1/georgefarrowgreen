@@ -118,6 +118,7 @@ const ICONS = {
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
   sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
+  home: '<path d="M4 11.2 12 4.8l8 6.4"/><path d="M6.2 9.8v9.7h11.6V9.8"/><path d="M10 19.5v-5h4v5"/>',
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
 };
 function icon(name, size = 20, width = 2) {
@@ -262,10 +263,10 @@ function section(title, group, foot) {
   return h("section.section", {}, title && h("h3", { text: title }), group, foot && h("p.foot", { text: foot }));
 }
 // (value: how things are, amber where it needs you (warn); or, where there's one thing to do, that (a node: a button's look))
-function row({ icon: ic, tint, title, sub, value, warn, onclick, label, cls = "" }) {
+function row({ icon: ic, tint, title, sub, subWarn, value, warn, onclick, label, cls = "" }) {
   return h("button.row" + cls, { type: "button", onclick, "aria-label": label },
     h(`span.ic.${tint}`, {}, icon(ic, 19)),
-    h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })),
+    h("span.tx", {}, h("b", { text: title }), sub && h("small" + (subWarn ? ".warn" : ""), { text: sub })),
     value != null && (value instanceof Node ? h("span.val", {}, value) : h("span.val" + (warn ? ".warn" : ""), { text: String(value) })),
     h("span.chev", {}, icon("chev", 16, 2.4)));
 }
@@ -302,7 +303,14 @@ function signedIn(r) {
         h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")))),
     (!m.emailOk || m.emailNew) && r(banner(m)),
     pw.leaked && r(leakBanner()),
+    // (the site's admin, for the linked account only, under your card; #admin, from the old dashboard or its email,
+    // opens it)
+    m.admin && r(adminRow(m)),
   ];
+  if (m.admin && location.hash === "#admin") {
+    history.replaceState(null, "", location.pathname + location.search);
+    setTimeout(() => openSheet(m.admin.ready ? adminView : passkeysView), 450);
+  }
   // the account: sign-in and security (how it stands, by the check-up), and your data (deleting the account at its
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
@@ -317,13 +325,7 @@ function signedIn(r) {
   const ending = [
     !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
-  // (the site's admin, for the linked account only; #admin, from the old dashboard or its email, opens it)
-  const admin = m.admin ? r(adminSection(m)) : null;
-  if (admin && location.hash === "#admin") {
-    history.replaceState(null, "", location.pathname + location.search);
-    setTimeout(() => openSheet(m.admin.ready ? adminView : passkeysView), 450);
-  }
-  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, admin, ...ending]] : [top, [apps, account, prefs, admin, ...ending]];
+  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
 // Your photo, tapped: a new one, straight from the picker (the camera badge says so)
@@ -805,7 +807,7 @@ async function leave(el) {
 }
 
 // ---- sheets: one dialog, each view drawn into it; the page steps back while it's up ----
-const Sheet = { stack: [], cancel: null };
+const Sheet = { stack: [], cancel: null, ask: null };
 function openSheet(view) {
   Sheet.stack = [view]; draw(false);
   // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
@@ -813,8 +815,8 @@ function openSheet(view) {
   if (!sheetEl.open) { sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); }
 }
 sheetEl.tabIndex = -1;
-function pushSheet(view) { Sheet.stack.push(view); draw(true); }
-function popSheet() { Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
+function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw(true); }
+function popSheet() { Sheet.ask?.no(); Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
 const redraw = () => sheetEl.open && Sheet.stack.length && draw(false);
 function draw(swap) {
   const v = Sheet.stack.at(-1)(), deep = Sheet.stack.length > 1;
@@ -822,6 +824,7 @@ function draw(swap) {
   const right = v.right || h("button.x", { type: "button", "aria-label": "Close", onclick: closeSheet }, icon("x", 17, 2.6));
   const body = h("div.sheet-body", {}, ...v.body);
   if (swap && !still.matches) body.classList.add("swap");
+  if (Sheet.ask) { body.classList.add("asking"); body.append(Sheet.ask.card); }
   sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title }), h("div.r", {}, right)), body);
 }
 function closeSheet() {
@@ -887,49 +890,79 @@ function scrollsIn(el, top) {
 }
 
 // ---- showing it's you: for what needs it, asked when it's needed, then on with what you were doing ----
-async function freshly(act) {
+// (here: in the sheet you're in, a card under what you were doing, not a sheet of its own: Admin's changes)
+async function freshly(act, here = false) {
   try { return await act(); }
   catch (e) { if (e.status !== 403 || e.field !== "reauth") throw e; }
   await new Promise((ok, no) => {
     const quiet = () => no(Object.assign(new Error(""), { quiet: true }));
+    if (here && sheetEl.open) {
+      const done = (yes) => {
+        Sheet.cancel = null; Sheet.ask?.card.remove(); Sheet.ask = null;
+        sheetEl.querySelector(".sheet-body")?.classList.remove("asking");
+        (yes ? ok : quiet)();
+      };
+      Sheet.ask = { card: confirmCard(() => done(true), () => done(false)), no: () => done(false) };
+      Sheet.cancel = Sheet.ask.no;
+      const b = sheetEl.querySelector(".sheet-body");
+      b.classList.add("asking"); b.append(Sheet.ask.card);
+      Sheet.ask.card.scrollIntoView({ block: "nearest", behavior: still.matches ? "auto" : "smooth" });
+      return;
+    }
     Sheet.cancel = quiet;
     pushSheet(() => confirmView(() => { Sheet.cancel = null; Sheet.stack.pop(); draw(true); ok(); }, () => { Sheet.cancel = null; Sheet.stack.pop(); draw(true); quiet(); }));
   });
   return act();
 }
-function confirmView(ok, back) {
+// the ways to show it's you: a passkey, or your password (ok once it's done)
+function confirmWays(ok) {
   const m = S.me, said = h("p.said", { role: "alert" }), pk = passkeysWork() && m.passkeys.length > 0;
   const pw = h("input", { type: "password", autocomplete: "current-password", name: "password" });
   const go = h("button.btn" + (pk ? ".quiet" : ""), { type: "submit" }, "Continue");
+  const key = pk && h("button.btn", { type: "button", onclick: async (e) => {
+    say(said, "");
+    try {
+      await busy(e.currentTarget, "Waiting for your passkey…", async () => {
+        const o = await post("signin/options");
+        let a;
+        try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+          allowCredentials: m.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } }); }
+        catch (_) { throw new Error("No passkey was used."); }
+        await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
+          authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
+      });
+      ok();
+    } catch (err) { say(said, err.message); }
+  } }, icon("face", 21, 1.9), "Use a passkey");
+  const form = h("form.form", { onsubmit: async (e) => {
+    e.preventDefault(); say(said, "");
+    if (!pw.value) return say(said, "Enter your password.", pw);
+    try {
+      let proof;
+      await busy(go, "Checking…", async () => { ({ proof } = await E2E.fromPassword(pw.value, m.salt)); return post("reauth", { proof }); });
+      ok(); checkQuietly(pw.value, proof);
+    }
+    catch (err) { say(said, err.message, pw); }
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  return { pk, key, form, pw, said };
+}
+function confirmView(ok, back) {
+  const w = confirmWays(ok);
   return { title: "Confirm it’s you", onBack: back, body: [
     h("p", { text: "This needs you to show it’s you again, with a passkey or your password." }),
-    pk && h("button.btn", { type: "button", onclick: async (e) => {
-      say(said, "");
-      try {
-        await busy(e.currentTarget, "Waiting for your passkey…", async () => {
-          const o = await post("signin/options");
-          let a;
-          try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
-            allowCredentials: m.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } }); }
-          catch (_) { throw new Error("No passkey was used."); }
-          await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
-            authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
-        });
-        ok();
-      } catch (err) { say(said, err.message); }
-    } }, icon("face", 21, 1.9), "Use a passkey"),
-    pk && h("div.or", { text: "or your password" }),
-    h("form.form", { onsubmit: async (e) => {
-      e.preventDefault(); say(said, "");
-      if (!pw.value) return say(said, "Enter your password.", pw);
-      try {
-        let proof;
-        await busy(go, "Checking…", async () => { ({ proof } = await E2E.fromPassword(pw.value, m.salt)); return post("reauth", { proof }); });
-        ok(); checkQuietly(pw.value, proof);
-      }
-      catch (err) { say(said, err.message, pw); }
-    } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go),
-    said] };
+    w.key, w.pk && h("div.or", { text: "or your password" }), w.form, w.said] };
+}
+// the same in place: the passkey first, the password if you'd rather
+function confirmCard(ok, no) {
+  const w = confirmWays(ok);
+  w.form.hidden = !!w.pk;
+  return h("div.confirm-card", { role: "group", "aria-label": "Confirm it’s you" },
+    h("span.face", {}, icon("face", 40, 1.6)), h("b", { text: "Confirm it’s you" }),
+    h("span", { text: w.pk ? "A quick check with your passkey first." : "Your password first." }),
+    w.key, w.form,
+    w.pk && h("button.link", { type: "button", onclick: (e) => { w.form.hidden = false; e.currentTarget.remove(); w.pw.focus(); } }, "Use your password instead"),
+    h("button.link", { type: "button", onclick: no }, "Not now"),
+    w.said);
 }
 
 // ---- your profile ----
@@ -1169,31 +1202,33 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
 // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
 // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
-const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null };
+const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null, fresh: new Set(), msgOpen: null };
 // (asked again while it's being asked: again once that's in, so a change just made is in it)
 const admAsk = (key, again) => {
   if (AD.busy[key]) { if (again) AD.more[key] = true; return AD.data[key]; }
   if (!again && (AD.data[key] || AD.err[key])) return AD.data[key];
   AD.busy[key] = true; AD.err[key] = null;
-  freshly(() => call(`admin/${key}`)).then((x) => { AD.data[key] = x; if (key === "summary") AD.sum = x; else if (!AD.sum) admChanged(); },
+  freshly(() => call(`admin/${key}`)).then((x) => { AD.data[key] = x; if (key === "summary") { AD.sum = x; patch(); } else if (!AD.sum) admChanged(); },
     (e) => { AD.err[key] = e.quiet ? "Confirm it’s you to see this." : e.message; })
     .finally(() => { AD.busy[key] = false; if (AD.more[key]) { AD.more[key] = false; admAsk(key, true); } redraw(); });
   return AD.data[key];
 };
-// (the figures beside the rows: asked once, quietly; without a recent sign-in, the rows go without)
+// (Admin's figures: asked once, and again after a change)
 function admSum() {
   if (AD.asked) return;
   AD.asked = true;
-  call("admin/summary").then((x) => { AD.sum = x; patch(); redraw(); }, () => {});
+  admAsk("summary", true);
 }
 // (after a change: the figures and the log asked again)
 function admChanged() { AD.asked = false; AD.data.log = null; AD.err.log = null; patch(); }
-const admPost = (b, label, path, body) => freshly(() => busy(b, label, () => post(`admin/${path}`, body)));
+// (a change: where it needs you to confirm it's you, that's asked there, in the sheet)
+const admPost = (b, label, path, body) => freshly(() => busy(b, label, () => post(`admin/${path}`, body)), true);
 const admWait = (key) => AD.err[key]
   ? h("div.group", {}, h("div.empty", { text: AD.err[key] }), h("button.row.action", { type: "button", onclick: () => { admAsk(key, true); redraw(); } }, "Try again"))
   : h("div.group", {}, h("div.empty", {}, h("span.spin")));
 const admInfo = (t, v, warn) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val" + (warn ? ".warn" : ""), { text: String(v) }));
 const num = (n) => Number(n || 0).toLocaleString("en-GB"), pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const nOf = (n, one, many = one + "s") => `${num(n)} ${n === 1 ? one : many}`;
 const upper = (s) => s[0].toUpperCase() + s.slice(1);
 const isOn = (u) => !!u.last_seen && Date.now() - u.last_seen < 150e3;      // (the app checks in every 15 s, noted once a minute)
 function seenAt(t) {
@@ -1215,51 +1250,108 @@ const admCopy = (url, note) => [h("div.group", {}, h("div.row.plain", {}, h("cod
   h("button.row.action", { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(url); toast("Copied."); } catch (_) { toast("Couldn’t copy it: select it instead.", true); } } }, "Copy link")),
   h("p.hint", { text: note })];
 
-// Admin, a row of its own that opens into its folder: the people (accounts, invites, messages) and the site (its
-// use, its storage, its email, the log), each a step further in
-function adminSection(m) {
+// Admin: a row under your card (how many accounts, who's been on, a count of new messages; or what needs you), that
+// opens into its folder: the figures first, anything that needs you, then People (accounts, invites, messages), The
+// site (its use, its storage, its email, the log) and the Home page, each a step further in
+function adminRow(m) {
   if (!m.admin.ready) return section(null, h("div.group.glass", {},
     row({ icon: "sliders", tint: "indigo", title: "Admin", value: h("span.mini.go", { text: "Add a passkey" }), onclick: () => openSheet(passkeysView) })));
   admSum();
-  const s = AD.sum || {};
+  const s = AD.sum, alert = s && admAlerts(s)[0];
   return section(null, h("div.group.glass", {},
-    row({ icon: "sliders", tint: "indigo", title: "Admin", value: s.email === false ? "Email off" : s.accounts == null ? null : `${num(s.accounts)} account${s.accounts === 1 ? "" : "s"}`,
-      warn: s.email === false, onclick: () => openSheet(adminView) })));
+    row({ icon: "sliders", tint: "indigo", title: "Admin", sub: alert ? alert.title : s ? `${nOf(s.accounts, "account")} · ${num(s.today)} active today` : null, subWarn: !!alert,
+      value: s?.unread ? newCount(s.unread) : null, onclick: () => openSheet(adminView) })));
+}
+// (a count of what's new, as a badge)
+const newCount = (n) => h("span.count", {}, num(n), h("span.vh", { text: " new" }));
+// what needs you, most pressing first: email off or failing, landings nobody's been told of
+function admAlerts(s) {
+  const out = [];
+  if (!s.email) out.push({ title: "Email is off", text: "Password resets and notifications can’t be emailed.", open: admEmailView });
+  else if (s.mailFail) out.push({ title: "Email isn’t sending", text: `The last ${s.mailFail.n} failed · since ${seenAt(s.mailFail.since).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}`, open: admEmailView });
+  if (s.late) out.push({ title: `${nOf(s.late, "landing")} not told yet`, text: "Notifications are running late.", open: admInsightsView });
+  return out;
 }
 function adminView() {
   admSum();
-  const s = AD.sum || {}, st = AD.data.storage;
+  const s = AD.sum;
+  if (!s) return { title: "Admin", body: [admWait("summary")] };
+  const tile = (n, what, cls = "") => h("div.adm-tile" + cls, {}, h("b", { text: num(n) }), h("span", { text: what }));
+  const home = s.home || {};
   return { title: "Admin", body: [
+    h("div.adm-tiles", {}, tile(s.accounts, s.accounts === 1 ? "account" : "accounts"), tile(s.today, "active today"),
+      s.unread ? tile(s.unread, s.unread === 1 ? "new message" : "new messages", ".new") : tile(s.messages, s.messages === 1 ? "message" : "messages")),
+    ...admAlerts(s).map((a) => h("button.adm-alert", { type: "button", onclick: () => pushSheet(a.open) },
+      icon("alert", 22, 2.2), h("span.tx", {}, h("b", { text: a.title }), h("small", { text: a.text })), h("span.mini", { text: "Check" }))),
     h("h4.app-k", { text: "People" }),
     h("div.group", {},
-      row({ icon: "people", tint: "blue", title: "Accounts", value: s.accounts, onclick: () => pushSheet(admAccountsView) }),
-      row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites == null ? null : `${s.invites} unused`, onclick: () => { AD.invite = null; pushSheet(admInvitesView); } }),
-      row({ icon: "bubble", tint: "teal", title: "Messages", value: s.messages == null ? null : num(s.messages), onclick: () => pushSheet(admMessagesView) })),
+      row({ icon: "people", tint: "blue", title: "Accounts", sub: s.newWeek ? `${num(s.newWeek)} new this week` : null, value: num(s.accounts), onclick: () => pushSheet(admAccountsView) }),
+      h("div.row-plus", {},
+        row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites ? `${num(s.invites)} waiting` : "None waiting", onclick: () => { AD.invite = null; pushSheet(admInvitesView); } }),
+        h("button.plus", { type: "button", "aria-label": "Make an invite", onclick: (e) => admQuickInvite(e.currentTarget) }, icon("plus", 18, 2.6))),
+      row({ icon: "bubble", tint: "teal", title: "Messages", sub: s.lastMessage ? `${s.lastMessage.name} · ${seenAt(s.lastMessage.at)}` : "None yet",
+        value: s.unread ? newCount(s.unread) : s.messages ? num(s.messages) : null,
+        onclick: () => { AD.data.messages = null; AD.err.messages = null; AD.fresh = new Set(); AD.msgOpen = null; pushSheet(admMessagesView); } })),
     h("h4.app-k", { text: "The site" }),
     h("div.group", {},
-      row({ icon: "chart", tint: "green", title: "Insights", value: s.online == null ? null : `${s.online} online`, onclick: () => pushSheet(admInsightsView) }),
-      row({ icon: "db", tint: "grey", title: "Storage", value: st ? bytes(st.dbBytes + st.files.reduce((a, f) => a + f.bytes, 0)) : null, onclick: () => pushSheet(admStorageView) }),
-      row({ icon: "mail", tint: "red", title: "Email", value: s.email == null ? null : s.email ? "Working" : "Off", warn: s.email === false, onclick: () => pushSheet(admEmailView) }),
+      row({ icon: "chart", tint: "green", title: "Insights", value: s.online ? `${num(s.online)} online now` : null, onclick: () => pushSheet(admInsightsView) }),
+      row({ icon: "db", tint: "grey", title: "Storage", value: s.storage == null ? null : bytes(s.storage), onclick: () => pushSheet(admStorageView) }),
+      row({ icon: "mail", tint: "red", title: "Email", value: !s.email ? "Off" : s.mailFail ? "Not sending" : h("span.adm-ok", {}, icon("check", 15, 3), "Working"),
+        warn: !s.email || !!s.mailFail, onclick: () => pushSheet(admEmailView) }),
       row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
+    h("h4.app-k", { text: "Home page" }),
+    h("div.group", {},
+      row({ icon: "home", tint: "green", title: "Home page", sub: [nOf(home.photos || 0, "photo"), home.editedAt && `words changed ${when(home.editedAt)}`].filter(Boolean).join(" · "),
+        value: h("span.mini.go", { text: "Edit" }), onclick: () => { location.href = siteUrl("") + "#edit"; } })),
   ] };
 }
+// + on Invites: a link made there and then, to share or copy (a name for it, and the list, are in Invites)
+async function admQuickInvite(b) {
+  try {
+    const r = await admPost(b, "", "invite", {});
+    AD.data.invites = null; admChanged();
+    pushSheet(() => admNewInviteView(r.url));
+  } catch (err) { if (!err.quiet) toast(err.message, true); }
+}
+function admNewInviteView(url) {
+  const share = typeof navigator.share === "function" && h("button.btn", { type: "button", onclick: () => navigator.share({ title: "An invite", url }).catch(() => {}) }, icon("share", 19, 2.2), "Share");
+  const copy = h("button.btn" + (share ? ".quiet" : ""), { type: "button", onclick: async () => {
+    try { await navigator.clipboard.writeText(url); toast("Copied."); } catch (_) { toast("Couldn’t copy it: select it instead.", true); }
+  } }, "Copy link");
+  return { title: "New invite", body: [
+    h("div.adm-ready", {}, h("span.big", {}, icon("link", 30, 2.2)), h("b", { text: "Invite ready" }), h("span", { text: "It makes one account. Copy it now: it isn’t shown again." })),
+    h("div.group", {}, h("div.row.plain", {}, h("code.adm-code", { text: url }))),
+    h("div.adm-two", {}, share, copy)] };
+}
 
-// Messages: what's been sent through the home page's Get in touch (it comes by email too), newest first, each to reply
-// to or delete
+// Messages: what's been sent through the home page's Get in touch (it comes by email too), newest first: the new ones
+// in full, each to reply to or delete (seen now, so new no more next time); the rest a line each, opened with a tap
 function admMessagesView() {
   const x = admAsk("messages");
   if (!x) return { title: "Messages", body: [admWait("messages")] };
   if (!x.messages.length) return { title: "Messages", body: [h("div.group", {}, h("div.empty", { text: "No messages yet." }))] };
-  return { title: "Messages", body: x.messages.map((m) => h("div.group.adm-msg", {},
-    h("div.row.plain", {}, h("span.tx", {}, h("b", { text: m.name }), h("small", { text: `${m.email} · ${seenAt(m.at)}` }))),
-    h("p.adm-body", { text: m.body }),
-    h("div.adm-acts", {},
-      h("a.pill", { href: `mailto:${m.email}?subject=${encodeURIComponent("Re: your message")}` }, icon("mail", 17), "Reply"),
-      h("button.pill.quiet", { type: "button", onclick: async (e) => {
-        try { const r = await admPost(e.currentTarget, "Deleting…", "message-delete", { id: m.id }); x.messages = x.messages.filter((y) => y.id !== m.id);
-          if (AD.sum) AD.sum.messages = x.messages.length; redraw(); patch(); toast(r.message); }
-        catch (err) { toast(err.message, true); }
-      } }, icon("trash", 17), "Delete")))) };
+  const unseen = x.messages.filter((m) => m.new && !AD.fresh.has(m.id)).map((m) => m.id);
+  if (unseen.length) {
+    unseen.forEach((id) => AD.fresh.add(id));
+    post("admin/messages-read", { ids: unseen }).then(() => { if (AD.sum) { AD.sum.unread = Math.max(0, AD.sum.unread - unseen.length); patch(); } }, () => {});
+  }
+  const acts = (m) => h("div.adm-acts", {},
+    h("a.pill", { href: `mailto:${m.email}?subject=${encodeURIComponent("Re: your message")}` }, icon("mail", 17), "Reply"),
+    h("button.pill.quiet", { type: "button", onclick: async (e) => {
+      try { const r = await admPost(e.currentTarget, "Deleting…", "message-delete", { id: m.id }); x.messages = x.messages.filter((y) => y.id !== m.id);
+        if (AD.sum) AD.sum.messages = x.messages.length; redraw(); patch(); toast(r.message); }
+      catch (err) { if (!err.quiet) toast(err.message, true); }
+    } }, icon("trash", 17), "Delete"));
+  const head = (m, dot) => h("div.row.plain", {}, dot && h("span.adm-dot", { "aria-hidden": "true" }), h("span.tx", {}, h("b", { text: m.name }), h("small", { text: `${m.email} · ${seenAt(m.at)}` })));
+  const fresh = x.messages.filter((m) => AD.fresh.has(m.id)), older = x.messages.filter((m) => !AD.fresh.has(m.id));
+  const line = (m) => AD.msgOpen === m.id ? h("div.adm-open", {}, head(m), h("p.adm-body", { text: m.body }), acts(m))
+    : h("button.row.adm-line", { type: "button", onclick: () => { AD.msgOpen = m.id; redraw(); } },
+      h("span.tx", {}, h("b", { text: m.name }), h("small", { text: m.body })), h("span.val", { text: seenAt(m.at) }));
+  return { title: "Messages", body: [
+    fresh.length > 0 && h("h4.app-k", { text: "New" }),
+    ...fresh.map((m) => h("div.group.adm-msg", {}, head(m, true), h("p.adm-body", { text: m.body }), acts(m))),
+    fresh.length > 0 && older.length > 0 && h("h4.app-k", { text: "Earlier" }),
+    older.length > 0 && h("div.group", {}, older.map(line))] };
 }
 
 // Accounts: everyone, newest first, to search; each a tap from its own sheet
@@ -1416,6 +1508,8 @@ function admEmailView() {
   const s = admAsk("summary"), said = h("p.said", { role: "alert" });
   if (!s) return { title: "Email", body: [admWait("summary")] };
   return { title: "Email", body: [
+    s.mailFail && h("div.adm-alert.still", {}, icon("alert", 22, 2.2),
+      h("span.tx", {}, h("b", { text: `The last ${nOf(s.mailFail.n, "email")} failed` }), h("small", { text: `${s.mailFail.why} · ${seenAt(s.mailFail.at)}` }))),
     h("div.group", {}, admInfo("Emails", s.email ? "On" : "Off", !s.email),
       s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "From" }), h("small", { text: s.from }))),
       s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Tests go to" }), h("small", { text: s.testTo })))),

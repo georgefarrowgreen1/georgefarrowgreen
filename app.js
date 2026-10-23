@@ -221,6 +221,8 @@ function showMe() {
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
   body.classList.add("known");
+  // (from Admin on the account page: #edit, straight into changing the words)
+  if (location.hash === "#edit") { history.replaceState(null, "", location.pathname + location.search); if (me.owner) startEdit(); }
   const face = $("#face");
   face.textContent = "";
   if (me.signedIn && me.photoAt) {

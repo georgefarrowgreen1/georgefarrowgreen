@@ -83,13 +83,25 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: emailFrom(env, brand), to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }),
-  });
-  if (!r.ok) {
-    const why = await r.json().then((d) => d.message || d.error || "", () => "");
-    console.error("email", brand, r.status, why);
+  }).catch(() => null);
+  if (!r?.ok) {
+    const why = r ? await r.json().then((d) => d.message || d.error || "", () => "") : "";
+    console.error("email", brand, r?.status, why);
+    await noteSend(env, why || (r ? `Refused (${r.status})` : "Couldn’t reach Resend"));
     // Resend's own reason is shown to the admin only; it can mention the sending setup.
     throw new HttpError(502, explain && why ? `Resend refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
   }
+  await noteSend(env);
+}
+// How sending's going, for Admin (functions/api/pigeon adminSummary): the run of failures since the last email that
+// went (pg_meta mail_fail: how many, since when, the latest reason); one that goes clears it
+async function noteSend(env, why) {
+  try {
+    if (!env.DB) return;
+    await (why == null ? env.DB.prepare("DELETE FROM pg_meta WHERE k = 'mail_fail'")
+      : env.DB.prepare(`INSERT INTO pg_meta (k, v) VALUES ('mail_fail', json_object('n', 1, 'since', ?1, 'at', ?1, 'why', ?2))
+          ON CONFLICT(k) DO UPDATE SET v = json_set(v, '$.n', json_extract(v, '$.n') + 1, '$.at', ?1, '$.why', ?2)`).bind(Date.now(), String(why).slice(0, 200))).run();
+  } catch (_) { /* (never in the way of the email itself) */ }
 }
 
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

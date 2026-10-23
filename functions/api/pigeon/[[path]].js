@@ -1,5 +1,5 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
@@ -28,7 +28,8 @@ import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../.
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
-import { listMessages as siteMessages, dropMessage as dropSiteMessage } from "../../_messages.js";
+import { listMessages as siteMessages, dropMessage as dropSiteMessage, messageCounts, markRead as markSiteRead } from "../../_messages.js";
+import { getHistory } from "../../_content.js";
 import { logEvent, providerOf } from "../../_activity.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
@@ -1143,10 +1144,9 @@ async function changePassword({ request, env, waitUntil }) {
    admin/…, the routes below). It's the account linked to it (pg_meta admin_user, linked once from the old dashboard,
    since gone), or, if that one's gone (or being deleted), the account with the site owner's email (PIGEON_ADMIN_EMAIL),
    once that's confirmed: the same as a password reset to that inbox would give, so it can't be lost for good. That
-   account only, with a passkey on it; looking needs it to have shown it's you (password or passkey) in the last 12
-   hours, a change in the last 10 minutes, from the page itself (its Origin). Account details, never passwords, keys
+   account only, with a passkey on it; looking is as signed in, a change needs it to have shown it's you (its passkey,
+   or its password) in the last 10 minutes, from the page itself (its Origin). Account details, never passwords, keys
    or scrolls. */
-const ADMIN_LOOK = 12 * HOUR;
 // the admin's account (and how many passkeys it has)
 export async function adminOf(env) {
   const D = await db(env), q = `SELECT u.id, u.name, u.handle, u.email, (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys
@@ -1158,19 +1158,45 @@ async function requireAdmin(request, env, write) {
   const [u, admin] = await Promise.all([cookieUser(request, env), adminOf(env)]);
   if (!u || !admin || u.id !== admin.id) throw new HttpError(403, "This account isn’t the site’s admin.");
   if (!admin.passkeys) throw new HttpError(403, "Add a passkey to your account to use Admin.", "passkey");
-  if (write) sameOrigin(request);
-  if (!(Date.now() - (u.authAt || 0) < (write ? FRESH : ADMIN_LOOK))) throw new HttpError(403, "Confirm it’s you first.", "reauth");
+  if (write) {
+    sameOrigin(request);
+    if (!(Date.now() - (u.authAt || 0) < FRESH)) throw new HttpError(403, "Confirm it’s you first.", "reauth");
+  }
   return u;
 }
-// The figures beside each row of the account page's Admin section
-async function adminSummary({ request, env }) {
+// The figures for Admin, on the account page and at the top of its folder: accounts (and how many are new this week),
+// who's online and who's been on today, unused invites, the home page's messages (and how many are new), anything
+// that needs the admin (email failing, landings not told), the storage used, the home page, the log's latest
+const SEEN = "MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(s.seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0))";
+const FILES_STALE = 12 * HOUR;
+// (the home page's photos: functions/api/background.js keeps their list in KV)
+const homePhotos = async (env) => (env.BIO_KV ? JSON.parse((await env.BIO_KV.get("bg_list")) || "[]") : []);
+async function adminSummary({ request, env, waitUntil }) {
   await requireAdmin(request, env);
-  const t = Date.now(), r = await (await db(env)).prepare(`SELECT (SELECT COUNT(*) FROM pg_users) AS accounts,
-    (SELECT COUNT(*) FROM pg_users u WHERE MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0)) > ?1) AS online,
-    (SELECT COUNT(*) FROM pg_invites WHERE used_at IS NULL AND revoked_at IS NULL) AS invites,
-    (SELECT MAX(at) FROM pg_admin_log) AS logAt`).bind(t - 150e3).first();
-  const on = emailReady(env), msgs = await env.DB.prepare("SELECT COUNT(*) AS n FROM messages").first().catch(() => null);
-  return json({ ...r, messages: msgs?.n || 0, email: on, from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
+  const t = Date.now(), D = await db(env);
+  const [main, people, late, meta] = await D.batch([
+    D.prepare(`SELECT (SELECT COUNT(*) FROM pg_users) AS accounts, (SELECT COUNT(*) FROM pg_users WHERE created_at > ?1) AS newWeek,
+      (SELECT COUNT(*) FROM pg_invites WHERE used_at IS NULL AND revoked_at IS NULL) AS invites, (SELECT MAX(at) FROM pg_admin_log) AS logAt`).bind(t - 7 * DAY),
+    D.prepare(`SELECT COALESCE(SUM(ls > ?1), 0) AS online, COALESCE(SUM(ls > ?2), 0) AS today FROM (SELECT ${SEEN} AS ls FROM pg_users u)`).bind(t - 150e3, t - DAY),
+    // (as Insights counts them: landed 15 minutes ago or more, in the last 2 days, and nobody told yet)
+    D.prepare(`SELECT (SELECT COUNT(*) FROM pg_msgs WHERE notified_at IS NULL AND lost_at IS NULL AND deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN})
+      + (SELECT COUNT(*) FROM pg_gdeliv WHERE notified_at IS NULL AND lost_at IS NULL AND deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN}) AS late`).bind(t),
+    D.prepare("SELECT k, v FROM pg_meta WHERE k IN ('mail_fail', 'files_size')"),
+  ]);
+  const m = Object.fromEntries((meta.results || []).map((r) => [r.k, JSON.parse(r.v)]));
+  // (the files' size, as the Storage sheet last counted it: counted now the first time, again in the background once it's old)
+  let files = m.files_size;
+  if (!files) files = { bytes: (await storageReport(env, D, t)).files.reduce((a, f) => a + f.bytes, 0), at: t };
+  else if (t - files.at > FILES_STALE) waitUntil(storageReport(env, D, t).catch(() => {}));
+  const dbBytes = main.meta?.size_after ?? null;
+  const [msgs, photos, edits] = await Promise.all([messageCounts(env).catch(() => null), homePhotos(env).catch(() => []), getHistory(env).catch(() => [])]);
+  const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
+  return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
+    messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
+    storage: dbBytes == null ? null : dbBytes + (files.bytes || 0),
+    home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
+    email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
+    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1307,7 +1333,14 @@ async function adminInviteRevoke({ request, env }) {
 // The site's messages, from its home page's Get in touch (functions/_messages.js), newest first; and one deleted
 async function adminMessages({ request, env }) {
   await requireAdmin(request, env);
-  return json({ messages: (await siteMessages(env)).map((m) => ({ id: m.id, name: m.name, email: m.email, body: m.body, at: m.created_at })) });
+  return json({ messages: (await siteMessages(env)).map((m) => ({ id: m.id, name: m.name, email: m.email, body: m.body, at: m.created_at, new: !m.read_at })) });
+}
+// (seen, once they're shown: no need to confirm it's you, as it changes nothing but what's new)
+async function adminMessagesRead({ request, env }) {
+  await requireAdmin(request, env);
+  sameOrigin(request);
+  const ids = (await body(request)).ids;
+  return json({ read: await markSiteRead(env, Array.isArray(ids) ? ids.map(Number) : []) });
 }
 async function adminMessageDelete({ request, env }) {
   await requireAdmin(request, env, true);
@@ -1327,7 +1360,7 @@ export const ADMIN_ROUTES = {
   "GET admin/invites": adminInvites, "GET admin/insights": adminInsights, "GET admin/storage": adminStorage, "GET admin/log": adminLogList,
   "POST admin/reset": adminReset, "POST admin/signout": adminSignOut, "POST admin/pigeons": adminPigeons, "POST admin/delete": adminDelete,
   "POST admin/invite": adminInvite, "POST admin/invite-revoke": adminInviteRevoke, "POST admin/test-email": adminTestEmail,
-  "GET admin/messages": adminMessages, "POST admin/message-delete": adminMessageDelete,
+  "GET admin/messages": adminMessages, "POST admin/messages-read": adminMessagesRead, "POST admin/message-delete": adminMessageDelete,
 };
 
 /* ---------------- router ---------------- */

@@ -1781,18 +1781,34 @@ Delete); and has Insights, Storage, Email (with a test) and a log of every actio
 doesn't have them.
 
 It's on an account: Admin is a row of the admin's own account page
-(account.<site>), only for it, that opens into its own folder: People (Accounts,
-Invites, Messages) and The site (Insights, Storage, Email, the Admin log), each a
-step further in, with Back. The admin is the account linked to it (`pg_meta`
+(account.<site>), only for it, under your card: how many accounts and how many
+have been on today, a count of new messages, or, in amber, whatever needs you.
+It opens into its own folder: three figures first (accounts, active today, new
+messages), then anything that needs you, in amber, with Check (email off, or
+the last two or more emails refused, with Resend's reason in Email: `pg_meta`
+`mail_fail`, noted by `functions/_email.js` on each send and cleared by one that
+goes; landings nobody's been told of for 15 minutes); then People (Accounts,
+with how many are new this week; Invites, with how many are waiting and a **+**
+that makes a link there and then, to share or copy; Messages, with who wrote
+last and a count of new ones), The site (Insights, with who's online now;
+Storage, its size straight away, the files' part as the Storage sheet last
+counted it, `pg_meta` `files_size`, counted again in the background once it's
+12 hours old; Email, with a tick while it's working; the Admin log) and the
+Home page (its photos and when its words last changed, and Edit, which opens it
+straight into changing them: `#edit`), each a step further in, with Back.
+Messages are new until they've been shown (`messages.read_at`): the new ones in
+full, the rest a line each, opened with a tap. The admin is the account linked to it (`pg_meta`
 `admin_user`: linked once from InFlight's old dashboard, since removed), or, with
 none (or that one gone, or being deleted), the account with the site owner's
 email (`PIGEON_ADMIN_EMAIL`, else `CONTACT_TO`) once that email's confirmed: the
 same as a reset link to that inbox would give, so it can't be lost for good.
 Its API is `/api/account/admin/*` (`functions/api/pigeon` `ADMIN_ROUTES`): that
-account only, with a passkey on it; looking needs you to have shown it's you
-(password or passkey) in the last 12 hours, a change in the last 10 minutes
-(the page asks, as for anything else), from the page itself; each change is in
-your Recent activity too, and you can't delete your own account from Admin. The
+account only, with a passkey on it; looking is as signed in, and a change needs
+you to have shown it's you (passkey or password) in the last 10 minutes, asked
+there in the sheet you're in (a card under what you were doing: the passkey
+first, the password if you'd rather, or Not now), from the page itself; each
+change is in your Recent activity too, and you can't delete your own account
+from Admin. The
 old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on InFlight's)
 lead there (`#admin`, which opens the folder). The same account is the home page's owner, with its Edit (above).
 `.tools/tests/adminlink.mjs` tests all of it (Messages: `.tools/tests/home.mjs`).

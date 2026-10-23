@@ -211,6 +211,8 @@ export async function storageReport(env, D, t) {
     files.push({ prefix, n, bytes, more });
   }
   const meta = Object.fromEntries((await D.prepare("SELECT k, v FROM pg_meta WHERE k IN ('keep_at', 'r2_sweep')").all()).results.map((r) => [r.k, r.v]));
+  // (the files' size as of now, for Admin's figures, which don't count them themselves: functions/api/pigeon adminSummary)
+  await D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('files_size', ?)").bind(JSON.stringify({ bytes: files.reduce((a, f) => a + f.bytes, 0), at: t })).run().catch(() => {});
   return { at: t, dbBytes: probe?.meta?.size_after ?? null, tables, words: sizes.words ?? null, ways: sizes.ways ?? null, due: sizes.due ?? null,
     warned: sizes.warned ?? null, files, keptAt: meta.keep_at ? Number(meta.keep_at) : null, keepDays: KEEP_MS / DAY, idleDays: IDLE_MS / DAY };
 }

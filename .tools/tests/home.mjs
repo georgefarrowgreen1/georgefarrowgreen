@@ -45,6 +45,7 @@ const settle = (x, ms = 700) => x.p.waitForTimeout(ms);
 const home = async (x) => { await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 }); await settle(x); };
 const text = (x, sel) => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 const shown = (x, sel) => x.p.isVisible(sel);
+const adminLine = (x) => x.p.locator('main .row:has(b:text-is("Admin"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
 const shot = (x, name, full = false) => x.p.screenshot({ path: `${out}/${name}.png`, fullPage: full });
 const idOf = (h) => sql(`SELECT id FROM pg_users WHERE handle = '${h}'`).match(/"id": "([^"]+)"/)[1];
 
@@ -219,23 +220,39 @@ await D.ctx.addCookies(await G.ctx.cookies(SITE));
 await home(D); await shot(D, 'desktop-owner');
 ok(await D.p.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 60), 'on a computer the page fits on one screen', String(await D.p.evaluate(() => document.documentElement.scrollHeight)));
 
-// ---- 7. Messages: in Admin on the owner's account page ----
+// ---- 7. Messages: in Admin on the owner's account page, new until they've been seen; the home page, a tap away ----
 await G.p.goto(`${ACCT}/`); await G.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(G, 1500);
-await shot(G, 'account-admin', true);
+await G.p.waitForFunction(() => /1 new/.test(document.querySelector('main .row:has(.count)')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(/^Admin .+ 1 new$/.test(await adminLine(G)), 'the Admin row: a count of the new message', await adminLine(G));
+await shot(G, 'account-admin');
 await G.p.click('main .row:has(b:text-is("Admin"))');
-await G.p.waitForFunction(() => /Messages\s+1/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
-ok(/Messages 1/.test(await text(G, '#sheet')), 'Admin, a folder: Messages in it, and how many', await text(G, '#sheet'));
+await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+let folder = await text(G, '#sheet');
+ok(/1 new message/.test(folder) && /Messages Sam Okoro · Today \d\d:\d\d 1 new/.test(folder) && /Home page 2 photos · words changed today Edit/.test(folder),
+  'its folder: 1 new message at the top, and on Messages, with who sent it; the home page, its words changed today', folder);
 await settle(G, 600); await shot(G, 'admin-folder');
 await G.p.click('#sheet .row:has(b:text-is("Messages"))');
 await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const sheet = await text(G, '#sheet');
-ok(/Sam Okoro/.test(sheet) && /sam@example\.com/.test(sheet) && /Are you riding the sportive in May\?/.test(sheet), 'the message: who, their email and what they wrote', sheet.slice(0, 160));
+ok(/^Back Messages New Sam Okoro/i.test(sheet) && /sam@example\.com/.test(sheet) && /Are you riding the sportive in May\?/.test(sheet) && await G.p.$('#sheet .adm-dot'), 'the message, as new: who, their email and what they wrote', sheet.slice(0, 160));
 ok(await G.p.getAttribute('#sheet a.pill', 'href') === 'mailto:sam@example.com?subject=Re%3A%20your%20message', 'Reply writes back to them');
 await shot(G, 'admin-messages');
 r = await req(P, `${ACCT}/api/account/admin/messages`);
 ok(r.status === 403, 'someone else can’t read them', String(r.status));
+for (let i = 0; i < 20 && (await req(G, `${ACCT}/api/account/admin/summary`)).json?.unread; i++) await settle(G, 300);
+ok((await req(G, `${ACCT}/api/account/admin/summary`)).json?.unread === 0, 'seen: new no more');
+await G.p.click('#sheet .back'); await settle(G, 700);
+ok(!(await G.p.$('#sheet .count')) && /Messages Sam Okoro · Today \d\d:\d\d 1/.test(await text(G, '#sheet')), 'back in the folder: no count of new', await text(G, '#sheet'));
+await G.p.click('#sheet .row:has(b:text-is("Messages"))'); await settle(G, 900);
+ok(!/new/i.test(await text(G, '#sheet h4')) && await G.p.$('#sheet .adm-line'), 'opened again: a line, not new', await text(G, '#sheet'));
+await G.p.click('#sheet .adm-line'); await settle(G, 400);
 await G.p.click('#sheet .adm-acts button'); await settle(G, 1200);
-ok(/No messages yet/.test(await text(G, '#sheet')) && !/Sam Okoro/.test(sql('SELECT name FROM messages')), 'Delete: gone', await text(G, '#sheet'));
+ok(/No messages yet/.test(await text(G, '#sheet')) && !/Sam Okoro/.test(sql('SELECT name FROM messages')), 'opened, then Delete: gone', await text(G, '#sheet'));
+await G.p.click('#sheet .back'); await settle(G, 700);
+await G.p.click('#sheet .row:has(b:text-is("Home page"))');
+await G.p.waitForURL(`${SITE}/`, { timeout: 15000 }).catch(() => {});
+ok(await G.p.waitForSelector('body.edit', { timeout: 15000 }).then(() => true, () => false) && G.p.url() === `${SITE}/`, 'Home page: straight into changing its words', G.p.url());
+await G.p.click('#done'); await settle(G);
 
 console.log('errs', errs);
 ok(!errs.length, 'no errors on any page', errs.join(' | '));

@@ -7,6 +7,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import http from 'http';
+import { writeFileSync } from 'fs';
 import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
@@ -47,6 +48,7 @@ const adminOpen = async (x) => {
   if (await x.p.$('#sheet[open] #sheet-title:text-is("Admin")')) return;
   await x.p.click(ADMIN); await x.p.waitForSelector('#sheet[open] #sheet-title:text-is("Admin")'); await settle(x, 400);
 };
+const adminLine = (x) => x.p.locator(ADMIN).innerText().then((t) => t.replace(/\s+/g, ' ').trim());
 const adminRow = async (x, title) => { await adminOpen(x); await x.p.click(`#sheet .row:has(b:text-is("${title}"))`); };
 const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const adminText = async (x) => { if (!(await x.p.$(ADMIN))) return ''; await adminOpen(x); return sheetText(x); };
@@ -66,9 +68,13 @@ ok(r.status === 403, 'nor its API', String(r.status));
 // ---- 2. Confirmed: Admin, on its page; a link to another account goes first; gone, back to the owner's email ----
 sql(`UPDATE pg_users SET email_ok = ${Date.now()} WHERE id = '${gail}'`);
 await account(G);
-for (let i = 0; i < 20 && !/Accounts 2/.test(await adminText(G)); i++) await settle(G, 500);
+ok(await G.p.evaluate(() => { const rows = [...document.querySelectorAll('main .row, main section h3')].map((x) => x.querySelector('b')?.textContent || x.textContent);
+  return rows.indexOf('Admin') > -1 && rows.indexOf('Admin') < rows.findIndex((t) => /apps/i.test(t)); }), 'Admin: a row under your card, before your apps');
+for (let i = 0; i < 20 && !/Accounts 2 new this week 2/.test(await adminText(G)); i++) await settle(G, 500);
 const sec = await adminText(G);
-ok(/Accounts 2/.test(sec) && /Invites 0 unused/.test(sec) && /Email Working/.test(sec), 'confirmed: Admin, with its figures (2 accounts, no invites, email working)', sec);
+ok(/Admin 2 accounts \d+ active today 0 messages/.test(sec) && /Accounts 2 new this week 2/.test(sec) && /Invites None waiting/.test(sec) && /Messages None yet/.test(sec) && /Email Working/.test(sec)
+  && /Storage \d/.test(sec) && /Home page 0 photos/.test(sec), 'confirmed: Admin, its folder: the figures first, then each row with what it says (2 new this week, none waiting, email working, the storage)', sec);
+ok(!(await G.p.$('#sheet .adm-alert')), 'nothing needs you: no alert');
 sql(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', '${pat}')`);
 r = await req(G, `${ACCT}/api/account/admin/users`);
 const rp = await req(P, `${ACCT}/api/account/admin/users`);
@@ -104,23 +110,57 @@ ok(/#reset=[A-Za-z0-9_-]{30,}/.test(await sheetText(G)), 'a reset link, to copy'
 // (a change needs a sign-in in the last 10 minutes: older, and it asks)
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now() - 30 * 60e3} WHERE user_id = '${gail}'`);
 await G.p.click('#sheet .row.action:text-is("Sign out everywhere")');
-ok(await G.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 8000 }).then(() => true, () => false), 'a change, half an hour on: Confirm it’s you first');
-await G.p.click('#sheet .btn:has-text("Use a passkey")');
+ok(await G.p.waitForSelector('#sheet .confirm-card', { timeout: 8000 }).then(() => true, () => false) && await text(G, '#sheet h2') === 'Pat Reed',
+  'a change, half an hour on: Confirm it’s you first, there in the sheet', await text(G, '#sheet h2'));
+await G.p.click('#sheet .confirm-card .btn:has-text("Use a passkey")');
 await G.p.waitForFunction(() => /signed out/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
-ok(/signed out/.test(await text(G, '.toast')), 'with the passkey: done', await text(G, '.toast'));
+ok(/signed out/.test(await text(G, '.toast')) && !(await G.p.$('#sheet .confirm-card')), 'with the passkey: done, and the card gone', await text(G, '.toast'));
 r = await req(P, `${CHAT}/api/pigeon/sync`);
 ok(r.status === 401, '@pat signed out', String(r.status));
 
-// ---- 5. Looking needs a sign-in in the last 12 hours ----
+// ---- 5. Looking is as signed in; a change, from a sign-in 13 hours old, asks first ----
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now() - 13 * 3600e3} WHERE user_id = '${gail}'`);
 r = await req(G, `${ACCT}/api/account/admin/users`);
-ok(r.status === 403 && r.json?.field === 'reauth', 'a sign-in 13 hours old: asked to confirm before looking', `${r.status} ${JSON.stringify(r.json)}`);
+ok(r.status === 200, 'a sign-in 13 hours old: looking, no asking', String(r.status));
+r = await req(G, `${ACCT}/api/account/admin/invite`, { method: 'POST', headers: { Origin: ACCT, 'Content-Type': 'application/json' }, data: '{}' });
+ok(r.status === 403 && r.json?.field === 'reauth', 'but a change asks', `${r.status} ${JSON.stringify(r.json)}`);
+await account(G); await adminOpen(G);
+await G.p.click('#sheet .row-plus .plus');
+ok(await G.p.waitForSelector('#sheet .confirm-card', { timeout: 8000 }).then(() => true, () => false), '+ on Invites, 13 hours on: asked there in the folder');
+await settle(G, 600); await G.p.screenshot({ path: `${out}/admin-confirm.png` });
+await G.p.click('#sheet .confirm-card .link:text-is("Not now")'); await settle(G, 400);
+ok(!(await G.p.$('#sheet .confirm-card')) && await text(G, '#sheet h2') === 'Admin' && !(await G.p.$('#sheet .sheet-body.asking')), 'Not now: back to the folder as it was');
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${gail}'`);
+
+// ---- 5b. + on Invites: a link straight away; email failing, said first ----
+await G.p.click('#sheet .row-plus .plus'); await waitSheet(G, /Invite ready/);
+await settle(G, 500); await G.p.screenshot({ path: `${out}/admin-invite.png` });
+ok(/#invite=[A-Za-z0-9_-]{30,}/.test(await sheetText(G)) && await text(G, '#sheet h2') === 'New invite', '+ on Invites: an invite, there and then, to copy', await sheetText(G));
+await G.p.click('#sheet .back'); await waitSheet(G, /Invites 1 waiting/);
+ok(/Invites 1 waiting/.test(await sheetText(G)), 'and back in the folder: 1 waiting', await sheetText(G));
+writeFileSync(`${S}/mockmode`, 'fail');
+for (let i = 0; i < 2; i++) await req(G, `${ACCT}/api/account/admin/test-email`, { method: 'POST', headers: { Origin: ACCT, 'Content-Type': 'application/json' }, data: '{}' });
+writeFileSync(`${S}/mockmode`, 'ok');
+r = await req(G, `${ACCT}/api/account/admin/summary`);
+ok(r.json?.mailFail?.n === 2 && /testing emails/.test(r.json.mailFail.why), 'two emails refused: Admin knows', JSON.stringify(r.json?.mailFail));
+await account(G);
+for (let i = 0; i < 20 && !/Email isn’t sending/.test(await adminLine(G)); i++) await settle(G, 300);
+ok(/Email isn’t sending/.test(await adminLine(G)), 'the Admin row says so', await adminLine(G));
+await adminOpen(G);
+ok(/Email isn’t sending The last 2 failed/.test(await text(G, '#sheet .adm-alert')) && /Email Not sending/.test(await sheetText(G)), 'and the folder, first, in amber', await text(G, '#sheet .adm-alert'));
+await settle(G, 500); await G.p.screenshot({ path: `${out}/admin-alert.png` });
+await G.p.click('#sheet .adm-alert'); await waitSheet(G, /Send a test email/);
+ok(/The last 2 emails failed/.test(await sheetText(G)) && /testing emails/.test(await sheetText(G)), 'Check: Email, with why', await sheetText(G));
+await G.p.click('#sheet .row.action:text-is("Send a test email")');
+await G.p.waitForFunction(() => /Test email sent/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+r = await req(G, `${ACCT}/api/account/admin/summary`);
+ok(r.json && !r.json.mailFail, 'one that goes: all clear', JSON.stringify(r.json?.mailFail));
+await G.p.click('#sheet .x'); await settle(G, 600);
 
 // ---- 6. Invites, Insights, Storage, Email, the log ----
 await account(G);
 await adminRow(G, 'Invites'); await G.p.waitForSelector('#sheet form input');
-await G.p.fill('#sheet form input', 'Sam'); await G.p.click('#sheet form .btn'); await waitSheet(G, /#invite=/); await waitSheet(G, /Unused · made/);
+await G.p.fill('#sheet form input', 'Sam'); await G.p.click('#sheet form .btn'); await waitSheet(G, /#invite=/); await waitSheet(G, /Sam\s+Unused · made/);
 ok(/#invite=/.test(await sheetText(G)) && /Sam/.test(await sheetText(G)), 'an invite made: its link once, and in the list', await sheetText(G));
 await G.p.click('#sheet .row:has(b:text-is("Sam")) .mini');
 await G.p.waitForFunction(() => /Invite cancelled/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
