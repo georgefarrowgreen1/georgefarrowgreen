@@ -397,7 +397,6 @@ function securityView() {
       row({ icon: "key", tint: "blue", title: "Password",
         value: pw.setAt ? `${Math.abs(pw.setAt - m.since) < 5 * 60e3 ? "Set" : "Changed"} ${when(pw.setAt)}` : null, onclick: () => pushSheet(passwordView) }),
       row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || h("span.mini.go", { text: "Add one" }), onclick: () => pushSheet(passkeysView) })),
-    h("p.hint", { text: "Your email, password and passkeys sign you in to every app on the site." }),
     h("h4.app-k", { text: "Where and when" }),
     h("div.group", {},
       row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length === 1 && here ? thisOne(here) : m.devices.length, onclick: () => pushSheet(devicesView) }),
