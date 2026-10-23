@@ -1212,13 +1212,8 @@ function appearanceView() {
     h("div.appears", {}, opts),
     h("p.hint", { text: "Here and in InFlight, on every device you’re signed in on. Automatic follows your device’s light or dark setting. (Weather’s look follows the sky.)" })] };
 }
-// what this device would choose, where the account has nothing yet (as Weather does)
-function unitsHere() {
-  const lang = navigator.language || "en-GB";
-  if (/^en-US|^en-LR|^my/i.test(lang)) return { temp: "f", wind: "mph", precip: "in", pressure: "inhg", clock: "12" };
-  if (/^en-GB|^en-IE/i.test(lang)) return { temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" };
-  return { temp: "c", wind: "kmh", precip: "mm", pressure: "hpa", clock: /^en-(AU|NZ|CA|IN|PH)/i.test(lang) ? "12" : "24" };
-}
+// the units where the account has none chosen yet, whatever the device's language (as Weather starts with them)
+const unitsHere = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
 const UNIT_OPTS = [
   ["temp", "Temperature", [["c", "°C"], ["f", "°F"]]],
   ["wind", "Wind", [["mph", "mph"], ["kmh", "km/h"], ["ms", "m/s"], ["kn", "knots"]]],
