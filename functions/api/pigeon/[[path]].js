@@ -1149,7 +1149,7 @@ async function requireAdmin(request, env, write) {
 async function adminStatus({ request, env }) {
   const authed = await isAuthed(request, env);
   return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined,
-    from: authed ? emailFrom(env) : undefined, testTo: authed ? ownerEmail(env) : undefined });
+    from: authed ? `${emailFrom(env)} and ${emailFrom(env, "Account")}` : undefined, testTo: authed ? ownerEmail(env) : undefined });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {

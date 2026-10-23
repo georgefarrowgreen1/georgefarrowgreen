@@ -245,7 +245,7 @@ Motion, solid with Reduce Transparency.
 - What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, a new email,
   your data, the account deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or
   your password), then carries on with what you were doing. Changes to the password, passkeys and email are emailed to
-  the account, from **Account** (noreply@georgefarrowgreen.com under the account's own name), with its icon at the top;
+  the account, from **Account** (account@georgefarrowgreen.com), with its icon at the top;
   so is every sign-in, saying which app it was in (InFlight, Weather or this page), with **Review your account**.
 - The page acts only with the site's sign-in (the HttpOnly cookie, never in the page's reach), and only from its own
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
@@ -1651,12 +1651,18 @@ on the admin page. Until a domain is verified in Resend, mail goes from Resend's
 test sender `onboarding@resend.dev`, which only delivers to your own Resend
 address. To email everyone else, verify georgefarrowgreen.com in Resend and add
 **`PIGEON_FROM`** = `noreply@georgefarrowgreen.com` (a name with it, as in
-`InFlight <noreply@georgefarrowgreen.com>`, is fine: only the address is used).
-Every app's email comes from that one address under its own app's name:
-**InFlight** for InFlight's own (a pigeon landed, the admin page's test), and
-**Account** for the account's (sign-ins in any app, the password, passkeys, the
-email address, a reset link, keeping or deleting it), whichever app it happened
-in. Every email has one look, in its app's colours (the account's indigo,
+`InFlight <noreply@georgefarrowgreen.com>`, is fine: only its domain is used).
+Each app's email comes from its own address on that domain, under its own name:
+**InFlight** `<inflight@georgefarrowgreen.com>` for InFlight's own (a pigeon
+landed, the admin page's test), and **Account** `<account@georgefarrowgreen.com>`
+for the account's (sign-ins in any app, the password, passkeys, the email
+address, a reset link, keeping or deleting it), whichever app it happened in.
+Resend sends from any address on a verified domain, so there's nothing to add
+there; with its test sender, everything comes from `onboarding@resend.dev`.
+Separate addresses let a mail app show each its own picture: Apple Mail shows a
+sender's logo through Apple Business's Branded Mail (free; the organisation
+verified by Apple, a logo per address, and DMARC at `p=quarantine` or
+`p=reject` with `pct=100`, which georgefarrowgreen.com has). Every email has one look, in its app's colours (the account's indigo,
 InFlight's blue): a white card on the account page's sky (a night sky in dark
 mode); at its top one picture, the email's own tile (a shield, a key, a red bin
 for a deletion, an orange pigeon for one landed) with the app's icon as a badge

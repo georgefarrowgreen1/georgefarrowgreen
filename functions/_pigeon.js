@@ -774,15 +774,22 @@ export function cleanPlace(b, approx = false) {
 
 /* ---------------- email (Resend) ----------------
    Needs RESEND_API_KEY and a sender on a domain verified in Resend: the address in
-   PIGEON_FROM, else CONTACT_FROM (noreply@georgefarrowgreen.com). Every app's email
-   comes from that one address, each under its own app's name: "InFlight" for
-   InFlight's own (a pigeon landed), "Account" for the account's (its sign-ins,
-   password, passkeys, email, keeping it), whichever app it happened in. */
+   PIGEON_FROM, else CONTACT_FROM (noreply@georgefarrowgreen.com). Each app's email
+   comes from its own address on that domain, under its own name: "InFlight"
+   <inflight@…> for InFlight's own (a pigeon landed), "Account" <account@…> for the
+   account's (its sign-ins, password, passkeys, email, keeping it), whichever app
+   it happened in; so a mail app can give each its own picture (Apple's Branded
+   Mail goes by address). */
 export const emailReady = (env) => !!env.RESEND_API_KEY;
 // Until a domain is verified in Resend, its test sender onboarding@resend.dev
-// works, but only for mail to the Resend account's own address.
-const senderAddress = (env) => { const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"); return (/<([^>]+)>/.exec(f) || [, f.trim()])[1]; };
-export const emailFrom = (env, app = "InFlight") => `${app} <${senderAddress(env)}>`;
+// works, but only for mail to the Resend account's own address, and only from
+// that one address, so every app sends from it as it is.
+const senderAddress = (env, app) => {
+  const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
+  const domain = a.split("@")[1];
+  return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${app.toLowerCase()}@${domain}`;
+};
+export const emailFrom = (env, app = "InFlight") => `${app} <${senderAddress(env, app)}>`;
 export async function sendEmail(env, { to, subject, text, html, headers, app = "InFlight" }, { explain = false } = {}) {
   if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
