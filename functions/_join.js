@@ -10,7 +10,8 @@
 //   with it: functions/_pigeon.js keyProofOk); otherwise the device makes a new key pair.
 
 import { HttpError, db, limit, clientIp, hex, sha256, fromB64url, HANDLE_RE, EMAIL_RE, handleTaken, cleanPub, SWIFT_MAX,
-  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL, emailReady } from "./_pigeon.js";
+  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL } from "./_pigeon.js";
+import { emailReady } from "./_email.js";
 import { cleanName } from "./_profile.js";
 import { proofHash, lockVault, openVault } from "./_atrest.js";
 

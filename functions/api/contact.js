@@ -1,9 +1,10 @@
 import { json } from "../_auth.js";
 import { saveMessage } from "./messages.js";
+import { emailReady, emailBody, sendEmail, linkOrigin, ukTime } from "../_email.js";
 
 // Contact form. Saves to D1 (if bound) and/or emails via a provider:
 //   WEB3FORMS_KEY   -> https://web3forms.com  (no domain verification needed)
-//   RESEND_API_KEY  -> https://resend.com     (needs a verified sender domain)
+//   RESEND_API_KEY  -> https://resend.com     (needs a verified sender domain; in the site's email look, functions/_email.js)
 // Spam defenses: hidden honeypot field + per-IP rate limit in KV.
 
 const MAX_PER_WINDOW = 5;
@@ -57,16 +58,14 @@ export async function onRequestPost({ request, env }) {
     return json({ ok: true });
   }
 
-  // --- Resend (fallback) ---
-  if (env.RESEND_API_KEY) {
+  // --- Resend (fallback): from "Website" <website@…>, a reply going to whoever wrote ---
+  if (emailReady(env)) {
     const to = env.CONTACT_TO || "georgefarrowgreen@icloud.com";
-    const from = env.CONTACT_FROM || "Website <noreply@georgefarrowgreen.com>";
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, reply_to: email, subject, text: `From: ${name} <${email}>\n\n${message}` }),
-    });
-    if (!res.ok && !saved) return json({ error: "Couldn't send right now — please try later." }, 502);
+    const reply = `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent("Re: your message")}`;
+    const { text, html } = emailBody({ brand: "website", origin: linkOrigin(request), title: `A message from ${name}`, preheader: message.slice(0, 140),
+      pill: ["mail", email], quote: message, rows: [["Sent", ukTime(Date.now())]], button: { label: `Reply to ${name.split(/\s+/)[0]}`, url: reply } });
+    try { await sendEmail(env, { brand: "website", to, replyTo: email, subject, text, html }); }
+    catch (_) { if (!saved) return json({ error: "Couldn't send right now — please try later." }, 502); }
     return json({ ok: true });
   }
 

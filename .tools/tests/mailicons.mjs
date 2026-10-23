@@ -1,4 +1,5 @@
-// The pictures in the site's emails (pigeon/mail/v2/), drawn at three times their size so they're sharp on any screen:
+// The pictures in the site's emails (mail/), every app's (functions/_email.js BRANDS: its icon, its colours, its tiles),
+// drawn at three times their size so they're sharp on any screen:
 //   <app>-<icon>.png   the email's own tile (an iOS-style rounded square, a soft light at its top left, a glow below)
 //                      with the app's icon as a badge on its corner, cut out round it, all one picture, as mail apps
 //                      that can't place one thing over another (Gmail, Outlook) still show it whole, light or dark
@@ -6,9 +7,10 @@
 // Run from the repository: node .tools/tests/mailicons.mjs (needs this folder's Playwright and its Chromium)
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync, existsSync } from 'fs';
-const ROOT = new URL('../../', import.meta.url).pathname, OUT = `${ROOT}pigeon/mail/v2`;
+import { BRANDS } from '../../functions/_email.js';
+const ROOT = new URL('../../', import.meta.url).pathname, OUT = `${ROOT}mail`;
 mkdirSync(OUT, { recursive: true });
-const png = (f) => 'data:image/png;base64,' + readFileSync(`${ROOT}${f}`).toString('base64');
+const pic = (f) => `data:image/${f.endsWith('.svg') ? 'svg+xml' : 'png'};base64,` + readFileSync(`${ROOT}${f}`).toString('base64');
 const BIRD = 'M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z';
 // symbols, on a 24-unit square: lines (or, for the bird, filled)
 const SYM = {
@@ -29,14 +31,8 @@ const SYM = {
   lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
   route: '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.8"/>',
   star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+  sky: '<path d="M8.4 11.9A3.4 3.4 0 1 1 12.4 8.9M9 2.1v1.1M4.3 3.8l.8.8M2.6 8.5h1.1M13.7 3.8l-.8.8"/><path d="M8.6 20.5h9.2a3.7 3.7 0 0 0 .5-7.4 5 5 0 0 0-9.6 1.2 3.1 3.1 0 0 0-.1 6.2z"/>',
   dot: '<circle cx="12" cy="12" r="3.2"/>',
-};
-// each app: its icon (the badge), the colour of its symbols, and its tiles (top and foot of the gradient)
-const APPS = {
-  account: { badge: png('account/icon-512.png'), ink: '#6a64f2',
-    tiles: { shield: ['#8a93ff', '#5a4fe0'], key: ['#8a93ff', '#5a4fe0'], mail: ['#8a93ff', '#5a4fe0'], passkey: ['#8a93ff', '#5a4fe0'], trash: ['#ff8a7a', '#e5372c'] } },
-  inflight: { badge: png('pigeon/icon-512.png'), ink: '#2b84ff',
-    tiles: { bird: ['#3d9afe', '#0c71f1'], landed: ['#ffab31', '#ff8b02'], friend: ['#8886ff', '#514eda'], shield: ['#4ad471', '#29b951'], key: ['#3d9afe', '#0c71f1'] } },
 };
 const symOf = (icon) => (icon === 'landed' ? 'bird' : icon);
 // the tile and its badge, on a 112-unit canvas (the tile 80 across, centred; the badge 30, ringed by a 3-unit gap)
@@ -55,7 +51,7 @@ function tileSvg(app, icon, [top, bot]) {
   <g transform="translate(35.4 29.4) scale(1.72)" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" color="#fff">${SYM[symOf(icon)]}</g>
 </g>
 <rect x="72" y="67" width="30" height="30" rx="8.5" fill="#140a5a" opacity=".35" filter="url(#soft)"/>
-<image href="${APPS[app].badge}" x="72" y="65" width="30" height="30" clip-path="url(#bc)" preserveAspectRatio="xMidYMid slice"/>
+<image href="${pic(BRANDS[app].art.badge)}" x="72" y="65" width="30" height="30" clip-path="url(#bc)" preserveAspectRatio="xMidYMid slice"/>
 </svg>`;
 }
 const symSvg = (sym, ink) => `<svg xmlns="http://www.w3.org/2000/svg" width="51" height="51" viewBox="0 0 24 24" fill="none" stroke="${ink}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" color="${ink}">${SYM[sym]}</svg>`;
@@ -69,9 +65,9 @@ const shoot = async (svg, w, file) => {
   await p.close();
 };
 let n = 0;
-for (const [app, a] of Object.entries(APPS)) {
-  for (const [icon, colours] of Object.entries(a.tiles)) { await shoot(tileSvg(app, icon, colours), 336, `${OUT}/${app}-${icon}.png`); n++; }
-  for (const sym of ['person', 'at', 'clock', 'pin', 'phone', 'key', 'grid', 'link', 'passkey', 'mail', 'lock', 'bird', 'route', 'star', 'dot']) { await shoot(symSvg(sym, a.ink), 51, `${OUT}/g-${app}-${sym}.png`); n++; }
+for (const [app, { art }] of Object.entries(BRANDS)) {
+  for (const [icon, colours] of Object.entries(art.tiles)) { await shoot(tileSvg(app, icon, colours), 336, `${OUT}/${app}-${icon}.png`); n++; }
+  for (const sym of ['person', 'at', 'clock', 'pin', 'phone', 'key', 'grid', 'link', 'passkey', 'mail', 'lock', 'bird', 'route', 'star', 'dot']) { await shoot(symSvg(sym, art.ink), 51, `${OUT}/g-${app}-${sym}.png`); n++; }
 }
 await b.close();
-console.log(`${n} pictures in pigeon/mail/v2`);
+console.log(`${n} pictures in mail/`);

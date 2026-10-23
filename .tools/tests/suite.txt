@@ -8,6 +8,7 @@ birdtest
 cheertest
 nearmiss
 notify
+contactmail
 vanish
 verify
 trackertest

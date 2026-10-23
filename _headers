@@ -20,6 +20,10 @@
 /app.js
   Cache-Control: no-cache
 
+# The pictures in every app's emails (functions/_email.js): for the emails, not for search
+/mail/*
+  X-Robots-Tag: noindex
+
 # InFlight (/pigeon): allow location and passkeys here only, and lock the app
 # down to its own scripts, since it handles private keys.
 /pigeon/*

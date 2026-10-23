@@ -8,6 +8,10 @@
 // Storage: D1 (env.DB) for everything structured, R2 (env.BIO_R2) for the
 // encrypted photo blobs under pigeon/. Tables are created on first use.
 
+import { HttpError } from "./_http.js";
+import { SITE, ACCOUNT_APP } from "./_email.js";
+export { HttpError };
+
 export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const SPEED_KMH = 80;             // a homing pigeon's cruising speed
 export const MIN_FLIGHT = 5 * MIN;
@@ -58,9 +62,6 @@ export const SESSION_TTL = 180 * DAY;
 
 const enc = new TextEncoder();
 
-export class HttpError extends Error {
-  constructor(status, message, field) { super(message); this.status = status; this.field = field; }
-}
 
 export function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -772,122 +773,11 @@ export function cleanPlace(b, approx = false) {
   return { ...snapTo(lat, lon, approx ? APPROX_KM : MILE_KM), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
 }
 
-/* ---------------- email (Resend) ----------------
-   Needs RESEND_API_KEY and a sender on a domain verified in Resend: the address in
-   PIGEON_FROM, else CONTACT_FROM (noreply@georgefarrowgreen.com). Each app's email
-   comes from its own address on that domain, under its own name: "InFlight"
-   <inflight@…> for InFlight's own (a pigeon landed), "Account" <account@…> for the
-   account's (its sign-ins, password, passkeys, email, keeping it), whichever app
-   it happened in; so a mail app can give each its own picture (Apple's Branded
-   Mail goes by address). */
-export const emailReady = (env) => !!env.RESEND_API_KEY;
-// Until a domain is verified in Resend, its test sender onboarding@resend.dev
-// works, but only for mail to the Resend account's own address, and only from
-// that one address, so every app sends from it as it is.
-const senderAddress = (env, app) => {
-  const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
-  const domain = a.split("@")[1];
-  return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${app.toLowerCase()}@${domain}`;
-};
-export const emailFrom = (env, app = "InFlight") => `${app} <${senderAddress(env, app)}>`;
-export async function sendEmail(env, { to, subject, text, html, headers, app = "InFlight" }, { explain = false } = {}) {
-  if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
-  const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: emailFrom(env, app), to, subject, text, html, ...(headers ? { headers } : {}) }),
-  });
-  if (!r.ok) {
-    const why = await r.json().then((d) => d.message || d.error || "", () => "");
-    console.error("pigeon email", r.status, why);
-    // Resend's own reason is shown to the admin only; it can mention the sending setup.
-    throw new HttpError(502, explain && why ? `Resend refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
-  }
-}
-const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-// Every email on the site has the same look (functions/_pigeon.js emailBody), in its app's colours: see emailBody.
-export const SITE = "https://georgefarrowgreen.com";
-// Where links in emails point: this site, or a local test server. Never a
-// *.pages.dev or preview host (the notification tick runs through one).
-export function linkOrigin(request) {
-  const u = new URL(typeof request === "string" ? request : request.url);
-  return /^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.origin : SITE;
-}
-// "12 Oct 2026, 22:15" in UK time, for "when" rows
 // Where links into the app point: InFlight's address (chat.georgefarrowgreen.com, since the
 // move), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
+// (The site's email, every app's, is functions/_email.js.)
 export const APP = "https://chat.georgefarrowgreen.com";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
-export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
-// (brand "account": the site's account, for what's the account's rather than InFlight's: its own icon, and a way to it)
-export const ACCOUNT_APP = "https://account.georgefarrowgreen.com";
-// the account's page, for links in emails (this site's, or a local test server's copy)
-export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
-// The look of every email on the site, each app in its own colours (the account's indigo, InFlight's blue): its sky
-// behind; a card with the email's own tile and the app's icon as a badge on it (one picture, in pigeon/mail/v2/, drawn
-// by .tools/tests/mailicons.mjs); the title; a pill for the one thing to see at a glance; what happened, then (quieter)
-// what to do; the details as a list, a symbol each; the button. Tables and inline styles, so it holds up in Gmail and
-// Outlook (gradients and glows there are flat colours), with a dark version, in the app's night sky.
-const LOOK = {
-  account: { tiles: ["shield", "key", "mail", "passkey", "trash"], tile: "shield", ink: "#5a4fe0", inkDark: "#a7acff", btn: ["#7d8aff", "#4a45dc"], glow: "rgba(74,69,220,.75)",
-    pill: "#eef0ff", pillDark: "#262a55", sky: ["#e9eefc", "#f3f0fb", "#f7f8fc"], night: ["#1a2350", "#0a0f26", "#05060e"], card: "#16182b", box: "#20233a", sep: "#2d3150" },
-  inflight: { tiles: ["bird", "landed", "friend", "shield", "key"], tile: "bird", ink: "#0a6ef0", inkDark: "#7cb8ff", btn: ["#3d9afe", "#0c6ff0"], glow: "rgba(12,111,240,.7)",
-    pill: "#e8f2ff", pillDark: "#1a2c4f", sky: ["#e4eefc", "#eef3fb", "#f7f8fc"], night: ["#132a52", "#081226", "#05060e"], card: "#141b2c", box: "#1e2639", sep: "#2b3552" },
-};
-// a detail's symbol, by what it is
-const SYMBOL = { Account: "person", Handle: "at", From: "person", When: "clock", Sent: "clock", "Deleted on": "clock", Where: "pin", On: "phone",
-  How: "key", "Signed in to": "grid", "Changed in": "grid", "Added in": "grid", "Link works": "link", Passkey: "passkey", "New email": "mail",
-  "Your messages": "lock", Pigeons: "bird", "Pigeons sent": "bird", "Pigeons received": "bird", "Miles flown": "route", "New badges": "star", "Next badge": "star" };
-// (a line's last two words kept together, so none ends on a word alone)
-const together = (s) => String(s).replace(/ (\S+)$/, "\u00a0$1");
-// pill: [symbol, words], the one thing to see at a glance (where a sign-in was, the address to confirm, the day)
-export function emailBody({ title, lines = [], button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader, brand = "inflight" }) {
-  const L = LOOK[brand] || LOOK.inflight, acct = accountLink(origin), mine = brand === "account", e = escHtml;
-  const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
-  const pic = (f) => e(`${origin}/pigeon/mail/v2/${f}.png`), tile = L.tiles.includes(icon) ? icon : L.tile;
-  const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
-  const text = [title, pill ? pill[1] : "", ...lines, ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
-    footer || "", mine ? `Your georgefarrowgreen.com account: ${acct}/` : "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
-  const sky = (c) => `radial-gradient(120% 70% at 50% -10%,${c[0]},${c[1]} 52%,${c[2]})`;
-  const row = ([k, v], i) => { const sep = i ? `border-top:1px solid #e6e6ef;` : "";
-    return `<tr><td width="29" style="width:17px;padding:0 0 0 16px;vertical-align:middle">${sym(SYMBOL[k] || "dot", 17, "display:block")}</td>
-      <td class="ml-k ml-sep" style="padding:13px 10px 13px 12px;font-size:15px;line-height:20px;color:#8e8e93;text-align:left;white-space:nowrap;${sep}">${e(k)}</td>
-      <td class="ml-v ml-sep" style="padding:13px 16px 13px 0;font-size:15px;line-height:20px;color:#1c1c1e;font-weight:600;text-align:right;${sep}">${e(v)}</td></tr>`; };
-  const html = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${e(title)}</title>
-<style>
-  a{color:${L.ink}}
-  @media (prefers-color-scheme:dark){
-    .ml-bg{background-color:${L.night[1]}!important;background-image:${sky(L.night)}!important}
-    .ml-card{background:${L.card}!important;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08),0 18px 50px -24px rgba(0,0,0,.8)!important}
-    .ml-box{background:${L.box}!important}.ml-sep{border-color:${L.sep}!important}
-    .ml-t,.ml-v{color:#f5f5f7!important}.ml-p1{color:#d1d1d6!important}.ml-p2,.ml-k,.ml-f{color:#8e8e9a!important}
-    .ml-pill{background:${L.pillDark}!important;color:${L.inkDark}!important}.ml-a{color:${L.inkDark}!important}
-  }
-  @media (max-width:480px){.ml-card{padding:22px 18px 22px!important}}
-</style></head>
-<body class="ml-bg" style="margin:0;padding:0;background-color:#f4f4fa;background-image:${sky(L.sky)};font-family:${font};-webkit-font-smoothing:antialiased">
-${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(preheader)}</div>` : ""}
-<table role="presentation" class="ml-bg" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4fa" style="background-color:#f4f4fa;background-image:${sky(L.sky)}"><tr><td align="center" style="padding:30px 14px 32px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">
-  <tr><td class="ml-card" align="center" style="background:#ffffff;border-radius:30px;padding:24px 24px 24px;box-shadow:inset 0 0 0 .5px rgba(60,60,120,.08),0 18px 50px -26px ${L.glow}">
-    <!-- the email's own tile, its app's icon a badge on it (the sender says the app's name) -->
-    <img src="${pic(`${brand}-${tile}`)}" width="112" height="112" alt="${mine ? "Account" : "InFlight"}" style="display:block;margin:0 auto 8px;border:0">
-    <h1 class="ml-t" style="margin:0 0 10px;font-size:26px;line-height:31px;font-weight:700;letter-spacing:-.4px;color:#1c1c1e">${e(together(title))}</h1>
-    ${pill ? `<div style="margin:0 0 16px"><span class="ml-pill" style="display:inline-block;padding:6px 13px 6px 11px;border-radius:999px;background:${L.pill};color:${L.ink};font-size:13.5px;line-height:18px;font-weight:600">${sym(pill[0], 15, "display:inline-block;vertical-align:-3px;margin-right:5px")}${e(pill[1])}</span></div>` : ""}
-    ${lines.map((l, i) => i ? `<p class="ml-p2" style="margin:0 0 6px;font-size:14.5px;line-height:21px;color:#8e8e93">${e(together(l))}</p>`
-      : `<p class="ml-p1" style="margin:0 0 8px;font-size:16px;line-height:23px;color:#3a3a3c">${e(together(l))}</p>`).join("")}
-    ${rows.length ? `<table role="presentation" class="ml-box" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#f5f5fa;border-radius:16px;border-collapse:separate">${rows.map(row).join("")}</table>` : ""}
-    ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0"><tr><td align="center" bgcolor="${L.btn[1]}" style="background-color:${L.btn[1]};background-image:linear-gradient(180deg,${L.btn[0]},${L.btn[1]});border-radius:999px;box-shadow:0 10px 22px -10px ${L.glow},inset 0 1px 0 rgba(255,255,255,.25)">
-      <a href="${e(button.url)}" style="display:block;padding:15px 20px;font-size:17px;line-height:22px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:999px">${e(button.label)}</a></td></tr></table>
-    <p class="ml-f" style="margin:14px 4px 0;font-size:11.5px;line-height:16px;color:#8e8e93;word-break:break-all">Button not working? Paste this link into your browser:<br><a class="ml-a" href="${e(button.url)}" style="color:${L.ink}">${e(button.url)}</a></p>` : ""}
-  </td></tr>
-  <tr><td align="center" class="ml-f" style="padding:18px 22px 0;font-size:12px;line-height:18px;color:#8e8e93">
-    ${footer ? `${e(footer)}<br>` : ""}${mine ? `About your georgefarrowgreen.com account<br><a class="ml-a" href="${e(acct)}/" style="color:${L.ink};text-decoration:none">Manage your account</a>` : ""}${unsub ? `<a class="ml-a" href="${e(unsub)}" style="color:${L.ink};text-decoration:none">Turn these emails off</a>` : ""}
-  </td></tr>
-</table></td></tr></table></body></html>`;
-  return { text, html };
-}
 
 /* ---------------- password resets ----------------
    A reset link carries a random token; only its SHA-256 is stored. Links are

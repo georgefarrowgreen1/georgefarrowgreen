@@ -98,12 +98,79 @@ The page has a public contact form. Wire it up to email you via
    - `RESEND_API_KEY` — **Secret** — the key from step 2
    - `CONTACT_TO` *(optional)* — where messages go (default
      `georgefarrowgreen@icloud.com`)
-   - `CONTACT_FROM` *(optional)* — verified sender, e.g.
-     `Website <noreply@georgefarrowgreen.com>`
+   - `PIGEON_FROM` — an address on the verified domain, e.g.
+     `noreply@georgefarrowgreen.com` (only its domain is used: see **Email**)
 4. Redeploy.
 
-Until `RESEND_API_KEY` is set, the form politely reports it's not configured.
-Spam defenses: a hidden honeypot field + a per-IP rate limit (5/hour) in KV.
+Messages come from **Website** `<website@georgefarrowgreen.com>` in the site's
+email look (below): their words as they wrote them, their address, when they
+sent it, and a button to reply (a reply goes to them). With `WEB3FORMS_KEY` set
+instead, Web3Forms sends them, in its own format. Until one is set, the form
+politely reports it's not configured. Spam defenses: a hidden honeypot field + a
+per-IP rate limit (5/hour) in KV.
+
+## Email
+
+Every app's email goes through one module, `functions/_email.js`, and looks the
+same, each app in its own colours. An app that sends email is a **brand** there:
+its name, its colours, its pictures and what's said at the foot of its emails.
+
+| Brand | From | Colours | Its emails |
+|---|---|---|---|
+| `account` | **Account** `<account@…>` | indigo; a red tile for deleting | sign-ins in any app, the password, passkeys, the email address, reset links, keeping or deleting the account (`functions/_account.js` `accountMail`) |
+| `inflight` | **InFlight** `<inflight@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), the admin page's test |
+| `weather` | **Weather** `<weather@…>` | Weather's sky blue | none yet: ready for any |
+| `website` | **Website** `<website@…>` | the home page's periwinkle to violet | the contact form's messages, to the site's owner (`functions/api/contact.js`) |
+
+To send one:
+
+```js
+import { emailBody, sendEmail, linkOrigin } from "./_email.js";
+const { text, html } = emailBody({ brand: "weather", origin: linkOrigin(request), title: "Rain from 3pm",
+  pill: ["pin", "Bristol"], lines: ["Heavy showers this afternoon.", "Take a coat."],
+  rows: [["When", "15:00 to 18:00"]], button: { label: "Open Weather", url: "https://weather.georgefarrowgreen.com/" } });
+await sendEmail(env, { brand: "weather", to, subject: "Rain from 3pm", text, html });
+```
+
+**The look.** A white card on the app's sky (a night sky in dark mode). At its
+top one picture: the email's own tile (`icon`: a shield, a key, a red bin, an
+orange pigeon, …; else the app's usual one) with the app's icon as a badge on its
+corner. Then the title; a pill (`pill: [symbol, words]`) with the one thing to see
+at a glance (the device and place of a sign-in, the address, the day it'll be
+deleted); what happened, then, quieter, what to do (`lines`); someone's own words
+as they wrote them (`quote`); the details as a list, a symbol on each row (`rows:
+[what, value, symbol?]`, the symbol found from what it is when not given); one
+button, with its address under it for a web link; and at the foot the app's own
+words (the account's: "About your georgefarrowgreen.com account" and a link to
+it), why it came (`footer`) and a way to turn them off (`unsub`). Tables and
+inline styles, so it holds up in Gmail and Outlook, which show flat colours where
+gradients aren't drawn. Every email has a plain-text version too.
+
+**The pictures** are PNGs in `mail/`, served from the site's own address so they
+show in any app's email: `<brand>-<tile>.png`, the tile and the badge drawn as one
+with a ring cut out round the badge (so mail apps that can't place one thing on
+another still show it whole, light or dark), and `g-<brand>-<symbol>.png`, the
+symbols in the app's colour. `node .tools/tests/mailicons.mjs` draws them all from
+the brands (the tiles' gradients, the badge, the symbols' colour are each brand's
+`art`). The first emails' pictures stay in `pigeon/mail/`, and the old address of
+these, `pigeon/mail/v2/`, sends to `mail/`, so emails already sent keep theirs.
+
+**A new app** is a new entry in `BRANDS` (its name, which is also its address;
+its colours; its icon and tiles), then `node .tools/tests/mailicons.mjs`. The unit
+tests check every brand's pictures are drawn.
+
+**Sending.** Resend's REST API (no SDK). In Pages → Settings → Variables and
+Secrets add **`RESEND_API_KEY`** as a Secret (never in the code), then redeploy.
+Until a domain is verified in Resend, mail goes from Resend's test sender
+`onboarding@resend.dev`, which only delivers to your own Resend address. To email
+everyone else, verify georgefarrowgreen.com in Resend and add **`PIGEON_FROM`** =
+`noreply@georgefarrowgreen.com` (a name with it is fine: only its domain is used;
+`CONTACT_FROM`'s, if that's the one set). Each brand sends from its own address on
+that domain; Resend sends from any address on a verified domain, so there's
+nothing to add there. Separate addresses let a mail app show each its own picture:
+Apple Mail shows a sender's logo through Apple Business's Branded Mail (free; the
+organisation verified by Apple, a logo per address, and DMARC at `p=quarantine`
+or `p=reject` with `pct=100`, which georgefarrowgreen.com has).
 
 ## SEO & social
 
@@ -1644,40 +1711,12 @@ older scrolls stay sealed and friends see a key-change warning. Every change
 signs out the account's other phones and emails a "your password was changed"
 notice.
 
-Reset emails use Resend's REST API from `functions/_pigeon.js` (no SDK
-needed). In Pages → Settings → Variables and Secrets add **`RESEND_API_KEY`**
-as a Secret (never in the code), then redeploy, and press **Send a test email**
-on the admin page. Until a domain is verified in Resend, mail goes from Resend's
-test sender `onboarding@resend.dev`, which only delivers to your own Resend
-address. To email everyone else, verify georgefarrowgreen.com in Resend and add
-**`PIGEON_FROM`** = `noreply@georgefarrowgreen.com` (a name with it, as in
-`InFlight <noreply@georgefarrowgreen.com>`, is fine: only its domain is used).
-Each app's email comes from its own address on that domain, under its own name:
-**InFlight** `<inflight@georgefarrowgreen.com>` for InFlight's own (a pigeon
-landed, the admin page's test), and **Account** `<account@georgefarrowgreen.com>`
-for the account's (sign-ins in any app, the password, passkeys, the email
-address, a reset link, keeping or deleting it), whichever app it happened in.
-Resend sends from any address on a verified domain, so there's nothing to add
-there; with its test sender, everything comes from `onboarding@resend.dev`.
-Separate addresses let a mail app show each its own picture: Apple Mail shows a
-sender's logo through Apple Business's Branded Mail (free; the organisation
-verified by Apple, a logo per address, and DMARC at `p=quarantine` or
-`p=reject` with `pct=100`, which georgefarrowgreen.com has). Every email has one look, in its app's colours (the account's indigo,
-InFlight's blue): a white card on the account page's sky (a night sky in dark
-mode); at its top one picture, the email's own tile (a shield, a key, a red bin
-for a deletion, an orange pigeon for one landed) with the app's icon as a badge
-on its corner; the title, then a pill with the one thing to see at a glance (the
-device and place of a sign-in, the address, the day it'll be deleted); what
-happened, then, quieter, what to do; the details as a list, a symbol on each
-row; one button; and at the foot, for the account's, "About your
-georgefarrowgreen.com account" and a link to it (InFlight's: turn these emails
-off). The pictures are PNGs in `pigeon/mail/v2/`, the tile and badge drawn as
-one with a ring cut out round the badge, so mail apps that can't place one thing
-on another (Gmail, Outlook) still show it whole, light or dark; Gmail and
-Outlook show flat colours where gradients aren't drawn. To redraw them:
-`node .tools/tests/mailicons.mjs`. Without a key
-the app says reset emails aren't on yet, and the admin page can still make
-links for you to send by hand.
+InFlight's emails (a pigeon landed, a friend request, the week in flight, the
+admin page's test) and the account's (sign-ins, the password, passkeys, the email
+address, reset links, keeping or deleting it) go through the site's email, below
+under **Email**. Press **Send a test email** on the admin page to check it's set
+up. Without a key the app says reset emails aren't on yet, and the admin page can
+still make links for you to send by hand.
 
 **Admin.** `/pigeon/admin/` uses the site owner sign-in (the key icon's password
 or passkey). It lists every account (name, handle, email, place, last active,

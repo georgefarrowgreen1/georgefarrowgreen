@@ -17,7 +17,8 @@
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
 import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
-  deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, linkOrigin, accountPage } from "./_pigeon.js";
+  deviceOf, regionOf, accountPage } from "./_pigeon.js";
+import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
 import { logEvent } from "./_activity.js";
@@ -142,7 +143,7 @@ export async function accountMail(env, u, { icon = "shield", title, line, after,
   const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button, pill,
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.georgefarrowgreen.com."],
     rows: [["Account", `@${u.handle}`], ...rows, ...(when ? [["When", ukTime(Date.now())]] : [])] });
-  await sendEmail(env, { to: to || u.email, subject, text, html, app: "Account" }, opts);
+  await sendEmail(env, { to: to || u.email, subject, text, html, brand: "account" }, opts);
   return true;
 }
 

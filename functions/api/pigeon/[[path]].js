@@ -2,9 +2,8 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle,
-} from "../../_pigeon.js";
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle } from "../../_pigeon.js";
+import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
@@ -1149,7 +1148,7 @@ async function requireAdmin(request, env, write) {
 async function adminStatus({ request, env }) {
   const authed = await isAuthed(request, env);
   return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined,
-    from: authed ? `${emailFrom(env)} and ${emailFrom(env, "Account")}` : undefined, testTo: authed ? ownerEmail(env) : undefined });
+    from: authed ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : undefined, testTo: authed ? ownerEmail(env) : undefined });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1250,15 +1249,15 @@ async function adminTestEmail({ request, env }) {
   if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
   const to = ownerEmail(env);
   const { text, html } = emailBody({
-    origin: linkOrigin(request), icon: "bird", title: "Email is working",
+    brand: "inflight", origin: linkOrigin(request), icon: "bird", title: "Email is working",
     preheader: "InFlight can send password resets and notifications.",
     lines: ["This is a test from the InFlight admin page. Password resets and notifications will arrive just like this."],
-    pill: ["mail", emailFrom(env).replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
+    pill: ["mail", emailFrom(env, "inflight").replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
     button: { label: "Back to admin", url: `${linkOrigin(request)}/pigeon/admin/` },
   });
-  await sendEmail(env, { to, subject: "InFlight email is working", text, html }, { explain: true });
+  await sendEmail(env, { brand: "inflight", to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);
-  return json({ message: `Test email sent to ${to} from ${emailFrom(env)}. Check your inbox.` });
+  return json({ message: `Test email sent to ${to} from ${emailFrom(env, "inflight")}. Check your inbox.` });
 }
 async function adminInvite({ request, env }) {
   await requireAdmin(request, env, true);

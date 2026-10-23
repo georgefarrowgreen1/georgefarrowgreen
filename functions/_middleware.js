@@ -15,6 +15,8 @@ export async function onRequest(ctx) {
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
+    // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
+    if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
     const res = await ctx.next();
     // (the site's own API answers: never taken for anything but what they say they are)
     if (!url.pathname.startsWith("/api/") || res.headers.get("X-Content-Type-Options")) return res;

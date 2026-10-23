@@ -4,7 +4,8 @@
 // (functions/_account.js), and only from the page's own address (sameOrigin). view(env, u): the account as that page
 // shows it.
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, linkOrigin, hex, sha256 } from "./_pigeon.js";
+import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256 } from "./_pigeon.js";
+import { linkOrigin } from "./_email.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf } from "./_profile.js";
 

@@ -12,7 +12,8 @@
      picture) are found and deleted, a page at a time.
    - An account nobody has signed in to for a year is deleted, after an email a week before saying so. Signing in
      (or the app checking in) in that week keeps it. */
-import { DAY, MIN, sendEmail, emailReady, emailBody, accountLink, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
+import { DAY, MIN, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
+import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { stampPassports } from "./_passport.js";
 import { settleBirds } from "./_birds.js";
 import { removeAccount } from "./_accounts.js";
@@ -148,7 +149,7 @@ export async function idleAccounts(env, D, t, origin) {
           "To keep it, just sign in before then, to your account or to any app on the site."],
         pill: ["clock", `On ${when}`], rows: [["Account", `@${u.handle}`]],
         button: { label: "Keep my account", url: `${accountLink(origin)}/` }, footer: "If you’d like it deleted, you don’t need to do anything." });
-      try { await sendEmail(env, { to: u.email, subject: "Your account will be deleted soon", text, html, app: "Account" }); }
+      try { await sendEmail(env, { to: u.email, subject: "Your account will be deleted soon", text, html, brand: "account" }); }
       catch (_) { continue; }                                     // (not warned, so not deleted: tried again next time)
       await D.prepare("UPDATE pg_users SET warned_at = ? WHERE id = ?").bind(t, u.id).run();
       await adminLog(env, "idle-warned", u.id, `@${u.handle}`).catch(() => {});

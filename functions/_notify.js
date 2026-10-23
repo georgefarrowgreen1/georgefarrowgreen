@@ -18,7 +18,8 @@ import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
-import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
+import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
+import { sendEmail, emailReady, emailBody } from "./_email.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
 import { housekeeping, WAY_PARTS } from "./_retention.js";
@@ -166,8 +167,8 @@ async function notifyEmail(env, origin, u, subject, mail) {
   // only to an address its owner has confirmed (anyone can type anyone's at sign-up)
   if (!(await (await db(env)).prepare("SELECT email_ok FROM pg_users WHERE id = ?").bind(u.id).first())?.email_ok) return false;
   const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
-  const { text, html } = emailBody({ ...mail, origin, footer: "You get these because you turned on email notifications in InFlight.", unsub });
-  await sendEmail(env, { to: u.email, subject, text, html,
+  const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: "You get these because you turned on email notifications in InFlight.", unsub });
+  await sendEmail(env, { brand: "inflight", to: u.email, subject, text, html,
     headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
   await (await db(env)).prepare("UPDATE pg_users SET email_at = ? WHERE id = ?").bind(Date.now(), u.id).run();
   return true;
