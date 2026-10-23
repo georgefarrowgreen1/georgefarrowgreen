@@ -33,7 +33,7 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" } };
+const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, home: { name: "Home", sub: "" } };
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   if (!code) return null;
@@ -41,19 +41,28 @@ const HANDOFF = (() => {
   if (APPS[p.get("from")]) try { sessionStorage.setItem("acct-from", p.get("from")); } catch (_) {}
   return { code, open: p.get("open") };
 })();
+// (opened from the site's home page, which needs no hand-over, as the browser's signed in to both or neither: #from=home,
+// for the way back)
+if (/^#from=home$/.test(location.hash)) {
+  history.replaceState(null, "", location.pathname + location.search);
+  try { sessionStorage.setItem("acct-from", "home"); } catch (_) {}
+}
 // a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 // (which app sent you here: InFlight's profile, or Weather's account card)
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
-// back to InFlight: this window closed where InFlight opened it, else InFlight opened here
+// back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
+// page's place, so Back from it doesn't come here again)
 function backToApp() {
-  const app = APPS[fromApp()] || APPS.inflight;
+  const from = fromApp(), app = APPS[from] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
+  if (from === "home") return location.replace(siteUrl(app.sub));
   try { window.close(); } catch (_) {}
   setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
 }
+const backButton = (r) => fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name));
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -281,7 +290,7 @@ function signedIn(r) {
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"))));
   const top = [
-    fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name)),
+    backButton(r),
     r(h("h1.large", { text: "Account" })),
     r(h("section.hero.glass", { "aria-label": "Your profile" }, avatarButton(m),
       h("h2", { text: m.name }),
@@ -463,7 +472,7 @@ function signedOut(r) {
     join: ["Create your account", "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
-  return [h("div.welcome", {},
+  return [backButton(r), h("div.welcome", {},
     // (the mark floats; it rises in inside something else, as one animation can't do both)
     r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : logo())),
     r(h("h1", { text: head[0] })),

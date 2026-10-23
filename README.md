@@ -13,7 +13,8 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   draws (`<link rel=preload>`), the rest as each is about to show; a photo never changes under its address, so browsers
   keep it for good (`/api/background`). With Reduce Motion on, the first photo stays, still.
 - **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
-  whole site: `functions/_account.js`) sees their photo, a tap from their account. As the page scrolls, the name comes
+  whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
+  (`#from=home`), has **‹ Home** at its top, signed in or not, to come back. As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
