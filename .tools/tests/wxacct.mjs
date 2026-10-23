@@ -92,9 +92,9 @@ const asks = await acctSays(L);
 ok(/Sam Taylor/.test(asks) && /@sam · signed in on this browser/.test(asks) && /Keep them with @sam/.test(asks) && /Not you\? Sign out/.test(asks) && !kept('sam'),
   'Weather in the same browser: signed in as the account, and asks before this device\'s places go to it', asks);
 await L.p.click('#acct-keep');
-await L.p.waitForFunction(() => /@sam · georgefarrowgreen\.com/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+await L.p.waitForFunction(() => /@sam\b/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const lSays = await acctSays(L);
-ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com/.test(lSays) && !/InFlight/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
+ok(/Sam Taylor/.test(lSays) && /@sam\b/.test(lSays) && !/georgefarrowgreen/.test(lSays) && !/InFlight/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');

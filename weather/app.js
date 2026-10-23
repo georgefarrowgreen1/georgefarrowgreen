@@ -2044,7 +2044,7 @@ function drawAccount() {
   // there), and how your places and settings are doing, said only when there's something to say
   const said2 = STATES[a.state]?.[1];
   const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name),
-    h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle} · ${said2 || "georgefarrowgreen.com"}`))];
+    h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle}${said2 ? ` · ${said2}` : ""}`))];
   box.replaceChildren(...[
     accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
       : h("div", { class: "acct-card in" }, ...who),

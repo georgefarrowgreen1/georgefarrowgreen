@@ -31,11 +31,11 @@ const A = await browser('app');
 await joinInFlight(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }))).token;
 
-// ---- 1. Account: a card as Weather's (photo, name, "@handle · georgefarrowgreen.com"); Location, Sign Out and Delete
+// ---- 1. Account: a card as Weather's (photo, name, "@handle"); Location, Sign Out and Delete
 // Account below ----
 await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view .me-cell'); await A.p.waitForTimeout(600);
 const card = await text(A.p, '#screen > main.view .me-cell');
-ok(/Rowan Hale/.test(card) && /@rowan · georgefarrowgreen\.com/.test(card) && !/Edit Profile/.test(card), 'Account: your photo, name and "@handle · georgefarrowgreen.com", as in Weather', card);
+ok(/Rowan Hale/.test(card) && /@rowan\b/.test(card) && !/georgefarrowgreen/.test(card) && !/Edit Profile/.test(card), 'Account: your photo, name and "@handle", as in Weather', card);
 ok(!!(await A.p.$('#screen > main.view [data-act=profile]')) && /London/.test(await text(A.p, '#screen > main.view [data-act=profile]')) && !!(await A.p.$('#screen > main.view [data-act=signout]')) && !!(await A.p.$('#screen > main.view [data-act=delask]')),
   'Location its own row (where you are), and Sign Out and Delete Account at the foot');
 await A.p.click('#screen > main.view [data-act=profile]'); await A.p.waitForSelector('.sheet [data-act=locate]'); await A.p.waitForTimeout(500);
