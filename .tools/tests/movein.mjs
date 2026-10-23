@@ -28,6 +28,15 @@ const t0 = Date.now(); await p.goto(NEW + '/');
 ok(await p.waitForSelector('.tabs', { timeout: 15000 }).then(() => true, () => false), 'new address opens signed in, no sign-in asked', `${Date.now() - t0} ms`);
 const st = await p.evaluate(() => ({ moved: localStorage.getItem('inflight-movedin'), haptics: localStorage.getItem('inflight-haptics'), sub: localStorage.getItem('inflight-pushsub'), cls: document.documentElement.className, frames: document.querySelectorAll('iframe').length }));
 ok(!!st.moved && st.haptics === '0' && st.frames === 0, 'settings came over, and the hidden page is gone', JSON.stringify(st));
+// and what the old address kept is gone from it (the home page shares that address), noted so it isn't asked again
+const old = await G.ctx.newPage(); await old.goto(OLD + '/robots.txt');
+// (the old tab, still open there, may make itself an empty one again: what matters is nothing's in it)
+const left = await old.evaluate(async () => ({
+  keys: (await indexedDB.databases()).some((d) => d.name === 'inflight') ? await new Promise((res) => { const r = indexedDB.open('inflight'); r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').getAllKeys(); g.onsuccess = () => { r.result.close(); res(g.result); }; }; r.onerror = () => res(['?']); }) : [],
+  ls: Object.keys(localStorage).filter((k) => k.startsWith('inflight-') && k !== 'inflight-mapcard') }));   // (mapcard: the tests' own, on every page)
+await old.close();
+ok(left.keys.length === 0 && left.ls.length === 0 && !!(await p.evaluate(() => localStorage.getItem('inflight-oldcleared'))), 'the old address’s copy cleared once it’s here', JSON.stringify(left));
 await openChat({ p }, rs.me.id);
 ok(await p.waitForFunction(() => /hello from the old address/.test(document.querySelector('.msgs')?.innerText || ''), null, { timeout: 15000 }).then(() => true, () => false), 'a landed pigeon reads (the key came over)');
 const ns = await p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res({ tok: g.result.token, ext: g.result.priv.extractable, ty: g.result.priv.type }); }; }));

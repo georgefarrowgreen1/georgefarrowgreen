@@ -112,7 +112,9 @@ const idb = {
       r.onupgradeneeded = () => r.result.createObjectStore("kv");
       r.onsuccess = () => {
         clearTimeout(late); const db = r.result;
-        db.onclose = db.onversionchange = () => { if (this.db === db) this.db = null; };   // dropped in the background: open it again next time
+        db.onclose = () => { if (this.db === db) this.db = null; };   // dropped in the background: open it again next time
+        // (and let go when another page needs it gone: the old address's copy, cleared from the new one)
+        db.onversionchange = () => { try { db.close(); } catch (_) {} if (this.db === db) this.db = null; };
         res((this.db = db));
       };
       r.onerror = () => { clearTimeout(late); rej(r.error); };
@@ -3439,13 +3441,19 @@ function vFriends() {
 }
 
 /* ---------- Account ---------- */
+const meStats = (L) => {
+  const num = (x) => L ? Math.round(x).toLocaleString("en-GB") : "–";
+  return `<button type="button" class="cell mestats" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
+        <span><b>${num(L?.mi)}</b><small>miles flown</small></span><span><b>${num(L?.sent)}</b><small>pigeons sent</small></span><span><b>${num(L?.countries)}</b><small>${L?.countries === 1 ? "country" : "countries"}</small></span></button>`;
+};
 // Account's line of figures (miles, pigeons sent, countries): the Flight Log's, fetched when Account shows
 // and it's over 10 minutes old; Account redraws when it comes
 function logSummary() {
   const L = S.logSum;
   if (!S.logSumBusy && (!L || now() - L.at > 10 * 60e3)) {
     S.logSumBusy = true;
-    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; if (S.view === "account") render(); })
+    // (just the line redrawn, in place: the rest of Account stays as it is, under a finger)
+    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; const el = S.view === "account" && $(".mestats", $view); if (el) el.outerHTML = meStats(S.logSum); })
       .catch(() => {}).finally(() => { S.logSumBusy = false; });
   }
   return L;
@@ -3461,14 +3469,13 @@ function vAccount() {
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
   // your flying so far, from the Flight Log (fetched now and then, and shown once it's here)
-  const L = logSummary(), num = (x) => L ? Math.round(x).toLocaleString("en-GB") : "–";
+  const L = logSummary();
   const earth = col("rocket", "Rocket", "Rocket", "9×") + col("turbo", "Turbo", "Turbo", "3×") + col("swift", "Swift", "Swift", "2×") + col("mystery", "Mystery", "Mystery");
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
       `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}
-      <button type="button" class="cell mestats" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
-        <span><b>${num(L?.mi)}</b><small>miles flown</small></span><span><b>${num(L?.sent)}</b><small>pigeons sent</small></span><span><b>${num(L?.countries)}</b><small>${L?.countries === 1 ? "country" : "countries"}</small></span></button></div>
+      ${meStats(L)}</div>
     ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "InFlight Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
     ${((space) => `<div class="group loft">${space.length > 1 ? `<div class="lrow">${earth}</div><div class="lrow space"><span class="lcap">Space</span>${space.join("")}</div>` : `<div class="lrow five">${earth}${space[0]}</div>`}</div>`)(
@@ -8337,29 +8344,44 @@ function notAvailable() {
 // address on a phone, it brings over what the phone kept at the old one (the sign-in,
 // unsent pigeons, trusted keys, settings) from a hidden page there (pigeon/handover.js),
 // so nobody has to sign in again. Once only: signing out here doesn't bring it back.
+// Then, signed in here, what was kept there is cleared (once, for a phone that moved before
+// too), so the key isn't left at an address the home page shares.
 const OLD_HOME = /^chat\./.test(location.host) ? `${location.protocol}//${location.host.slice(5)}` : null;
 async function moveIn() {
-  const DONE = "inflight-movedin";
-  try { if (!OLD_HOME || localStorage.getItem(DONE) || await idb.get("session")) return; } catch (_) { return; }
-  const got = await new Promise((res) => {
-    const f = document.createElement("iframe");
-    const done = (v) => { clearTimeout(late); removeEventListener("message", on); f.remove(); res(v); };
-    const on = (e) => { if (e.origin === OLD_HOME && e.source === f.contentWindow && e.data?.inflight === "handover") done(e.data); };
-    const late = setTimeout(() => done(null), 5000);      // (the old address not answering: try again next time)
+  const DONE = "inflight-movedin", CLEARED = "inflight-oldcleared";
+  let moved, cleared;
+  try { moved = localStorage.getItem(DONE); cleared = localStorage.getItem(CLEARED); } catch (_) { return; }
+  if (!OLD_HOME || (moved && cleared)) return;
+  const here = !!(await idb.get("session"))?.token;
+  if (!here && moved) return;                              // (signed out here since: nothing to bring, and nothing to clear for)
+  const f = document.createElement("iframe");
+  const ask = (wanted, ms, post) => new Promise((res) => {
+    const done = (v) => { clearTimeout(late); removeEventListener("message", on); res(v); };
+    const on = (e) => { if (e.origin === OLD_HOME && e.source === f.contentWindow && e.data?.inflight === wanted) done(e.data); };
+    const late = setTimeout(() => done(null), ms);       // (the old address not answering: try again next time)
     addEventListener("message", on);
+    post();
+  });
+  const got = await ask("handover", 5000, () => {
     f.hidden = true; f.title = "InFlight’s old address"; f.src = new URL("pigeon/handover", OLD_HOME + "/").href;   // (written so: the new address rewrites "/pigeon/…" paths to its root)
     document.body.append(f);
   });
-  if (!got) return;
-  const kv = got.kv && typeof got.kv === "object" ? got.kv : {}, ls = got.ls && typeof got.ls === "object" ? got.ls : {};
-  // signed in there (with the key it signs in with): that sign-in, and all that goes with it
-  if (kv.session?.token && kv.session.priv instanceof CryptoKey) for (const [k, v] of Object.entries(kv)) await idb.set(k, v);
-  try {
-    // (the old address's note of its push subscription is the old address's; this one makes its own)
-    for (const [k, v] of Object.entries(ls)) if (/^inflight-[\w-]+$/.test(k) && k !== "inflight-pushsub" && typeof v === "string" && localStorage.getItem(k) == null) localStorage.setItem(k, v);
-    localStorage.setItem(DONE, String(Date.now()));
-  } catch (_) {}
-  applyTheme();
+  if (!got) return f.remove();
+  if (!moved && !here) {
+    const kv = got.kv && typeof got.kv === "object" ? got.kv : {}, ls = got.ls && typeof got.ls === "object" ? got.ls : {};
+    // signed in there (with the key it signs in with): that sign-in, and all that goes with it
+    if (kv.session?.token && kv.session.priv instanceof CryptoKey) for (const [k, v] of Object.entries(kv)) await idb.set(k, v);
+    try {
+      // (the old address's note of its push subscription is the old address's; this one makes its own)
+      for (const [k, v] of Object.entries(ls)) if (/^inflight-[\w-]+$/.test(k) && k !== "inflight-pushsub" && typeof v === "string" && localStorage.getItem(k) == null) localStorage.setItem(k, v);
+      localStorage.setItem(DONE, String(Date.now()));
+    } catch (_) {}
+    applyTheme();
+  }
+  // signed in here now: the old address's copy cleared
+  if ((await idb.get("session"))?.token && await ask("handover-cleared", 3000, () => f.contentWindow?.postMessage({ inflight: "handover-clear" }, OLD_HOME)))
+    try { localStorage.setItem(CLEARED, String(Date.now())); } catch (_) {}
+  f.remove();
 }
 
 // At the old address: say where InFlight went (at most once a day, and from Account any time)

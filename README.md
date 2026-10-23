@@ -1871,6 +1871,11 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   (`#confirm=edit`) and comes back editing, so nothing typed is lost. Admin's lists with people's details (accounts,
   the site's messages, the log) need the same 12 hours, asked on the page as a change is; its figures (the summary,
   Insights, Storage, invites) are as signed in. A change in Admin still needs the last 10 minutes.
+- **Nothing of InFlight's left at the old address.** Once InFlight is signed in at chat.georgefarrowgreen.com, it tells
+  the old address's hidden handover page (`pigeon/handover.js`, which only the new address may open or speak to) to
+  clear what that browser kept there: the sign-in, the key, trusted keys and settings, as that address is the home
+  page's too. Once per browser, for one that moved before as well (`inflight-oldcleared`); an old tab still open there
+  lets go of its copy when asked (`.tools/tests/movein.mjs`). Home Screen apps keep their own storage, untouched.
 
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
