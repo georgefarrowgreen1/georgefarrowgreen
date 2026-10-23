@@ -1073,7 +1073,6 @@ function profileView() {
     body: [
       h("div.form", {}, field("Name", name), field("Handle", h("div.at", {}, "@", handle)),
         field("Email", h("input", { type: "email", value: m.email || "", readonly: true, tabindex: "-1" }))),
-      h("p.hint", { text: "Your name and handle are the same in every app on the site, and so is your photo (the camera on your card). Your handle can change once a day." }),
       said] };
 }
 // A picture, read (a file, or the poster fetched again)
