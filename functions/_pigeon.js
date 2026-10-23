@@ -127,7 +127,6 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_wxcache (cell TEXT PRIMARY KEY, at INTEGER NOT NULL, w TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS pg_owner_sessions (hash TEXT PRIMARY KEY, tag TEXT NOT NULL, created_at INTEGER NOT NULL)`,
   // who joined, left or renamed a group, shown in its chat, so no one is added without everyone seeing
   `CREATE TABLE IF NOT EXISTS pg_gevents (group_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, actor_name TEXT NOT NULL, target TEXT, target_name TEXT)`,
   `CREATE INDEX IF NOT EXISTS pg_gevents_group ON pg_gevents(group_id, at)`,
@@ -354,6 +353,8 @@ const MIGRATIONS = [
   // same page in Safari is Safari)
   "ALTER TABLE pg_sessions ADD COLUMN home TEXT",
   "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
+  // the home page's own owner sign-ins, from when it had a password of its own (it's the admin account's now: functions/_auth.js)
+  "DROP TABLE IF EXISTS pg_owner_sessions",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

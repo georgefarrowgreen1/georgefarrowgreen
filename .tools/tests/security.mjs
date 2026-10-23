@@ -73,9 +73,6 @@ ok(okN + left === 9 && okN <= 9, 'parallel sends never spend more swift pigeons 
 const burst = await Promise.all(Array.from({ length: 25 }, () => call(null, 'login', { ip: '10.9.9.9', body: { email: 'nobody@example.com', proof: b64u(rnd(32)) } })));
 const passed = burst.filter((r) => r.s === 401).length;
 ok(passed <= 10, 'a burst of 25 logins from one IP lets at most 10 through', passed);
-// owner login: burst
-const ob = await Promise.all(Array.from({ length: 30 }, () => fetch('http://localhost:8788/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.8.8.8' }, body: JSON.stringify({ password: 'nope' }) }).then((r) => r.status)));
-ok(ob.filter((s) => s === 401).length <= 20, 'owner login burst is capped', ob.filter((s) => s === 401).length);
-ok((await fetch('http://localhost:8788/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.8.8.7' }, body: JSON.stringify({ password: 'owner-test-pass' }) })).status === 200, 'owner can still sign in from elsewhere');
+// (the home page's own owner password is gone: its owner is the admin account, home.mjs)
 // reset links point at the real site unless local
 console.log('FAILS', fails);

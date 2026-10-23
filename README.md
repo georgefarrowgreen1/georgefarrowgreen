@@ -1,34 +1,60 @@
-# George Farrow Green — Personal Bio
+# George Farrow-Green — georgefarrowgreen.com
 
-An elegant, dark **liquid-glass** bio page with an Apple-inspired feel. It's a
-static page enhanced with **Cloudflare Pages Functions**, so you can log in with
-a password and edit your bio directly on the live site — changes persist for
-everyone.
+The site's home page, and the apps beside it: InFlight (chat.), Weather (weather.) and the account's own page
+(account.), each below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
+look: my name, a line above it and one under it, then **Apps** (InFlight and Weather) and **Get in touch** (a message,
+or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
+behind it (`functions/`), the words in **KV**, the photos in **R2**.
 
-## How it works
+## The home page
 
-| Part | Tech |
-| --- | --- |
-| Page | `index.html`, `styles.css`, `app.js` — static, no build step |
-| Login / save | `functions/api/*` — Cloudflare Pages Functions (run on the edge) |
-| Auth | Random server-side session in an HttpOnly cookie; password checked server-side |
-| Storage | Cloudflare **KV** (your edits are saved here) |
+- **The slideshow:** the photos for this screen (each tagged Both, Phone or Computer), one at a time, crossfading every 7
+  seconds with a slow zoom; thin segments under the buttons fill as each plays. The first is asked for before the page
+  draws (`<link rel=preload>`), the rest as each is about to show; a photo never changes under its address, so browsers
+  keep it for good (`/api/background`). With Reduce Motion on, the first photo stays, still.
+- **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
+  whole site: `functions/_account.js`) sees their photo, a tap from their account. As the page scrolls, the name comes
+  into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
+- **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
+  Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
+- **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
+  press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
+  tick and a thank-you. See **Contact form** below.
+- **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
+  description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo.
 
-The page works **immediately** as a static site. Login and editing only switch
-on once you complete the Cloudflare setup below.
+## Editing
+
+The site's **owner** is its admin account (Admin on the account page: `functions/api/pigeon` adminOf), so there's no
+password of the page's own: signed in on the site as that account, the top bar shows **Edit**. Visitors and everyone
+else never see it, and every change from anyone else is refused (`functions/_auth.js` requireOwner; a change must come
+from the site's own pages, too).
+
+- **Edit:** the line above the name, the name and the line under it are outlined and typed into in place (Return
+  finishes a line; what's pasted comes in as plain text). **Done** saves them (`PUT /api/content`) and says **Saved**
+  with **Undo** for a few seconds (back to how they were: `POST /api/history`, which keeps the last 15). Escape leaves
+  editing without saving. A line left empty shows the default (`functions/_content.js`).
+- **Background photos:** a bar at the foot while editing shows them; **Change** opens a sheet of them all: **Add photos**
+  (several at once, each made at most 2000 px and JPEG on the phone first), a tap on one to choose the part that stays
+  in view as the screen crops it, its tag (Both, Phone, Computer) to choose where it shows, and × to remove it.
+- **Messages** sent through Get in touch are in **Admin → Messages** on the owner's account page (below).
 
 ## Files
 
 ```
-index.html            The bio page
-styles.css            Liquid-glass styling
-app.js                Front-end (login, inline editing, save)
-functions/_auth.js    Shared auth helpers (cookie signing/verification)
+index.html               The home page (its words written in by functions/_home.js as it's sent)
+styles.css, app.js       Its look and script
+functions/_auth.js       Who may edit it: the site's admin account, signed in on the site
+functions/_content.js    Its words in KV, and the saves before (Undo)
+functions/_home.js       The words written into the page as it's sent
+functions/_messages.js   Get in touch's messages, kept in D1
 functions/api/
-  login.js            POST  — verify password, set session cookie
-  logout.js           POST  — clear session
-  session.js          GET   — am I logged in?
-  content.js          GET (public) / PUT (auth) — read & save the bio
+  content.js             GET (public) / PUT (the owner) — the words
+  history.js             GET / POST (the owner) — the words before, and back to them (Undo)
+  background.js          GET (public) / PUT, POST, DELETE (the owner) — the photos
+  contact.js             POST — a message
+  me/index.js            GET — who's looking: signed in or not, the owner or not, their figures in each app
+  me/photo.js            GET — their account's photo, for the top bar
 ```
 
 ## Deploy to Cloudflare Pages
@@ -45,46 +71,16 @@ Build settings:
 
 Click **Save and Deploy**. Cloudflare auto-detects the `functions/` folder.
 
-### 2. Create a KV namespace (stores your bio)
-Dashboard → **Workers & Pages** → **KV** → **Create namespace**, name it e.g.
-`bio`. Then in your Pages project → **Settings → Bindings → Add → KV namespace**:
-- **Variable name:** `BIO_KV`  *(must be exactly this)*
-- **KV namespace:** the one you just made
+### 2. Bindings
+Pages project → **Settings → Bindings**: the KV namespace as `BIO_KV` (the words), the R2 bucket as `BIO_R2` (the
+photos, and every app's pictures) and the D1 database as `DB` (accounts, and everything the apps keep). `wrangler.toml`
+names them.
 
-### 3. Set your edit password
-Pages project → **Settings → Variables and Secrets → Add**:
-- **Name:** `EDIT_PASSWORD`  *(must be exactly this)*
-- **Value:** your chosen password
-- Type: **Secret** (encrypted)
-
-### 4. Redeploy
+### 3. Redeploy
 Settings changes need a fresh deploy to take effect: **Deployments → … →
 Retry deployment** (or just push any commit).
 
-That's it. Visit your site, click **Edit** in the footer, sign in with your
-password, and edit your name, role, bio, and links inline. Hit **Save**.
-
-## Editing
-
-**Visitors never see any edit controls, and edit mode never opens on its own.**
-To open the editor as the owner, tap the **faint key icon in the top-right**. If
-your session is still valid you go straight in; otherwise you'll be asked for
-your passkey/password. Then:
-
-- name, role, and bio become editable in place over the hero image.
-- **Background image:** the picture icon in the edit pill uploads a full-screen
-  hero background (downscaled, stored separately in KV via `/api/background`).
-- **Photo:** while editing, tap the avatar to upload a picture. It's
-  center-cropped, downscaled, and stored with your content (falls back to a
-  monogram if none set).
-- **Links:** **+ Link** opens an editor; tap any existing pill (✎) to edit its
-  label/URL, reorder it (◀ ▶), or remove it. Icons for GitHub, LinkedIn, X,
-  Instagram, and email are detected automatically.
-- **Backup** (toolbar) → export your content as JSON, import a JSON file, or
-  **restore a previous version** (the last 15 saves are kept automatically; a
-  restore is itself undoable).
-- **Save** writes to KV. **Sign out** ends the session.
-- Sessions last 7 days. Changing `EDIT_PASSWORD` instantly logs out everyone.
+`EDIT_PASSWORD`, the page's old password, isn't used any more: it can be deleted from **Variables and Secrets**.
 
 ## Contact form
 
@@ -107,7 +103,9 @@ email look (below): their words as they wrote them, their address, when they
 sent it, and a button to reply (a reply goes to them). With `WEB3FORMS_KEY` set
 instead, Web3Forms sends them, in its own format. Until one is set, the form
 politely reports it's not configured. Spam defenses: a hidden honeypot field + a
-per-IP rate limit (5/hour) in KV.
+per-IP rate limit (5/hour) in KV. Each message is kept in D1 as well
+(`functions/_messages.js`), and read in **Admin → Messages** on the owner's
+account page.
 
 ## Email
 
@@ -179,44 +177,10 @@ or `p=reject` with `pct=100`, which georgefarrowgreen.com has).
 
 ## SEO & social
 
-- `og.png` is the social preview image; `index.html` sets Open Graph + Twitter
-  card meta and a `Person` JSON-LD block (enhanced at runtime from live content).
+- `index.html` sets Open Graph and Twitter card tags and a `Person` JSON-LD block; the server writes the page's own
+  words into them as it's sent (`functions/_home.js`), and the preview image is the first computer photo
+  (`/api/background?id=cover&d=desktop`, which answers a link preview's first look, a HEAD, too).
 - `robots.txt` and `sitemap.xml` point at `https://georgefarrowgreen.com/`.
-- Replace `og.png` anytime — keep it 1200×630.
-
-### Passkeys
-
-Sign in with Face ID / Touch ID / a security key instead of typing the password.
-
-- Sign in once with your password → toolbar **Passkeys → + Add a passkey** →
-  follow the system prompt. Repeat per device.
-- After that, the login dialog shows **Sign in with a passkey**.
-- Manage/remove them anytime from **Passkeys** in the toolbar.
-- The **password stays** as a fallback/recovery method — passkeys are added, not
-  required.
-- WebAuthn is implemented on Web Crypto (no dependencies); credentials live in
-  KV. ES256 and RS256 keys are supported.
-
-> **Pin the RP ID for multi-subdomain setups.** Passkeys are bound to a domain.
-> Set an environment variable **`RP_ID`** = `georgefarrowgreen.com` (Pages →
-> Settings → Variables and Secrets, a plain variable, not a secret) so one
-> passkey works across the apex **and all subdomains** (www, etc.). When unset,
-> it defaults to the exact host you visited. Note: a passkey can't be registered
-> from the raw `*.pages.dev` URL once `RP_ID` is pinned to your custom domain —
-> use the real domain for registering.
-
-### Security
-
-- Login is **rate-limited** per IP (8 failures → 15-minute lockout, tracked in
-  KV) to blunt password-guessing, plus a strongly consistent D1 count of every
-  try (20 per IP per 15 minutes, 100 an hour in all), so a burst of parallel
-  guesses can't slip past KV's delay.
-- Passkeys are tied to the password they were added under: changing
-  `EDIT_PASSWORD` retires them along with every session.
-- The password lives only as a Cloudflare secret; sessions are random tokens in
-  an `HttpOnly; Secure; SameSite=Strict` cookie, kept server-side.
-- Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
-  user-presence flag, and signature).
 
 ## Your account (account.georgefarrowgreen.com)
 
@@ -1790,8 +1754,9 @@ make reset links for you to send by hand.
 **Admin.** It lists every account (name, handle, email, last active, passkeys,
 friends, scrolls sent), gives pigeons, can email a reset link, make a 24-hour
 reset link to send yourself, sign someone out everywhere, or delete an account;
-makes and cancels invites; and has Insights, Storage, Email (with a test) and a
-log of every action. Admins never see passwords, keys or scrolls; the server
+makes and cancels invites; has the home page's **Messages** (what's been sent
+through Get in touch, newest first: who, their email, what they wrote, Reply and
+Delete); and has Insights, Storage, Email (with a test) and a log of every action. Admins never see passwords, keys or scrolls; the server
 doesn't have them.
 
 It's on an account: Admin is a section of the admin's own account page
@@ -1806,8 +1771,8 @@ account only, with a passkey on it; looking needs you to have shown it's you
 (the page asks, as for anything else), from the page itself; each change is in
 your Recent activity too, and you can't delete your own account from Admin. The
 old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on InFlight's)
-lead there; the site owner's sign-in is only the website's Edit now.
-`.tools/tests/adminlink.mjs` tests all of it.
+lead there. The same account is the home page's owner, with its Edit (above).
+`.tools/tests/adminlink.mjs` tests all of it (Messages: `.tools/tests/home.mjs`).
 
 **Profiles.** In Account → My Profile, people can change their name any time,
 their handle once a day (enforced by the server), and add or remove a profile
@@ -1827,31 +1792,16 @@ only place on the site that allows location, the microphone and passkeys.
 
 ## Local preview
 
-The look works offline, but the API calls need Cloudflare's runtime. To run
-Functions + KV locally, install Wrangler and:
-
-```bash
-npm install -g wrangler
-wrangler pages dev . --kv BIO_KV
-# then set a password for the local session:
-#   EDIT_PASSWORD=test wrangler pages dev . --kv BIO_KV --binding EDIT_PASSWORD=test
-```
-
-Or just open `index.html` in a browser to preview the design (login/edit will
-show a friendly "backend not set up" message).
+The look works offline, but the API calls need Cloudflare's runtime. To run Functions, KV, R2 and D1 locally, install
+Wrangler and run `wrangler pages dev .`. To edit the page locally, sign in on the site's account page with the account
+whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/home.mjs`).
 
 ## Security notes
 
-- The password is **never** stored in the repo — it lives only as a Cloudflare
-  secret. Don't commit it.
-- Sessions are random tokens in an `HttpOnly; Secure; SameSite=Strict` cookie,
-  kept (hashed) in D1 for 7 days, so signing out ends one for good. Each is
-  tagged with a keyed hash of the password (the key is a server secret, so a
-  cookie gives nothing to guess the password from); changing the password
-  ends them all.
-- Reads are public (it's a bio); only authenticated requests can write.
+- The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
+  and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
-  HSTS), because the bio shares its origin with InFlight, whose keys live in
+  HSTS), because the home page shares its origin with InFlight, whose keys live in
   this origin's storage. `README.md`, `wrangler.toml` and `blokk/` aren't
   served.
 

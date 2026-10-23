@@ -1,7 +1,8 @@
-import { isAuthed, json } from "../_auth.js";
+import { requireOwner, failed, json } from "../_auth.js";
 
-// Background photos for the hero carousel.
-//   Image bytes live in R2 (env.BIO_R2) when bound; otherwise KV.
+// Background photos for the home page's slideshow (its owner changes them there: functions/_auth.js).
+//   Image bytes live in R2 (env.BIO_R2) when bound; otherwise KV. A photo never changes under its id, so it's kept
+//   for good by browsers; "cover" (the first one for a phone or a computer) changes with the list, so only briefly.
 //   Ordered list in KV: bg_list = JSON array of { id, focus } ("x% y%").
 //   Legacy single image (KV key "background") migrated transparently.
 
@@ -51,11 +52,12 @@ function sanitizeFocus(f) {
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   let id = url.searchParams.get("id");
-  if (!id) return json({ images: await getList(env) });
+  if (!id) return json({ images: await getList(env) }, 200, { "Cache-Control": "no-store" });
+  const cover = id === "cover", cache = cover ? "public, max-age=600" : "public, max-age=31536000, immutable";
 
   // "cover" resolves to the first image for the requested device — used for an
   // early <link rel=preload> so the first photo paints fast.
-  if (id === "cover") {
+  if (cover) {
     const want = url.searchParams.get("d") === "mobile" ? "mobile" : "desktop";
     const list = await getList(env);
     const pick = list.find((e) => (e.device || "both") === "both" || e.device === want) || list[0];
@@ -69,7 +71,7 @@ export async function onRequestGet({ request, env }) {
       return new Response(obj.body, {
         headers: {
           "Content-Type": (obj.httpMetadata && obj.httpMetadata.contentType) || "image/jpeg",
-          "Cache-Control": "public, max-age=600",
+          "Cache-Control": cache,
         },
       });
     }
@@ -78,15 +80,20 @@ export async function onRequestGet({ request, env }) {
     const parsed = dataUrlToBytes(await env.BIO_KV.get(id === "legacy" ? LEGACY : KV_IMG(id)));
     if (parsed) {
       return new Response(parsed.bytes, {
-        headers: { "Content-Type": parsed.type, "Cache-Control": "public, max-age=600" },
+        headers: { "Content-Type": parsed.type, "Cache-Control": cache },
       });
     }
   }
   return new Response(null, { status: 404 });
 }
+// (a link preview's first look: the same answer, without the photo)
+export async function onRequestHead(ctx) {
+  const res = await onRequestGet(ctx);
+  return new Response(null, { status: res.status, headers: res.headers });
+}
 
 export async function onRequestPut({ request, env }) {
-  if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
+  try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ error: "Invalid JSON." }, 400); }
@@ -110,7 +117,7 @@ export async function onRequestPut({ request, env }) {
 // Update a photo's focal point and/or device target:
 //   { id, focus?: "x% y%", device?: "both"|"desktop"|"mobile" }
 export async function onRequestPost({ request, env }) {
-  if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
+  try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
   try { body = await request.json(); } catch (_) {}
@@ -126,7 +133,7 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestDelete({ request, env }) {
-  if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
+  try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
   try { body = await request.json(); } catch (_) {}

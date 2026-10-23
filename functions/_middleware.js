@@ -6,6 +6,7 @@ import { serveApp, isChat, notFound } from "./_app.js";
 import { isWeather, weatherHost } from "./_wxapp.js";
 import { isAccount, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
+import { homePage } from "./_home.js";
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
@@ -20,9 +21,17 @@ export async function onRequest(ctx) {
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
     // (InFlight's old admin dashboard: Admin's on the admin's account page now)
     if (/^\/pigeon\/admin(\/|$)/.test(url.pathname)) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
+    // (the apps' icons, for the home page's Apps: kept with each app, and Weather's own address is its own host)
+    if (APP_ICONS[url.pathname]) {
+      const r = await ctx.env.ASSETS.fetch(new Request(new URL(APP_ICONS[url.pathname], url))), out = new Response(r.body, r);
+      if (r.ok) out.headers.set("Cache-Control", "public, max-age=86400");
+      return out;
+    }
     const res = await ctx.next();
+    // (the home page, with its words in it: functions/_home.js)
+    if (!url.pathname.startsWith("/api/")) return homePage(ctx, url, res);
     // (the site's own API answers: never taken for anything but what they say they are)
-    if (!url.pathname.startsWith("/api/") || res.headers.get("X-Content-Type-Options")) return res;
+    if (res.headers.get("X-Content-Type-Options")) return res;
     const r = new Response(res.body, res); r.headers.set("X-Content-Type-Options", "nosniff"); return r;
   }
   // here, only InFlight's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
@@ -41,6 +50,7 @@ export async function onRequest(ctx) {
   return serveApp(ctx, res, path, true);
 }
 
+const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
 const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|readme\.md$|wrangler\.toml$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }

@@ -72,6 +72,16 @@ async function inflightOf(D, id) {
       (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places`).bind(id).first().catch(() => null);
   return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
 }
+// What each app keeps of yours, in a line, for the site's home page (functions/api/me): InFlight's friends and pigeons
+// sent, Weather's places and whether it sends you anything (null for an app the account hasn't used)
+export async function appFigures(env, id) {
+  const [inflight, wx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id)]);
+  const places = Array.isArray(wx.data?.places) ? wx.data.places.length : 0, n = wx.data?.notify;
+  return {
+    inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent } : null,
+    weather: places ? { places, alerts: !!((n?.places || []).length || n?.brief) } : null,
+  };
+}
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
@@ -559,7 +569,8 @@ const ROUTES = {
 
 // The site's admin (the linked account's, here: functions/api/pigeon), each change noted in its Recent activity too
 const ADMIN_DID = { "admin/reset": "Made a password reset", "admin/signout": "Signed an account out", "admin/pigeons": "Gave pigeons",
-  "admin/delete": "Deleted an account", "admin/invite": "Made an invite", "admin/invite-revoke": "Cancelled an invite", "admin/test-email": "Sent a test email" };
+  "admin/delete": "Deleted an account", "admin/invite": "Made an invite", "admin/invite-revoke": "Cancelled an invite", "admin/test-email": "Sent a test email",
+  "admin/message-delete": "Deleted a message" };
 for (const [k, fn] of Object.entries(ADMIN_ROUTES)) {
   const did = ADMIN_DID[k.split(" ")[1]];
   ROUTES[k] = did ? async (ctx) => {

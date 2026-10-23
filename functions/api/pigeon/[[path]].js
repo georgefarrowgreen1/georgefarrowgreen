@@ -28,6 +28,7 @@ import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../.
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
+import { listMessages as siteMessages, dropMessage as dropSiteMessage } from "../../_messages.js";
 import { logEvent, providerOf } from "../../_activity.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
@@ -1168,8 +1169,8 @@ async function adminSummary({ request, env }) {
     (SELECT COUNT(*) FROM pg_users u WHERE MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0)) > ?1) AS online,
     (SELECT COUNT(*) FROM pg_invites WHERE used_at IS NULL AND revoked_at IS NULL) AS invites,
     (SELECT MAX(at) FROM pg_admin_log) AS logAt`).bind(t - 150e3).first();
-  const on = emailReady(env);
-  return json({ ...r, email: on, from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
+  const on = emailReady(env), msgs = await env.DB.prepare("SELECT COUNT(*) AS n FROM messages").first().catch(() => null);
+  return json({ ...r, messages: msgs?.n || 0, email: on, from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1303,6 +1304,17 @@ async function adminInviteRevoke({ request, env }) {
   await adminLog(env, "invite-cancelled", null, id);
   return json({ message: "Invite cancelled. Its link no longer works." });
 }
+// The site's messages, from its home page's Get in touch (functions/_messages.js), newest first; and one deleted
+async function adminMessages({ request, env }) {
+  await requireAdmin(request, env);
+  return json({ messages: (await siteMessages(env)).map((m) => ({ id: m.id, name: m.name, email: m.email, body: m.body, at: m.created_at })) });
+}
+async function adminMessageDelete({ request, env }) {
+  await requireAdmin(request, env, true);
+  const id = Number((await body(request)).id);
+  if (!Number.isSafeInteger(id) || !(await dropSiteMessage(env, id))) throw new HttpError(404, "That message was already deleted.");
+  return json({ message: "Message deleted." });
+}
 async function adminLogList({ request, env }) {
   await requireAdmin(request, env);
   const { results } = await (await db(env)).prepare("SELECT * FROM pg_admin_log ORDER BY id DESC LIMIT 100").all();
@@ -1315,6 +1327,7 @@ export const ADMIN_ROUTES = {
   "GET admin/invites": adminInvites, "GET admin/insights": adminInsights, "GET admin/storage": adminStorage, "GET admin/log": adminLogList,
   "POST admin/reset": adminReset, "POST admin/signout": adminSignOut, "POST admin/pigeons": adminPigeons, "POST admin/delete": adminDelete,
   "POST admin/invite": adminInvite, "POST admin/invite-revoke": adminInviteRevoke, "POST admin/test-email": adminTestEmail,
+  "GET admin/messages": adminMessages, "POST admin/message-delete": adminMessageDelete,
 };
 
 /* ---------------- router ---------------- */

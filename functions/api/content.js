@@ -1,26 +1,16 @@
-import { isAuthed, json } from "../_auth.js";
+import { requireOwner, failed, json } from "../_auth.js";
 import { getContent, saveContent, sanitize } from "../_content.js";
 
-// Public: anyone can read the bio.
+// Public: anyone can read the home page's words.
 export async function onRequestGet({ env }) {
   return json(await getContent(env));
 }
 
-// Protected: only an authenticated editor can write.
+// Only the site's owner (signed in as the admin account) can change them.
 export async function onRequestPut({ request, env }) {
-  if (!(await isAuthed(request, env))) {
-    return json({ error: "Not authorized." }, 401);
-  }
-  if (!env.BIO_KV) {
-    return json({ error: "Storage isn't configured yet (no BIO_KV namespace bound)." }, 503);
-  }
-
+  try { await requireOwner(request, env); } catch (e) { return failed(e); }
+  if (!env.BIO_KV) return json({ error: "Storage isn't configured yet (no BIO_KV namespace bound)." }, 503);
   let body = {};
-  try { body = await request.json(); } catch (_) {
-    return json({ error: "Invalid JSON." }, 400);
-  }
-
-  const clean = sanitize(body);
-  await saveContent(env, clean);
-  return json({ ok: true, content: clean });
+  try { body = await request.json(); } catch (_) { return json({ error: "Invalid JSON." }, 400); }
+  return json({ ok: true, content: await saveContent(env, sanitize(body)) });
 }

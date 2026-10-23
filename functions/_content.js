@@ -1,25 +1,23 @@
-// Shared content store + sanitization, used by /api/content and /api/history.
+// The home page's words (its owner edits them in place there): the line above the name (role), the name, and the
+// line under it (bio). Kept in KV, each save keeping the one before it, so a change can be undone (functions/api/history.js).
 
 export const KEY = "content";
 export const HISTORY_KEY = "content_history";
 export const HISTORY_MAX = 15;
 
+// (what's shown where nothing's been written: also what's in index.html, for search and link previews)
 export const DEFAULT_CONTENT = {
   name: "George Farrow-Green",
-  role: "Curious human · builder of things",
-  bio:
-    "This is a placeholder bio. Log in with your password to edit it — share a " +
-    "few warm sentences about who you are, what you make, and what you're into.",
-  links: [
-    { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
-    { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
-  ],
+  role: "Photography · Cycling · Apps",
+  bio: "I ride, I take photos on the road and in the hills, and I build small apps for the people around me.",
 };
 
+// (a line left empty shows what's above)
+const filled = (c) => ({ name: c.name || DEFAULT_CONTENT.name, role: c.role || DEFAULT_CONTENT.role, bio: c.bio || DEFAULT_CONTENT.bio });
+
 export async function getContent(env) {
-  if (!env.BIO_KV) return DEFAULT_CONTENT;
-  const stored = await env.BIO_KV.get(KEY);
-  return stored ? JSON.parse(stored) : DEFAULT_CONTENT;
+  const stored = env.BIO_KV ? await env.BIO_KV.get(KEY) : null;
+  return filled(stored ? JSON.parse(stored) : {});
 }
 
 export async function getHistory(env) {
@@ -28,37 +26,20 @@ export async function getHistory(env) {
   return v ? JSON.parse(v) : [];
 }
 
-// Save new content, first snapshotting the previous version into history.
+// Save new content, first snapshotting the previous version into history (the defaults, the first time: so even
+// that can be undone).
 export async function saveContent(env, clean) {
   const prev = await env.BIO_KV.get(KEY);
-  if (prev) {
-    const history = await getHistory(env);
-    history.unshift({ savedAt: Date.now(), content: JSON.parse(prev) });
-    await env.BIO_KV.put(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
-  }
+  const history = await getHistory(env);
+  history.unshift({ savedAt: Date.now(), content: prev ? JSON.parse(prev) : {} });
+  await env.BIO_KV.put(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
   await env.BIO_KV.put(KEY, JSON.stringify(clean));
+  return filled(clean);
 }
 
-function clip(s, max) {
-  return String(s == null ? "" : s).slice(0, max);
-}
-
-function cleanUrl(url) {
-  const u = clip(url, 500).trim();
-  if (/^(https?:|mailto:|tel:)/i.test(u)) return u;
-  if (/^[\w.+-]+@[\w.-]+\.\w+$/.test(u)) return "mailto:" + u;
-  if (u) return "https://" + u.replace(/^\/+/, "");
-  return "";
-}
+// one line of plain text: no line breaks or control characters, spaces run together, cut to max
+const line = (s, max) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
 export function sanitize(body) {
-  const links = Array.isArray(body.links) ? body.links.slice(0, 12) : [];
-  return {
-    name: clip(body.name, 80) || DEFAULT_CONTENT.name,
-    role: clip(body.role, 120),
-    bio: clip(body.bio, 1200),
-    links: links
-      .map((l) => ({ label: clip(l && l.label, 40).trim(), url: cleanUrl(l && l.url) }))
-      .filter((l) => l.label && l.url),
-  };
+  return { name: line(body.name, 80), role: line(body.role, 120), bio: line(body.bio, 400) };
 }

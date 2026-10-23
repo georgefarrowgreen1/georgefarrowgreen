@@ -1,5 +1,5 @@
 import { json } from "../_auth.js";
-import { saveMessage } from "./messages.js";
+import { saveMessage } from "../_messages.js";
 import { emailReady, emailBody, sendEmail, linkOrigin, ukTime } from "../_email.js";
 
 // Contact form. Saves to D1 (if bound) and/or emails via a provider:

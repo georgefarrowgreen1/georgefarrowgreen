@@ -108,6 +108,7 @@ const ICONS = {
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
 };
 function icon(name, size = 20, width = 2) {
   const t = document.createElement("template");
@@ -1212,10 +1213,29 @@ function adminSection(m) {
   return section("Admin", h("div.group.glass", {},
     row({ icon: "people", tint: "blue", title: "Accounts", value: s.accounts, onclick: () => openSheet(admAccountsView) }),
     row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites == null ? null : `${s.invites} unused`, onclick: () => { AD.invite = null; openSheet(admInvitesView); } }),
+    row({ icon: "bubble", tint: "teal", title: "Messages", value: s.messages == null ? null : num(s.messages), onclick: () => openSheet(admMessagesView) }),
     row({ icon: "chart", tint: "green", title: "Insights", value: s.online == null ? null : `${s.online} online`, onclick: () => openSheet(admInsightsView) }),
     row({ icon: "db", tint: "grey", title: "Storage", value: st ? bytes(st.dbBytes + st.files.reduce((a, f) => a + f.bytes, 0)) : null, onclick: () => openSheet(admStorageView) }),
     row({ icon: "mail", tint: "red", title: "Email", value: s.email == null ? null : s.email ? "Working" : "Off", warn: s.email === false, onclick: () => openSheet(admEmailView) }),
     row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => openSheet(admLogView) })));
+}
+
+// Messages: what's been sent through the home page's Get in touch (it comes by email too), newest first, each to reply
+// to or delete
+function admMessagesView() {
+  const x = admAsk("messages");
+  if (!x) return { title: "Messages", body: [admWait("messages")] };
+  if (!x.messages.length) return { title: "Messages", body: [h("div.group", {}, h("div.empty", { text: "No messages yet." }))] };
+  return { title: "Messages", body: x.messages.map((m) => h("div.group.adm-msg", {},
+    h("div.row.plain", {}, h("span.tx", {}, h("b", { text: m.name }), h("small", { text: `${m.email} · ${seenAt(m.at)}` }))),
+    h("p.adm-body", { text: m.body }),
+    h("div.adm-acts", {},
+      h("a.pill", { href: `mailto:${m.email}?subject=${encodeURIComponent("Re: your message")}` }, icon("mail", 17), "Reply"),
+      h("button.pill.quiet", { type: "button", onclick: async (e) => {
+        try { const r = await admPost(e.currentTarget, "Deleting…", "message-delete", { id: m.id }); x.messages = x.messages.filter((y) => y.id !== m.id);
+          if (AD.sum) AD.sum.messages = x.messages.length; redraw(); patch(); toast(r.message); }
+        catch (err) { toast(err.message, true); }
+      } }, icon("trash", 17), "Delete")))) };
 }
 
 // Accounts: everyone, newest first, to search; each a tap from its own sheet

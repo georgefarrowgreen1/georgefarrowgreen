@@ -1,929 +1,431 @@
 /* ----------------------------------------------------------------------
-   Personal site — front-end logic
-   - Hero layout with editable name/role/bio, links, and a background image
-   - Content from /api/content (KV); background from /api/background
-   - Login (password + passkey); inline editing; backup/history; contact form
+   georgefarrowgreen.com: the home page.
+   - The words (/api/content), the photos behind them as a slideshow (/api/background)
+   - Who's looking (/api/me): a visitor (Sign in), someone signed in on the site
+     (their photo, and their figures in each app), or the owner, who can edit
+     the words in place and change the photos (functions/_auth.js)
+   - Get in touch: a message, sent from a sheet (/api/contact)
 ---------------------------------------------------------------------- */
 
-const els = {
-  name: document.getElementById("f-name"),
-  links: document.getElementById("links"),
-  heroBg: document.getElementById("hero-bg"),
-  photoInput: document.getElementById("photo-input"),
-  setBg: document.getElementById("set-bg"),
-  // enquire / contact
-  enquire: document.getElementById("enquire"),
-  enquireModal: document.getElementById("enquire-modal"),
-  enquireCancel: document.getElementById("enquire-cancel"),
-  // login
-  openLogin: document.getElementById("open-login"),
-  modal: document.getElementById("login-modal"),
-  loginForm: document.getElementById("login-form"),
-  password: document.getElementById("password"),
-  loginError: document.getElementById("login-error"),
-  loginCancel: document.getElementById("login-cancel"),
-  // link editor
-  linkModal: document.getElementById("link-modal"),
-  linkForm: document.getElementById("link-form"),
-  linkLabel: document.getElementById("link-label"),
-  linkUrl: document.getElementById("link-url"),
-  linkTitle: document.getElementById("link-modal-title"),
-  linkMove: document.getElementById("link-move"),
-  linkMoveLeft: document.getElementById("link-move-left"),
-  linkMoveRight: document.getElementById("link-move-right"),
-  linkRemove: document.getElementById("link-remove"),
-  linkCancel: document.getElementById("link-cancel"),
-  // toolbar
-  toolbar: document.getElementById("toolbar"),
-  toolbarStatus: document.getElementById("toolbar-status"),
-  addLink: document.getElementById("add-link"),
-  save: document.getElementById("save"),
-  logout: document.getElementById("logout"),
-};
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const clamp = (v) => Math.min(1, Math.max(0, v));
+const body = document.body, root = document.documentElement;
+const motion = matchMedia("(prefers-reduced-motion: reduce)");
+const phone = matchMedia("(max-width: 600px)");
 
-const DEFAULT_CONTENT = {
+const DEFAULTS = {
   name: "George Farrow-Green",
-  role: "Curious human · builder of things",
-  bio:
-    "This is a placeholder bio. Sign in to edit it — share a few warm " +
-    "sentences about who you are, what you make, and what you're into.",
-  links: [
-    { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
-    { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
-  ],
+  role: "Photography · Cycling · Apps",
+  bio: "I ride, I take photos on the road and in the hills, and I build small apps for the people around me.",
 };
-
-let state = structuredClone(DEFAULT_CONTENT);
+let content = { ...DEFAULTS };
+let me = null;           // /api/me, once it's known
 let editing = false;
-let editingLinkIndex = null;
 
-/* ---------------- Icons ---------------- */
-const ICONS = {
-  mail: '<path d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm1 2.2V18h16V7.2l-8 5.3-8-5.3Z"/>',
-  github: '<path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85l-.01 2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>',
-  linkedin: '<path d="M4.98 3.5A2.5 2.5 0 1 1 5 8.5a2.5 2.5 0 0 1-.02-5ZM3 9h4v12H3V9Zm6 0h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21h-4v-5.4c0-1.29-.02-2.95-1.8-2.95-1.8 0-2.07 1.4-2.07 2.85V21H9V9Z"/>',
-  x: '<path d="M17.5 3h3l-7.1 8.1L22 21h-6.4l-4.6-6-5.3 6H2.7l7.6-8.7L2 3h6.6l4.2 5.5L17.5 3Zm-1.1 16h1.7L7.7 4.8H5.9L16.4 19Z"/>',
-  instagram: '<path d="M12 8.6A3.4 3.4 0 1 0 12 15.4 3.4 3.4 0 0 0 12 8.6Zm0-2.2c1.9 0 2.1 0 2.85.04 2.2.1 3.27 1.17 3.37 3.37.04.75.04.95.04 2.85s0 2.1-.04 2.85c-.1 2.2-1.17 3.27-3.37 3.37-.75.04-.95.04-2.85.04s-2.1 0-2.85-.04c-2.2-.1-3.27-1.18-3.37-3.37C5.78 14.1 5.78 13.9 5.78 12s0-2.1.04-2.85c.1-2.2 1.17-3.27 3.37-3.37C9.94 5.74 10.14 5.74 12 5.74Zm0-1.74c-2.17 0-2.44.01-3.29.05C5.7 4.2 4.2 5.7 4.05 8.71 4.01 9.56 4 9.83 4 12s.01 2.44.05 3.29c.15 3.01 1.65 4.51 4.66 4.66.85.04 1.12.05 3.29.05s2.44-.01 3.29-.05c3.01-.15 4.51-1.65 4.66-4.66.04-.85.05-1.12.05-3.29s-.01-2.44-.05-3.29c-.15-3.01-1.65-4.51-4.66-4.66C14.44 4.01 14.17 4 12 4Zm5.85 3.35a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/>',
-  link: '<path d="M10.6 13.4a3 3 0 0 0 4.24 0l3-3a3 3 0 0 0-4.24-4.24l-1.3 1.3M13.4 10.6a3 3 0 0 0-4.24 0l-3 3a3 3 0 1 0 4.24 4.24l1.3-1.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-};
-
-function iconFor(url) {
-  const u = (url || "").toLowerCase();
-  if (u.startsWith("mailto:") || /^[^@\s]+@[^@\s]+$/.test(u)) return ICONS.mail;
-  if (u.includes("github.com")) return ICONS.github;
-  if (u.includes("linkedin.com")) return ICONS.linkedin;
-  if (u.includes("twitter.com") || /\bx\.com/.test(u)) return ICONS.x;
-  if (u.includes("instagram.com")) return ICONS.instagram;
-  return ICONS.link;
-}
-
-/* ---------------- Rendering ---------------- */
-function render() {
-  els.name.textContent = state.name || "";
-  document.title = state.name || "Personal site";
-  renderLinks();
-  updateStructuredData();
-}
-
-function updateStructuredData() {
-  const el = document.getElementById("ld-person");
-  if (!el) return;
-  const data = {
-    "@context": "https://schema.org",
-    "@type": "Person",
-    name: state.name || "",
-    url: "https://georgefarrowgreen.com/",
-  };
-  const sameAs = (state.links || []).map((l) => sanitizeUrl(l.url)).filter((u) => /^https?:/.test(u));
-  if (sameAs.length) data.sameAs = sameAs;
-  el.textContent = JSON.stringify(data);
-}
-
-/* ---------------- Background carousel ---------------- */
-let bgImages = [];
-let bgIndex = 0;
-let bgTimer = null;
-let renderedKey = "";
-
-async function loadBackgrounds() {
-  try {
-    const res = await fetch("/api/background", { cache: "no-store" });
-    if (res.ok) bgImages = (await res.json()).images || [];
-  } catch (_) { bgImages = []; }
-  buildSlides();
-}
-
-const bgMq = window.matchMedia("(max-width: 600px)");
-
-// Photos shown for the current device (Both always; else matching tag).
-function visibleSlides() {
-  const want = bgMq.matches ? "mobile" : "desktop";
-  const f = bgImages.filter((im) => (im.device || "both") === "both" || im.device === want);
-  return f.length ? f : bgImages;
-}
-
-function buildSlides() {
-  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
-  els.heroBg.innerHTML = "";
-  bgIndex = 0;
-  const shown = visibleSlides();
-  renderedKey = shown.map((s) => s.id).join(",");
-  const device = bgMq.matches ? "mobile" : "desktop";
-  shown.forEach((img, i) => {
-    const s = document.createElement("div");
-    s.className = "hero-slide" + (i === 0 ? " active" : "");
-    // First slide reuses the preloaded "cover" URL for an instant first paint.
-    const url = i === 0
-      ? `/api/background?id=cover&d=${device}`
-      : `/api/background?id=${encodeURIComponent(img.id)}`;
-    s.style.backgroundImage = `url('${url}')`;
-    s.style.backgroundPosition = img.focus || "50% 50%";
-    s.style.transformOrigin = img.focus || "50% 50%";
-    els.heroBg.appendChild(s);
+// The server's answer, or an Error saying what went wrong
+async function api(path, { method = "GET", body: data } = {}) {
+  const r = await fetch(path, {
+    method, cache: "no-store", credentials: "same-origin",
+    headers: data ? { "Content-Type": "application/json" } : {},
+    body: data ? JSON.stringify(data) : undefined,
   });
-  if (shown.length > 1) bgTimer = setInterval(nextSlide, 6000);
-}
-// Only rebuild on breakpoint change if the visible photo set actually differs,
-// so resizing across mobile/desktop doesn't flash or restart the slideshow.
-function onBreakpointChange() {
-  const key = visibleSlides().map((s) => s.id).join(",");
-  if (key !== renderedKey) buildSlides();
-}
-// Rebuild when crossing the mobile/desktop breakpoint.
-bgMq.addEventListener("change", onBreakpointChange);
-
-function nextSlide() {
-  const slides = els.heroBg.children;
-  if (slides.length < 2) return;
-  slides[bgIndex].classList.remove("active");
-  bgIndex = (bgIndex + 1) % slides.length;
-  slides[bgIndex].classList.add("active");
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || "Something went wrong. Try again.");
+  return d;
 }
 
-function renderLinks() {
-  els.links.innerHTML = "";
-  state.links.forEach((link, i) => els.links.appendChild(makePill(link, i)));
+/* ---------------- the words ---------------- */
+function showContent() {
+  for (const el of $$("[data-c]")) if (!(editing && el.hasAttribute("data-edit"))) el.textContent = content[el.dataset.c] || "";
+  document.title = content.name;
+  const ld = $("#ld-person");
+  if (ld) ld.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "Person", name: content.name, description: content.bio,
+    url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] });
 }
-
-function makePill(link, index) {
-  const a = document.createElement("a");
-  a.className = "pill";
-  a.href = sanitizeUrl(link.url);
-  if (!a.href.startsWith("mailto:")) { a.target = "_blank"; a.rel = "noopener"; }
-
-  const icon = document.createElement("span");
-  icon.className = "pill-icon";
-  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${iconFor(link.url)}</svg>`;
-  a.appendChild(icon);
-
-  const label = document.createElement("span");
-  label.className = "pill-label";
-  label.textContent = link.label || "Link";
-  a.appendChild(label);
-
-  a.addEventListener("click", (e) => {
-    if (editing) { e.preventDefault(); openLinkEditor(index); }
-  });
-  return a;
-}
-
-function sanitizeUrl(url) {
-  const u = (url || "").trim();
-  if (/^(https?:|mailto:|tel:)/i.test(u)) return u;
-  if (/^[\w.+-]+@[\w.-]+\.\w+$/.test(u)) return "mailto:" + u;
-  if (u) return "https://" + u.replace(/^\/+/, "");
-  return "#";
-}
-
-/* ---------------- Data fetch ---------------- */
 async function loadContent() {
-  try {
-    const res = await fetch("/api/content", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      state = { ...structuredClone(DEFAULT_CONTENT), ...data };
-      state.links = Array.isArray(state.links) ? state.links : [];
-    }
-  } catch (_) {}
-  render();
-  document.body.classList.add("loaded");
+  try { content = { ...DEFAULTS, ...(await api("/api/content")) }; } catch (_) {}
+  if (!editing) showContent();
 }
 
-async function hasSession() {
-  try {
-    const res = await fetch("/api/session", { cache: "no-store" });
-    if (res.ok) return !!(await res.json()).authed;
-  } catch (_) {}
+/* ---------------- scrolling: the name comes into the bar, the hero fades under it ---------------- */
+{
+  const bar = $("#bar"), soft = $("#soft"), fades = $$(".hero > *");
+  let queued = false;
+  const draw = () => {
+    queued = false;
+    const y = scrollY, k = clamp((y - 220) / 260);
+    root.style.setProperty("--k", k.toFixed(3));
+    soft.style.visibility = k > 0 ? "visible" : "hidden";
+    const edge = bar.getBoundingClientRect().bottom;
+    for (const el of fades) el.style.opacity = editing ? "" : Math.max(clamp((el.getBoundingClientRect().top - edge + 12) / 90), clamp(1 - y / 40)).toFixed(3);
+  };
+  const ask = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
+  addEventListener("scroll", ask, { passive: true });
+  addEventListener("resize", ask);
+  window.redrawScroll = ask;
+  draw();
+}
+
+/* ---------------- the photos: a slideshow, the set for this screen ---------------- */
+const SLIDE = 7000;
+let photos = [], shown = [], at = 0, timer = null, firstBuild = true;
+const bgEl = $("#bg"), segsEl = $("#segs");
+root.style.setProperty("--slide", SLIDE / 1000 + "s");
+
+async function loadPhotos() {
+  try { photos = (await api("/api/background")).images || []; } catch (_) { photos = []; }
+  buildSlides();
+  showThumbs();
+}
+// the ones for this screen (tagged Both, or this kind of screen); all of them if none are
+function forScreen() {
+  const want = phone.matches ? "mobile" : "desktop";
+  const f = photos.filter((p) => (p.device || "both") === "both" || p.device === want);
+  return f.length ? f : photos;
+}
+const photoUrl = (p) => `/api/background?id=${encodeURIComponent(p.id)}`;
+function buildSlides() {
+  clearTimeout(timer);
+  bgEl.textContent = ""; segsEl.textContent = "";
+  shown = forScreen(); at = 0;
+  shown.forEach((p, i) => {
+    const s = document.createElement("div");
+    s.className = "slide";
+    s.style.backgroundPosition = p.focus || "50% 50%";
+    s.style.transformOrigin = p.focus || "50% 50%";
+    // (the first, the first time: the address the page asked for early, so it's already on its way)
+    if (i === 0 && firstBuild) s.dataset.src = `/api/background?id=cover&d=${phone.matches ? "mobile" : "desktop"}`;
+    bgEl.append(s);
+    segsEl.append(document.createElement("i"));
+  });
+  firstBuild = false;
+  segsEl.classList.toggle("one", shown.length < 2);
+  if (shown.length) show(0);
+}
+// (each photo's fetched as it's about to show, not all at once)
+function load(i) {
+  const s = bgEl.children[i];
+  if (s && !s.style.backgroundImage) s.style.backgroundImage = `url("${s.dataset.src || photoUrl(shown[i])}")`;
+}
+function show(i) {
+  clearTimeout(timer);
+  const slides = bgEl.children;
+  if (!slides.length) return;
+  slides[at]?.classList.remove("on");
+  at = i;
+  load(i); load((i + 1) % slides.length);
+  slides[i].classList.add("on");
+  $$("i", segsEl).forEach((seg, j) => {
+    seg.classList.remove("on");
+    seg.classList.toggle("past", j < i);
+    if (j === i) { void seg.offsetWidth; seg.classList.add("on"); }
+  });
+  if (slides.length > 1 && !motion.matches && !document.hidden) timer = setTimeout(() => show((at + 1) % slides.length), SLIDE);
+}
+// (a different set when the screen changes size past a phone's, only if it's actually different)
+phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) buildSlides(); });
+document.addEventListener("visibilitychange", () => {
+  body.classList.toggle("paused", document.hidden);
+  if (document.hidden) clearTimeout(timer); else if (shown.length) show(at);
+});
+motion.addEventListener("change", () => shown.length && show(at));
+
+/* ---------------- who's looking ---------------- */
+const plural = (n, one, many = one + "s") => `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
+async function loadMe() {
+  try { me = await api("/api/me"); } catch (_) { me = { signedIn: false }; }
+  showMe();
+}
+function showMe() {
+  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + "/";
+  body.classList.toggle("signed", !!me.signedIn);
+  body.classList.toggle("owner", !!me.owner);
+  body.classList.add("known");
+  const face = $("#face");
+  face.textContent = "";
+  if (me.signedIn && me.photoAt) {
+    const img = document.createElement("img");
+    img.src = `/api/me/photo?v=${me.photoAt}`; img.alt = "";
+    face.append(img);
+  } else if (me.signedIn) {
+    face.textContent = (me.name || "?").trim().charAt(0).toUpperCase();
+  }
+  $("#me").setAttribute("aria-label", me.signedIn ? `Your account (${me.name})` : "Your account");
+  // each app's line: theirs when they use it, what it is otherwise
+  const a = me.signedIn ? me.apps || {} : {};
+  const line = {
+    inflight: a.inflight && `${plural(a.inflight.friends, "friend")} · ${a.inflight.sent.toLocaleString("en-GB")} sent`,
+    weather: a.weather && `${plural(a.weather.places, "place")} · Alerts ${a.weather.alerts ? "on" : "off"}`,
+  };
+  for (const key of ["inflight", "weather"]) {
+    const small = $(`#app-${key} small`);
+    small.textContent = line[key] || small.dataset.about;
+    small.classList.toggle("mine", !!line[key]);
+  }
+  // their name and email, filled in for a message
+  if (me.signedIn) {
+    if (!$("#c-name").value) $("#c-name").value = me.name || "";
+    if (!$("#c-email").value && me.email) $("#c-email").value = me.email;
+  }
+}
+// the apps' own addresses, from this one (the site's, or a test's or a preview's)
+{
+  const host = location.hostname.replace(/^www\./, "");
+  if (host !== "georgefarrowgreen.com") {
+    const at = (sub) => `${location.protocol}//${sub}.${host}${location.port ? ":" + location.port : ""}/`;
+    $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather");
+  }
+}
+
+/* ---------------- sheets ---------------- */
+let lastFocus = null;
+function openSheet(d) {
+  lastFocus = document.activeElement;
+  d.classList.remove("closing");
+  d.showModal();
+  body.classList.add("sheet-up");
+}
+function closeSheet(d) {
+  if (!d.open || d.classList.contains("closing")) return;
+  body.classList.remove("sheet-up");
+  const done = () => { d.classList.remove("closing", "dragging"); d.style.transform = ""; d.close(); };
+  if (motion.matches) return done();
+  d.classList.add("closing");
+  setTimeout(done, 230);
+}
+for (const d of $$("dialog.sheet")) {
+  d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
+  d.addEventListener("close", () => { body.classList.remove("sheet-up"); lastFocus?.focus?.({ preventScroll: true }); });
+  // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog itself)
+  d.addEventListener("click", (e) => { if (e.target === d) closeSheet(d); });
+  for (const x of $$("[data-close]", d)) x.addEventListener("click", () => closeSheet(d));
+  // the page behind doesn't scroll while a sheet's up: only what scrolls inside the sheet does
+  let free = false;
+  d.addEventListener("touchstart", (e) => { free = e.touches.length > 1 || scrollsIn(e.target, d); }, { passive: true });
+  d.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
+  d.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, d) && e.cancelable) e.preventDefault(); }, { passive: false });
+  // swiped down by its top, it goes
+  let y0 = null, dy = 0, t0 = 0;
+  d.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a")) return;
+    y0 = e.clientY; t0 = e.timeStamp; dy = 0;
+    d.setPointerCapture(e.pointerId); d.classList.add("dragging");
+  });
+  d.addEventListener("pointermove", (e) => {
+    if (y0 === null) return;
+    dy = Math.max(0, e.clientY - y0);
+    d.style.transform = `translateY(${dy}px)`;
+  });
+  const end = () => {
+    if (y0 === null) return;
+    const fast = dy / Math.max(1, performance.now() - t0) > 0.6;
+    y0 = null; d.classList.remove("dragging");
+    if (dy > 110 || (fast && dy > 30)) closeSheet(d); else d.style.transform = "";
+  };
+  d.addEventListener("pointerup", end);
+  d.addEventListener("pointercancel", end);
+}
+// (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
+function scrollsIn(el, top) {
+  if (el.closest?.("input, textarea, [contenteditable]")) return true;
+  for (; el && el !== top; el = el.parentElement) {
+    if (el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(el).overflowY)) return true;
+  }
   return false;
 }
 
-// Owner-only entry point — visitors never see edit UI.
-async function requestEdit() {
-  if (editing) return;
-  if (await hasSession()) enterEditMode();
-  else openLogin();
+/* ---------------- a word at the foot, with Undo where it can be ---------------- */
+let toastTimer = null;
+function toast(text, undo) {
+  const t = $("#toast"), b = $("#toast-undo");
+  $("#toast-text").textContent = text;
+  b.hidden = !undo;
+  b.onclick = undo ? () => { t.hidden = true; undo(); } : null;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, undo ? 6000 : 2600);
 }
 
-/* ---------------- Edit mode ---------------- */
-function enterEditMode() {
-  editing = true;
-  document.body.classList.add("editing");
-  els.name.setAttribute("contenteditable", "true");
-  setStatus("Editing", "");
-}
-
-function exitEditMode() {
-  editing = false;
-  document.body.classList.remove("editing");
-  els.name.removeAttribute("contenteditable");
-  els.toolbarStatus.hidden = true;
-}
-
-function syncTextFromDom() {
-  state.name = els.name.textContent.trim();
-}
-
-let statusTimer;
-function setStatus(text, cls) {
-  const el = els.toolbarStatus;
-  el.textContent = text;
-  el.className = "status-toast" + (cls ? " " + cls : "");
-  el.hidden = false;
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => { el.hidden = true; }, 2600);
-}
-
-async function save() {
-  syncTextFromDom();
-  setStatus("Saving…", "saving");
-  try {
-    const res = await fetch("/api/content", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state),
-    });
-    if (res.status === 401) {
-      exitEditMode();
-      setStatus("Session expired — sign in again", "err");
-      openLogin();
-      return;
-    }
-    if (!res.ok) throw new Error("save failed");
-    const data = await res.json();
-    if (data.content) state = { ...structuredClone(DEFAULT_CONTENT), ...data.content };
-    render();
-    setStatus("Saved ✓", "ok");
-  } catch (_) {
-    setStatus("Save failed", "err");
-    alert("Couldn't save. If the Cloudflare KV backend isn't set up yet, see the README.");
-  }
-}
-
-/* ---------------- Background manager ---------------- */
-const bgEls = {
-  modal: document.getElementById("bg-modal"),
-  grid: document.getElementById("bg-grid"),
-  error: document.getElementById("bg-error"),
-  add: document.getElementById("bg-add"),
-  close: document.getElementById("bg-close"),
-};
-
-els.setBg.addEventListener("click", openBgManager);
-bgEls.add.addEventListener("click", () => els.photoInput.click());
-bgEls.close.addEventListener("click", () => bgEls.modal.close());
-
-async function openBgManager() {
-  bgEls.error.hidden = true;
-  await loadBackgrounds();
-  renderBgGrid();
-  if (typeof bgEls.modal.showModal === "function") bgEls.modal.showModal();
-}
-
-function renderBgGrid() {
-  bgEls.grid.innerHTML = "";
-  if (!bgImages.length) {
-    const p = document.createElement("p");
-    p.className = "passkey-empty";
-    p.textContent = "No photos yet — add one or more.";
-    bgEls.grid.appendChild(p);
-    return;
-  }
-  const hint = document.createElement("p");
-  hint.className = "bg-hint";
-  hint.textContent = "Tap a photo to set its focus point. Use the tag to choose where it shows.";
-  bgEls.grid.appendChild(hint);
-
-  const wrap = document.createElement("div");
-  wrap.className = "bg-cells";
-  bgImages.forEach((item) => {
-    const cell = document.createElement("div");
-    cell.className = "bg-cell";
-    const img = document.createElement("img");
-    img.src = `/api/background?id=${encodeURIComponent(item.id)}`;
-    img.alt = "";
-    img.style.objectPosition = item.focus || "50% 50%";
-    const dot = document.createElement("span");
-    dot.className = "bg-focus";
-    const [fx, fy] = (item.focus || "50% 50%").split(" ");
-    dot.style.left = fx;
-    dot.style.top = fy;
-    const rm = document.createElement("button");
-    rm.className = "bg-remove";
-    rm.type = "button";
-    rm.textContent = "×";
-    rm.title = "Remove";
-    rm.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        await fetch("/api/background", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id }),
-        });
-      } catch (_) {}
-      await loadBackgrounds();
-      renderBgGrid();
-    });
-    cell.addEventListener("click", async (e) => {
-      if (e.target === rm) return;
-      const r = img.getBoundingClientRect();
-      const x = Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100)));
-      const y = Math.max(0, Math.min(100, Math.round(((e.clientY - r.top) / r.height) * 100)));
-      const focus = `${x}% ${y}%`;
-      try {
-        await fetch("/api/background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id, focus }),
-        });
-      } catch (_) {}
-      await loadBackgrounds();
-      renderBgGrid();
-    });
-    const dev = document.createElement("button");
-    dev.className = "bg-device";
-    dev.type = "button";
-    const labels = { both: "Both", desktop: "Desktop", mobile: "Phone" };
-    dev.textContent = labels[item.device || "both"];
-    dev.title = "Where this photo shows";
-    dev.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const order = ["both", "desktop", "mobile"];
-      const next = order[(order.indexOf(item.device || "both") + 1) % order.length];
-      try {
-        await fetch("/api/background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id, device: next }),
-        });
-      } catch (_) {}
-      await loadBackgrounds();
-      renderBgGrid();
-    });
-
-    cell.appendChild(img);
-    cell.appendChild(dot);
-    cell.appendChild(dev);
-    cell.appendChild(rm);
-    wrap.appendChild(cell);
-  });
-  bgEls.grid.appendChild(wrap);
-}
-
-els.photoInput.addEventListener("change", async () => {
-  const files = els.photoInput.files ? [...els.photoInput.files] : [];
-  els.photoInput.value = "";
-  if (!files.length) return;
-  bgEls.error.hidden = true;
-  setStatus("Uploading…", "saving");
-  try {
-    for (const file of files) {
-      if (!file.type.startsWith("image/")) continue;
-      const dataUrl = await resizeImage(file, 2000);
-      const res = await fetch("/api/background", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
-      });
-      if (res.status === 401) { exitEditMode(); openLogin(); return; }
-      if (!res.ok) throw new Error("bg failed");
-    }
-    await loadBackgrounds();
-    renderBgGrid();
-    setStatus("Photos updated ✓", "ok");
-  } catch (_) {
-    setStatus("Couldn't upload", "err");
-    bgEls.error.textContent = "Upload failed — try a smaller image.";
-    bgEls.error.hidden = false;
-  }
+/* ---------------- Get in touch ---------------- */
+const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
+for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
+  contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
+  openSheet(contact.sheet);
+  const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
+  // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
+  if (!phone.matches) (empty || $("#c-message")).focus();
 });
-
-// Downscale preserving aspect ratio; returns a JPEG data URL.
-function resizeImage(file, maxDim) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
-
-/* ---------------- Link editor ---------------- */
-function openLinkEditor(index) {
-  editingLinkIndex = index;
-  const isEdit = index !== null;
-  els.linkTitle.textContent = isEdit ? "Edit link" : "Add link";
-  els.linkLabel.value = isEdit ? state.links[index].label : "";
-  els.linkUrl.value = isEdit ? state.links[index].url : "";
-  els.linkRemove.hidden = !isEdit;
-  els.linkMove.hidden = !isEdit;
-  els.linkMoveLeft.disabled = !isEdit || index === 0;
-  els.linkMoveRight.disabled = !isEdit || index === state.links.length - 1;
-  if (typeof els.linkModal.showModal === "function") els.linkModal.showModal();
-  setTimeout(() => els.linkLabel.focus(), 50);
-}
-
-els.addLink.addEventListener("click", () => openLinkEditor(null));
-els.linkCancel.addEventListener("click", () => els.linkModal.close());
-
-els.linkForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const link = { label: els.linkLabel.value.trim(), url: els.linkUrl.value.trim() };
-  if (!link.label || !link.url) { els.linkModal.close(); return; }
-  if (editingLinkIndex === null) state.links.push(link);
-  else state.links[editingLinkIndex] = link;
-  renderLinks();
-  els.linkModal.close();
-});
-
-els.linkRemove.addEventListener("click", () => {
-  if (editingLinkIndex !== null) { state.links.splice(editingLinkIndex, 1); renderLinks(); }
-  els.linkModal.close();
-});
-
-function moveLink(delta) {
-  const i = editingLinkIndex;
-  if (i === null) return;
-  const j = i + delta;
-  if (j < 0 || j >= state.links.length) return;
-  [state.links[i], state.links[j]] = [state.links[j], state.links[i]];
-  renderLinks();
-  els.linkModal.close();
-  openLinkEditor(j);
-}
-els.linkMoveLeft.addEventListener("click", () => moveLink(-1));
-els.linkMoveRight.addEventListener("click", () => moveLink(1));
-
-/* ---------------- Login ---------------- */
-function openLogin() {
-  els.loginError.hidden = true;
-  els.password.value = "";
-  refreshPasskeyButton();
-  if (typeof els.modal.showModal === "function") els.modal.showModal();
-  setTimeout(() => els.password.focus(), 50);
-}
-
-els.openLogin.addEventListener("click", () => { if (!editing) requestEdit(); });
-els.loginCancel.addEventListener("click", () => els.modal.close());
-
-els.loginForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  els.loginError.hidden = true;
-  try {
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: els.password.value }),
-    });
-    if (res.ok) { els.modal.close(); enterEditMode(); return; }
-    const data = await res.json().catch(() => ({}));
-    els.loginError.textContent =
-      data.error ||
-      (res.status === 429 ? "Too many attempts — try again later." :
-       res.status === 401 ? "Incorrect password." : "Login unavailable.");
-    els.loginError.hidden = false;
-  } catch (_) {
-    els.loginError.textContent = "Login backend not reachable. See the README.";
-    els.loginError.hidden = false;
-  }
-});
-
-els.logout.addEventListener("click", async () => {
-  try { await fetch("/api/logout", { method: "POST" }); } catch (_) {}
-  exitEditMode();
-});
-
-els.save.addEventListener("click", save);
-
-/* ---------------- Passkeys (WebAuthn) ---------------- */
-const pkEls = {
-  loginBtn: document.getElementById("passkey-login"),
-  divider: document.getElementById("login-divider"),
-  manageBtn: document.getElementById("manage-passkeys"),
-  modal: document.getElementById("passkey-modal"),
-  list: document.getElementById("passkey-list"),
-  add: document.getElementById("passkey-add"),
-  close: document.getElementById("passkey-close"),
-  error: document.getElementById("passkey-error"),
-};
-
-const b64u = {
-  enc(buf) {
-    const u = new Uint8Array(buf);
-    let s = "";
-    for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
-    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  },
-  dec(str) {
-    str = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
-    while (str.length % 4) str += "=";
-    const bin = atob(str);
-    const u = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return u.buffer;
-  },
-};
-
-const pkSupported = () => typeof window.PublicKeyCredential !== "undefined";
-
-async function pkApi(payload) {
-  const res = await fetch("/api/passkeys", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Request failed.");
-  return data;
-}
-
-function pkErr(target, e) {
-  target.textContent = e && e.name === "NotAllowedError"
-    ? "Cancelled or timed out." : (e && e.message) || "Something went wrong.";
-  target.hidden = false;
-}
-
-async function refreshPasskeyButton() {
-  let show = false;
-  if (pkSupported()) {
-    try {
-      const res = await fetch("/api/passkeys", { cache: "no-store" });
-      if (res.ok) { const d = await res.json(); show = d.supported && d.count > 0; }
-    } catch (_) {}
-  }
-  pkEls.loginBtn.hidden = !show;
-  pkEls.divider.hidden = !show;
-}
-
-async function passkeyLogin() {
-  els.loginError.hidden = true;
-  try {
-    const opt = await pkApi({ action: "auth-options" });
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge: b64u.dec(opt.challenge),
-        rpId: opt.rpId,
-        userVerification: "preferred",
-        timeout: 60000,
-        allowCredentials: (opt.allowCredentials || []).map((id) => ({ type: "public-key", id: b64u.dec(id) })),
-      },
-    });
-    const r = assertion.response;
-    await pkApi({
-      action: "auth-verify",
-      id: b64u.enc(assertion.rawId),
-      authenticatorData: b64u.enc(r.authenticatorData),
-      clientDataJSON: b64u.enc(r.clientDataJSON),
-      signature: b64u.enc(r.signature),
-    });
-    els.modal.close();
-    enterEditMode();
-  } catch (e) { pkErr(els.loginError, e); }
-}
-
-async function passkeyRegister() {
-  pkEls.error.hidden = true;
-  try {
-    const opt = await pkApi({ action: "register-options" });
-    const cred = await navigator.credentials.create({
-      publicKey: {
-        challenge: b64u.dec(opt.challenge),
-        rp: { name: document.title || "Personal site", id: opt.rpId },
-        user: { id: new TextEncoder().encode("owner"), name: "owner", displayName: state.name || "Owner" },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-        authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
-        attestation: "none",
-        timeout: 60000,
-        excludeCredentials: (opt.excludeCredentials || []).map((id) => ({ type: "public-key", id: b64u.dec(id) })),
-      },
-    });
-    const r = cred.response;
-    if (typeof r.getPublicKey !== "function") throw new Error("This browser doesn't expose the passkey public key.");
-    const label = prompt("Name this passkey (e.g. iPhone, MacBook):", "My device");
-    await pkApi({
-      action: "register-verify",
-      id: b64u.enc(cred.rawId),
-      publicKey: b64u.enc(r.getPublicKey()),
-      alg: r.getPublicKeyAlgorithm(),
-      clientDataJSON: b64u.enc(r.clientDataJSON),
-      label: ((label || "").trim() || "Passkey"),
-    });
-    await loadPasskeyList();
-  } catch (e) { pkErr(pkEls.error, e); }
-}
-
-async function loadPasskeyList() {
-  pkEls.list.innerHTML = "";
-  let data = { credentials: [] };
-  try { const res = await fetch("/api/passkeys", { cache: "no-store" }); data = await res.json(); } catch (_) {}
-  if (!data.credentials || !data.credentials.length) {
-    const li = document.createElement("li");
-    li.className = "passkey-empty";
-    li.textContent = "No passkeys yet. Add one to sign in without a password.";
-    pkEls.list.appendChild(li);
-    return;
-  }
-  data.credentials.forEach((c) => {
-    const li = document.createElement("li");
-    li.className = "passkey-item";
-    const span = document.createElement("span");
-    const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
-    span.textContent = c.label + (when ? " · " + when : "");
-    const del = document.createElement("button");
-    del.className = "btn danger small";
-    del.textContent = "Remove";
-    del.addEventListener("click", async () => {
-      if (!confirm("Remove this passkey?")) return;
-      try {
-        await fetch("/api/passkeys", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: c.id }),
-        });
-      } catch (_) {}
-      loadPasskeyList();
-    });
-    li.appendChild(span);
-    li.appendChild(del);
-    pkEls.list.appendChild(li);
-  });
-}
-
-function openPasskeyManager() {
-  pkEls.error.hidden = true;
-  if (!pkSupported()) { pkEls.error.textContent = "This browser doesn't support passkeys."; pkEls.error.hidden = false; }
-  loadPasskeyList();
-  if (typeof pkEls.modal.showModal === "function") pkEls.modal.showModal();
-}
-
-pkEls.loginBtn.addEventListener("click", passkeyLogin);
-pkEls.manageBtn.addEventListener("click", openPasskeyManager);
-pkEls.add.addEventListener("click", passkeyRegister);
-pkEls.close.addEventListener("click", () => pkEls.modal.close());
-
-/* ---------------- Enquire / contact form ---------------- */
-const contact = {
-  form: document.getElementById("contact-form"),
-  name: document.getElementById("c-name"),
-  email: document.getElementById("c-email"),
-  message: document.getElementById("c-message"),
-  website: document.getElementById("c-website"),
-  status: document.getElementById("contact-status"),
-};
-
-els.enquire.addEventListener("click", () => {
-  contact.status.hidden = true;
-  if (typeof els.enquireModal.showModal === "function") els.enquireModal.showModal();
-  setTimeout(() => contact.name.focus(), 50);
-});
-els.enquireCancel.addEventListener("click", () => els.enquireModal.close());
-
-function contactStatus(text, cls) {
-  contact.status.textContent = text;
-  contact.status.className = "form-status" + (cls ? " " + cls : "");
-  contact.status.hidden = false;
-}
-
+contact.form.addEventListener("input", () => { contact.err.hidden = true; });
 contact.form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const payload = {
-    name: contact.name.value.trim(),
-    email: contact.email.value.trim(),
-    message: contact.message.value.trim(),
-    website: contact.website.value, // honeypot
-  };
-  if (!payload.name || !payload.email || !payload.message) {
-    contactStatus("Please add your name, email, and a message.", "err");
+  const msg = { name: $("#c-name").value.trim(), email: $("#c-email").value.trim(), message: $("#c-message").value.trim(), website: $("#c-website").value };
+  const say = (t) => { contact.err.textContent = t; contact.err.hidden = !t; };
+  if (!msg.name || !msg.email || !msg.message) return say("Please add your name, your email and a message.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(msg.email)) return say("That email doesn’t look right.");
+  say(""); contact.send.disabled = true; contact.send.textContent = "Sending…";
+  try {
+    await api("/api/contact", { method: "POST", body: msg });
+    $("#c-message").value = "";
+    $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
+    contact.form.hidden = true; contact.sent.hidden = false;
+    $("button", contact.sent).focus();
+  } catch (err) { say(err.message); }
+  contact.send.disabled = false; contact.send.textContent = "Send";
+});
+
+/* ---------------- editing (the owner): the words in place ---------------- */
+const editables = $$("[data-edit]");
+let before = null;
+function startEdit() {
+  if (editing || !me?.owner) return;
+  editing = true; before = { ...content };
+  body.classList.add("edit");
+  for (const el of editables) {
+    // (plain text where the browser has it; where it doesn't, what's pasted is made plain below)
+    try { el.contentEditable = "plaintext-only"; } catch (_) {}
+    if (el.contentEditable !== "plaintext-only") el.contentEditable = "true";
+    el.spellcheck = true;
+  }
+  window.redrawScroll();
+  scrollTo({ top: 0, behavior: motion.matches ? "auto" : "smooth" });
+}
+async function endEdit(keep = true) {
+  if (!editing) return;
+  const next = { role: text($("[data-c=role][data-edit]")), name: text($("[data-c=name][data-edit]")), bio: text($("[data-c=bio][data-edit]")) };
+  for (const el of editables) el.removeAttribute("contenteditable");
+  document.activeElement?.blur?.();
+  editing = false; body.classList.remove("edit");
+  window.redrawScroll();
+  if (!keep || ["role", "name", "bio"].every((k) => next[k] === before[k])) return showContent();
+  showContent();
+  try {
+    content = { ...DEFAULTS, ...(await api("/api/content", { method: "PUT", body: next })).content };
+    showContent();
+    toast("Saved", async () => {
+      try { content = { ...DEFAULTS, ...(await api("/api/history", { method: "POST", body: { index: 0 } })).content }; showContent(); toast("Undone"); }
+      catch (err) { toast(err.message); }
+    });
+  } catch (err) { content = before; showContent(); toast(err.message); }
+}
+// (a line of plain text: what was typed, its spaces run together)
+const text = (el) => el.textContent.replace(/\s+/g, " ").trim();
+$("#edit").addEventListener("click", startEdit);
+$("#done").addEventListener("click", () => endEdit(true));
+for (const el of editables) {
+  // Return finishes the line; what's pasted comes in as plain text
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+  });
+  el.addEventListener("paste", (e) => {
+    if (el.contentEditable === "plaintext-only") return;
+    e.preventDefault();
+    document.execCommand("insertText", false, (e.clipboardData?.getData("text/plain") || "").replace(/\s+/g, " "));
+  });
+}
+// (Escape anywhere but a sheet leaves editing as it was)
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing && !document.querySelector("dialog[open]")) endEdit(false); });
+// (leaving with the words half changed: the browser asks first)
+addEventListener("beforeunload", (e) => { if (editing) e.preventDefault(); });
+
+/* ---------------- the photos, changed from their sheet ---------------- */
+const ph = { sheet: $("#photos-sheet"), tiles: $("#tiles"), err: $("#photos-err"), input: $("#photo-input"), add: $("#add-photos") };
+const WHERE = { both: "Both", mobile: "Phone", desktop: "Computer" }, NEXT = { both: "mobile", mobile: "desktop", desktop: "both" };
+function showThumbs() {
+  const t = $("#thumbs");
+  t.textContent = "";
+  for (const p of photos.slice(0, 4)) {
+    const i = document.createElement("i");
+    i.style.backgroundImage = `url("${photoUrl(p)}")`;
+    t.append(i);
+  }
+}
+function photosSaid(t) { ph.err.textContent = t || ""; ph.err.hidden = !t; }
+function showTiles() {
+  ph.tiles.textContent = "";
+  if (!photos.length) {
+    const p = document.createElement("p");
+    p.className = "none"; p.textContent = "No photos yet.";
+    ph.tiles.append(p);
     return;
   }
-  contactStatus("Sending…", "");
-  try {
-    const res = await fetch("/api/contact", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  for (const p of photos) {
+    const tile = document.createElement("div");
+    tile.className = "tile";
+    const img = document.createElement("img");
+    img.src = photoUrl(p); img.alt = ""; img.decoding = "async";
+    img.style.objectPosition = p.focus || "50% 50%";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const [fx, fy] = (p.focus || "50% 50%").split(" ");
+    dot.style.left = fx; dot.style.top = fy;
+    const where = document.createElement("button");
+    where.type = "button"; where.className = "where";
+    where.textContent = WHERE[p.device || "both"];
+    where.setAttribute("aria-label", `Shows on: ${WHERE[p.device || "both"]}. Change`);
+    const rm = document.createElement("button");
+    rm.type = "button"; rm.className = "rm"; rm.setAttribute("aria-label", "Remove this photo");
+    rm.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+    const change = async (method, data) => {
+      tile.classList.add("busy"); photosSaid("");
+      try { photos = (await api("/api/background", { method, body: { id: p.id, ...data } })).images || []; }
+      catch (err) { photosSaid(err.message); }
+      photosChanged();
+    };
+    // (a tap on the photo: the point that stays in view as the screen crops it)
+    img.addEventListener("click", (e) => {
+      const r = img.getBoundingClientRect();
+      const x = Math.round(clamp((e.clientX - r.left) / r.width) * 100), y = Math.round(clamp((e.clientY - r.top) / r.height) * 100);
+      change("POST", { focus: `${x}% ${y}%` });
     });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) { contact.form.reset(); contactStatus("Thanks — your message was sent! ✓", "ok"); }
-    else contactStatus(data.error || "Couldn't send right now. Try again later.", "err");
-  } catch (_) {
-    contactStatus("Network error — please try again later.", "err");
+    where.addEventListener("click", () => change("POST", { device: NEXT[p.device || "both"] }));
+    rm.addEventListener("click", () => { if (confirm("Remove this photo from the slideshow?")) change("DELETE", {}); });
+    tile.append(img, dot, where, rm);
+    ph.tiles.append(tile);
   }
-});
-
-/* ---------------- Backup & version history ---------------- */
-const backup = {
-  modal: document.getElementById("backup-modal"),
-  list: document.getElementById("history-list"),
-  error: document.getElementById("backup-error"),
-  importFile: document.getElementById("import-file"),
-};
-
-document.getElementById("open-backup").addEventListener("click", () => {
-  backup.error.hidden = true;
-  loadHistory();
-  if (typeof backup.modal.showModal === "function") backup.modal.showModal();
-});
-document.getElementById("backup-close").addEventListener("click", () => backup.modal.close());
-
-document.getElementById("export-json").addEventListener("click", () => {
-  syncTextFromDom();
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "bio-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
-
-document.getElementById("import-json").addEventListener("click", () => backup.importFile.click());
-backup.importFile.addEventListener("change", async () => {
-  const file = backup.importFile.files && backup.importFile.files[0];
-  backup.importFile.value = "";
-  if (!file) return;
+}
+function photosChanged() { showTiles(); showThumbs(); buildSlides(); }
+$("#change-photos").addEventListener("click", () => { photosSaid(""); showTiles(); openSheet(ph.sheet); });
+ph.add.addEventListener("click", () => ph.input.click());
+ph.input.addEventListener("change", async () => {
+  const files = [...(ph.input.files || [])].filter((f) => f.type.startsWith("image/"));
+  ph.input.value = "";
+  if (!files.length) return;
+  photosSaid(""); ph.add.disabled = true;
   try {
-    const data = JSON.parse(await file.text());
-    state = { ...structuredClone(DEFAULT_CONTENT), ...data };
-    state.links = Array.isArray(state.links) ? state.links : [];
-    render();
-    enterEditMode();
-    setStatus("Imported — review, then Save to keep", "");
-    backup.modal.close();
-  } catch (_) {
-    backup.error.textContent = "That file isn't valid bio JSON.";
-    backup.error.hidden = false;
-  }
+    for (const [i, f] of files.entries()) {
+      ph.add.textContent = files.length > 1 ? `Adding ${i + 1} of ${files.length}…` : "Adding…";
+      photos = (await api("/api/background", { method: "PUT", body: { image: await shrink(f, 2000) } })).images || photos;
+      photosChanged();
+    }
+  } catch (err) { photosSaid(err.message === "Invalid or oversized image." ? "That photo couldn’t be added. Try a smaller one." : err.message); }
+  ph.add.disabled = false; ph.add.textContent = "Add photos";
 });
-
-async function loadHistory() {
-  backup.list.innerHTML = "";
-  let data = { versions: [] };
-  try { const res = await fetch("/api/history", { cache: "no-store" }); if (res.ok) data = await res.json(); } catch (_) {}
-  if (!data.versions || !data.versions.length) {
-    const li = document.createElement("li");
-    li.className = "passkey-empty";
-    li.textContent = "No earlier versions yet — they appear here after you save.";
-    backup.list.appendChild(li);
-    return;
-  }
-  data.versions.forEach((v) => {
-    const li = document.createElement("li");
-    li.className = "passkey-item";
-    const span = document.createElement("span");
-    const when = v.savedAt ? new Date(v.savedAt).toLocaleString() : "";
-    span.textContent = (v.name || "Version") + (when ? " · " + when : "");
-    const btn = document.createElement("button");
-    btn.className = "btn ghost small";
-    btn.textContent = "Restore";
-    btn.addEventListener("click", async () => {
-      if (!confirm("Restore this version? Your current content is saved to history first.")) return;
-      try {
-        const res = await fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ index: v.index }),
-        });
-        const d = await res.json();
-        if (res.ok && d.content) {
-          state = { ...structuredClone(DEFAULT_CONTENT), ...d.content };
-          render();
-          enterEditMode();
-          backup.modal.close();
-        }
-      } catch (_) {}
-    });
-    li.appendChild(span);
-    li.appendChild(btn);
-    backup.list.appendChild(li);
+// a photo at most max pixels on its longer side, as a JPEG
+function shrink(file, max) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That file isn’t a photo this browser can open.")); };
+    img.src = url;
   });
 }
 
-/* ---------------- Restrictions: no zoom, no copy (except form fields) ------- */
-function inField(el) {
-  const t = el && el.tagName;
-  return t === "INPUT" || t === "TEXTAREA";
-}
-// Block copy/cut unless the selection is in an input/textarea (e.g. email).
-["copy", "cut"].forEach((evt) =>
-  document.addEventListener(evt, (e) => { if (!inField(e.target)) e.preventDefault(); })
-);
-// Block pinch-zoom (iOS gesture events).
-["gesturestart", "gesturechange", "gestureend"].forEach((evt) =>
-  document.addEventListener(evt, (e) => e.preventDefault())
-);
-// Block ctrl/⌘ + wheel zoom and keyboard zoom shortcuts.
-window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-window.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
-});
+/* ---------------- no zooming, and no copying outside the fields ---------------- */
+const inField = (el) => !!el?.closest?.("input, textarea, [contenteditable]");
+for (const ev of ["copy", "cut"]) document.addEventListener(ev, (e) => { if (!inField(e.target)) e.preventDefault(); });
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault());
+addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault(); });
 
-/* ---------------- Messages (D1) ---------------- */
-const msgEls = {
-  modal: document.getElementById("messages-modal"),
-  list: document.getElementById("messages-list"),
-  error: document.getElementById("messages-error"),
-};
-
-document.getElementById("open-messages").addEventListener("click", openMessages);
-document.getElementById("messages-close").addEventListener("click", () => msgEls.modal.close());
-
-async function openMessages() {
-  msgEls.error.hidden = true;
-  await loadMessages();
-  if (typeof msgEls.modal.showModal === "function") msgEls.modal.showModal();
-}
-
-async function loadMessages() {
-  msgEls.list.innerHTML = "";
-  let data = { messages: [] };
-  try {
-    const res = await fetch("/api/messages", { cache: "no-store" });
-    if (res.status === 401) { exitEditMode(); openLogin(); return; }
-    if (res.ok) data = await res.json();
-    else throw new Error();
-  } catch (_) {
-    msgEls.error.textContent = "Couldn't load messages.";
-    msgEls.error.hidden = false;
-    return;
-  }
-  if (!data.messages.length) {
-    const li = document.createElement("li");
-    li.className = "passkey-empty";
-    li.textContent = "No messages yet.";
-    msgEls.list.appendChild(li);
-    return;
-  }
-  data.messages.forEach((m) => {
-    const li = document.createElement("li");
-    li.className = "msg-item";
-    const head = document.createElement("div");
-    head.className = "msg-head";
-    const who = document.createElement("a");
-    who.className = "msg-from";
-    who.href = "mailto:" + m.email;
-    who.textContent = `${m.name} · ${m.email}`;
-    const when = document.createElement("span");
-    when.className = "msg-when";
-    when.textContent = m.created_at ? new Date(m.created_at).toLocaleString() : "";
-    head.appendChild(who);
-    head.appendChild(when);
-    const body = document.createElement("p");
-    body.className = "msg-body";
-    body.textContent = m.body;
-    const del = document.createElement("button");
-    del.className = "btn danger small";
-    del.textContent = "Delete";
-    del.addEventListener("click", async () => {
-      if (!confirm("Delete this message?")) return;
-      try {
-        await fetch("/api/messages", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: m.id }),
-        });
-      } catch (_) {}
-      loadMessages();
-    });
-    li.appendChild(head);
-    li.appendChild(body);
-    li.appendChild(del);
-    msgEls.list.appendChild(li);
-  });
-}
-
-// Click/tap outside any dialog (on the backdrop) closes it.
-document.querySelectorAll("dialog").forEach((d) => {
-  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
-});
-
-/* ---------------- Boot ---------------- */
+/* ---------------- start ---------------- */
+$("#year").textContent = new Date().getFullYear();
 loadContent();
-loadBackgrounds();
+loadPhotos();
+loadMe();

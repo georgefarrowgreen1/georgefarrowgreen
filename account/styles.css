@@ -138,6 +138,7 @@ button.row:active, a.row:active { background-color: var(--press); }
 .ic.app-ic { background: none; overflow: hidden; }
 .ic.app-ic img { display: block; width: 100%; height: 100%; }
 .ic.red { background: linear-gradient(160deg, #ff7b70, #e5372c); }
+.ic.teal { background: linear-gradient(160deg, #5ad8d0, #1b9e9a); }
 .row .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .row .tx b { font-weight: 500; font-size: 17px; overflow-wrap: anywhere; }
 .row .tx small { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
@@ -522,6 +523,12 @@ label.row { cursor: pointer; }
 .adm-av.h4 { background: linear-gradient(160deg, #8a86ff, #5a4fe0); }
 .adm-av.h5 { background: linear-gradient(160deg, #ff8fb1, #e5487a); }
 .adm-av.xl { width: 76px; height: 76px; font-size: 28px; margin-bottom: 6px; }
+/* Admin's Messages: each its own group, the message in full, Reply and Delete under it */
+.sheet-body .group.adm-msg + .group.adm-msg { margin-top: 14px; }
+.adm-body { padding: 0 18px 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; line-height: 1.45; }
+.adm-acts { display: flex; gap: 8px; padding: 0 12px 14px; }
+.adm-acts .pill { margin-top: 10px; }
+.adm-acts .pill.quiet { background: none; box-shadow: none; color: var(--danger); }
 .adm-head { display: grid; justify-items: center; gap: 2px; text-align: center; }
 .adm-head b { font-size: 22px; font-weight: 700; }
 .adm-head small { color: var(--text-2); font-size: 15px; }
