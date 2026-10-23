@@ -8,7 +8,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
   Strict-Transport-Security: max-age=31536000
 
 /index.html
@@ -19,6 +19,10 @@
 
 /app.js
   Cache-Control: no-cache
+
+# the home page's typeface (index.html asks for it first)
+/fonts/*
+  Cache-Control: public, max-age=2592000
 
 # The pictures in every app's emails (functions/_email.js): for the emails, not for search
 /mail/*

@@ -4,6 +4,14 @@
    about me, then the apps and a way to get in touch.
 ---------------------------------------------------------------------- */
 
+/* the name's typeface, from the site itself (asked for first: index.html), so it never arrives late and shifts */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
 :root {
   --text: #fff;
   --text-2: rgba(235, 235, 245, 0.74);
@@ -18,9 +26,11 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
   --display: "Space Grotesk", var(--font);
   --ease: cubic-bezier(0.2, 0.9, 0.3, 1);
-  --k: 0;
+  /* a spring: quick, settling with the faintest overshoot (response 0.5 s, damping 0.86), as a phone's sheets move */
+  --spring: linear(0, 0.0273, 0.0947, 0.1846, 0.2846, 0.3859, 0.4831, 0.5725, 0.6523, 0.7219, 0.7812, 0.8309, 0.8717, 0.9048, 0.9311, 0.9517, 0.9675, 0.9795, 0.9883, 0.9946, 0.9989, 1.0018, 1.0036, 1.0046, 1.005, 1.005, 1.0047, 1.0043, 1.0038, 1.0033, 1.0028, 1.0024, 1.0019, 1.0016, 1.0012, 1.001, 1.0007, 1.0006, 1.0004, 1.0003, 1);
   color-scheme: dark;
 }
+@supports not (transition-timing-function: linear(0, 1)) { :root { --spring: cubic-bezier(0.2, 0.9, 0.3, 1); } }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -51,28 +61,28 @@ svg { display: block; flex: none; }
   content: ""; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
 }
+/* each photo fades in once it's decoded; its slow drift is the script's (app.js), so it can hold still */
 .slide {
-  position: absolute; inset: 0;
-  background: 50% 50% / cover no-repeat;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover;
   opacity: 0;
   transform: scale(1.08);
-  transition: opacity 1.6s ease, transform 9s linear;
+  transition: opacity 1.6s ease;
 }
-.slide.on { opacity: 1; transform: scale(1); }
-/* as you scroll, the photo softens behind what's over it */
+.slide.on { opacity: 1; }
+/* as you scroll, the photo softens behind what's over it: a softened copy of it faded in (app.js soften), not a blur
+   redrawn each frame */
 .soft {
   position: fixed; inset: 0;
-  opacity: var(--k);
-  background: rgba(6, 8, 12, 0.4);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  backdrop-filter: blur(22px) saturate(140%);
+  opacity: 0; visibility: hidden;
+  background: rgba(6, 8, 12, 0.55) 50% 50% / cover no-repeat;
 }
 
 /* ---------------- the top bar ---------------- */
 .barbg {
   position: fixed; z-index: 19; top: 0; left: 0; right: 0;
   height: calc(env(safe-area-inset-top) + 82px);
-  opacity: var(--k);
+  opacity: 0; visibility: hidden;
   background: linear-gradient(180deg, rgba(10, 12, 18, 0.62), rgba(10, 12, 18, 0.4));
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
@@ -86,7 +96,7 @@ svg { display: block; flex: none; }
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   pointer-events: none;
   transform-origin: 50% 0;
-  transition: transform 0.4s var(--ease), filter 0.4s;
+  transition: transform 0.6s var(--spring);
 }
 .bar > * { pointer-events: auto; }
 .bar .mid {
@@ -94,8 +104,8 @@ svg { display: block; flex: none; }
   height: 36px; padding: 0 14px; border-radius: 999px;
   display: flex; align-items: center;
   font: 600 15px/1 var(--display); letter-spacing: -0.01em;
-  opacity: var(--k);
-  transform: translateY(calc((1 - var(--k)) * 8px));
+  opacity: 0;
+  transform: translateY(8px);
 }
 .bar .end { flex: none; display: flex; gap: 8px; margin-left: auto; opacity: 0; transition: opacity 0.3s; }
 body.known .bar .end { opacity: 1; }
@@ -126,10 +136,24 @@ body.edit .not-edit { display: none !important; }
   position: relative;
   padding: 0 max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 40px) max(16px, env(safe-area-inset-left));
   transform-origin: 50% 0;
-  transition: transform 0.4s var(--ease), filter 0.4s;
+  transition: transform 0.6s var(--spring);
 }
-/* a sheet up: the page steps back behind it */
-body.sheet-up .page, body.sheet-up .bar { transform: scale(0.94) translateY(14px); filter: brightness(0.72); }
+/* a sheet up: the page steps back behind it (moved only: the sheet's backdrop dims it, so the glass on it isn't
+   redrawn for a filter); while the sheet's dragged, the page follows the finger */
+body.sheet-up .page, body.sheet-up .bar { transform: scale(0.94) translateY(14px); }
+body.pulling .page, body.pulling .bar { transition: none; }
+
+/* the scroll's own animations (where the browser has them, they move with the scroll, off the page's thread): the
+   name into the bar, the bar's frosted band and the softened photo in; each line of the hero fading as it reaches
+   the bar, over the stretch of scroll the script measures for it (app.js) */
+@supports (animation-timeline: scroll()) {
+  .bar .mid { animation: capsule linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
+  .barbg, .soft { animation: veil linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
+  .hero > * { animation: under linear both; animation-timeline: scroll(root); }
+}
+@keyframes capsule { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes veil { from { opacity: 0; visibility: hidden; } to { opacity: 1; visibility: visible; } }
+@keyframes under { from { opacity: 1; } to { opacity: 0; } }
 
 .hero {
   min-height: max(560px, 84svh);
@@ -213,10 +237,11 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
   box-shadow: var(--rim), 0 30px 80px -10px rgba(0, 0, 0, 0.5);
   overscroll-behavior: contain;
 }
-.sheet[open] { display: flex; flex-direction: column; animation: up 0.42s var(--ease); }
-.sheet.closing { animation: down 0.24s ease-in forwards; }
-.sheet.dragging { animation: none; transition: none; }
-.sheet::backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 0.3s ease; }
+.sheet[open] { display: flex; flex-direction: column; animation: up 0.6s var(--spring); }
+.sheet.shown { animation: none; }   /* (up: dragging it can't start its opening again) */
+.sheet.closing { animation: down 0.24s cubic-bezier(0.4, 0, 1, 1) forwards; }
+.sheet.dragging { transition: none; }
+.sheet::backdrop { background: rgba(0, 0, 0, 0.5); animation: fade 0.3s ease; }
 .sheet.closing::backdrop { animation: fade 0.24s ease reverse forwards; }
 @keyframes up { from { transform: translateY(110%); } }
 @keyframes down { to { transform: translateY(110%); } }
@@ -316,7 +341,7 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 
 /* Reduce Motion: one photo, still; sheets without the slide */
 @media (prefers-reduced-motion: reduce) {
-  .slide { transition: opacity 0.4s; transform: none !important; }
+  .slide { transition: opacity 0.4s; transform: none; }
   .segs { display: none; }
   .sheet[open], .sheet.closing, .sheet::backdrop, .editbar, .toast, .sent .tick { animation: none; }
   .page, .bar { transition: none; }
