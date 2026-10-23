@@ -321,9 +321,10 @@ function signedIn(r) {
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) }))));
-  // (opened from an app, in its own window: signing out is the app's to do, not this window's)
+  // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
+  // of its own, so from there it's here)
   const ending = [
-    !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
+    (!fromApp() || fromApp() === "home") && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
@@ -683,7 +684,7 @@ function resetPage(r) {
       h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
         h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
         field("New password", pw), meter, hint),
-      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out.` }),
+      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
       S.me?.signedIn && h("button.link", { type: "button", onclick: () => { S.reset = null; S.settled = false; render(); } }, "Cancel"),
@@ -1336,7 +1337,7 @@ function admMessagesView() {
     post("admin/messages-read", { ids: unseen }).then(() => { if (AD.sum) { AD.sum.unread = Math.max(0, AD.sum.unread - unseen.length); patch(); } }, () => {});
   }
   const acts = (m) => h("div.adm-acts", {},
-    h("a.pill", { href: `mailto:${m.email}?subject=${encodeURIComponent("Re: your message")}` }, icon("mail", 17), "Reply"),
+    h("a.pill", { href: `mailto:${encodeURIComponent(m.email).replace(/%40/g, "@")}?subject=${encodeURIComponent("Re: your message")}` }, icon("mail", 17), "Reply"),
     h("button.pill.quiet", { type: "button", onclick: async (e) => {
       try { const r = await admPost(e.currentTarget, "Deleting…", "message-delete", { id: m.id }); x.messages = x.messages.filter((y) => y.id !== m.id);
         if (AD.sum) AD.sum.messages = x.messages.length; redraw(); patch(); toast(r.message); }

@@ -21,7 +21,7 @@ export const SECURITY = {
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "Cross-Origin-Opener-Policy": "same-origin",
-  "Strict-Transport-Security": "max-age=31536000",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
 };
 const FOREVER = "public, max-age=31536000, immutable";
 export const CHAT_HOST = "chat.georgefarrowgreen.com";

@@ -1837,6 +1837,22 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
 
 ## Security notes
 
+- **Across the site (audit, October 2026):** each app is served only at its own address, under its own rules: an
+  address written oddly (`/%77eather/`, `//account/`) is sent to its plain self first (so it's routed as that), and one
+  that can't be read as an address is a 404 (`.tools/tests/sitepaths.mjs`). HSTS covers every subdomain, and the home
+  page opens in a window of its own (COOP). If Functions were ever skipped, `_redirects` still keeps `README.md`,
+  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form holds a network (an IPv6
+  /64 counts as one) to 5 messages an hour and the site to 60 a day, counted in D1 in one step, reads at most 16 KB, and
+  keeps line breaks out of the name; Admin's Reply link takes the writer's address as one address. A Weather device is
+  the account's only while the sign-in that made it so lasts (`wx_devs.sess`): signed out from anywhere (Signed-in
+  devices, a new password, a reset), it's no longer the account's by the next tick, as if signed out on it, so a phone
+  someone else had signed in hears nothing more of the account. Deleting an account removes Weather's share first (so a
+  failure can be tried again), ends any waiting hand-over codes and disappearing-message settings, and keeps the
+  handles it had lately held for no one; an account being deleted gets no InFlight emails, and the "Keep my account"
+  link goes only to a confirmed address. InFlight's old instant `DELETE /api/pigeon/me` is gone (410: the account's
+  page, with its week's grace). A reset says it removes your passkeys. The account page has Sign out when opened from
+  the home page. Weather's copy of the password code is checked against InFlight's (`unit/sitecopies.test.mjs`).
+
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
