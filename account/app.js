@@ -15,7 +15,7 @@
 // #keep=).
 //
 // And: your photo changed by tapping it; your code (a QR code of the link that adds you in InFlight); what each app keeps
-// of yours, in its own sheet; the check-up folded to a line when there's nothing to do; "Not you?" on a password sign-in
+// of yours, in its own sheet; the check-up kept in Sign-in and security, opened as a sheet; "Not you?" on a password sign-in
 // from somewhere else; a word about a passkey after signing in with a password; device and passkey rows that slide to
 // sign out or remove (on a touch screen); and two columns on a wide one.
 
@@ -253,13 +253,14 @@ function signedIn(r) {
         h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"),
         h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")))),
     (!m.emailOk || m.emailNew) && r(banner(m)),
-    r(checkup(m)),
+    m.password?.leaked && r(leakBanner()),
   ];
   const b = [
     r(section("Your apps", h("div.apps", {},
       app("inflight", "InFlight", "/apps/inflight.png", "Letters carried by pigeon, end-to-end encrypted."),
       app("weather", "Weather", "/apps/weather.png", n ? `${n} saved ${n === 1 ? "place" : "places"}, in step on every device.` : "Forecasts, radar and alerts, in step on every device.")))),
     r(section("Sign-in and security", h("div.group.glass", {},
+      checkupRow(m),
       row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", onclick: () => openSheet(emailView) }),
       row({ icon: "key", tint: "blue", title: "Password", value: "Change", onclick: () => openSheet(passwordView) }),
       row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || "None", onclick: () => openSheet(passkeysView) }),
@@ -344,33 +345,41 @@ function banner(m) {
       h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "So password resets and security notes reach you. We’ll send a link to it." })),
       h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, "Send link"));
 }
-// The security check-up: what keeps the account safe, done or to do, with a ring for how far along
-function checkup(m) {
+// Your password found in a data breach: said up top, as it's the one check that can't wait
+function leakBanner() {
+  return h("section.banner.warn.glass", { role: "alert" }, h("span.ic.red", {}, icon("alert", 19)),
+    h("span.tx", {}, h("b", { text: "Your password is in a data breach" }), h("small", { text: "It’s one of the first anyone would try. Change it to keep your account safe." })),
+    h("button.mini.go", { type: "button", onclick: () => openSheet(passwordView) }, "Change"));
+}
+// The security check-up: what keeps the account safe, done or to do. A row in Sign-in and security says how it
+// stands; tapped, a sheet with a ring for how far along and each check with its fix (opened over it, Back to return).
+function checks(m) {
   const stale = m.devices.filter((d) => d.stale).length, pw = m.password || {};
-  const items = [
+  return [
     { ok: m.emailOk, label: m.emailOk ? "Email confirmed" : "Confirm your email", go: "Send link", act: async (b) => {
       try { await busy(b, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (e) { toast(e.message, true); } } },
-    { ok: m.passkeys.length > 0, label: m.passkeys.length ? `Passkey saved${m.passkeys.length > 1 ? ` (${m.passkeys.length})` : ""}` : "Add a passkey", go: "Add", act: () => openSheet(passkeysView) },
+    { ok: m.passkeys.length > 0, label: m.passkeys.length ? `Passkey saved${m.passkeys.length > 1 ? ` (${m.passkeys.length})` : ""}` : "Add a passkey", go: "Add", act: () => pushSheet(passkeysView) },
     { ok: pw.leaked === false, label: pw.leaked ? "Password found in a data breach" : pw.leaked === false ? "Password not in a known data breach" : "Check your password for data breaches",
-      go: pw.leaked ? "Change" : "Check", act: () => openSheet(pw.leaked ? passwordView : checkView) },
-    { ok: !stale, label: stale ? `${stale} device${stale > 1 ? "s" : ""} unused for 3 months` : "No devices left unused", go: "Review", act: () => openSheet(devicesView) },
+      go: pw.leaked ? "Change" : "Check", act: () => pushSheet(pw.leaked ? passwordView : checkView) },
+    { ok: !stale, label: stale ? `${stale} device${stale > 1 ? "s" : ""} unused for 3 months` : "No devices left unused", go: "Review", act: () => pushSheet(devicesView) },
   ];
-  const todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
-  // (all done: folded away to a line, opened with a tap)
-  const fold = (open) => { S.ckOpen = open; render(); $(open ? "main button.ck-top" : "main .checkup.folded")?.focus(); };
-  if (!todo && !S.ckOpen) return h("button.checkup.glass.ok.folded", { type: "button", "aria-expanded": "false", onclick: () => fold(true) },
-    h("span.ck-badge", { "aria-hidden": "true" }, icon("shield", 20, 2)), h("span.tx", {}, h("b", { text: "Well protected" }), h("small", { text: "All 4 checks done" })),
-    h("span.chev", {}, icon("chev", 16, 2.4)));
+}
+function checkupRow(m) {
+  const todo = checks(m).filter((x) => !x.ok).length;
+  return row({ icon: "shield", tint: todo ? "amber" : "green", title: "Security check-up", value: todo ? `${todo} to do` : "All done", onclick: () => openSheet(checkupView) });
+}
+function checkupView() {
+  const items = checks(S.me), todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
   const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ring.setAttribute("viewBox", "0 0 64 64"); ring.setAttribute("aria-hidden", "true"); ring.classList.add("ring");
   ring.innerHTML = `<circle class="trk" cx="32" cy="32" r="27"/><circle class="arc" cx="32" cy="32" r="27" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/>`;
-  return h(`section.checkup.glass${todo ? ".todo" : ".ok"}`, { "aria-label": "Security check-up" },
-    h(todo ? "div.ck-top" : "button.ck-top", todo ? {} : { type: "button", "aria-expanded": "true", onclick: () => fold(false) }, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
+  return { title: "Security check-up", body: [h(`div.checkup${todo ? ".todo" : ".ok"}`, {},
+    h("div.ck-top", {}, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
       h("span.tx", {}, h("b", { text: todo ? `${todo} thing${todo > 1 ? "s" : ""} to do` : "Well protected" }),
         h("small", { text: todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on." }))),
-    h("div.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
+    h("div.group.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
       h("span.ck-dot", { "aria-hidden": "true" }, x.ok && icon("check", 13, 3)), h("span.ck-t", { text: x.label }),
-      !x.ok && h("button.mini.go", { type: "button", onclick: (e) => x.act(e.currentTarget) }, x.go)))));
+      !x.ok && h("button.mini.go", { type: "button", onclick: (e) => x.act(e.currentTarget) }, x.go)))))] };
 }
 // Being deleted: when, and keeping it
 function deleting(r) {
@@ -1181,7 +1190,7 @@ function checkView() {
         });
         patch();
         if (n) { say(said, leakedSay(n).replace("Choose another.", "Change it now.")); sheetEl.querySelector(".sheet-body").append(h("button.btn.danger", { type: "button", onclick: () => pushSheet(passwordView) }, "Change password")); }
-        else { closeSheet(); toast("Your password isn’t in any known data breach."); }
+        else { if (Sheet.stack.length > 1) popSheet(); else closeSheet(); toast("Your password isn’t in any known data breach."); }
       } catch (err) { say(said, err.message, pw); }
     } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Your password", pw), go),
     said] };

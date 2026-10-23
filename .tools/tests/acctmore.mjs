@@ -140,8 +140,8 @@ await shot(P, '04-app-weather');
 await closeSheet(P);
 
 // ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
-const ck0 = await text(P, 'main .checkup');
-ok(!(await P.p.$('main .checkup.folded')) && /things to do/.test(ck0), 'with things to do, the check-up stays open', ck0);
+const ck0 = await P.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(!(await P.p.$('main .checkup')) && /Security check-up \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and security)', ck0);
 await signOut(P); await signIn(P);
 await P.p.waitForSelector('#sheet .nudge', { timeout: 8000 }).catch(() => {}); await settle(P, 600);
 ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-in: a word about a passkey', await sheetText(P));
@@ -155,15 +155,38 @@ const L = await browser('laptop', { laptop: true });
 await account(L); await signIn(L); await settle(L, 2200);
 ok(!(await L.p.$('#sheet[open]')), 'a laptop with no way to make a passkey isn\'t asked');
 
-// ---- 6. All done: the check-up folded to a line, opened with a tap, and folded again ----
-sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
+// ---- 6. The check-up: a row in Sign-in and security, opened as a sheet; a fix opens over it, Back returns ----
+const ckRow = () => P.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+const openCheckup = async () => { await P.p.click('.row:has(b:text-is("Security check-up"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
+const shut = async () => { await P.p.keyboard.press('Escape'); await P.p.waitForSelector('#sheet', { state: 'hidden' }).catch(() => {}); await settle(P, 300); };
+// (the email confirmed; the password not yet checked, as for an account from before)
+sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = NULL, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Well protected/.test(await text(P, 'main .checkup.folded')) && /All 4 checks done/.test(await text(P, 'main .checkup.folded')) && !(await P.p.$('main .ck-list')), 'all done: the check-up is a line', await text(P, 'main .checkup'));
-await shot(P, '06-checkup-folded');
-await P.p.click('main .checkup.folded'); await settle(P, 400);
-ok((await P.p.$$('main .ck-row.ok')).length === 4 && await P.p.evaluate(() => document.activeElement?.matches('button.ck-top') && document.activeElement.getAttribute('aria-expanded') === 'true'), 'tapped: all four, and the keyboard still on it');
-await P.p.click('main button.ck-top'); await settle(P, 400);
-ok(!!(await P.p.$('main .checkup.folded')) && await P.p.evaluate(() => document.activeElement?.matches('.checkup.folded')), 'and folded again');
+ok(/Security check-up 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
+await openCheckup();
+ok(/1 thing to do/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 3 && /Check your password for data breaches/.test(await text(P, '#sheet .checkup')), 'opened: what\'s left to do, and what\'s done', await text(P, '#sheet .checkup'));
+await P.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await P.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(P, 400);
+await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Security check-up")'); await settle(P, 400);
+ok(!!(await P.p.$('#sheet .checkup')), 'its fix opens over it, and Back returns to it');
+await shut();
+// all done
+sql(`UPDATE pg_users SET pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
+await account(P);
+ok(/Security check-up All done/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
+await openCheckup();
+ok(/Well protected/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 4, 'opened: well protected, all four done', await text(P, '#sheet .checkup'));
+await shot(P, '06-checkup-sheet');
+await shut();
+// a password found in a data breach: the one check that's said up top too, with the way to change it
+sql(`UPDATE pg_users SET pw_leaked = 1 WHERE id = '${uid}'`);
+await account(P);
+ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Security check-up 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
+await shot(P, '06b-leaked');
+await P.p.click('main .banner .mini'); await P.p.waitForSelector('#sheet[open] .sheet-body'); await settle(P, 400);
+ok(/password/i.test(await text(P, '#sheet h2')), 'its Change opens a new password', await text(P, '#sheet h2'));
+await shut();
+sql(`UPDATE pg_users SET pw_leaked = 0 WHERE id = '${uid}'`);
+await account(P);
 
 // ---- 7. "Not you?": a password sign-in from the laptop (not a passkey one from elsewhere, nor this phone's own) ----
 sql(`INSERT INTO pg_events (user_id, at, kind, app, device, place, detail) VALUES ('${uid}', ${t - DAY}, 'signin', 'Weather', 'Mac · Safari', 'Leeds, United Kingdom', 'Passkey')`);

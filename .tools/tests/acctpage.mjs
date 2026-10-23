@@ -83,9 +83,15 @@ for (const name of ['InFlight', 'Weather']) {
 ok(links.join() === `${CHAT}/,${WX}/`, 'each app\'s tile opens its sheet, and that the app, on this site', links.join());
 ok(/Passkeys 1/.test(home) && /Signed-in devices 1/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices \S+/g)?.join(' | '));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
-const ck = await text(L, '.checkup');
+// (the check-up: kept in Sign-in and security, a row saying how it stands, opened as a sheet)
+const ckRow = await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(!(await L.p.$('main .checkup')) && /Security check-up 1 to do/.test(ckRow), 'the check-up isn\'t on the page itself: a row in Sign-in and security, saying how it stands', ckRow);
+await openRow(L, 'Security check-up');
+const ck = await text(L, '#sheet .checkup');
 ok(/1 thing to do/.test(ck) && /Confirm your email/.test(ck) && /Passkey saved/.test(ck) && /Password not in a known data breach/.test(ck) && /No devices left unused/.test(ck),
-  'the check-up: one thing to do (the email), three done (the password checked as the account was made)', ck);
+  'opened: one thing to do (the email), three done (the password checked as the account was made)', ck);
+await shot(L, '01b-checkup-sheet');
+await closeSheet(L);
 ok(/Confirm your email/.test(await text(L, '.banner')), 'and the email not yet confirmed, said up top', await text(L, '.banner'));
 await shot(L, '01-signed-in');
 // the large title giving way to the bar
@@ -123,15 +129,18 @@ ok(user('rowan').email_ok > 0 && /Your email is confirmed/.test(await text(L, '#
 // (as for an account from before, whose password was never checked: a new one's is, as it's made)
 sql("UPDATE pg_users SET pw_checked_at = NULL WHERE handle = 'rowan'");
 await account(L);
-await L.p.click('.ck-row:has-text("Check your password") .mini'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 500);
+await openRow(L, 'Security check-up');
+await L.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await L.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(L, 500);
 await L.p.fill('#sheet input[type=password]', PW); await L.p.click('#sheet form .btn');
 await waitText(L, /data breach/, '#toast');
-await L.p.waitForFunction(() => /Well protected/.test(document.querySelector('.checkup')?.innerText || ''), null, { timeout: 10000 }).catch(() => {});
-ok(/isn’t in any known data breach/.test(await text(L, '#toast')) && /Well protected/.test(await text(L, '.checkup')), 'checked: not in a breach, and the check-up is all done', await text(L, '.checkup'));
+await L.p.waitForFunction(() => /Well protected/.test(document.querySelector('#sheet .checkup')?.innerText || ''), null, { timeout: 10000 }).catch(() => {});
+ok(/isn’t in any known data breach/.test(await text(L, '#toast')) && /Well protected/.test(await text(L, '#sheet .checkup')), 'checked (opened over the check-up): not in a breach, and back to the check-up, all done', await text(L, '#sheet .checkup'));
 const lg = readFileSync(`${S}/pwnedlog.jsonl`, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).at(-1);
 ok(/^\/range\/[0-9A-F]{5}$/.test(lg.url) && lg.pad === 'true', 'only 5 characters of the hash were asked, padded', lg.url);
 await settle(L, 900);
 await shot(L, '07-checkup');
+await closeSheet(L);
+ok(/Security check-up All done/.test(await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim())), 'and its row says so', await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim()));
 
 // ---- 3. Your profile: name, handle and photo, the same everywhere ----
 await L.p.click('.hero .pill'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 700);
@@ -230,7 +239,9 @@ await account(Ph);
 ok(/Rowan Ash Hale/.test(await text(Ph)), 'on the phone: signed in already, from InFlight there');
 sql(`UPDATE pg_sessions SET seen_at = ${Date.now() - 100 * 86400e3} WHERE user_id = '${user('rowan_h').id}' AND created_at = (SELECT MAX(created_at) FROM pg_sessions WHERE user_id = '${user('rowan_h').id}')`);
 await account(L);
-ok(/1 thing to do/.test(await text(L, '.checkup')) && /unused for 3 months/.test(await text(L, '.checkup')), 'the check-up notices a device long unused', await text(L, '.checkup'));
+await openRow(L, 'Security check-up');
+ok(/1 thing to do/.test(await text(L, '#sheet .checkup')) && /unused for 3 months/.test(await text(L, '#sheet .checkup')), 'the check-up notices a device long unused', await text(L, '#sheet .checkup'));
+await closeSheet(L);
 await openRow(L, 'Signed-in devices');
 const devs = await sheetText(L);
 ok((await L.p.$$('#sheet .row:not(.action)')).length === 2 && /This browser/.test(devs) && /Not used for 3 months/.test(devs) && /Sign out 1 unused device/.test(devs), 'both devices, this one marked, the other unused for months', devs);

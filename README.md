@@ -184,12 +184,15 @@ Motion, solid with Reduce Transparency.
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
   server too, 409).
 - **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
-  camera badge) to pick a new one straight away. A **security check-up** (a ring and four rows: email confirmed, a
-  passkey saved, the password not in a known data breach, no devices left unused for 3 months, each with a one-tap fix),
-  folded to one line ("Well protected, all 4 checks done") when there's nothing to do, opened with a tap. **Your apps**
-  (a tile for each); **Sign-in and security**, **Preferences**, **Your data**, **Sign out** (of every app on the site, in
+  camera badge) to pick a new one straight away. **Your apps**
+  (a tile for each); **Sign-in and security** (starting with the **Security check-up**, below), **Preferences**, **Your data**, **Sign out** (of every app on the site, in
   this browser) and **Delete account**. On a wide screen (1000 pixels and up), two columns: the profile and check-up
   stay in view on the left while the rest scrolls on the right.
+- **Security check-up:** a row at the top of Sign-in and security that says how it stands ("All done", or "2 to do"
+  with an amber icon), kept off the page itself. Tapped, a sheet: a ring for how far along, then four checks (email
+  confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one
+  left with its fix, which opens over the check-up (Back returns to it). A password found in a data breach is the one
+  check also said up top, in a banner with **Change**, as an unconfirmed email is.
 - **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
   shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
 - **Your apps:** each tile opens a sheet of what that app keeps of yours, and **Open** to go to it. InFlight: how many
@@ -249,13 +252,13 @@ Motion, solid with Reduce Transparency.
   `argon2.js`) and the apps' icons.
 - Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
   yes to), with the way back to the app.
-- Tests: `.tools/tests/acctpage.mjs` (69 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
+- Tests: `.tools/tests/acctpage.mjs` (71 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (62 checks: the photo from its badge, your code and its link, each app's sheet and its
-  counts, the passkey offer only where one can be made, the check-up folded and opened, "Not you?" only on another
+  `.tools/tests/acctmore.mjs` (66 checks: the photo from its badge, your code and its link, each app's sheet and its
+  counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
   back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
