@@ -248,11 +248,14 @@ ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two col
 const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
 ok(halves[0].join() === 'Your apps,Your data' && halves[1].join() === 'Sign-in and security,Preferences', 'two even columns: who you are, your apps and your data; and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
-await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
+// (a short window, so the profile can scroll away)
+await L.p.setViewportSize({ width: 1280, height: 480 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
 ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on: whose account, in a bar at the top');
+await L.p.setViewportSize({ width: 1280, height: 860 }); await L.p.evaluate(() => scrollTo(0, 0));
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
 ok(one >= 0, 'a phone: one column', String(one));
 const bar = async () => P.p.evaluate(() => document.querySelector('.whobar').classList.contains('on'));
+await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
 const top = await bar(); await P.p.evaluate(() => scrollTo(0, 900)); await settle(P, 500); const down = await bar();
 await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
 ok(!top && down && !(await bar()), 'a phone: the bar comes once the profile\'s scrolled away, and goes at the top', JSON.stringify({ top, down }));

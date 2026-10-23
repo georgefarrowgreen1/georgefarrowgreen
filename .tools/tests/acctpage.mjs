@@ -262,7 +262,7 @@ ok(/Sign in with a passkey/.test(await text(Ph)) && /signed out/.test(await text
 await openRow(L, 'Recent activity');
 await L.p.waitForSelector('#sheet .day', { timeout: 15000 }).catch(() => {});
 const act = await sheetText(L);
-ok(/today/i.test(act) && /Signed in/.test(act) && /Password changed/.test(act) && /Passkey added/.test(act) && /Passkey removed/.test(act) && /Signed out 1 unused device/.test(act) && /Email confirmed/.test(act) && /InFlight/.test(act) && /Account/.test(act),
+ok(/today/i.test(act) && /Signed in/.test(act) && /Password changed/.test(act) && /Passkey added/.test(act) && /Passkey removed/.test(act) && /Signed out 1 unused device/.test(act) && /Email confirmed/.test(act) && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'InFlight') && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'Account'),
   'recent activity: sign-ins, the new password, passkeys, devices and the email, with the app each was in', act.replace(/ · [^·]*Safari · [^0-9A-Z]*/g, ' ').slice(0, 900));
 await settle(L, 500);
 await shot(L, '11-activity');
