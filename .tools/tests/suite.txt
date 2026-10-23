@@ -40,3 +40,4 @@ acctlink
 acctmore
 acctjoin
 sitepaths
+acctpkmsg

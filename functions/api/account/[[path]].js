@@ -6,7 +6,7 @@
 //   POST /api/account/password        a new password: its proof, and the key locked with it
 //   POST /api/account/password/checked  the password's been checked against data breaches (with its proof), and how it went
 //   GET  /api/account/pwned           Pwned Passwords, by the first 5 characters of a hash (as InFlight asks)
-//   POST /api/account/passkeys/options, passkeys, passkeys/remove, passkeys/rename
+//   POST /api/account/passkeys/options, passkeys, passkeys/vault, passkeys/remove, passkeys/rename
 //   POST /api/account/devices/end     signing out a device, all the others, or those unused for 90 days
 //   GET  /api/account/activity        what's happened to the account in the last 30 days (functions/_activity.js)
 //   POST /api/account/email/confirm-send, email/confirm      confirming the email (a link to it)
@@ -87,7 +87,7 @@ async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
   const [{ results: pks }, { results: ss }, wx, inflight, last, admin] = await Promise.all([
-    D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
+    D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
     weatherOf(env, u.id),
@@ -104,7 +104,8 @@ async function view(env, u) {
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
-    passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null })),
+    // (messages: it has its own locked copy of the key to InFlight's messages, so it opens them on a new phone by itself)
+    passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null, messages: !!p.messages })),
     // (each named by the one app it's used in, where that's so: a Home Screen app on an iPhone is a sign-in of its own;
     // otherwise by its browser (the account's page too, unless it's on the Home Screen); this one being the app's
     // sign-in an account page opened from an app came from)
@@ -313,6 +314,19 @@ const ROUTES = {
     await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now()).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
     waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
+    return json(await view(env, u));
+  },
+  // a passkey's own copy of the key to InFlight's messages, locked with what only that passkey can work out (its PRF
+  // secret), made on this page from the password-locked key: so on a new phone it opens them by itself, as one added in
+  // InFlight does. (The page sends it locked: the key itself never leaves the device.)
+  "POST passkeys/vault": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request);
+    requireFresh(u);
+    const v = String(b.vault || "");
+    if (v.length < 20 || v.length > 4000) throw new HttpError(400, "That key copy wasn’t valid.");
+    const r = await (await db(env)).prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND user_id = ?").bind(await lockVault(env, u.id, v), String(b.id || ""), u.id).run();
+    if (!r.meta.changes) throw new HttpError(404, "That passkey isn’t on your account.");
     return json(await view(env, u));
   },
   "POST passkeys/remove": async ({ request, env, waitUntil }) => {
