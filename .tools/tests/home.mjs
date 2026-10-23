@@ -72,10 +72,15 @@ await shot(V, 'visitor-nophotos');
 await V.p.click('.cta [data-contact]');
 await V.p.waitForSelector('#contact-sheet[open]'); await settle(V, 500);
 ok(await V.p.evaluate(() => document.body.classList.contains('sheet-up')), 'the page steps back behind the sheet');
-await V.p.click('#contact-send');
-ok(/name, your email and a message/.test(await text(V, '#contact-err')), 'sending it empty: what’s missing is said', await text(V, '#contact-err'));
-await V.p.fill('#c-name', 'Sam Okoro'); await V.p.fill('#c-email', 'sam@example.com');
+ok(await V.p.isDisabled('#contact-send'), 'Send is off while there’s nothing to send');
+ok(await V.p.evaluate(() => [...document.querySelectorAll('#contact-sheet label.fld > span')].map((e) => e.textContent).join() === 'Name,Email'), 'each field says what it’s for');
+await V.p.fill('#c-name', 'Sam Okoro'); await V.p.fill('#c-email', 'sam@example');
 await V.p.fill('#c-message', 'Loved the photos from the climb. Are you riding the sportive in May?');
+ok(!(await V.p.isDisabled('#contact-send')), 'and on once there is');
+await V.p.click('#contact-send');
+ok(/email doesn’t look right/.test(await text(V, '#contact-err')), 'an email that can’t be one is said', await text(V, '#contact-err'));
+await V.p.fill('#c-email', 'sam@example.com');
+ok(await V.p.isHidden('#contact-err'), 'and the warning goes as it’s put right');
 await shot(V, 'contact');
 const mails0 = mails().length;
 await V.p.click('#contact-send');
@@ -101,6 +106,11 @@ ok(await text(P, '#app-inflight small') === 'Letters carried by pigeon', 'an app
 r = await put(P, '/api/content', { name: 'Pat’s Page' });
 ok(r.status === 403 && /owner/.test(r.json?.error), 'they can’t change the words', `${r.status} ${r.body}`);
 ok(await P.p.evaluate(() => document.querySelector('#c-name').value === 'Pat Reed' && document.querySelector('#c-email').value === 'pat@example.com'), 'a message from them has their name and email filled in');
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+ok(await text(P, '#from') === 'P Pat Reed pat@example.com' && await P.p.isHidden('#c-name'), 'shown as one From row', await text(P, '#from'));
+await P.p.click('#from-change');
+ok(await P.p.isVisible('#c-name') && await P.p.isVisible('#c-email') && await P.p.isHidden('#from'), 'Change: the name and email to change');
+await P.p.keyboard.press('Escape'); await settle(P, 500);
 
 // their figures in each app: a friend, and a place with alerts
 sql(`INSERT INTO pg_links (a, b, status, created_at) VALUES ('${gail}', '${pat}', 'ok', ${Date.now()})`);

@@ -163,10 +163,14 @@ function showMe() {
     small.textContent = line[key] || small.dataset.about;
     small.classList.toggle("mine", !!line[key]);
   }
-  // their name and email, filled in for a message
-  if (me.signedIn) {
-    if (!$("#c-name").value) $("#c-name").value = me.name || "";
-    if (!$("#c-email").value && me.email) $("#c-email").value = me.email;
+  // a message from them is from them: their name and email filled in, shown as one From row
+  if (me.signedIn && me.name && me.email) {
+    if (!$("#c-name").value) $("#c-name").value = me.name;
+    if (!$("#c-email").value) $("#c-email").value = me.email;
+    $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
+    $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+    if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
+    $("#from").hidden = false; $("#sender").classList.add("known");
   }
 }
 // the apps' own addresses, from this one (the site's, or a test's or a preview's)
@@ -226,6 +230,12 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("pointerup", end);
   d.addEventListener("pointercancel", end);
 }
+// On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const lift = () => root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
+  vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
+}
 // (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
 function scrollsIn(el, top) {
   if (el.closest?.("input, textarea, [contenteditable]")) return true;
@@ -251,12 +261,19 @@ function toast(text, undo) {
 const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
+  ready();
   openSheet(contact.sheet);
+  grow();
   const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
   // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
   if (!phone.matches) (empty || $("#c-message")).focus();
 });
-contact.form.addEventListener("input", () => { contact.err.hidden = true; });
+// (their own details changed for this message: the two rows instead)
+$("#from-change").addEventListener("click", () => { $("#from").hidden = true; $("#sender").classList.remove("known"); $("#c-name").focus(); });
+// Send is there once there's something to send; the message grows as it's written
+const ready = () => { contact.send.disabled = !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim()); };
+const grow = () => { const t = $("#c-message"); t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; };
+contact.form.addEventListener("input", (e) => { contact.err.hidden = true; ready(); if (e.target.id === "c-message") grow(); });
 contact.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = { name: $("#c-name").value.trim(), email: $("#c-email").value.trim(), message: $("#c-message").value.trim(), website: $("#c-website").value };
@@ -271,7 +288,7 @@ contact.form.addEventListener("submit", async (e) => {
     contact.form.hidden = true; contact.sent.hidden = false;
     $("button", contact.sent).focus();
   } catch (err) { say(err.message); }
-  contact.send.disabled = false; contact.send.textContent = "Send";
+  contact.send.textContent = "Send"; ready(); grow();
 });
 
 /* ---------------- editing (the owner): the words in place ---------------- */

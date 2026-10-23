@@ -140,7 +140,7 @@ body.sheet-up .page, body.sheet-up .bar { transform: scale(0.94) translateY(14px
 .cta { display: flex; gap: 10px; margin-top: 24px; align-items: center; }
 .btn { height: 52px; padding: 0 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 17px; }
 .btn.wide { width: 100%; }
-.btn:disabled { opacity: 0.6; }
+.btn:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
 .cta .round { width: 52px; height: 52px; }
 .btn, .pill, .round, .app, .row { transition: transform 0.15s, opacity 0.15s; }
 .btn:active, .pill:active, .round:active, .app:active { transform: scale(0.96); }
@@ -202,8 +202,8 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 
 /* ---------------- sheets ---------------- */
 .sheet {
-  position: fixed; inset: auto 8px calc(env(safe-area-inset-bottom) + 8px); margin: 0;
-  width: auto; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - 40px);
+  position: fixed; inset: auto 8px calc(env(safe-area-inset-bottom) + 8px + var(--kb, 0px)); margin: 0;
+  width: auto; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - 40px - var(--kb, 0px));
   border: 0; border-radius: 34px; padding: 0; color: var(--text);
   background: var(--glass-strong);
   -webkit-backdrop-filter: blur(36px) saturate(190%);
@@ -225,17 +225,30 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 .sheet-head h3 { grid-column: 2; font-size: 17px; font-weight: 600; text-align: center; }
 .sheet-head .x { grid-column: 3; justify-self: end; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ctl); }
 
+/* a form as a phone's settings are: labelled rows in a group, hairlines between them; the message a group of its own */
 .fields { border-radius: 18px; background: var(--ctl); box-shadow: inset 0 0 0 0.5px var(--line); overflow: hidden; }
+.fields.msg { margin-top: 14px; }
+.fld { position: relative; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; cursor: text; }
+.fld + .fld::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--line); }
+.fld > span:first-child { flex: none; width: 50px; color: var(--text-2); font-size: 17px; }
+.fld.from { gap: 12px; min-height: 64px; cursor: default; }
+.fld.from .face { width: 40px; height: 40px; font-size: 16px; box-shadow: none; }
+.fld.from .who { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.fld.from .who b { font-weight: 600; font-size: 17px; }
+.fld.from .who small { color: var(--text-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fld.from .change { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(61, 139, 255, 0.18); color: var(--tint-text); }
+#sender.known .fld:not(.from) { display: none; }
 .fields input, .fields textarea {
-  display: block; width: 100%; border: 0; background: none; color: var(--text);
-  font: 17px/1.35 var(--font); padding: 15px 16px; outline: none; resize: none;
+  display: block; width: 100%; min-width: 0; border: 0; background: none; color: var(--text);
+  font: 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
 }
-.fields textarea { min-height: 132px; }
-.fields > * + * { border-top: 0.5px solid var(--line); }
+.fields textarea { padding: 14px 16px; min-height: 148px; max-height: 40vh; overflow-y: auto; }
 .fields ::placeholder { color: var(--text-3); }
+.fields:focus-within { box-shadow: inset 0 0 0 1px rgba(141, 187, 255, 0.55); }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 .err { margin: 12px 4px 0; color: #ff8a80; font-size: 15px; }
 .sheet .btn.wide { margin-top: 14px; }
+.sheet .btn.tint { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -12px #2f74ee; }
 .sent { display: grid; justify-items: center; text-align: center; gap: 6px; padding: 26px 0 0; }
 .sent .tick {
   width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 10px;

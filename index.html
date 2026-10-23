@@ -129,15 +129,23 @@
           <h3 id="contact-h">Send a message</h3>
           <button class="x" type="button" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
         </header>
-        <div class="fields">
-          <input id="c-name" name="name" type="text" placeholder="Your name" autocomplete="name" maxlength="100" aria-label="Your name" />
-          <input id="c-email" name="email" type="email" placeholder="Your email" autocomplete="email" maxlength="200" aria-label="Your email" />
-          <textarea id="c-message" name="message" placeholder="Your message" rows="5" maxlength="4000" aria-label="Your message"></textarea>
+        <div class="fields" id="sender">
+          <!-- (signed in: who it's from, in one row; Change shows the two below) -->
+          <div class="fld from" id="from" hidden>
+            <span class="face" id="from-face" aria-hidden="true"></span>
+            <span class="who"><b id="from-name"></b><small id="from-email"></small></span>
+            <button class="change" type="button" id="from-change" aria-label="Change your name or email"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></button>
+          </div>
+          <label class="fld"><span>Name</span><input id="c-name" name="name" type="text" placeholder="Your name" autocomplete="name" maxlength="100" /></label>
+          <label class="fld"><span>Email</span><input id="c-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength="200" /></label>
+        </div>
+        <div class="fields msg">
+          <textarea id="c-message" name="message" placeholder="Message" rows="5" maxlength="4000" aria-label="Message"></textarea>
         </div>
         <!-- (left empty by people: filled in only by robots) -->
         <input id="c-website" class="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <p class="err" id="contact-err" role="alert" hidden></p>
-        <button class="btn tint wide" type="submit" id="contact-send">Send</button>
+        <button class="btn tint wide" type="submit" id="contact-send" disabled>Send</button>
       </form>
       <div class="sent" id="contact-sent" hidden>
         <span class="tick" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
