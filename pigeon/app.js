@@ -3436,8 +3436,8 @@ function vAccount() {
   // today's pigeons: how many of each are in your loft, and when the next hatches
   const tile = (kind, name, what) => {
     const n = u[kind] || 0, full = n >= KIND[kind].max, next = full ? (kind === "mystery" ? "Ready" : "Full") : n ? `Next in <span data-eta="${u[kind + "NextAt"]}"></span>` : `In <span data-eta="${u[kind + "NextAt"]}"></span>`;
-    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<b>${n}</b></span>
-      <span class="lname">${name}</span><small>${what}</small><small class="lnext${full ? " full" : ""}">${next}</small></div>`;
+    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<span class="lname">${name}</span><b>${n}</b></span>
+      <small>${what}</small><small class="lnext${full ? " full" : ""}">${next}</small></div>`;
   };
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));

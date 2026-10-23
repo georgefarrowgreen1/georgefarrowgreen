@@ -1626,14 +1626,14 @@ html.night .nav-ghost .night{background:none}
 .loftkit i{font-style:normal;font-size:18px;line-height:1}
 .loftkit .pg{font-size:14px}
 /* Account: today's pigeons, as four small tiles */
-.lgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 16px}
-.ltile{display:flex;flex-direction:column;gap:1px;padding:14px 16px 13px;border-radius:24px;background:var(--cell);min-width:0}
-.ltile .ltop{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.ltile .ltop .pg{font-size:22px}
-.ltile .ltop b{font-size:28px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
+.lgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 16px}
+.ltile{display:flex;flex-direction:column;gap:0;padding:10px 12px 9px;border-radius:18px;background:var(--cell);min-width:0}
+.ltile .ltop{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.ltile .ltop .pg{font-size:17px}
+.ltile .ltop b{margin-left:auto;font-size:20px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
 .ltile.none .ltop b{color:var(--label-3)}
-.ltile .lname{font-size:17px;font-weight:600}
-.ltile small{font-size:13px;line-height:17px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ltile .lname{min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ltile small{font-size:12px;line-height:16px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ltile .lnext{color:var(--tint)}
 .ltile.none .lnext{color:var(--label-2)}
 .ltile .lnext.full{color:var(--label-2)}
