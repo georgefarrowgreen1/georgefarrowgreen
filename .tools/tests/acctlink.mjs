@@ -36,8 +36,8 @@ const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexed
 await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view .me-cell'); await A.p.waitForTimeout(600);
 const card = await text(A.p, '#screen > main.view .me-cell');
 ok(/Rowan Hale/.test(card) && /@rowan\b/.test(card) && !/georgefarrowgreen/.test(card) && !/Edit Profile/.test(card), 'Account: your photo, name and "@handle", as in Weather', card);
-ok(!!(await A.p.$('#screen > main.view [data-act=profile]')) && /London/.test(await text(A.p, '#screen > main.view [data-act=profile]')) && !!(await A.p.$('#screen > main.view [data-act=signout]')) && !!(await A.p.$('#screen > main.view [data-act=delask]')),
-  'Location its own row (where you are), and Sign Out and Delete Account at the foot');
+ok(!!(await A.p.$('#screen > main.view [data-act=profile]')) && /London/.test(await text(A.p, '#screen > main.view [data-act=profile]')) && !!(await A.p.$('#screen > main.view [data-act=signout]')) && !(await A.p.$('#screen > main.view [data-act=delask]')),
+  'Location its own row (where you are), and Sign Out at the foot (deleting the account is on its own page)');
 await A.p.click('#screen > main.view [data-act=profile]'); await A.p.waitForSelector('.sheet [data-act=locate]'); await A.p.waitForTimeout(500);
 ok(/Location/.test(await text(A.p, '.sheet header')) && !(await A.p.$('.sheet input#f-name, .sheet .avedit, .sheet [data-act=signout]')), 'Location: just where you are (no name, handle or photo to edit)');
 await A.p.click('.sheet header [data-act=close]'); await A.p.waitForTimeout(500);

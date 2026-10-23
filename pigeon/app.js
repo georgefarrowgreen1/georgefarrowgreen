@@ -3467,7 +3467,6 @@ function vAccount() {
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-    <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
@@ -7481,11 +7480,6 @@ async function onClick1(e, t) {
       await pushDisable(true);
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
-    case "delask": return openActions({ title: "Delete your account?", message: "This deletes your account, friends, and every message and photo you’ve sent or received. It can’t be undone.", actions: [{ label: "Delete Account", act: "delgo", destructive: true }] });
-    case "delgo":
-      try { await withFresh(() => api("me", { method: "DELETE" })); await forget(); go("welcome"); toast("Your account was deleted."); }
-      catch (err) { if (!err.cancelled) toast(esc(err.message)); }
-      return;
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);

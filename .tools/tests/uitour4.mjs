@@ -163,7 +163,6 @@ const screens = [
   ['friendinfo-moon', async () => { await openChat(G, L.me.id); await act(G, 'friendinfo', L.me.id); await G.waitForSelector('.sheet'); }],
   ['moonpick', async () => { await act(G, 'tab', 'account'); await act(G, 'moonpick', 'moon'); await G.waitForSelector('.moonpick'); await G.waitForTimeout(600); }],
   ['marspick', async () => { await act(G, 'tab', 'account'); await act(G, 'moonpick', 'mars'); await G.waitForSelector('.moonpick'); await G.waitForTimeout(600); }],
-  ['delete', async () => { await act(G, 'tab', 'account'); await act(G, 'profile'); await act(G, 'delask'); await G.waitForSelector('.asheet'); }],
 ];
 const want = only ? new Set(only.split(',')) : null;
 for (const [w, h, th] of [[390, 844, 'light'], [390, 844, 'dark'], [320, 568, 'light']]) {

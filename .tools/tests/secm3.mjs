@@ -101,14 +101,8 @@ await G.fill('#f-current', 'a long test password'); await G.click('.sheet .nbtn.
 await G.waitForFunction(() => /Password changed/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
 ok(/Password changed/.test(await txt('.toast').catch(() => '')), 'the right one changes it');
 
-// deleting the account
-stale();
+// deleting the account is on its own page, not in InFlight
 if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }
-await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=delask]'); await G.locator('#screen > main.view [data-act=delask]').scrollIntoViewIfNeeded();
-await G.click('#screen > main.view [data-act=delask]'); await G.waitForSelector('.asheet [data-act=delgo]'); await G.click('.asheet [data-act=delgo]');
-await G.waitForSelector('#reauth-form', { timeout: 8000 });
-await G.fill('#f-password', 'a new long password'); await G.click('.sheet .nbtn.r');
-await G.waitForSelector('.welcome', { timeout: 15000 });
-ok(true, 'Delete Account confirms it’s you, then deletes');
-[st] = await api('sync'); ok(st === 401, 'and the account is gone', String(st));
+await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=signout]');
+ok(!(await G.$('#screen > main.view [data-act=delask]')), 'no Delete Account in InFlight');
 console.log('errors', errs); console.log('FAILS', fails); await b.close();

@@ -338,7 +338,7 @@ Motion, solid with Reduce Transparency.
 - **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
   email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
-  dueDeletions). (InFlight's own Delete Account, in the app, still deletes at once.)
+  dueDeletions). (InFlight has no Delete Account of its own: deleting is on the account's page.)
 - **Keeping up:** the page looks again when you come back to it (and every minute while it's open), so a device
   signed out elsewhere, or a change made in another app, shows without a reload.
 - What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, a new email,
