@@ -51,7 +51,7 @@ const openRow = async (x, title) => { await x.p.click(`.row:has(b:text-is("${tit
 const closeSheet = async (x) => { await x.p.click('#sheet .x, #sheet .link:text-is("Cancel")'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
 const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
-const user = (h) => rows(`SELECT id, name, handle, email, email_ok, salt, avatar_at, appearance, delete_at FROM pg_users WHERE handle = '${h}'`)[0];
+const user = (h) => rows(`SELECT id, name, handle, email, email_ok, salt, avatar_at, poster_at, appearance, delete_at FROM pg_users WHERE handle = '${h}'`)[0];
 const mails = () => { try { return readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m); } catch (_) { return []; } };
 const mailTo = (to, re, since = 0) => mails().slice(since).filter((m) => [].concat(m.to).includes(to) && re.test(m.subject || '')).at(-1);
 const tokenIn = (m, kind) => (new RegExp(`#${kind}=([A-Za-z0-9_-]{40,50})`).exec(m?.text || '') || [])[1];
@@ -169,10 +169,12 @@ const jpeg = await L.p.evaluate(async () => { const c = document.createElement('
   g.fillStyle = '#fff3'; g.beginPath(); g.arc(500, 300, 170, 0, 7); g.fill(); g.fillStyle = '#ffffffcc'; g.beginPath(); g.arc(500, 900, 330, 0, 7); g.fill();
   return [...new Uint8Array(await (await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9))).arrayBuffer())]; });
 await L.p.setInputFiles('#sheet input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(jpeg) });
-await L.p.waitForSelector('.hero .avatar img', { timeout: 20000 }).catch(() => {});
+await L.p.waitForSelector('main .pc-photo img', { timeout: 20000 }).catch(() => {});
 await settle(L, 700);
-const photo = await L.p.evaluate(async () => { const i = document.querySelector('.hero .avatar img'); if (!i) return null; await i.decode().catch(() => {}); return [i.naturalWidth, i.naturalHeight]; });
-ok(photo?.[0] === 512 && photo?.[1] === 512 && user('rowan_h').avatar_at > 0, 'a photo: the middle square, 512 pixels, shown at once', JSON.stringify(photo));
+const photo = await L.p.evaluate(async () => { const s = async (q) => { const i = document.querySelector(q); if (!i) return null; await i.decode().catch(() => {}); return [i.naturalWidth, i.naturalHeight]; };
+  return [await s('#sheet .photo-row .avatar img'), await s('main .pc-photo img')]; });
+ok(photo[0]?.[0] === 512 && photo[0]?.[1] === 512 && photo[1]?.[0] === 1000 && photo[1]?.[1] === 700 && user('rowan_h').avatar_at > 0 && user('rowan_h').poster_at > 0,
+  'a photo: the middle square, 512 pixels, for every app, and the whole of it for your card, shown at once', JSON.stringify(photo));
 await shot(L, '04-photo');
 await L.p.click('#sheet .link:text-is("Cancel")'); await L.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(L, 300);
 

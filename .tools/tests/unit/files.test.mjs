@@ -34,7 +34,8 @@ test('only old files that nothing points to are deleted', async () => {
 });
 
 test('a page at a time, then on to the next kind of file', async () => {
-  const objects = [...Array(5)].map((_, i) => obj(`pigeon/m${i}`, 2 * DAY)).concat([obj('pigeon-g/g1', 2 * DAY), obj('pigeon-avatars/u1', 2 * DAY), obj('pigeon-avatars/u2', 2 * DAY)]);
+  const objects = [...Array(5)].map((_, i) => obj(`pigeon/m${i}`, 2 * DAY)).concat([obj('pigeon-g/g1', 2 * DAY), obj('pigeon-avatars/u1', 2 * DAY), obj('pigeon-avatars/u2', 2 * DAY),
+    obj('pigeon-posters/u1', 2 * DAY), obj('pigeon-posters/u3', 2 * DAY)]);
   const f = fakes(objects, { pg_msgs: new Set(['m0', 'm1', 'm2', 'm3', 'm4']), pg_gmsgs: new Set(), pg_users: new Set(['u1']) });
   await sweepFiles(f.env, f.D, T, 3);                // pigeon/ page 1
   assert.equal(JSON.parse(f.meta.get('r2_sweep')).i, 0);
@@ -42,7 +43,8 @@ test('a page at a time, then on to the next kind of file', async () => {
   assert.equal(JSON.parse(f.meta.get('r2_sweep')).i, 1);
   await sweepFiles(f.env, f.D, T, 3);                // pigeon-g/
   await sweepFiles(f.env, f.D, T, 3);                // pigeon-avatars/
-  assert.deepEqual(f.deleted.sort(), ['pigeon-avatars/u2', 'pigeon-g/g1']);
+  await sweepFiles(f.env, f.D, T, 3);                // pigeon-posters/
+  assert.deepEqual(f.deleted.sort(), ['pigeon-avatars/u2', 'pigeon-g/g1', 'pigeon-posters/u3']);
   assert.equal(JSON.parse(f.meta.get('r2_sweep')).i, 0);   // and round again
 });
 

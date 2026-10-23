@@ -242,8 +242,15 @@ Motion, solid with Reduce Transparency.
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
   server too, 409).
-- **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
-  camera badge) to pick a new one straight away. **Your apps**
+- **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
+  your email and the buttons, with your name and handle on it in large type; **Edit profile** and **Your code** under
+  it. Its camera opens **Your photo**: drag the photo (or use the arrow keys) to choose what shows, with the circle every
+  app shows beside it, then Save; or choose another, or remove it. With no photo, the card is in the site's colours with
+  your initial, and **Add a photo** goes to the picker, then to Your photo. A photo is saved twice: the 512px circle every
+  app shows (cut around the part you chose), and the card's poster, the whole photo at most 1600px across
+  (`pigeon-posters/` in R2, its focus in `pg_users.poster_focus`); a new photo from another app drops the old poster
+  until one's sent again. The photo drifts a little slower than the page as it scrolls away, and stretches as it's
+  pulled down at the top (both off with Reduce Motion); the light page has its own colours for the card. **Your apps**
   (a card for each); **Account**, two rows: **Sign-in and security** (saying how it stands by the **Security check-up**,
   below: "All done", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
   then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the downloads, and

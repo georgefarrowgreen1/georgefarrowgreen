@@ -180,7 +180,7 @@ await closeSheet(L);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.click('.hero .pill'); await W.waitForSelector('#sheet[open] .sheet-body'); await W.waitForTimeout(600);
   await W.setInputFiles('#sheet input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
-  await W.waitForSelector('.hero .avatar img', { timeout: 15000 }).catch(() => {});
+  await W.waitForSelector('.hero .pc-photo img', { timeout: 15000 }).catch(() => {});
   await W.fill('#sheet .field:has-text("Name") input', 'Sam T'); await W.click('#sheet .link.done');
   await W.waitForFunction(() => /Sam T\b/.test(document.querySelector('.hero')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
   await W.close();

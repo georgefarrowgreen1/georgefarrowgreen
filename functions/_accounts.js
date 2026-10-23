@@ -5,14 +5,14 @@ import { dropReacts } from "./_reacts.js";
 import { keepSentTo } from "./_retention.js";
 import { dropAccount } from "./_wxpush.js";
 
-import { avatarKey } from "./_profile.js";
+import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
 
 export async function removeAccount(env, id) {
   await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);
-  if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
+  if (env.BIO_R2) await env.BIO_R2.delete([avatarKey(id), posterKey(id)]);
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
   await D.batch([

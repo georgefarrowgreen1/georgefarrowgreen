@@ -21,6 +21,10 @@
   --r-group: 26px; --r-hero: 34px; --r-sheet: 36px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-d: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  /* your card's poster (and the light page's, below) */
+  --pc-base: #121633; --pc-blur: blur(42px) saturate(1.6) brightness(0.5); --pc-under: rgba(255, 255, 255, 0.64);
+  --pc-pill: rgba(255, 255, 255, 0.14); --pc-pill-text: #fff; --pc-go: rgba(255, 255, 255, 0.93); --pc-go-text: #10183a;
+  --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.45) 62%, rgba(8, 10, 30, 0)); --pc-shade-below: 90px;
   --top: env(safe-area-inset-top, 0px);
 }
 /* light: by the device's setting (Automatic), or chosen for the account (data-theme, set by app.js) */
@@ -37,9 +41,15 @@
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
     --dim: rgba(10, 14, 30, 0.26);
+    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55); --pc-under: rgba(20, 24, 44, 0.62);
+    --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
+    --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
   }
 }
 :root[data-theme="light"] {
+    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55); --pc-under: rgba(20, 24, 44, 0.62);
+    --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
+    --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
     color-scheme: light;
     --sky-a: #e9eefc; --sky-b: #f3f0fb; --sky-c: #f7f8fc;
     --aura-1: rgba(110, 150, 255, 0.42); --aura-2: rgba(200, 150, 255, 0.36); --aura-3: rgba(90, 210, 240, 0.3);
@@ -593,3 +603,52 @@ button.adm-alert:active { transform: scale(0.98); }
 .confirm-card .link { margin-top: 4px; font-size: 15px; }
 .confirm-card .said:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .confirm-card { animation: none; } }
+
+/* ---- your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind what's under
+   it; your name and handle on it. No photo: your colours and initial. (The photo drifts a little as the page scrolls,
+   and stretches as it's pulled down: --drift, --pull, from app.js) ---- */
+.poster-card { display: block; justify-items: stretch; padding: 0; gap: 0; text-align: left; background: var(--pc-base); isolation: isolate; }
+.poster-card::after { display: none; }
+.pc-blur { position: absolute; inset: -60px; z-index: -1; pointer-events: none; overflow: hidden; }
+.pc-blur img { width: 100%; height: 100%; object-fit: cover; filter: var(--pc-blur); transform: scale(1.15); }
+.poster-card.none .pc-blur { background: radial-gradient(circle at 40% 30%, #3157d8, #2a1f6e 70%); filter: var(--pc-blur); }
+.pc-top { position: relative; height: 290px; }
+.pc-photo { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
+/* (drifting down, it grows from its foot just enough that its top stays covered: at rest it's exactly as Your photo
+   placed it) */
+.pc-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: 50% 100%;
+  transform: translateY(calc(var(--drift, 0) * 1px)) scale(calc(var(--pull, 1) + var(--drift, 0) / 280)); animation: photo-in 0.6s var(--ease); }
+.poster-card.none .pc-photo { background: radial-gradient(120% 90% at 20% 10%, #7ab8ff 0%, #3157d8 45%, #5a3fd8 80%, #2a1f6e 100%); }
+.pc-initial { position: absolute; left: 0; right: 0; top: 30px; text-align: center; font: 800 150px/1 var(--font-d); color: rgba(255, 255, 255, 0.22); }
+.pc-shade { position: absolute; left: 0; right: 0; top: 40%; bottom: calc(-1 * var(--pc-shade-below)); background: var(--pc-shade); pointer-events: none; }
+.pc-cam, .pc-add { position: absolute; z-index: 1; right: 14px; top: 14px; height: 40px; border: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  color: #fff; background: rgba(20, 22, 40, 0.3); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.15); transition: transform 0.3s var(--spring); }
+.pc-cam { width: 40px; }
+.pc-add { padding: 0 15px 0 12px; font-size: 15px; font-weight: 600; background: rgba(255, 255, 255, 0.2); }
+.pc-cam:active, .pc-add:active { transform: scale(0.92); }
+.pc-id { position: absolute; left: 20px; right: 20px; bottom: 14px; }
+.pc-id h2 { margin: 0; font: 800 40px/1.04 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
+.pc-id h2.long { font-size: 32px; }
+.pc-id .who { margin-top: 4px; color: rgba(255, 255, 255, 0.86); font-size: 16px; font-weight: 500; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.3); }
+.pc-body { position: relative; display: grid; gap: 14px; padding: 6px 20px 20px; }
+.poster-card .mail { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--pc-under); font-size: 14px; }
+.poster-card .mail .ok { display: grid; color: var(--good); }
+.poster-card .hero-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.poster-card .hero-acts .pill { width: 100%; margin: 0; color: var(--pc-pill-text); background: var(--pc-pill); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.1); }
+.poster-card .hero-acts .pill.primary { color: var(--pc-go-text); background: var(--pc-go); }
+@media (min-width: 1000px) { .pc-top { height: 320px; } }
+@media (prefers-reduced-motion: reduce) { .pc-photo img { animation: none; transform: none; } }
+/* Your photo: what shows of it, dragged into place; the circle every app shows, beside */
+.pv-frame { position: relative; aspect-ratio: 358 / 290; border-radius: 22px; overflow: hidden; touch-action: none; cursor: grab; background: #000; box-shadow: inset 0 0 0 0.5px var(--line); }
+.pv-frame.dragging { cursor: grabbing; }
+.pv-frame:focus-visible { outline: 3px solid var(--tint); outline-offset: 2px; }
+.pv-frame img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+.pv-tip { position: absolute; left: 50%; bottom: 12px; translate: -50% 0; padding: 6px 12px; border-radius: 999px; white-space: nowrap; font-size: 13px; font-weight: 600; color: #fff;
+  background: rgba(0, 0, 0, 0.4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: opacity 0.3s; }
+.pv-frame.dragging .pv-tip { opacity: 0; }
+.pv-also { display: flex; align-items: center; gap: 14px; margin: 0 4px; }
+.pv-circle { flex: none; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 0.5px var(--line); }
+.pv-circle img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pv-also p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-2); }
