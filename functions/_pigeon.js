@@ -537,7 +537,7 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   if (learn || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
     D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps;
   delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_held;
   return u;
 }

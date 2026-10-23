@@ -305,7 +305,8 @@ Motion, solid with Reduce Transparency.
   InFlight, with its icon) where that's just one, and otherwise by its browser (Safari), what apps it's been used in
   noted as it's used (`pg_sessions.apps`). The account's page opened from an app (its hand-off) isn't a device of its
   own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
-  opened and ending with it (one used by an app as well is the browser's own sign-in from then on). The country's left
+  opened and ending with it (one used by an app as well is the browser's own sign-in from then on; one from before, only
+  ever used on the account's page, is taken in when the app opens it again). The country's left
   out where it's this device's, and the device where it's the same kind. On a touch screen a device's row slides left to show
   **Sign out**, and a passkey's to show **Remove**, as lists do on a phone (the buttons stay, for a keyboard).
 - **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken

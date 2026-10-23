@@ -157,7 +157,16 @@ const ROUTES = {
     const row = h && await D.prepare("DELETE FROM pg_handoff WHERE hash = ? RETURNING user_id, session, expires").bind(h).first();
     const from = row && row.expires >= t && await D.prepare("SELECT 1 FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, row.user_id).first();
     if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
-    if (now?.id === row.user_id) return withCookie(json(await view(env, now)), request, env, now.token);
+    if (now?.id === row.user_id) {
+      // (a sign-in here only ever used on this page, as an app's account page from before this was kept is: part of that
+      // app's from now on, the last one it opened replaced)
+      if (!now.parent && now.sessionHash !== row.session && now.sessionApps.join() === "account") {
+        await D.batch([D.prepare("UPDATE pg_sessions SET parent = ? WHERE hash = ?").bind(row.session, now.sessionHash),
+          D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, now.sessionHash)]);
+        now.parent = row.session;
+      }
+      return withCookie(json(await view(env, now)), request, env, now.token);
+    }
     // (part of the app's sign-in it came from: listed with it and ending with it, and the last one it opened replaced)
     const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
     await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ? WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
