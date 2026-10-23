@@ -294,8 +294,7 @@ function signedIn(r) {
   const prefs = r(section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
-    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })),
-    "For every app on the site that has them."));
+    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) }))));
   // (opened from an app, in its own window: signing out is the app's to do, not this window's)
   const ending = [
     !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
