@@ -1,6 +1,6 @@
 /* Your georgefarrowgreen.com account: one page for the account every app on the site signs in with. In keeping with
    them: iOS 27's Liquid Glass (panels of glass with a bright rim and a darker hairline round it, blurred enough to read
-   over anything) over a sky of slow light (stars on a dark night, dawn in light mode); grouped lists as iOS's Settings
+   over anything) over a sky of slow light (night in dark mode, dawn in light); grouped lists as iOS's Settings
    has them; a large title that goes with the page, glass behind the status bar once it's scrolled under; sheets that come up from below and step the
    page back; and everything settling into place. All of it still with Reduce Motion, solid with Reduce Transparency. */
 
@@ -66,7 +66,7 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
-/* ---- the sky: three slow lights drifting over the gradient, and (dark) stars ---- */
+/* ---- the sky: three slow lights drifting over the gradient ---- */
 .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)); }
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(70px); opacity: 0.9; will-change: transform; }
 .a1 { background: radial-gradient(circle, var(--aura-1), transparent 62%); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate; }
@@ -75,9 +75,6 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 @keyframes drift1 { to { transform: translate(14vmax, 10vmax) scale(1.12); } }
 @keyframes drift2 { to { transform: translate(-16vmax, 8vmax) scale(0.9); } }
 @keyframes drift3 { to { transform: translate(10vmax, -12vmax) scale(1.08); } }
-.stars { position: absolute; inset: 0; width: 100%; height: 100%; }
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .stars { display: none; } }
-:root[data-theme="light"] .stars { display: none; }
 
 /* ---- behind the status bar (where the page runs under it): glass, once the page has scrolled under it ---- */
 .status { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: var(--top); pointer-events: none; opacity: var(--bar, 0);

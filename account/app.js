@@ -139,7 +139,6 @@ function theme(pref) {
   try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
   const top = isDark() ? "#0b1024" : "#eef1fb";
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top);
-  stars.start?.();
 }
 const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
 try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (_) {}
@@ -1337,35 +1336,4 @@ function scrolled() {
 }
 addEventListener("scroll", scrolled, { passive: true });
 
-// ---- the stars: a slow twinkle on a dark night (still with Reduce Motion), none by day ----
-function stars() {
-  const c = $(".stars"), g = c.getContext("2d");
-  let pts = [], w = 0, ht = 0, raf = 0, last = 0;
-  const seed = () => { pts = Array.from({ length: 170 }, () => ({ x: Math.random(), y: Math.random() * 0.9, r: Math.random() * 1.05 + 0.3, p: Math.random() * 6.28, s: 0.35 + Math.random() * 1.1 })); };
-  const fit = () => {
-    const d = Math.min(2, devicePixelRatio || 1);
-    w = innerWidth; ht = innerHeight; c.width = Math.round(w * d); c.height = Math.round(ht * d); g.setTransform(d, 0, 0, d, 0, 0);
-  };
-  const paint = (t) => {
-    g.clearRect(0, 0, w, ht); g.fillStyle = "#fff";
-    const n = Math.min(pts.length, Math.round((w * ht) / 5200));
-    for (let i = 0; i < n; i++) {
-      const s = pts[i], tw = still.matches ? 0.7 : 0.5 + 0.5 * Math.sin((t / 1000) * s.s + s.p);
-      g.globalAlpha = (0.25 + 0.6 * tw) * (1 - s.y * 0.75);
-      g.beginPath(); g.arc(s.x * w, s.y * ht, s.r, 0, 6.2832); g.fill();
-    }
-  };
-  const frame = (t) => { raf = 0; if (t - last > 66) { last = t; paint(t); } go(); };
-  const go = () => { if (!raf && isDark() && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); };
-  const start = () => { if (!isDark()) return; fit(); paint(performance.now()); go(); };
-  stars.start = start;
-  seed();
-  addEventListener("resize", start);
-  document.addEventListener("visibilitychange", go);
-  dark.addEventListener?.("change", start);
-  still.addEventListener?.("change", start);
-  start();
-}
-
-stars();
 load();
