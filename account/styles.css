@@ -392,7 +392,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 }
 
 /* back to InFlight, when it sent you here to edit your profile */
-.backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; }
+.backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; justify-self: start; align-self: flex-start; width: max-content; }
 
 /* ---- your photo, tapped to change it (the camera badge says so) ---- */
 .avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform 0.3s var(--spring); }
