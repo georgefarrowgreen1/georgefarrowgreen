@@ -1,7 +1,7 @@
 // Weather and the site's account (functions/_account.js). Signed in anywhere on the site in this browser, Weather is
-// too; or it signs in itself, with a passkey or an email and password, checked as everywhere else, and that sign-in is
-// the site's. It never holds the session itself: each request carries the site's cookie, and only from Weather's own
-// pages.
+// too; or it sends you to the account's page to sign in, and is handed the sign-in back (functions/_handback.js), and
+// that sign-in is the site's. It never holds the session itself: each request carries the site's cookie, and only from
+// Weather's own pages.
 //
 // Your profile is the account's (functions/_profile.js): your photo, name and handle shown here, and changed here as in
 // any app on the site, by the same rules; your email (your sign-in) shown as it is.
@@ -12,8 +12,9 @@
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
-import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet } from "./_pigeon.js";
-import { cookieUser, sameOrigin, withCookie, cookieToken } from "./_account.js";
+import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet, issueSession } from "./_pigeon.js";
+import { cookieUser, sameOrigin, withCookie, withSession, cookieToken } from "./_account.js";
+import { takeHandback } from "./_handback.js";
 import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
 import { isWeather } from "./_wxapp.js";
@@ -89,9 +90,21 @@ export const ACCOUNT_ROUTES = {
       D.prepare("INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)").bind(hex(await sha256(code)), u.id, u.sessionHash, t + 60e3)]);
     return json({ code });
   },
-  // signing in and out, and the profile, as on every such page on the site (functions/_accountapi.js); signed out
-  // here, this device's notifications stay, as its own
-  ...accountRoutes(view, { onSignOut: (env, u, b) => (b.endpoint ? leaveAccount(env, b.endpoint, u.id) : null) }),
+  // Signed in on the account's page, for Weather (functions/_handback.js): the code it was handed back with, and the
+  // word Weather kept for it. Where the browser shares the site's sign-in, it's the one the page just made, and that's
+  // all; where it doesn't (a test server's separate addresses), Weather's own, given to the browser, and no fresher
+  // than the page's (Weather's asked for with no password: it mustn't count as having shown it's you when that didn't)
+  "POST handback": async ({ request, env }) => {
+    sameOrigin(request);
+    const { row, u, authAt } = await takeHandback(env, request, "weather", await body(request));
+    const c = await cookieUser(request, env).catch(() => null);
+    if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c)), request, env, c.token);
+    const token = await issueSession(env, u.id, request, authAt);
+    return withSession(json(await view(env, u)), request, env, hex(await sha256(token)), true);
+  },
+  // signing out, and the profile, as on every such page on the site (functions/_accountapi.js: signing in is the
+  // account's page's); signed out here, this device's notifications stay, as its own
+  ...accountRoutes(view, { onSignOut: (env, u, b) => (b.endpoint ? leaveAccount(env, b.endpoint, u.id) : null), signIn: false }),
 };
 const unitsChanged = (a, b) => ["temp", "wind", "precip", "clock"].some((k) => (a || {})[k] !== (b || {})[k]);
 // Weather's emails turned on or off from outside the app (the account's page; an email's own link, all off): change is

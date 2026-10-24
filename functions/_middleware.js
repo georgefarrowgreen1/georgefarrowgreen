@@ -59,7 +59,7 @@ export async function onRequest(ctx) {
 }
 
 const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
-const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|readme\.md$|wrangler\.toml$)/i;
+const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|readme\.md$|wrangler\.toml$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }
   p = p.replace(/\\/g, "/").replace(/\/{2,}/g, "/");

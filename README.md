@@ -206,8 +206,9 @@ or `p=reject` with `pct=100`, which georgefarrowgreen.com has).
 One page for the georgefarrowgreen.com account every app on the site signs in with (`account/`, served at the
 address's root by `functions/_acctapp.js`; its API is `/api/account/`, `functions/api/account/[[path]].js`, answered
 only there). Always the latest, however it's opened (an app's in-app browser included): the page is never kept
-(no-store), its script and styles are stamped with what's in them (`app.js?v=…`, kept for good only when they match),
-and a page the browser brings back from its back-forward cache is opened afresh. In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
+(no-store), its script and styles, and every module the script brings in (`crypto.js` and the rest, each one's own
+imports too), are stamped with what's in them (`app.js?v=…`, kept for good only when they match; unstamped, not kept
+at all), so a new script never runs with a module kept from before, and a page the browser brings back from its back-forward cache is opened afresh. In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
 over anything) over a night-sky gradient with slow light drifting over it (a dawn sky in light mode); grouped
 lists as Settings has them; a large title that scrolls with the page (glass behind the status bar once it's under it); sheets that come up from below
 (swipe one down by its top, or Esc) while the page steps back and holds still (a finger on it doesn't scroll it); and everything rising into place. Still with Reduce
@@ -221,8 +222,29 @@ Motion, solid with Reduce Transparency.
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
-  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours". Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
-  email", the form, **Forgot password?**, and **New here? Create your account**, both of which open this page.
+  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours".
+- **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
+  and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
+  `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
+  password; or a new account made), you're sent straight back, the sign-in handed back with a code in the address's
+  `#` that's good once, for two minutes, and only for the app that asked: it keeps a secret for it (on the device, for
+  half an hour or until it's used: not just in the tab, as a Home Screen app can open this page in a view of its own),
+  sends only its hash (`ask`), and swaps the code with the secret itself (`POST /api/pigeon/handback`, `POST
+  /api/weather/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
+  The sign-in an app gets is no fresher than the one here (it counts as having shown it's you only if that one does).
+  Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, <site>/, or
+  InFlight's old <site>/pigeon/). For InFlight it brings what unlocks the key there: the password's first half, or the
+  PRF secret of a passkey with its own copy of the key (asked for with the sign-in), sealed on this page to a key pair
+  InFlight made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
+  neither the server nor anyone with the code can open it, and you show it's you once, here. A passkey that can't open
+  the messages (no copy of the key, or no PRF in that browser) asks for the password too, as "One more step for
+  InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
+  a passkey that opens the messages (a code for InFlight is made only for a sign-in that's just shown it's you), or one
+  tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
+  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself.
+  The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
+  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
+  has none.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
   No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
@@ -353,7 +375,8 @@ Motion, solid with Reduce Transparency.
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
   back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
-  sign-in in the same order and words, a new account and a forgotten password only here; a reset link by email,
+  Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
+  password only here; a reset link by email,
   passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
   refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
   over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
@@ -696,15 +719,14 @@ so there's nothing to set up beyond the address.
   moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate
   rain here now", or "No rain within about 290 km" (only as far as the radar
   sees; nothing where it doesn't see the place) (`weather/rainmap.js` rainSaid).
-- **Your account** (top of Settings; signed out, a row there opens the sign-in): signed in with your georgefarrowgreen.com
-  account, your saved places, settings and notification choices are kept with
+- **Your account** (top of Settings; signed out, a row there, **Sign in**, takes you to the account's page): signed in
+  with your georgefarrowgreen.com account, your saved places, settings and notification choices are kept with
   it and are the same on every device you're signed in on; the app works just
   the same without. The sign-in is the site's own (below, *One account*):
-  signed in on the site anywhere in this browser, Weather is too; or it signs in
-  itself, with a passkey (the site's: one made anywhere on the site works here)
-  or an email and password (stretched on the device as everywhere on the site,
-  Argon2id via a copy of hash-wasm's build, `weather/argon2.js`; the password
-  never leaves it). Signed in, it's just **one card for the account** (your
+  signed in on the site anywhere in this browser, Weather is too; or its Sign in row takes you to the account's page
+  (account.<site>, where every app on the site signs in), which sends you back signed in, the sign-in handed back with
+  a code only this tab can use (`functions/_handback.js`), and this device's places then go to the account without
+  asking, with "Signed in as Sam." Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -946,9 +968,31 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.0
+## InFlight (chat.georgefarrowgreen.com) — 1.3.2
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.2** (one sign-in): InFlight signs in on the account's page, the one place every app on the site signs in. Its
+welcome's **Sign in** (or **Continue as …**, signed in elsewhere on the site already) and **Create your account** go
+there, and it's handed the sign-in back with what unlocks the key, sealed to this tab, so your messages open as you come
+back and you show it's you once (*Your account* above). Its own sign-in screen and Unlock Messages screen are gone, and
+so are its sign-in routes (they answer 410, saying where to sign in). A link you came in on (a chat from a
+notification) waits through the trip and opens once you're in.
+
+**1.3.1** (smoother, from the motion audit below): a redraw moves rather than jumps. What matters on a screen carries
+a key (`data-key`, with `data-sig` for what it says and `data-in` for how it arrives), so after `render()` rows and
+bubbles glide from where they were (a list that moved as one glides as one), new things fade in (dots and reaction
+pills pop), changed words dissolve in and what went fades out where it was (`snapKeyed`/`playKeyed`). A pigeon landing
+in an open chat comes down on its sender's side. What you send shows at once ("Sending…", `S.pending`) and becomes the
+pigeon when the server has it; it comes back into the box if sending fails. The composer slides to its new height
+(`composeGlide`), toasts sit under the navigation bar and take a new message in place, signing in or out cross-fades,
+the lock screen fades away, the offline banner is a floating pill, and a pill says when a pigeon arrives below while
+you're scrolled up. Sheets: going on or back inside one slides the old contents away under the new (a copy in a
+closed shadow root), closing or reopening one mid-slide carries on from where it is, content that comes and goes
+inside a sheet glides (a FLIP of same-sheet redraws), and What's New doesn't replay on a sync. Maps draw only the
+pigeons each frame and the whole map at most twice a second, fold and unfold from the cached picture, open without
+waiting for the first draw, and morph when a pigeon lands. The tracker reads its colours once, glides its zoom and
+keeps + and − still. Reduce Motion fades instead of moving, rather than cutting.
 
 **1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
@@ -1553,7 +1597,7 @@ below), every icon button has a spoken name, sheets are labelled dialogs with th
 chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the
 iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
-every animation.
+every movement: screens, sheets, banners and new messages dissolve in and out instead.
 
 **Search.** The search field on Messages finds chats by name, as before, and
 now messages too: every message the phone can open (chats you've opened, and
@@ -1759,25 +1803,26 @@ info. Every change to who's in a group (made, added, left, renamed) shows as a
 line in its chat, so no one can be slipped in without everyone seeing.
 
 **One account for the site.** The same account (email, password, passkeys) signs in to every app on
-georgefarrowgreen.com, and one sign-in serves them all in a browser (`functions/_account.js`). Each sign-in starts a
-session as before and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
-georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signing in to one app
-signs you in to the others in that browser, and signing out of any of them (or deleting the account, or a password
+georgefarrowgreen.com, on its own page, account.georgefarrowgreen.com, and only there (each app sends you there and is
+handed the sign-in back: *Your account* above), and one sign-in serves them all in a browser (`functions/_account.js`).
+Each sign-in starts a session and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
+georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signed in for one app,
+you're signed in to the others in that browser, and signing out of any of them (or deleting the account, or a password
 reset) ends it for all. The cookie holds a token of its own for the session (`pg_sessions.site_hash`), not the
 session's bearer token, so it opens nothing of InFlight's; and it's only given in answer to a sign-in from the app's
 own pages (the browser's Origin), so a sign-in another site sends in your browser, even with a good password, can't
-sign the browser in. InFlight keeps its own bearer token as before; it gives an existing sign-in a cookie the first
-time it syncs after this change; and, opened signed out where the browser's signed in elsewhere on the site, its
-welcome says "Signed in as …" with **Continue as …**, which asks for the password: its proof (`POST
-/api/pigeon/resume`, from InFlight's own pages only) starts InFlight's own session in place of the cookie's, and the
-password unlocks the key on the phone. Apps that keep nothing themselves (Weather) ask with the cookie, only from
+sign the browser in. InFlight keeps its own bearer token as before, given to it by the hand-back with what unlocks its
+key (where the browser shares the site's sign-in, the one the account's page just made is moved to it, so it's one
+sign-in); it gives an existing sign-in a cookie the first time it syncs; and, opened signed out where the browser's
+signed in elsewhere on the site, its welcome says "Signed in as …" with **Continue as …**, which takes you to the
+account's page to show it's you (the cookie alone starts no InFlight session). Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
 made for the site (rpId georgefarrowgreen.com) at chat., the site's own address, weather. and account., so one passkey works at
 all of them; an answer from one is taken only at the address it was given at. The profile (photo, name, handle, email) is the
 account's, one set of rules for every app (`functions/_profile.js`). The password and passkey checks, with
 their limits and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the
 same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
-signs in on its own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
+signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
 page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
 (Privacy & Security → Your Account).
@@ -1870,6 +1915,104 @@ The look works offline, but the API calls need Cloudflare's runtime. To run Func
 Wrangler and run `wrangler pages dev .`. To edit the page locally, sign in on the site's account page with the account
 whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/home.mjs`).
 
+## Running reliably
+
+- **The notification jobs** (InFlight's landings and moments, Weather's rain alerts, warnings and morning briefing) run
+  whenever they're asked for, one at a time. GitHub's schedule (`.github/workflows`) asks every 5 and 10 minutes but
+  in practice runs hours late, so: the apps' own traffic asks too, when the last run was over 5 minutes ago
+  (`maybeTick`, `maybeWxTick`, from InFlight's and Weather's APIs), and `workers/ticker` is a small Cloudflare Worker
+  that asks every 5 minutes on Cloudflare's own schedule. It's deployed on each push to main by
+  `.github/workflows/ticker-deploy.yml`, with the repository's `INFLIGHT_TICK_SECRET` (and `WEATHER_TICK_SECRET`, if set),
+  once the repository has a `CLOUDFLARE_API_TOKEN` secret (a token from the "Edit Cloudflare Workers" template; add
+  `CLOUDFLARE_ACCOUNT_ID` too if it can see more than one account). By hand instead: `cd workers/ticker && npx wrangler
+  deploy`, then `npx wrangler secret put INFLIGHT_TICK_SECRET` (the site's `PIGEON_TICK_SECRET`). A job sends to each person's
+  devices at once, and once it has used 20 seconds leaves the extras (live weather, moments, streaks…) for the next
+  run, so landings, losses and emails always go; a landing email that fails is tried again next time.
+- **What goes wrong is kept for the admin.** Server errors (an API's, or any step of a job's) go in `pg_errors` (20 a
+  minute at most from one copy of the server, kept 14 days), and each job notes when it last ran and how long it took
+  (`tick_last`). Admin shows a Server row (Running, Late, or N errors), and says so up top when either job hasn't run
+  for 20 minutes or anything has gone wrong today; the Server sheet lists the day's errors.
+- Fixed: the account page on iOS 15 (no `AbortSignal.timeout`) said every request was offline; marking 100 or more
+  contact messages read went over D1's 100 values to a statement; a group asked for with too many friends hit the same
+  limit before saying it was too big; the home page's requests had no timeout, and a save that didn't go threw away
+  what the owner had typed (it's kept now, even through showing it's you).
+
+## Production audit (October 2026)
+
+A pass over every app for UI and UX, motion, speed, stability and how the apps work together. What changed:
+
+- **InFlight:** a friend's last-seen time no longer redraws the screen every minute, and a redraw that news brings waits
+  while a finger's down or a list is gliding. A friend's `#add=` link is kept for a day (`inflight-add`) and shown on the
+  welcome, so it survives making the account on its page. Pages' unstamped `Link: modulepreload` header is dropped
+  (`functions/_app.js`). The welcome isn't held up by the old address's handover. The welcome sky draws its planet once
+  per size, batches its stars and runs at 30 fps (slower while typing). Focus moves to a new screen's title and back to
+  what opened a sheet; bubbles and photos are keyboard buttons; toasts are a live region; Copy is in a message's menu.
+  Flight bars move by transform. List text follows the phone's text size.
+- **Home page:** zoom works (copying outside the fields is still off). The hero's fades fit the scroll the page has, and
+  the name reaches the bar however short the page. Photos get a phone-sized copy at upload (`bg/<id>-m`, sent for
+  `?s=m` and to phones asking for the cover; older photos have none until added again), an ETag, a day at the edge,
+  and the next one is fetched shortly before it shows. A new focal point doesn't restart the slideshow. The stamped
+  script and styles are cached for good. Send says what's missing.
+- **Account page:** a sheet that opens over another focuses its title, and one that closes hands focus back to its row;
+  each sheet is a step in the browser's history, so the back swipe closes it. Banners no longer re-announce on every
+  redraw. A reset link checked without signal says so, with Try again. Light-mode greys and amber have more contrast;
+  small controls have 44 px tap areas; the two app cards' Open buttons line up; the segmented controls work with the
+  arrow keys; error toasts stay 5 s; the page looks for changes every 5 minutes (and on coming back to it).
+- **Weather:** a busy forecast service (429) is retried, and said as busy, not as you being offline. The rough first
+  place from the connection goes once a real one is chosen. The faint relief layer is drawn only zoomed well out (it
+  was the heaviest download on the map). The rain-alerts card shows only when there's something to do. Radar playback
+  rests under a sheet. The offline copy is checked with the server when it updates, not downloaded a second time.
+- **Server:** Weather's tables are set up once (a fingerprint in `wx_meta`), not a dozen trips on each fresh copy of the
+  server; warnings are kept by the phone 3 minutes; InFlight's message look-ups are one query each (the ids as one JSON
+  list, `json_each`); the home page's owner check is skipped for signed-out visitors and cached a minute.
+
+Left for the Cloudflare dashboard (not in the repo): Caching → Browser Cache TTL → **Respect Existing Headers** (it
+currently overrides the site's own `immutable` and `no-cache`); Security → Bots → turn off **JavaScript Detections**,
+and Web Analytics' automatic injection, on every host (both scripts are blocked by the site's CSP and log errors).
+
+## Motion audit (October 2026)
+
+Every app was measured frame by frame (Chromium on a phone-sized screen with touch, with the CPU slowed to a mid-range
+phone's), looking for anything that cuts, jumps or stutters. The rule now, everywhere: nothing appears, disappears or
+moves in a single frame; an animation that's interrupted carries on from where it is; only transform and opacity move
+where possible; and with Reduce Motion things dissolve (150–200 ms) rather than move, instead of cutting.
+
+**One set of curves and times** (the same names in every app's CSS):
+
+| Token | Value | For |
+| --- | --- | --- |
+| `--ease-glide` | `cubic-bezier(.32, .72, 0, 1)` | sheets, screens, anything that slides (iOS's sheet curve: quick, then a long settle, never past the end) |
+| `--ease-out` | `cubic-bezier(.22, 1, .36, 1)` | fades and small arrivals |
+| `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | things leaving |
+| `--ease-spring` | a sampled spring, about 2% overshoot (`linear()`, with a cubic-bezier fallback) | a press springing back, a pill or badge popping in |
+| `--dur-press` / `--dur-release` | .1 s / .45 s | press in, spring back |
+| `--dur-fast` / `--dur-base` | .2 s / .35 s | fades / most moves |
+| `--dur-sheet-in` / `--dur-sheet-out` | .5 s / .34 s | sheets |
+
+Each app keeps its own older names as aliases (InFlight's `--nav` and `--snappy`, Weather's and the account page's
+`--glide`, `--spring` and `--ease`).
+
+- **Home page:** the slideshow crossfades over the slide before it, with the blurred backdrop following; sheets open
+  and close from wherever they are and ease to new heights; Send shows a spinner, errors ease in and go as you type;
+  edits show at once, with Undo; photo tiles appear as they upload, removing one is asked on the photo itself, and
+  images are shrunk off the main thread (`OffscreenCanvas`); leaving for an app, the page steps back.
+- **InFlight:** see 1.3.1 under InFlight above.
+- **Account page:** the sheet eases to each new height (pushes, Back, data arriving, errors) and redraws in place,
+  keeping its scroll and focus; going on or back slides the old view away; tapping the title no longer closes it, and
+  a double tap doesn't either; closing mid-opening turns back from where it is; rows that go fade and fold; the theme
+  and the sign-in, join and forgot cards change with view transitions; the poster isn't replaced on every redraw; the
+  sky's lights are eased gradients instead of a 70 px blur (16 → 60 fps at rest in Chromium).
+- **Weather:** the sky's colours are registered properties, so a new sky crossfades over a second (stars, rain and snow
+  fade as their own layers, and a night launch opens on a night sky); a sheet closes only when its own slide ends; the
+  temperature rolls without a blur; on arrival the hero leads and the cards rise in after it; choosing a place closes
+  the sheet and turns the page; warnings and highlights are diffed, so only what changed moves; Settings' folders push
+  and pop; the radar card's note and status fold instead of jumping the map, and the wind flow is lighter on phones.
+  The offline copy is `wx-80`.
+
+Tests can run against another local copy of the site (`TEST_BASE`, see `.tools/tests/README.md`). Still to update,
+from before this work: `acctpage.mjs` and `acctmore.mjs` wait for a "Security check-up" row the account page no longer
+has, so they stop partway (their other checks, run past that point, pass as before).
+
 ## Security notes
 
 - **Across the site (audit, October 2026):** each app is served only at its own address, under its own rules: an
@@ -1886,13 +2029,34 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   handles it had lately held for no one; an account being deleted gets no InFlight emails, and the "Keep my account"
   link goes only to a confirmed address. InFlight's old instant `DELETE /api/pigeon/me` is gone (410: the account's
   page, with its week's grace). A reset says it removes your passkeys. The account page has Sign out when opened from
-  the home page. Weather's copy of the password code is checked against InFlight's (`unit/sitecopies.test.mjs`).
+  the home page. (Weather once had a copy of the password code, kept in step with InFlight's by a test; it signs in on
+  the account's page now, so it has none: `unit/signin.test.mjs` checks the hand-back's sealing and word, where the page
+  will send a sign-in back to, and that no app signs in by itself.)
 - **Passkeys open InFlight's messages wherever they're added.** One added on the account's page asks the device for its
   PRF secret (as InFlight does), then the password once, and locks the passkey's own copy of the key to the messages
   with it (`POST /api/account/passkeys/vault`; the key is unlocked and locked again on the page, never sent as it is).
   So signing in to InFlight on a new phone with it opens the messages with no password. Each passkey's page says
   whether it does ("InFlight messages: Opens them"), and one that doesn't can be set up there
   (`.tools/tests/acctpkmsg.mjs`).
+- **Shown it's you lately, for the owner's changes and people's details.** Changing the home page (its words, photos,
+  Undo) needs the owner to have shown it's them in the last 12 hours, as a phone left signed in, or a sign-in handed
+  over from an app, doesn't do (`requireOwner`); Edit, if it's been longer, goes by the account's page to ask
+  (`#confirm=edit`) and comes back editing, so nothing typed is lost. Admin's lists with people's details (accounts,
+  the site's messages, the log) need the same 12 hours, asked on the page as a change is; its figures (the summary,
+  Insights, Storage, invites) are as signed in. A change in Admin still needs the last 10 minutes.
+- **Nothing of InFlight's left at the old address.** Once InFlight is signed in at chat.georgefarrowgreen.com, it tells
+  the old address's hidden handover page (`pigeon/handover.js`, which only the new address may open or speak to) to
+  clear what that browser kept there: the sign-in, the key, trusted keys and settings, as that address is the home
+  page's too. Once per browser, for one that moved before as well (`inflight-oldcleared`); an old tab still open there
+  lets go of its copy when asked (`.tools/tests/movein.mjs`). Home Screen apps keep their own storage, untouched.
+- **Passkeys checked as they're made, sign-ins that end, HTTPS everywhere.** A passkey being added (on the account's
+  page or in InFlight) is taken only if what the authenticator itself says of it matches: made for this site, a person
+  there and verified, and the same id and public key as the page sends (`checkRegistration`, reading its
+  authenticator data and COSE key; `unit/passkeyreg.test.mjs`). One that counts its uses must count up each time
+  (`pg_passkeys.sign_count`): one that's fallen behind is a copy, and isn't taken. A sign-in lasts while it's used, up
+  to a year from when it was made (`SESSION_MAX`), then it's asked for again. Every app sends HSTS for two years with
+  `includeSubDomains; preload`, and every address redirects plain http to https; to have browsers know it before a
+  first visit, submit georgefarrowgreen.com at hstspreload.org (once listed, every subdomain must keep HTTPS for good).
 
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.

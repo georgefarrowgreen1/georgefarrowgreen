@@ -1,5 +1,6 @@
 // One account for the whole site, and Weather's part of it: signed in to InFlight in a browser, Weather is too (and the
-// other way about); Weather's own sign-in (email and password, or a passkey made in InFlight); your places, settings and
+// other way about); Weather's Sign in, on the account's page (email and password, or a passkey made in InFlight), handed
+// back to it; your places, settings and
 // notifications kept with the account and put together across devices; notifications for each saved place, sent to
 // every device signed in; signing out anywhere signing out everywhere; and an account's going taking what Weather kept.
 // The site's addresses are stood in for by gfg.test (chat. and weather.), mapped to this machine, so the browser shares
@@ -10,7 +11,7 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import * as F from './mocks/wxappdata.mjs';
 import * as OW from './mocks/wxwarnings.mjs';
-import { joinInFlight } from './join.mjs';
+import { joinInFlight, onAccountPage } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -63,11 +64,17 @@ async function browser(name, { push = false } = {}) {
   return { ctx, p, name };
 }
 const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await x.p.goto(`${WX}/${q ? `?${q}` : ''}`); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
-const settings = async (x) => { await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400); };
+// (open already, as it is just after signing out from it: brought back to its first page, not opened again behind itself)
+const settings = async (x) => {
+  if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
+  await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
+};
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
-// (signed out, Settings has a row for signing in, which opens a folder of its own: the passkey, email and password)
-const signInPage = async (x) => { await x.p.click('#acct-signin'); await x.p.waitForSelector('#acct-in .acct-form'); };
+// (signed out, Settings has a row for signing in, which takes you to the account's page: the passkey, email and password)
+const signInPage = async (x) => { await x.p.click('#acct-signin'); await x.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 }); await x.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 }); };
+// (and back in Weather, signed in)
+const backInWeather = async (x) => { await x.p.waitForURL((u) => u.hostname.startsWith('weather.'), { timeout: 30000 }); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
 const folder = async (x, f) => { await x.p.click(`[data-go="${f}"]`); await x.p.waitForTimeout(300); };
 const places = (x) => x.p.evaluate(() => JSON.parse(localStorage.getItem('wx:places') || '[]').map((p) => p.name));
 const kept = (handle) => { const r = rows(`SELECT a.data, a.ver FROM wx_accts a JOIN pg_users u ON u.id = a.user_id WHERE u.handle = '${handle}'`)[0]; return r ? { ver: r.ver, ...JSON.parse(r.data) } : null; };
@@ -102,29 +109,30 @@ ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #
 ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);
 
-// ---- 2. A phone with places of its own: signed in to Weather with email and password; the two lots put together ----
+// ---- 2. A phone with places of its own: signed in to Weather, on the account's page, with email and password; the two
+// lots put together ----
 const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
 const signedOutRow = await acctSays(P);
+ok(/^Sign in Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
 await signInPage(P);
-const signedOutSays = `${signedOutRow} ${await P.p.evaluate(() => document.getElementById('acct-in').innerText.replace(/\s+/g, ' ').trim())}`;
-ok(/^Sign in Your places on every device/.test(signedOutRow) && await P.p.textContent('#settings-title') === 'Sign in' && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays) && !/InFlight/i.test(signedOutSays),
-  'signed out: what an account is for, a passkey first, then email and password (as on every page of the site)', signedOutSays);
-const ways = await P.p.$$eval('#acct-in a', (as) => as.map((a) => a.getAttribute('href')));
-ok(ways.join() === 'http://account.gfg.test:8788/#forgot,http://account.gfg.test:8788/#join' && !(await P.p.$('#acct-in input[name=name], #acct-in input[name=handle]')),
-  'a forgotten password, and a new account, on the account\'s page: none made here', ways.join());
-await P.p.fill('#acct-in input[name=password]', 'x'); await P.p.click('#acct-in .acct-form button[type=submit]');
-ok(await P.p.textContent('#acct-said') === 'Enter your email.', 'nothing typed in: the same words as every page of the site', await P.p.textContent('#acct-said'));
-await P.p.fill('#acct-in input[name=email]', 'sam@example.com'); await P.p.fill('#acct-in input[name=password]', 'not the password');
-await P.p.click('#acct-in .acct-form button[type=submit]');
-await P.p.waitForFunction(() => /don’t match/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
-ok(/don’t match an account/.test(await P.p.textContent('#acct-said')), 'a wrong password: said, and still signed out', await P.p.textContent('#acct-said'));
-await P.p.fill('#acct-in input[name=password]', PW); await P.p.click('#acct-in .acct-form button[type=submit]');
-await P.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 30000 }).catch(() => {});
+const signedOutSays = await P.p.evaluate(() => document.querySelector('main').innerText.replace(/\s+/g, ' ').trim());
+ok(/Sign in to continue to Weather/.test(signedOutSays) && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays),
+  'the account\'s page, for Weather: a passkey first, then email and password; a forgotten password, and a new account', signedOutSays);
+await P.p.click('main .signin form .btn');
+ok(await P.p.textContent('main .said') === 'Enter your email.', 'nothing typed in: the same words as every page of the site', await P.p.textContent('main .said'));
+await P.p.fill('main input[name=email]', 'sam@example.com'); await P.p.fill('main input[name=password]', 'not the password');
+await P.p.click('main .signin form .btn');
+await P.p.waitForFunction(() => /don’t match/.test(document.querySelector('main .said')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+ok(/don’t match an account/.test(await P.p.textContent('main .said')) && /account\./.test(P.p.url()), 'a wrong password: said, and still signed out', await P.p.textContent('main .said'));
+await P.p.fill('main input[name=password]', PW); await P.p.click('main .signin form .btn');
+await backInWeather(P);
+const back = await P.p.waitForFunction(() => document.getElementById('toast')?.textContent || null, null, { timeout: 15000 }).then((x) => x.jsonValue(), () => '');
 const k2 = await waitFor(() => { const k = kept('sam'); return k?.places.length === 2 ? k : null; });
-ok(/Sam Taylor/.test(await acctSays(P)) && (await places(P)).join() === 'London,Edinburgh' && k2?.places.map((p) => p.name).join() === 'London,Edinburgh',
-  'signed in on the phone: the account\'s London and the phone\'s Edinburgh, on both', `${(await places(P)).join()} | ${k2?.places.map((p) => p.name).join()}`);
+await settings(P);
+ok(/Signed in as Sam/.test(back) && /Sam Taylor/.test(await acctSays(P)) && (await places(P)).join() === 'London,Edinburgh' && k2?.places.map((p) => p.name).join() === 'London,Edinburgh',
+  'back in Weather, signed in: the account\'s London and the phone\'s Edinburgh, on both', `${back} | ${(await places(P)).join()} | ${k2?.places.map((p) => p.name).join()}`);
 await closeSheet(P);
 await P.p.click('#place-btn'); await P.p.waitForTimeout(500);
 ok((await P.p.textContent('#places .sheet-sub')) === 'Saved' && await P.p.$eval('#sync-note', (n) => n.hidden), 'Places: just the saved places, in step (a note only when they\'re not)', await P.p.textContent('#places .sheet-sub'));
@@ -175,7 +183,8 @@ await closeSheet(L);
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
-  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row.action:text-is("Delete account")')), 'opened from Weather, the account\'s page leaves signing out to Weather');
+  // (deleting the account is under Your data now, with the rest of what's yours)
+  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
   ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
@@ -214,24 +223,28 @@ await closeSheet(L);
   ok(xl === 403, 'a code only for Weather\'s own pages', String(xl));
 }
 
-// ---- 4. A passkey made in InFlight signs in to Weather, on another browser ----
+// ---- 4. A passkey made in InFlight signs in to Weather (on the account's page), on another browser ----
 const K = await browser('keyring');
 const kcdp = await K.ctx.newCDPSession(K.p); await kcdp.send('WebAuthn.enable');
 const { authenticatorId: kauth } = await kcdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
 await kcdp.send('WebAuthn.addCredential', { authenticatorId: kauth, credential: pk[0] });
 await weather(K);
 await settings(K); await signInPage(K);
-await K.p.click('#acct-passkey');
+await K.p.click('main .btn:has-text("Sign in with a passkey")');
+await backInWeather(K); await settings(K);
 await K.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 20000 }).catch(() => {});
 ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed in with the passkey: the account\'s places', `${await acctSays(K)} | ${(await places(K)).join()}`);
-// ---- 5. Signed in to Weather only: InFlight in the same browser offers to carry on, after the password ----
-await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('[data-act=resume]', { timeout: 20000 }).catch(() => {});
+// ---- 5. Signed in to Weather only: InFlight in the same browser offers to carry on (on the account's page, showing it's
+// you, as that's what opens the key in InFlight) ----
+await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome [data-act=acctsignin]:has-text("Continue as")', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
 ok(/Signed in as Sam Taylor \(@sam\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
-await K.p.click('[data-act=resume]'); await K.p.waitForSelector('[data-form=unlock]');
-ok(await K.p.waitForFunction(() => /already signed in to your georgefarrowgreen\.com account/.test(document.querySelector('[data-form=unlock]')?.closest('.auth')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false), 'it asks only for the password, to unlock the key here');
-await K.p.fill('#f-password', PW); await K.p.click('[data-form=unlock] .btn'); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
-ok(!!(await K.p.$('.tabs')), 'and InFlight is open, on the same sign-in');
+await K.p.click('.welcome [data-act=acctsignin]'); await K.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await K.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 });
+ok(/Continue to InFlight as this account\?/.test(await K.p.textContent('main')) && !(await K.p.$('main input[name=email]')), 'on the account\'s page: carrying on as Sam, showing it\'s you (no email asked) to unlock the key here');
+await K.p.fill('main input[name=password]', PW); await K.p.click('main .signin form .btn');
+await K.p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).catch(() => {}); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
+ok(!!(await K.p.$('.tabs')), 'and back in InFlight, open, on the same sign-in');
 // ---- 6. Signing out (on the account's page) signs out of Weather and InFlight there too ----
 await K.p.goto('http://account.gfg.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
 await K.p.click('.row.action:text-is("Sign out")'); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
@@ -239,14 +252,13 @@ await weather(K); await settings(K);
 await K.p.waitForFunction(() => /Your places on every device/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 ok(/Your places on every device/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome', { timeout: 20000 }).catch(async () => { await K.p.screenshot({ path: `${out}/signedout-inflight.png` }); console.log('DEBUG inflight after weather signout:', (await K.p.evaluate(() => document.body.innerText.slice(0, 300))).replace(/\s+/g, ' ')); });
-ok(!!(await K.p.$('.welcome')) && !(await K.p.$('[data-act=resume]')), 'and InFlight in that browser is signed out too');
+ok(!!(await K.p.$('.welcome')) && !/Continue as/.test(await K.p.textContent('.welcome')), 'and InFlight in that browser is signed out too');
 
 // ---- 6b. A device with the account's notifications, signed out on the account's page: Weather notices, and they
 // stay, as its own ----
 const T = await browser('tablet', { push: true });
 await weather(T); await settings(T); await signInPage(T);
-await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
-await T.p.click('#acct-in .acct-form button[type=submit]');
+await onAccountPage(T.p, { email: 'sam@example.com', password: PW }); await backInWeather(T);
 // (signed in where notifications are allowed already, it's one of the account's devices at once)
 await T.p.waitForFunction(() => { try { return !!localStorage.getItem('wx:acct') && !!JSON.parse(localStorage.getItem('wx:settings') || '{}').notify?.devId; } catch (_) { return false; } }, null, { timeout: 30000 }).catch(() => {});
 const tId = await T.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings') || '{}').notify?.devId || '');
@@ -263,11 +275,10 @@ ok(t2 && !t2.user_id && t2.n === t1.n, 'signed out there: Weather notices, and t
 let tSubs = t2?.n || 0;
 // signed in on the tablet again, and out from Weather's own Settings: signed out here, and its notifications its own
 await settings(T); await signInPage(T);
-await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
-await T.p.click('#acct-in .acct-form button[type=submit]');
+await onAccountPage(T.p, { email: 'sam@example.com', password: PW }); await backInWeather(T);
 await waitFor(() => tDev()?.user_id, 20000);
 const t3 = tDev();
-await T.p.waitForSelector('#out-grp:not([hidden]) #sign-out', { timeout: 15000 }).catch(() => {});
+await settings(T); await T.p.waitForSelector('#out-grp:not([hidden]) #sign-out', { timeout: 15000 }).catch(() => {});
 await T.p.click('#sign-out');
 await waitFor(async () => !tDev()?.user_id && await T.p.isVisible('#acct-signin'), 15000);
 const t4 = tDev();
@@ -276,8 +287,7 @@ tSubs = t4?.n || 0;
 // signed in again, then signed out from somewhere else (Signed-in devices, a new password): the tablet, which does
 // nothing itself, is no longer the account's by the next tick, and keeps what it had as its own
 await settings(T); await signInPage(T);
-await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
-await T.p.click('#acct-in .acct-form button[type=submit]');
+await onAccountPage(T.p, { email: 'sam@example.com', password: PW }); await backInWeather(T);
 await waitFor(() => tDev()?.user_id, 20000);
 const sess = rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess;
 ok(!!sess && rows(`SELECT 1 FROM pg_sessions WHERE hash = '${sess}'`).length === 1, 'linked again, with the sign-in that linked it', String(sess));
@@ -310,9 +320,9 @@ ok(asBearer === 401, 'the cookie isn\'t a key to InFlight\'s API', String(asBear
 // a sign-in sent from another site (with a good password: its own account's, say) doesn't sign the browser in
 {
   const proof = await K.p.evaluate(async () => { const { E2E } = await import('/crypto.js'); const { salt } = await (await fetch('/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'sam@example.com' }) })).json(); return (await E2E.fromPassword('a long test password', salt)).proof; }).catch((e) => String(e));
-  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/login', method: 'POST', headers: { Host: 'chat.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
-  const evil = await login('https://evil.example'), own = await login(CHAT);
-  ok(evil.status === 200 && !evil.cookie && own.status === 200 && /account=/.test(String(own.cookie)), 'a sign-in sent from another site doesn\'t sign the browser in (one from InFlight\'s own pages does)', `${evil.status} ${evil.cookie} | ${own.status}`);
+  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/signin/password', method: 'POST', headers: { Host: 'account.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
+  const evil = await login('https://evil.example'), own = await login('http://account.gfg.test:8788');
+  ok(evil.status === 403 && !evil.cookie && own.status === 200 && /account=/.test(String(own.cookie)), 'a sign-in sent from another site is turned away (one from the account\'s own page signs the browser in)', `${evil.status} ${evil.cookie} | ${own.status}`);
 }
 // the account's API only at Weather's own address (not the site's, nor a preview's)
 const atSite = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me', headers: { Host: 'localhost:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
@@ -373,14 +383,18 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   await closeSheet(P);
 }
 
-// ---- 9. The account deleted (in InFlight): what Weather kept goes with it ----
+// ---- 9. The account deleted (on the account's page, a week's grace, then gone): what Weather kept goes with it ----
 {
   await L.p.goto(`${CHAT}/`); await L.p.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
-  const tk = await L.p.evaluate(() => new Promise((ok2) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => ok2(g.result?.token); }; }));
   // (deleting needs it shown it's you in the last ten minutes: as if the password had just been asked for)
   sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = (SELECT id FROM pg_users WHERE email = 'sam@example.com')`);
-  const del = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/me', method: 'DELETE', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${tk}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); r.end(); });
+  const ck = (await L.ctx.cookies(CHAT)).find((c) => c.name === 'account'), handle = rows("SELECT handle FROM pg_users WHERE email = 'sam@example.com'")[0]?.handle;
+  const post = (path, host, headers, data) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', headers: { Host: host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); if (data) r.write(data); r.end(); });
+  const del = await post('/api/account/delete', 'account.gfg.test:8788', { 'Content-Type': 'application/json', Origin: 'http://account.gfg.test:8788', Cookie: `account=${ck?.value}` }, JSON.stringify({ confirm: handle }));
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
+  // (the week's grace over: the next tick deletes it, and what Weather kept with it)
+  sql(`UPDATE pg_users SET delete_at = ${Date.now() - 1000} WHERE email = 'sam@example.com'`); sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'");
+  await post('/api/pigeon/notify-tick', 'chat.gfg.test:8788', { Authorization: 'Bearer tick-test-secret' });
   const left = rows("SELECT (SELECT COUNT(*) FROM wx_accts) AS a, (SELECT COUNT(*) FROM wx_devs WHERE user_id IS NOT NULL) AS d, (SELECT COUNT(*) FROM wx_subs WHERE dev LIKE '%') AS s")[0];
   ok(left.a === 0 && left.d === 0 && left.s === 1 + tSubs, 'and what Weather kept with it goes (only the devices not with it keep their own)', JSON.stringify(left));
 }

@@ -35,7 +35,7 @@ async function req(x, url, { method = 'GET', headers = {}, data } = {}) {
   return new Promise((ok, no) => {
     const r = http.request({ host: '127.0.0.1', port: u.port, path: u.pathname + u.search, method, agent: false, headers: { Host: u.host, ...(cookie ? { Cookie: cookie } : {}), ...headers } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c));
-      res.on('end', () => { const body = Buffer.concat(parts).toString(); let j = null; try { j = JSON.parse(body); } catch (_) {} ok({ status: res.statusCode, json: j, body, headers: res.headers }); });
+      res.on('end', () => { const raw = Buffer.concat(parts), body = raw.toString(); let j = null; try { j = JSON.parse(body); } catch (_) {} ok({ status: res.statusCode, json: j, body, raw, headers: res.headers }); });
     });
     r.on('error', no); if (data) r.write(data); r.end();
   });
@@ -55,7 +55,7 @@ await home(V);
 ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycling · Apps$/i.test(await text(V, '.eyebrow')) && /I ride, I take photos/.test(await text(V, '.lede')),
   'the name, the line above it and the one under it', await text(V, '.hero'));
 ok(await shown(V, '#sign-in') && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: Sign in, no Edit and no photo');
-ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT}/#from=home`, 'Sign in goes to the account’s page', await V.p.getAttribute('#sign-in', 'href'));
+ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT}/#signin=home`, 'Sign in goes to the account’s page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
 ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.gfg.test:8788/', 'the apps open at their own addresses');
 ok(await text(V, '#app-inflight small') === 'Letters carried by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');
@@ -77,11 +77,14 @@ await shot(V, 'visitor-nophotos');
 await V.p.click('.cta [data-contact]');
 await V.p.waitForSelector('#contact-sheet[open]'); await settle(V, 500);
 ok(await V.p.evaluate(() => document.body.classList.contains('sheet-up')), 'the page steps back behind the sheet');
-ok(await V.p.isDisabled('#contact-send'), 'Send is off while there’s nothing to send');
+ok(await V.p.evaluate(() => document.querySelector('#contact-send').classList.contains('idle')), 'Send looks off while there’s nothing to send');
+await V.p.click('#contact-send');
+ok(/add your name/.test(await text(V, '#contact-err')) && await V.p.evaluate(() => document.activeElement?.id === 'c-name' && document.activeElement.getAttribute('aria-invalid') === 'true'),
+  'tapped anyway: it says what’s missing, and takes you there', await text(V, '#contact-err'));
 ok(await V.p.evaluate(() => [...document.querySelectorAll('#contact-sheet label.fld > span')].map((e) => e.textContent).join() === 'Name,Email'), 'each field says what it’s for');
 await V.p.fill('#c-name', 'Sam Okoro'); await V.p.fill('#c-email', 'sam@example');
 await V.p.fill('#c-message', 'Loved the photos from the climb. Are you riding the sportive in May?');
-ok(!(await V.p.isDisabled('#contact-send')), 'and on once there is');
+ok(await V.p.evaluate(() => !document.querySelector('#contact-send').classList.contains('idle')), 'and ready once there is');
 await V.p.click('#contact-send');
 ok(/email doesn’t look right/.test(await text(V, '#contact-err')), 'an email that can’t be one is said', await text(V, '#contact-err'));
 await V.p.fill('#c-email', 'sam@example.com');
@@ -136,6 +139,22 @@ ok(r.status === 403, 'even the owner’s change is refused when another site sen
 r = await put(G, '/api/content', { name: 'From Elsewhere' }, null);
 ok(r.status === 403, 'or when it doesn’t say where it’s from', String(r.status));
 
+// ---- 3b. A change needs the owner to have shown it's them lately (a phone left signed in doesn't do): Edit goes by the
+// account's page for it, and comes back editing ----
+sql(`UPDATE pg_sessions SET auth_at = 0 WHERE user_id = '${gail}'`);
+r = await put(G, '/api/content', { name: 'Left Signed In' });
+ok(r.status === 403 && /Confirm it’s you/.test(r.json?.error || ''), 'signed in a while ago, the owner’s change is refused until they show it’s them', `${r.status} ${r.body}`);
+await home(G);
+await G.p.click('#edit');
+await G.p.waitForSelector('#sheet .confirm-card', { timeout: 20000 }).catch(() => {});
+ok(G.p.url().startsWith(ACCT) && await G.p.isVisible('#sheet .confirm-card'), 'Edit: on to the account’s page, to show it’s them', G.p.url());
+await shot(G, 'confirm-first');
+if (await G.p.isVisible('#sheet .confirm-card .btn:has-text("Use a passkey")')) await G.p.click('#sheet .confirm-card .btn:has-text("Use a passkey")');
+else { await G.p.fill('#sheet .confirm-card input[type=password]', PW); await G.p.click('#sheet .confirm-card .btn[type=submit]'); }
+await G.p.waitForFunction(() => document.body.classList.contains('edit'), null, { timeout: 20000 }).catch(() => {});
+ok(G.p.url().startsWith(SITE) && await G.p.evaluate(() => document.body.classList.contains('edit')), 'shown: back on the home page, editing', G.p.url());
+await G.p.keyboard.press('Escape'); await settle(G, 500);
+
 // ---- 4. Editing the words in place, and Undo ----
 await G.p.click('#edit'); await settle(G, 600);
 ok(await G.p.evaluate(() => document.body.classList.contains('edit') && [...document.querySelectorAll('[data-edit]')].every((e) => e.isContentEditable)), 'Edit: the three lines can be typed in');
@@ -169,8 +188,9 @@ await G.p.click('#change-photos'); await G.p.waitForSelector('#photos-sheet[open
 ok(/No photos yet/.test(await text(G, '#tiles')), 'no photos yet');
 const APP = process.env.APP_ROOT;
 await G.p.setInputFiles('#photo-input', [`${APP}/og.png`, `${APP}/apple-touch-icon.png`]);
-await G.p.waitForFunction(() => document.querySelectorAll('#tiles .tile').length === 2, null, { timeout: 20000 }).catch(() => {});
-ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length === 2 && document.querySelectorAll('#thumbs i').length === 2 && document.querySelectorAll('#bg .slide').length === 2),
+ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length === 2 && !document.querySelector('#tiles .none')), 'both shown in the sheet at once, as they go up');
+await G.p.waitForFunction(() => document.querySelectorAll('#tiles .tile:not(.pending):not(.leaving)').length === 2 && document.querySelectorAll('#thumbs i').length === 2, null, { timeout: 20000 }).catch(() => {});
+ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile:not(.pending)').length === 2 && document.querySelectorAll('#thumbs i').length === 2 && document.querySelectorAll('#bg .slide').length === 2),
   'two photos added: in the sheet, the bar and the slideshow');
 let list = (await req(null, `${SITE}/api/background`)).json.images;
 const box = await G.p.locator('#tiles .tile img').first().boundingBox();
@@ -184,11 +204,19 @@ await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
 ok((await req(null, `${SITE}/api/background`)).json.images[1].device === 'desktop', 'then Computer');
 r = await req(null, `${SITE}/api/background?id=${list[0].id}`);
 ok(r.status === 200 && /immutable/.test(r.headers['cache-control']), 'a photo is kept by browsers for good', r.headers['cache-control']);
+{
+  const big = r.raw.length, sm = await req(null, `${SITE}/api/background?id=${list[0].id}&s=m`), smLen = sm.raw.length;
+  ok(list.every((p) => p.m === 1) && sm.status === 200 && smLen > 0 && smLen <= big, 'each with a phone-sized copy too, sent for ?s=m', `${big} / ${smLen}`);
+  const c1 = await req(null, `${SITE}/api/background?id=cover&d=desktop`), etag = c1.headers.etag;
+  const again = await req(null, `${SITE}/api/background?id=cover&d=desktop`, { headers: { 'If-None-Match': etag || '' } });
+  ok(!!etag && again.status === 304, 'asked again with the tag it has: “the same”, not sent again', `${etag} ${again.status}`);
+}
 r = await req(null, `${SITE}/api/background?id=cover&d=mobile`, { method: 'HEAD' });
 ok(r.status === 200 && /^image\//.test(r.headers['content-type']) && /max-age=600/.test(r.headers['cache-control']), 'the first one, for a link preview’s look', `${r.status} ${r.headers['content-type']}`);
 await shot(G, 'photos');
-G.p.once('dialog', (d) => d.accept());
-await G.p.locator('#tiles .tile .rm').nth(1).click(); await settle(G, 900);
+await G.p.locator('#tiles .tile .rm').nth(1).click(); await settle(G, 300);
+ok(await G.p.isVisible('#tiles .tile .ask .yes'), 'removing one is asked on the photo itself');
+await G.p.click('#tiles .tile .ask .yes'); await settle(G, 900);
 ok((await req(null, `${SITE}/api/background`)).json.images.length === 1 && await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length) === 1, 'one removed');
 r = await req(P, `${SITE}/api/background`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', Origin: SITE }, data: JSON.stringify({ id: list[0].id }) });
 ok(r.status === 403 && (await req(null, `${SITE}/api/background`)).json.images.length === 1, 'someone else can’t remove one', String(r.status));
@@ -205,7 +233,7 @@ ok(await V.p.evaluate(() => document.querySelectorAll('#bg .slide').length === 2
   'the slideshow: one photo at a time, a segment for each');
 await V.p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await settle(V, 800);
 ok(await V.p.evaluate(() => Number(getComputedStyle(document.querySelector('.bar .mid')).opacity) > 0.5 && Number(getComputedStyle(document.querySelector('.hero h1')).opacity) < 0.2
-  && getComputedStyle(document.querySelector('#soft')).visibility === 'visible' && /url\("data:image\/png/.test(document.querySelector('#soft').style.backgroundImage)),
+  && getComputedStyle(document.querySelector('#soft')).visibility === 'visible' && /url\("data:image\/png/.test(document.querySelector('#soft').style.getPropertyValue('--soft-img'))),
   'scrolled: the name comes into the bar, the hero fades under it, the photo softens (a softened copy of it)');
 ok(await V.p.evaluate(() => document.body.classList.contains('paused') && document.querySelector('#bg .slide.on').getAnimations().every((a) => a.playState === 'paused')),
   'and the photo holds still while it’s scrolled');
@@ -232,7 +260,8 @@ ok(/1 new message/.test(folder) && /Messages Sam Okoro · Today \d\d:\d\d 1 new/
   'its folder: 1 new message at the top, and on Messages, with who sent it; the home page, its words changed today', folder);
 await settle(G, 600); await shot(G, 'admin-folder');
 await G.p.click('#sheet .row:has(b:text-is("Messages"))');
-await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+// (once the sheet has gone on to it: the view it left slides away for a moment, still in the page, with Sam's name in it)
+await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || '') && !document.querySelector('#sheet .going'), null, { timeout: 15000 }).catch(() => {});
 const sheet = await text(G, '#sheet');
 ok(/^Back Messages New Sam Okoro/i.test(sheet) && /sam@example\.com/.test(sheet) && /Are you riding the sportive in May\?/.test(sheet) && await G.p.$('#sheet .adm-dot'), 'the message, as new: who, their email and what they wrote', sheet.slice(0, 160));
 ok(await G.p.getAttribute('#sheet a.pill', 'href') === 'mailto:sam@example.com?subject=Re%3A%20your%20message', 'Reply writes back to them');

@@ -13,6 +13,14 @@ const clamp = (v) => Math.min(1, Math.max(0, v));
 const body = document.body, root = document.documentElement;
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const phone = matchMedia("(max-width: 600px)");
+// The site's motion, in script as in the styles (styles.css: --ease-out for what arrives, --ease-glide for what slides)
+const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)", GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
+// (words changed in place fade in, rather than snapping; only where they're actually different, and in sight)
+function fadeText(el, t) {
+  if (el.textContent === t) return;
+  el.textContent = t;
+  if (!motion.matches && el.isConnected && Number(getComputedStyle(el).opacity) > 0.5) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT });
+}
 
 const DEFAULTS = {
   name: "George Farrow-Green",
@@ -24,20 +32,25 @@ let me = null;           // /api/me, once it's known
 let editing = false;
 
 // The server's answer, or an Error saying what went wrong
+// (20 seconds at most: a weak signal says so, rather than hanging; iOS 15 has no AbortSignal.timeout, so it's made here)
+if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function api(path, { method = "GET", body: data } = {}) {
-  const r = await fetch(path, {
-    method, cache: "no-store", credentials: "same-origin",
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  let r;
+  try {
+    r = await fetch(path, {
+      method, cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(20000),
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  } catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || "Something went wrong. Try again.");
+  if (!r.ok) throw Object.assign(new Error(d.error || "Something went wrong. Try again."), { status: r.status, field: d.field });
   return d;
 }
 
 /* ---------------- the words ---------------- */
 function showContent() {
-  for (const el of $$("[data-c]")) if (!(editing && el.hasAttribute("data-edit"))) el.textContent = content[el.dataset.c] || "";
+  for (const el of $$("[data-c]")) if (!(editing && el.hasAttribute("data-edit"))) fadeText(el, content[el.dataset.c] || "");
   document.title = content.name;
   const ld = $("#ld-person");
   if (ld) ld.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "Person", name: content.name, description: content.bio,
@@ -55,21 +68,51 @@ async function loadContent() {
 // same measurements.
 const linked = CSS.supports("animation-timeline: scroll()");
 {
-  const bar = $("#bar"), mid = $(".bar .mid"), veil = [$("#soft"), $(".barbg")], fades = $$(".hero > *");
-  let tops = [], edge = 0, queued = false;
+  const bar = $("#bar"), mid = $(".bar .mid"), veil = [$("#soft"), $(".barbg")], fades = $$(".hero > *"), pageEl = $("#page");
+  const FADE = 64;      // the least scroll a line fades over
+  let ranges = [], name = null, queued = false;
   const draw = () => {
     queued = false;
-    const y = scrollY, k = clamp((y - 220) / 260);
+    const y = scrollY, k = name ? clamp((y - name[0]) / (name[1] - name[0])) : 0;
     for (const el of veil) { el.style.opacity = k; el.style.visibility = k > 0 ? "visible" : "hidden"; }
     mid.style.opacity = k; mid.style.transform = `translateY(${(1 - k) * 8}px)`;
-    fades.forEach((el, i) => { el.style.opacity = editing ? "" : Math.max(clamp((tops[i] - y - edge + 12) / 90), clamp(1 - y / 40)); });
+    fades.forEach((el, i) => { const r = ranges[i]; el.style.opacity = editing || !r ? "" : 1 - clamp((y - r[0]) / (r[1] - r[0])); });
+  };
+  // (a scroll-linked animation keeps the range it was made with, so when its range changes it's made again, within the
+  // one frame, so nothing of that is seen; one that isn't to fade has none at all)
+  const setRange = (el, r) => {
+    const key = r ? `${r[0]}px ${r[1]}px` : "none";
+    if (el._range === key) return;
+    el._range = key;
+    el.style.animationName = "none";
+    if (!r) return;
+    void getComputedStyle(el).animationName;
+    el.style.animationRange = key;
+    el.style.animationName = "";
   };
   const measure = () => {
-    edge = bar.getBoundingClientRect().bottom;
-    tops = fades.map((el) => el.getBoundingClientRect().top + scrollY);
-    // (from 78 px under the bar to 12 px into it; at least 40 px of scroll, for a line already that close)
-    if (linked) fades.forEach((el, i) => { const a = Math.max(0, tops[i] - edge - 78); el.style.animationRange = `${a}px ${Math.max(a + 40, tops[i] - edge + 12)}px`; });
-    else draw();
+    // (where each line is on the page as it's laid out, not where it looks mid-way through rising into place)
+    const edge = bar.offsetHeight, tops = fades.map((el) => pageEl.offsetTop + el.offsetTop);
+    // Each line fades from 78 px under the bar to 12 px into it, over 64 px of scroll at least, within the scroll there
+    // is: on a short page (a computer's tall window) a fade that wouldn't finish is fitted into what scroll there is, and
+    // one that can't have its 64 px isn't begun (a line left half-faded at the bottom looks broken, and the hero gone at
+    // one notch of a wheel looks like a glitch); a line the scroll never brings up to the bar doesn't fade at all (on a
+    // short page, faded lines well clear of the bar left half the screen empty); if the name itself can't fade, nothing
+    // does. The name comes into the bar as the name in the hero goes.
+    const most = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    ranges = tops.map((top) => {
+      if (top - edge > most) return null;
+      let a = Math.max(0, top - edge - 78), b = Math.max(a + FADE, top - edge + 12);
+      if (b > most) { b = most; a = Math.min(a, b - FADE); if (a < 0) return null; }
+      return [a, b];
+    });
+    const h = fades.findIndex((el) => el.tagName === "H1");
+    if (!ranges[h]) ranges = ranges.map(() => null);
+    name = ranges[h] ? [ranges[h][0], Math.max(ranges[h][0] + FADE, Math.min(ranges[h][1] + 40, most))] : null;
+    if (linked) {
+      fades.forEach((el, i) => setRange(el, ranges[i]));
+      for (const el of [mid, ...veil]) setRange(el, name);
+    } else draw();
   };
   addEventListener("scroll", () => {
     hold();
@@ -85,12 +128,12 @@ const linked = CSS.supports("animation-timeline: scroll()");
 }
 
 /* ---------------- the photos: a slideshow, the set for this screen ---------------- */
-// Each photo's fetched and decoded before it fades in, so the fade never waits on it, and the next is made ready behind
-// it. It drifts in slowly as it shows, but only while the top of the page is in view: scrolled down, with a sheet up or
-// the page out of sight, it holds still (the slideshow too), so the glass over it isn't redrawn for every frame of a
-// photo no one's looking at.
+// Each photo's fetched and decoded before it fades in over the one before, so the fade never waits on it, and the next is
+// made ready a few seconds before it's due. It drifts in slowly as it shows, but only while the top of the page is in
+// view: scrolled down, with a sheet up or the page out of sight, it holds still (the slideshow too), so the glass over it
+// isn't redrawn for every frame of a photo no one's looking at.
 const SLIDE = 7000, DRIFT = 9000;
-let photos = [], shown = [], at = -1, timer = null, firstBuild = true, build = 0, left = SLIDE, since = 0, drift = null, held = false;
+let photos = [], shown = [], at = -1, timer = null, early = null, firstBuild = true, build = 0, left = SLIDE, since = 0, drift = null, held = false;
 const bgEl = $("#bg"), segsEl = $("#segs");
 root.style.setProperty("--slide", SLIDE / 1000 + "s");
 
@@ -105,23 +148,52 @@ function forScreen() {
   const f = photos.filter((p) => (p.device || "both") === "both" || p.device === want);
   return f.length ? f : photos;
 }
-const photoUrl = (p) => `/api/background?id=${encodeURIComponent(p.id)}`;
+// (a phone is sent the phone-sized copy, where there is one; the small previews always are)
+const photoUrl = (p, small = phone.matches) => `/api/background?id=${encodeURIComponent(p.id)}${small && p.m ? "&s=m" : ""}`;
+function makeSlide(p, src) {
+  const s = document.createElement("img");
+  s.className = "slide"; s.alt = ""; s.decoding = "async"; s.dataset.id = p.id;
+  s.style.objectPosition = s.style.transformOrigin = p.focus || "50% 50%";
+  s.dataset.src = src || photoUrl(p);
+  return s;
+}
+const makeSeg = (p) => { const i = document.createElement("i"); i.dataset.id = p.id; return i; };
 function buildSlides() {
-  clearTimeout(timer); build++;
+  clearTimeout(timer); clearTimeout(early); build++;
   bgEl.textContent = ""; segsEl.textContent = "";
   shown = forScreen(); at = -1; drift = null;
-  shown.forEach((p, i) => {
-    const s = document.createElement("img");
-    s.className = "slide"; s.alt = ""; s.decoding = "async";
-    s.style.objectPosition = s.style.transformOrigin = p.focus || "50% 50%";
-    // (the first, the first time: the address the page asked for early, so it's already on its way)
-    s.dataset.src = i === 0 && firstBuild ? `/api/background?id=cover&d=${phone.matches ? "mobile" : "desktop"}` : photoUrl(p);
-    bgEl.append(s);
-    segsEl.append(document.createElement("i"));
-  });
+  // (the first, the first time: the address the page asked for early, so it's already on its way)
+  shown.forEach((p, i) => { bgEl.append(makeSlide(p, i === 0 && firstBuild ? `/api/background?id=cover&d=${phone.matches ? "mobile" : "desktop"}` : null)); segsEl.append(makeSeg(p)); });
   firstBuild = false;
   segsEl.classList.toggle("one", shown.length < 2);
   if (shown.length) show(0);
+}
+// The photos for this screen changed (one added, removed, or shown on other screens now): the ones still here stay as
+// they are, and the one showing carries on (or, if it's gone, the next fades in over it), rather than the slideshow
+// starting again from dark
+function updateSlides() {
+  const next = forScreen();
+  if (!next.length || !bgEl.querySelector(".slide.on")) return buildSlides();
+  const cur = shown[at]?.id, was = at;
+  const slides = new Map([...bgEl.children].filter((s) => !s._gone).map((s) => [s.dataset.id, s]));
+  const segs = new Map([...segsEl.children].map((s) => [s.dataset.id, s]));
+  const els = next.map((p) => {
+    const s = slides.get(p.id) || makeSlide(p);
+    slides.delete(p.id);
+    s.style.objectPosition = s.style.transformOrigin = p.focus || "50% 50%";
+    return s;
+  });
+  // (one that's gone, if it's showing, stays under the next until that's faded in over it)
+  const gone = [...slides.values()].filter((s) => s.classList.contains("on") || s.classList.contains("was"));
+  for (const s of gone) s._gone = true;
+  build++; clearTimeout(timer); clearTimeout(early);
+  bgEl.replaceChildren(...els, ...gone);
+  segsEl.replaceChildren(...next.map((p) => segs.get(p.id) || makeSeg(p)));
+  segsEl.classList.toggle("one", next.length < 2);
+  shown = next;
+  const i = next.findIndex((p) => p.id === cur);
+  if (i >= 0) { at = i; markSegs(i, false); if (!held) schedule(); }
+  else show(Math.max(0, Math.min(was, next.length - 1)));
 }
 // (fetched and decoded: ready to show at once)
 function prepare(i) {
@@ -130,51 +202,68 @@ function prepare(i) {
   if (!s.getAttribute("src")) s.src = s.dataset.src;
   return s.decode().catch(() => {});
 }
+// (the segments: those before the one showing full, the one showing filling (again, unless it's carrying on))
+function markSegs(i, restart = true) {
+  $$("i", segsEl).forEach((seg, j) => {
+    seg.classList.toggle("past", j < i);
+    if (j !== i) seg.classList.remove("on");
+    else if (restart || !seg.classList.contains("on")) { seg.classList.remove("on"); void seg.offsetWidth; seg.classList.add("on"); }
+  });
+}
 async function show(i) {
   clearTimeout(timer);
-  const b = build, slides = bgEl.children;
-  if (!slides.length) return;
+  const b = build, s = bgEl.children[i];
+  if (!s) return;
   await prepare(i);
   if (b !== build) return;   // (the set changed while it loaded)
-  slides[at]?.classList.remove("on");
-  at = i; slides[i].classList.add("on");
-  // the drift, from a touch larger to its own size; the one before stays where it got to as it fades, then lets go
+  // (the one before stays as it is underneath, covered by this one as it fades in, then lets go)
+  const prev = bgEl.querySelector(".slide.on");
+  if (prev && prev !== s) {
+    prev.classList.replace("on", "was");
+    clearTimeout(prev._was);
+    prev._was = setTimeout(() => { prev.classList.remove("was"); if (prev._gone) prev.remove(); }, 1700);
+  }
+  clearTimeout(s._was); s.classList.remove("was");
+  at = i; s.classList.add("on");
+  // the drift, from a touch larger to its own size; the one before stays where it got to as it's covered, then lets go
   const was = drift;
-  drift = motion.matches ? null : slides[i].animate([{ transform: "scale(1.08)" }, { transform: "scale(1)" }], { duration: DRIFT, easing: "linear", fill: "forwards" });
-  if (was) setTimeout(() => was.cancel(), 1800);
-  $$("i", segsEl).forEach((seg, j) => {
-    seg.classList.remove("on");
-    seg.classList.toggle("past", j < i);
-    if (j === i) { void seg.offsetWidth; seg.classList.add("on"); }
-  });
-  // (its softened copy made when the browser's idle, not in the middle of the fade)
-  (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(() => { if (b === build && at === i) soften(slides[i], shown[i]); }, { timeout: 1500 });
+  drift = motion.matches ? null : s.animate([{ transform: "scale(1.08)" }, { transform: "scale(1)" }], { duration: DRIFT, easing: "linear", fill: "forwards" });
+  if (was && was !== drift) setTimeout(() => was.cancel(), 1800);
+  markSegs(i);
+  // (its softened copy made now, so it's there however soon the page is scrolled: the fade is the compositor's, so the
+  // little work of making it doesn't stutter it)
+  soften(s, shown[i]);
   left = SLIDE;
   if (held) drift?.pause(); else schedule();
-  if (slides.length > 1) prepare((i + 1) % slides.length);
 }
+// (the next photo fetched a few seconds before it's due, not as soon as this one shows: never, if the slideshow
+// doesn't move on (less motion asked for, or held), and not on a connection that's asked to save data)
 function schedule() {
-  clearTimeout(timer);
-  const n = bgEl.children.length;
-  if (n > 1 && !motion.matches && !held) { since = performance.now(); timer = setTimeout(() => show((at + 1) % n), left); }
+  clearTimeout(timer); clearTimeout(early);
+  const n = shown.length;
+  if (n > 1 && !motion.matches && !held) {
+    since = performance.now(); timer = setTimeout(() => show((at + 1) % n), left);
+    if (!navigator.connection?.saveData) { const next = (at + 1) % n; early = setTimeout(() => prepare(next), Math.max(0, left - 2500)); }
+  }
 }
 // (held still, where it got to: scrolled down, a sheet up, or the page out of sight)
 function hold() {
   const h = document.hidden || scrollY > 40 || body.classList.contains("sheet-up");
   if (h === held) return;
   held = h; body.classList.toggle("paused", h);
-  if (h) { clearTimeout(timer); left = Math.max(0, left - (performance.now() - since)); drift?.pause(); }
+  if (h) { clearTimeout(timer); clearTimeout(early); left = Math.max(0, left - (performance.now() - since)); drift?.pause(); }
   else { drift?.play(); schedule(); }
 }
 // (a different set when the screen changes size past a phone's, only if it's actually different)
-phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) buildSlides(); });
+phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) updateSlides(); });
 document.addEventListener("visibilitychange", hold);
 motion.addEventListener("change", () => { if (at >= 0) show(at); });
 
 // The photo softened behind what's over it as the page scrolls: the photo showing, drawn tiny and smoothed once (a few
 // thousand pixels' work), then stretched over the screen, so softening it is only a fade, not a blur redrawn each frame.
+// (styles.css fades the copy in when it's first made)
 const softs = new Map();
-function soften(img, p) {
+async function soften(img, p) {
   const el = $("#soft"), key = img.currentSrc || img.src;
   if (!softs.has(key)) {
     let url = null;
@@ -182,7 +271,11 @@ function soften(img, p) {
       const w = 48, h = Math.max(1, Math.round((w * img.naturalHeight) / img.naturalWidth)), c = document.createElement("canvas");
       c.width = w; c.height = h;
       const x = c.getContext("2d");
-      x.drawImage(img, 0, 0, w, h);
+      // (made small by the browser, off this thread, where it can: drawing the full photo down to 48 px here was the
+      // longest moment's work on the page)
+      const small = window.createImageBitmap ? await createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).catch(() => null) : null;
+      if (img.currentSrc !== key && img.src !== key) return;      // (another photo by now)
+      x.drawImage(small || img, 0, 0, w, h); small?.close?.();
       const d = x.getImageData(0, 0, w, h);
       for (let k = 0; k < 3; k++) boxBlur(d.data, w, h, 3);
       x.putImageData(d, 0, 0);
@@ -190,9 +283,11 @@ function soften(img, p) {
     } catch (_) {}
     softs.set(key, url);
   }
+  if (img !== bgEl.querySelector(".slide.on")) return;              // (another photo showing by now)
   const url = softs.get(key);
-  el.style.backgroundImage = url ? `linear-gradient(rgba(6, 8, 12, 0.42), rgba(6, 8, 12, 0.42)), url("${url}")` : "";
-  el.style.backgroundPosition = p.focus || "50% 50%";
+  el.style.setProperty("--soft-img", url ? `url("${url}")` : "none");
+  el.style.setProperty("--soft-pos", p.focus || "50% 50%");
+  el.style.setProperty("--soft-on", url ? "1" : "0");
 }
 // (each pixel the average of those within r of it, across then down; the edges held)
 function boxBlur(px, w, h, r) {
@@ -208,6 +303,11 @@ function boxBlur(px, w, h, r) {
     px[(y * w + x) * 4 + c] = t / n;
   }
 }
+// (a photo fades in as it arrives, rather than appearing: styles.css .loaded)
+function fadeOnLoad(img) {
+  const on = () => img.classList.add("loaded");
+  if (img.complete && img.naturalWidth) on(); else img.addEventListener("load", on, { once: true });
+}
 
 /* ---------------- who's looking ---------------- */
 const plural = (n, one, many = one + "s") => `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
@@ -216,8 +316,8 @@ async function loadMe() {
   showMe();
 }
 function showMe() {
-  // (the account's page shows the way back here: #from=home)
-  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + "/#from=home";
+  // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
+  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + (a.id === "sign-in" ? "/#signin=home" : "/#from=home");
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
   body.classList.add("known");
@@ -228,6 +328,7 @@ function showMe() {
   if (me.signedIn && me.photoAt) {
     const img = document.createElement("img");
     img.src = `/api/me/photo?v=${me.photoAt}`; img.alt = "";
+    fadeOnLoad(img);
     face.append(img);
   } else if (me.signedIn) {
     face.textContent = (me.name || "?").trim().charAt(0).toUpperCase();
@@ -241,7 +342,7 @@ function showMe() {
   };
   for (const key of ["inflight", "weather"]) {
     const small = $(`#app-${key} small`);
-    small.textContent = line[key] || small.dataset.about;
+    fadeText(small, line[key] || small.dataset.about);
     small.classList.toggle("mine", !!line[key]);
   }
   // a message from them is from them: their name and email filled in, shown as one From row
@@ -250,6 +351,7 @@ function showMe() {
     if (!$("#c-email").value) $("#c-email").value = me.email;
     $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
     $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+    for (const img of $$("img", $("#from-face"))) fadeOnLoad(img);
     if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
     $("#from").hidden = false; $("#sender").classList.add("known");
   }
@@ -262,42 +364,92 @@ function showMe() {
     $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather");
   }
 }
+// Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
+// steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
+for (const a of $$("#app-inflight, #app-weather, [data-account]")) a.addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  body.classList.add("leaving");
+  setTimeout(() => body.classList.remove("leaving"), 4000);    // (in case it never goes)
+});
+addEventListener("pageshow", () => body.classList.remove("leaving"));   // (back again, from the browser's history)
 
 /* ---------------- sheets ---------------- */
-// A sheet springs up and the page steps back behind it (styles.css: --spring). Dragged down by its top it follows the
-// finger, the page coming forward with it; let go, it springs back, or carries on down at the speed it was thrown.
+// A sheet glides up and the page steps back behind it (styles.css: --ease-glide). Dragged down by its top it follows the
+// finger, the page coming forward with it; let go, it springs back, or carries on down at the speed it was thrown. Closed
+// while it's still coming up, or opened again while it's going, it carries on from where it is rather than jumping.
 let lastFocus = null;
-const spring = () => getComputedStyle(root).getPropertyValue("--spring").trim() || "cubic-bezier(0.2, 0.9, 0.3, 1)";
+const spring = () => getComputedStyle(root).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";
 const behind = [$("#page"), $("#bar")];
+// (where it is now, mid-way through any of that)
+const currentY = (el) => { const t = getComputedStyle(el).transform; return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0; };
 function openSheet(d) {
-  lastFocus = document.activeElement;
-  d.classList.remove("closing");
-  d.showModal();
+  const going = d.classList.contains("closing");
+  if (!d.open) lastFocus = document.activeElement;
+  if (going) {
+    const y = currentY(d);
+    clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
+    d.getAnimations().forEach((a) => a.cancel());
+    d.classList.remove("closing"); d.classList.add("shown");
+    d.style.transform = ""; d.style.removeProperty("--from");
+    if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: 500, easing: GLIDE });
+  } else if (!d.open) d.classList.remove("shown");
+  if (!d.open) d.showModal();
   // (the sheet itself takes the focus, not its first button, which a phone would ring as if it had been chosen)
   $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
   hold();
 }
+function finishClose(d) {
+  clearTimeout(d._done); d._throw = null;
+  d.classList.remove("closing", "dragging", "shown");
+  d.style.transform = ""; d.style.removeProperty("--from");
+  if (d.open) d.close();
+}
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
-  const done = () => { d.classList.remove("closing", "dragging", "shown"); d.style.transform = ""; d.close(); };
   body.classList.remove("sheet-up", "pulling");
   for (const el of behind) el.style.transform = "";
   hold();
-  if (motion.matches) return done();
+  if (!thrown || motion.matches) {
+    // (down from wherever it is: closed while it's still coming up, from there; done when its animation ends)
+    d.style.setProperty("--from", `${currentY(d)}px`);
+    d.getAnimations().forEach((a) => a.cancel());
+    d.style.transform = "";
+    d.classList.add("closing");
+    d._done = setTimeout(() => finishClose(d), 800);    // (if that never comes: in a tab out of sight, say)
+    return;
+  }
   d.classList.add("closing");
-  if (!thrown) return void setTimeout(done, 240);
   // (thrown: on down from where it is, at the speed it was going, never slower than a short slide)
   const rest = d.offsetHeight + 24 - thrown.dy, ms = Math.max(160, Math.min(320, rest / Math.max(thrown.v, 1.4)));
-  d.animate([{ transform: `translateY(${thrown.dy}px)` }, { transform: `translateY(${d.offsetHeight + 24}px)` }], { duration: ms, easing: "cubic-bezier(0.25, 0.6, 0.4, 1)", fill: "forwards" })
-    .finished.then(() => { d.getAnimations().forEach((a) => a.cancel()); done(); });
+  const a = d._throw = d.animate([{ transform: `translateY(${thrown.dy}px)` }, { transform: `translateY(${d.offsetHeight + 24}px)` }], { duration: ms, easing: "cubic-bezier(0.25, 0.6, 0.4, 1)", fill: "forwards" });
+  a.finished.then(() => { if (d._throw !== a) return; d.getAnimations().forEach((x) => x.cancel()); finishClose(d); }).catch(() => {});
+}
+// A sheet whose contents change (something said, the message giving way to Sent, a photo added): it moves to its new
+// height rather than jumping there, and what's new fades in. Changed again on the way, it goes on from where it's got to.
+function settle(d, change, inEl) {
+  const box = $(".sheet-in", d), h0 = box.getBoundingClientRect().height;
+  for (const a of box.getAnimations()) a.cancel();
+  change();
+  if (motion.matches || !d.open) return;
+  const h1 = box.getBoundingClientRect().height;
+  if (Math.abs(h1 - h0) > 1) box.animate([{ height: `${h0}px`, overflow: "hidden" }, { height: `${h1}px`, overflow: "hidden" }], { duration: 350, easing: EASE_OUT });
+  inEl?.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 300, delay: 60, fill: "backwards", easing: EASE_OUT });
 }
 for (const d of $$("dialog.sheet")) {
-  d.addEventListener("animationend", (e) => { if (e.animationName === "up") d.classList.add("shown"); });
+  // (up: from then on it can be dragged; closing: put away once it's down)
+  d.addEventListener("animationend", (e) => {
+    if (e.target !== d || e.pseudoElement) return;
+    if (d.classList.contains("closing")) { if (!d._throw) finishClose(d); }
+    else d.classList.add("shown");
+  });
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
   d.addEventListener("close", () => { body.classList.remove("sheet-up"); hold(); lastFocus?.focus?.({ preventScroll: true }); });
-  // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog itself)
-  d.addEventListener("click", (e) => { if (e.target === d) closeSheet(d); });
+  // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
+  // itself; and only a tap that began there, not a press that began in the sheet, choosing words, and let go outside it)
+  let downOnDim = false;
+  d.addEventListener("pointerdown", (e) => { downOnDim = e.target === d; });
+  d.addEventListener("click", (e) => { if (e.target === d && downOnDim) closeSheet(d); });
   for (const x of $$("[data-close]", d)) x.addEventListener("click", () => closeSheet(d));
   // the page behind doesn't scroll while a sheet's up: only what scrolls inside the sheet does
   let free = false;
@@ -307,10 +459,14 @@ for (const d of $$("dialog.sheet")) {
   // dragged down by its top
   let y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0;
   d.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a")) return;
-    y0 = lastY = e.clientY; lastT = e.timeStamp; dy = 0; v = 0;
+    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a") || d.classList.contains("closing")) return;
+    // (caught on its way up: held where it is, and the page behind where that's got to, rather than either jumping)
+    const y = Math.max(0, currentY(d));
+    for (const el of behind) el.style.transform = getComputedStyle(el).transform;
     d.getAnimations().forEach((a) => a.cancel());
     d.classList.add("shown");
+    d.style.transform = `translateY(${y}px)`;
+    y0 = e.clientY - y; dy = y; lastY = e.clientY; lastT = e.timeStamp; v = 0;
     d.setPointerCapture(e.pointerId); d.classList.add("dragging"); body.classList.add("pulling");
   });
   d.addEventListener("pointermove", (e) => {
@@ -325,9 +481,10 @@ for (const d of $$("dialog.sheet")) {
     const p = clamp(dy / d.offsetHeight);
     for (const el of behind) el.style.transform = `scale(${0.94 + 0.06 * p}) translateY(${14 * (1 - p)}px)`;
   });
-  const end = () => {
+  const end = (e) => {
     if (y0 === null) return;
     y0 = null; d.classList.remove("dragging");
+    if (e && e.timeStamp - lastT > 80) v = 0;    // (held still before letting go: not thrown)
     if (dy > 110 || (v > 0.5 && dy > 24)) return closeSheet(d, { dy, v });
     // (back up, with a spring; the page back behind it)
     body.classList.remove("pulling");
@@ -338,11 +495,12 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("pointerup", end);
   d.addEventListener("pointercancel", end);
 }
-// On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it
+// On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it (smoothly: styles.css)
 if (window.visualViewport) {
   const vv = window.visualViewport;
   const lift = () => root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
+  window.relift = lift;
 }
 // (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
 function scrollsIn(el, top) {
@@ -352,78 +510,246 @@ function scrollsIn(el, top) {
   }
   return false;
 }
+// A button busy with something: what it says changes smoothly, with a ring turning beside it while it's on its way
+function busyLabel(b, t, busy) {
+  b.disabled = busy; b.classList.toggle("busy", busy);
+  fadeText($(".lbl", b), t);
+  let s = $(".spin", b);
+  if (busy && !s) {
+    s = document.createElement("span"); s.className = "spin"; s.setAttribute("aria-hidden", "true");
+    b.prepend(s);
+    if (!motion.matches) s.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: EASE_OUT });
+  } else if (!busy && s) s.remove();
+}
 
 /* ---------------- a word at the foot, with Undo where it can be ---------------- */
-let toastTimer = null;
+// It rises in and sinks away (styles.css); a new word while it's up changes what it says in place, and it waits while a
+// pointer's over it or it has the focus, so it's not gone from under a reach for Undo
+let toastTimer = null, toastLeft = 0, toastAt = 0;
 function toast(text, undo) {
-  const t = $("#toast"), b = $("#toast-undo");
-  $("#toast-text").textContent = text;
+  const t = $("#toast"), b = $("#toast-undo"), tx = $("#toast-text");
+  const up = !t.hidden && !t.classList.contains("out");
+  if (up) fadeText(tx, text); else tx.textContent = text;
   b.hidden = !undo;
-  b.onclick = undo ? () => { t.hidden = true; undo(); } : null;
-  t.hidden = false;
+  b.onclick = undo ? () => { toast("Undoing…"); undo(); } : null;
+  if (!up) { t.classList.remove("out"); t.hidden = false; }
+  toastLeft = undo ? 6000 : 2600;
+  armToast();
+}
+function armToast() { clearTimeout(toastTimer); toastAt = Date.now(); toastTimer = setTimeout(hideToast, toastLeft); }
+function hideToast() {
+  const t = $("#toast");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, undo ? 6000 : 2600);
+  if (t.hidden || t.classList.contains("out")) return;
+  t.classList.add("out");
+  setTimeout(() => { if (t.classList.contains("out")) { t.hidden = true; t.classList.remove("out"); } }, 500);    // (should its animation not end)
+}
+{
+  const t = $("#toast");
+  t.addEventListener("animationend", (e) => { if (e.target === t && t.classList.contains("out")) { t.hidden = true; t.classList.remove("out"); } });
+  const pause = () => { clearTimeout(toastTimer); toastLeft = Math.max(1200, toastLeft - (Date.now() - toastAt)); };
+  t.addEventListener("pointerenter", pause); t.addEventListener("focusin", pause);
+  t.addEventListener("pointerleave", () => { if (!t.contains(document.activeElement)) armToast(); });
+  t.addEventListener("focusout", (e) => { if (!t.contains(e.relatedTarget)) armToast(); });
 }
 
 /* ---------------- Get in touch ---------------- */
 const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
+  // (their own details, if those are still what the From row says: that row again, rather than the two fields)
+  if (me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email) { $("#from").hidden = false; $("#sender").classList.add("known"); }
   ready();
   openSheet(contact.sheet);
-  grow();
+  grow(); fit();
   const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
   // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
   if (!phone.matches) (empty || $("#c-message")).focus();
 });
 // (their own details changed for this message: the two rows instead)
-$("#from-change").addEventListener("click", () => { $("#from").hidden = true; $("#sender").classList.remove("known"); $("#c-name").focus(); });
-// Send is there once there's something to send; the message grows as it's written
-const ready = () => { contact.send.disabled = !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim()); };
-const grow = () => { const t = $("#c-message"); t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; };
-contact.form.addEventListener("input", (e) => { contact.err.hidden = true; ready(); if (e.target.id === "c-message") grow(); });
+$("#from-change").addEventListener("click", () => {
+  morphFrom(false);
+  $("#c-name").focus({ preventScroll: true });
+});
+// Someone not signed in, name and email given, starting on the message: the two rows fold into the one From row, as
+// they'd be signed in. The words they typed glide to where they sit in the row, the labels fade as they go, their
+// initial comes in beside them and the box closes up around it (Change unfolds it again, the same way back).
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const fold = () => {
+  const name = $("#c-name").value.trim(), email = $("#c-email").value.trim();
+  if ($("#sender").classList.contains("known") || !name || !EMAIL.test(email)) return;
+  $("#from-name").textContent = name; $("#from-email").textContent = email;
+  // (theirs, signed in, if these are still their details; otherwise their initial)
+  const mine = me?.signedIn && name === me.name && email === me.email, face = $("#face");
+  if (mine && face.childNodes.length) $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+  else $("#from-face").textContent = name[0].toUpperCase();
+  morphFrom(true);
+};
+$("#c-message").addEventListener("input", fold);
+$("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
+// (once the sheet's changed size under a field that's being typed in: an iPhone leaves its caret where the field was
+// until the selection changes, so it's moved for a frame and put back (moved and put back at once, it's no change to
+// the phone); and the keyboard's measured again for a moment, as the phone settles its view of the page, so the sheet
+// sits on it rather than short of it or under it)
+function steady() {
+  const el = document.activeElement;
+  if (el?.setSelectionRange && contact.sheet.contains(el)) {
+    const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection;
+    const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
+    el.setSelectionRange(away, away);
+    requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
+  }
+  let n = 0;
+  const tick = () => { window.relift?.(); if (++n < 20) requestAnimationFrame(tick); };
+  tick();
+}
+function morphFrom(on) {
+  const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
+  const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
+  const swap = () => { from.hidden = !on; s.classList.toggle("known", on); if (!on) fit(); };
+  for (const el of [box, s, ...$$("*", s)]) for (const a of el.getAnimations()) a.cancel();
+  if (motion.matches || !d.open) { swap(); return steady(); }
+  // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
+  const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
+  const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
+  const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
+  const ghosts = (on ? rows : [from]).map((el) => {
+    const r = el.getBoundingClientRect(), g = el.cloneNode(true);
+    g.removeAttribute("id"); g.classList.add("ghost"); g.hidden = false; g.setAttribute("aria-hidden", "true"); g.inert = true;
+    for (const x of $$("[id]", g)) x.removeAttribute("id");
+    for (const x of $$("input, b, small", g)) x.style.visibility = "hidden";      // (the words themselves are moving)
+    Object.assign(g.style, { position: "absolute", left: `${r.left - sAt.left}px`, top: `${r.top - sAt.top}px`, width: `${r.width}px`, height: `${r.height}px`, pointerEvents: "none", margin: 0 });
+    s.append(g);
+    return g;
+  });
+  swap();
+  // (and where it all goes)
+  const hBox1 = box.getBoundingClientRect().height, hS1 = s.getBoundingClientRect().height;
+  const T = 520, slide = { duration: T, easing: GLIDE };
+  box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
+  s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
+  words.forEach(([input, shown], i) => {
+    const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
+    el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
+  });
+  // (the labels or the face and Change: out quickly where they were, the others in a moment after, rising to their place)
+  for (const g of ghosts) g.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: on ? "translateX(-10px)" : "scale(0.96)" }], { duration: 220, easing: EASE_OUT, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
+  const arriving = on ? [$("#from-face"), $("#from-change")] : rows.map((r) => $("span", r));
+  arriving.forEach((el, i) => el.animate(on ? [{ opacity: 0, transform: "scale(0.5)" }, { opacity: 1, transform: "none" }] : [{ opacity: 0, transform: "translateX(-10px)" }, { opacity: 1, transform: "none" }],
+    { duration: 420, delay: 120 + i * 50, easing: on ? "cubic-bezier(0.2, 1.3, 0.4, 1)" : EASE_OUT, fill: "backwards" }));
+}
+// Send looks ready once there's something to send (tapped before, it says what's missing, and takes you there); the
+// message grows as it's written, a line at a time, smoothly (styles.css)
+const ready = () => { contact.send.classList.toggle("idle", !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim())); };
+// (measured on a hidden copy, not the box being typed in: changing that one's height, even for a moment, moves it in
+// the sheet, and an iPhone leaves its caret behind where it was, a line out; so it's only ever set when it changes)
+let gauge = null;
+const grow = () => {
+  const t = $("#c-message");
+  if (!gauge) {
+    gauge = t.cloneNode(false);
+    gauge.removeAttribute("id"); gauge.removeAttribute("name"); gauge.removeAttribute("aria-describedby");
+    gauge.tabIndex = -1; gauge.setAttribute("aria-hidden", "true");
+    Object.assign(gauge.style, { position: "absolute", left: "0", top: "0", visibility: "hidden", pointerEvents: "none", height: "0", minHeight: "0", transition: "none" });
+    t.after(gauge);
+  }
+  gauge.style.width = `${t.offsetWidth}px`; gauge.value = t.value;
+  const cs = getComputedStyle(t), h1 = Math.min(Math.max(gauge.scrollHeight + 2, parseFloat(cs.minHeight) || 0), parseFloat(cs.maxHeight) || Infinity);
+  if (!t.offsetHeight || Math.abs(h1 - t.offsetHeight) < 1) return;
+  t.style.height = `${h1}px`;
+  if (document.activeElement === t) setTimeout(steady, 260);      // (once it's grown: styles.css)
+};
+// (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
+// smaller and an iPhone zooms the page in on the field when it's tapped)
+const fit = () => {
+  for (const el of [$("#c-name"), $("#c-email")]) {
+    el.style.fontSize = "";
+    if (!el.clientWidth || el.scrollWidth <= el.clientWidth) continue;
+    const px = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = `${Math.max(16, Math.floor((px * el.clientWidth) / el.scrollWidth * 10) / 10)}px`;
+  }
+};
+const say = (t) => settle(contact.sheet, () => { contact.err.textContent = t; contact.err.hidden = !t; }, t ? contact.err : null);
+contact.form.addEventListener("input", (e) => {
+  e.target.removeAttribute?.("aria-invalid");
+  if (!contact.err.hidden) say("");
+  ready();
+  if (e.target.id === "c-message") grow(); else fit();
+});
+contact.form.addEventListener("change", fit);      // (filled in by the browser, where that's not an input)
 contact.form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (contact.send.classList.contains("busy")) return;
   const msg = { name: $("#c-name").value.trim(), email: $("#c-email").value.trim(), message: $("#c-message").value.trim(), website: $("#c-website").value };
-  const say = (t) => { contact.err.textContent = t; contact.err.hidden = !t; };
-  if (!msg.name || !msg.email || !msg.message) return say("Please add your name, your email and a message.");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(msg.email)) return say("That email doesn’t look right.");
-  say(""); contact.send.disabled = true; contact.send.textContent = "Sending…";
+  const wrong = (sel, t) => { const el = $(sel); el.setAttribute("aria-invalid", "true"); if ($("#sender").classList.contains("known") && sel !== "#c-message") $("#from-change").click(); el.focus(); say(t); };
+  if (!msg.name) return wrong("#c-name", "Please add your name.");
+  if (!msg.email) return wrong("#c-email", "Please add your email, for the reply.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(msg.email)) return wrong("#c-email", "That email doesn’t look right.");
+  if (!msg.message) return wrong("#c-message", "Please write a message.");
+  say(""); busyLabel(contact.send, "Sending…", true);
   try {
     await api("/api/contact", { method: "POST", body: msg });
     $("#c-message").value = "";
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
-    contact.form.hidden = true; contact.sent.hidden = false;
+    settle(contact.sheet, () => { contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
     $("button", contact.sent).focus();
   } catch (err) { say(err.message); }
-  contact.send.textContent = "Send"; ready(); grow();
+  busyLabel(contact.send, "Send", false); ready(); grow();
 });
 
 /* ---------------- editing (the owner): the words in place ---------------- */
-const editables = $$("[data-edit]");
-let before = null;
+const editables = $$("[data-edit]"), hero = $(".hero");
+let before = null, editOut = null;
+const guard = (e) => e.preventDefault();      // (leaving with the words half changed: the browser asks first)
 function startEdit() {
   if (editing || !me?.owner) return;
+  // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
+  if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
+  // (and what was typed before a save that didn't go, back where it was)
+  let draft = null; try { draft = JSON.parse(sessionStorage.getItem("home-draft") || "null"); sessionStorage.removeItem("home-draft"); } catch (_) {}
   editing = true; before = { ...content };
+  // (the words held where they are, growing downwards as they're typed, not pushing the lines above them up)
+  hero.style.paddingTop = `${$(".eyebrow", hero).offsetTop}px`; hero.style.justifyContent = "flex-start";
+  clearTimeout(editOut); body.classList.remove("edit-out");
   body.classList.add("edit");
   for (const el of editables) {
     // (plain text where the browser has it; where it doesn't, what's pasted is made plain below)
     try { el.contentEditable = "plaintext-only"; } catch (_) {}
     if (el.contentEditable !== "plaintext-only") el.contentEditable = "true";
     el.spellcheck = true;
+    if (draft && typeof draft[el.dataset.c] === "string") el.textContent = draft[el.dataset.c];
   }
+  addEventListener("beforeunload", guard);
   window.redrawScroll();
-  scrollTo({ top: 0, behavior: motion.matches ? "auto" : "smooth" });
+  // (every line in sight once the page is back at the top, the scroll bringing them back as it goes, not snapped in first)
+  const linesOn = () => { if (editing) body.classList.add("lines-on"); };
+  if (scrollY < 2 || motion.matches) { scrollTo({ top: 0 }); linesOn(); }
+  else {
+    const t = setTimeout(linesOn, 800);
+    addEventListener("scrollend", () => { clearTimeout(t); linesOn(); }, { once: true });
+    scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 async function endEdit(keep = true) {
   if (!editing) return;
   const next = { role: text($("[data-c=role][data-edit]")), name: text($("[data-c=name][data-edit]")), bio: text($("[data-c=bio][data-edit]")) };
   for (const el of editables) el.removeAttribute("contenteditable");
   document.activeElement?.blur?.();
-  editing = false; body.classList.remove("edit");
+  editing = false;
+  removeEventListener("beforeunload", guard);
+  // (the bar at the foot sinks away, and the words settle back to where they sit on the page, smoothly)
+  const lines = [...hero.children], tops = lines.map((el) => el.getBoundingClientRect().top);
+  body.classList.remove("edit", "lines-on");
+  body.classList.add("edit-out");
+  clearTimeout(editOut); editOut = setTimeout(() => body.classList.remove("edit-out"), 500);
+  hero.style.paddingTop = ""; hero.style.justifyContent = "";
+  if (!motion.matches) lines.forEach((el, i) => { const d = tops[i] - el.getBoundingClientRect().top; if (Math.abs(d) > 1) el.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 350, easing: EASE_OUT }); });
   window.redrawScroll();
-  if (!keep || ["role", "name", "bio"].every((k) => next[k] === before[k])) return showContent();
+  const changed = keep && !["role", "name", "bio"].every((k) => next[k] === before[k]);
+  // (what's been typed stays as it is while it's saved: it's put back only if it can't be)
+  if (changed) content = { ...content, ...next };
   showContent();
+  if (!changed) return;
   try {
     content = { ...DEFAULTS, ...(await api("/api/content", { method: "PUT", body: next })).content };
     showContent();
@@ -431,8 +757,14 @@ async function endEdit(keep = true) {
       try { content = { ...DEFAULTS, ...(await api("/api/history", { method: "POST", body: { index: 0 } })).content }; showContent(); toast("Undone"); }
       catch (err) { toast(err.message); }
     });
-  } catch (err) { content = before; showContent(); toast(err.message); }
+  } catch (err) {
+    content = before; showContent(); toast(err.message);
+    try { sessionStorage.setItem("home-draft", JSON.stringify(next)); } catch (_) {}
+    if (err.field === "reauth") me.fresh = false;
+    startEdit();
+  }
 }
+$("#editbar").addEventListener("animationend", (e) => { if (e.target === e.currentTarget && !editing) { clearTimeout(editOut); body.classList.remove("edit-out"); } });
 // (a line of plain text: what was typed, its spaces run together)
 const text = (el) => el.textContent.replace(/\s+/g, " ").trim();
 $("#edit").addEventListener("click", startEdit);
@@ -450,85 +782,197 @@ for (const el of editables) {
 }
 // (Escape anywhere but a sheet leaves editing as it was)
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing && !document.querySelector("dialog[open]")) endEdit(false); });
-// (leaving with the words half changed: the browser asks first)
-addEventListener("beforeunload", (e) => { if (editing) e.preventDefault(); });
 
 /* ---------------- the photos, changed from their sheet ---------------- */
 const ph = { sheet: $("#photos-sheet"), tiles: $("#tiles"), err: $("#photos-err"), input: $("#photo-input"), add: $("#add-photos") };
 const WHERE = { both: "Both", mobile: "Phone", desktop: "Computer" }, NEXT = { both: "mobile", mobile: "desktop", desktop: "both" };
+// (with a mouse there's no tapping)
+if (matchMedia("(hover: hover) and (pointer: fine)").matches) $(".hint", ph.sheet).textContent = "Click a photo to choose the part that stays in view.";
+// the first few, small, in the bar at the foot (each new one popping in: styles.css)
 function showThumbs() {
-  const t = $("#thumbs");
-  t.textContent = "";
-  for (const p of photos.slice(0, 4)) {
-    const i = document.createElement("i");
-    i.style.backgroundImage = `url("${photoUrl(p)}")`;
-    t.append(i);
-  }
+  const t = $("#thumbs"), want = photos.slice(0, 4);
+  if ([...t.children].map((i) => i.dataset.id).join() === want.map((p) => p.id).join()) return;
+  const had = new Map([...t.children].map((i) => [i.dataset.id, i]));
+  t.replaceChildren(...want.map((p) => {
+    let i = had.get(p.id);
+    if (!i) { i = document.createElement("i"); i.dataset.id = p.id; i.style.backgroundImage = `url("${photoUrl(p, true)}")`; }
+    return i;
+  }));
 }
-function photosSaid(t) { ph.err.textContent = t || ""; ph.err.hidden = !t; }
+function photosSaid(t) { settle(ph.sheet, () => { ph.err.textContent = t || ""; ph.err.hidden = !t; }, t ? ph.err : null); }
+// The photos in their sheet, each tile kept for the photo it shows (by its id), so a change moves what changed and no
+// more: a new focal point or screen moves into place, a photo added grows in (from the placeholder it had while it went
+// up), one removed fades where it was while the rest close up around it, and the sheet goes to its new height
+function makeTile(p, src) {
+  const tile = document.createElement("div");
+  tile.className = "tile"; tile.dataset.id = p.id;
+  const img = document.createElement("img");
+  img.alt = ""; img.decoding = "async"; img.src = src || photoUrl(p, true);
+  fadeOnLoad(img);
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  const where = document.createElement("button");
+  where.type = "button"; where.className = "where";
+  const rm = document.createElement("button");
+  rm.type = "button"; rm.className = "rm"; rm.setAttribute("aria-label", "Remove this photo");
+  rm.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+  // (as the photo is now, by its id: not as it was when the tile was made)
+  const now = () => photos.find((x) => x.id === p.id);
+  // (a tap on the photo: the point that stays in view as the screen crops it, moved there at once, and back if it can't be kept)
+  img.addEventListener("click", (e) => {
+    if ($(".ask", tile)) return;
+    const r = img.getBoundingClientRect();
+    const x = Math.round(clamp((e.clientX - r.left) / r.width) * 100), y = Math.round(clamp((e.clientY - r.top) / r.height) * 100);
+    img.style.objectPosition = `${x}% ${y}%`; dot.style.left = `${x}%`; dot.style.top = `${y}%`;
+    change(tile, "POST", { focus: `${x}% ${y}%` });
+  });
+  where.addEventListener("click", () => { const q = now(); if (q) change(tile, "POST", { device: NEXT[q.device || "both"] }); });
+  rm.addEventListener("click", () => askRemove(tile));
+  tile.append(img, dot, where, rm);
+  return tile;
+}
+function updateTile(tile, p) {
+  const img = $("img", tile), dot = $(".dot", tile), where = $(".where", tile);
+  const focus = p.focus || "50% 50%", [fx, fy] = focus.split(" "), w = WHERE[p.device || "both"];
+  img.style.objectPosition = focus; dot.style.left = fx; dot.style.top = fy;
+  if (where.textContent) fadeText(where, w); else where.textContent = w;
+  where.setAttribute("aria-label", `Shows on: ${w}. Change`);
+  tile.classList.remove("busy");
+}
+// (taking one out is asked on the photo itself: Remove, or Keep)
+function askRemove(tile) {
+  if ($(".ask", tile)) return;
+  const ask = document.createElement("div");
+  ask.className = "ask"; ask.setAttribute("role", "group"); ask.setAttribute("aria-label", "Remove this photo?");
+  ask.innerHTML = '<p>Remove this photo?</p><button type="button" class="yes">Remove</button><button type="button" class="no">Keep</button>';
+  $(".yes", ask).addEventListener("click", () => change(tile, "DELETE", {}));
+  $(".no", ask).addEventListener("click", () => {
+    $(".rm", tile).focus({ preventScroll: true });
+    if (motion.matches) return ask.remove();
+    ask.classList.add("going"); ask.addEventListener("animationend", () => ask.remove(), { once: true });
+  });
+  tile.append(ask);
+  $(".yes", ask).focus({ preventScroll: true });
+}
+async function change(tile, method, data) {
+  tile.classList.add("busy"); photosSaid("");
+  try { photos = (await api("/api/background", { method, body: { id: tile.dataset.id, ...data } })).images || []; }
+  catch (err) { photosSaid(err.message); }
+  photosChanged();
+}
+// (one on its way up: shown at once, dimmed, until it's in)
+function pendingTile(file) {
+  const t = document.createElement("div");
+  t.className = "tile pending";
+  if (!motion.matches) t.classList.add("fresh");
+  const img = document.createElement("img");
+  img.alt = ""; img.decoding = "async"; img.src = URL.createObjectURL(file);
+  t.append(img);
+  return t;
+}
 function showTiles() {
-  ph.tiles.textContent = "";
-  if (!photos.length) {
-    const p = document.createElement("p");
-    p.className = "none"; p.textContent = "No photos yet.";
-    ph.tiles.append(p);
-    return;
+  // (where each was in the grid: within it, so the sheet changing height around it doesn't count as moving)
+  const c = ph.tiles.getBoundingClientRect(), where = (t) => { const r = t.getBoundingClientRect(); return { x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height }; };
+  const leaving = $$(".tile.leaving", ph.tiles), pending = $$(".tile.pending", ph.tiles);
+  const kept = new Map($$(".tile:not(.leaving):not(.pending)", ph.tiles).map((t) => [t.dataset.id, t]));
+  const was = new Map([...kept.values(), ...pending].map((t) => [t, where(t)]));
+  const animate = ph.sheet.open && !motion.matches;
+  const els = photos.map((p) => {
+    let t = kept.get(p.id);
+    if (t) kept.delete(p.id);
+    else {
+      // (the one just added takes its placeholder's place, with the photo it already showed)
+      const stand = pending.shift();
+      t = makeTile(p, stand && $("img", stand).src);
+      if (stand) was.set(t, was.get(stand)); else if (animate) t.classList.add("fresh");
+    }
+    updateTile(t, p);
+    return t;
+  });
+  // (the ones gone: lifted out where they were, to fade away there, while the rest close up)
+  const going = [...kept.values()];
+  for (const t of going) {
+    const r = was.get(t);
+    Object.assign(t.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+    t.classList.remove("fresh", "busy"); t.classList.add("leaving");
+    const bye = () => t.remove();
+    t.addEventListener("animationend", bye, { once: true });
+    setTimeout(bye, 500);
   }
-  for (const p of photos) {
-    const tile = document.createElement("div");
-    tile.className = "tile";
-    const img = document.createElement("img");
-    img.src = photoUrl(p); img.alt = ""; img.decoding = "async";
-    img.style.objectPosition = p.focus || "50% 50%";
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    const [fx, fy] = (p.focus || "50% 50%").split(" ");
-    dot.style.left = fx; dot.style.top = fy;
-    const where = document.createElement("button");
-    where.type = "button"; where.className = "where";
-    where.textContent = WHERE[p.device || "both"];
-    where.setAttribute("aria-label", `Shows on: ${WHERE[p.device || "both"]}. Change`);
-    const rm = document.createElement("button");
-    rm.type = "button"; rm.className = "rm"; rm.setAttribute("aria-label", "Remove this photo");
-    rm.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
-    const change = async (method, data) => {
-      tile.classList.add("busy"); photosSaid("");
-      try { photos = (await api("/api/background", { method, body: { id: p.id, ...data } })).images || []; }
-      catch (err) { photosSaid(err.message); }
-      photosChanged();
-    };
-    // (a tap on the photo: the point that stays in view as the screen crops it)
-    img.addEventListener("click", (e) => {
-      const r = img.getBoundingClientRect();
-      const x = Math.round(clamp((e.clientX - r.left) / r.width) * 100), y = Math.round(clamp((e.clientY - r.top) / r.height) * 100);
-      change("POST", { focus: `${x}% ${y}%` });
-    });
-    where.addEventListener("click", () => change("POST", { device: NEXT[p.device || "both"] }));
-    rm.addEventListener("click", () => { if (confirm("Remove this photo from the slideshow?")) change("DELETE", {}); });
-    tile.append(img, dot, where, rm);
-    ph.tiles.append(tile);
+  let none = null;
+  if (!photos.length && !pending.length) { none = $(".none", ph.tiles); if (!none) { none = document.createElement("p"); none.className = "none"; none.textContent = "No photos yet."; } }
+  ph.tiles.replaceChildren(...els, ...pending, ...(none ? [none] : []), ...leaving, ...going);
+  if (!animate) return;
+  for (const t of els) {
+    const a = was.get(t); if (!a) continue;
+    const b = where(t), dx = a.x - b.x, dy = a.y - b.y;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) t.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 350, easing: GLIDE });
   }
 }
-function photosChanged() { showTiles(); showThumbs(); buildSlides(); }
+// (the slideshow's changed only as much as it needs to be: a new focal point is moved to where it shows, and a different
+// set of photos for this screen carries on from the one showing, rather than going dark and starting again)
+function photosChanged() {
+  if (ph.sheet.open) settle(ph.sheet, showTiles); else showTiles();
+  showThumbs();
+  const now = forScreen();
+  if (now.map((p) => p.id).join() !== shown.map((p) => p.id).join()) return updateSlides();
+  shown = now;
+  [...bgEl.children].forEach((s, i) => { if (now[i]) s.style.objectPosition = s.style.transformOrigin = now[i].focus || "50% 50%"; });
+  if (at >= 0 && now[at]) $("#soft").style.setProperty("--soft-pos", now[at].focus || "50% 50%");
+}
 $("#change-photos").addEventListener("click", () => { photosSaid(""); showTiles(); openSheet(ph.sheet); });
 ph.add.addEventListener("click", () => ph.input.click());
 ph.input.addEventListener("change", async () => {
   const files = [...(ph.input.files || [])].filter((f) => f.type.startsWith("image/"));
   ph.input.value = "";
   if (!files.length) return;
-  photosSaid(""); ph.add.disabled = true;
+  photosSaid(""); busyLabel(ph.add, files.length > 1 ? `Adding 1 of ${files.length}…` : "Adding…", true);
+  // (each one there at once, as it goes up)
+  settle(ph.sheet, () => { $(".none", ph.tiles)?.remove(); for (const f of files) ph.tiles.append(pendingTile(f)); });
   try {
     for (const [i, f] of files.entries()) {
-      ph.add.textContent = files.length > 1 ? `Adding ${i + 1} of ${files.length}…` : "Adding…";
-      photos = (await api("/api/background", { method: "PUT", body: { image: await shrink(f, 2600) } })).images || photos;
+      if (files.length > 1) fadeText($(".lbl", ph.add), `Adding ${i + 1} of ${files.length}…`);
+      const [image, small] = await shrinkBoth(f);
+      photos = (await api("/api/background", { method: "PUT", body: { image, small } })).images || photos;
       photosChanged();
     }
-  } catch (err) { photosSaid(err.message === "Invalid or oversized image." ? "That photo couldn’t be added. Try a smaller one." : err.message); }
-  ph.add.disabled = false; ph.add.textContent = "Add photos";
+  } catch (err) {
+    photosSaid(err.message === "Invalid or oversized image." ? "That photo couldn’t be added. Try a smaller one." : err.message);
+    settle(ph.sheet, () => { for (const t of $$(".tile.pending", ph.tiles)) t.remove(); if (!photos.length) showTiles(); });
+  }
+  busyLabel(ph.add, "Add photos", false);
 });
-// a photo at most max pixels on its longer side (enough for a phone's screen at 3×, or a computer's at 2×), as WebP where
-// the browser can make it (about a third smaller), else as a JPEG
-function shrink(file, max) {
+// A photo made ready to send: decoded once, then drawn at two sizes (at most 2,600 pixels on its longer side, enough for
+// a phone's screen at 3× or a computer's at 2×, and a phone's own copy at 1,600), as WebP where the browser can make it
+// (about a third smaller), else as JPEG. The decoding and encoding happen off this thread where the browser can do that,
+// so the page doesn't freeze while a photo's added.
+async function shrinkBoth(file) {
+  let bmp = null;
+  try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (_) {}
+  if (!bmp) return Promise.all([shrinkInPage(file, 2600), shrinkInPage(file, 1600, 0.8)]);
+  try { return await Promise.all([encode(bmp, 2600, 0.86), encode(bmp, 1600, 0.8)]); }
+  finally { bmp.close(); }
+}
+async function encode(bmp, max, q) {
+  const s = Math.min(1, max / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  let blob = null;
+  if (typeof OffscreenCanvas !== "undefined") {
+    const c = new OffscreenCanvas(w, h);
+    c.getContext("2d").drawImage(bmp, 0, 0, w, h);
+    blob = await c.convertToBlob({ type: "image/webp", quality: q });
+    if (blob.type !== "image/webp") blob = await c.convertToBlob({ type: "image/jpeg", quality: q });
+  } else {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h; c.getContext("2d").drawImage(bmp, 0, 0, w, h);
+    const as = (type) => new Promise((ok) => c.toBlob(ok, type, q));
+    blob = await as("image/webp");
+    if (!blob || blob.type !== "image/webp") blob = await as("image/jpeg");
+  }
+  if (!blob) throw new Error("That photo couldn’t be made ready. Try another.");
+  return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("That photo couldn’t be read.")); r.readAsDataURL(blob); });
+}
+// (where the browser can't decode a photo off this thread: as it was always done, here)
+function shrinkInPage(file, max, q = 0.86) {
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
@@ -536,20 +980,18 @@ function shrink(file, max) {
       c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      const webp = c.toDataURL("image/webp", 0.86);
-      resolve(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/jpeg", 0.86));
+      const webp = c.toDataURL("image/webp", q);
+      resolve(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/jpeg", q));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That file isn’t a photo this browser can open.")); };
     img.src = url;
   });
 }
 
-/* ---------------- no zooming, and no copying outside the fields ---------------- */
+/* ---------------- no copying outside the fields ----------------
+   (zooming is left alone: anyone who needs the page bigger can pinch it, or zoom it on a computer) */
 const inField = (el) => !!el?.closest?.("input, textarea, [contenteditable]");
 for (const ev of ["copy", "cut"]) document.addEventListener(ev, (e) => { if (!inField(e.target)) e.preventDefault(); });
-for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault());
-addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault(); });
 
 /* ---------------- start ---------------- */
 $("#year").textContent = new Date().getFullYear();

@@ -10,7 +10,7 @@
 //   POST /api/weather/leave           a device signed out of its account elsewhere: its notifications its own
 //   GET  /api/weather/me           the site's account, as Weather has it: who, and your places, settings and
 //   PUT  /api/weather/me           notifications kept with it (functions/_wxacct.js)
-//   POST /api/weather/signin/...   signing in to it: salt and password, or options and passkey
+//   POST /api/weather/handback     signed in on the account's page, for Weather: its code swapped for the sign-in
 //   POST /api/weather/signout
 //   POST /api/weather/move         a phone's subscription replaced by its browser (weather/sw.js)
 //   POST /api/weather/tick         send what's due (the scheduler: .github/workflows/weather-tick.yml)
@@ -18,10 +18,10 @@
 //   POST /api/weather/email-off    scanners that follow links turn nothing off); POST turns them off, and is the mail
 //                                  app's own one-click Unsubscribe too (RFC 8058)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
-import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE } from "../../_pigeon.js";
+import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { linkOrigin } from "../../_email.js";
-import { unsubscribe, moveSub, wxTick, publicKey, leaveAny } from "../../_wxpush.js";
+import { unsubscribe, moveSub, wxTick, maybeWxTick, publicKey, leaveAny } from "../../_wxpush.js";
 import { ACCOUNT_ROUTES, subscribeHere, setMail } from "../../_wxacct.js";
 import { isWeather } from "../../_wxapp.js";
 import { obsFor } from "../../_wxobs.js";
@@ -99,7 +99,9 @@ const ROUTES = {
   "GET warnings": async ({ request, env }) => {
     const [lat, lon] = placeOf(request);
     await limit(env, `wxwarn:${clientIp(request)}`, 120, HOUR);
-    return json(await warningsAt(env, lat, lon));
+    // (the feeds are taken a few minutes at a time anyway: the phone keeps its answer as long, rather than asking again,
+    // and this server writing down each ask, as it opens and comes back to the app)
+    const r = json(await warningsAt(env, lat, lon)); r.headers.set("Cache-Control", "private, max-age=180"); return r;
   },
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
   "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },
@@ -128,10 +130,12 @@ const ROUTES = {
 export async function onRequest(ctx) {
   const parts = [].concat(ctx.params.path || []), route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
   if (!route) return json({ error: "Not found." }, 404);
+  // (the site's traffic keeps Weather's notifications going between the scheduler's late ticks: functions/_wxpush.js)
+  if (ctx.env.DB && parts[0] !== "tick") ctx.waitUntil(maybeWxTick(ctx.env, linkOrigin(ctx.request)).catch((e) => logError(ctx.env, "weather tick (traffic)", e)));
   try { return await route(ctx); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    console.error("weather api", e && (e.stack || e.message));
+    await logError(ctx.env, "weather api", e);
     return json({ error: "Something went wrong." }, 500);
   }
 }

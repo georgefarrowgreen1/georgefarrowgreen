@@ -32,13 +32,15 @@ export function preload() {
   return ml;
 }
 
-// WebGL 2, without keeping the context it's asked for
+// WebGL 2, without keeping the context it's asked for (asked once: making a context is a long moment's work)
+let canGl;
 export function able() {
+  if (canGl !== undefined) return canGl;
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
     gl?.getExtension("WEBGL_lose_context")?.loseContext();
-    return !!gl;
-  } catch (_) { return false; }
+    return (canGl = !!gl);
+  } catch (_) { return (canGl = false); }
 }
 
 // The map in `el`, at the place (zoom: in 256-pixel tiles' zooms, as Leaflet counts them; MapLibre's are a zoom
@@ -113,16 +115,17 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   const fields = new Map();
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
   // (a layer's opacity, at once, or faded to it over a quarter of a second)
-  const INSTANT = { duration: 0, delay: 0 }, GENTLY = { duration: calm ? 0 : 260, delay: 0 };
+  const INSTANT = { duration: 0, delay: 0 }, GENTLY = { duration: calm ? 0 : 260, delay: 0 }, SLOWLY = { duration: calm ? 0 : 400, delay: 0 };
   // (each told only when it changes: not again every frame the radar plays)
   const told = new Map();
+  // (soft: faded; "slow", over a little longer)
   const opacity = (id, v, soft = false) => {
     const was = told.get(id);
     if (was && was[0] === v && was[1] === soft) return;
     told.set(id, [v, soft]);
-    map.setPaintProperty(id, "raster-opacity-transition", soft ? GENTLY : INSTANT); map.setPaintProperty(id, "raster-opacity", v);
+    map.setPaintProperty(id, "raster-opacity-transition", soft === "slow" ? SLOWLY : soft ? GENTLY : INSTANT); map.setPaintProperty(id, "raster-opacity", v);
   };
-  const unmix = () => { if (mix) opacity("mix", 0); };
+  const unmix = (soft = false) => { if (mix) opacity("mix", 0, soft); };
   // the picture over the map as it is, kept a moment on top of what comes next and faded away (blend draws over the
   // one canvas: so it's copied first)
   const wasCanvas = document.createElement("canvas");
@@ -143,10 +146,11 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
         return id;
       });
     },
-    show(k, value) {
-      unmix();
-      if (layers[on]) opacity(layers[on], 0);
-      if (layers[k]) opacity(layers[k], value);
+    // (soft: faded from the one to the other, as another layer's chosen or the rain's back)
+    show(k, value, soft = false) {
+      unmix(soft);
+      if (layers[on]) opacity(layers[on], 0, soft);
+      if (layers[k]) opacity(layers[k], value, soft);
       on = k;
     },
     // what's over the map now, faded away over what's drawn next
@@ -167,9 +171,9 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
     },
     // a picture over bounds in place of the frames (the minutes between them: radar.js), drawn again as it changes;
     // null: none
-    // (fade: the frame shown before it faded away under it, not cut)
-    blend(canvas, bounds, value, fade = false) {
-      if (!canvas) return unmix();
+    // (fade: the frame shown before it faded away under it, not cut; soft: it fades in itself, the rain back again)
+    blend(canvas, bounds, value, fade = false, soft = false) {
+      if (!canvas) return unmix(soft);
       const c = corners(bounds), key = c.join();
       mixCorners = c;
       // (a picture on another canvas: its layer made again for it)
@@ -182,16 +186,16 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       } else if (key !== mixAt) { mix.setCoordinates(c); mixAt = key; }
       // (its picture sent on to the screen: pausing it uploads it)
       mix.play(); mix.pause(); map.triggerRepaint();
-      if (layers[on]) opacity(layers[on], 0, fade);
+      if (layers[on]) opacity(layers[on], 0, fade || soft);
       on = -1;
-      opacity("mix", value);
+      opacity("mix", value, soft);
     },
     // temperature or wind over the map, in place of the rain (radar.js, its layers): a picture over bounds, drawn again
     // as it changes; null: none
-    // (slot: "field", or "fine", a finer picture about the place, over it)
+    // (slot: "field", or "fine", a finer picture about the place, over it; put away, it fades, as it came)
     field(canvas, bounds, value = 1, slot = "field") {
       let f = fields.get(slot);
-      if (!canvas) { if (f) opacity(slot, 0); return; }
+      if (!canvas) { if (f) opacity(slot, 0, true); return; }
       const c = corners(bounds), key = c.join();
       if (f && f.of !== canvas) { map.removeLayer(slot); map.removeSource(slot); f = null; }
       if (!f) {
@@ -205,19 +209,18 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       f.src.play(); f.src.pause(); map.triggerRepaint();
       opacity(slot, value, true);
     },
-    // the wind's flow: a picture of what's in sight, drawn into the map under its names as it changes (null: none)
+    // the wind's flow: a picture of what's in sight, drawn into the map under its names as it changes (null: none);
+    // faded in as it starts and out as it's put away, rather than there and gone
     flow(canvas, bounds) {
-      if (!canvas) { if (flow) map.setLayoutProperty("flow", "visibility", "none"); return; }
+      if (!canvas) { if (flow) opacity("flow", 0, "slow"); return; }
       const c = corners(bounds), key = c.join();
       if (!flow) {
         map.addSource("flow", { type: "canvas", canvas, coordinates: c, animate: false });
-        map.addLayer({ id: "flow", type: "raster", source: "flow", paint: { "raster-fade-duration": 0, "raster-resampling": "linear" } }, ABOVE_RAIN);
+        map.addLayer({ id: "flow", type: "raster", source: "flow", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, ABOVE_RAIN);
         flow = map.getSource("flow"); flowAt = key;
-      } else {
-        if (key !== flowAt) { flow.setCoordinates(c); flowAt = key; }
-        map.setLayoutProperty("flow", "visibility", "visible");
-      }
+      } else if (key !== flowAt) { flow.setCoordinates(c); flowAt = key; }
       flow.play(); flow.pause(); map.triggerRepaint();
+      opacity("flow", 1, "slow");
     },
     // room kept under the place's bubble, where its name is, that names step aside from: as wide as the name
     room(w) {

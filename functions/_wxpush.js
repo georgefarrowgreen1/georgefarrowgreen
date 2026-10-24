@@ -34,7 +34,7 @@
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 
 import { pushEndpointOk, pushToSub, vapid, unsubToken } from "./_notify.js";
-import { HttpError, fromB64url } from "./_pigeon.js";
+import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
 import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
@@ -60,6 +60,17 @@ let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
   if (!ready) ready = (async () => {
+    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a dozen trips)
+    if ((await env.DB.prepare("SELECT v FROM wx_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+    await setup(env);
+    await env.DB.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
+  })().catch((e) => { ready = null; throw e; });
+  await ready;
+  return env.DB;
+}
+// The tables and their columns (each step safe to run again). SCHEMA_FP is its own text's fingerprint, so any change
+// here has every copy of the server run it once more.
+async function setup(env) {
     await env.DB.batch([
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS wx_subs (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
         lat REAL NOT NULL, lon REAL NOT NULL, name TEXT, rain INTEGER NOT NULL DEFAULT 0, brief INTEGER NOT NULL DEFAULT 0, brief_at TEXT,
@@ -94,10 +105,8 @@ export async function wxdb(env) {
     ]);
     // (each day's hours at the airport: temperature, dew point, wind and gusts, for tuning more than the highs and lows)
     await env.DB.prepare("ALTER TABLE wx_obs ADD COLUMN hours TEXT").run().catch(() => {});
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
-  return env.DB;
 }
+const SCHEMA_FP = (() => { let h = 2166136261; for (const c of setup.toString()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "w" + h.toString(36); })();
 const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const idOf = async (endpoint) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint))).slice(0, 32);
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -313,6 +322,20 @@ export async function unlinkEnded(D) {
   await D.prepare("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)").run();
 }
 
+// Ticks are asked for every 10 minutes by a scheduler, which runs late (GitHub's can be hours late): so the site's traffic
+// asks too, as InFlight's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
+// every 20 seconds from one copy of the server.)
+let wxLook = 0;
+export async function maybeWxTick(env, origin) {
+  if (env.WX_TRAFFIC_TICK === "0") return;           // (a test server, which asks for its ticks itself, to count what they do)
+  const t = Date.now();
+  if (t - wxLook < 20e3) return;
+  wxLook = t;
+  const D = await wxdb(env);
+  await D.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES ('tick_at', '0')").run();
+  const r = await D.prepare("UPDATE wx_meta SET v = ?1 WHERE k = 'tick_at' AND CAST(v AS INTEGER) < ?2").bind(String(t), t - 5 * MIN).run();
+  if (r.meta?.changes) await wxTick(env, t, origin);
+}
 // The tick: one at a time (a lease, given back at the end; it lapses by itself if a tick dies part way)
 // (origin: where links in its emails go, this site or a test server: functions/_email.js linkOrigin)
 export async function wxTick(env, t = Date.now(), origin = SITE) {
@@ -320,8 +343,15 @@ export async function wxTick(env, t = Date.now(), origin = SITE) {
   await D.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES ('tick', '0')").run();
   const lease = await D.prepare("UPDATE wx_meta SET v = ?1 WHERE k = 'tick' AND CAST(v AS INTEGER) < ?2").bind(String(t + LEASE), t).run();
   if (!lease.meta?.changes) return { busy: true };
-  try { return await tick(env, D, t, origin); }
-  finally { await D.prepare("UPDATE wx_meta SET v = '0' WHERE k = 'tick'").run().catch(() => {}); }
+  let out = null;
+  try { return (out = await tick(env, D, t, origin)); }
+  catch (e) { await logError(env, "weather tick", e); throw e; }
+  finally {
+    await D.prepare("UPDATE wx_meta SET v = '0' WHERE k = 'tick'").run().catch(() => {});
+    // (when it last ran, how long it took and what it did: Admin warns when it hasn't run lately)
+    await D.batch([D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('tick_last', ?)").bind(JSON.stringify({ at: t, ms: Date.now() - t, ok: !!out, ...(out && typeof out === "object" ? { rain: out.rain || 0, brief: out.brief || 0 } : {}) })),
+      D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('tick_at', ?)").bind(String(t))]).catch(() => {});
+  }
 }
 async function tick(env, D, t, origin) {
   await unlinkEnded(D);

@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import http from 'http';
-import { joinInFlight } from './join.mjs';
+import { joinInFlight, signInInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -206,8 +206,7 @@ await L.p.waitForSelector('#sheet', { state: 'hidden', timeout: 40000 }).catch((
 await settle(L, 300);
 ok(user('rowan_h').salt !== salt0 && /Password changed/.test(await text(L, '#toast')), 'changed: a new salt, and said', await text(L, '#toast'));
 const Ph = await browser('phone');
-await Ph.p.goto(`${CHAT}/`); await Ph.p.waitForSelector('.welcome', { timeout: 20000 }); await Ph.p.click('[data-act=to][data-id=signin]');
-await Ph.p.fill('#f-email', 'rowan@example.com'); await Ph.p.fill('#f-password', PW2); await Ph.p.click('[data-form=signin] .btn');
+await signInInFlight(Ph.p, `${CHAT}/`, { email: 'rowan@example.com', password: PW2 });
 const opened = await Ph.p.waitForSelector('.tabs', { timeout: 40000 }).then(() => true).catch(() => false);
 ok(opened, 'InFlight on a new phone opens with the new password: the key it locks came through whole');
 
@@ -356,8 +355,7 @@ ok(/Rowan Ash Hale/.test(await text(L)), 'signed in with the passkey added here'
 
 // ---- 8. Light mode, and a wide screen ----
 const D = await browser('light', { scheme: 'light' });
-await D.p.goto(`${CHAT}/`); await D.p.waitForSelector('.welcome', { timeout: 20000 }); await D.p.click('[data-act=to][data-id=signin]');
-await D.p.fill('#f-email', 'rowan.hale@example.com'); await D.p.fill('#f-password', PW2); await D.p.click('[data-form=signin] .btn'); await D.p.waitForSelector('.tabs', { timeout: 40000 });
+await signInInFlight(D.p, `${CHAT}/`, { email: 'rowan.hale@example.com', password: PW2 }); await D.p.waitForSelector('.tabs', { timeout: 40000 });
 await account(D);
 const bg = await D.p.evaluate(() => getComputedStyle(document.body).color);
 ok(bg === 'rgb(13, 16, 32)', 'light mode: dark text on the dawn sky', bg);
@@ -386,9 +384,10 @@ ok(del && del.delete_at > Date.now() + 6.9 * 86400e3 && /will be deleted on/.tes
   'asked: to be deleted in 7 days, and signed out everywhere', await text(L, '#toast'));
 const km = await waitMail('rowan.hale@example.com', /will be deleted/);
 ok(tokenIn(km, 'keep'), 'an email with a link to keep it', km?.subject);
-// InFlight won't sign in to it; this page will, to keep it
-await Ph.p.goto(`${CHAT}/`); await Ph.p.waitForSelector('.welcome', { timeout: 20000 }); await Ph.p.click('[data-act=to][data-id=signin]');
-await Ph.p.fill('#f-email', 'rowan.hale@example.com'); await Ph.p.fill('#f-password', PW2); await Ph.p.click('[data-form=signin] .btn');
+// InFlight won't sign in to it: its Sign in, on this page, stays here, to keep it
+await Ph.p.goto(`${CHAT}/`); await Ph.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 20000 }); await Ph.p.click('.welcome [data-act=acctsignin]');
+await Ph.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
+await Ph.p.fill('main input[name=email]', 'rowan.hale@example.com'); await Ph.p.fill('main input[name=password]', PW2); await Ph.p.click('main .signin form .btn');
 await Ph.p.waitForFunction(() => /being deleted/.test(document.body.innerText), null, { timeout: 30000 }).catch(() => {});
 ok(/being deleted/.test(await Ph.p.evaluate(() => document.body.innerText)) && !(await Ph.p.$('.tabs')), 'InFlight won\'t sign in to it, and says where to keep it');
 await L.p.fill('main input[type=email]', 'rowan.hale@example.com'); await L.p.fill('main input[type=password]', PW2); await L.p.click('main form .btn');

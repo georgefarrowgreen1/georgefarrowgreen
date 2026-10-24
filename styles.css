@@ -11,11 +11,17 @@
   font-weight: 300 700;
   font-display: swap;
 }
+/* (until it arrives, a system face sized to take up the same room, so the hero's lines don't move when it does) */
+@font-face {
+  font-family: "Space Grotesk fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
+  size-adjust: 100.4%; ascent-override: 97.6%; descent-override: 28.9%; line-gap-override: 0%;
+}
 
 :root {
   --text: #fff;
   --text-2: rgba(235, 235, 245, 0.74);
-  --text-3: rgba(235, 235, 245, 0.46);
+  --text-3: rgba(235, 235, 245, 0.6);     /* (4.5:1 or better on the page, for the small words) */
   --line: rgba(255, 255, 255, 0.12);
   --glass: rgba(28, 30, 40, 0.44);
   --glass-strong: rgba(30, 32, 42, 0.78);
@@ -24,19 +30,25 @@
   --tint-text: #8dbbff;
   --rim: inset 0 1px 0.5px rgba(255, 255, 255, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-  --display: "Space Grotesk", var(--font);
-  --ease: cubic-bezier(0.2, 0.9, 0.3, 1);
-  /* a spring: quick, settling with the faintest overshoot (response 0.5 s, damping 0.86), as a phone's sheets move */
-  --spring: linear(0, 0.0273, 0.0947, 0.1846, 0.2846, 0.3859, 0.4831, 0.5725, 0.6523, 0.7219, 0.7812, 0.8309, 0.8717, 0.9048, 0.9311, 0.9517, 0.9675, 0.9795, 0.9883, 0.9946, 0.9989, 1.0018, 1.0036, 1.0046, 1.005, 1.005, 1.0047, 1.0043, 1.0038, 1.0033, 1.0028, 1.0024, 1.0019, 1.0016, 1.0012, 1.001, 1.0007, 1.0006, 1.0004, 1.0003, 1);
+  --display: "Space Grotesk", "Space Grotesk fallback", var(--font);
+  /* The site's motion, the same in every app (here, pigeon/, account/ and weather/): out for what arrives and for
+     colour, glide for what slides (sheets, screens, the page behind one), in for what leaves quickly, and a spring for
+     a press let go (the faintest overshoot); with the durations to go with them */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: linear(0, 0.019, 0.067, 0.135, 0.214, 0.3, 0.388, 0.473, 0.553, 0.628, 0.695, 0.755, 0.807, 0.852, 0.89, 0.921, 0.947, 0.968, 0.984, 0.996, 1.005, 1.012, 1.016, 1.018, 1.02, 1.02, 1.019, 1.018, 1.017, 1.015, 1.013, 1.012, 1.01, 1.008, 1.007, 1.006, 1.005, 1.004, 1.003, 1);
+  --dur-press: 0.1s; --dur-release: 0.45s; --dur-fast: 0.2s; --dur-base: 0.35s; --dur-sheet-in: 0.5s; --dur-sheet-out: 0.34s;
   color-scheme: dark;
 }
-@supports not (transition-timing-function: linear(0, 1)) { :root { --spring: cubic-bezier(0.2, 0.9, 0.3, 1); } }
+@supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   min-height: 100vh;
   background: #07090d;
   color: var(--text);
+  touch-action: manipulation;     /* (pinching still zooms; a quick double tap on a button doesn't) */
   font: 17px/1.4 var(--font);
   letter-spacing: -0.2px;
   -webkit-font-smoothing: antialiased;
@@ -61,21 +73,28 @@ svg { display: block; flex: none; }
   content: ""; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
 }
-/* each photo fades in once it's decoded; its slow drift is the script's (app.js), so it can hold still */
+/* each photo fades in once it's decoded, over the one before, which stays as it is underneath until it's covered (two
+   fading at once would let the dark through between them); its slow drift is the script's (app.js), so it can hold still */
 .slide {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover;
   opacity: 0;
   transform: scale(1.08);
-  transition: opacity 1.6s ease;
 }
-.slide.on { opacity: 1; }
+.slide.on { opacity: 1; z-index: 1; transition: opacity 1.6s ease, object-position var(--dur-base) var(--ease-out); }
+.slide.was { opacity: 1; }
 /* as you scroll, the photo softens behind what's over it: a softened copy of it faded in (app.js soften), not a blur
-   redrawn each frame */
+   redrawn each frame; the copy itself fades in when it's made, rather than appearing over the plain tint */
 .soft {
   position: fixed; inset: 0;
   opacity: 0; visibility: hidden;
-  background: rgba(6, 8, 12, 0.55) 50% 50% / cover no-repeat;
+  background: rgba(6, 8, 12, 0.55);
+}
+.soft::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(rgba(6, 8, 12, 0.42), rgba(6, 8, 12, 0.42)), var(--soft-img, none) var(--soft-pos, 50% 50%) / cover no-repeat;
+  opacity: var(--soft-on, 0);
+  transition: opacity 0.4s var(--ease-out);
 }
 
 /* ---------------- the top bar ---------------- */
@@ -96,7 +115,7 @@ svg { display: block; flex: none; }
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   pointer-events: none;
   transform-origin: 50% 0;
-  transition: transform 0.6s var(--spring);
+  transition: transform var(--dur-sheet-in) var(--ease-glide);
 }
 .bar > * { pointer-events: auto; }
 .bar .mid {
@@ -107,7 +126,7 @@ svg { display: block; flex: none; }
   opacity: 0;
   transform: translateY(8px);
 }
-.bar .end { flex: none; display: flex; gap: 8px; margin-left: auto; opacity: 0; transition: opacity 0.3s; }
+.bar .end { flex: none; display: flex; gap: 8px; margin-left: auto; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
 body.known .bar .end { opacity: 1; }
 
 .round { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; align-items: center; justify-content: center; flex: none; }
@@ -120,7 +139,9 @@ body.known .bar .end { opacity: 1; }
   font-weight: 600; font-size: 15px; line-height: 1;
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.4);
 }
-.face img { width: 100%; height: 100%; object-fit: cover; }
+/* (a photo fades in as it arrives, over the letter's colour, rather than appearing) */
+.face img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+.face img.loaded { opacity: 1; }
 /* your photo, in the bar: the photo itself, the height of the buttons beside it, ringed */
 #me .face { width: 44px; height: 44px; font-size: 17px; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.6), 0 8px 20px -8px rgba(0, 0, 0, 0.7); }
 
@@ -130,18 +151,32 @@ body.signed .only-signed, body.owner .only-owner { display: inline-flex !importa
 body.signed .only-visitor { display: none !important; }
 body.edit .only-edit { display: flex !important; }
 body.edit .not-edit { display: none !important; }
+/* (whichever of Edit, your photo and Done comes into the bar, it comes in with a little spring) */
+body.edit #done, body.known:not(.edit) #edit, body.known:not(.edit) #me { animation: pop-in var(--dur-base) var(--ease-spring) backwards; }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.9); } }
 
 /* ---------------- the page ---------------- */
 .page {
   position: relative;
   padding: 0 max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 40px) max(16px, env(safe-area-inset-left));
   transform-origin: 50% 0;
-  transition: transform 0.6s var(--spring);
+  transition: transform var(--dur-sheet-in) var(--ease-glide);
 }
 /* a sheet up: the page steps back behind it (moved only: the sheet's backdrop dims it, so the glass on it isn't
-   redrawn for a filter); while the sheet's dragged, the page follows the finger */
+   redrawn for a filter); while the sheet's dragged, the page follows the finger; it comes forward again as quickly as
+   the sheet goes */
 body.sheet-up .page, body.sheet-up .bar { transform: scale(0.94) translateY(14px); }
+body:not(.sheet-up) .page, body:not(.sheet-up) .bar { transition-duration: var(--dur-sheet-out); }
 body.pulling .page, body.pulling .bar { transition: none; }
+/* leaving for one of the apps (another address, so nothing can carry across): the page steps back a touch as it goes,
+   so the tap's seen to have been taken while the app loads */
+body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+
+/* arriving: the words, then the rest, rise into place as the first photo fades in (the bar waits for who's looking) */
+.hero, .grid, .foot { animation: arrive 0.6s var(--ease-out) backwards; }
+.grid { animation-delay: 0.08s; }
+.foot { animation-delay: 0.14s; }
+@keyframes arrive { from { opacity: 0; transform: translateY(12px); } }
 
 /* the scroll's own animations (where the browser has them, they move with the scroll, off the page's thread): the
    name into the bar, the bar's frosted band and the softened photo in; each line of the hero fading as it reaches
@@ -167,16 +202,32 @@ body.pulling .page, body.pulling .bar { transition: none; }
 .btn { height: 52px; padding: 0 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 17px; }
 .btn.wide { width: 100%; }
 .btn:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
+.btn.idle { opacity: 0.55; box-shadow: none; }   /* (nothing to send yet: tapped, it says what's missing) */
+.btn.busy { cursor: default; }
+.btn.busy:disabled { opacity: 0.9; }   /* (on its way, not off: it doesn't grey out) */
+.btn .lbl { display: inline-block; }
+/* (something on its way: a ring turning, beside what it says) */
+.spin { width: 17px; height: 17px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .cta .round { width: 52px; height: 52px; }
-.btn, .pill, .round, .app, .row { transition: transform 0.15s, opacity 0.15s; }
-.btn:active, .pill:active, .round:active, .app:active { transform: scale(0.96); }
-.row:active { background: rgba(255, 255, 255, 0.06); }
 
-/* the slideshow's place: one segment a photo, the one showing filling as it plays */
-.segs { display: flex; gap: 5px; margin-top: 26px; width: min(132px, 100%); }
-.segs:empty, .segs.one { display: none; }
-.segs i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.26); overflow: hidden; }
-.segs i::after { content: ""; display: block; height: 100%; background: #fff; transform: scaleX(0); transform-origin: 0 50%; }
+/* a press: in quickly, let go with a spring (as every app on the site does); a row lights at once and fades back */
+.btn, .pill, .round, .app, .row, .sheet-head .x, .fld.from .change, .editbar .add, .toast button, .tile .where, .tile .rm, .tile .ask button {
+  transition: transform var(--dur-release) var(--ease-spring), background-color var(--dur-base) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+}
+.btn:active, .pill:active, .round:active, .app:active { transform: scale(0.96); transition-duration: var(--dur-press); }
+.sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: scale(0.9); transition-duration: var(--dur-press); }
+.btn:disabled:active, .btn.busy:active { transform: none; }
+.row:active { background-color: rgba(255, 255, 255, 0.06); transition-duration: 0s; }
+
+/* the slideshow's place: one segment a photo, the one showing filling as it plays; its room is kept before the photos are
+   known (so the words above don't move up when they are), each segment fading in as it comes, and when the slideshow
+   goes round again the filled ones draining rather than emptying at once */
+.segs { display: flex; gap: 5px; margin-top: 26px; width: min(132px, 100%); min-height: 3px; }
+.segs:empty, .segs.one { visibility: hidden; }
+.segs i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.26); overflow: hidden; animation: fade var(--dur-base) var(--ease-out) backwards; }
+.segs i::after { content: ""; display: block; height: 100%; background: #fff; transform: scaleX(0); transform-origin: 0 50%; transition: transform var(--dur-release) var(--ease-out), opacity var(--dur-release) var(--ease-out); }
 .segs i.past::after { transform: none; opacity: 0.85; }
 .segs i.on::after { animation: fill var(--slide, 7s) linear forwards; }
 body.paused .segs i.on::after { animation-play-state: paused; }
@@ -191,9 +242,9 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app.weather { --glow: #ffb43a; }
 .app img { width: 56px; height: 56px; border-radius: 13px; margin-bottom: 10px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app b { font-size: 19px; font-weight: 600; }
-.app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; }
+.app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; transition: color var(--dur-fast) var(--ease-out); }
 .app small.mine { color: var(--text); }
-.app .open { margin-top: 12px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 15px; color: var(--tint-text); background: rgba(61, 139, 255, 0.16); }
+.app .open { margin-top: 12px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 15px; color: var(--tint-text); background: rgba(61, 139, 255, 0.16); transition: background-color var(--dur-fast) var(--ease-out); }
 
 .group { border-radius: 26px; overflow: hidden; }
 .row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; text-align: left; }
@@ -204,29 +255,37 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .row .tx { flex: 1; font-weight: 500; }
 .row .val { color: var(--text-2); font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .chev { color: var(--text-3); }
-.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 13px; color: var(--text-3); }
-.foot a { color: var(--text-2); }
+.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 13px; color: var(--text-2); }
+.foot a { color: var(--text-2); display: inline-block; padding: 13px 4px; margin: -13px -4px; transition: color var(--dur-fast) var(--ease-out); }
 
 /* ---------------- editing, in place ---------------- */
-body.edit [data-edit] { outline: 1.5px dashed rgba(141, 187, 255, 0.85); outline-offset: 6px; border-radius: 6px; cursor: text; }
+/* (the dashed edges fade in and out; each hugs its own words) */
+[data-edit] { outline: 1.5px dashed transparent; outline-offset: 6px; border-radius: 6px; transition: outline-color var(--dur-fast) var(--ease-out); }
+body.edit [data-edit] { outline-color: rgba(141, 187, 255, 0.85); cursor: text; width: fit-content; }
 body.edit [data-edit]:focus { outline-style: solid; }
-body.edit .hero > * { opacity: 1 !important; }
+/* (every line in sight while editing, once the page is back at the top: not snapped into sight while it's still scrolling there) */
+body.edit.lines-on .hero > * { opacity: 1 !important; }
 body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 [contenteditable] { -webkit-user-select: text; user-select: text; caret-color: var(--tint-text); }
 .editbar {
   position: fixed; z-index: 25; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); transform: translateX(-50%);
   height: 52px; padding: 0 8px 0 18px; border-radius: 999px;
   align-items: center; gap: 12px; font-weight: 600; font-size: 15px; white-space: nowrap;
-  animation: rise 0.35s var(--ease);
+  animation: rise var(--dur-base) var(--ease-out);
 }
+/* (and when editing's done, it sinks away rather than vanishing) */
+body.edit-out .editbar.only-edit { display: flex !important; animation: sink var(--dur-fast) var(--ease-in) forwards; pointer-events: none; }
 .editbar .thumbs { display: flex; }
 .editbar .thumbs:empty { display: none; }
-.editbar .thumbs i { width: 30px; height: 30px; border-radius: 8px; background: #222 50% 50% / cover; box-shadow: 0 0 0 2px rgba(20, 22, 30, 0.9); margin-left: -8px; }
+.editbar .thumbs i { width: 30px; height: 30px; border-radius: 8px; background: #222 50% 50% / cover; box-shadow: 0 0 0 2px rgba(20, 22, 30, 0.9); margin-left: -8px; animation: pop-in var(--dur-base) var(--ease-out) backwards; }
 .editbar .thumbs i:first-child { margin-left: 0; }
 .editbar .add { height: 38px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 16px); } }
+@keyframes sink { to { opacity: 0; transform: translate(-50%, 16px); } }
 
 /* ---------------- sheets ---------------- */
+/* up from the foot (as every app's sheets come, quick then soft), and back down from wherever it's got to: closed while
+   still coming up, or reopened while going, it carries on from there rather than jumping (app.js sets --from) */
 .sheet {
   position: fixed; inset: auto 8px calc(env(safe-area-inset-bottom) + 8px + var(--kb, 0px)); margin: 0;
   width: auto; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - 40px - var(--kb, 0px));
@@ -236,16 +295,21 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
   backdrop-filter: blur(36px) saturate(190%);
   box-shadow: var(--rim), 0 30px 80px -10px rgba(0, 0, 0, 0.5);
   overscroll-behavior: contain;
+  /* (lifted over the keyboard, and back, smoothly) */
+  transition: bottom var(--dur-base) var(--ease-out), max-height var(--dur-base) var(--ease-out);
 }
-.sheet[open] { display: flex; flex-direction: column; animation: up 0.6s var(--spring); }
+.sheet[open] { display: flex; flex-direction: column; animation: up var(--dur-sheet-in) var(--ease-glide); }
 .sheet.shown { animation: none; }   /* (up: dragging it can't start its opening again) */
-.sheet.closing { animation: down 0.24s cubic-bezier(0.4, 0, 1, 1) forwards; }
+.sheet.closing { animation: down var(--dur-sheet-out) var(--ease-glide) forwards; }
 .sheet.dragging { transition: none; }
-.sheet::backdrop { background: rgba(0, 0, 0, 0.5); animation: fade 0.3s ease; }
-.sheet.closing::backdrop { animation: fade 0.24s ease reverse forwards; }
-@keyframes up { from { transform: translateY(110%); } }
-@keyframes down { to { transform: translateY(110%); } }
+.sheet::backdrop { background: rgba(0, 0, 0, 0.5); animation: fade var(--dur-sheet-in) var(--ease-glide); }
+.sheet.closing::backdrop { animation: fade-out var(--dur-sheet-out) var(--ease-glide) forwards; }
+@keyframes up { from { transform: translateY(calc(100% + 16px)); } }
+@keyframes down { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(calc(100% + 16px)); } }
 @keyframes fade { from { opacity: 0; } }
+/* (its own name, not fade run backwards: an animation whose name doesn't change isn't started again, so a finished fade
+   "reversed" would jump straight to its end) */
+@keyframes fade-out { to { opacity: 0; } }
 .sheet-in { padding: 8px 16px 22px; overflow-y: auto; outline: none; }
 .grab { width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.3); margin: 0 auto 6px; touch-action: none; }
 .sheet-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 0 14px; touch-action: none; }
@@ -253,23 +317,27 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 .sheet-head .x { grid-column: 3; justify-self: end; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ctl); }
 
 /* a form as a phone's settings are: labelled rows in a group, hairlines between them; the message a group of its own */
-.fields { border-radius: 18px; background: var(--ctl); box-shadow: inset 0 0 0 0.5px var(--line); overflow: hidden; }
+.fields { border-radius: 18px; background: var(--ctl); box-shadow: inset 0 0 0 0.5px var(--line); overflow: hidden; transition: box-shadow var(--dur-fast) var(--ease-out); }
 .fields.msg { margin-top: 14px; }
 .fld { position: relative; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; cursor: text; }
 .fld + .fld::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--line); }
-.fld > span:first-child { flex: none; width: 50px; color: var(--text-2); font-size: 17px; }
+.fld > span:first-child { flex: none; width: 50px; color: var(--text-2); font-size: 17px; transition: color var(--dur-fast) var(--ease-out); }
+/* (the field that's missing, or isn't right, says so by its label) */
+.fld:has([aria-invalid="true"]) > span:first-child { color: #ff8a80; }
 .fld.from { gap: 12px; min-height: 64px; cursor: default; }
 .fld.from .face { width: 40px; height: 40px; font-size: 16px; box-shadow: none; }
 .fld.from .who { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .fld.from .who b { font-weight: 600; font-size: 17px; }
 .fld.from .who small { color: var(--text-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fld.from .change { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(61, 139, 255, 0.18); color: var(--tint-text); }
-#sender.known .fld:not(.from) { display: none; }
+#sender { position: relative; }
+#sender.known .fld:not(.from, .ghost) { display: none; }
 .fields input, .fields textarea {
   display: block; width: 100%; min-width: 0; border: 0; background: none; color: var(--text);
   font: 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
 }
-.fields textarea { padding: 14px 16px; min-height: 148px; max-height: 40vh; overflow-y: auto; }
+/* (the message grows a line at a time as it's written, smoothly) */
+.fields textarea { padding: 14px 16px; min-height: 148px; max-height: 40vh; overflow-y: auto; transition: height var(--dur-fast) var(--ease-out); }
 .fields ::placeholder { color: var(--text-3); }
 .fields:focus-within { box-shadow: inset 0 0 0 1px rgba(141, 187, 255, 0.55); }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
@@ -281,20 +349,26 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
   width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 10px;
   background: linear-gradient(160deg, #4fdc8e, #1fa75a);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 16px 34px -14px #1fa75a;
-  animation: pop 0.5s var(--ease);
+  animation: pop 0.5s var(--ease-spring);
 }
 .sent b { font-size: 22px; font-weight: 700; }
 .sent span { color: var(--text-2); font-size: 16px; }
 .sent .btn { margin-top: 14px; }
 @keyframes pop { from { transform: scale(0.4); opacity: 0; } }
 
-/* the photos, in their sheet */
+/* the photos, in their sheet: added ones grow in, removed ones fade where they were while the rest close up (app.js
+   showTiles), a new focal point and screen moving into place rather than jumping */
 .hint { color: var(--text-2); font-size: 15px; margin: 0 4px 12px; }
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.tiles .none { grid-column: 1 / -1; color: var(--text-2); text-align: center; padding: 28px 0; }
-.tile { position: relative; aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; background: #15171d; cursor: crosshair; }
-.tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tile .dot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5); pointer-events: none; }
+.tiles { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tiles .none { grid-column: 1 / -1; color: var(--text-2); text-align: center; padding: 28px 0; animation: fade var(--dur-base) var(--ease-out); }
+.tile { position: relative; aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; background: #15171d; cursor: crosshair; transition: opacity var(--dur-fast) var(--ease-out); }
+.tile.fresh { animation: tile-in var(--dur-base) var(--ease-out) backwards; }
+.tile.leaving { position: absolute; margin: 0; z-index: 1; pointer-events: none; animation: tile-out var(--dur-fast) var(--ease-in) forwards; }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.92); } }
+@keyframes tile-out { to { opacity: 0; transform: scale(0.92); } }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity var(--dur-base) var(--ease-out), object-position var(--dur-base) var(--ease-out); }
+.tile img.loaded { opacity: 1; }
+.tile .dot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5); pointer-events: none; transition: left var(--dur-base) var(--ease-out), top var(--dur-base) var(--ease-out); }
 .tile .where, .tile .rm {
   position: absolute; top: 8px; height: 30px; border-radius: 999px;
   background: rgba(20, 22, 30, 0.62); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
@@ -302,18 +376,38 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 }
 .tile .where { left: 8px; padding: 0 11px; }
 .tile .rm { right: 8px; width: 30px; display: grid; place-items: center; }
-.tile.busy { opacity: 0.5; pointer-events: none; }
+.tile.busy { opacity: 0.75; pointer-events: none; }
+/* (one on its way up: the photo itself at once, dimmed, with a shimmer passing over it until it's in) */
+.tile.pending { cursor: default; }
+.tile.pending img { opacity: 0.45; }
+.tile.pending::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.16) 50%, transparent 70%); transform: translateX(-100%); animation: shimmer 1.2s var(--ease-glide) infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+/* (removing one: asked on the photo itself, not in a box from the browser) */
+.tile .ask { position: absolute; inset: 0; z-index: 2; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 12px; text-align: center; cursor: default; background: rgba(10, 12, 18, 0.74); animation: fade var(--dur-fast) var(--ease-out); }
+.tile .ask.going { animation: fade-out var(--dur-fast) var(--ease-in) forwards; }
+.tile .ask p { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.tile .ask button { min-width: 96px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 600; background: var(--ctl); }
+.tile .ask .yes { background: rgba(255, 82, 72, 0.92); }
 
 /* ---------------- a word at the foot ---------------- */
 .toast {
   position: fixed; z-index: 40; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); transform: translateX(-50%);
   min-height: 48px; max-width: calc(100% - 32px); padding: 0 8px 0 20px; border-radius: 999px;
   display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 15px;
-  animation: rise 0.35s var(--ease);
+  animation: rise var(--dur-base) var(--ease-out);
 }
+/* (and goes as it came: down and away, quickly) */
+.toast.out { animation: toast-out var(--dur-fast) var(--ease-in) forwards; pointer-events: none; }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
 .toast:not(:has(button:not([hidden]))) { padding-right: 20px; }
 .toast button { height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
+
+/* the small round controls keep their size, and are each a finger's width to tap (44 px) */
+.sheet-head .x, .fld.from .change, .editbar .add, .toast button { position: relative; }
+.sheet-head .x::after, .fld.from .change::after, .tile .where::after, .tile .rm::after, .editbar .add::after, .toast button::after {
+  content: ""; position: absolute; inset: -7px;
+}
 
 /* ---------------- larger screens ---------------- */
 @media (min-width: 601px) {
@@ -321,7 +415,7 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .sheet { inset: 0; margin: auto; width: min(440px, calc(100% - 32px)); height: fit-content; border-radius: 30px; }
   .sheet .grab { visibility: hidden; height: 2px; }
   @keyframes up { from { transform: translateY(24px) scale(0.97); opacity: 0; } }
-  @keyframes down { to { transform: translateY(16px) scale(0.98); opacity: 0; } }
+  @keyframes down { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(16px) scale(0.98); opacity: 0; } }
 }
 @media (min-width: 900px) {
   .bar { padding: 22px 40px 12px; }
@@ -334,15 +428,39 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; }
   .grid > section { min-width: 0; }
 }
+/* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
-  .app:hover, .pill.glass:hover, .round.glass:hover { background: rgba(40, 44, 58, 0.5); }
-  .row:hover { background: rgba(255, 255, 255, 0.05); }
+  .app:hover, .pill.glass:hover, .round.glass:hover { background-color: rgba(40, 44, 58, 0.5); }
+  .row:hover { background-color: rgba(255, 255, 255, 0.05); }
+  .tint:hover { filter: brightness(1.08); }
+  .app:hover .open { background-color: rgba(61, 139, 255, 0.24); }
+  .foot a:hover { color: var(--text); }
+  .sheet-head .x:hover, .editbar .add:hover, .toast button:hover, .tile .ask .no:hover { background-color: rgba(255, 255, 255, 0.16); }
+  .fld.from .change:hover { background-color: rgba(61, 139, 255, 0.28); }
+  .tile .where:hover, .tile .rm:hover { background-color: rgba(20, 22, 30, 0.8); }
+  .tile .ask .yes:hover { filter: brightness(1.08); }
 }
 
-/* Reduce Motion: one photo, still; sheets without the slide */
+/* Reduce Motion: one photo, still; nothing moving across the screen: sheets, the toast and the bar at the foot fade in and
+   out where they are, and the page doesn't step back behind a sheet */
 @media (prefers-reduced-motion: reduce) {
-  .slide { transition: opacity 0.4s; transform: none; }
+  .slide { transform: none; }
+  .slide.on { transition: opacity 0.4s; }
   .segs { display: none; }
-  .sheet[open], .sheet.closing, .sheet::backdrop, .editbar, .toast, .sent .tick { animation: none; }
-  .page, .bar { transition: none; }
+  .sheet[open], .editbar, .toast, .sheet::backdrop { animation: fade var(--dur-fast) linear; }
+  .sheet.closing, .toast.out, body.edit-out .editbar.only-edit, .sheet.closing::backdrop, .tile.leaving { animation: fade-out var(--dur-fast) linear forwards; }
+  .sent .tick, .hero, .grid, .foot, .tile.fresh, .editbar .thumbs i, body.edit #done, body.known:not(.edit) #edit, body.known:not(.edit) #me, .tile.pending::after { animation: none; }
+  .page, .bar { transition: opacity var(--dur-fast) linear; }
+  body.sheet-up .page, body.sheet-up .bar, body.leaving .page, body.leaving .bar { transform: none; }
+  .sheet, .fields textarea, .tile .dot, .tile img { transition: none; }
+  .btn:active, .pill:active, .round:active, .app:active, .sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: none; }
+}
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
+   iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
+   too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+  -webkit-background-clip: text; background-clip: text;
 }

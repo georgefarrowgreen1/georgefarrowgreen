@@ -60,6 +60,7 @@ export const HANDLE_EVERY = DAY;         // handles can change once a day
 export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
 export const MAX_POSTER = 2 * 1024 * 1024;   // the poster: the same photo at most 1600px on its longer side
 export const SESSION_TTL = 180 * DAY;
+export const SESSION_MAX = 365 * DAY;     // (however much it's used: functions/_pigeon.js sessionUser)
 
 const enc = new TextEncoder();
 
@@ -285,6 +286,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN vanish INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN gone_at INTEGER",
   "ALTER TABLE pg_groups ADD COLUMN vanish INTEGER", "ALTER TABLE pg_groups ADD COLUMN vanish_by TEXT",
   "CREATE TABLE IF NOT EXISTS pg_vanish (a TEXT NOT NULL, b TEXT NOT NULL, ms INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b))",
+  "CREATE INDEX IF NOT EXISTS pg_vanish_b ON pg_vanish(b)",      // (looked up from either side: a = ? OR b = ?)
   "CREATE INDEX IF NOT EXISTS pg_msgs_vanish ON pg_msgs(read_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_gmsgs_vanish ON pg_gmsgs(sent_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",   // keep my pigeons off the public live tracker (functions/_tracker.js)
   "ALTER TABLE pg_users ADD COLUMN pins TEXT",
@@ -330,6 +332,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
   // a sign-in handed from InFlight to the account's page (functions/api/pigeon account-link, functions/api/account
   // handoff): a code good once, for a minute
+  // what went wrong on the server, for the admin (Admin's alerts): when, where and what, kept 14 days (functions/_notify.js tick)
+  "CREATE TABLE IF NOT EXISTS pg_errors (at INTEGER NOT NULL, src TEXT NOT NULL, msg TEXT NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS pg_errors_at ON pg_errors(at)",
   "CREATE TABLE IF NOT EXISTS pg_handoff (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, expires INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS pg_sessions_site ON pg_sessions(site_hash)",
   // the account's own page (functions/api/account): what's happened to the account lately (functions/_activity.js), kept
@@ -339,6 +344,8 @@ const MIGRATIONS = [
   "CREATE TABLE IF NOT EXISTS pg_events (user_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, app TEXT, device TEXT, place TEXT, detail TEXT)",
   "CREATE INDEX IF NOT EXISTS pg_events_user ON pg_events(user_id, at)",
   "ALTER TABLE pg_passkeys ADD COLUMN provider TEXT",
+  // (how many times the passkey says it's been used, where it counts: a copy of it would fall behind)
+  "ALTER TABLE pg_passkeys ADD COLUMN sign_count INTEGER",
   "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
@@ -359,6 +366,10 @@ const MIGRATIONS = [
   // the profile card's poster: a larger copy of your photo (functions/_profile.js putPoster), and the point of it that
   // stays in view ("x y", in percent)
   "ALTER TABLE pg_users ADD COLUMN poster_at INTEGER", "ALTER TABLE pg_users ADD COLUMN poster_focus TEXT",
+  // a sign-in made on the account's page for an app that sent you there, handed back to it (functions/_handback.js): a
+  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for InFlight, what
+  // unlocks the key there, sealed to that tab (box), and the passkey whose own copy of the key it opens (pk)
+  "CREATE TABLE IF NOT EXISTS pg_handback (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, app TEXT NOT NULL, ask TEXT NOT NULL, box TEXT, pk TEXT, expires INTEGER NOT NULL)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -496,11 +507,12 @@ const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? app
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
 export const othersOf = (u) => { const a = u.sessionHash, b = u.parent || u.sessionHash; return [a, b, a, b]; };
-export async function issueSession(env, userId, request) {
+// (authAt: when it was last shown it's you, where that wasn't just now: a sign-in handed on from another, no fresher)
+export async function issueSession(env, userId, request, authAt) {
   const token = randomToken(32), t = Date.now();
   const D = await db(env);
   await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
+    .bind(hex(await sha256(token)), userId, t, t, authAt ?? t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
     D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
   return token;
 }
@@ -530,15 +542,27 @@ export async function requireUser(request, env) {
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
 // browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
 // used, a day of it noted for its Insights; request: the app it's used in noted, as it's first used there)
+// Something gone wrong, noted for the admin (pg_errors): never throws, and no more than 20 a minute from one copy of the
+// server, so a loop of failures can't fill the database. (Also to the console, as before.)
+let errWindow = 0, errCount = 0;
+export async function logError(env, src, e) {
+  console.error(src, e && (e.stack || e.message || e));
+  const t = Date.now();
+  if (t - errWindow > MIN) { errWindow = t; errCount = 0; }
+  if (++errCount > 20 || !env?.DB) return;
+  try { await (await db(env)).prepare("INSERT INTO pg_errors (at, src, msg) VALUES (?, ?, ?)").bind(t, String(src).slice(0, 40), String(e && (e.message || e)).slice(0, 300)).run(); } catch (_) {}
+}
 export async function sessionUser(env, token, inflight = true, site = false, request = null) {
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home,
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
-  if (u && !u.s_held) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();
-  if (!u || t - u.s_seen > SESSION_TTL || !u.s_held) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
+  // (a sign-in lasts while it's used, up to a year from when it was made: then it's asked for again, wherever it's in use)
+  const over = u && t - (u.s_made || t) > SESSION_MAX;
+  if (u && (!u.s_held || over)) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();
+  if (!u || t - u.s_seen > SESSION_TTL || !u.s_held || over) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
   // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
   // browser's own sign-in now, listed by itself)
   const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);
@@ -548,7 +572,7 @@ export async function sessionUser(env, token, inflight = true, site = false, req
     D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ?, home = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, home, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
   u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home;
-  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_made; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held;
   return u;
 }
 
@@ -750,6 +774,45 @@ export async function checkClientData(env, request, b, type, mode, userId) {
   try { cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON))); } catch (_) { cd = {}; }
   if (cd.type !== type || cd.challenge !== b.challenge || !originOk(cd.origin, request, env)) throw new HttpError(400, "The passkey response didn’t match this site.");
 }
+// A passkey being added: what the authenticator itself says of it (its data, as the browser hands it over), not only what
+// the page sends: made for this site (the hash of its id), with a person there and verified, and the id and public key
+// the page sends are the ones in it. Returns how many times it says it's been used (0 where it doesn't count). (Who made
+// the authenticator isn't asked: attestation "none", as for every passkey of a phone's own.)
+export async function checkRegistration(request, env, b) {
+  const bad = () => new HttpError(400, "The passkey response didn’t match this site.");
+  let ad = null; try { ad = fromB64url(String(b.authenticatorData || "")); } catch (_) {}
+  if (!ad || ad.length < 55) throw new HttpError(400, "This browser didn’t say enough about the passkey. Update it and try again.");
+  const rpHash = await sha256(rpIdFor(request, env));
+  for (let i = 0; i < 32; i++) if (ad[i] !== rpHash[i]) throw bad();
+  if (!(ad[32] & 0x01) || !(ad[32] & 0x04) || !(ad[32] & 0x40)) throw bad();     // present, verified, and the key in it
+  const n = (ad[53] << 8) | ad[54];
+  if (b64url(ad.slice(55, 55 + n)) !== String(b.id || "")) throw bad();
+  let cose; try { cose = cbor(ad, 55 + n).v; } catch (_) { throw bad(); }
+  if (!(cose instanceof Map) || cose.get(3) !== b.alg) throw bad();
+  let jwk;
+  try { jwk = await crypto.subtle.exportKey("jwk", await crypto.subtle.importKey("spki", fromB64url(String(b.publicKey || "")),
+    b.alg === -7 ? { name: "ECDSA", namedCurve: "P-256" } : { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["verify"])); }
+  catch (_) { throw bad(); }
+  const same = (bytes, v) => bytes instanceof Uint8Array && b64url(bytes) === v;
+  if (b.alg === -7 ? !(cose.get(1) === 2 && cose.get(-1) === 1 && same(cose.get(-2), jwk.x) && same(cose.get(-3), jwk.y))
+    : !(cose.get(1) === 3 && same(cose.get(-1), jwk.n) && same(cose.get(-2), jwk.e))) throw bad();
+  return ((ad[33] << 24) | (ad[34] << 16) | (ad[35] << 8) | ad[36]) >>> 0;
+}
+// (the least of CBOR, for a passkey's public key: numbers, byte and text strings, arrays and maps; { v, at: where it ends })
+function cbor(u8, at) {
+  const head = u8[at++], major = head >> 5, info = head & 31;
+  let len = info;
+  if (info === 24) len = u8[at++];
+  else if (info === 25) { len = (u8[at] << 8) | u8[at + 1]; at += 2; }
+  else if (info === 26) { len = ((u8[at] << 24) | (u8[at + 1] << 16) | (u8[at + 2] << 8) | u8[at + 3]) >>> 0; at += 4; }
+  else if (info > 26) throw new Error("cbor");
+  if (major === 0) return { v: len, at };
+  if (major === 1) return { v: -1 - len, at };
+  if (major === 2 || major === 3) { if (at + len > u8.length) throw new Error("cbor"); const x = u8.slice(at, at + len); return { v: major === 2 ? x : new TextDecoder().decode(x), at: at + len }; }
+  if (major === 4) { const a = []; for (let i = 0; i < len; i++) { const r = cbor(u8, at); a.push(r.v); at = r.at; } return { v: a, at }; }
+  if (major === 5) { const m = new Map(); for (let i = 0; i < len; i++) { const k = cbor(u8, at), v = cbor(u8, k.at); m.set(k.v, v.v); at = v.at; } return { v: m, at }; }
+  throw new Error("cbor");
+}
 export async function verifyAssertion(cred, request, b, env) {
   const authData = fromB64url(b.authenticatorData);
   const rpHash = await sha256(rpIdFor(request, env));
@@ -760,15 +823,20 @@ export async function verifyAssertion(cred, request, b, env) {
   const signed = new Uint8Array(authData.length + 32);
   signed.set(authData, 0); signed.set(clientHash, authData.length);
   const spki = fromB64url(cred.public_key), sig = fromB64url(b.signature);
+  let ok = false;
   if (cred.alg === -7) {
     const k = await crypto.subtle.importKey("spki", spki, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
-    return crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k, derToRawEcdsa(sig), signed);
-  }
-  if (cred.alg === -257) {
+    ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k, derToRawEcdsa(sig), signed);
+  } else if (cred.alg === -257) {
     const k = await crypto.subtle.importKey("spki", spki, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    return crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, k, sig, signed);
+    ok = await crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, k, sig, signed);
   }
-  return false;
+  if (!ok) return false;
+  // (a passkey that counts its uses must count up: one that's fallen behind is a copy. Most of a phone's own say 0)
+  const count = ((authData[33] << 24) | (authData[34] << 16) | (authData[35] << 8) | authData[36]) >>> 0, had = cred.sign_count || 0;
+  if ((count || had) && count <= had) return false;
+  if (count) await (await db(env)).prepare("UPDATE pg_passkeys SET sign_count = ? WHERE id = ?").bind(count, cred.id).run();
+  return true;
 }
 
 /* ---------------- validation ---------------- */

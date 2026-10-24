@@ -1,5 +1,5 @@
 // Checks for the security and privacy fixes, straight against the API.
-import http from 'http';
+import { madeIn, acctCall } from './handback.mjs';
 const BASE = 'http://localhost:8788/api/pigeon/';
 let fails = 0; const ok = (c, l, x = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${x !== '' ? ' — ' + x : ''}`); if (!c) fails++; };
 const b64u = (u) => Buffer.from(u).toString('base64url');
@@ -14,22 +14,12 @@ async function call(tok, path, opt = {}) {
   return { s: r.status, j, h: r.headers };
 }
 // An account, made where accounts are made (the account's page: account.localhost beside InFlight run locally, its API
-// answering only there and only from its own page), then signed in to InFlight's API with the same password proof
-const acctPost = (path, data, ipAddr) => new Promise((done, no) => {
-  const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/' + path, method: 'POST',
-    headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json', 'CF-Connecting-IP': ipAddr } }, (res) => {
-    const parts = []; res.on('data', (c) => parts.push(c));
-    res.on('end', () => { let j = {}; try { j = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {} done({ s: res.statusCode, j }); });
-  });
-  q.on('error', no); q.end(JSON.stringify(data));
-});
+// answering only there and only from its own page), and signed in to InFlight from there, as a phone is (handback.mjs)
 async function signup(name, handle) {
   ip++;
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
   const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), proof = b64u(rnd(32)), email = handle + '@example.com';
-  const made = await acctPost('signup', { name, handle, email, salt: b64u(rnd(16)), proof, vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, '10.0.0.' + ip);
-  if (made.s !== 201) return made;
-  return call(null, 'login', { body: { email, proof } });
+  return madeIn({ name, handle, email, salt: b64u(rnd(16)), proof, vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip: '10.0.0.' + ip });
 }
 const A = await signup('Alice Smith', 'alice'), B = await signup('Bob Jones', 'bob'), C = await signup('Carol Stranger', 'carol');
 ok(A.s === 200 && B.s === 200 && C.s === 200, 'three accounts');
@@ -55,8 +45,11 @@ ok((await call(c, 'avatar/' + B.j.me.id)).s === 200, 'once friends, pictures sho
 await call(a, 'friends', { body: { handle: 'bob' } }); await call(bt, 'friends-respond', { body: { id: A.j.me.id, accept: true } });
 // headers
 const s1 = await call(a, 'sync'); ok(s1.h.get('x-content-type-options') === 'nosniff', 'API replies carry nosniff');
-// bad base64 is a 400, not a 500
-const r400 = await call(null, 'login', { body: { email: 'alice@example.com', proof: '***' } }); ok(r400.s === 400 || r400.s === 401, 'malformed proof is not a server error', r400.s);
+// bad base64 is a 400, not a 500 (signing in is the account's page's, for every app)
+const r400 = await acctCall('signin/password', { email: 'alice@example.com', proof: '***' }, { ip: '10.0.0.99' }); ok(r400.s === 400 || r400.s === 401, 'malformed proof is not a server error', r400.s);
+// (and InFlight's own sign-in, from before, says where it is now)
+const gone = await call(null, 'login', { body: { email: 'alice@example.com', proof: b64u(rnd(32)) } });
+ok(gone.s === 410 && /account\.georgefarrowgreen\.com/.test(gone.j.error), 'InFlight’s own sign-in is gone: it says to sign in on the account’s page', `${gone.s} ${gone.j.error}`);
 // a photo message, and a second send with the same id
 const id = crypto.randomUUID();
 const fd = () => { const f = new FormData(); f.set('meta', JSON.stringify({ id, to: B.j.me.id, ct: 'x'.repeat(40), pigeon: 'rocket', once: false })); f.set('photo', new Blob([rnd(2000)])); return f; };
@@ -70,7 +63,7 @@ const okN = sends.filter((r) => r.s === 200).length;
 const left = (await call(a, 'sync')).j.me.swift;
 ok(okN + left === 9 && okN <= 9, 'parallel sends never spend more swift pigeons than the loft held', `${okN} sent, ${left} left`);
 // rate limits hold under a burst
-const burst = await Promise.all(Array.from({ length: 25 }, () => call(null, 'login', { ip: '10.9.9.9', body: { email: 'nobody@example.com', proof: b64u(rnd(32)) } })));
+const burst = await Promise.all(Array.from({ length: 25 }, () => acctCall('signin/password', { email: 'nobody@example.com', proof: b64u(rnd(32)) }, { ip: '10.9.9.9' })));
 const passed = burst.filter((r) => r.s === 401).length;
 ok(passed <= 10, 'a burst of 25 logins from one IP lets at most 10 through', passed);
 // (the home page's own owner password is gone: its owner is the admin account, home.mjs)

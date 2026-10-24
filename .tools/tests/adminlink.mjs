@@ -118,10 +118,14 @@ ok(/signed out/.test(await text(G, '.toast')) && !(await G.p.$('#sheet .confirm-
 r = await req(P, `${CHAT}/api/pigeon/sync`);
 ok(r.status === 401, '@pat signed out', String(r.status));
 
-// ---- 5. Looking is as signed in; a change, from a sign-in 13 hours old, asks first ----
+// ---- 5. The figures are as signed in; people's details (and a change), from a sign-in 13 hours old, ask first ----
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now() - 13 * 3600e3} WHERE user_id = '${gail}'`);
-r = await req(G, `${ACCT}/api/account/admin/users`);
-ok(r.status === 200, 'a sign-in 13 hours old: looking, no asking', String(r.status));
+r = await req(G, `${ACCT}/api/account/admin/summary`);
+ok(r.status === 200, 'a sign-in 13 hours old: the figures, no asking', String(r.status));
+for (const what of ['users', 'messages', 'log']) {
+  r = await req(G, `${ACCT}/api/account/admin/${what}`);
+  ok(r.status === 403 && r.json?.field === 'reauth', `but ${what}, with people’s details, asks first`, `${r.status} ${JSON.stringify(r.json)}`);
+}
 r = await req(G, `${ACCT}/api/account/admin/invite`, { method: 'POST', headers: { Origin: ACCT, 'Content-Type': 'application/json' }, data: '{}' });
 ok(r.status === 403 && r.json?.field === 'reauth', 'but a change asks', `${r.status} ${JSON.stringify(r.json)}`);
 await account(G); await adminOpen(G);

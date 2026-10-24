@@ -30,11 +30,14 @@ function h(tag, attrs = {}, ...kids) {
   return n;
 }
 const COLOR = { temp: "#D07A12", rain: "#3B8BE0", wind: "#14A08F" };     // (checked for contrast and colour-blind separation on the cards)
+// the curves for what moves by the script, as styles.css has them (--ease-glide, --ease-out, --ease-in): the glide for
+// what rises and slides, out for what settles or fades, in for what leaves
+const GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)", EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)", EASE_IN = "cubic-bezier(0.4, 0, 1, 1)";
 const T = () => (S.f.units.temp === "f" ? (c) => c * 9 / 5 + 32 : (c) => c);
 const W = () => S.f.windNum;
 
 /* ---------- state ---------- */
-const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, allWins: false, loading: false, stale: false, error: null };
+const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, allWins: false, loading: false, stale: false, error: null, openIns: new Set() };
 // the units to start with, whatever the phone's language: °C, mph, mm, hPa and the 24-hour clock (Settings → Units)
 const defaults = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
 // the page's cards, in their usual order (index.html), each with its element and its name in Settings (Arrange your
@@ -86,6 +89,9 @@ const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur",
 
 /* ---------- start ---------- */
 async function start() {
+  // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
+  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  if (signedIn) history.replaceState(null, "", location.pathname + location.search);
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
   const cur = store.get("wx:cur");
@@ -142,12 +148,19 @@ async function start() {
   // your account: signed in, as it was last time, till the server says (and whether you've signed in elsewhere on the site)
   const k = store.get("wx:acct");
   if (k?.handle) S.acct = { ...profileOf(k), devices: k.devices || [], state: "ok" };
-  pull();
+  if (signedIn) signedBack(signedIn); else pull();
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
+  // (a place chosen, or found by the phone: the rough guess from the connection made on the first visit goes, as it was
+  // only ever a stand-in, and is often a city or two out)
+  if (!p.approx && S.places.some((x) => x.approx && !near(x))) {
+    const was = S.places[S.cur];
+    S.places = S.places.filter((x) => !x.approx || near(x));
+    S.cur = Math.max(0, S.places.indexOf(was));
+  }
   let i = p.gps ? S.places.findIndex((x) => x.gps) : S.places.findIndex((x) => !x.gps && near(x));
-  if (i >= 0) S.places[i] = { ...S.places[i], ...p };
+  if (i >= 0) { S.places[i] = { ...S.places[i], ...p }; if (!p.approx) delete S.places[i].approx; }
   else if (p.gps) { S.places.unshift(p); i = 0; if (!makeCurrent) S.cur++; }      // My Location first, as on iOS
   else { S.places.push(p); i = S.places.length - 1; }
   if (makeCurrent) S.cur = i;
@@ -167,7 +180,7 @@ async function go(force = false, fresh = null) {
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
-  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; }
+  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; S.openIns.clear(); }
   // (a place with nothing kept: its first picture waits, a second at most from the forecast's coming, for the warnings
   // and the radar's say, which would otherwise come in over the top of it and push it down as it's read: paint)
   clearTimeout(S.hold?.timer);
@@ -186,7 +199,7 @@ async function go(force = false, fresh = null) {
     const loading = load(p, (wx, how) => {
       if (!how.partial) fresh?.();
       if (my !== seq || !wx) return;
-      if (how.error) S.error = how.error;
+      if (how.error) S.error = how.error; else if (!how.partial) S.tries = 0;
       if (runOut(wx)) { render(); return; }
       S.base = wx; S.stale = !!how.stale;      // (shaped as it's drawn: render)
       if (!how.stale && !how.partial) snapshotNow(wx);
@@ -197,7 +210,13 @@ async function go(force = false, fresh = null) {
     radarRain(p, my);
     await loading;
   } catch (e) {
-    if (my === seq) { S.error = e; render(); }
+    if (my === seq) {
+      S.error = e;
+      // (the forecast service busy, or not answering: asked again by itself in a while, half a minute then a minute)
+      clearTimeout(S.again);
+      if ((e.status === 429 || e.status >= 500) && (S.tries = (S.tries || 0) + 1) <= 4) S.again = setTimeout(() => { const q = place(); if (q && cell(q.lat, q.lon) === cell(p.lat, p.lon) && !S.wx) go(); }, S.tries > 1 ? 60e3 : 30e3);
+      render();
+    }
   } finally {
     fresh?.();
     if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
@@ -310,21 +329,28 @@ function baseline(wx, now) {
 
 /* ---------- drawing ---------- */
 function showPlace() {
-  const p = place();
-  $("place-name").textContent = p ? p.name : "Weather";
+  const p = place(), btn = $("place-btn"), named = btn.classList.contains("named");
+  // (its name faded in once it's known, as the app starts; found later (My Location's, say), the new one rising in)
+  swap($("place-name"), p ? p.name : "Weather", named);
   $("sr-place").textContent = p ? p.name : "your place";
   const sub = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
-  $("place-sub").textContent = sub;
-  $("place-btn").classList.toggle("no-sub", !sub);
+  swap($("place-sub"), sub, named && !document.querySelector(".top").classList.contains("collapsed"));
+  btn.classList.toggle("no-sub", !sub);
+  if (p) btn.classList.add("named");
   document.title = p ? `${p.name} · Weather` : "Weather";
   drawDots();
 }
-// the saved places as dots above the temperature, the one showing lit (an arrow for My Location)
+// the saved places as dots above the temperature, the one showing lit (an arrow for My Location): the same dots kept,
+// the light moving along them (styles.css), unless the places themselves have changed
 function drawDots() {
-  const box = $("dots"), n = S.places.length;
+  const box = $("dots"), n = S.places.length, sig = S.places.map((p) => (p.gps ? "g" : ".")).join("");
   box.hidden = n < 2;
   if (n < 2) return;
-  box.replaceChildren(...S.places.map((p, i) => h("i", { class: `${i === S.cur ? "on" : ""}${p.gps ? " gps" : ""}`, svg: p.gps ? glyph("here", 9) : null })));
+  if (box._sig !== sig) {
+    box._sig = sig;
+    box.replaceChildren(...S.places.map((p) => h("i", { class: p.gps ? "gps" : null, svg: p.gps ? glyph("here", 9) : null })));
+  }
+  [...box.children].forEach((d, i) => d.classList.toggle("on", i === S.cur));
 }
 // Pull down past the top and let go, to refresh, as iOS's lists do. (On iPhone the page stretches past its top as
 // it's pulled, its scroll going below zero. Elsewhere it doesn't, and Refresh at the foot of the page does the same.)
@@ -410,11 +436,62 @@ function flickSpeed(trail) {
   const now = performance.now(), last = trail.filter(([t]) => now - t <= 90);
   return last.length > 1 ? (last[last.length - 1][1] - last[0][1]) / (now - last[0][0]) : 0;
 }
+// The page turning to another place, once S.cur is on it (update draws it): this page carried off the way it's going as
+// the next one comes in beside it (a view transition, of just what's on screen; where there aren't any, one goes and
+// then the other comes), the sky and the bar crossfading meanwhile, as long as the page takes (styles.css :root.turning).
+// from: where a finger left the page (pixels along), v: how fast it was going (a swipe: placeSwipe); reset: puts the
+// page back where the finger had it, as it turns. With Reduce Motion, the one page dissolves into the next. Scrolled a
+// long way down, too much of the page to carry: the next one's cards on screen come in where they are (arrive).
+let turning = false;
+function turnPage(dir, { from = 0, v = 0, update = () => go(), reset = () => {}, done = () => {} } = {}) {
+  const main = $("main"), root = document.documentElement, w = root.clientWidth;
+  const ease = "cubic-bezier(0.22, 0.8, 0.3, 1)", g = glide(Math.max(0, -dir * v), w - Math.abs(from), ease, w);
+  const finish = () => { turning = false; root.classList.remove("turning", "vt-fade"); main.classList.remove("paging"); for (const k of ["height", "overflow", "viewTransitionName"]) main.style[k] = ""; done(); };
+  const top = main.getBoundingClientRect().top;
+  if (top < -innerHeight || (calm.matches && !document.startViewTransition)) { reset(); update(); finish(); arrive(true); return; }
+  turning = true;
+  if (document.startViewTransition) {
+    // (just what's on screen is taken along: the rest of the page, out of sight, isn't drawn into the picture)
+    main.style.height = `${Math.ceil(innerHeight - top)}px`;
+    main.style.overflow = "clip";
+    main.style.viewTransitionName = "page";
+    root.classList.add(calm.matches ? "vt-fade" : "turning");
+    const vt = document.startViewTransition(() => { reset(); update(); });
+    if (!calm.matches) vt.ready.then(() => {
+      const o = { ...g, fill: "both" };
+      // (the page's picture has it where the finger left it: from there, on off the screen)
+      root.animate({ transform: ["translateX(0)", `translateX(${-dir * w - from}px)`] }, { ...o, pseudoElement: "::view-transition-old(page)" });
+      root.animate({ transform: [`translateX(${dir * w}px)`, "translateX(0)"] }, { ...o, pseudoElement: "::view-transition-new(page)" });
+    }).catch(() => {});
+    vt.finished.catch(() => {}).finally(finish);
+    return;
+  }
+  // (no view transitions: this one goes, then the next comes)
+  reset();
+  const out = main.animate([{ translate: `${from}px 0` }, { translate: `${-dir * w}px 0` }], { duration: g.duration * 0.5, easing: "cubic-bezier(0.4, 0.2, 0.9, 0.6)", fill: "forwards" });
+  out.finished.then(() => {
+    update();
+    const inn = main.animate([{ translate: `${dir * w}px 0` }, { translate: "0 0" }], { duration: g.duration, easing: ease });
+    out.cancel();
+    return inn.finished;
+  }).catch(() => {}).finally(finish);
+}
+// Another of the saved places on show (i: chosen in Places, found by search or by the phone, tapped on the map), the
+// page turning to it as a swipe would: the next one in from the right if it's after the one showing in the list, from
+// the left if it's before; just shown with nothing on the page yet, or behind a sheet
+function turnTo(i) {
+  if (i < 0 || i >= S.places.length) return;
+  const shown = S.wx ? cell(S.wx.place.lat, S.wx.place.lon) : null, at = shown ? S.places.findIndex((q) => cell(q.lat, q.lon) === shown) : -1;
+  S.cur = i; savePlaces();
+  const p = place(), dir = at < 0 ? 0 : Math.sign(i - at);
+  if (!shown || !dir || shown === cell(p.lat, p.lon) || turning || document.querySelector("dialog[open]")) { go(); return; }
+  turnPage(dir);
+}
 function placeSwipe() {
   // (it's the page's columns that follow the finger, not the page itself: a page that's been moved isn't one the
   // browser will turn from)
   const zone = document.querySelector(".hero"), main = $("main"), cols = [...main.querySelectorAll(":scope > .col")];
-  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0, turning = false;
+  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0;
   const W = () => document.documentElement.clientWidth;
   const atEnd = (d) => (d > 0 && S.cur === 0) || (d < 0 && S.cur === S.places.length - 1);
   // (past the first or last, the page gives less the further it's pulled, as iOS's rubber band does)
@@ -454,44 +531,15 @@ function placeSwipe() {
   // not far enough: back into place from where it was let go, at the speed it was going
   const back = (from, v) => {
     shift(0);
-    if (calm.matches || !from) { main.classList.remove("paging"); return; }
-    const g = glide(-Math.sign(from) * v, Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)");
+    if (!from) { main.classList.remove("paging"); return; }
+    // (with Reduce Motion, quickly)
+    const g = calm.matches ? { duration: 150, easing: EASE_OUT } : glide(-Math.sign(from) * v, Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)");
     Promise.all(cols.map((c) => c.animate([{ translate: `${from}px 0` }, { translate: "0 0" }], g).finished))
       .catch(() => {}).finally(() => { if (!turning) main.classList.remove("paging"); });
   };
-  // on to the next: this page off the screen the way it was going, the next one in beside it
-  const turn = (dir, from, v) => {
-    S.cur += dir; savePlaces();
-    // (the page goes on at the finger's speed; the next, with further to come, comes in faster and meets it)
-    const w = W(), ease = "cubic-bezier(0.22, 0.8, 0.3, 1)", g = glide(Math.max(0, -dir * v), w - Math.abs(from), ease, w);
-    if (calm.matches) { shift(0); main.classList.remove("paging"); go(); return; }
-    turning = true;
-    const finish = () => { turning = false; main.classList.remove("paging"); for (const k of ["height", "overflow", "viewTransitionName"]) main.style[k] = ""; };
-    if (document.startViewTransition) {
-      // (just what's on screen is taken along: the rest of the page, out of sight, isn't drawn into the picture)
-      main.style.height = `${Math.ceil(innerHeight - main.getBoundingClientRect().top)}px`;
-      main.style.overflow = "clip";
-      main.style.viewTransitionName = "page";
-      const vt = document.startViewTransition(() => { shift(0); go(); });
-      vt.ready.then(() => {
-        const o = { ...g, fill: "both" };
-        // (the page's picture has it where the finger left it: from there, on off the screen)
-        document.documentElement.animate({ transform: ["translateX(0)", `translateX(${-dir * w - from}px)`] }, { ...o, pseudoElement: "::view-transition-old(page)" });
-        document.documentElement.animate({ transform: [`translateX(${dir * w}px)`, "translateX(0)"] }, { ...o, pseudoElement: "::view-transition-new(page)" });
-      }).catch(() => {});
-      vt.finished.catch(() => {}).finally(finish);
-      return;
-    }
-    // (no view transitions: this one goes, then the next comes)
-    shift(0);
-    const out = main.animate([{ translate: `${from}px 0` }, { translate: `${-dir * w}px 0` }], { duration: g.duration * 0.5, easing: "cubic-bezier(0.4, 0.2, 0.9, 0.6)", fill: "forwards" });
-    out.finished.then(() => {
-      go();
-      const inn = main.animate([{ translate: `${dir * w}px 0` }, { translate: "0 0" }], { duration: g.duration, easing: ease });
-      out.cancel();
-      return inn.finished;
-    }).catch(() => {}).finally(finish);
-  };
+  // on to the next: this page off the screen the way it was going, the next one in beside it (the page goes on at the
+  // finger's speed; the next, with further to come, comes in faster and meets it)
+  const turn = (dir, from, v) => { S.cur += dir; savePlaces(); turnPage(dir, { from, v, reset: () => shift(0) }); };
   zone.addEventListener("touchend", end); zone.addEventListener("touchcancel", end);
 }
 // (one kept so long that it's run out, or all but, has nothing to show: two weeks away, say)
@@ -500,34 +548,43 @@ function render() {
   showPlace();
   if (S.base && runOut(S.base)) S.base = S.wx = null;
   if (S.base) S.wx = shaped(S.base);
-  const wx = S.wx;
+  const wx = S.wx, before = $("main").dataset.empty;
   // nothing to show yet: placeholders while it loads, or the hero's message and a way to try again
   if (wx) delete $("main").dataset.empty; else $("main").dataset.empty = S.error ? "error" : "loading";
   $("retry-btn").hidden = !!wx || !S.error;
   if (!wx) {
     $("now-temp").textContent = "–"; delete $("now-temp").dataset.shown; $("now-icon").replaceChildren(); $("place-now").textContent = $("place-temp").textContent = "";
-    $("now-cond").textContent = S.error ? "Couldn't get the forecast" : "Loading the forecast…";
-    $("now-hl").textContent = S.error ? "You may be offline, or the forecast service didn't answer." : "";
-    $("brief").textContent = "";
+    const busy = S.error && (S.error.status === 429 || S.error.status >= 500);
+    // (from loading to its error and back, as it tries again: the words changing where they are, not snapping)
+    swap($("now-cond"), S.error ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…", !!before);
+    swap($("now-hl"), S.error ? (busy ? "Trying again in a moment…" : "You may be offline, or the forecast service didn’t answer.") : "", !!before);
+    $("brief").textContent = ""; delete $("brief").dataset.said;
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
-    $("hourly-strip")._sig = null;
+    $("hourly-strip")._sig = $("insights")._sig = null;
     $("nowcast").hidden = true;
     status(); return;
   }
+  // (and arriving where there were placeholders, or a message: the cards on screen come up into place after the hero)
+  if (before) arrive();
   const now = nowWall(wx.place.offset);
   if (!S.modeChosen) { const v = viewFor(wx, now); if (v !== S.mode) showMode(v); }
   // (each part drawn by itself: a fault in one, on some odd piece of the forecast, leaves the others as they should be)
   const part = (fn, ...a) => { try { fn(...a); } catch (e) { console.error(e); } };
   const my = ++drawing, key = cell(wx.place.lat, wx.place.lon);
+  // (a place drawn for the first time (turned to, say), or its forecast just come over placeholders: drawn as it is, the
+  // turn or the arrival its motion; drawn again, what's changed changes where it is)
+  const fresh = !!before || drawnFor !== key;
+  // (another place's: the last one's charts aren't faded away over this one's as they draw in, charts.js put)
+  if (drawnFor !== key) for (const c of document.querySelectorAll("#hourly-chart, #nowcast-chart, #climate-body > .range")) c.replaceChildren();
   // (the place drawn again with something new near the top (a warning come in, say) while the page is at the top: what's
   // under it glides down to its new place rather than jumping there; from where each was as last shown (tops, kept
   // once it's been: not measured now, which would lay the page out before it's drawn)
   const was = drawnFor === key && scrollY < 40 && !calm.matches ? tops : null;
   part(sky, wx, now);
-  part(hero, wx, now);
+  part(hero, wx, now, fresh);
   part(pinOnMap, wx, now);
-  part(nowcast, wx, now);
-  part(cards, wx, now);
+  part(nowcast, wx, now, { fresh });
+  part(cards, wx, now, fresh);
   part(nudge);
   part(hourly, wx, now);
   status();
@@ -550,7 +607,7 @@ function render() {
     if (was) for (const [x, t] of was) {
       if (x.hidden || !x.isConnected) continue;
       const top = x.offsetTop, d = t - top;
-      if (Math.abs(d) > 2 && top - scrollY < innerHeight) x.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 480, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", composite: "add" });
+      if (Math.abs(d) > 2 && top - scrollY < innerHeight) x.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 480, easing: GLIDE, composite: "add" });
     }
     keepTops();
   });
@@ -558,13 +615,36 @@ function render() {
 let drawing = 0, drawnFor = "", tops = null;
 addEventListener("resize", () => { tops = null; });
 // (where the page's parts are laid out, as shown: once it's been laid out and shown; not as any glide has them meanwhile)
-const keepTops = () => setTimeout(() => { tops = new Map([...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden).map((x) => [x, x.offsetTop])); settle(); }, 0);
+const keepTops = () => setTimeout(() => { tops = new Map([...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden).map((x) => [x, x.offsetTop])); settleWatch(); }, 0);
 // each card settles into place once, the first time it's scrolled up into view (styles.css settle), and is then left be:
 // not played over each time it passes the foot of the screen, which cost every frame of every scroll (a card drawn
 // afresh is watched afresh)
 const settled = typeof IntersectionObserver === "function" && CSS.supports?.("animation-timeline: view()")
   ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("settled"); settled.unobserve(e.target); } }, { rootMargin: "0px 0px -160px 0px" }) : null;
-function settle() { if (settled) for (const x of document.querySelectorAll("main :is(.card, .ins, .tile):not(.settled)")) settled.observe(x); }
+function settleWatch() { if (settled) for (const x of document.querySelectorAll("main :is(.card, .ins, .tile):not(.settled)")) settled.observe(x); }
+// A place's forecast come where there were placeholders, or a message (or a page turned to from a long way down: now),
+// the hero easing up first (styles.css), then the cards on screen coming up into place one after another, rather than
+// all there at once before it: each pane of glass rising, what's on it fading up (a pane that fades would show
+// unfrosted in Safari). Not again if it's drawn again a moment later; not with Reduce Motion
+let arrivedAt = 0;
+function arrive(now = false) {
+  if (calm.matches || Date.now() - arrivedAt < 600) return;
+  arrivedAt = Date.now();
+  requestAnimationFrame(() => {
+    let k = 0;
+    for (const el of document.querySelectorAll("main > .col > :not(.hero, .skeleton, [hidden])")) {
+      const r = el.getBoundingClientRect();
+      if (!r.height || r.top > innerHeight || r.bottom < 0) continue;
+      const t = { duration: 460, delay: (now ? 0 : 80) + k++ * 45, easing: GLIDE, fill: "backwards" };
+      // (a card, its own pane; a section of them (the warnings, the tiles), each of its panes, and its heading)
+      const panes = el.matches(".card") ? [el] : [...el.querySelectorAll(":scope > .ins, .tile, .section-title")];
+      for (const pane of panes) {
+        pane.animate([{ translate: "0 14px" }, { translate: "0 0" }], t);
+        for (const c of pane.matches(".section-title") ? [pane] : pane.children) c.animate([{ opacity: 0.35 }, { opacity: 1 }], t);
+      }
+    }
+  });
+}
 // The page's cards laid out in your order (CARDS, as Settings has them: settings.js), any you've switched off left off,
 // the word about the alerts (nudge) after the next 48 hours. In one column, one under another; in two (a wide screen),
 // each in turn to whichever column is shorter so far, so they stay about level and read across and down in your order.
@@ -578,10 +658,12 @@ function balance(key = keyed, again = false) {
   const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), L = S.settings.layout;
   const wide = twoCols.matches && !onSide.matches, want = `${key}|${wide}|${L.order}|${L.off}`;
   if ((want === levelled && !again) || $("radar").classList.contains("radar-big")) return;
+  const first = !levelled.startsWith(`${key.split("|")[0]}|`) || again;
   levelled = want; keyed = key;
   for (const [k] of CARDS) $(k).toggleAttribute("data-off", L.off.includes(k));
   const list = L.order.filter((k) => !L.off.includes(k)).map($);
-  const at = list.indexOf($("hourly"));
+  // (the word about the alerts after the next 48 hours; just the Home Screen step to say, after the 16 days: nudge)
+  const at = list.indexOf($($("nudge")._below ? "daily" : "hourly"));
   list.splice(at < 0 ? Math.min(1, list.length) : at + 1, 0, $("nudge"));
   // (each moved only if it isn't where it goes already: the radar's map, say, isn't taken out and put back for nothing)
   const put = (after, xs) => { for (const x of xs) { if (after.nextElementSibling !== x) after.after(x); after = x; } };
@@ -591,7 +673,15 @@ function balance(key = keyed, again = false) {
     let ha = a.querySelector(".hero").offsetHeight + $("alerts").offsetHeight, hb = 0;
     const A = [], B = [];
     for (const x of list) { const h = x.offsetHeight ? x.offsetHeight + 22 : 0; if (ha <= hb) { A.push(x); ha += h; } else { B.push(x); hb += h; } }
+    // (moved once the place has been shown, as its climate and its accuracy come: each card on screen glides from where
+    // it was to where it goes, in either column, rather than jumping there; not as the window's resized)
+    const parts = [...main.querySelectorAll(":scope > .col > *")].filter((x) => !x.hidden && x.offsetHeight);
+    const was = first || !moving() ? null : new Map(parts.map((x) => [x, x.getBoundingClientRect()]));
     put($("alerts"), A); put(b.querySelector(".skeleton"), B);
+    if (was) for (const [x, r] of was) {
+      const n = x.getBoundingClientRect(), dx = r.left - n.left, dy = r.top - n.top;
+      if ((Math.abs(dx) > 1 || Math.abs(dy) > 1) && ((r.bottom > 0 && r.top < innerHeight) || (n.bottom > 0 && n.top < innerHeight))) x.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 450, easing: GLIDE, composite: "add" });
+    }
   });
 }
 let resized = 0, wasWide = null;
@@ -608,8 +698,9 @@ function status() {
   // it was asked for, not each time it refreshes by itself)
   const warn = (S.error || S.stale) && !S.loading && mins > 15, text = warn ? "Couldn't refresh: showing the last forecast." : S.loading && S.asked ? "Updating…" : "";
   el.classList.toggle("warn", warn);
-  if (el.textContent !== text) el.textContent = text;
-  $("updated").textContent = `Updated ${ago}`;
+  // (said, it rises in; done with, it fades where it was, rather than going in a blink: the line keeps its height)
+  if (el.textContent !== text) { if (!text && moving() && !heroAway()) fadeOff(el); swap(el, text, !heroAway()); }
+  swap($("updated"), `Updated ${ago}`);
 }
 
 // the top of each sky (styles.css), for the browser's bar to match
@@ -627,37 +718,52 @@ function sky(wx, now) {
   else if (kind === "clear") s = day ? "clear-day" : "clear-night";
   else if (kind === "partly") s = day ? "partly-day" : "partly-night";
   else s = day ? "cloudy-day" : "cloudy-night";
+  // (a new sky eases in over the last: styles.css)
   document.body.dataset.sky = s;
   const top = SKY_TOP[s] || "#2b5d96";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
   document.documentElement.style.backgroundColor = top;      // (what shows when the page is pulled past its ends)
+  // (and kept, for the page to open on next time, before the app has started: early.js)
+  const kept = store.get("wx:sky");
+  if (kept?.sky !== s || Date.now() - kept.at > 10 * 60e3) store.set("wx:sky", { sky: s, at: Date.now() });
 }
 
-function hero(wx, now) {
+// (fresh: the forecast just come where there were placeholders, the hero rising in as a whole: nothing in it moves again)
+function hero(wx, now, fresh = false) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now);
   // (no reading for now, a gap in the hours say: what's there stays)
   if (!c) return;
-  // a new temperature rolls in, up if it's warmer, down if it's cooler (as iOS's numbers do)
-  const tEl = $("now-temp"), t = f.temp(c.temp);
+  // a new temperature rolls in, up if it's warmer, down if it's cooler (as iOS's numbers do), the old one rolling away;
+  // the same reading in other units crossfades
+  const tEl = $("now-temp"), t = f.temp(c.temp), shown = !fresh && !heroAway();
   if (tEl.textContent !== t) {
     // (by the numbers themselves: a minus, as it's written, isn't one to parseFloat)
-    const warmer = !(c.temp < Number(tEl.dataset.v));
+    const was = tEl.textContent, v = Number(tEl.dataset.v), by = c.temp === v ? 0 : c.temp < v ? -1 : 1, rolls = tEl.dataset.shown && shown && moving();
+    // (its width before, if another figure would change it: measured only then, as it lays the page out)
+    const w0 = rolls && was.length !== t.length ? tEl.offsetWidth : null;
     tEl.textContent = t; tEl.dataset.v = String(c.temp);
-    // (started again on the next frame, rather than by having the whole page laid out here and now to restart it)
-    if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); requestAnimationFrame(() => tEl.classList.add(warmer ? "roll-up" : "roll-down")); }
+    if (rolls) roll(tEl, was, by, w0);
     tEl.dataset.shown = "1";
   }
-  // (only when it changes: it's moving, and drawn again it would start over)
+  // (only when it changes: it's moving, and drawn again it would start over; the new one coming in over the old)
   const icon = iconOf(c.code, c.isDay), iconEl = $("now-icon");
-  if (iconEl.dataset.icon !== icon || !iconEl.firstChild) { iconEl.innerHTML = weatherIcon(icon, 76); iconEl.dataset.icon = icon; }
-  $("now-cond").textContent = label(c.code, c.isDay);
-  $("place-now").textContent = `${f.temp(c.temp)} · ${label(c.code, c.isDay)}`;
-  $("place-temp").textContent = f.temp(c.temp);
-  $("now-hl").textContent = d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`;
+  if (iconEl.dataset.icon !== icon || !iconEl.firstElementChild) {
+    const old = [...iconEl.children];
+    iconEl.insertAdjacentHTML("beforeend", weatherIcon(icon, 76)); iconEl.dataset.icon = icon;
+    if (old.length && shown && moving()) {
+      for (const o of old) { o.classList.add("wi-was"); o.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(0.9)" }], { duration: 240, easing: EASE_IN, fill: "forwards" }).finished.then(() => o.remove(), () => o.remove()); }
+      iconEl.lastElementChild.animate([{ opacity: 0, transform: "scale(0.9)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: GLIDE });
+    } else old.forEach((o) => o.remove());
+  }
+  const cond = label(c.code, c.isDay), top = document.querySelector(".top").classList.contains("collapsed");
+  swap($("now-cond"), cond, shown);
+  swap($("place-now"), `${f.temp(c.temp)} · ${cond}`, top);
+  swap($("place-temp"), f.temp(c.temp), top && $("place-btn").classList.contains("no-sub"));
+  swap($("now-hl"), d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`, shown);
   // (its first sentence, what's coming, in bold; the rest after it)
   // (and written, so read out, only when what it says has changed: not every minute, nor as each part comes in)
   const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""], brief = $("brief");
-  if (brief.dataset.said !== said) { brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; }
+  if (brief.dataset.said !== said) { const had = !!brief.dataset.said; brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; if (had && shown) rise(brief); }
   keepHero(wx);
 }
 
@@ -670,6 +776,22 @@ function keepHero(wx) {
   if (v === heroKept && Date.now() - heroAt < 10 * 60e3) return;
   heroKept = v; heroAt = Date.now();
   store.set("wx:hero", { ...JSON.parse(v), at: heroAt });
+}
+// The temperature as it was, rolling away (up for a warmer one, down for a cooler, fading for other units) as the new one
+// rolls in from the other side: both moved and faded only, so it carries on smoothly however busy the page is with
+// drawing the rest; and the icon beside it easing along, if the new one's wider or narrower (w0: its width before). A
+// newer one coming meanwhile takes over from wherever this one had got to
+function roll(tEl, was, by, w0) {
+  const row = tEl.parentElement;
+  for (const g of row.querySelectorAll(".hero-temp.was")) g.remove();
+  tEl.getAnimations().forEach((a) => a.cancel());
+  const old = h("div", { class: "hero-temp was", "aria-hidden": "true" }, was);
+  row.append(old);
+  old.animate(by ? [{ transform: "none", opacity: 1 }, { transform: `translateY(${-by * 0.28}em)`, opacity: 0 }] : [{ opacity: 1 }, { opacity: 0 }], { duration: by ? 280 : 200, easing: EASE_IN, fill: "forwards" })
+    .finished.then(() => old.remove(), () => old.remove());
+  tEl.animate(by ? [{ transform: `translateY(${by * 0.28}em)`, opacity: 0 }, { transform: "none", opacity: 1 }] : [{ opacity: 0 }, { opacity: 1 }], { duration: by ? 450 : 280, easing: by ? GLIDE : EASE_OUT });
+  const dx = w0 == null ? 0 : w0 - tEl.offsetWidth;
+  if (Math.abs(dx) > 1) $("now-icon").animate([{ translate: `${dx}px 0` }, { translate: "0 0" }], { duration: 450, easing: GLIDE });
 }
 
 // the place on the radar's map as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how
@@ -725,7 +847,8 @@ function pinOnMap(wx, now) {
   }));
   S.radar.warnings(inForce(wx.official).filter((w) => w.areas?.length).map((w) => ({ id: w.id, title: w.event || titleOf(w), colour: colourOf(w), onset: w.onset, expires: w.expires, open: !!w.open, rings: w.areas })));
 }
-function nowcast(wx, now) {
+// (fresh: as a place's forecast arrives, all of it at once; tick: the minute moving on, not a new forecast)
+function nowcast(wx, now, { fresh = false, tick = false } = {}) {
   const f = S.f, nc = I.nowcast(wx, now, f), box = $("nowcast");
   // the radar says it in a line too
   const quarters = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now).length;
@@ -733,16 +856,22 @@ function nowcast(wx, now) {
   // (the radar's line only where the card above isn't saying it already: when it's hidden, or the radar's full screen)
   const shown = !(!nc || (!nc.now && nc.startsAt - now > 2 * HOUR));
   $("radar").classList.toggle("said-above", shown);
-  if (!shown) { box.hidden = true; return; }
-  box.hidden = false;
-  $("nowcast-text").textContent = nc.text;
+  // (rain no longer on its way: the card folds away, what's under it moving up; on its way again, it opens back up)
+  if (!shown) { if (fresh) box.hidden = true; else fold(box); return; }
+  const was = !box.hidden && !box._fold;
+  if (fresh) box.hidden = false; else unfold(box);
+  swap($("nowcast-text"), nc.text, was);
   const m = wx.minutely.filter((x) => x.t + 15 * 60e3 > now), led = (x) => (x.radar ?? 0) >= 0.5;
   // (said where the radar's leading the timing for the first of it: rainmap.js blend)
   $("nowcast-src").hidden = !led(m[0] || {});
+  // (each minute its chart's drawn again for the time; not while it's being read, though, a finger or the pointer on it,
+  // or its keys: that would take the reading away)
+  const host = $("nowcast-chart");
+  if (tick && host.matches(":hover, :focus-within")) return;
   // on the scale it's felt: light, moderate, heavy (under 0.6 mm an hour, to 4, over), so it needs no units
   // (a square root within light, so drizzle still shows; the amounts are in the readout)
   const band = (mmh) => (mmh <= 0 ? 0 : mmh < 0.6 ? Math.sqrt(mmh / 0.6) : mmh < 4 ? 1 + Math.log(mmh / 0.6) / Math.log(4 / 0.6) : Math.min(3, 2 + Math.log(mmh / 4) / Math.log(4)));
-  timeChart($("nowcast-chart"), {
+  timeChart(host, {
     kind: "columns", height: 120, color: COLOR.rain, key: cell(wx.place.lat, wx.place.lon),
     points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip, radar: led(x) })),
     y: { min: 0, max: 3, ticks: [1, 2, 3], fmt: (v) => ["", "Light", "Moderate", "Heavy"][v], inside: true },
@@ -797,7 +926,8 @@ function openWarning(w) {
     h("p", { class: "credits-note" }, `Issued by ${/Office|Service|Center|Agency/.test(w.issuer) ? "the " : ""}${w.issuer}${w.via ? `, through ${w.via}` : ""}, and shown as issued.`)].flat().filter(Boolean));
   openSheet(d);
 }
-function cards(wx, now) {
+// (fresh: a place drawn for the first time, or its forecast just come where there were placeholders: as it is, at once)
+function cards(wx, now, fresh = false) {
   const all = I.insights(wx, now, S.f, { prev: baseline(wx, now), commute: S.settings.commute });
   // official warnings first; the app's own after, less any an official one already says
   const official = inForce(wx.official), said = covered(official);
@@ -809,51 +939,116 @@ function cards(wx, now) {
   const rest = all.filter((c) => c.level !== "alert" && c.level !== "warn" && !elsewhere(c));
   const n = official.length + warn.length;
   // straight under the temperature: one warning as its card; more, one banner saying what they are (the most severe
-  // first), that opens to all of them, rather than a stack of them pushing the forecast down the page
+  // first), that opens to all of them, rather than a stack of them pushing the forecast down the page (each drawn again
+  // only when what it says has changed: drawAlerts)
   const worst = [...official].sort((a, b) => (b.level || 0) - (a.level || 0)), mine = [...warn].sort((a, b) => (b.level === "alert") - (a.level === "alert"));
-  const each = [...worst.map((w) => officialCard(w, wx, now)), ...mine.map(insightCard)];
-  if (n < 2) $("alerts").replaceChildren(...(n ? [h("h2", { class: "sr-only" }, "Warning"), ...each] : []));
+  const each = [...worst.map((w) => ({ key: `o:${w.id ?? titleOf(w)}`, sig: JSON.stringify([titleOf(w), badgeOf(w), colourOf(w), w.issuer, spanOf(w, now, S.f, wx.place.offset), w.headline]), make: () => officialCard(w, wx, now) })),
+    ...mine.map((c) => ({ key: `i:${c.title}`, sig: JSON.stringify([c.level, c.icon, c.text, moreOf(c)?.label]), make: () => insightCard(c) }))];
+  if (n < 2) drawAlerts(n ? [{ key: "h", sig: "1", make: () => h("h2", { class: "sr-only" }, "Warning") }, ...each] : [], fresh);
   else {
     const name = (w) => { const b = badgeOf(w), t = titleOf(w).replace(/\s+warning$/i, ""); return b ? `${b} ${t.toLowerCase()}` : t; };
-    const top = worst[0], colour = top ? colourOf(top) : null, all = h("div", { class: "stack warn-all", id: "warn-all", hidden: !S.warnOpen }, ...each);
-    const open = h("button", { class: "ins-open", type: "button", "aria-expanded": String(!!S.warnOpen), "aria-controls": "warn-all", onclick: () => {
-      S.warnOpen = !S.warnOpen; all.hidden = !S.warnOpen; open.setAttribute("aria-expanded", String(S.warnOpen)); sum.classList.toggle("open", S.warnOpen);
-      // (they come in under it, one after another)
-      if (S.warnOpen && !calm.matches) [...all.children].forEach((c, i) => { c.classList.remove("rise"); c.style.setProperty("--i", String(i)); void c.offsetWidth; c.classList.add("rise"); });
-    } }, `${n} warnings`);
-    const sum = h("article", { class: `ins official warn-sum${S.warnOpen ? " open" : ""}`, "data-level": colour === "red" || (!top && mine[0].level === "alert") ? "alert" : "warn", "data-colour": colour },
-      h("div", { class: "ins-icon", svg: glyph(top ? glyphOf(top) : mine[0].icon, 18) }),
-      h("h3", {}, open),
-      h("p", {}, [...worst.map(name), ...mine.map((c) => c.title)].join(", ")),
-      h("span", { class: "ws-chev", svg: glyph("chevron", 16) }));
-    $("alerts").replaceChildren(h("h2", { class: "sr-only" }, "Warnings"), sum, all);
+    const top = worst[0], colour = top ? colourOf(top) : null, line = [...worst.map(name), ...mine.map((c) => c.title)].join(", ");
+    drawAlerts([{ key: "h", sig: "n", make: () => h("h2", { class: "sr-only" }, "Warnings") },
+      { key: "sum", sig: JSON.stringify([n, line, colour]), make: () => h("article", { class: `ins official warn-sum${S.warnOpen ? " open" : ""}`, "data-level": colour === "red" || (!top && mine[0].level === "alert") ? "alert" : "warn", "data-colour": colour },
+        h("div", { class: "ins-icon", svg: glyph(top ? glyphOf(top) : mine[0].icon, 18) }),
+        h("h3", {}, h("button", { class: "ins-open", type: "button", "aria-expanded": String(!!S.warnOpen), "aria-controls": "warn-all", onclick: openWarnings }, `${n} warnings`)),
+        h("p", {}, line),
+        h("span", { class: "ws-chev", svg: glyph("chevron", 16) })) },
+      { key: "all", sig: JSON.stringify(each.map((x) => x.sig)), make: () => h("div", { class: "stack warn-all", id: "warn-all", hidden: !S.warnOpen }, ...each.map((x) => x.make())) }], fresh);
   }
-  // the app's own, in one card: the first three, and the rest under "N more"
-  const shown = S.allInsights ? rest : rest.slice(0, FIRST_INSIGHTS);
-  const box = $("insights");
-  $("insights-card").hidden = !rest.length;
+  // the app's own, in one card: the first three, and the rest under "N more" (all of them shown, a way back to three)
+  const shown = S.allInsights ? rest : rest.slice(0, FIRST_INSIGHTS), box = $("insights"), card = $("insights-card");
+  // (drawn again only when what it says has changed, not for every other part of the forecast as it comes in: so a row
+  // that's open stays open, and what has the focus keeps it)
+  const sig = JSON.stringify([cell(wx.place.lat, wx.place.lon), shown.map((c) => [c.title, c.short, c.text, c.level, c.icon, moreOf(c)?.label]), rest.length, S.allInsights]);
+  if (box._sig === sig) return;
+  const first = fresh || box._sig == null, old = new Map([...box.children].map((r) => [r._title, r]));
+  const focus = document.activeElement?.closest?.("#insights-card :is(.ins-row, .ins-more)");
+  // (and the card as tall as it was, then easing to its new height, rather than jumping, everything under it with it;
+  // closing up, its button going up with its foot)
+  const btn0 = box.nextElementSibling, h0 = !first && moving() && !card.hidden ? card.offsetHeight : 0, b0 = h0 && btn0 ? btn0.offsetTop : 0;
+  box._sig = sig;
+  // (nothing to say: the card folds away, saying what it said till it's gone; something again, it opens back up)
+  if (!rest.length) { if (first) card.hidden = true; else fold(card); return; }
+  if (card.hidden || card._fold) { if (first) card.hidden = false; else unfold(card); }
   box.replaceChildren(...shown.map(insightRow));
-  box.nextElementSibling?.remove();
+  btn0?.remove();
   // (under the list, not in it: a list holds only its items)
-  if (rest.length > shown.length) box.after(h("button", { class: "ins-more", type: "button", onclick: () => {
-    S.allInsights = true; cards(S.wx, nowWall(S.wx.place.offset));
-    // the rest rise in under the first (those on screen: see .hero's), and the first of them has focus (where the button was)
-    const more = [...box.children].slice(FIRST_INSIGHTS);
-    more.forEach((c, i) => { if (c.getBoundingClientRect().top < innerHeight) { c.classList.add("rise"); c.style.setProperty("--i", String(i)); } });
-    more[0]?.querySelector(".ins-head").focus({ preventScroll: true });
-  } }, `${rest.length - shown.length} more`, h("span", { svg: glyph("chevron", 14) })));
+  if (rest.length > FIRST_INSIGHTS) box.after(h("button", { class: `ins-more${S.allInsights ? " less" : ""}`, type: "button", onclick: () => more(!S.allInsights) },
+    S.allInsights ? "Show less" : `${rest.length - shown.length} more`, h("span", { svg: glyph("chevron", 14) })));
+  // (a row saying something new about the same thing: its words changing where they are; a new one rising in, if it's on
+  // screen, one after another)
+  let k = 0;
+  if (!first) for (const row of box.children) {
+    const o = old.get(row._title);
+    if (o) rewords(o, row);
+    else if (moving() && row.getBoundingClientRect().top < innerHeight) { row.classList.add("rise"); row.style.setProperty("--i", String(k++)); }
+  }
+  if (focus) (focus.classList.contains("ins-more") ? box.nextElementSibling : [...box.children].find((r) => r._title === focus._title)?.querySelector(".ins-head"))?.focus({ preventScroll: true });
+  if (h0) {
+    const h1 = card.offsetHeight, btn = box.nextElementSibling, t = { duration: 420, easing: GLIDE };
+    if (Math.abs(h1 - h0) > 1) {
+      card.style.overflow = "clip";
+      card.animate([{ height: `${h0}px` }, { height: `${h1}px` }], t).finished.catch(() => {}).finally(() => { card.style.overflow = ""; });
+      if (h1 < h0 && btn && b0) btn.animate([{ transform: `translateY(${b0 - btn.offsetTop}px)` }, { transform: "none" }], t);
+    }
+  }
   requestAnimationFrame(fits);
 }
+// "N more": the rest rise in under the first three as the card grows to take them, the first of them with the focus
+// (where the button was); "Show less": back to three, the card closing up under them, the button with its foot
+function more(on) {
+  if (!S.wx) return;      // (a place's forecast still coming: there's nothing to show more or less of)
+  S.allInsights = on;
+  cards(S.wx, nowWall(S.wx.place.offset));
+  const box = $("insights");
+  (on ? box.children[FIRST_INSIGHTS]?.querySelector(".ins-head") : box.nextElementSibling)?.focus({ preventScroll: true });
+}
+// The warnings, worst first (official ones, then the app's own, under the one heading): each kept as it is while it says
+// the same, its words changing where they are when it says something new; a new one rising in where it goes (not as a
+// place is first drawn), and one that's over folding away, what's under it moving up
+// The banner of several warnings opened, all of them unfolding under it one after another (or closed again, folding away)
+function openWarnings() {
+  const all = $("warn-all"), sum = $("alerts").querySelector(".warn-sum");
+  if (!all || !sum) return;
+  S.warnOpen = !S.warnOpen;
+  sum.classList.toggle("open", S.warnOpen); sum.querySelector(".ins-open").setAttribute("aria-expanded", String(S.warnOpen));
+  if (!S.warnOpen) { fold(all, 12); return; }
+  unfold(all, 12);
+  if (moving()) [...all.children].forEach((c, i) => riseIn(c, 50 * i));
+}
+function drawAlerts(items, fresh) {
+  const box = $("alerts"), had = new Map([...box.children].filter((x) => x._key && !x._gone).map((x) => [x._key, x]));
+  const els = items.map(({ key, sig, make }) => {
+    const o = had.get(key);
+    had.delete(key);
+    if (o && o._sig === sig) return o;
+    const n = Object.assign(make(), { _key: key, _sig: sig });
+    if (o) { o.replaceWith(n); if (!fresh) rewords(o, n); } else n._new = !fresh;
+    return n;
+  });
+  for (const o of had.values()) { o._gone = true; if (fresh) o.remove(); else fold(o, 12).then(() => o.remove()); }
+  // (each in its place, in order: those folding away left where they are meanwhile)
+  let at = box.firstChild, k = 0;
+  for (const el of els) {
+    while (at && at._gone) at = at.nextSibling;
+    if (el === at) { at = at.nextSibling; continue; }
+    box.insertBefore(el, at);
+    if (el._new && moving() && el.matches(".ins") && el.getBoundingClientRect().top < innerHeight) riseIn(el, 60 * k++);
+  }
+}
 // An insight in its card: its title and a line of what it says (its own short line, where it has one, rather than the
-// start of the whole cut off), and where there's more, a tap for the rest (the row opening to it, and closing again)
+// start of the whole cut off), and where there's more, a tap for the rest (the row opening to it, and closing again;
+// open, it stays open as the card's drawn again: S.openIns)
 const FIRST_INSIGHTS = 3;
 function insightRow(c) {
-  const brief = c.short && c.short !== c.text;
-  const row = h("div", { class: `ins-row${brief ? " has-short" : ""}`, role: "listitem", "data-level": c.level },
-    h("button", { class: "ins-head", type: "button", "aria-expanded": "false", onclick: () => openRow(row) },
+  const brief = c.short && c.short !== c.text, open = S.openIns.has(c.title);
+  const row = h("div", { class: `ins-row${brief ? " has-short" : ""}${open ? " open" : ""}`, role: "listitem", "data-level": c.level },
+    h("button", { class: "ins-head", type: "button", "aria-expanded": String(open), onclick: () => openRow(row) },
       h("span", { class: "ins-icon", svg: glyph(c.icon, 16) }),
       h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), brief ? h("span", { class: "ins-short" }, c.short) : null, h("span", { class: "ins-line" }, c.text)),
       h("span", { class: "ins-chev", svg: glyph("chevron", 16) })));
+  row._title = c.title;
   // (open, a way on to its day or its hours)
   const go = moreOf(c);
   if (go) { row.classList.add("goes"); row.append(h("button", { class: "ins-go", type: "button", "aria-haspopup": "dialog", onclick: go.open }, go.label, h("span", { svg: glyph("chevron", 12) }))); }
@@ -865,11 +1060,12 @@ function openRow(row) {
   row.getAnimations().forEach((a) => a.cancel());
   row.classList.toggle("open", open);
   row.querySelector(".ins-head").setAttribute("aria-expanded", String(open));
+  S.openIns[open ? "add" : "delete"](row._title);
   if (calm.matches) return;
   // (closing, all of it stays in sight until the row has folded down to a line)
   const to = row.offsetHeight;
   if (!open) row.classList.add("fold");
-  row.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 420, easing: "cubic-bezier(0.32, 0.72, 0, 1)" })
+  row.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 420, easing: GLIDE })
     .finished.then(() => row.classList.remove("fold"), () => row.classList.remove("fold"));
 }
 // which rows say all they have to in their line (nothing to open), measured again as the card's width changes
@@ -892,30 +1088,47 @@ function fits() {
 new ResizeObserver(() => { if ($("insights").clientWidth !== insWidth) fits(); }).observe($("insights"));
 
 function hourly(wx, now) {
-  const f = S.f, hrs = I.hoursFrom(wx, now, 48), strip = $("hourly-strip");
+  const f = S.f, hrs = I.hoursFrom(wx, now, 48), strip = $("hourly-strip"), here = cell(wx.place.lat, wx.place.lon);
   // (the strip again only if what it shows has changed: not for every other part of the forecast arriving, but for
   // any that changes it, the ensembles' odds or the radar's say on the next hours, say)
-  const sig = `${cell(wx.place.lat, wx.place.lon)}|${wx.current?.temp}|${wx.current?.code}|${JSON.stringify(f.units)}|${hrs.map((x) => `${x.t},${Math.round(x.temp * 10)},${x.code},${x.isDay ? 1 : 0},${Math.round(x.pop ?? 0)}`).join(";")}`;
+  const sig = `${here}|${wx.current?.temp}|${wx.current?.code}|${JSON.stringify(f.units)}|${hrs.map((x) => `${x.t},${Math.round(x.temp * 10)},${x.code},${x.isDay ? 1 : 0},${Math.round(x.pop ?? 0)}`).join(";")}`;
   if (strip._sig === sig) { drawHourChart(wx, now, hrs, $("hourly-chart"), S.mode, true); return; }
+  // (the same place drawn again, on screen: each hour that's still there moves to its new place (along by one as the
+  // hour turns, rather than every hour shifting under the eye), the one gone fading where it was, and what's changed of
+  // each rising in; another place: back to Now)
+  const same = strip._sig?.startsWith(`${here}|`), r = same && moving() ? strip.getBoundingClientRect() : null;
+  const seen = r && r.bottom > 0 && r.top < innerHeight, old = seen ? new Map([...strip.children].filter((c) => c._t != null).map((c) => [c._t, [c, c.getBoundingClientRect().left]])) : null;
   strip._sig = sig;
   const items = [];
   hrs.forEach((x, i) => {
     const isNow = i === 0, c = isNow && wx.current ? wx.current : x;
-    items.push(h("div", { class: `hour${isNow ? " now" : ""}`, role: "listitem", "aria-label": `${isNow ? "Now" : f.time(x.t)}: ${f.temp(c.temp)}, ${label(c.code, c.isDay)}${(x.pop ?? 0) >= 20 ? `, ${Math.round(x.pop)}% chance of rain` : ""}` },
+    items.push(Object.assign(h("div", { class: `hour${isNow ? " now" : ""}`, role: "listitem", "aria-label": `${isNow ? "Now" : f.time(x.t)}: ${f.temp(c.temp)}, ${label(c.code, c.isDay)}${(x.pop ?? 0) >= 20 ? `, ${Math.round(x.pop)}% chance of rain` : ""}` },
       h("span", { class: "h-time" }, isNow ? "Now" : f.hour(x.t)),
       h("span", { class: "h-icon", svg: weatherIcon(iconOf(c.code, c.isDay), 30) }),
       h("span", { class: "h-pop" }, (x.pop ?? 0) >= 20 ? `${Math.round(x.pop / 10) * 10}%` : ""),
-      h("span", { class: "h-temp" }, f.temp(c.temp))));
+      h("span", { class: "h-temp" }, f.temp(c.temp))), { _t: x.t }));
     // sunrise and sunset, in their place
     for (const d of wx.daily) for (const [what, t] of [["Sunrise", d.sunrise], ["Sunset", d.sunset]]) {
       if (t && t > Math.max(now, x.t) && t < x.t + HOUR && i < hrs.length - 1) {
-        items.push(h("div", { class: "hour sunev", role: "listitem", "aria-label": `${what} at ${f.time(t)}` },
-          h("span", { class: "h-time" }, f.time(t)), h("span", { class: "h-icon", svg: glyph(what === "Sunrise" ? "sunrise" : "sunset", 26) }), h("span", { class: "h-pop" }), h("span", { class: "h-temp" }, what)));
+        items.push(Object.assign(h("div", { class: "hour sunev", role: "listitem", "aria-label": `${what} at ${f.time(t)}` },
+          h("span", { class: "h-time" }, f.time(t)), h("span", { class: "h-icon", svg: glyph(what === "Sunrise" ? "sunrise" : "sunset", 26) }), h("span", { class: "h-pop" }), h("span", { class: "h-temp" }, what)), { _t: `s${t}` }));
       }
     }
   });
+  const gone = old ? [...old].filter(([t]) => !items.some((x) => x._t === t)).map(([, [c]]) => (c.getBoundingClientRect().right > r.left ? ghost(c, strip) : null)).filter(Boolean) : [];
   strip.setAttribute("role", "list");
-  strip.replaceChildren(...items);
+  strip.replaceChildren(...items, ...gone);
+  if (!same && strip.scrollLeft) strip.scrollTo({ left: 0, behavior: moving() ? "smooth" : "auto" });
+  if (old) {
+    for (const g of gone) g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: EASE_OUT, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
+    for (const c of items) {
+      const o = old.get(c._t);
+      if (!o) continue;
+      const dx = o[1] - c.getBoundingClientRect().left;
+      if (Math.abs(dx) > 1) c.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: 450, easing: GLIDE });
+      rewords(o[0], c);
+    }
+  } else gone.forEach((g) => g.remove());
   drawHourChart(wx, now, hrs, $("hourly-chart"), S.mode, true);
 }
 
@@ -1013,13 +1226,32 @@ function daily(wx, now) {
     const tail = mode === "rain" ? [h("span", { class: "d-chart", svg: dayRain(hoursOf(d), now) }), h("span", { class: "d-val" }, h("b", { class: "rain" }, `${Math.round((d.popMax ?? 0) / 10) * 10}%`), h("small", {}, amount))]
       : mode === "wind" ? [h("span", { class: "d-chart", svg: dayWind(hoursOf(d), gTop, now) }), h("span", { class: "d-val" }, h("b", {}, String(f.windNum(d.windMax)), h("small", { class: "u" }, ` ${f.windUnit}`)), h("small", {}, `gusts ${f.windNum(d.gustMax)}`))]
       : [h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))];
-    return h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Less certain") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, ${says}${unsure ? ", uncertain" : ""}` },
+    return Object.assign(h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Less certain") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, ${says}${unsure ? ", uncertain" : ""}` },
       h("span", { class: "d-name" }, name, h("small", { class: unsure ? "unsure" : "" }, unsure ? "Uncertain" : f.date(d.date))),
       h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), mode === "temp" ? h("span", { class: "d-pop" }, pop) : null),
-      ...tail));
+      ...tail)), { _key: d.key });
   });
-  const list = $("days");
+  // (drawn again for the same place, on screen: in another view, each row's figures and little chart come in from the
+  // side, one row after another, and back to the temperatures the bars sweep out again; in the same view, each bar
+  // moves from where it was to where it is, and only the figures that have changed rise in)
+  const list = $("days"), here = cell(wx.place.lat, wx.place.lon), same = list._at === here, was = list._mode;
+  const r = same && moving() ? list.getBoundingClientRect() : null, old = r && r.bottom > 0 && r.top < innerHeight ? new Map([...list.children].map((li) => [li._key, li])) : null;
+  list._at = here; list._mode = mode;
   list.replaceChildren(...rows);
+  if (same && was && was !== mode) {
+    if (mode === "temp") drawn.delete(`${here}:days`);
+    if (old) rows.forEach((li, i) => {
+      if (li.getBoundingClientRect().top > innerHeight) return;
+      for (const x of li.querySelectorAll(".d-icon, .d-lo, .d-bar, .d-hi, .d-chart, .d-val")) x.animate([{ opacity: 0, transform: "translateX(8px)" }, { opacity: 1, transform: "none" }], { duration: 260, delay: i * 18, easing: GLIDE, fill: "backwards" });
+    });
+  } else if (old) for (const li of rows) {
+    const o = old.get(li._key);
+    if (!o) continue;
+    rewords(o, li);
+    const a = o.querySelector(".d-fill"), b = li.querySelector(".d-fill"), p = o.querySelector(".d-now"), q = li.querySelector(".d-now"), t = { duration: 450, easing: GLIDE };
+    if (a && b && (a.style.left !== b.style.left || a.style.width !== b.style.width)) b.animate([{ left: a.style.left, width: a.style.width, backgroundSize: a.style.backgroundSize, backgroundPosition: a.style.backgroundPosition }, { left: b.style.left, width: b.style.width, backgroundSize: b.style.backgroundSize, backgroundPosition: b.style.backgroundPosition }], t);
+    if (p && q && p.style.left !== q.style.left) q.animate([{ left: p.style.left }, { left: q.style.left }], t);
+  }
   list.nextElementSibling?.remove();
   // (under the list, not in it, as the insights' "N more" is)
   if (days.length > rows.length) list.after(h("button", { class: "ins-more days-more", type: "button", onclick: () => {
@@ -1086,7 +1318,8 @@ function climate(wx, now) {
   if (!c?.tmax) { box.replaceChildren(h("p", { class: "muted small" }, "No climate record for this spot.")); return; }
   const p = rankIn(c.tmax.sorted, d.tmax);
   const lede = h("p", { class: "small" }, `Warmer than ${Math.round(p)}% of days here since ${wx.climate.years[0]}.`);
-  const chart = h("div", { class: "range" });
+  // (the range kept from one drawing to the next, so it draws in once for a place and then changes where it is)
+  const chart = box.querySelector(":scope > .range") || h("div", { class: "range" });
   const ago = yearsAgo(wx.climate, d.date);
   const facts = h("ul", { class: "facts" },
     h("li", {}, h("b", {}, f.temp(c.tmax.mean)), "Normal high"),
@@ -1095,8 +1328,8 @@ function climate(wx, now) {
     c.recordLow ? h("li", {}, h("b", {}, `${f.temp(c.recordLow.v)} (${c.recordLow.year})`), `Coldest ${f.dateLong(d.date)} night`) : null,
     c.wet != null ? h("li", {}, h("b", {}, `${Math.round(c.wet * 100)}%`), "Days with rain") : null,
     ago ? h("li", {}, h("b", {}, `${f.temp(ago.tmax)}, ${ago.rain >= 0.5 ? f.precip(ago.rain) : "dry"}`), "This day last year") : null);
-  box.replaceChildren(lede, chart, facts);
-  rangeChart(chart, { p10: t(c.tmax.p10), p25: t(c.tmax.p25), p75: t(c.tmax.p75), p90: t(c.tmax.p90), mean: t(c.tmax.mean), value: t(d.tmax), valueLabel: `Today ${f.temp(d.tmax)}`, record: c.recordHigh ? { v: t(c.recordHigh.v), year: c.recordHigh.year } : null,
+  if (chart.isConnected) { chart.previousElementSibling.replaceWith(lede); chart.nextElementSibling.replaceWith(facts); } else box.replaceChildren(lede, chart, facts);
+  rangeChart(chart, { key: cell(wx.place.lat, wx.place.lon), p10: t(c.tmax.p10), p25: t(c.tmax.p25), p75: t(c.tmax.p75), p90: t(c.tmax.p90), mean: t(c.tmax.mean), value: t(d.tmax), valueLabel: `Today ${f.temp(d.tmax)}`, record: c.recordHigh ? { v: t(c.recordHigh.v), year: c.recordHigh.year } : null,
     fmt: (v) => f.deg(v), summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` });
 }
 
@@ -1289,7 +1522,12 @@ function tiles(wx, now) {
   }
   for (const t of TILES) if (say[t[0]]) out.push(tileFor(t, ...say[t[0]]()));
   S.say = say; S.more = more;
-  $("tiles").replaceChildren(...out);
+  // (drawn again for the same place, on screen: each figure or word that's changed rises in where it is)
+  const box = $("tiles"), here = cell(wx.place.lat, wx.place.lon), r = box._at === here && moving() ? box.getBoundingClientRect() : null;
+  const old = r && r.bottom > 0 && r.top < innerHeight ? new Map([...box.children].map((x) => [x.dataset.kind, x])) : null;
+  box._at = here;
+  box.replaceChildren(...out);
+  if (old) for (const x of out) rewords(old.get(x.dataset.kind), x);
   motion("tiles", ...out);
 }
 
@@ -1331,8 +1569,9 @@ function tunedToo(l) {
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 
 /* ---------- places ---------- */
-async function locate(quiet = false) {
-  if (!navigator.geolocation) { if (!quiet) alert("Location isn't available in this browser."); return false; }
+// (after: a sheet going, that the page waits for before it turns to where you are)
+async function locate(quiet = false, after = null) {
+  if (!navigator.geolocation) { if (!quiet) toast("Location isn't available in this browser."); return false; }
   const btn = $("locate-btn"); btn.classList.add("busy");
   try {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
@@ -1352,8 +1591,10 @@ async function locate(quiet = false) {
     };
     // (named as it was, until the new name's found, if it's not gone far; "My Location" if it has)
     const as = was || (same ? before : null);
-    addPlace({ name: as?.name || "My Location", region: as?.region || "", lat, lon, gps: true }, mine);
-    if (mine && !same) go(); else showPlace();
+    // (and on show, the page turning to it, if it wasn't: it's the first of the places)
+    const i = addPlace({ name: as?.name || "My Location", region: as?.region || "", lat, lon, gps: true }, false), here = S.places[i];
+    if (mine && !same) (after || Promise.resolve()).then(() => turnTo(S.places.indexOf(here)));
+    else { if (mine) { S.cur = i; savePlaces(); } showPlace(); }
     // (its name looked up meanwhile, the forecast not kept waiting for it)
     if (was) named(was.name);
     else nameOf(lat, lon).then((nm) => {
@@ -1364,9 +1605,28 @@ async function locate(quiet = false) {
     });
     return true;
   } catch (e) {
-    if (!quiet) $("status").textContent = e?.code === 1 ? "Location is turned off for this site. You can search for a place instead." : "Couldn't find your location just now.";
+    // (said under the bar, by the button it was asked from, for a few seconds: not in the forecast's own lines)
+    if (!quiet) toast(e?.code === 1 ? "Location is turned off for this site. You can search for a place instead." : "Couldn't find your location just now.");
     return false;
-  } finally { btn.classList.remove("busy"); }
+  } finally { stopSpin(btn); }
+}
+// (the button's spin let finish its turn, rather than snapping back upright)
+function stopSpin(btn) {
+  const g = btn.querySelector(".g"), a = g?.getAnimations().find((x) => x.animationName === "spin"), at = a ? (Number(a.currentTime) % 1000) / 1000 : 0;
+  btn.classList.remove("busy");
+  if (a && !calm.matches && at > 0.02) g.animate([{ transform: `rotate(${at * 360}deg)` }, { transform: "rotate(360deg)" }], { duration: Math.max(240, (1 - at) * 1400), easing: EASE_OUT });
+}
+// A word under the bar, about something just asked for that couldn't be done (styles.css .toast): in, four seconds, out;
+// read out as it comes
+let toastT = 0;
+function toast(text) {
+  const el = $("toast"), still = calm.matches;
+  clearTimeout(toastT);
+  el.getAnimations().forEach((a) => a.cancel());
+  el.textContent = text;
+  el.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(-8px) scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: still ? 150 : 350, easing: GLIDE });
+  toastT = setTimeout(() => el.animate([{ opacity: 1 }, { opacity: 0, transform: still ? "none" : "translateY(-6px)" }], { duration: 250, easing: EASE_IN, fill: "forwards" })
+    .finished.then(() => { el.textContent = ""; el.getAnimations().forEach((a) => a.cancel()); }, () => {}), 4000);
 }
 // the saved places as cards, as iOS's Weather lists them: each in its own sky, its name, its clock and its weather, the
 // temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
@@ -1383,16 +1643,23 @@ function drawSaved() {
     const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : glance(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
       "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}${k.hi != null ? `, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}` : ""}${i === S.cur ? ", showing" : ""}`,
-      onclick: () => { if (li.classList.contains("swiped")) { li.classList.remove("swiped"); return; } S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
+      // (chosen: the sheet goes, then the page turns to it)
+      onclick: () => { if (li.classList.contains("swiped")) { li.classList.remove("swiped"); return; } closeSheet($("places")).then(() => turnTo(S.places.indexOf(p))); } },
       h("span", { class: "pc-l" }, h("span", { class: "pc-name" }, p.gps ? [h("span", { class: "pc-here", svg: glyph("arrow", 12) }), " "] : null, p.name),
         h("span", { class: "pc-sub" }, [p.gps && p.name !== "My Location" ? "My Location" : p.region?.split(",")[0], k ? f.time(Date.now() + k.offset * 1000) : null].filter(Boolean).join(" · ")),
         k ? h("span", { class: "pc-cond" }, label(k.code, k.isDay)) : null),
       h("span", { class: "pc-r" }, k ? h("span", { class: "pc-temp" }, f.temp(k.temp)) : null, k && k.hi != null ? h("span", { class: "pc-hl" }, `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}`) : null));
+    // (it folds away first, the cards under it closing up, and then it's gone from the list)
     const remove = () => {
-      const was = place(), n = S.settings.notify, k = nkey(p);
-      S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();
-      // (its notifications go with it)
-      if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved().catch(() => {}); }
+      if (li._going) return;
+      li._going = true;
+      leave(li).then(() => {
+        const at = S.places.indexOf(p); if (at < 0) return;
+        const was = place(), n = S.settings.notify, k = nkey(p);
+        S.places.splice(at, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();
+        // (its notifications go with it)
+        if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved().catch(() => {}); }
+      });
     };
     const li = h("li", { class: "pc-li" }, card, S.places.length > 1 ? [h("button", { class: "pc-del", type: "button", "aria-label": `Remove ${p.name}`, onclick: remove }, h("span", { svg: glyph("trash", 20) }), "Delete"),
       h("button", { class: "pc-bin", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 16), onclick: remove })] : null);
@@ -1404,6 +1671,13 @@ function drawSaved() {
   $("saved-head").hidden = !S.places.some((p) => !p.gps);
   // (what had the focus keeps it, drawn anew: the same place, or the next along if it's the one that's gone)
   if (at >= 0) { const left = all(); left[Math.min(at, left.length - 1)]?.querySelector(".place-card")?.focus(); }
+}
+// A saved place leaving the list: folding away where it is (the gap beside it closing with it) as it fades and shrinks
+// back a little, the cards under it closing up; with Reduce Motion, a quick dissolve
+function leave(li) {
+  const side = li.previousElementSibling ? "marginTop" : li.nextElementSibling ? "marginBottom" : null, t = { duration: calm.matches ? 150 : 320, easing: GLIDE, fill: "forwards" };
+  li.style.pointerEvents = "none"; li.style.overflow = "clip";
+  return li.animate(calm.matches ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, height: `${li.offsetHeight}px`, transform: "none" }, { opacity: 0, height: "0px", transform: "scale(0.96)", ...(side ? { [side]: "-10px" } : {}) }], t).finished.catch(() => {});
 }
 // a card swiped left narrows, following the finger, for the Delete beside it (let go past half way, it stays open);
 // back, or a tap, closes it again
@@ -1425,26 +1699,39 @@ function swipeOpen(li, card) {
 }
 // a sky for some weather, as the page's (styles.css body[data-sky])
 const skyOf = (code, day) => { const kind = codeInfo(code).kind; return kind === "storm" ? "storm" : ["rain", "showers", "drizzle", "sleet"].includes(kind) ? (day ? "rain-day" : "rain-night") : kind === "snow" ? (day ? "snow-day" : "snow-night") : kind === "fog" ? "fog" : kind === "clear" ? (day ? "clear-day" : "clear-night") : kind === "partly" ? (day ? "partly-day" : "partly-night") : day ? "cloudy-day" : "cloudy-night"; };
-let searchTimer = null, searchSeq = 0;
+let searchTimer = null, searchSeq = 0, searchingT = 0;
 function onSearch(now = false) {
-  clearTimeout(searchTimer);
+  clearTimeout(searchTimer); clearTimeout(searchingT);
   const q = $("search").value.trim(), out = $("results");
-  if (q.length < 2) { out.replaceChildren(); $("results-said").textContent = ""; S.pick = S.searching = false; return; }
+  // (searching, the results take the list's place, the list fading out of their way (styles.css); cleared, it's back)
+  $("places").classList.toggle("searching", q.length >= 2);
+  if (q.length < 2) { searchSeq++; results([]); $("results-said").textContent = ""; S.pick = S.searching = false; return; }
   if (now !== true) S.pick = false;
   S.searching = true;
+  // ("Searching…", if they're a moment coming, where there's nothing found yet to show meanwhile)
+  searchingT = setTimeout(() => { if (S.searching && !out.querySelector(".row-btn")) results([h("li", { class: "muted small searching" }, "Searching…")]); }, 300);
   searchTimer = setTimeout(async () => {
     const my = ++searchSeq;
     try {
       const list = await searchPlaces(q);
       if (my !== searchSeq) return;
-      S.searching = false;
-      out.replaceChildren(...(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => { addPlace(p); $("search").value = ""; out.replaceChildren(); closeSheet($("places")); go(); } },
-        h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.region))))) : [h("li", { class: "muted small" }, "No places found.")]));
+      S.searching = false; clearTimeout(searchingT);
+      // (chosen: the sheet goes, then the page turns to it, it now one of the places)
+      results(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => {
+        const added = S.places[addPlace(p, false)];
+        closeSheet($("places")).then(() => { $("search").value = ""; onSearch(); turnTo(S.places.indexOf(added)); });
+      } }, h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.region))))) : [h("li", { class: "muted small" }, "No places found.")]);
       $("results-said").textContent = list.length ? `${list.length} ${list.length === 1 ? "place" : "places"} found` : "No places found";
       // (Enter pressed before the places came back: take the first now)
       if (S.pick && list.length) { S.pick = false; out.querySelector(".row-btn")?.click(); }
-    } catch (_) { if (my === searchSeq) { S.searching = false; out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); $("results-said").textContent = "Search isn't available right now"; } }
+    } catch (_) { if (my === searchSeq) { S.searching = false; clearTimeout(searchingT); results([h("li", { class: "muted small" }, "Search isn't available right now.")]); $("results-said").textContent = "Search isn't available right now"; } }
   }, now === true ? 0 : 280);
+}
+// the results as they come: the first lot rising in, each after crossfading into the one before
+function results(items) {
+  const out = $("results"), had = out.children.length;
+  out.replaceChildren(...items);
+  if (items.length) out.animate(calm.matches || had ? [{ opacity: had ? 0.4 : 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
 }
 
 
@@ -1461,14 +1748,20 @@ const redraw = () => { render(); SE()?.drawActs(); };
 
 /* ---------- notifications ---------- */
 const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
-// A word about the alerts, until they're on or it's put away (for a month): what they are, and a way to them (or, on an
-// iPhone not yet running Weather from its Home Screen, how to get there first)
+// A word about the alerts, until they're on or it's put away (for good: then a row at the top of Settings): what they
+// are, and a way to them (or, on an iPhone not yet running Weather from its Home Screen, how to get there first)
 function nudge() {
   // (put away, it's a row at the top of Settings instead, till they're on: settings.js drawSettings)
   const box = $("nudge"), n = S.settings.notify, away = store.get("wx:nudge");
-  if (notifying(n) || away) { box.hidden = true; return; }
+  if (notifying(n) || away) { if (!box._fold) box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
-  const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
+  // (put away, it folds away where it is, what's under it moving up rather than jumping)
+  const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); fold(box); };
+  // (nothing to be done about it from here, blocked or a browser without them: not said above the forecast, only in
+  // Settings; the Home Screen step, which can be done, is said below the ten days, not in front of them)
+  if (why && !/Home Screen/.test(why)) { box.hidden = true; return; }
+  box._below = !!why;
+  if (why) $("daily")?.after(box);
   box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
     h("p", {}, why || "A heads-up here before rain starts, official warnings as they're issued, and a morning briefing if you'd like one."),
     h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettings("notify"); } }, "Turn on"),
@@ -1551,6 +1844,7 @@ async function notifySaved() {
 // kept (wx:acct) with the version last in step and what was kept then (snap), so a change made meanwhile, here or on
 // another device, is put together with the other's rather than either being lost.
 const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities", "layout"];
+const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 // what's here, as it's kept with the account (My Location is each device's own)
@@ -1611,7 +1905,15 @@ async function stepOnce() {
     store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) });
   }
 }
-function inStep(state) { if (!S.acct || S.acct.state === state) return; S.acct.state = state; drawInStep(); SE()?.drawAccount(); }
+// (in step again, or not: said at once; "Syncing…", though, only once it's taken over half a second, not a word there and
+// gone again in a blink each time something's kept: meanwhile, what was said before stays: shown)
+let slowT = 0;
+function inStep(state) {
+  if (!S.acct || S.acct.state === state) return;
+  S.acct.state = state; clearTimeout(slowT);
+  if (state === "saving") { slowT = setTimeout(() => { if (S.acct?.state === "saving") { S.acct.shown = "saving"; drawInStep(); SE()?.drawAccount(); } }, 500); return; }
+  S.acct.shown = state; drawInStep(); SE()?.drawAccount();
+}
 // The account as the server has it (on opening, and again on coming back after a minute): signed out elsewhere, signed
 // in elsewhere on the site, or changed on another device
 let pulledAt = 0;
@@ -1664,12 +1966,42 @@ function signedOutElsewhere() {
   if (n.endpoint && n.devId) A.leave(n.endpoint).catch(() => {});
   signedOut();
 }
+// Signing in is on the account's own page (account.<site>, beside weather.<site>), where every app on the site signs
+// in: there with a word for the sign-in (kept on this device for half an hour, or until it's used), and back with a code
+// for it (signedBack)
+async function toAccountSignIn() {
+  const page = accountPage(); if (!page) return;
+  try {
+    const { word, ask } = await A.signInWord();
+    localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
+    location.assign(`${page}#${new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` })}`);
+  } catch (_) { toast("This browser can’t sign in here. Try Safari or Chrome."); }
+}
+// Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the
+// sign-in (the site's: Weather keeps none of its own), and this device's places meant for the account, as signing in
+// was asked for here. A code from anywhere else, or one that's run out, is used up and goes no further.
+async function signedBack(code) {
+  let k = null;
+  try { k = JSON.parse(localStorage.getItem("wx:signin") || "null"); localStorage.removeItem("wx:signin"); } catch (_) {}
+  if (!k || Date.now() - k.at > 30 * 60e3) {
+    A.handback(code, "").catch(() => {}); pull();
+    return toast("That sign-in was started somewhere else. Sign in again here.");
+  }
+  pulledAt = Date.now();
+  try { const r = await A.handback(code, k.word); await adopt(r, true); toast(`Signed in as ${String(r.name).trim().split(/\s+/)[0]}.`); }
+  catch (e) { toast(e.message); pull(); }
+}
 // (said only when there's something to say: in step, nothing; as a note under the saved places, and short on the account's card)
 const STATES = { saving: ["Syncing…", "Syncing…"], waiting: ["Offline. Your places will sync when you’re back online.", "Offline, will sync later"],
   error: ["Couldn’t sync just now. It’ll try again.", "Couldn’t sync"] };
+// The account's own page (account.<site>, beside weather.<site>), opened signed in as you: a code good once, for a
+// minute, handed over in the address's # (the page swaps it for a sign-in of its own, in whichever browser it opens in,
+// a Home Screen app's included, and takes it out of the address). The window's opened at once, from the tap (a phone
+// won't open one later), and sent on when the code's back.
+const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {
-  const note = $("sync-note"), said = S.acct && STATES[S.acct.state]?.[0];
+  const note = $("sync-note"), said = S.acct && STATES[S.acct.shown ?? S.acct.state]?.[0];
   if (!note) return;
   note.hidden = !said; note.textContent = said || "";
 }
@@ -1683,7 +2015,7 @@ const sheetDays = (wx, now) => wx.daily.filter((x) => x.date >= dayStart(now)).s
 // its readout). atEnd(dx): nothing more that way; step(n, quiet): show the one n along (quiet: no slide of its own)
 function sideSwipe(dlg, page, atEnd, step) {
   const body = dlg.querySelector(".sheet-body");
-  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0, moving = false;
+  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0, going = false;
   const W = () => body.clientWidth;
   const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
   const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;
@@ -1692,7 +2024,7 @@ function sideSwipe(dlg, page, atEnd, step) {
   const show = () => { raf = 0; const o = offset(); page.style.translate = `${o.toFixed(1)}px 0`; page.style.opacity = fade(o); };
   const clear = () => { page.style.translate = page.style.opacity = ""; };
   body.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1 || moving || !S.wx || e.target.closest(".chart")) { x0 = null; return; }
+    if (e.touches.length !== 1 || going || !S.wx || e.target.closest(".chart")) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; axis = null;
   }, { passive: true });
   body.addEventListener("touchmove", (e) => {
@@ -1713,12 +2045,14 @@ function sideSwipe(dlg, page, atEnd, step) {
     const far = Math.abs(dx) > w * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
     clear();
     if (edge || !(far || flung)) {
-      if (!calm.matches && from) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], glide(-Math.sign(from) * (edge ? v * band(dx) : v), Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)"));
+      // (back into place from where it was let go; with Reduce Motion, quickly)
+      if (from) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], calm.matches ? { duration: 150, easing: EASE_OUT } : glide(-Math.sign(from) * (edge ? v * band(dx) : v), Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)"));
       return;
     }
-    if (calm.matches) { step(dir, true); return; }
+    // (with Reduce Motion, the next one dissolves in: openDay, openDetail)
+    if (calm.matches) { step(dir); return; }
     // (out the way it was going, at about the speed it was let go at; then the next in from the other side)
-    moving = true;
+    going = true;
     const ms = Math.round(Math.min(200, Math.max(110, (w * 0.45 - Math.abs(from)) / Math.max(Math.abs(v), 1.2) + 60)));
     const out = page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: `${-dir * Math.max(w * 0.5, Math.abs(from) + 48)}px 0`, opacity: 0 }], { duration: ms, easing: "cubic-bezier(0.3, 0.3, 0.8, 0.6)", fill: "forwards" });
     out.finished.then(() => {
@@ -1726,13 +2060,121 @@ function sideSwipe(dlg, page, atEnd, step) {
       const inn = page.animate([{ translate: `${dir * w * 0.32}px 0`, opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: 400, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
       out.cancel();
       return inn.finished;
-    }).catch(() => {}).finally(() => { moving = false; });
+    }).catch(() => {}).finally(() => { going = false; });
   };
   body.addEventListener("touchend", end); body.addEventListener("touchcancel", end);
   dlg.addEventListener("keydown", (e) => {
     if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.target.closest(".chart, input, select")) return;
     e.preventDefault(); step(e.key === "ArrowRight" ? 1 : -1);
   });
+}
+
+/* ---------- what changes, changing smoothly ---------- */
+// motion on the page worth making: not with Reduce Motion, nor behind a sheet, where the page holds still (styles.css)
+const moving = () => !calm.matches && !document.body.classList.contains("sheet-up");
+const heroAway = () => document.querySelector(".hero").classList.contains("away");
+// Words changed where they are, as iOS changes its figures: the new ones rising into place from a little below, quickly,
+// from faint; not the first time they're written, nor where they can't be seen (shown), and with Reduce Motion, a quick
+// dissolve. → whether they changed
+function swap(el, text, shown = true) {
+  if (!el || el.textContent === text) return false;
+  const was = el.textContent;
+  el.textContent = text;
+  if (was && text && shown) rise(el);
+  return true;
+}
+// (the same for what's already been changed: its new words rising in; not on the page behind a sheet)
+function rise(el, delay = 0) {
+  if (document.body.classList.contains("sheet-up") && !el.closest("dialog")) return;
+  el.animate(calm.matches ? [{ opacity: 0.4 }, { opacity: 1 }] : [{ opacity: 0.2, translate: "0 3px" }, { opacity: 1, translate: "0 0" }], { duration: calm.matches ? 150 : 260, delay, easing: calm.matches ? EASE_OUT : GLIDE, fill: "backwards" });
+}
+// A copy of something as it was, laid over where it was (box: a part it's in that things can be laid over, positioned),
+// to fade away while what's taken its place comes in: never in the way, never read out, its ids its own's alone
+function ghost(el, box = el.parentElement) {
+  // (where each is laid out on the page, as offsets: untouched by any scale the page has at the moment, as the copy is)
+  const at = (n) => { let x = n.offsetLeft, y = n.offsetTop; for (let p = n.offsetParent; p; p = p.offsetParent) { x += p.offsetLeft + p.clientLeft; y += p.offsetTop + p.clientTop; } return [x, y]; };
+  const [ex, ey] = at(el), [bx, by] = at(box), g = el.cloneNode(true);
+  g.removeAttribute("id"); for (const x of g.querySelectorAll("[id]")) x.removeAttribute("id");
+  g.classList.add("ghost"); g.setAttribute("aria-hidden", "true"); g.inert = true;
+  Object.assign(g.style, { left: `${ex - bx - box.clientLeft}px`, top: `${ey - by - box.clientTop}px`, width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` });
+  box.append(g);
+  return g;
+}
+// (something's words fading where they were, as they're taken away)
+function fadeOff(el, box) {
+  const g = ghost(el, box);
+  g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
+}
+// What's changed between a part as it was and as it's drawn again, the same in shape (an hour, a day, a tile, a row of
+// the highlights): each word or figure that's changed rising in where it is, and each icon that's changed with it (the
+// rest as it was, still)
+function rewords(was, now) {
+  if (!was || !moving()) return;
+  const parts = (r) => [...r.querySelectorAll("*")].filter((x) => !x.closest("svg")), a = parts(was), b = parts(now);
+  if (a.length !== b.length) return;
+  const own = (x) => [...x.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join(""), icon = (x) => x.querySelector(":scope > svg")?.outerHTML ?? "";
+  for (let i = 0; i < b.length; i++) {
+    if (a[i].tagName !== b[i].tagName) return;
+    if ((own(a[i]) !== own(b[i]) && own(b[i]).trim()) || icon(a[i]) !== icon(b[i])) rise(b[i]);
+  }
+}
+// A card folding away where it is: its pane closing up, and the gap after it with it, as what's on it fades (a pane of
+// glass that faded would show unfrosted, in Safari), so what's under it moves up rather than jumping; then hidden.
+// Shown again meanwhile (unfold), it opens back up from where it had got to. → a promise, kept once it's folded
+function fold(el, gap = 16) {
+  if (el.hidden) return Promise.resolve();
+  if (el._fold) return el._fold.done;
+  if (!moving() || !el.offsetHeight) { el.hidden = true; return Promise.resolve(); }
+  const cs = getComputedStyle(el), t = { duration: 360, easing: GLIDE, fill: "forwards" };
+  el.style.overflow = "clip";
+  const anims = [el.animate([{ height: `${el.offsetHeight}px`, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: cs.marginBottom }, { height: "0px", paddingTop: "0px", paddingBottom: "0px", marginBottom: `${-gap}px` }], t),
+    ...[...el.children].map((c) => c.animate([{ opacity: 1 }, { opacity: 0 }], { ...t, duration: 220, easing: EASE_OUT }))];
+  const f = (el._fold = { anims, done: anims[0].finished.then(() => { if (el._fold === f) { settle(el); el.hidden = true; } }, () => {}) });
+  return f.done;
+}
+// (its folding stopped, wherever it was, the card as it's laid out)
+function settle(el) { el._fold?.anims.forEach((a) => a.cancel()); el._fold = null; el.style.overflow = ""; }
+// A card coming back: opening up from nothing, what's on it fading in after; or, caught folding, opening back up from
+// wherever it had got to
+function unfold(el, gap = 16) {
+  const box = (cs) => ({ height: `${el.offsetHeight}px`, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: cs.marginBottom });
+  const was = el._fold ? box(getComputedStyle(el)) : el.hidden ? { height: "0px", paddingTop: "0px", paddingBottom: "0px", marginBottom: `${-gap}px` } : null;
+  const faint = el._fold ? [...el.children].map((c) => getComputedStyle(c).opacity) : [];
+  settle(el); el.hidden = false;
+  if (!was || !moving()) return;
+  const now = box(getComputedStyle(el)), t = { duration: 360, easing: GLIDE };
+  if (Math.abs(parseFloat(now.height) - parseFloat(was.height)) < 2) return;
+  el.style.overflow = "clip";
+  el.animate([was, now], t).finished.catch(() => {}).finally(() => { if (!el._fold) el.style.overflow = ""; });
+  [...el.children].forEach((c, i) => c.animate([{ opacity: faint[i] ?? 0 }, { opacity: 1 }], { ...t, delay: faint.length ? 0 : 80, fill: "backwards" }));
+}
+// A pane of glass coming up into place: the pane rising, what's on it fading up (from: how faint it starts)
+function riseIn(pane, delay = 0, from = 0) {
+  const t = { duration: 460, delay, easing: GLIDE, fill: "backwards" };
+  pane.animate([{ translate: "0 14px" }, { translate: "0 0" }], t);
+  for (const c of pane.children) c.animate([{ opacity: from }, { opacity: 1 }], t);
+}
+// A sheet's title as what it shows moves on (another day, another tile: dir, the way it went): the old words fading out
+// where they were as the new come in from that side; with Reduce Motion, a crossfade
+function retitle(el, set, dir = 0) {
+  if (!dir) { set(); return; }
+  const g = ghost(el), d = calm.matches ? 0 : 14 * Math.sign(dir);
+  set();
+  g.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${-d}px)` }], { duration: 200, easing: EASE_IN, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
+  el.animate([{ opacity: 0, transform: `translateX(${d}px)` }, { opacity: 1, transform: "none" }], { duration: calm.matches ? 180 : 300, easing: GLIDE });
+}
+// what a sheet shows, sliding in from the side it was moved to (styles.css .from-right, .from-left; with Reduce Motion,
+// a quick dissolve)
+function slideIn(body, dir) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
+// A sheet whose contents change (another day, another tile) keeps the height it had for a moment and eases to its new
+// one, rather than jumping (on a phone its top moving, as it's held at the foot of the screen)
+function easeHeight(dlg, change) {
+  if (!dlg.open || calm.matches) { change(); return; }
+  const h0 = dlg.getBoundingClientRect().height;
+  dlg._eh?.cancel();
+  change();
+  const h1 = dlg.getBoundingClientRect().height;
+  if (Math.abs(h1 - h0) > 1) dlg._eh = dlg.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 380, easing: GLIDE });
 }
 
 /* ---------- motion ---------- */
@@ -1778,7 +2220,7 @@ const openDetail = (kind) => detailJs().then((m) => m.openDetail(kind)).catch(()
 const openDay = (key) => detailJs().then((m) => m.openDay(key)).catch(() => {});
 // Settings, at its list (or at one of its folders)
 function openSettings(page) {
-  return settingsJs().then((m) => { m.drawSettings(); m.setHome(); openSheet($("settings")); if (page) m.setGo(page); }).catch(() => {});
+  return settingsJs().then((m) => { if (page) m.openAt(page); else { m.drawSettings(); m.setHome(); openSheet($("settings")); } }).catch(() => {});
 }
 
 /* ---------- sheets ---------- */
@@ -1789,25 +2231,43 @@ function openSheet(d) {
   // the page behind first (stepping back about the top of what's on screen, not the middle of the whole long page;
   // and still: styles.css), so it's restyled once, with the sheet (how far back, --recede, on the page alone and not
   // passed down to all that's on it: so a finger dragging the sheet down restyles just the page, not every card)
-  document.querySelector(".page").style.transformOrigin = `50% ${scrollY}px`;
-  document.querySelector(".page").style.setProperty("--recede", "1");
+  const page = document.querySelector(".page");
+  page.style.transformOrigin = `50% ${scrollY}px`;
+  page.style.setProperty("--recede", "1");
   document.body.classList.add("sheet-up"); document.querySelector(".hero").classList.add("still");
+  // (opened again as it was going: it comes back up from wherever it had got to, its dim with it, not from the foot of
+  // the screen; and it's not closed after all)
+  if (d.open && d.classList.contains("closing")) {
+    const cs = getComputedStyle(d);
+    d._closing?.();
+    d.style.setProperty("--in-t", cs.transform); d.style.setProperty("--in-o", cs.opacity); d.style.setProperty("--dim-o", getComputedStyle(d, "::backdrop").opacity);
+  } else for (const k of ["--in-t", "--in-o", "--dim-o"]) d.style.removeProperty(k);
   d.classList.remove("closing"); d.style.transform = "";
   if (!d.open) d.showModal();
   // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
   d.querySelector(".sheet-head h2")?.focus({ preventScroll: true });
 }
-function closeSheet(d, from = 0) {
-  if (!d.open || d.classList.contains("closing")) return;
+// Closing: it slides away (styles.css) from wherever it is, still rising or where a finger's left it, and it's closed
+// once its own slide is over (not the end of anything moving inside it: a day's parts still rising, a chart drawing in).
+// → a promise, kept once it's gone (never, if it's opened again meanwhile)
+function closeSheet(d) {
+  if (!d.open) return Promise.resolve();
+  if (d.classList.contains("closing")) return d._gone;
   flushWaiting();
-  if (calm.matches) { d.close(); return; }
-  d.style.setProperty("--from", `${from}px`); d.style.transform = "";
+  const cs = getComputedStyle(d);
+  d.style.setProperty("--from-t", cs.transform); d.style.setProperty("--from-o", cs.opacity); d.style.setProperty("--dim-o", getComputedStyle(d, "::backdrop").opacity);
+  d.style.transform = "";
   d.classList.add("closing");
   document.querySelector(".page").style.setProperty("--recede", "0");
-  let gone = false;
-  const done = () => { if (gone) return; gone = true; d.classList.remove("closing"); d.close(); };
-  d.addEventListener("animationend", done, { once: true });
-  setTimeout(done, 450);
+  let gone = false, kept;
+  const end = (e) => { if (e.target === d && !e.pseudoElement && /^sheet-(out|fade-out)$/.test(e.animationName)) done(); };
+  const stop = () => { gone = true; clearTimeout(timer); d.removeEventListener("animationend", end); d._closing = null; };
+  const done = () => { if (gone) return; stop(); d.classList.remove("closing"); d.close(); kept(); };
+  d.addEventListener("animationend", end);
+  // (and in any case once it should have: a slide's end can go unsaid, in a tab put away)
+  const timer = setTimeout(done, calm.matches ? 300 : 450);
+  d._closing = stop;
+  return (d._gone = new Promise((ok) => { kept = ok; }));
 }
 function sheetGestures(d) {
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
@@ -1843,7 +2303,7 @@ function sheetGestures(d) {
     const v = dy / Math.max(1, performance.now() - t0), dragged = d.classList.contains("dragging");
     y0 = null; d.classList.remove("dragging"); document.body.classList.remove("sheet-drag");
     if (!dragged) return;
-    if (dy > 120 || (dy > 30 && v > 0.55)) closeSheet(d, dy);
+    if (dy > 120 || (dy > 30 && v > 0.55)) closeSheet(d);
     else { d.style.transform = ""; document.querySelector(".page").style.setProperty("--recede", "1"); }
   };
   d.addEventListener("touchend", end); d.addEventListener("touchcancel", end);
@@ -1879,8 +2339,7 @@ function openCredits(at) {
 
 /* ---------- wiring ---------- */
 function wire() {
-  $("locate-btn").innerHTML = glyph("locate", 20);
-  $("settings-btn").innerHTML = glyph("gear", 20);
+  // (the bar's own two icons are in the page already, drawn with it: index.html)
   for (const b of document.querySelectorAll("[data-close]")) { b.innerHTML = glyph("close", 18); b.addEventListener("click", () => closeSheet(b.closest("dialog"))); }
   for (const s of document.querySelectorAll(".ct-icon[data-g]")) s.innerHTML = glyph(s.dataset.g, 15);
   for (const s of document.querySelectorAll(".f-ic[data-g]")) s.innerHTML = glyph(s.dataset.g, 18);
@@ -1894,7 +2353,7 @@ function wire() {
   placeSwipe();
   pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
-  $("use-location").addEventListener("click", () => { closeSheet($("places")); locate(); });
+  $("use-location").addEventListener("click", () => locate(false, closeSheet($("places"))));
   $("search").addEventListener("input", onSearch);
   $("search-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1957,17 +2416,18 @@ function wire() {
   const typing = (e) => e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]");
   for (const t of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(t, (e) => { if (!typing(e)) e.preventDefault(); });
   if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    // (on the pane it's over: styles.css .lit)
+    // (on the pane it's over: styles.css .lit; the one it's left, dimming a moment as it goes: .unlit)
     let raf = 0, x = 0, y = 0, over = null, lit = null;
+    const unlight = (el) => { el.classList.replace("lit", "unlit"); clearTimeout(el._unlit); el._unlit = setTimeout(() => el.classList.remove("unlit"), 320); };
     addEventListener("pointermove", (e) => {
       x = e.clientX; y = e.clientY; over = e.target instanceof Element ? e.target.closest(".card, .ins, .tile, .section-title, dialog.sheet, .c-tip") : null;
       raf ||= requestAnimationFrame(() => {
         raf = 0;
-        if (over !== lit) { lit?.classList.remove("lit"); lit = over; lit?.classList.add("lit"); }
+        if (over !== lit) { if (lit) unlight(lit); lit = over; if (lit) { clearTimeout(lit._unlit); lit.classList.remove("unlit"); lit.classList.add("lit"); } }
         if (lit) { lit.style.setProperty("--lx", `${x}px`); lit.style.setProperty("--ly", `${y}px`); }
       });
     }, { passive: true });
-    document.addEventListener("pointerleave", () => { lit?.classList.remove("lit"); lit = over = null; });
+    document.addEventListener("pointerleave", () => { if (lit) unlight(lit); lit = over = null; });
   }
   // the minute changes things like "in 20 minutes": redraw just what says so (the rest waits for the next forecast)
   // (a new hour: all of it again, the strip's Now and the days' Today moving on with it; else what tells the time, and
@@ -1978,7 +2438,7 @@ function wire() {
     const now = nowWall(S.wx.place.offset), hr = Math.floor(now / HOUR), d = I.dayOf(S.wx, now);
     if (tickHour != null && hr !== tickHour) render();
     else {
-      sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now); status();
+      sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now, { tick: true }); status();
       if ([d?.sunrise, d?.sunset].some((t) => t && t > now && t - now <= HOUR) && !$("tiles").contains(document.activeElement)) tiles(S.wx, now);
     }
     tickHour = hr;
@@ -1989,5 +2449,7 @@ function wire() {
 start();
 
 // (for what's fetched when it's wanted: detail.js, settings.js)
-export { $, h, S, T, COLOR, TILES, CARDS, balance, uvName, airName, calm, drawHourChart, nightsOf, openSheet, sheetDays, STATES, adopt, afterFrame, canShow, go, hereToo, mine, nkey,
-  notifySaved, notifyWhy, notifying, place, redraw, refreshDevices, saveSettings, signedOut, signOutHere, syncNotify, windows };
+export { $, accountPage, adopt, afterFrame, airName, balance, calm, canShow, CARDS, COLOR, drawHourChart, EASE_IN,
+  EASE_OUT, easeHeight, ghost, GLIDE, go, h, hereToo, mine, nightsOf, nkey, notifying, notifySaved, notifyWhy,
+  openSheet, PERSON, place, redraw, refreshDevices, retitle, S, saveSettings, sheetDays, signedOut, signOutHere,
+  slideIn, STATES, swap, syncNotify, T, TILES, toAccountSignIn, uvName, windows };

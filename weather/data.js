@@ -213,12 +213,15 @@ async function getJSON(url, ms = 12000, tries = 2) {
   for (let k = 1; ; k++) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(ms), headers: { Accept: "application/json" } });
-      if (!res.ok) { const e = new Error(`HTTP ${res.status}`); e.status = res.status; throw e; }
+      if (!res.ok) { const e = new Error(`HTTP ${res.status}`); e.status = res.status; e.after = Number(res.headers.get("Retry-After")) || 0; throw e; }
       return await res.json();
     } catch (e) {
-      // a dropped connection or a hiccup at their end is worth one more go; being turned away (4xx) isn't
-      if (k >= tries || (e.status && e.status < 500)) throw e;
-      await new Promise((ok) => setTimeout(ok, 1200));
+      // a dropped connection or a hiccup at their end is worth one more go, and "too many at once" (429: phones on a
+      // carrier's network share an address with many others) two more, a little later each time, or when it says;
+      // being turned away otherwise (4xx) isn't
+      const busy = e.status === 429 || e.status === 408;
+      if (k >= (busy ? Math.max(tries, 3) : tries) || (e.status && e.status < 500 && !busy)) throw e;
+      await new Promise((ok) => setTimeout(ok, busy ? Math.min(8000, e.after * 1000 || (k === 1 ? 2000 : 6000)) : 1200));
     }
   }
 }

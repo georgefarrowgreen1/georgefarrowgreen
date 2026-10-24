@@ -7,16 +7,29 @@ import { getContent } from "./_content.js";
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
 const STAMPED = ["styles.css", "app.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+// (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)
+let memo = { at: 0, v: null };
 async function stamps(ctx, url) {
+  if (memo.v && Date.now() - memo.at < 60e3) return memo.v;
   const out = {};
   await Promise.all(STAMPED.map(async (f) => {
     const r = await ctx.env.ASSETS.fetch(new Request(new URL(`/${f}`, url))).catch(() => null);
     if (r?.ok) out[f] = await stampOf(await r.arrayBuffer());
   }));
+  if (Object.keys(out).length === STAMPED.length) memo = { at: Date.now(), v: out };
   return out;
 }
 
 export async function homePage(ctx, url, res) {
+  // the script and styles, asked for by the stamp the page gave them: kept for good, as that address only ever means
+  // this copy (asked for any other way, or by a stamp that isn't this copy's, they're checked each time)
+  const f = url.pathname.slice(1);
+  if (STAMPED.includes(f) && ctx.request.method === "GET" && res.status === 200) {
+    const want = url.searchParams.get("v"), v = want ? (await stamps(ctx, url))[f] : null;
+    const out = new Response(res.body, res);
+    out.headers.set("Cache-Control", want && want === v ? "public, max-age=31536000, immutable" : "no-cache");
+    return out;
+  }
   if (!isPage(url) || ctx.request.method !== "GET" || res.status !== 200 || !(res.headers.get("content-type") || "").includes("text/html")) return res;
   const [c, v] = await Promise.all([getContent(ctx.env).catch(() => null), stamps(ctx, url)]);
   const text = (k) => ({ element: (el) => { if (c) el.setInnerContent(c[k]); } });

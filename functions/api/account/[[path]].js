@@ -17,15 +17,19 @@
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
 //   POST /api/account/handoff         signed in by a code from InFlight (good once, for a minute): to edit your profile
+//   POST /api/account/handback        a sign-in made here for an app that sent you here, handed back to it: a code (good
+//                                     once, for two minutes, and only in the tab that asked: functions/_handback.js)
+//   POST /api/account/password/upgrade  an account from before Argon2id, signed in to with its password: stretched anew
 //   POST /api/account/join            can an account be made (with this invite, or by anyone on a test server)
 //   GET  /api/account/handle?h=       is a handle free (and what's near it that is)
 //   POST /api/account/signup          a new account: its key pair made, and locked with the password, in the browser
 //   POST /api/account/reset/request, reset/check, reset/complete   a forgotten password (a link to the email)
-// Accounts are made, and forgotten passwords reset, here and only here (functions/_join.js): no app does either itself.
+// Accounts are made, signed in to, and forgotten passwords reset, here and only here (functions/_join.js,
+// functions/_handback.js): no app does any of them itself.
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
-import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
+import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -35,7 +39,8 @@ import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf } from "../../_notify.js";
-import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset } from "../../_join.js";
+import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
+import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
 import { ADMIN_ROUTES, adminOf } from "../pigeon/[[path]].js";
 
@@ -192,6 +197,12 @@ const ROUTES = {
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
     return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0 })), request, env, hash);
   },
+  // an app that sent you here to sign in, handed the sign-in back (functions/_handback.js): { code }, for the address
+  // the page goes back to it with
+  "POST handback": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await makeHandback(env, await signedIn(request, env), await body(request, 8192)));
+  },
   // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
   // (the invite in the body, never the address: an address ends up in logs)
   "POST join": async ({ request, env }) => { sameOrigin(request); return json(await inviteState(env, request, (await body(request, 4096)).invite)); },
@@ -252,6 +263,21 @@ const ROUTES = {
     await (await db(env)).prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
     return json({ vault: await openVault(env, u.id, u.vault), salt: u.salt });
   },
+  // An account from before Argon2id, signed in to here with its password: stretched again the new way (the same
+  // password and key, a new salt, and the key locked anew with what it gives), as InFlight did when it signed in itself.
+  // Nothing else changes, so nothing's said.
+  "POST password/upgrade": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request);
+    await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
+    if (String(u.salt).startsWith("a2:")) return json({ ok: true });              // (already)
+    if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
+    const vault = checkNewSecret(b);
+    if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
+    await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
+      .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
+    return json({ ok: true, salt: b.salt });
+  },
   // a new password: the old one's proof, the new one's salt and proof, and the key locked with it. Every other sign-in
   // ends (this one stays), as anywhere a password's changed. (Checked against data breaches on the page as it was typed.)
   "POST password": async ({ request, env, waitUntil }) => {
@@ -309,9 +335,10 @@ const ROUTES = {
     await checkClientData(env, request, b, "webauthn.create", "register", u.id);
     if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type that isn’t supported.");
     if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
+    const count = await checkRegistration(request, env, b);
     const D = await db(env), label = cleanLabel(b.label) || deviceOf(request) || "Passkey", provider = providerOf(b.authenticatorData);
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now()).run();
+    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now(), count).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
     waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
@@ -604,7 +631,7 @@ export async function onRequest(ctx) {
   try { return await route(ctx); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
-    console.error("account api", e && (e.stack || e.message));
+    await logError(ctx.env, "account api", e);
     return json({ error: "Something went wrong. Try again in a moment." }, 500);
   }
 }

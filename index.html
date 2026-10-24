@@ -2,7 +2,7 @@
 <html lang="en-GB">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>George Farrow-Green</title>
   <!-- the words here are the defaults: the server puts the page's own in as it's sent (functions/_home.js) -->
   <meta name="description" content="I ride, I take photos on the road and in the hills, and I build small apps for the people around me." />
@@ -49,7 +49,7 @@
   <header class="bar" id="bar">
     <span class="mid glass" data-c="name" aria-hidden="true">George Farrow-Green</span>
     <nav class="end" id="who" aria-label="Your account">
-      <a class="pill glass only-visitor" id="sign-in" data-account href="https://account.georgefarrowgreen.com/#from=home">Sign in</a>
+      <a class="pill glass only-visitor" id="sign-in" data-account href="https://account.georgefarrowgreen.com/#signin=home">Sign in</a>
       <button class="pill glass only-owner not-edit" id="edit" type="button">Edit</button>
       <a class="round only-signed not-edit" id="me" data-account href="https://account.georgefarrowgreen.com/#from=home" aria-label="Your account"><span class="face" id="face"></span></a>
       <button class="pill tint only-edit" id="done" type="button">Done</button>
@@ -78,13 +78,13 @@
             <img src="/apps/inflight.png" alt="" width="56" height="56" />
             <b>InFlight</b>
             <small data-about="Letters carried by pigeon">Letters carried by pigeon</small>
-            <span class="open">Open <span aria-hidden="true">↗</span></span>
+            <span class="open">Open <span aria-hidden="true">›</span></span>
           </a>
           <a class="app weather glass" id="app-weather" href="https://weather.georgefarrowgreen.com/">
             <img src="/apps/weather.png" alt="" width="56" height="56" />
             <b>Weather</b>
             <small data-about="Forecasts, radar and alerts">Forecasts, radar and alerts</small>
-            <span class="open">Open <span aria-hidden="true">↗</span></span>
+            <span class="open">Open <span aria-hidden="true">›</span></span>
           </a>
         </div>
       </section>
@@ -134,16 +134,16 @@
             <span class="who"><b id="from-name"></b><small id="from-email"></small></span>
             <button class="change" type="button" id="from-change" aria-label="Change your name or email"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></button>
           </div>
-          <label class="fld"><span>Name</span><input id="c-name" name="name" type="text" placeholder="Your name" autocomplete="name" maxlength="100" /></label>
-          <label class="fld"><span>Email</span><input id="c-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength="200" /></label>
+          <label class="fld"><span>Name</span><input id="c-name" aria-describedby="contact-err" name="name" type="text" placeholder="Your name" autocomplete="name" maxlength="100" /></label>
+          <label class="fld"><span>Email</span><input id="c-email" aria-describedby="contact-err" name="email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength="200" /></label>
         </div>
         <div class="fields msg">
-          <textarea id="c-message" name="message" placeholder="Message" rows="5" maxlength="4000" aria-label="Message"></textarea>
+          <textarea id="c-message" aria-describedby="contact-err" name="message" placeholder="Message" rows="5" maxlength="4000" aria-label="Message"></textarea>
         </div>
         <!-- (left empty by people: filled in only by robots) -->
         <input id="c-website" class="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <p class="err" id="contact-err" role="alert" hidden></p>
-        <button class="btn tint wide" type="submit" id="contact-send" disabled>Send</button>
+        <button class="btn tint wide idle" type="submit" id="contact-send"><span class="lbl">Send</span></button>
       </form>
       <div class="sent" id="contact-sent" hidden>
         <span class="tick" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
@@ -164,7 +164,7 @@
       <p class="hint">Tap a photo to choose the part that stays in view.</p>
       <div class="tiles" id="tiles"></div>
       <p class="err" id="photos-err" role="alert" hidden></p>
-      <button class="btn tint wide" type="button" id="add-photos">Add photos</button>
+      <button class="btn tint wide" type="button" id="add-photos"><span class="lbl">Add photos</span></button>
       <input type="file" id="photo-input" accept="image/*" multiple hidden />
     </div>
   </dialog>

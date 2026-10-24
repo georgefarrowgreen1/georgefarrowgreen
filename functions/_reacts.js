@@ -85,11 +85,8 @@ function reactView(me, r, t) {
 export async function reactsFor(env, me, ids) {
   if (!ids.length) return [];
   const D = await db(env), t = Date.now(), out = [];
-  for (let i = 0; i < ids.length; i += 90) {
-    const part = ids.slice(i, i + 90);
-    const { results } = await D.prepare(`SELECT * FROM pg_reacts WHERE msg_id IN (${part.map(() => "?").join(",")})`).bind(...part).all();
-    for (const r of results) out.push(reactView(me, r, t));
-  }
+  const { results } = await D.prepare("SELECT * FROM pg_reacts WHERE msg_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)).all();
+  for (const r of results) out.push(reactView(me, r, t));
   return out;
 }
 // When an account goes, or a group's last member leaves.

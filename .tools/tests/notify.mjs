@@ -4,7 +4,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
-import { joinInFlight, accountUrl } from './join.mjs';
+import { joinInFlight, accountUrl, signInInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
 const AUDIT = new Function('return (' + readFileSync(`${S}/wr/audit.mjs`, 'utf8').match(/const AUDIT = (\(\) => \{[\s\S]*?\n\});/)[1] + ')')();
@@ -238,8 +238,7 @@ if (await G.p.$('.sheet')) { await G.p.click('.sheet [data-act=close]').catch(()
 await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await G.p.click('#screen > main.view [data-act=signout]'); await G.p.click('.asheet [data-act=signoutgo]'); await G.p.waitForSelector('.welcome');
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'signing out stops notifications to this phone');
 // a sign-in that ends elsewhere (password reset, sign out everywhere) also stops them
-await G.p.click('[data-act=to][data-id=signin]'); await G.p.fill('#f-email', 'george@example.com'); await G.p.fill('#f-password', 'a long test password');
-await G.p.click('[data-form=signin] .btn'); await G.p.waitForSelector('.tabs', { timeout: 20000 });
+await signInInFlight(G.p, URL, { email: 'george@example.com' }); await G.p.waitForSelector('.tabs', { timeout: 20000 });
 await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=notifysheet]'); await G.p.click('[data-act=pushtoggle]'); await G.p.waitForSelector('[data-act=pushtoggle][aria-checked=true]');
 sql(`DELETE FROM pg_sessions WHERE user_id = '${gId}'`);
 await tick();
@@ -252,9 +251,8 @@ ok(r.pushes === 0 && pushes().length === before && sql("SELECT COUNT(*) AS n FRO
 const ictx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true, deviceScaleFactor: 2,
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
 await ictx.addInitScript(() => { delete window.PushManager; });
-const ip = await ictx.newPage(); await ip.goto(URL);
-await ip.waitForSelector('.welcome'); await ip.click('[data-act=to][data-id=signin]'); await ip.fill('#f-email', 'mira@example.com'); await ip.fill('#f-password', 'a long test password');
-await ip.click('[data-form=signin] .btn'); await ip.waitForSelector('.tabs', { timeout: 20000 }); await ip.click('[data-act=tab][data-id=account]'); await ip.waitForTimeout(700); await ip.click('#screen > main.view [data-act=notifysheet]');
+const ip = await ictx.newPage();
+await signInInFlight(ip, URL, { email: 'mira@example.com' }); await ip.waitForSelector('.tabs', { timeout: 20000 }); await ip.click('[data-act=tab][data-id=account]'); await ip.waitForTimeout(700); await ip.click('#screen > main.view [data-act=notifysheet]');
 ok(await ip.isDisabled('[data-act=pushtoggle]') && /Add to Home Screen/.test(await ip.locator('.sheet').innerText()), 'iPhone Safari: explains Add to Home Screen');
 await ip.waitForTimeout(400); await ip.screenshot({ path: `${out}/notify-iphone.png` });
 const a2 = await ip.evaluate(AUDIT); ok(!a2.issues.length, 'iPhone account screen: no overlaps', a2.issues.join(' '));

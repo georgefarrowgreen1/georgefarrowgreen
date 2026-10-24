@@ -2,7 +2,7 @@
 // signing in), opened from the page (app.js openSettings) and fetched the first time it is: seldom wanted, it needn't
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
-import { $, S, CARDS, balance, STATES, adopt, afterFrame, calm, canShow, go, h, hereToo, mine, nkey, notifySaved, notifyWhy, notifying, place, redraw, refreshDevices, saveSettings, signedOut, signOutHere, syncNotify, windows } from "./app.js";
+import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, PERSON, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
 import { glyph } from "./icons.js";
@@ -102,48 +102,79 @@ function dragCard(e, li, from) {
   grip.addEventListener("lostpointercapture", done, { once: true });
 }
 
-function setShow(name, back, quiet = false) {
-  const top = setStack.at(-1), under = setStack.at(-2);
-  for (const pg of $("settings").querySelectorAll(".set-page")) {
-    const on = pg.dataset.page === name;
-    pg.hidden = !on; pg.classList.remove("in-next", "in-back");
-    if (on && !quiet && !calm.matches) pg.classList.add(back ? "in-back" : "in-next");
-  }
-  $("settings-title").textContent = name === "root" ? "Settings" : top?.title || "Settings";
-  $("set-back").hidden = name === "root";
-  $("set-back").setAttribute("aria-label", `Back to ${under?.title || "Settings"}`);
+function setShow(name, back, quiet = false, scroll = 0) {
+  const top = setStack.at(-1), under = setStack.at(-2), sheet = $("settings"), body = sheet.querySelector(".sheet-body"), still = calm.matches;
+  const pages = [...sheet.querySelectorAll(".set-page")], to = pages.find((p) => p.dataset.page === name);
+  if (!to) return;
+  const from = pages.find((p) => p !== to && !p.hidden && !p.classList.contains("set-out")), moves = !quiet && sheet.open && !!from;
+  // (where one is as it's seen, part way through a slide or not; and one's slide stopped, wherever it was)
+  const live = (pg) => { const cs = getComputedStyle(pg); return { transform: cs.transform, opacity: cs.opacity }; };
+  const stop = (pg) => { pg._moves?.forEach((a) => a.cancel()); pg._moves = null; pg.classList.remove("set-out"); pg.inert = false; pg.style.removeProperty("--top"); };
+  // the title and the way back (the old words, and the way back as it goes, laid over where they were as they fade)
+  const title = $("settings-title"), backBtn = $("set-back"), text = name === "root" ? "Settings" : top?.title || "Settings", x0 = moves ? title.offsetLeft : 0;
+  const tg = moves && title.textContent !== text ? ghost(title, title.parentElement) : null, bg = moves && !backBtn.hidden && name === "root" ? ghost(backBtn, backBtn.parentElement) : null;
+  const backIn = moves && backBtn.hidden && name !== "root";
+  title.textContent = text;
+  backBtn.hidden = name === "root";
+  backBtn.setAttribute("aria-label", `Back to ${under?.title || "Settings"}`);
+  // the folders: the one going laid over where it was, the one coming shown, the rest put away (any still going, going on)
+  const sy = body.scrollTop, fromAt = moves ? from.offsetTop : 0, fromState = moves ? live(from) : null, toState = moves && !to.hidden ? live(to) : null;
+  for (const pg of pages) if (pg !== to && pg !== from && !(moves && pg.classList.contains("set-out"))) { stop(pg); pg.hidden = true; }
+  if (from) { stop(from); if (moves) { from.style.setProperty("--top", `${fromAt - sy + scroll}px`); from.classList.add("set-out"); from.inert = true; } else from.hidden = true; }
+  stop(to); to.hidden = false;
+  body.scrollTop = scroll;
+  if (!moves) return;
+  const fade = { duration: 180, easing: EASE_OUT }, slide = { duration: 420, easing: GLIDE };
+  const out = from.animate(still ? [{ opacity: fromState.opacity }, { opacity: 0 }] : [{ transform: fromState.transform }, { transform: `translateX(${back ? 36 : -22}%)` }], { ...(still ? fade : slide), fill: "forwards" });
+  from._moves = [out, ...(still ? [] : [from.animate([{ opacity: fromState.opacity }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" })])];
+  out.finished.then(() => { if (from.classList.contains("set-out")) { stop(from); from.hidden = true; } }, () => {});
+  const start = toState || (still ? { opacity: 0 } : back ? { transform: "translateX(-22%)", opacity: 0 } : { transform: "translateX(100%)", opacity: 1 });
+  to._moves = [to.animate(still ? [{ opacity: start.opacity }, { opacity: 1 }] : [start, { transform: "none", opacity: 1 }], still ? fade : slide)];
+  const sgn = back ? -1 : 1, d = still ? 0 : 14, dx = still ? 0 : x0 - title.offsetLeft;
+  if (tg) tg.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${-sgn * d}px)` }], { duration: 200, easing: EASE_IN, fill: "forwards" }).finished.then(() => tg.remove(), () => tg.remove());
+  if (tg || Math.abs(dx) > 1) title.animate([{ opacity: tg ? 0 : 1, transform: `translateX(${dx + (tg ? sgn * d : 0)}px)` }, { opacity: 1, transform: "none" }], still ? fade : slide);
+  if (bg) bg.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: still ? "none" : "scale(0.6)" }], { duration: 200, easing: EASE_IN, fill: "forwards" }).finished.then(() => bg.remove(), () => bg.remove());
+  if (backIn) backBtn.animate([{ opacity: 0, transform: still ? "none" : "scale(0.6)" }, { opacity: 1, transform: "none" }], still ? fade : { duration: 300, easing: GLIDE });
 }
 
 export function setGo(name, title = $("settings").querySelector(`.set-page[data-page="${name}"]`)?.dataset.title) {
   const body = $("settings").querySelector(".sheet-body");
   setStack.push({ name, title, from: document.activeElement, scroll: body.scrollTop });
-  setShow(name, false);
-  body.scrollTop = 0;
+  setShow(name, false, false, 0);
   $("settings-title").focus({ preventScroll: true });
 }
 
+// Settings, open at one of its folders straight away (the way back to its list there, as ever), not opening on the list
+// and then sliding the folder in
+export function openAt(page) {
+  drawSettings();
+  setStack = [{ name: page, title: $("settings").querySelector(`.set-page[data-page="${page}"]`)?.dataset.title, from: $("settings-btn"), scroll: 0 }];
+  setShow(page, false, true, 0);
+  openSheet($("settings"));
+}
 function setBack() {
   const top = setStack.pop(); if (!top) return;
   const prev = setStack.at(-1);
-  setShow(prev?.name || "root", true);
-  $("settings").querySelector(".sheet-body").scrollTop = top.scroll;
+  // (the list says what's in each folder now, as it comes back)
   if (!prev) drawFolders();
+  setShow(prev?.name || "root", true, false, top.scroll);
   // (an activity's changes kept on the way back, as iOS keeps them; its row, drawn anew, has the focus)
   if (top.name === "act" && actEdit) { const keep = actEdit; actEdit = null; keep(); }
   else top.from?.focus?.({ preventScroll: true });
 }
 
-export const setHome = () => { setStack = []; setShow("root", true, true); $("settings").querySelector(".sheet-body").scrollTop = 0; };
+export const setHome = () => { setStack = []; setShow("root", true, true, 0); };
 
 function readSettings(e) {
   if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
   const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
-  const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join();
+  const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join(), drawn = JSON.stringify({ ...S.settings, glass: null });
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
-  saveSettings(); afterFrame(redraw); drawFolders();
+  // (the glass alone is only how the cards look, eased from one to the other by styles.css: nothing to draw again)
+  saveSettings(); if (JSON.stringify({ ...S.settings, glass: null }) !== drawn) afterFrame(redraw); drawFolders();
   // (the times to choose from said the new way)
   if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
@@ -179,7 +210,12 @@ const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}
 
 // What's on is shown by the switches and chips, so the line that says it is only heard (a screen reader's); shown when
 // there's more to it (saving, a note, why they can't be on)
-function notifySay(text, quiet = false) { const st = $("notify-status"); st.textContent = text; st.classList.toggle("sr-only", quiet); }
+function notifySay(text, quiet = false) {
+  const st = $("notify-status"), shown = !!st.textContent && !st.classList.contains("sr-only");
+  st.textContent = text; st.classList.toggle("sr-only", quiet);
+  // (a note coming into sight fades in where it is)
+  if (text && !quiet && !shown) st.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: EASE_OUT });
+}
 
 function onText() {
   const n = S.settings.notify, rain = n.places.filter((p) => p.rain).map(nname), warn = n.places.filter((p) => p.warn).map(nname);
@@ -189,8 +225,10 @@ function onText() {
 }
 
 async function notifyChanged(note = "") {
+  // ("Saving…" only heard: the chip or the switch already shows the change, and a line said and then taken away again
+  // would only move the rows under it)
   saveSettings(); drawNotify(true);
-  notifySay("Saving…");
+  notifySay("Saving…", true);
   try { await notifySaved(); notifySay(`${onText()}${note ? ` ${note}` : ""}`, !note); }
   catch (err) { notifySay(`Couldn't save that just now (${err.message}).`); }
   drawNotify(true); drawAccount();
@@ -226,14 +264,21 @@ async function onNotify() {
 }
 
 export function drawNotify(keepStatus = false) {
-  const n = S.settings.notify, form = $("settings-form"), mine = (p) => n.places.find((e) => nkey(e) === nkey(p)) || {};
+  const n = S.settings.notify, form = $("settings-form");
   // each saved place, and any notified of that isn't saved (from before)
   const rows = [...S.places, ...n.places.filter((e) => !S.places.some((p) => nkey(p) === nkey(e)))];
-  $("notify-places").replaceChildren(...rows.map((p) => {
-    const e = mine(p), name = nname(p);
-    const chip = (k, text) => h("button", { class: "np-chip", type: "button", "data-k": k, "aria-pressed": String(!!e[k]), "aria-label": `${text} for ${name}`, onclick: () => togglePlace(p, k) }, text);
-    return h("li", { class: "np-row", "data-key": nkey(p) }, h("span", { class: "np-name" }, name, p.gps && p.name !== "My Location" ? h("small", {}, p.name) : null), chip("rain", "Rain"), chip("warn", "Warnings"));
-  }));
+  // (the same rows kept while the places are the same, each chip lit or not as it's chosen: so its colour eases, and
+  // what has the focus keeps it)
+  const list = $("notify-places"), sig = rows.map((p) => `${nkey(p)}|${p.name}|${p.lat},${p.lon}`).join(";");
+  if (list._sig !== sig) {
+    list._sig = sig;
+    list.replaceChildren(...rows.map((p) => {
+      const name = nname(p);
+      const chip = (k, text) => h("button", { class: "np-chip", type: "button", "data-k": k, "aria-label": `${text} for ${name}`, onclick: () => togglePlace(p, k) }, text);
+      return h("li", { class: "np-row", "data-key": nkey(p) }, h("span", { class: "np-name" }, name, p.gps && p.name !== "My Location" ? h("small", {}, p.name) : null), chip("rain", "Rain"), chip("warn", "Warnings"));
+    }));
+  }
+  for (const li of list.children) { const e = n.places.find((x) => nkey(x) === li.dataset.key) || {}; for (const c of li.querySelectorAll(".np-chip")) c.setAttribute("aria-pressed", String(!!e[c.dataset.k])); }
   form.brief.checked = !!n.brief;
   const opts = S.places.map((p) => h("option", { value: nkey(p) }, nname(p)));
   if (n.brief && !S.places.some((p) => nkey(p) === nkey(n.brief))) opts.push(h("option", { value: nkey(n.brief) }, n.brief.name));
@@ -256,19 +301,8 @@ export function drawMail() {
     : ["Confirm your email first, on ", h("button", { class: "link", type: "button", onclick: openAccount }, "your account page"), "."]));
 }
 
-const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 
-const PASSKEY = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="M2.5 20c.8-3 2.9-4.6 5.5-4.6 1.1 0 2.1.3 3 .8M16.5 8.5a2.5 2.5 0 1 1 0 5v5l1.5-1.5 1.5 1.5v-3.2"/></svg>';
 
-async function signIn(how, email, password) {
-  const said = $("acct-said"), btns = [...$("acct-in").querySelectorAll("button")];
-  // (as on every page of the site that signs in: the same words for what's missing)
-  if (how !== "passkey" && (!email || !password)) { said.textContent = email ? "Enter your password." : "Enter your email."; said.classList.add("bad"); return; }
-  said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
-  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password), true); }
-  catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
-  finally { btns.forEach((b) => (b.disabled = false)); }
-}
 
 // this device getting the account's notifications too
 async function sendHere() {
@@ -280,10 +314,21 @@ async function sendHere() {
 export function drawAccount() {
   const box = $("acct"); if (!box) return;
   box.hidden = !!S.noAcct;
+  // (what it says changing as Settings is looked at: the new fading in, and the box easing to its new height, the
+  // folders under it moving with it, rather than jumping)
+  const shows = $("settings").open && !box.closest(".set-page").hidden && !calm.matches, h0 = shows ? box.offsetHeight : 0;
+  const fill = (...kids) => {
+    box.replaceChildren(...kids);
+    if (!shows) return;
+    for (const c of box.children) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: EASE_OUT });
+    const h1 = box.offsetHeight;
+    if (Math.abs(h1 - h0) > 1) { box.style.overflow = "clip"; box.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 420, easing: GLIDE }).finished.catch(() => {}).finally(() => { box.style.overflow = ""; }); }
+  };
   // (signed in elsewhere on the site to an account this device hasn't been in step with: asked before its places go to it)
   if (S.ask && !S.acct) {
     const r = S.ask;
-    return box.replaceChildren(
+    box._who = null;
+    return fill(
       h("div", { class: "acct-card" }, avatarOf(r), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, r.name), h("span", {}, `@${r.handle} · signed in on this browser`))),
       h("p", { class: "acct-new" }, "Keep this device’s places and settings with this account, the same on every device it’s signed in on?"),
       h("button", { class: "acct-btn primary", type: "button", id: "acct-keep", onclick: () => adopt(r, true) }, `Keep them with @${r.handle}`),
@@ -292,38 +337,24 @@ export function drawAccount() {
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
   $("out-grp").hidden = !a;
-  $("acct-in").replaceChildren();
   if (!a) {
-    // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
-    // and a new account, on the account's own page)
-    const pk = A.passkeysWork(), page = accountPage();
-    const form = h("form", { class: "acct-form", novalidate: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
-      h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", placeholder: "Email", "aria-label": "Email", autocapitalize: "off", spellcheck: "false" }),
-      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", onfocus: () => import("./argon2.js").catch(() => {}) }),
-      h("button", { class: pk ? "acct-btn" : "acct-btn primary", type: "submit" }, "Sign in"));
-    // (in Settings, a row; signing in, a folder of its own)
-    box.replaceChildren(h("button", { class: "acct-card go", type: "button", id: "acct-signin", "data-go": "signin" }, h("span", { class: "acct-ic", svg: PERSON }),
-      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) })));
-    $("acct-in").replaceChildren(...[
-      h("p", { class: "acct-lead" }, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."),
-      pk ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
-      pk ? h("p", { class: "acct-or" }, "or with your email") : null,
-      form,
-      page ? h("a", { class: "acct-link", href: `${page}#forgot` }, "Forgot password?") : null,
-      said,
-      page ? h("p", { class: "acct-new" }, "New here? ", h("a", { href: `${page}#join` }, "Create your account")) : null].filter(Boolean));
+    // (in Settings, a row: signing in, or making an account, on the account's own page, which brings you back here; none
+    // where Weather's served at an address with no account's page beside it)
+    if (!accountPage()) { box.hidden = true; return; }
+    if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", onclick: toAccountSignIn }, h("span", { class: "acct-ic", svg: PERSON }),
+      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
     return;
   }
-  // (signed in from its own folder: back to the list, the account's card at its top)
-  if (setStack.at(-1)?.name === "signin") setBack();
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
-  // there), and how your places and settings are doing, said only when there's something to say
-  const said2 = STATES[a.state]?.[1];
-  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name),
-    h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle}${said2 ? ` · ${said2}` : ""}`))];
-  box.replaceChildren(...[
-    accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
-      : h("div", { class: "acct-card in" }, ...who),
+  // there), and how your places and settings are doing, said only when there's something to say (the same card kept as
+  // that changes, its words changing where they are)
+  const state = a.shown ?? a.state, said2 = STATES[state]?.[1], line = `@${a.handle}${said2 ? ` · ${said2}` : ""}`, who = `${a.handle}|${a.name}|${a.photoAt}|${!!accountPage()}`;
+  if (box._who === who && $("acct-state")) { const st = $("acct-state"); st.className = state === "error" ? "acct-bad" : ""; swap(st, line); drawNotifyAcct(); return; }
+  box._who = who;
+  const card = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", { id: "acct-state", class: state === "error" ? "acct-bad" : "" }, line))];
+  fill(...[
+    accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...card, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
+      : h("div", { class: "acct-card in" }, ...card),
     said].filter(Boolean));
   drawNotifyAcct();
 }
@@ -340,11 +371,6 @@ function drawNotifyAcct() {
   ].filter(Boolean));
 }
 
-// The account's own page (account.<site>, beside weather.<site>), opened signed in as you: a code good once, for a
-// minute, handed over in the address's # (the page swaps it for a sign-in of its own, in whichever browser it opens in,
-// a Home Screen app's included, and takes it out of the address). The window's opened at once, from the tap (a phone
-// won't open one later), and sent on when the code's back.
-const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
 
 async function openAccount() {
   const w = window.open("", "_blank");

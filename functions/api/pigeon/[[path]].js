@@ -1,7 +1,7 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -23,7 +23,9 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
-import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn, accountMail } from "../../_account.js";
+import { maybeWxTick } from "../../_wxpush.js";
+import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, accountMail } from "../../_account.js";
+import { takeHandback } from "../../_handback.js";
 import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
@@ -56,8 +58,9 @@ function meView(u, t) {
 
 /* ---------------- accounts ----------------
    New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
-   invite; forgotten passwords are reset there too. InFlight signs in to them. (A copy of the app from before that
-   still asks here is told where to go.) */
+   invite; forgotten passwords are reset there too; and you sign in there, InFlight being handed the sign-in back, with
+   what unlocks its key (handback: functions/_handback.js). (A copy of the app from before that still asks here is
+   told where to go.) */
 const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.georgefarrowgreen.com.`, "moved"); };
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
@@ -100,12 +103,28 @@ async function salt({ request, env }) {
   return json({ salt: await saltFor(env, request, (await body(request)).email) });
 }
 
-// (the checks are the site's, the same wherever its account's signed in to: functions/_account.js)
-async function login({ request, env, waitUntil }) {
-  const u = await passwordUser(env, request, await body(request));
-  const token = await issueSession(env, u.id, request);
-  waitUntil(tellSignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) }), request, env, await hashOf(token));
+// Signed in on the account's page, for InFlight (functions/_handback.js): the code it was handed back with, and the
+// word the app kept for it, swapped for InFlight's own sign-in (as fresh as the page's, no fresher); with the
+// password-locked key, and the passkey's own copy where it was a passkey that can open it, for what the page sealed to
+// the app to unlock (box). Where the browser shares the site's sign-in, it's the one the page just made, moved to this
+// one (as Continue as did), with all that was the page's; where it doesn't (a test server's separate addresses), this
+// one's given to the browser as well.
+async function handback({ request, env }) {
+  sameOrigin(request);
+  const { row, u, siteHash, authAt } = await takeHandback(env, request, "inflight", await body(request));
+  const token = await issueSession(env, u.id, request, authAt), hash = await hashOf(token), D = await db(env);
+  const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
+  const res = json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
+  const c = await cookieUser(request, env, true).catch(() => null);
+  if (c && c.sessionHash === row.session) {
+    // (the page's codes and links still to be used, the sign-ins opened from it and its notifications going with it)
+    await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(siteHash, hash),
+      ...["pg_handback", "pg_handoff", "pg_push"].map((t) => D.prepare(`UPDATE ${t} SET session = ? WHERE session = ?`).bind(hash, row.session)),
+      D.prepare("UPDATE pg_sessions SET parent = ? WHERE parent = ?").bind(hash, row.session),
+      D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(row.session)]);
+    return res;
+  }
+  return withSession(res, request, env, hash, true);
 }
 
 async function logout({ request, env }) {
@@ -115,20 +134,15 @@ async function logout({ request, env }) {
   const c = cookieToken(request, env);
   return c && u.siteHash && (await hashOf(c)) === u.siteHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });
 }
-// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): who (and the salt for the
-// password), to carry on as; then, with the password's proof, this app's own sign-in, on the same session (the cookie's
-// moved to it), and the password-locked key, which the password unlocks on the phone. The cookie alone gets no more.
+// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): who, to carry on as (on the
+// account's page, which hands the sign-in back with what unlocks the key: handback). The cookie alone gets no more.
+// (Carrying on with the password's proof, here, as a copy of the app from before did: on the account's page now.)
 async function resume({ request, env }) {
   sameOrigin(request);
   const u = await cookieUser(request, env, true), b = await body(request).catch(() => ({}));
   if (!u) return json({ signedIn: false });
-  if (!b.proof) return json({ signedIn: true, name: u.name, handle: u.handle, salt: u.salt });
-  await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
-  if (!(await proofOk(env, b.proof, u.proof_hash))) throw new HttpError(401, "That password didn’t unlock your key.", "password");
-  const token = await issueSession(env, u.id, request), D = await db(env);
-  await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(u.siteHash, await hashOf(token)),
-    D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash)]);
-  return json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
+  if (b.proof) return elsewhere("Sign in")();
+  return json({ signedIn: true, name: u.name, handle: u.handle });
 }
 
 // The password-locked key, for a signed-in phone that needs to unlock it again
@@ -338,10 +352,11 @@ async function passkeyRegister({ request, env, waitUntil }) {
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
   if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
   if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
+  const count = await checkRegistration(request, env, b);
   const D = await db(env), provider = providerOf(b.authenticatorData);
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now()).run();
+  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now(), count).run();
   waitUntil(logEvent(env, u.id, "passkey-add", request, provider || String(b.label || "Passkey").slice(0, 40)));
   waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), request).catch(() => {}));
   return json({ ok: true });
@@ -426,13 +441,6 @@ async function passkeyVault({ request, env }) {
   const r = await (await db(env)).prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND user_id = ?").bind(await lockVault(env, u.id, v), String(b.id), u.id).run();
   if (!r.meta.changes) throw new HttpError(404, "That passkey isn’t on your account.");
   return json({ ok: true });
-}
-
-async function passkeyLogin({ request, env, waitUntil }) {
-  const b = await body(request), { u, cred } = await passkeyUser(env, request, b);
-  const token = await issueSession(env, u.id, request);
-  waitUntil(tellSignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, await hashOf(token));
 }
 
 async function passkeyDelete({ request, env, waitUntil }) {
@@ -1101,19 +1109,6 @@ async function pwned({ request, env }) {
 // An account from before Argon2id, moved on at its next password sign-in: the same
 // password, stretched the new way (the phone sends the old proof as the check).
 // Not a password change: no email, and no one is signed out.
-async function passwordUpgrade({ request, env }) {
-  const u = await requireUser(request, env);
-  await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
-  const b = await body(request);
-  if (String(u.salt).startsWith("a2:")) return json({ ok: true });              // (already)
-  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
-  const vault = checkNewSecret(b);
-  if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
-  await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
-    .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
-  return json({ ok: true });
-}
-
 async function changePassword({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
@@ -1138,8 +1133,8 @@ async function changePassword({ request, env, waitUntil }) {
    admin/…, the routes below). It's the account linked to it (pg_meta admin_user, linked once from the old dashboard,
    since gone), or, if that one's gone (or being deleted), the account with the site owner's email (PIGEON_ADMIN_EMAIL),
    once that's confirmed: the same as a password reset to that inbox would give, so it can't be lost for good. That
-   account only, with a passkey on it; looking is as signed in, a change needs it to have shown it's you (its passkey,
-   or its password) in the last 10 minutes, from the page itself (its Origin). Account details, never passwords, keys
+   account only, with a passkey on it; the figures are as signed in, people's details need it to have shown it's you in
+   the last 12 hours, and a change in the last 10 minutes (its passkey, or its password), from the page itself (its Origin). Account details, never passwords, keys
    or scrolls. */
 // the admin's account (and how many passkeys it has)
 export async function adminOf(env) {
@@ -1148,14 +1143,16 @@ export async function adminOf(env) {
   return (await D.prepare(q + "u.id = (SELECT v FROM pg_meta WHERE k = 'admin_user')").first())
     || D.prepare(q + "u.email_ok AND lower(u.email) = lower(?) ORDER BY u.created_at LIMIT 1").bind(ownerEmail(env)).first();
 }
-async function requireAdmin(request, env, write) {
+// (looking at people's details, their emails, the site's messages, the log, needs it shown it's you in the last 12 hours:
+// a sign-in handed over from an app, or a phone left signed in, doesn't do; a change, in the last 10 minutes. look: the
+// figures (counts only) and pictures (for an <img>, which can't be asked to confirm): as signed in)
+export const ADMIN_LOOK = 12 * 3600e3;
+async function requireAdmin(request, env, write, { look = false } = {}) {
   const [u, admin] = await Promise.all([cookieUser(request, env), adminOf(env)]);
   if (!u || !admin || u.id !== admin.id) throw new HttpError(403, "This account isn’t the site’s admin.");
   if (!admin.passkeys) throw new HttpError(403, "Add a passkey to your account to use Admin.", "passkey");
-  if (write) {
-    sameOrigin(request);
-    if (!(Date.now() - (u.authAt || 0) < FRESH)) throw new HttpError(403, "Confirm it’s you first.", "reauth");
-  }
+  if (write) sameOrigin(request);
+  if (!look && !(Date.now() - (u.authAt || 0) < (write ? FRESH : ADMIN_LOOK))) throw new HttpError(403, "Confirm it’s you first.", "reauth");
   return u;
 }
 // The figures for Admin, on the account page and at the top of its folder: accounts (and how many are new this week),
@@ -1166,7 +1163,7 @@ const FILES_STALE = 12 * HOUR;
 // (the home page's photos: functions/api/background.js keeps their list in KV)
 const homePhotos = async (env) => (env.BIO_KV ? JSON.parse((await env.BIO_KV.get("bg_list")) || "[]") : []);
 async function adminSummary({ request, env, waitUntil }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   const t = Date.now(), D = await db(env);
   const [main, people, late, meta] = await D.batch([
     D.prepare(`SELECT (SELECT COUNT(*) FROM pg_users) AS accounts, (SELECT COUNT(*) FROM pg_users WHERE created_at > ?1) AS newWeek,
@@ -1184,22 +1181,27 @@ async function adminSummary({ request, env, waitUntil }) {
   else if (t - files.at > FILES_STALE) waitUntil(storageReport(env, D, t).catch(() => {}));
   const dbBytes = main.meta?.size_after ?? null;
   const [msgs, photos, edits] = await Promise.all([messageCounts(env).catch(() => null), homePhotos(env).catch(() => []), getHistory(env).catch(() => [])]);
+  // (the scheduled jobs: when each last ran; and what's gone wrong on the server today, the latest few)
+  const meta1 = async (q) => { try { const r = await D.prepare(q).first(); return r?.v ? JSON.parse(r.v) : null; } catch (_) { return null; } };
+  const [pTick, wTick, errs] = await Promise.all([meta1("SELECT v FROM pg_meta WHERE k = 'tick_last'"), meta1("SELECT v FROM wx_meta WHERE k = 'tick_last'"),
+    D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => [])]);
   const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
   return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
     messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
     storage: dbBytes == null ? null : dbBytes + (files.bytes || 0),
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
-    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
+    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
+    ticks: { inflight: pTick, weather: wTick }, errors: errs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await storageReport(env, await db(env), Date.now()));
 }
 // How InFlight is used, in totals (functions/_insights.js)
 async function adminInsights({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await insights(env, await db(env), Date.now()));
 }
 async function adminUsers({ request, env }) {
@@ -1248,7 +1250,7 @@ async function adminReset({ request, env }) {
 }
 // Someone's profile picture, for the admin's account list.
 async function adminAvatar({ request, env }, id) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(String(id || ""))));
   if (!obj) throw new HttpError(404, "No picture.");
   return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
@@ -1311,7 +1313,7 @@ async function adminInvite({ request, env }) {
   return json({ url: `${accountPage(request, env)}/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
 }
 async function adminInvites({ request, env }) {
-  await requireAdmin(request, env, false);
+  await requireAdmin(request, env, false, { look: true });     // (notes and who used them: the folder's own count)
   const { results } = await (await db(env)).prepare(`SELECT i.id, i.note, i.created_at, i.used_at, i.revoked_at, u.handle, u.name FROM pg_invites i
     LEFT JOIN pg_users u ON u.id = i.used_by ORDER BY (i.used_at IS NULL AND i.revoked_at IS NULL) DESC, i.created_at DESC LIMIT 200`).all();
   return json({ invites: results.map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, usedAt: r.used_at, revokedAt: r.revoked_at, by: r.used_at ? { handle: r.handle || null, name: r.name || null } : null })) });
@@ -1331,7 +1333,7 @@ async function adminMessages({ request, env }) {
 }
 // (seen, once they're shown: no need to confirm it's you, as it changes nothing but what's new)
 async function adminMessagesRead({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });
   sameOrigin(request);
   const ids = (await body(request)).ids;
   return json({ read: await markSiteRead(env, Array.isArray(ids) ? ids.map(Number) : []) });
@@ -1433,10 +1435,10 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": elsewhere("Sign in"), "POST handback": handback, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": elsewhere("Delete your account"),   // (on the account's page: a week's grace, and an email to keep it)
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
-  "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
+  "POST passkey-login": elsewhere("Sign in"), "DELETE passkey": passkeyDelete, "POST reauth": reauth,
   "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "POST account-link": accountLink, "GET pins": pinsGet, "POST pins": pinsPut,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
@@ -1444,7 +1446,8 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password-upgrade": elsewhere("Sign in"),   // (an older password moved on: on the account's page, as you sign in there)
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
@@ -1460,7 +1463,10 @@ export async function onRequest(ctx) {
   if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
-  if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));
+  if (ctx.env.DB && parts[0] !== "notify-tick") {
+    ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => logError(ctx.env, "pigeon tick (traffic)", e)));
+    ctx.waitUntil(maybeWxTick(ctx.env, linkOrigin(ctx.request)).catch((e) => logError(ctx.env, "weather tick (traffic)", e)));
+  }
   try {
     if (!handler) throw new HttpError(404, "Not found.");
     const trips0 = TRIPS.n, res = await handler(ctx, parts[1]);
@@ -1475,7 +1481,7 @@ export async function onRequest(ctx) {
     return res;
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
-    console.error("pigeon", e && e.stack || e);
+    await logError(ctx.env, "pigeon api", e);
     return json({ error: "Something went wrong on our side. Try again in a moment." }, 500);
   }
 }

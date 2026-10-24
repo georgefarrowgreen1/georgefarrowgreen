@@ -1,7 +1,7 @@
 // A tile or a day, in full: each in its own sheet (index.html #detail, #day), opened from the page (app.js openDetail,
 // openDay) and fetched the first time one is: seldom wanted, it needn't be read each time the app opens. The service
 // worker keeps it with the rest, so it opens offline too.
-import { $, COLOR, S, T, TILES, airName, calm, drawHourChart, h, nightsOf, openSheet, sheetDays, uvName } from "./app.js";
+import { $, airName, calm, COLOR, drawHourChart, easeHeight, h, nightsOf, openSheet, retitle, S, sheetDays, slideIn, T, TILES, uvName } from "./app.js";
 import { DAY, HOUR, compass, compassWord, dayStart, keyOf, nowWall } from "./format.js";
 import * as I from "./insights.js";
 import { cell } from "./data.js";
@@ -150,17 +150,20 @@ export function openDetail(kind, dir = 0) {
     draw = () => draws.forEach((d) => d());
   }
   kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f, wx)));
-  $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title);
+  // (moved on to another with the sheet up: its title crossfading, the light moving along its dots, what it says sliding
+  // in from the side it was moved to, and the sheet easing to its new height (its hours drawn first, to measure them)
+  // rather than jumping)
+  const dlg = $("detail"), body = $("detail-body"), open = dlg.open;
+  retitle($("detail-title"), () => $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title), open ? dir : 0);
   // (which of them it is: a swipe sideways, or the arrow keys, for the one before or after)
-  const kinds = detailKinds();
-  $("detail-dots").replaceChildren(...kinds.map((k) => h("i", { class: k === kind ? "on" : null })));
-  const body = $("detail-body");
-  body.replaceChildren(...kids);
-  const dlg = $("detail");
-  if (!dlg.open) openSheet(dlg);
+  const kinds = detailKinds(), dots = $("detail-dots");
+  if (dots._sig !== kinds.join()) { dots._sig = kinds.join(); dots.replaceChildren(...kinds.map(() => h("i"))); }
+  [...dots.children].forEach((d, i) => d.classList.toggle("on", kinds[i] === kind));
+  easeHeight(dlg, () => { body.replaceChildren(...kids); if (open) draw?.(); });
+  if (!open) openSheet(dlg);
   dlg.querySelector(".sheet-body").scrollTop = 0;
-  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
-  if (draw) requestAnimationFrame(draw);
+  if (dir) slideIn(body, dir);
+  if (draw && !open) requestAnimationFrame(draw);
 }
 
 // One day in full, in its sheet; the days along the top to move between (or a swipe sideways, or the arrow keys)
@@ -171,13 +174,24 @@ export function openDay(key, dir = 0) {
   const wx = S.wx; if (!wx) return;
   const f = S.f, now = nowWall(wx.place.offset), d = wx.daily.find((x) => x.key === key); if (!d) return;
   S.dayKey = key;
-  $("day-title").textContent = dayTitle(d.date, now);
-  const days = sheetDays(wx, now), strip = $("day-strip"), inStrip = strip.contains(document.activeElement);
-  strip.replaceChildren(...days.map((x, i) => h("button", { type: "button", class: "ds-day", "aria-current": x.key === key ? "true" : null, "aria-label": dayTitle(x.date, now),
-    onclick: () => { if (x.key !== key) openDay(x.key, i > days.indexOf(d) ? 1 : -1); } },
-    h("span", {}, i === 0 ? "Today" : f.dayShort(x.date)), h("b", {}, String(new Date(x.date).getUTCDate())))));
+  const dlg = $("day"), open = dlg.open;
+  retitle($("day-title"), () => { $("day-title").textContent = dayTitle(d.date, now); }, open ? dir : 0);
+  // (the days along its top: the same ones kept as it moves between them, the circle moving on to the one shown and the
+  // row easing along to keep it in the middle; drawn again only when the days themselves have changed)
+  const days = sheetDays(wx, now), strip = $("day-strip"), inStrip = strip.contains(document.activeElement), sig = days.map((x) => x.key).join();
+  if (strip._sig !== sig) {
+    strip._sig = sig;
+    strip.replaceChildren(...days.map((x, i) => Object.assign(h("button", { type: "button", class: "ds-day", "aria-label": dayTitle(x.date, now),
+      onclick: () => { const at = days.findIndex((y) => y.key === S.dayKey); if (x.key !== S.dayKey) openDay(x.key, i > at ? 1 : -1); } },
+      h("span", {}, i === 0 ? "Today" : f.dayShort(x.date)), h("b", {}, String(new Date(x.date).getUTCDate()))), { _key: x.key })));
+  }
+  for (const b of strip.children) { if (b._key === key) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); }
   const cur = strip.querySelector("[aria-current]");
-  if (cur) { strip.scrollLeft = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2; if (inStrip) cur.focus({ preventScroll: true }); }
+  if (cur) {
+    const left = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2;
+    if (open && !calm.matches) strip.scrollTo({ left, behavior: "smooth" }); else strip.scrollLeft = left;
+    if (inStrip) cur.focus({ preventScroll: true });
+  }
   const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
   const kids = [
     h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
@@ -224,17 +238,14 @@ export function openDay(key, dir = 0) {
       d.tuned ? h("tr", { class: "tuned-row" }, h("td", {}, "Tuned for here"), h("td", {}, f.temp(d.tmax)), h("td", {}, f.temp(d.tmin)), h("td", {}, "–")) : null,
       ...mods.map((m) => h("tr", {}, h("td", {}, m.name), h("td", {}, f.temp(m.tmax)), h("td", {}, f.temp(m.tmin)), h("td", {}, m.precip != null ? f.precip(m.precip) : "–")))));
   }
-  body.replaceChildren(...kids.filter(Boolean));
-  const dlg = $("day");
-  if (!dlg.open) openSheet(dlg);
-  dlg.querySelector(".sheet-body").scrollTop = 0;
-  // (moving to the next day or the one before, it slides in from that side)
-  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
-  if (hrs.length > 3) requestAnimationFrame(() => {
-    drawHourChart(wx, now, hrs, tChart, "temp", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, rChart, "rain", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, wChart, "wind", d.key === keyOf(now));
-  });
+  const draw = () => { if (hrs.length > 3) for (const [host, mode] of [[tChart, "temp"], [rChart, "rain"], [wChart, "wind"]]) drawHourChart(wx, now, hrs, host, mode, d.key === keyOf(now)); };
+  // (another day with the sheet up: its charts drawn there and then, so the sheet can ease to its new height rather than
+  // jump; opening, they're drawn once it's on its way up)
+  easeHeight(dlg, () => { body.replaceChildren(...kids.filter(Boolean)); if (open) draw(); });
+  if (!open) { openSheet(dlg); dlg.querySelector(".sheet-body").scrollTop = 0; requestAnimationFrame(draw); }
+  // (moving to the next day or the one before, it slides in from that side, where the last was scrolled to: comparing
+  // days, the place in them is kept)
+  if (dir) slideIn(body, dir);
 }
 
 // (quiet: without its own slide in, when a swipe's moving it)

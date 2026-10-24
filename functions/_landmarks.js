@@ -126,11 +126,9 @@ export function marksAlong(stops) {
 // Each flight's postmarks (pg_stamped.marks), for the letters a chat shows
 export async function marksFor(D, ids) {
   const out = new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const part = ids.slice(i, i + 90);
-    const { results } = await D.prepare(`SELECT id, at, marks FROM pg_stamped WHERE marks IS NOT NULL AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all();
-    for (const r of results) { try { const m = JSON.parse(r.marks); if (m.length) out.set(r.id, m.map((id) => markView(id, r.at)).filter(Boolean)); } catch (_) {} }
-  }
+  if (!ids.length) return out;
+  const { results } = await D.prepare("SELECT id, at, marks FROM pg_stamped WHERE marks IS NOT NULL AND id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)).all();
+  for (const r of results) { try { const m = JSON.parse(r.marks); if (m.length) out.set(r.id, m.map((id) => markView(id, r.at)).filter(Boolean)); } catch (_) {} }
   return out;
 }
 export const markView = (id, at, n) => { const l = landmark(id); return l ? { id, name: l[1], kind: l[5], at, ...(n ? { n } : {}) } : null; };

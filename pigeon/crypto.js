@@ -14,6 +14,11 @@
 //
 // Passkeys: WebAuthn's PRF extension gives the phone a secret per passkey,
 // which locks a second copy of the private key for password-free recovery.
+//
+// Signing in happens on the account's own page (account.<site>), which hands
+// the sign-in back to InFlight with what unlocks the key there (the password's
+// first half, or a passkey's PRF secret), sealed to a key pair InFlight's tab
+// made for the trip: only that tab can open it (handbackPair, sealFor, unseal).
 
 export const te = new TextEncoder(), td = new TextDecoder();
 export const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
@@ -44,6 +49,13 @@ let argon = null;
 const loadArgon = () => (argon ||= import("./argon2.js").then((m) => m?.argon2id || m?.default?.argon2id || globalThis.hashwasm.argon2id).catch((e) => { argon = null; throw e; }));
 const ECDH = { name: "ECDH", namedCurve: "P-256" };
 const aesKey = (raw, uses) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, uses);
+// (a hand-back's key: from the two halves of the trip's key pairs, both public halves bound in)
+async function handbackKey(priv, pub, from, to) {
+  const bits = await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256);
+  const base = await crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: te.encode(`inflight/handback/v1|${from}|${to}`) },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
 
 export const E2E = {
   async newIdentity() {
@@ -68,8 +80,11 @@ export const E2E = {
       const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
       bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: typeof salt === "string" ? fromB64url(salt) : salt, iterations: PBKDF2_ITER }, base, 512));
     }
-    return { lockKey: await aesKey(bits.slice(0, 32), ["encrypt", "decrypt"]), proof: b64url(bits.slice(32)) };
+    // (lock: the first half as it is, only for handing to InFlight from the account's page, sealed: sealFor)
+    return { lockKey: await aesKey(bits.slice(0, 32), ["encrypt", "decrypt"]), proof: b64url(bits.slice(32)), lock: b64url(bits.slice(0, 32)) };
   },
+  // the password's first half, handed back from the account's page, as the key it is
+  lockKeyOf: (lock) => aesKey(fromB64url(lock), ["encrypt", "decrypt"]),
   async fromSecret(secret) {
     const base = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveKey"]);
     return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: te.encode("inflight/passkey-vault/v1") },
@@ -168,4 +183,28 @@ export const E2E = {
     return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("").match(/.{4}/g).join(" ");     // 128 bits
   },
   async prfSalt() { return new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode("inflight/prf/v1"))); },
+
+  // A sign-in handed back from the account's page. Before going there, the app makes a word for the sign-in (its
+  // hash, ask, goes there; the code that comes back is good only with the word itself: the server checks) and a key
+  // pair for the trip (its public half goes there, the private half stays here), kept on this phone until it's back
+  // (pigeon/app.js toAccountSignIn).
+  async handbackPair() {
+    const kp = await crypto.subtle.generateKey(ECDH, true, ["deriveBits"]), word = b64url(rand(32));
+    return { word, ask: b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(word)))),
+      pub: b64url(await crypto.subtle.exportKey("raw", kp.publicKey)), priv: await crypto.subtle.exportKey("jwk", kp.privateKey) };
+  },
+  // (the account's page) what unlocks the key, sealed to that public half, with a key pair of its own made for it
+  async sealFor(pub, obj) {
+    const to = await crypto.subtle.importKey("raw", fromB64url(pub), ECDH, false, []), eph = await crypto.subtle.generateKey(ECDH, true, ["deriveBits"]);
+    const from = b64url(await crypto.subtle.exportKey("raw", eph.publicKey)), iv = rand(12);
+    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode("inflight/handback/v1") }, await handbackKey(eph.privateKey, to, from, pub), te.encode(JSON.stringify(obj)));
+    return JSON.stringify({ v: 1, e: from, iv: b64url(iv), d: b64url(d) });
+  },
+  // (back here) opened with the private half this tab kept, and its public half
+  async unseal(priv, pub, s) {
+    const e = JSON.parse(s);
+    const key = await crypto.subtle.importKey("jwk", priv, ECDH, false, ["deriveBits"]), from = await crypto.subtle.importKey("raw", fromB64url(e.e), ECDH, false, []);
+    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64url(e.iv), additionalData: te.encode("inflight/handback/v1") }, await handbackKey(key, from, e.e, pub), fromB64url(e.d));
+    return JSON.parse(td.decode(p));
+  },
 };

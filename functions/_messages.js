@@ -47,7 +47,10 @@ export async function messageCounts(env) {
 // seen (in Admin): these, if they weren't already
 export async function markRead(env, ids) {
   await ensureTable(env);
-  const list = ids.filter(Number.isSafeInteger).slice(0, 200);
+  const list = ids.filter(Number.isSafeInteger).slice(0, 200), t = Date.now();
   if (!list.length) return 0;
-  return (await env.DB.prepare(`UPDATE messages SET read_at = ? WHERE read_at IS NULL AND id IN (${list.map(() => "?").join(", ")})`).bind(Date.now(), ...list).run()).meta?.changes || 0;
+  // (99 at a time, with the time: D1 takes at most 100 values to a statement)
+  let n = 0;
+  for (let i = 0; i < list.length; i += 99) { const part = list.slice(i, i + 99); n += (await env.DB.prepare(`UPDATE messages SET read_at = ? WHERE read_at IS NULL AND id IN (${part.map(() => "?").join(", ")})`).bind(t, ...part).run()).meta?.changes || 0; }
+  return n;
 }
