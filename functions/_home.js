@@ -1,11 +1,11 @@
 // The site's home page (index.html, app.js) as it's sent: its words (functions/_content.js) already in it, so search
 // engines and link previews read what the page says, not the defaults it's written with. The page fills them in
-// again when it loads (and its owner edits them there). Its script and styles are stamped with what's in them (?v=),
-// so a browser never runs a new page with an old copy of either.
+// again when it loads (and its owner edits them there). Its scripts and styles are stamped with what's in them (?v=),
+// so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
 
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
-const STAMPED = ["styles.css", "app.js", "404.js"];
+const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 // (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)
 let memo = { at: 0, v: null };
@@ -50,7 +50,7 @@ export async function homePage(ctx, url, res) {
     .on("title", { element: (el) => { if (c) el.setInnerContent(c.name); } })
     .on('meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]', attr("bio"))
     .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:site_name"]', attr("name"))
-    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"]', stamp("src"))
+    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"]', stamp("src"))
     .transform(res);
   out.headers.delete("content-length"); out.headers.delete("etag");
   out.headers.set("Cache-Control", "no-cache");

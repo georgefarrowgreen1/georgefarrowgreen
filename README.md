@@ -15,7 +15,8 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
 - **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
-  into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
+  into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar (the buttons,
+  once faded, can't be tapped or tabbed to, and the slideshow's segments go with them).
   **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
   preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
   account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
@@ -2048,7 +2049,7 @@ A pass over every app for UI and UX, motion, speed, stability and how the apps w
   the name reaches the bar however short the page. Photos get a phone-sized copy at upload (`bg/<id>-m`, sent for
   `?s=m` and to phones asking for the cover; older photos have none until added again), an ETag, a day at the edge,
   and the next one is fetched shortly before it shows. A new focal point doesn't restart the slideshow. The stamped
-  script and styles are cached for good. Send says what's missing.
+  scripts and styles are cached for good. Send says what's missing.
 - **Account page:** a sheet that opens over another focuses its title, and one that closes hands focus back to its row;
   each sheet is a step in the browser's history, so the back swipe closes it. Banners no longer re-announce on every
   redraw. A reset link checked without signal says so, with Try again. Light-mode greys and amber have more contrast;

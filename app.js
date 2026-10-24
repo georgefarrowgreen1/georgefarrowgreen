@@ -77,7 +77,8 @@ const linked = CSS.supports("animation-timeline: scroll()");
     const y = scrollY, k = name ? clamp((y - name[0]) / (name[1] - name[0])) : 0;
     for (const el of veil) { el.style.opacity = k; el.style.visibility = k > 0 ? "visible" : "hidden"; }
     mid.style.opacity = k; mid.style.transform = `translateY(${(1 - k) * 8}px)`;
-    fades.forEach((el, i) => { const r = ranges[i]; el.style.opacity = editing || !r ? "" : 1 - clamp((y - r[0]) / (r[1] - r[0])); });
+    fades.forEach((el, i) => { const r = ranges[i], o = editing || !r ? "" : 1 - clamp((y - r[0]) / (r[1] - r[0]));
+      el.style.opacity = o; el.style.visibility = o === 0 && el.classList.contains("cta") ? "hidden" : ""; });
   };
   // (a scroll-linked animation keeps the range it was made with, so when its range changes it's made again, within the
   // one frame, so nothing of that is seen; one that isn't to fade has none at all)
@@ -101,7 +102,8 @@ const linked = CSS.supports("animation-timeline: scroll()");
     // one notch of a wheel looks like a glitch); a line the scroll never brings up to the bar doesn't fade at all (on a
     // short page, faded lines well clear of the bar left half the screen empty); if the name itself can't fade, nothing
     // does. The name comes into the bar as the name in the hero goes.
-    const most = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    // (a pixel short of the end, so a fade fitted into it finishes however the page's height is rounded)
+    const most = Math.max(0, document.documentElement.scrollHeight - innerHeight - 1);
     ranges = tops.map((top) => {
       if (top - edge > most) return null;
       let a = Math.max(0, top - edge - 78), b = Math.max(a + FADE, top - edge + 12);
@@ -110,6 +112,8 @@ const linked = CSS.supports("animation-timeline: scroll()");
     });
     const h = fades.findIndex((el) => el.tagName === "H1");
     if (!ranges[h]) ranges = ranges.map(() => null);
+    // (the slideshow's marker goes with the buttons above it, never left by itself under the bar)
+    ranges[fades.findIndex((el) => el.classList.contains("segs"))] = ranges[fades.findIndex((el) => el.classList.contains("cta"))];
     name = ranges[h] ? [ranges[h][0], Math.max(ranges[h][0] + FADE, Math.min(ranges[h][1] + 40, most))] : null;
     if (linked) {
       fades.forEach((el, i) => setRange(el, ranges[i]));
