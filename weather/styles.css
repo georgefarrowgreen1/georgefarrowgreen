@@ -512,6 +512,10 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .sky-alt { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
 .place-name { position: relative; }
 .pg-name { position: absolute; left: 0; top: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; }
+/* (and the line under it: the next place's over this one's, in its place in the line; not once the bar's taken up the
+   temperature there) */
+.pg-sub { opacity: 0; pointer-events: none; }
+.top.collapsed .pg-sub { visibility: hidden; }
 :root.pg-snap, :root.pg-snap .sky, :root.pg-snap .dots i { transition: none !important; }
 @supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
   body { timeline-scope: --cur; }
@@ -526,6 +530,10 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
   :root.pg-drag #place-name { animation-name: pg-name; }
   :root.pg-drag .pg-name-prev { animation-name: pg-name-prev; }
   :root.pg-drag .pg-name-next { animation-name: pg-name-next; }
+  :root.pg-drag .top:not(.collapsed) :is(#place-sub, .pg-sub) { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  :root.pg-drag .top:not(.collapsed) #place-sub { animation-name: pg-name; }
+  :root.pg-drag .top:not(.collapsed) .pg-sub-prev { animation-name: pg-name-prev; }
+  :root.pg-drag .top:not(.collapsed) .pg-sub-next { animation-name: pg-name-next; }
   @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } :root.pg-drag .pv { visibility: hidden; } }
 }
 @keyframes pg-col { 0% { translate: 100vw 0; } 50% { translate: 0 0; } 100% { translate: -100vw 0; } }

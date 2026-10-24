@@ -348,12 +348,14 @@ function baseline(wx, now) {
 }
 
 /* ---------- drawing ---------- */
+// (the line under a place's name in the bar)
+const subOf = (p) => (p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "");
 function showPlace() {
   const p = place(), btn = $("place-btn"), named = btn.classList.contains("named");
   // (its name faded in once it's known, as the app starts; found later (My Location's, say), the new one rising in)
   swap($("place-name"), p ? p.name : "Weather", named && !snapping);
   $("sr-place").textContent = p ? p.name : "your place";
-  const sub = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
+  const sub = subOf(p);
   swap($("place-sub"), sub, named && !snapping && !document.querySelector(".top").classList.contains("collapsed"));
   btn.classList.toggle("no-sub", !sub);
   if (p) btn.classList.add("named");
@@ -592,6 +594,8 @@ function layoutPager(force = false, only = true) {
   document.querySelector(".sky-next").dataset.sky = vb?.sky || "";
   document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
+  document.querySelector(".pg-sub-prev").textContent = subOf(a);
+  document.querySelector(".pg-sub-next").textContent = subOf(b);
   placePages(a, b, va, vb);
   keepNear(ready);
   if (force || el._shape !== shape) { el._shape = shape; centre(); }
@@ -610,7 +614,7 @@ function dragOff() {
   if (!dragging) return;
   dragging = false; document.documentElement.classList.remove("pg-drag");
   $("pager").classList.remove("pg-led");
-  if (!linked) for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name")) { x.style.translate = ""; x.style.opacity = ""; }
+  if (!linked) for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
 }
 // (as styles.css has it: the cards along with it (and the next place's beside them; or, wide, fading), the next sky over
 // this one, the next name over this one)
@@ -626,6 +630,11 @@ function follow() {
     document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
     $("place-name").style.opacity = o(1 - 3 * ax);
     document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
+    // (and the line under it, the same, unless the bar's taken up the temperature in its place)
+    if (!document.querySelector(".top").classList.contains("collapsed")) {
+      $("place-sub").style.opacity = o(1 - 3 * ax);
+      document.querySelector(".pg-sub-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-sub-next").style.opacity = o(2 * x - 1);
+    }
   });
 }
 const settleSoon = () => { clearTimeout(settleT); settleT = setTimeout(landed, 180); };
