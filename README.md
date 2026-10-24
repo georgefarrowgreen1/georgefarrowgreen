@@ -228,7 +228,10 @@ Motion, solid with Reduce Transparency.
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
-  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours".
+  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours". Opened to
+  make one without an invite (an app's Create your account), it says "You'll need an invite": the three steps (open
+  your invite, make your account, back in the app) and a place to paste the link, if it was sent somewhere it can't
+  be opened from (taken as if it had been opened, the way back to the app kept); a used or wrong invite says so there.
 - **Signing in, as seamless as it can be** (October 2026). The email field offers your passkeys in the keyboard as you
   tap it (passkey autofill: a quiet `mediation: "conditional"` ask as each sign-in card is drawn, put away before any
   other passkey's asked for: `passkeyAsk`, `passkeyMake`; so `signin/options` allows 150 asks in 15 minutes from one

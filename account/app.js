@@ -832,13 +832,16 @@ function signedOut(r) {
   if (!S.join) joinState();
   if (mode !== "signin") stopAutofill();
   const to = S.signFor && S.signFor.app !== "home" ? APPS[S.signFor.app].name : null;
+  // (no account to be made without an invite, as on the real site: said so up top, plainly, and what to do in the card)
+  const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
-    join: ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+    join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
+      : ["You’ll need an invite", `Accounts on georgefarrowgreen.com are by invitation. Once you have one, it takes a minute${to ? `, and you’re straight back in ${to}` : ""}.`]) : ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
     // (the mark floats; it rises in inside something else, as one animation can't do both)
-    r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : last ? avatar(last) : logo())),
+    r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : needInvite ? h("div.mark", {}, icon("mail", 46, 1.7)) : last ? avatar(last) : logo())),
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
     // (sent here by an app: which, as that's where you'll be once you're in)
@@ -985,7 +988,7 @@ async function joinState() {
   // (said in place, the rest of the page as it was: the card that was waiting, going to the form's size; or the line
   // under the card, still rising with the rest if it is, else faded in)
   const waiting = $("main .signin.joining"), line = $("#joinline");
-  if (S.gate === "join") { if (waiting) cardTo(waiting, joinCard()); else { S.settled = true; render(); } }
+  if (S.gate === "join") { if (waiting && (S.join.open || S.join.ok)) cardTo(waiting, joinCard()); else { S.settled = true; render(); } }
   else if (line) {
     const nu = joinLine(), rising = line.getAnimations().some((a) => a.animationName === "rise");
     line.className = nu.className + (line.classList.contains("rise") ? " rise" : ""); line.replaceChildren(...nu.childNodes);
@@ -1044,7 +1047,7 @@ const handleFrom = (name) => { const p = String(name).normalize("NFKD").replace(
 function joinCard() {
   const said = h("p.said", { role: "alert" });
   if (S.join?.pending) return h("div.signin.glass.joining", {}, h("div.empty", {}, h("span.spin")));
-  if (!(S.join?.open || S.join?.ok)) return h("div.signin.glass", {}, h("p.hint.center", { text: S.invite ? S.join?.error || "That invite doesn’t work." : "New accounts are by invitation. If someone sent you an invite link, open it to start." }));
+  if (!(S.join?.open || S.join?.ok)) return inviteCard();
   const prep = {};
   const ready = () => { prep.keys ||= E2E.newIdentity(); };
   const name = h("input", { type: "text", name: "name", autocomplete: "name", maxlength: "50", required: true });
@@ -1144,6 +1147,26 @@ function joinCard() {
   } }, ...steps, go);
   return h("div.signin.glass.joinsteps", {}, S.invite && !S.join.open && h("p.invited", { text: "You’ve been invited." }),
     h("div.jhead", {}, back, dots, of), form, said);
+}
+// No account without an invite: what it takes, at a glance (open the invite, make the account, back in the app that
+// sent you), and a place for the link, if it was sent somewhere it can't be opened from (a Home Screen app, say):
+// pasted, it's taken as if it had been opened (#invite=, fromGate), the way back to the app kept
+function inviteCard() {
+  const said = h("p.said", { role: "alert" }), to = S.signFor && S.signFor.app !== "home" ? S.signFor.app : null;
+  const link = h("input", { type: "url", name: "invite", inputmode: "url", autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "Paste the link you were sent" });
+  const step = (ic, text) => h("li", {}, h("span.step-ic", { "aria-hidden": "true" }, ic), h("span", { text }));
+  return h("div.signin.glass.invite", {},
+    h("ol.invite-steps", { "aria-label": "How it works" },
+      step(icon("mail", 22, 1.9), "Open your invite"),
+      step(icon("person", 22, 1.9), "Make your account"),
+      step(to ? h("img", { src: `/apps/${to}.png`, alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
+    h("form.form", { onsubmit: (e) => {
+      e.preventDefault(); say(said, "");
+      const m = /(?:#invite=|^)([A-Za-z0-9_-]{40,50})(?=[&\s]|$)/.exec(link.value.trim());
+      if (!m) return say(said, "That doesn’t look like an invite link: it ends in #invite= and a long code.", link);
+      location.hash = `#invite=${m[1]}`;
+    } }, field("Invite link", link), h("button.btn", { type: "submit" }, "Continue")),
+    said);
 }
 // A forgotten password: a link to the email (said the same whether there's an account for it or not)
 function forgotCard() {
