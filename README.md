@@ -1861,6 +1861,39 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   limit before saying it was too big; the home page's requests had no timeout, and a save that didn't go threw away
   what the owner had typed (it's kept now, even through showing it's you).
 
+## Production audit (October 2026)
+
+A pass over every app for UI and UX, motion, speed, stability and how the apps work together. What changed:
+
+- **InFlight:** a friend's last-seen time no longer redraws the screen every minute, and a redraw that news brings waits
+  while a finger's down or a list is gliding. A friend's `#add=` link is kept for a day (`inflight-add`) and shown on the
+  welcome, so it survives making the account on its page. Pages' unstamped `Link: modulepreload` header is dropped
+  (`functions/_app.js`). The welcome isn't held up by the old address's handover. The welcome sky draws its planet once
+  per size, batches its stars and runs at 30 fps (slower while typing). Focus moves to a new screen's title and back to
+  what opened a sheet; bubbles and photos are keyboard buttons; toasts are a live region; Copy is in a message's menu.
+  Flight bars move by transform. List text follows the phone's text size.
+- **Home page:** zoom works (copying outside the fields is still off). The hero's fades fit the scroll the page has, and
+  the name reaches the bar however short the page. Photos get a phone-sized copy at upload (`bg/<id>-m`, sent for
+  `?s=m` and to phones asking for the cover; older photos have none until added again), an ETag, a day at the edge,
+  and the next one is fetched shortly before it shows. A new focal point doesn't restart the slideshow. The stamped
+  script and styles are cached for good. Send says what's missing.
+- **Account page:** a sheet that opens over another focuses its title, and one that closes hands focus back to its row;
+  each sheet is a step in the browser's history, so the back swipe closes it. Banners no longer re-announce on every
+  redraw. A reset link checked without signal says so, with Try again. Light-mode greys and amber have more contrast;
+  small controls have 44 px tap areas; the two app cards' Open buttons line up; the segmented controls work with the
+  arrow keys; error toasts stay 5 s; the page looks for changes every 5 minutes (and on coming back to it).
+- **Weather:** a busy forecast service (429) is retried, and said as busy, not as you being offline. The rough first
+  place from the connection goes once a real one is chosen. The faint relief layer is drawn only zoomed well out (it
+  was the heaviest download on the map). The rain-alerts card shows only when there's something to do. Radar playback
+  rests under a sheet. The offline copy is checked with the server when it updates, not downloaded a second time.
+- **Server:** Weather's tables are set up once (a fingerprint in `wx_meta`), not a dozen trips on each fresh copy of the
+  server; warnings are kept by the phone 3 minutes; InFlight's message look-ups are one query each (the ids as one JSON
+  list, `json_each`); the home page's owner check is skipped for signed-out visitors and cached a minute.
+
+Left for the Cloudflare dashboard (not in the repo): Caching → Browser Cache TTL → **Respect Existing Headers** (it
+currently overrides the site's own `immutable` and `no-cache`); Security → Bots → turn off **JavaScript Detections**,
+and Web Analytics' automatic injection, on every host (both scripts are blocked by the site's CSP and log errors).
+
 ## Security notes
 
 - **Across the site (audit, October 2026):** each app is served only at its own address, under its own rules: an

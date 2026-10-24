@@ -99,10 +99,11 @@ export async function flyViews(D, me, other) {
 // On your own pigeons: who they flew over (for the map).
 export async function flyOnMine(D, me, ids) {
   const out = new Map();
-  for (const part of chunks([...new Set(ids)], 40)) {
-    const { results } = await D.prepare(`SELECT msg_id, user_id, at, place, waved FROM pg_flyover WHERE sender = ? AND told IS NOT NULL AND msg_id IN (${part.map(() => "?").join(",")}) ORDER BY at`).bind(me, ...part).all();
-    for (const r of results) { const l = out.get(r.msg_id) || []; l.push({ who: r.user_id, at: r.at, place: r.place, waved: r.waved || null }); out.set(r.msg_id, l); }
-  }
+  if (!ids.length) return out;
+  // (the ids as one list, not a ? each: one trip to the database however long the chat, rather than one per 40)
+  const { results } = await D.prepare("SELECT msg_id, user_id, at, place, waved FROM pg_flyover WHERE sender = ? AND told IS NOT NULL AND msg_id IN (SELECT value FROM json_each(?)) ORDER BY at")
+    .bind(me, JSON.stringify([...new Set(ids)])).all();
+  for (const r of results) { const l = out.get(r.msg_id) || []; l.push({ who: r.user_id, at: r.at, place: r.place, waved: r.waved || null }); out.set(r.msg_id, l); }
   return out;
 }
 

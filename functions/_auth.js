@@ -2,14 +2,22 @@
 // in on the site as for every app (the cookie for the whole site: functions/_account.js). There's no password of its own
 // any more. A change must come from the site's own pages (sameOrigin): another page on the site would send the cookie too.
 import { HttpError } from "./_pigeon.js";
-import { cookieUser, sameOrigin } from "./_account.js";
+import { cookieUser, cookieToken, sameOrigin } from "./_account.js";
 import { adminOf, ADMIN_LOOK } from "./api/pigeon/[[path]].js";
 
 // The account the browser's signed in to, and whether it's the owner's: { u, owner } (u null when no one is)
+// (who the owner is, kept a minute by each copy of the server, and asked for alongside the visitor, not after)
+let ownerMemo = { at: 0, v: null };
+const ownerNow = async (env) => {
+  if (ownerMemo.v && Date.now() - ownerMemo.at < 60e3) return ownerMemo.v;
+  const v = await adminOf(env).catch(() => null);
+  if (v) ownerMemo = { at: Date.now(), v };
+  return v;
+};
 export async function visitor(request, env) {
-  const u = await cookieUser(request, env);
+  if (!cookieToken(request, env)) return { u: null, owner: false };      // (no one signed in: nothing to look up)
+  const [u, admin] = await Promise.all([cookieUser(request, env), ownerNow(env)]);
   if (!u) return { u: null, owner: false };
-  const admin = await adminOf(env).catch(() => null);
   return { u, owner: !!admin && admin.id === u.id };
 }
 // (a change to the page needs the owner to have shown it's them in the last 12 hours, as Admin's lists do: a phone left

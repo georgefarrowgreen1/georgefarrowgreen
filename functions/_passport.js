@@ -124,11 +124,9 @@ export async function passportFor(D, uid, t) {
 // For a chat: the stamps each of your flights there was the first to collect, in the order it flew them
 export async function newStamps(D, uid, ids) {
   const out = new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const part = ids.slice(i, i + 90);
-    const { results } = await D.prepare(`SELECT first_id, place FROM pg_passport WHERE user_id = ? AND first_id IN (${part.map(() => "?").join(",")}) ORDER BY first_at, first_ord`).bind(uid, ...part).all();
-    for (const r of results) out.set(r.first_id, [...(out.get(r.first_id) || []), r.place]);
-  }
+  if (!ids.length) return out;
+  const { results } = await D.prepare("SELECT first_id, place FROM pg_passport WHERE user_id = ? AND first_id IN (SELECT value FROM json_each(?)) ORDER BY first_at, first_ord").bind(uid, JSON.stringify(ids)).all();
+  for (const r of results) out.set(r.first_id, [...(out.get(r.first_id) || []), r.place]);
   return out;
 }
 

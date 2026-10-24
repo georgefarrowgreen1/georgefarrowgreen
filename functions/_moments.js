@@ -144,17 +144,19 @@ export async function renear(D, id, t) {
 // only those between two pigeons I could see both of.
 export async function nearViews(D, me, ids, t) {
   const out = new Map();
-  for (const part of chunks([...new Set(ids)], 40)) {
-    const q = part.map(() => "?").join(",");
+  if (!ids.length) return out;
+  // (the ids as one list, not a ? each: one trip to the database however long the chat)
+  const part = new Set(ids);
+  {
     const { results } = await D.prepare(`SELECT n.*, ma.sender AS a_from, ma.recipient AS a_to, ma.pigeon AS a_kind, ma.swift AS a_swift,
       mb.sender AS b_from, mb.recipient AS b_to, mb.pigeon AS b_kind, mb.swift AS b_swift
       FROM pg_near n JOIN pg_msgs ma ON ma.id = n.a JOIN pg_msgs mb ON mb.id = n.b
-      WHERE n.at <= ?1 AND (n.a IN (${q}) OR n.b IN (${q}))`).bind(t, ...part, ...part).all();
+      WHERE n.at <= ?1 AND (n.a IN (SELECT value FROM json_each(?2)) OR n.b IN (SELECT value FROM json_each(?2)))`).bind(t, JSON.stringify([...part])).all();
     for (const r of results) {
       if (![r.a_from, r.a_to].includes(me) || ![r.b_from, r.b_to].includes(me)) continue;
       const side = (x) => ({ id: r[x], from: r[x + "_from"], to: r[x + "_to"], pigeon: r[x + "_kind"] || (r[x + "_swift"] ? "swift" : "standard") });
       for (const [mine, other] of [["a", "b"], ["b", "a"]]) {
-        if (!part.includes(r[mine])) continue;
+        if (!part.has(r[mine])) continue;
         const list = out.get(r[mine]) || [];
         list.push({ at: r.at, lat: r.lat, lon: r.lon, place: r.place, kind: r.kind, lead: r.lead == null ? null : r.lead === r[mine] ? "this" : "other", other: side(other) });
         out.set(r[mine], list);
