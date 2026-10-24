@@ -58,9 +58,11 @@ from the site's own pages, too).
 - **Edit:** the line above the name, the name and the line under it are outlined and typed into in place (Return
   finishes a line; what's pasted comes in as plain text). **Done** saves them (`PUT /api/content`) and says **Saved**
   with **Undo** for a few seconds (back to how they were: `POST /api/history`, which keeps the last 15). Escape leaves
-  editing without saving. A line left empty shows the default (`functions/_content.js`).
+  editing without saving. A line left empty shows the default (`functions/_content.js`). A line can be 120 characters
+  above the name, 80 for the name and 400 under it: a longer one isn't saved, and the page says which, keeping what was
+  typed to shorten.
 - **Background photos:** a bar at the foot while editing shows them; **Change** opens a sheet of them all: **Add photos**
-  (several at once, each made at most 2000 px and JPEG on the phone first), a tap on one to choose the part that stays
+  (several at once, up to 50 in all, each made at most 2000 px and JPEG on the phone first), a tap on one to choose the part that stays
   in view as the screen crops it, its tag (Both, Phone, Computer) to choose where it shows, and × to remove it.
 - **Messages** sent through Get in touch are in **Admin → Messages** on the owner's account page (below).
 
@@ -128,9 +130,11 @@ email look (below): their words as they wrote them, their address, when they
 sent it, and a button to reply (a reply goes to them). With `WEB3FORMS_KEY` set
 instead, Web3Forms sends them, in its own format. Until one is set, the form
 politely reports it's not configured. Spam defenses: a hidden honeypot field + a
-per-IP rate limit (5/hour) in KV. Each message is kept in D1 as well
-(`functions/_messages.js`), and read in **Admin → Messages** on the owner's
-account page.
+rate limit for each network (5 an hour, and 10 a day from an IPv6 /48). Each
+message is kept in D1 as well (`functions/_messages.js`), and read in **Admin →
+Messages** on the owner's account page, until it's deleted there; past 60 in a
+day, a message is kept there but not emailed, and past 150 the form says it's
+had a lot of messages today and keeps nothing more.
 
 ## Email
 
@@ -2116,9 +2120,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   address written oddly (`/%77eather/`, `//account/`) is sent to its plain self first (so it's routed as that), and one
   that can't be read as an address is a 404 (`.tools/tests/sitepaths.mjs`). HSTS covers every subdomain, and the home
   page opens in a window of its own (COOP). If Functions were ever skipped, `_redirects` still keeps `README.md`,
-  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form holds a network (an IPv6
-  /64 counts as one) to 5 messages an hour and the site to 60 a day, counted in D1 in one step, reads at most 16 KB, and
-  keeps line breaks out of the name; Admin's Reply link takes the writer's address as one address. A Weather device is
+  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form takes none from another site's
+  page, holds a network (an IPv6 /64 counts as one) to 5 messages an hour and a wider one (an IPv6 /48) to 10 a day,
+  keeps 150 a day in all and emails 60 of them (past 60, kept but not emailed; past 150, the form says it's busy and keeps
+  nothing more, which takes 15 networks or more in a day), counted in D1 in one step, reads at most 16 KB, and keeps line
+  breaks out of the name; Admin's Reply link takes the writer's address as one address. A Weather device is
   the account's only while the sign-in that made it so lasts (`wx_devs.sess`): signed out from anywhere (Signed-in
   devices, a new password, a reset), it's no longer the account's by the next tick, as if signed out on it, so a phone
   someone else had signed in hears nothing more of the account. Deleting an account removes Weather's share first (so a

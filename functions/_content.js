@@ -37,9 +37,14 @@ export async function saveContent(env, clean) {
   return filled(clean);
 }
 
-// one line of plain text: no line breaks or control characters, spaces run together, cut to max
-const line = (s, max) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+// one line of plain text: no line breaks or control characters, spaces run together
+const line = (s) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 
 export function sanitize(body) {
-  return { name: line(body.name, 80), role: line(body.role, 120), bio: line(body.bio, 400) };
+  return { name: line(body.name), role: line(body.role), bio: line(body.bio) };
 }
+
+// The most each line can be, counted by code point (most emoji are one; a flag, or one with a skin tone, is two). A
+// longer one is refused, not cut (cut, the page said Saved and the end of what was typed was lost).
+export const LIMITS = { role: 120, name: 80, bio: 400 };
+export const tooLong = (clean) => Object.keys(LIMITS).find((k) => [...clean[k]].length > LIMITS[k]) || null;
