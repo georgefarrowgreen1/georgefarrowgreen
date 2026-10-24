@@ -1745,29 +1745,25 @@ html.night .nav-ghost .night{background:none}
 /* ---------- signing in and out, in motion (app.js: handOff, arriving, dusk) ----------
    The account's page, where you sign in, has a sky of its own: pale lavender, or deep blue when the phone is dark (the
    phone's, not InFlight's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
-:root{--acct-sky:#f3f0fb;--acct-ring:rgba(72,62,150,.2);--acct-hush:rgba(255,255,255,.42);
+:root{--acct-sky:#f3f0fb;
   --dawn:radial-gradient(120% 50% at 50% 112%,rgba(255,190,150,.55),rgba(255,160,200,.22) 45%,transparent 72%)}
-@media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26;--acct-ring:rgba(190,205,255,.24);--acct-hush:rgba(150,170,255,.07)}}
+@media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26}}
 /* going: what you tapped grows into that sky (a copy of it, over everything: its own look, then the sky over it) */
 .handoff{position:fixed;z-index:100;display:grid;place-items:center;overflow:hidden;pointer-events:none}
 .handoff .hsky{position:absolute;inset:0;background:var(--acct-sky);opacity:0}
 .handoff .hlabel{position:relative;white-space:nowrap}
-/* coming back: the page's last picture (its sky, the dawn, a ring where your picture was), from the very first frame
+/* coming back: the page's last picture (its sky and the dawn), from the very first frame
    (theme.js marks the page before it's drawn), then app.js's own copy of it, the same; and if app.js never comes, it
    clears by itself */
 html.arriving body::after,.arrival .arv-sky{background:var(--dawn),var(--acct-sky)}
 html.arriving body::after{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;animation:fade-out .4s ease 12s forwards}
-html.arriving body::before,.arrival .arv-ring,.arrival .arv-me{position:fixed;left:50%;top:30%;width:78px;height:78px;margin:-39px 0 0 -39px;border-radius:50%}
-html.arriving body::before,.arrival .arv-ring{background:var(--acct-hush);box-shadow:inset 0 0 0 1.5px var(--acct-ring)}
-html.arriving body::before{content:"";z-index:101;pointer-events:none;animation:arv-wait 1.6s ease-in-out infinite alternate,fade-out .4s ease 12s forwards}
-.arrival .arv-ring{animation:arv-wait 1.6s ease-in-out infinite alternate}
-@keyframes arv-wait{from{opacity:.5}}
+.arrival .arv-me{position:fixed;left:50%;top:30%;width:78px;height:78px;margin:-39px 0 0 -39px;border-radius:50%}
 .arrival{position:fixed;inset:0;z-index:45;pointer-events:none}
 .arrival .arv-sky{position:absolute;inset:0}
 .arrival .arv-me{display:grid;place-items:center;overflow:hidden;color:#fff;font:600 32px/1 var(--font);letter-spacing:0;
   background:linear-gradient(160deg,#78b6ff,#3157d8 70%,#6a3fd8);box-shadow:0 12px 30px -12px rgba(40,50,150,.5)}
 .arrival .arv-me img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}   /* (over the initial, which stays under it as it fades in) */
-@media (prefers-reduced-motion:reduce){html.arriving body::after,html.arriving body::before{animation:fade-out .2s ease 12s forwards!important}}
+@media (prefers-reduced-motion:reduce){html.arriving body::after{animation:fade-out .2s ease 12s forwards!important}}
 /* until they come in, a row at a time: Messages' list, under its title */
 .screen.unlocking .view > .brandh ~ *{opacity:0}
 /* the padlock in the middle: opening as you come in, closing as you go (its shackle swings on its right leg) */

@@ -472,7 +472,7 @@ function arriveEnd(a, fade = false) {
     setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
   }
 }
-// Signed in: your photo (or your initial) comes into the ring (pill: where Sign in was, to draw in from)
+// Signed in: your photo (or your initial) comes into the picture (pill: where Sign in was, to draw in from)
 function arrive(a, pill) {
   clearTimeout(a.slow); a.timers.delete(a.slow);
   const still = motion.matches, av = a.av = document.createElement("span"), tint = document.createElement("span");
@@ -487,7 +487,6 @@ function arrive(a, pill) {
     if (img) fadeOnLoad(img);
     body.append(av);
     av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : spring() });
-    $(".back-in-ring", a.el)?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
     later(a, () => reveal(a, pill), still ? 250 : 420);
   });
 }

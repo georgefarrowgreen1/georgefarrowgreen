@@ -6,10 +6,10 @@ try {
   const k = JSON.parse(localStorage.getItem("wx:sky") || "null"), h = new Date().getHours();
   document.body.dataset.sky = k && typeof k.sky === "string" && /^[a-z-]+$/.test(k.sky) && Date.now() - k.at < 3600e3 ? k.sky : h >= 7 && h < 19 ? "cloudy-day" : "cloudy-night";
 } catch (_) {}
-// And back from signing in on the account's page (#signin=…): the picture that page ended on, its sky, its dawn and a
-// ring where your photo goes, there from the first frame too, till app.js has the sign-in and takes it on (arriveFrom)
+// And back from signing in on the account's page (#signin=…): the picture that page ended on, its sky and its dawn,
+// there from the first frame too, till app.js has the sign-in and takes it on (arriveFrom)
 if (/^#signin=/.test(location.hash)) {
-  const a = document.createElement("div"), ring = document.createElement("span");
-  a.className = "back-in"; a.id = "back-in"; a.setAttribute("aria-hidden", "true"); ring.className = "back-in-ring";
-  a.append(ring); document.body.append(a);
+  const a = document.createElement("div");
+  a.className = "back-in"; a.id = "back-in"; a.setAttribute("aria-hidden", "true");
+  document.body.append(a);
 }

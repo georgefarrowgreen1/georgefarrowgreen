@@ -16,7 +16,7 @@
   var ua = navigator.userAgent || "";
   var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   if (!mobile) root.setAttribute("data-device", "computer");
-  // back from signing in on the account's page (#signin=…): the page's last picture, its sky and a ring where your
-  // picture was, from the very first frame (styles.css html.arriving), until app.js puts up its own copy (arriving)
+  // back from signing in on the account's page (#signin=…): the page's last picture, its sky and its dawn, from the
+  // very first frame (styles.css html.arriving), until app.js puts up its own copy (arriving)
   else if (/^#signin=/.test(location.hash)) root.classList.add("arriving");
 })();

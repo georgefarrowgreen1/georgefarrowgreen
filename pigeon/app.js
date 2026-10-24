@@ -1933,7 +1933,7 @@ async function signInBack(code) {
   S.signingIn = true; render();
   try {
     const r = await api("handback", { method: "POST", body: { code, verifier: k.word } });
-    arrival?.me(r.me);                     // (who it is: their picture comes into the ring)
+    arrival?.me(r.me);                     // (who it is: their picture comes in)
     let ecdh;
     try {
       const got = await E2E.unseal(k.priv, k.pub, r.box);
@@ -1953,9 +1953,9 @@ async function signInBack(code) {
 
 /* ---------- signing in and out, in motion ----------
    Signing in is on the account's page, so going there and coming back are one movement. Going, what you tapped grows
-   into that page's sky (handOff). Coming back, InFlight starts from the page's last picture: its sky, a dawn along the
-   bottom, and a ring where your picture was, waiting while the sign-in is taken up (arriving). Your picture comes into
-   the ring; the sky clears to InFlight with a padlock opening in the middle; your picture flies down into Account; and
+   into that page's sky (handOff). Coming back, InFlight starts from the page's last picture: its sky and a dawn along
+   the bottom, waiting while the sign-in is taken up (arriving). Your picture comes into it, where the page had it; the
+   sky clears to InFlight with a padlock opening in the middle; your picture flies down into Account; and
    your chats come in, a row at a time. Signing out goes the other way (dusk). With Reduce Motion each part fades where
    it is instead, and none of it ever catches a tap or stays over the screen. */
 const acctSky = () => cssVar(document.documentElement, "--acct-sky") || (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
@@ -2060,9 +2060,8 @@ function arriving() {
   const still = STILL.matches, E = kEases(), box = document.createElement("div"), timers = [];
   // (not "arrive": that's a photo just come, fading in)
   box.className = "arrival"; box.setAttribute("aria-hidden", "true"); box.inert = true;
-  box.innerHTML = `<div class="arv-sky"></div><div class="arv-ring"></div>`;
+  box.innerHTML = `<div class="arv-sky"></div>`;
   root().append(box);
-  $(".arv-ring", box).style.animationDelay = `${-Math.round(performance.now())}ms`;       // (breathing in step with the first frame's ring)
   document.documentElement.classList.remove("arriving");
   let over = false, face = null, faceAt = 0, lock = null;
   const at = (ms, fn) => timers.push(setTimeout(() => { if (!over) try { fn(); } catch (_) {} }, ms));
@@ -2075,7 +2074,7 @@ function arriving() {
   const late = setTimeout(() => a.away(), 12000);
   const gone = (el, ms, to = "none") => play(el, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: still ? "none" : to }], { duration: still ? 200 : ms, easing: E.out, fill: "forwards" });
   const a = {
-    // who it is, once the account's page's sign-in is InFlight's: their picture comes into the ring (their initial,
+    // who it is, once the account's page's sign-in is InFlight's: their picture comes into the sky (their initial,
     // and their photo once InFlight, signed in, has fetched it)
     me(p) {
       try {
@@ -2102,7 +2101,7 @@ function arriving() {
       try {
         if (over) return;
         clearTimeout(late);
-        // (signed in at once: your picture still has a moment in the ring first)
+        // (signed in at once: your picture still has a moment there first)
         const dwell = face ? faceAt + (still ? 250 : 380) - performance.now() : 0;
         if (dwell > 20) { timers.push(setTimeout(() => a.in(), dwell)); return; }
         const list = S.view === "messages", onboarding = AUTH_VIEWS.has(S.view);
@@ -2111,7 +2110,7 @@ function arriving() {
         for (const el of [$view, $compose]) el.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l");
         if (list) root().classList.add("unlocking");
         applyTheme();
-        for (const el of box.querySelectorAll(".arv-sky, .arv-ring")) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 480, easing: "ease", fill: "forwards" });
+        for (const el of box.querySelectorAll(".arv-sky")) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 480, easing: "ease", fill: "forwards" });
         setTimeout(end, 4000);                                       // (whatever happens below, it's all gone by then)
         if (onboarding) {
           at(still ? 100 : 260, () => face && gone(face, 420, "translateY(-10px) scale(.92)"));

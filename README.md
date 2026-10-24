@@ -755,7 +755,7 @@ so there's nothing to set up beyond the address.
   (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
   into the account's card, your places ticked off under it as they go with the account ("Your places go with your
   account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
-  within six seconds whatever happens (the offline copy, `wx-82`). Signed in, it's just **one card for the account** (your
+  within six seconds whatever happens (the offline copy, `wx-85`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -1003,7 +1003,7 @@ service, with made-up forecasts for the time it runs).
 
 **1.3.3** (coming and going): signing in is one movement. **Sign in** grows to fill the screen in the account page's
 sky as it goes there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
-ended on (`theme.js` marks the page before it's drawn, styles.css `html.arriving`): your picture comes into the ring,
+ended on (`theme.js` marks the page before it's drawn, styles.css `html.arriving`): your picture comes into it,
 the sky clears to Messages as a padlock opens in the middle ("Messages unlocked"), your picture flies down into Account,
 your chats come in a row at a time, and "Welcome back" (`arriving`). Someone new goes straight on to choosing where they
 are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the

@@ -2095,7 +2095,7 @@ function arriveEnd(a, fade = false) {
     setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
   }
 }
-// The sign-in swapped (r: who): your photo (or your initial) comes into the ring, then Settings comes up as the picture
+// The sign-in swapped (r: who): your photo (or your initial) comes into the picture, then Settings comes up as the picture
 // fades, and the photo flies down into the account's card there. → a promise, kept once it's landed (or once there's
 // nothing for it to land on)
 function welcome(a, r) {
@@ -2112,7 +2112,6 @@ function welcome(a, r) {
     (topLayer ? document.body : a.el).append(av);
     if (topLayer) av.showPopover();
     av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : springEase() });
-    a.el.querySelector(".back-in-ring")?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
     arriveLater(a, () => toSettings(a), still ? 250 : 420);
   });
   return landed;
