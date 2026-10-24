@@ -94,11 +94,11 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
    again. Measured against the blurred ones, a difference of about 1 in 255.) */
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; opacity: 0.9; will-change: transform; }
 .a1 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-1) 73%, transparent), color-mix(in srgb, var(--aura-1) 66%, transparent) 20%, color-mix(in srgb, var(--aura-1) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 .a2 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-2) 73%, transparent), color-mix(in srgb, var(--aura-2) 66%, transparent) 20%, color-mix(in srgb, var(--aura-2) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 .a3 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-3) 73%, transparent), color-mix(in srgb, var(--aura-3) 66%, transparent) 20%, color-mix(in srgb, var(--aura-3) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 /* (held where they are while a sheet's up over the page) */
 body.sheet-up .aura { animation-play-state: paused; }
 /* dawn, as you're signed in (app.js dawnBreak): a warm light at the foot, the sky's own lights brighter */
@@ -115,6 +115,8 @@ body.sheet-up .aura { animation-play-state: paused; }
 .leave .face { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; overflow: hidden; font: 600 22px/1 var(--font-d);
   background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); opacity: 0; }
 .leave .face img { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; }
+/* (the lights coming up as the page opens, as they go when it leaves for an app: never there all at once) */
+@keyframes aura-in { from { opacity: 0; } }
 @keyframes drift1 { to { transform: translate(14vmax, 10vmax) scale(1.12); } }
 @keyframes drift2 { to { transform: translate(-16vmax, 8vmax) scale(0.9); } }
 @keyframes drift3 { to { transform: translate(10vmax, -12vmax) scale(1.08); } }
@@ -402,7 +404,9 @@ dialog.sheet.dragging { transition: none; }
 
 /* ---- waiting for the account ---- */
 /* (the shimmer a band of light moved across each, by its transform, rather than its background repainted every frame) */
-.skeleton { display: grid; gap: 18px; }
+/* (only once it's taking a while: a quick start goes straight to the page, without this in between) */
+.skeleton { display: grid; gap: 18px; animation: sk-late 0.3s var(--ease-out) 0.5s backwards; }
+@keyframes sk-late { from { opacity: 0; } }
 .sk { position: relative; overflow: hidden; border-radius: var(--r-group); background: var(--glass); }
 .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 8%, transparent) 50%, transparent 70%);
   transform: translateX(-100%); animation: shimmer 1.6s linear infinite; }

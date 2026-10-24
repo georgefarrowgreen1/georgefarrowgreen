@@ -2056,14 +2056,21 @@ function rowsOnScreen() {
 /* coming back from the account's page, signed in there: its last picture over InFlight until InFlight is in. (A
    sign-in that goes wrong, or is slow, clears it to the welcome; it never stays.) */
 let arrival = null;
-function arriving() {
+// (you: the initial the account's page sent; with it, you're there from the first frame, as the page left you, your
+// photo too if it sent one: theme.js arvPhoto)
+function arriving(you) {
   const still = STILL.matches, E = kEases(), box = document.createElement("div"), timers = [];
   // (not "arrive": that's a photo just come, fading in)
   box.className = "arrival"; box.setAttribute("aria-hidden", "true"); box.inert = true;
   box.innerHTML = `<div class="arv-sky"></div>`;
+  let over = false, face = null, faceAt = 0, lock = null, held = false;
+  if (you && [...you].length === 1) {
+    face = document.createElement("div"); face.className = "arv-me"; face.textContent = you; held = true;
+    if (window.arvPhoto) { const img = new Image(); img.alt = ""; img.src = window.arvPhoto; face.append(img); }
+    box.append(face);
+  }
   root().append(box);
-  document.documentElement.classList.remove("arriving");
-  let over = false, face = null, faceAt = 0, lock = null;
+  document.documentElement.classList.remove("arriving", "arv-face");
   const at = (ms, fn) => timers.push(setTimeout(() => { if (!over) try { fn(); } catch (_) {} }, ms));
   const end = () => {
     over = true; timers.forEach(clearTimeout); clearTimeout(late);
@@ -2078,11 +2085,13 @@ function arriving() {
     // and their photo once InFlight, signed in, has fetched it)
     me(p) {
       try {
-        if (over || face || !p) return;
-        face = document.createElement("div"); face.className = "arv-me"; faceAt = performance.now();
-        face.textContent = initials(p.name || p.handle || "?").slice(0, 1);
-        box.append(face);
-        play(face, still ? KF.fade : [{ opacity: 0, transform: "scale(.82)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 460, easing: still ? "ease" : E.spring, fill: "backwards" });
+        if (over || !p || (face && (!held || face.querySelector("img")))) return;
+        if (!face) {
+          face = document.createElement("div"); face.className = "arv-me"; faceAt = performance.now();
+          face.textContent = initials(p.name || p.handle || "?").slice(0, 1);
+          box.append(face);
+          play(face, still ? KF.fade : [{ opacity: 0, transform: "scale(.82)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 460, easing: still ? "ease" : E.spring, fill: "backwards" });
+        }
         const t0 = performance.now(), look = () => {
           if (over || performance.now() - t0 > 5000) return;
           const u = S.token && S.me?.id === p.id ? avatarUrl(S.me) : "";
@@ -2101,8 +2110,8 @@ function arriving() {
       try {
         if (over) return;
         clearTimeout(late);
-        // (signed in at once: your picture still has a moment there first)
-        const dwell = face ? faceAt + (still ? 250 : 380) - performance.now() : 0;
+        // (signed in at once: your picture, if it's only just come, still has a moment there first)
+        const dwell = face && !held ? faceAt + (still ? 250 : 380) - performance.now() : 0;
         if (dwell > 20) { timers.push(setTimeout(() => a.in(), dwell)); return; }
         const list = S.view === "messages", onboarding = AUTH_VIEWS.has(S.view);
         // (the screen it came in on was drawn under the sky: no copy of the welcome left fading under it, and no slide)
@@ -2110,7 +2119,7 @@ function arriving() {
         for (const el of [$view, $compose]) el.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l");
         if (list) root().classList.add("unlocking");
         applyTheme();
-        for (const el of box.querySelectorAll(".arv-sky")) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 480, easing: "ease", fill: "forwards" });
+        for (const el of box.querySelectorAll(".arv-sky")) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 420, easing: "ease", fill: "forwards" });
         setTimeout(end, 4000);                                       // (whatever happens below, it's all gone by then)
         if (onboarding) {
           at(still ? 100 : 260, () => face && gone(face, 420, "translateY(-10px) scale(.92)"));
@@ -2119,40 +2128,40 @@ function arriving() {
         }
         if (list) {
           lock = padlock(root(), false, "Unlocking your messages");
-          play(lock, still ? KF.fade : [{ opacity: 0, transform: "scale(.9)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 350, delay: still ? 0 : 120, easing: E.out, fill: "backwards" });
-          at(still ? 350 : 520, () => {
+          play(lock, still ? KF.fade : [{ opacity: 0, transform: "scale(.9)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 300, delay: still ? 0 : 60, easing: E.out, fill: "backwards" });
+          at(still ? 350 : 300, () => {
             shackle(lock, true); haptic("tick");
             play($(".plring", lock), still ? [{ opacity: 0 }, { opacity: 0.6, offset: 0.3 }, { opacity: 0 }] : [{ opacity: 0.85, transform: "scale(1)" }, { opacity: 0, transform: "scale(2.2)" }], { duration: still ? 600 : 760, easing: E.out });
           });
-          at(still ? 450 : 680, () => {
+          at(still ? 450 : 420, () => {
             const cap = $(".plcap", lock); cap.textContent = "Messages unlocked";
             play(cap, still ? KF.fade : [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: E.out });
           });
-          at(still ? 950 : 1180, () => gone(lock, 260, "scale(.96)"));
-          // the chats, a row at a time, top first (or all at once if you've already gone elsewhere)
-          at(still ? 1000 : 1260, () => {
+          at(still ? 950 : 860, () => gone(lock, 240, "scale(.96)"));
+          // the chats, a row at a time, top first (or all at once if you've already gone elsewhere), as the padlock goes
+          at(still ? 1000 : 900, () => {
             const rows = S.view === "messages" ? rowsOnScreen() : [];
             root().classList.remove("unlocking");
-            rows.forEach((el, i) => kPlay(el, still ? KF.fade : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: Math.min(i, 10) * 60, easing: E.out, fill: "backwards" }));
+            rows.forEach((el, i) => kPlay(el, still ? KF.fade : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: Math.min(i, 10) * 45, easing: E.out, fill: "backwards" }));
           });
         }
         // your picture: down into Account, where InFlight shows you, landing with a spring (or, where Account isn't in
         // sight, or with Reduce Motion, it fades where it is, and Account answers)
-        at(still ? 600 : 720, () => {
+        at(still ? 600 : 240, () => {
           if (!face) return;
           const tab = !$tabbar.hidden && !S.sheet && !$pop.firstElementChild && $('.tab[data-id="account"] svg', $tabbar);
           if (!tab || still) { gone(face, 300, "scale(.9)"); if (tab) play(tab, KF.chg, { duration: 400, delay: 150, easing: E.out }); return; }
-          if (!flyTo(face, tab, 760)) { gone(face, 300, "scale(.9)"); return; }
+          if (!flyTo(face, tab, 720)) { gone(face, 300, "scale(.9)"); return; }
           // (as it lands, before the spring has quite settled: into Account, which springs too)
-          at(460, () => {
+          at(440, () => {
             play(face, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease", fill: "forwards" });
             play(tab, [{ transform: "scale(1.3)" }, { transform: "none" }], { duration: 520, easing: E.bounce });
           });
         });
-        at(still ? 1400 : list ? 1900 : 1400, () => {
+        at(still ? 1400 : list ? 1350 : 1100, () => {
           if (S.me && !AUTH_VIEWS.has(S.view) && !S.sheet && !$pop.firstElementChild && !S.locked) toast(`Welcome back, ${esc(first(S.me.name || S.me.handle))}`);
         });
-        at(still ? 1500 : list ? 2050 : 1500, end);
+        at(still ? 1500 : list ? 1500 : 1250, end);
       } catch (_) { end(); }
     },
     // not in after all (a sign-in from elsewhere, or one that's run out, or went wrong): it clears to what's under it
@@ -9305,10 +9314,11 @@ async function start() {
   mount();
   textSize(); window.addEventListener("focus", textSize);
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const signedBack = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  const signedBack = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  const you = signedBack ? new URLSearchParams(location.hash.slice(1)).get("f") : null;
   if (signedBack) history.replaceState(null, "", location.pathname);
   // (it comes in under the account's page's last picture, which theme.js has drawn already: app.js's own copy now)
-  if (signedBack) arrival = arriving(); else document.documentElement.classList.remove("arriving");
+  if (signedBack) arrival = arriving(you); else document.documentElement.classList.remove("arriving");
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);

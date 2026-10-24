@@ -912,8 +912,8 @@ async function handBack(m, way, btn) {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
     const { code } = await post("handback", { app: a.app, ask: a.ask, ...key });
-    await leaving(btn, m);
-    leaveFor(`${a.back}#signin=${code}`);
+    const face = await leaving(btn, m);
+    leaveFor(`${a.back}#signin=${code}${a.app === "inflight" ? faceHint(m, face) : ""}`);
     await new Promise(() => {});             // (going: you, there, until the app's there)
   };
   try { await (!btn?.isConnected ? go() : btn.classList.contains("working") ? go() : working(btn, `Opening ${APPS[a.app].name}`, go)); }
@@ -1285,7 +1285,7 @@ function offerThen(m, k, card) {
       handBack(S.me?.signedIn ? S.me : m, { lock: k.lock }, yes);
     } catch (e) { say(said, e.message); }
   } }, icon("face", 21, 1.9), "Add a passkey");
-  const no = h("button.link", { type: "button", onclick: () => handBack(m, { lock: k.lock }, yes) }, "Not now");
+  const no = h("button.link", { type: "button", onclick: () => handBack(m, { lock: k.lock }, no) }, "Not now");
   cardTo(card, h("div.signin.glass.offer", {},
     h("div.offer-art", { "aria-hidden": "true" }, icon("face", 40, 1.6)),
     h("h2", { text: "Next time, just a glance" }),
@@ -1419,15 +1419,15 @@ async function ticked(btn) {
   const t = icon("check", 26, 2.8); t.classList.add("tick");
   btn.classList.add("done"); btn.replaceChildren(t);
   if (!still.matches) btn.animate([{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }], { duration: 460, easing: tok("--ease-spring") });
-  await pause(still.matches ? 160 : 420);
+  await pause(still.matches ? 160 : 260);
 }
 // Dawn over the sky, as you're signed in: in, as the page hands you on; or in and away again (passing), staying here
-function dawnBreak(passing) {
+function dawnBreak(passing, dur = 1100) {
   const d = $(".sky .dawn"); if (!d) return;
   $(".sky").classList.add("lit");
   d.getAnimations().forEach((a) => a.cancel());
   d.animate(passing ? [{ opacity: 0 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1 }],
-    { duration: still.matches ? 400 : passing ? 2600 : 1100, easing: tok("--ease-out"), fill: passing ? "none" : "forwards" })
+    { duration: still.matches ? 400 : passing ? 2600 : dur, easing: tok("--ease-out"), fill: passing ? "none" : "forwards" })
     .finished.then(() => { if (passing) $(".sky").classList.remove("lit"); }).catch(() => {});
 }
 function duskFall() {
@@ -1438,13 +1438,14 @@ function duskFall() {
     .finished.then(() => $(".sky").classList.remove("dim")).catch(() => {});
 }
 // Leaving for the app, signed in: the tick lifts out of the page as the page lets go, to where the app takes over (the
-// middle, a third of the way down), and turns into you (your photo, or your initial), as dawn breaks over the sky. The
-// app starts from just this. (With Reduce Motion: there, without the journey.)
+// middle, a third of the way down), turning into you (your photo, or your initial) on the way, as dawn breaks over the
+// sky and its drifting lights go, leaving just what the app opens on: the sky, its dawn and you. One movement, with
+// nothing held. (With Reduce Motion: there, without the journey.) → you, as you're left there (for the app's picture)
 async function leaving(btn, m) {
-  dawnBreak();
+  dawnBreak(false, 700);
   if (btn?.isConnected && btn.classList.contains("working")) await ticked(btn);
   const r = btn?.isConnected ? btn.getBoundingClientRect() : { left: innerWidth / 2 - 26, top: innerHeight / 2 - 26, width: 52, height: 52 };
-  const face = h("span.face", {}, [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?");
+  const face = h("span.face", {}, initialOf(m));
   if (m.photoAt) face.append(h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "" }));
   const me = h("div.leave", { "aria-hidden": "true" }, icon("check", 26, 2.8), face);
   const x = r.left + r.width / 2, y = r.top + r.height / 2, tx = innerWidth / 2 - x, ty = innerHeight * 0.3 - y;
@@ -1452,16 +1453,36 @@ async function leaving(btn, m) {
   document.body.append(me);
   if (btn?.isConnected) btn.style.visibility = "hidden";
   const page = $("main"), ease = tok("--ease-out"), glide = tok("--ease-glide");
+  for (const a of document.querySelectorAll(".sky .aura")) a.animate([{ opacity: getComputedStyle(a).opacity }, { opacity: 0 }], { duration: still.matches ? 300 : 560, easing: ease, fill: "forwards", id: "leaving" });
   if (still.matches) {
     me.style.transform = `translate(${tx}px, ${ty}px) scale(1.5)`; face.style.opacity = "1"; me.firstChild.style.opacity = "0";
     await page.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: ease, fill: "forwards" }).finished.catch(() => {});
-    return;
+    return face;
   }
-  page.animate([{ opacity: 1, transform: "none", filter: "blur(0)" }, { opacity: 0, transform: "scale(.96)", filter: "blur(6px)" }], { duration: 380, easing: ease, fill: "forwards" });
-  await me.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(1.5)` }], { duration: 560, easing: glide, fill: "forwards" }).finished.catch(() => {});
-  me.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, easing: ease, fill: "forwards" });
-  await face.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: 320, easing: tok("--ease-spring"), fill: "forwards" }).finished.catch(() => {});
-  await pause(180);
+  page.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }], { duration: 380, easing: ease, fill: "forwards" });
+  const move = me.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(1.5)` }], { duration: 560, easing: glide, fill: "forwards" });
+  await pause(200);
+  me.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: ease, fill: "forwards" });
+  face.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: 400, easing: tok("--ease-spring"), fill: "forwards" });
+  await move.finished.catch(() => {});
+  await pause(80);
+  return face;
+}
+const initialOf = (m) => [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?";
+// Who's coming, for InFlight to draw from its very first frame: the initial and, if your photo's here, a small copy of
+// it (only ever in the address's #, which goes to no server, and taken out of it at once). So the picture this page
+// ends on carries straight on, rather than going and coming back once InFlight has the sign-in.
+function faceHint(m, face) {
+  const q = new URLSearchParams({ f: initialOf(m) }), img = face?.querySelector("img");
+  try {
+    if (img?.complete && img.naturalWidth) {
+      const c = document.createElement("canvas"), s = Math.min(img.naturalWidth, img.naturalHeight);
+      c.width = c.height = 156;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 156, 156);
+      q.set("p", c.toDataURL("image/jpeg", 0.72).split(",")[1].replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
+    }
+  } catch (_) {}
+  return `&${q}`;
 }
 // (back on this page from the app, as the browser keeps a page: as it was before it left)
 addEventListener("pageshow", (e) => {
@@ -1469,6 +1490,7 @@ addEventListener("pageshow", (e) => {
   document.querySelectorAll(".leave").forEach((el) => el.remove());
   $("main")?.getAnimations().forEach((a) => a.cancel());
   $(".sky .dawn")?.getAnimations().forEach((a) => a.cancel()); $(".sky")?.classList.remove("lit");
+  document.querySelectorAll(".sky .aura").forEach((el) => el.getAnimations().forEach((a) => { if (a.id === "leaving") a.cancel(); }));
 });
 // What's in a box changed, the box going smoothly from its size to its new one (what's under it moving with it) as
 // what's new fades in (fade: all of what's in it); from where it is, if it was already on its way. Just the fade with

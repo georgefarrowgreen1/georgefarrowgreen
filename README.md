@@ -239,8 +239,12 @@ Motion, solid with Reduce Transparency.
   "Next time, just a glance" offers one before going back (once a month at most, sharing the nudge's month); for
   InFlight it gets its own copy of the key there and then, the password being here to open it. Password fields have an
   eye to show what's typed and say when Caps Lock's on; what's wrong shakes. Buttons turn into a spinner while they
-  work and a tick when done; leaving for an app, the tick lifts to where the app takes over and becomes your photo, as
-  dawn breaks over the sky (the app carries on from there); signing out, dusk passes over it. Joining is a step at a
+  work and a tick when done; leaving for an app, the tick lifts to where the app takes over, becoming your photo on the
+  way, as dawn breaks and the sky's drifting lights go (one movement, nothing held); the app carries on from just that
+  picture. For InFlight, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
+  server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
+  there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
+  placeholder only shows if it's slow to start. Signing out, dusk passes over it. Joining is a step at a
   time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
   that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
 - **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
@@ -1003,9 +1007,10 @@ service, with made-up forecasts for the time it runs).
 
 **1.3.3** (coming and going): signing in is one movement. **Sign in** grows to fill the screen in the account page's
 sky as it goes there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
-ended on (`theme.js` marks the page before it's drawn, styles.css `html.arriving`): your picture comes into it,
-the sky clears to Messages as a padlock opens in the middle ("Messages unlocked"), your picture flies down into Account,
-your chats come in a row at a time, and "Welcome back" (`arriving`). Someone new goes straight on to choosing where they
+ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
+your initial and photo from the address's `#`): the sky clears to Messages as a padlock opens in the middle ("Messages
+unlocked"), your picture flies down into Account, your chats come in a row at a time, and "Welcome back" (`arriving`),
+all overlapping, in about a second and a half. Someone new goes straight on to choosing where they
 are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
 welcome (`dusk`). With Reduce Motion each part fades where it is; none of it ever takes a tap or stays on screen.
 
