@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-78" />
+  <meta name="app-version" content="wx-79" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -59,12 +59,18 @@
         <p class="status" id="status" role="status"></p>
         <button class="pill-btn retry" id="retry-btn" type="button" hidden>Try again</button>
       </section>
+      <!-- (the weather as it was last shown, put up before the page is first painted: boot.js) -->
+      <script src="./boot.js"></script>
+      <!-- warnings, straight under the temperature (several: one banner that opens to them all) -->
+      <section class="stack" id="alerts" aria-label="Warnings"></section>
 
       <div class="skeleton" aria-hidden="true">
         <div class="card sk"><i class="sk-l w35"></i><div class="sk-hours"><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="sk-chart"></i></div>
         <div class="card sk"><i class="sk-l w30"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l w80"></i></div>
       </div>
 
+      <!-- the cards, in the usual order (app.js CARDS): rearranged as Settings has them, and on a wide screen shared out
+           between the two columns (app.js balance) -->
       <section class="card nowcast" id="nowcast" hidden aria-labelledby="nowcast-title">
         <div class="card-head">
           <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
@@ -73,15 +79,6 @@
         <p class="nowcast-text" id="nowcast-text"></p>
         <div id="nowcast-chart"></div>
       </section>
-
-      <section class="stack" id="alerts" aria-label="Warnings"></section>
-
-      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
-        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="star"></span>Highlights</h2>
-        <div class="insights" id="insights" role="list"></div>
-      </section>
-
-      <section class="card nudge" id="nudge" aria-labelledby="nudge-title" hidden></section>
 
       <section class="card" id="hourly" aria-labelledby="hourly-title">
         <div class="card-head">
@@ -94,6 +91,25 @@
         </div>
         <div class="strip" id="hourly-strip" tabindex="0" aria-label="Hour by hour"></div>
         <div id="hourly-chart" role="tabpanel"></div>
+      </section>
+
+      <section class="card nudge" id="nudge" aria-labelledby="nudge-title" hidden></section>
+
+      <section id="right-now" aria-labelledby="details-title">
+        <h2 class="section-title" id="details-title">Right now</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+
+      <section class="card" id="daily" aria-labelledby="daily-title">
+        <div class="card-head">
+          <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
+          <div class="seg icons" role="tablist" aria-label="Days by" id="days-seg">
+            <button role="tab" type="button" data-mode="temp" aria-selected="true" aria-label="Temperature" title="Temperature"></button>
+            <button role="tab" type="button" data-mode="rain" aria-selected="false" aria-label="Rain" title="Rain"></button>
+            <button role="tab" type="button" data-mode="wind" aria-selected="false" aria-label="Wind" title="Wind"></button>
+          </div>
+        </div>
+        <ol class="days" id="days"></ol>
       </section>
 
       <section class="card radar" id="radar" aria-labelledby="radar-title">
@@ -122,29 +138,10 @@
         <p class="chart-note radar-status"></p>
       </section>
 
-      <section class="card" id="daily" aria-labelledby="daily-title">
-        <div class="card-head">
-          <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
-          <div class="seg icons" role="tablist" aria-label="Days by" id="days-seg">
-            <button role="tab" type="button" data-mode="temp" aria-selected="true" aria-label="Temperature" title="Temperature"></button>
-            <button role="tab" type="button" data-mode="rain" aria-selected="false" aria-label="Rain" title="Rain"></button>
-            <button role="tab" type="button" data-mode="wind" aria-selected="false" aria-label="Wind" title="Wind"></button>
-          </div>
-        </div>
-        <ol class="days" id="days"></ol>
+      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
+        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="star"></span>Highlights</h2>
+        <div class="insights" id="insights" role="list"></div>
       </section>
-    </div>
-
-    <div class="col col-b">
-      <div class="skeleton" aria-hidden="true">
-        <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
-        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
-      </div>
-      <section aria-labelledby="details-title">
-        <h2 class="section-title" id="details-title">Right now</h2>
-        <div class="tiles" id="tiles"></div>
-      </section>
-
 
       <section class="card" id="windows" aria-labelledby="windows-title">
         <h2 class="card-title" id="windows-title"><span class="ct-icon" data-g="star"></span>Best times</h2>
@@ -161,6 +158,18 @@
         <div id="climate-body"><p class="muted small">Gathering 30 years of weather…</p></div>
       </section>
 
+
+
+
+
+
+    </div>
+
+    <div class="col col-b">
+      <div class="skeleton" aria-hidden="true">
+        <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
+        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
+      </div>
     </div>
   </main>
 
@@ -200,6 +209,10 @@
     <div class="sheet-body">
       <div class="set-page" data-page="root">
         <section class="acct" id="acct" aria-labelledby="acct-title"></section>
+        <!-- (the word about the alerts, once it's been put away on the page: settings.js drawSettings) -->
+        <ul class="grp folders" id="alerts-row" hidden>
+          <li><button class="folder" type="button" id="alerts-go"><span class="f-ic" data-g="bell" data-c="red"></span><span class="f-k">Get rain alerts<small>A heads-up here before rain starts</small></span><span class="f-v">Turn on</span></button></li>
+        </ul>
         <ul class="grp folders">
           <li><button class="folder" type="button" data-go="notify"><span class="f-ic" data-g="bell" data-c="red"></span><span class="f-k">Notifications</span><span class="f-v" id="fv-notify"></span></button></li>
           <li><button class="folder" type="button" data-go="commute"><span class="f-ic" data-g="commute" data-c="orange"></span><span class="f-k">Commute</span><span class="f-v" id="fv-commute"></span></button></li>
@@ -208,6 +221,7 @@
         <ul class="grp folders">
           <li><button class="folder" type="button" data-go="units"><span class="f-ic" data-g="gauge" data-c="grey"></span><span class="f-k">Units</span><span class="f-v" id="fv-units"></span></button></li>
           <li><button class="folder" type="button" data-go="look"><span class="f-ic" data-g="drop" data-c="blue"></span><span class="f-k">Appearance</span><span class="f-v" id="fv-look"></span></button></li>
+          <li><button class="folder" type="button" data-go="arrange"><span class="f-ic" data-g="cards" data-c="blue"></span><span class="f-k">Arrange your page</span><span class="f-v" id="fv-arrange"></span></button></li>
           <li><button class="folder" type="button" data-go="forecast"><span class="f-ic" data-g="chart" data-c="purple"></span><span class="f-k">Forecast</span><span class="f-v" id="fv-forecast"></span></button></li>
         </ul>
         <p class="grp-foot" id="about-app">Settings and places stay on this device.</p>
@@ -286,6 +300,13 @@
         </div>
       </form>
       <div class="set-page" data-page="act" hidden><div id="act-page"></div></div>
+      <!-- the page's cards: in your order, each shown or not (settings.js drawArrange) -->
+      <div class="set-page" data-page="arrange" data-title="Arrange your page" hidden>
+        <ul class="grp arrange" id="arrange-list" aria-label="The page’s cards, in order"></ul>
+        <p class="grp-foot">Drag a card by <span class="arr-hint" aria-hidden="true"></span> to move it, or switch it off. Warnings always come first, under the temperature.</p>
+        <p class="sr-only" id="arrange-said" role="status"></p>
+        <ul class="grp"><li><button class="grp-out" type="button" id="arrange-reset">Put back as it was</button></li></ul>
+      </div>
     </div>
   </dialog>
 

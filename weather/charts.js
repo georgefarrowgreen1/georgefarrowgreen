@@ -62,12 +62,16 @@ export function timeChart(host, opts) {
 const KEEP = "wx:chartw";
 let widths = {};
 try { widths = JSON.parse(localStorage.getItem(KEEP) || "{}") || {}; } catch (_) {}
-const whose = (host) => `${innerWidth}|${host.id || host.closest?.("[id]")?.id || ""}`;
+// (the window's width read once, and again as it changes: read while the page is being drawn, it would lay the page
+// out there and then, once for each chart)
+let vw = innerWidth;
+addEventListener("resize", () => { vw = innerWidth; });
+const whose = (host) => `${vw}|${host.id || host.closest?.("[id]")?.id || ""}`;
 // (the guess: a card's inside on a phone, the window less 68; on a wide screen, two columns, 1.15 to 1 (styles.css))
 const guessW = (host) => {
   if (widths[whose(host)]) return widths[whose(host)];
-  if (innerWidth < 980) return innerWidth - 68;
-  const both = Math.min(innerWidth, 1180) - 54;
+  if (vw < 980) return vw - 68;
+  const both = Math.min(vw, 1180) - 54;
   return Math.round((both * (host.closest?.(".col-b") ? 1 : 1.15)) / 2.15) - 36;
 };
 function seen(host, w) {
@@ -92,11 +96,23 @@ const watch = typeof IntersectionObserver === "function" && new IntersectionObse
     e.target._enterAt = performance.now();
   }
 }, { threshold: 0.3 });
+// (whether it's in sight is asked in the next frame, for every chart drawn at once, where the page is laid out anyway:
+// not by each as it's drawn, which would lay the page out once for each)
+const toEnter = new Set();
+let entering = 0;
 function enter(host, svg) {
   if (still?.matches) return;
-  const r = host.getBoundingClientRect();
-  if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { svg.classList.add("c-enter"); host._enterAt = performance.now(); return; }
-  waiting.set(host, svg); watch.observe(host);
+  waiting.set(host, svg); toEnter.add(host);
+  entering ||= requestAnimationFrame(() => {
+    entering = 0;
+    for (const el of toEnter) {
+      const r = el.getBoundingClientRect(), s = waiting.get(el);
+      if (!s) continue;
+      if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { waiting.delete(el); s.classList.add("c-enter"); el._enterAt = performance.now(); }
+      else watch.observe(el);
+    }
+    toEnter.clear();
+  });
 }
 // drawn again (more of the forecast in, a new size) while it's still drawing in: it carries on from there
 function carryOn(host, svg) {

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeFormat, parseWall, keyOf, compass, beaufort } from "../../../weather/format.js";
 import { skyDay, nextPhases, offsetFor, moonPhase } from "../../../weather/sky.js";
-import { compactClimate, climateOn, rankIn, yearsAgo, climateSpan } from "../../../weather/climate.js";
+import { compactClimate, climateOn, rankIn, yearsAgo, climateSpan, figures, extremes } from "../../../weather/climate.js";
 import { shapeForecast, shapeModels, shapeEnsemble } from "../../../weather/data.js";
 import { codeInfo, iconOf } from "../../../weather/codes.js";
 import * as I from "../../../weather/insights.js";
@@ -88,6 +88,24 @@ function fakeArchive() {
   tmax[time.indexOf("2011-10-19")] = 25;
   return { daily: { time, temperature_2m_max: tmax, temperature_2m_min: tmin, precipitation_sum: rain } };
 }
+test("climate: the figures kept for the days shown answer as the thirty years do, and go to them for any other day", () => {
+  const c = compactClimate(fakeArchive()), days = [0, 1, 2].map((i) => DAY0 + i * 864e5);
+  const f = JSON.parse(JSON.stringify(figures(c, days)));          // (as kept, and read back)
+  for (const w of days) {
+    const a = climateOn(c, w), b = climateOn(f, w);
+    assert.deepEqual(b.tmax, a.tmax); assert.equal(b.tmin.mean, a.tmin.mean); assert.equal(b.tmin.sorted, undefined);
+    assert.deepEqual(b.recordHigh, a.recordHigh); assert.equal(b.wet, a.wet);
+    assert.deepEqual(yearsAgo(f, w), yearsAgo(c, w));
+  }
+  assert.deepEqual(extremes(f), extremes(c));
+  assert.deepEqual(f.years, c.years);
+  // (a day it hasn't: nothing, or what the thirty years say if it's been given them)
+  const later = DAY0 + 9 * 864e5;
+  assert.equal(climateOn(f, later), null);
+  f.raw = () => c;
+  assert.deepEqual(climateOn(f, later), climateOn(c, later));
+  assert.deepEqual(yearsAgo(f, DAY0, 2), yearsAgo(c, DAY0, 2));
+});
 test("climate: normals, percentiles, records and a year ago", () => {
   const c = compactClimate(fakeArchive());
   assert.deepEqual(c.years, [1996, 2025]);

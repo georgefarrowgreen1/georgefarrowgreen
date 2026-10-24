@@ -1344,13 +1344,15 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
   // (Escape in a sheet opened from it, the credits say, closes the sheet, not this)
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big") && !document.querySelector("dialog[open]")) grow(false); });
-  // the vector map's code fetched a screen ahead; the radar started once it's on screen, and paused while it's off it
+  // the vector map's code fetched as the page is scrolled towards it, half a screen ahead: not as the page opens, where
+  // it would only hold up the forecast (in sight as it opens, a wide screen say, it's fetched as the map's made); the
+  // radar started once it's on screen, and paused while it's off it
   const near = new IntersectionObserver((es) => {
     if (!es.some((x) => x.isIntersecting)) return;
     near.disconnect();
     whenStill(() => vectorLib().then((v) => v.able() && v.preload()).catch(() => {}));
-  }, { rootMargin: "100% 0px" });
-  near.observe(card);
+  }, { rootMargin: "50% 0px" });
+  addEventListener("scroll", () => near.observe(card), { once: true, passive: true });
   // (in sight, as the page comes to rest: the map made then; scrolled on past it meanwhile, it waits to be seen again)
   let inView = false;
   const io = new IntersectionObserver((es) => {

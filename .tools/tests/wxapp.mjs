@@ -244,7 +244,7 @@ ok((await p.locator('.day-row').count()) === 16 && !(await p.locator('#daily .da
   const n = await p.evaluate(() => { const b = document.getElementById('nudge'); return { shown: !b.hidden, text: b.textContent }; });
   ok(n.shown && /Get rain alerts/.test(n.text) && /Turn on/.test(n.text), 'a word about the rain alerts, with a way to them', n.text.slice(0, 90));
   await p.locator('#nudge .link').evaluate((e) => e.click());
-  ok(await p.evaluate(() => document.getElementById('nudge').hidden && !!localStorage.getItem('wx:nudge')), 'and "Not now" puts it away (for a month)');
+  ok(await p.evaluate(() => document.getElementById('nudge').hidden && !!localStorage.getItem('wx:nudge')), 'and "Not now" puts it away (for good: a row in Settings instead)');
 }
 const nc = await p.textContent('#nowcast-text');
 // (rain from 30 minutes on: said from the start of the quarter hour it starts in)
@@ -256,15 +256,27 @@ ok(sw <= 390, 'nothing wider than the phone (it would zoom the page out)', `${sw
 const warn = await p.locator('#alerts .ins h3').allTextContents();
 // (icy patches instead of frost when the shower falls in the evening before the freezing night)
 ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.test(t)), 'warnings: frost and gales', warn.join(' · '));
+// several at once: one banner straight under the temperature, saying what they are (the most severe first), that opens
+// to them all
+{
+  const sum = await p.evaluate(() => { const b = document.querySelector('#alerts .warn-sum'); return b && { title: b.querySelector('.ins-open').textContent, line: b.querySelector('p').textContent,
+    open: b.querySelector('.ins-open').getAttribute('aria-expanded'), hidden: document.getElementById('warn-all').hidden, first: document.getElementById('alerts').previousElementSibling?.matches('script, .hero') }; });
+  ok(sum && sum.title === '4 warnings' && /^Amber thunderstorm, Yellow rain, Gales, (Frost|Icy patches)$/.test(sum.line) && sum.open === 'false' && sum.hidden && sum.first,
+    'several warnings: one banner under the temperature, saying what they are, worst first', JSON.stringify(sum));
+  await p.locator('#alerts .warn-sum .ins-open').click();
+  await p.waitForTimeout(400);
+  ok(await p.evaluate(() => !document.getElementById('warn-all').hidden && document.querySelector('#alerts .warn-sum .ins-open').getAttribute('aria-expanded') === 'true' && document.querySelectorAll('#warn-all > .ins').length === 4),
+    'and tapped, it opens to all four');
+}
 // official warnings (the Met Office's, through MeteoAlarm's feed, stood in for): worst first, above the app's own
 {
-  const off = await p.locator('#alerts .official').evaluateAll((as) => as.map((a) => ({ colour: a.dataset.colour, tag: a.querySelector('.tag')?.textContent, title: a.querySelector('.ins-open').textContent, from: a.querySelector('.ins-from').textContent })));
+  const off = await p.locator('#warn-all .official').evaluateAll((as) => as.map((a) => ({ colour: a.dataset.colour, tag: a.querySelector('.tag')?.textContent, title: a.querySelector('.ins-open').textContent, from: a.querySelector('.ins-from').textContent })));
   ok(off.length === 2 && off[0].colour === 'amber' && off[0].tag === 'Amber' && off[0].title === 'Thunderstorm warning' && off[0].from === 'Met Office · Tomorrow 12:00 to 21:00'
     && off[1].colour === 'yellow' && off[1].tag === 'Yellow' && off[1].title === 'Rain warning' && /^Met Office · Until (tomorrow )?\d\d:\d\d$/.test(off[1].from),
     'official warnings: the Met Office\'s, worst first (none over, green, cancelled, replaced or without a drawn area)', JSON.stringify(off));
-  const order = await p.locator('#alerts > *').evaluateAll((es) => es.map((e) => (e.matches('.official') ? 'official' : e.tagName === 'H2' ? 'heading' : 'own')));
-  ok(order.join(',').startsWith('heading,official,official,own'), 'above the app\'s own warnings, under the one heading', order.join(','));
-  await p.locator('#alerts .official .ins-open').nth(1).click();
+  const order = await p.locator('#warn-all > *').evaluateAll((es) => es.map((e) => (e.matches('.official') ? 'official' : 'own')));
+  ok(order.join(',').startsWith('official,official,own'), 'above the app\'s own warnings', order.join(','));
+  await p.locator('#warn-all .official .ins-open').nth(1).click();
   await p.waitForSelector('#warning[open]');
   await p.waitForTimeout(600);
   const sheet = await p.evaluate(() => ({ title: document.getElementById('warning-title').textContent, badge: document.querySelector('#warning .warn-badge')?.textContent,
@@ -332,12 +344,13 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
   const lead = await p.textContent('#brief b'), all = await p.textContent('#brief');
   ok(/\.$/.test(lead) && all.startsWith(lead) && all.length > lead.length, 'the briefing\'s first sentence in bold, the rest after it', lead);
 }
-// right now: straight after the 16 days (before the insights), each tile drawn as well as said, and each opening to
-// its hours in a sheet of its own (tapped where they are: not scrolled to, as the radar starts once it's scrolled to)
+// the page in its usual order: the warnings, the next 4 hours, the next 48, right now, the 16 days, the radar, then the
+// highlights and the rest; each tile drawn as well as said, and each opening to its hours in a sheet of its own (tapped
+// where they are: not scrolled to, as the radar starts once it's scrolled to)
 {
-  const order = await p.evaluate(() => { const t = document.getElementById('tiles'), i = document.getElementById('insights-card'), d = document.getElementById('daily'), hr = document.getElementById('hourly'), nc = document.getElementById('nowcast'), after = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    return { highlights: after(nc, i) && after(i, hr), afterDays: after(d, t), title: document.getElementById('insights-title').textContent }; });
-  ok(order.highlights && order.afterDays && order.title === 'Highlights', 'the highlights up top (after the next four hours, before the 48), right now after the days', JSON.stringify(order));
+  const order = await p.evaluate(() => { const ids = ['alerts', 'nowcast', 'hourly', 'right-now', 'daily', 'radar', 'insights-card', 'windows', 'accuracy', 'climate'], els = ids.map((x) => document.getElementById(x));
+    return { inOrder: els.every((e, i) => !i || !!(els[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING)), title: document.getElementById('insights-title').textContent }; });
+  ok(order.inOrder && order.title === 'Highlights', 'the page in order: warnings, the next 4 hours, the next 48, right now, the 16 days, the radar, then the highlights and the rest', JSON.stringify(order));
   const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'rain .rbars rect', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
   ok(!drawn.length, 'feels like, humidity, rain, pressure and visibility drawn too: a thermometer, a bar, the next day\'s rain, a dial, a scale', drawn.join(', ') || 'all there');
   ok(!(await p.locator('#tiles [data-kind="sea"]').count()), 'inland (London): no sea tile (the nearest sea cell is too far out to be its sea)');
@@ -893,13 +906,15 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   ok(lm.on && lm.alphas.includes(0.5) && lm.layers === 0, 'and to the minute: the frames either side faded into each other over it (in place of the frames)', JSON.stringify(lm));
   await c3.close();
 }
-// Settings: a short list of folders, each with what's in it said beside it
+// Settings: a short list of folders, each with what's in it said beside it (fetched as it's first opened: settings.js)
 await p.click('#settings-btn');
+await p.waitForSelector('#settings[open]'); await p.waitForTimeout(300);
 {
   const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
     hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
-  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Forecast: Tuned',
+  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
     'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
+  ok(await p.isVisible('#alerts-row'), 'the word about the alerts, put away on the page, a row at the top of Settings instead');
 }
 // your own activities
 await p.click('[data-go="acts"]');
@@ -923,7 +938,7 @@ ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf') |
 {
   // (one at a time, found afresh: each switch draws the list again)
   const flip = (on) => p.evaluate((on) => { for (let k = 0; k < 20; k++) { const i = [...document.querySelectorAll('#acts-list .act input[type="checkbox"], #settings-form input[name^="x_"]')].find((x) => x.checked !== on); if (!i) break; i.click(); } }, on);
-  await p.click('#settings-btn'); await flip(false); await p.waitForTimeout(300);
+  await p.click('#settings-btn'); await p.waitForSelector('#settings[open]'); await flip(false); await p.waitForTimeout(300);
   const gone = await p.evaluate(() => document.getElementById('windows').hidden && !document.getElementById('windows').offsetHeight);
   await flip(true); await p.waitForTimeout(300);
   const back = await p.evaluate(() => !document.getElementById('windows').hidden && document.querySelectorAll('#win-grid .win, #win-poor').length > 0);
@@ -941,8 +956,8 @@ const lens = await p.evaluate(() => ['temp', 'wind'].map((k) => {
 }));
 ok(lens.every((x) => x.off <= 2 && x.dw <= 2), 'the lens sits under the chosen one (°C of two; knots, the last of four)', JSON.stringify(lens));
 const still = await p.evaluate(() => {
-  const card = document.querySelector('.page .card'), sky = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky')), page = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.page'));
-  return { blur: getComputedStyle(card).backdropFilter, sky: sky.every((a) => a.playState !== 'running'), page: page.filter((a) => a.playState === 'running' && !(a instanceof CSSTransition)).map((a) => a.animationName) };
+  const bar = getComputedStyle(document.querySelector('.top'), '::before'), sky = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky')), page = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.page'));
+  return { blur: bar.backdropFilter, sky: sky.every((a) => a.playState !== 'running'), page: page.filter((a) => a.playState === 'running' && !(a instanceof CSSTransition)).map((a) => a.animationName) };
 });
 ok(still.blur === 'none' && still.sky && !still.page.length, 'under a sheet the page holds still: its glass unblurred, nothing moving on it or in the sky', JSON.stringify(still));
 await p.click('input[name="wind"][value="mph"]');
@@ -960,12 +975,14 @@ await p.click('input[name="wind"][value="mph"]');
 }
 await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('settings').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
-const back = await p.evaluate(() => getComputedStyle(document.querySelector('.page .card')).backdropFilter);
+// (the top bar's: the cards' glass is tinted, not blurred: styles.css)
+const back = await p.evaluate(() => getComputedStyle(document.querySelector('.top'), '::before').backdropFilter);
 ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
 // scrolled on past the top, the sky behind the cards holds still too (and moves again back at the top)
 {
   const skyRunning = () => p.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky') && a instanceof CSSAnimation).map((a) => a.playState));
   // (as it was at the top before: at dusk, dawn or under a clear sky its clouds are still anyway)
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(400);
   const before = await skyRunning();
   await p.evaluate(() => scrollTo(0, 1800)); await p.waitForTimeout(400);
   const deep = await skyRunning();
@@ -1110,11 +1127,11 @@ await ctx.close();
 {
   const { ctx, p } = await open({}, { url: `${HOST}/?lat=52.86&lon=1.47&name=Bacton`, settle: false });
   await p.waitForSelector('#alerts .official', { timeout: 20000 });
-  const cards = await p.locator('#alerts .official').evaluateAll((es) => es.map((e) => ({ title: e.querySelector('h3').textContent, from: e.querySelector('.ins-from').textContent, colour: e.dataset.colour, line: e.querySelector('p:last-child').textContent })));
+  const cards = await p.locator('#alerts .official:not(.warn-sum)').evaluateAll((es) => es.map((e) => ({ title: e.querySelector('h3').textContent, from: e.querySelector('.ins-from').textContent, colour: e.dataset.colour, line: e.querySelector('p:last-child').textContent })));
   ok(cards.length === 1 && cards[0].title === 'Flood warning' && cards[0].from === 'Environment Agency · In force' && cards[0].colour === 'amber' && /act now/.test(cards[0].line),
     'a flood warning from the Environment Agency, amber, in force (not the alert for an area 10 km off)', JSON.stringify(cards));
   await p.locator('#alerts').screenshot({ path: `${out}/wx-flood.png` });
-  await p.locator('#alerts .official .ins-open').evaluate((e) => e.click());
+  await p.locator('#alerts .official:not(.warn-sum) .ins-open').evaluate((e) => e.click());
   await p.waitForSelector('#warning[open]'); await p.waitForTimeout(500);
   await p.screenshot({ path: `${out}/wx-flood-sheet.png` });
   const warn = await p.evaluate(() => ({ text: document.getElementById('warning-body').textContent, link: document.querySelector('#warning .warn-link a')?.href }));

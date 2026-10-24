@@ -52,6 +52,7 @@ function stats(vals) {
 const daysOn = new WeakMap();
 export function climateOn(c, w) {
   if (!c) return null;
+  if (c.on) { const k = keyOf(w); return k in c.on ? c.on[k] : climateOn(c.raw?.(), w); }
   const target = doyOf(w), d = new Date(w), md = d.getUTCMonth() * 100 + d.getUTCDate(), key = target * 10000 + md;
   let kept = daysOn.get(c);
   if (!kept) daysOn.set(c, (kept = new Map()));
@@ -86,6 +87,7 @@ function dayOn(c, target, md) {
 const extremesOf = new WeakMap();
 export function extremes(c) {
   if (!c) return null;
+  if (c.on) return c.ext ?? null;
   if (extremesOf.has(c)) return extremesOf.get(c);
   const L = doyList(c);
   // each day of the year's average, then the 91 days about the warmest (or coldest) of them
@@ -129,10 +131,26 @@ export function rankIn(sorted, v) {
 // The same date a year ago (or n years ago), if it's in the record
 export function yearsAgo(c, w, n = 1) {
   if (!c) return null;
+  if (c.on) { const k = keyOf(w); return n === 1 && c.ago && k in c.ago ? c.ago[k] : yearsAgo(c.raw?.(), w, n); }
   const d = new Date(w), then = Date.UTC(d.getUTCFullYear() - n, d.getUTCMonth(), d.getUTCDate());
   const i = Math.round((then - parseWall(c.start)) / DAY);
   if (i < 0 || i >= c.tmax.length) return null;
   return { key: keyOf(then), tmax: c.tmax[i], tmin: c.tmin[i], rain: c.rain[i] };
+}
+
+// The figures the page asks of a climate for the days it shows (what's normal on each, and its records; the same day a
+// year ago; what's unusual here at any time of year), worked out once a day per place and kept (data.js), so the thirty
+// years needn't be read and gone through each time the app's opened. Taken by climateOn, yearsAgo and extremes as the
+// climate itself is; for a day it hasn't, they go to raw(), the thirty years themselves, if it's been given one
+export function figures(c, days) {
+  const on = {}, ago = {};
+  for (const w of days) {
+    const k = keyOf(w), v = climateOn(c, w);
+    // (the nights' sorted lows aren't asked for, only the days' highs: rankIn)
+    on[k] = v && { ...v, tmin: v.tmin && { ...v.tmin, sorted: undefined } };
+    ago[k] = yearsAgo(c, w);
+  }
+  return { years: c.years, on, ago, ext: extremes(c) };
 }
 
 // The years an archive should cover: the latest 30 whole years it has (ERA5 runs about a week behind)

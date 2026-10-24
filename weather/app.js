@@ -37,6 +37,17 @@ const W = () => S.f.windNum;
 const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, allWins: false, loading: false, stale: false, error: null };
 // the units to start with, whatever the phone's language: °C, mph, mm, hPa and the 24-hour clock (Settings → Units)
 const defaults = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
+// the page's cards, in their usual order (index.html), each with its element and its name in Settings (Arrange your
+// page: settings.js); the warnings aren't one of them, always first, under the temperature
+const CARDS = [["nowcast", "Next 4 hours"], ["hourly", "Next 48 hours"], ["right-now", "Right now"], ["daily", "16-day forecast"], ["radar", "Rain radar"],
+  ["insights-card", "Highlights"], ["windows", "Best times"], ["accuracy", "Forecast accuracy"], ["climate", "This time of year"]];
+// as you've arranged them: { order (every card, any the app has gained since put where it usually goes), off }
+function layoutOf(v) {
+  const ids = CARDS.map((c) => c[0]), o = v && typeof v === "object" ? v : {};
+  const order = [...new Set((Array.isArray(o.order) ? o.order : []).filter((k) => ids.includes(k)))];
+  for (const [i, k] of ids.entries()) if (!order.includes(k)) order.splice(Math.min(i, order.length), 0, k);
+  return { order, off: [...new Set((Array.isArray(o.off) ? o.off : []).filter((k) => ids.includes(k)))] };
+}
 function loadSettings() {
   const d = {
     ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
@@ -49,7 +60,7 @@ function loadSettings() {
     temp: one(o.temp, ["c", "f"], d.temp), wind: one(o.wind, ["mph", "kmh", "ms", "kn"], d.wind), precip: one(o.precip, ["mm", "in"], d.precip),
     pressure: one(o.pressure, ["hpa", "inhg", "mmhg"], d.pressure), clock: one(o.clock, ["12", "24"], d.clock), tune: o.tune !== false,
     glass: one(o.glass, ["clear", "standard", "tinted"], "standard"),
-    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: notifyOf(o.notify),
+    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: notifyOf(o.notify), layout: layoutOf(o.layout),
     activities: Array.isArray(o.activities) ? o.activities.filter((a) => a && typeof a === "object" && typeof a.name === "string") : d.activities,
   };
   S.f = makeFormat(S.settings);
@@ -83,6 +94,8 @@ async function start() {
   const g = S.places.findIndex((x) => x.gps);
   if (g > 0) { const was = place(); S.places.unshift(...S.places.splice(g, 1)); S.cur = S.places.indexOf(was); savePlaces(); }
   wire();
+  // (the cards in your order from the first, not moved there once the forecast's in)
+  balance("", true);
   // a shared link: ?lat=…&lon=…&name=…
   const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
@@ -545,37 +558,40 @@ function render() {
 let drawing = 0, drawnFor = "", tops = null;
 addEventListener("resize", () => { tops = null; });
 // (where the page's parts are laid out, as shown: once it's been laid out and shown; not as any glide has them meanwhile)
-const keepTops = () => setTimeout(() => { tops = new Map([...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden).map((x) => [x, x.offsetTop])); }, 0);
-// A wide screen's two columns kept about level: the radar (after the next 48 hours, or after Right now), the 15 days
-// (at the foot of either) and this time of year (under the 15 days, or after the best times) each on whichever side
-// does it. Worked out once a place's forecast is in (and again as its climate and its accuracy come), and as the
-// window's resized: not as the page is used, so nothing moves under a finger (a list unfolded, say); not with the radar
-// full screen. On a narrower one, one column, each in its own place
+const keepTops = () => setTimeout(() => { tops = new Map([...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden).map((x) => [x, x.offsetTop])); settle(); }, 0);
+// each card settles into place once, the first time it's scrolled up into view (styles.css settle), and is then left be:
+// not played over each time it passes the foot of the screen, which cost every frame of every scroll (a card drawn
+// afresh is watched afresh)
+const settled = typeof IntersectionObserver === "function" && CSS.supports?.("animation-timeline: view()")
+  ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("settled"); settled.unobserve(e.target); } }, { rootMargin: "0px 0px -160px 0px" }) : null;
+function settle() { if (settled) for (const x of document.querySelectorAll("main :is(.card, .ins, .tile):not(.settled)")) settled.observe(x); }
+// The page's cards laid out in your order (CARDS, as Settings has them: settings.js), any you've switched off left off,
+// the word about the alerts (nudge) after the next 48 hours. In one column, one under another; in two (a wide screen),
+// each in turn to whichever column is shorter so far, so they stay about level and read across and down in your order.
+// Worked out once a place's forecast is in (and again as its climate and its accuracy come), as the window's resized
+// and as you rearrange them: not as the page is used, so nothing moves under a finger (a list unfolded, say); not with
+// the radar full screen
 // (wide: two columns, as styles.css has them; not a phone on its side, its columns one list beside the weather now)
 let levelled = "", keyed = "";
 const twoCols = matchMedia("(min-width: 980px)"), onSide = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
 function balance(key = keyed, again = false) {
-  const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), radar = $("radar"), days = $("daily"), clim = $("climate");
-  const wide = twoCols.matches && !onSide.matches, want = `${key}|${wide}`;
-  if ((want === levelled && !again) || radar.classList.contains("radar-big")) return;
+  const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), L = S.settings.layout;
+  const wide = twoCols.matches && !onSide.matches, want = `${key}|${wide}|${L.order}|${L.off}`;
+  if ((want === levelled && !again) || $("radar").classList.contains("radar-big")) return;
   levelled = want; keyed = key;
+  for (const [k] of CARDS) $(k).toggleAttribute("data-off", L.off.includes(k));
+  const list = L.order.filter((k) => !L.off.includes(k)).map($);
+  const at = list.indexOf($("hourly"));
+  list.splice(at < 0 ? Math.min(1, list.length) : at + 1, 0, $("nudge"));
   // (each moved only if it isn't where it goes already: the radar's map, say, isn't taken out and put back for nothing)
-  const put = ([r, d, c]) => {
-    if (r ? radar.previousElementSibling !== $("hourly") : radar.nextElementSibling !== $("windows")) { if (r) $("hourly").after(radar); else $("windows").before(radar); }
-    if (d ? days.parentElement !== a || (days.nextElementSibling && days.nextElementSibling !== clim) : days.parentElement !== b || days.nextElementSibling) (d ? a : b).append(days);
-    if (c ? clim.parentElement !== a || clim.nextElementSibling : clim.previousElementSibling !== $("windows")) { if (c) a.append(clim); else $("windows").after(clim); }
-  };
-  const where = () => [radar, days, clim].map((x) => x.parentElement === a);
-  if (!wide) { put([true, true, false]); return; }
+  const put = (after, xs) => { for (const x of xs) { if (after.nextElementSibling !== x) after.after(x); after = x; } };
+  if (!wide) { put($("alerts"), list); return; }
   requestAnimationFrame(() => {
-    const gap = 16, hs = [radar, days, clim].map((x) => (x.offsetHeight ? x.offsetHeight + gap : 0)), now = where();
-    const baseA = a.offsetHeight - hs.reduce((t, x, k) => t + (now[k] ? x : 0), 0), baseB = b.offsetHeight - hs.reduce((t, x, k) => t + (now[k] ? 0 : x), 0);
-    const off = (pick) => Math.abs(baseA - baseB + hs.reduce((t, x, k) => t + (pick[k] ? x : -x), 0));
-    // (the radar and the 15 days on the left, this time of year under them, where it's as level as any)
-    const picks = [[1, 1, 1], [1, 1, 0], [0, 1, 1], [0, 1, 0], [1, 0, 0], [1, 0, 1], [0, 0, 0], [0, 0, 1]].map((x) => x.map(Boolean));
-    const best = picks.reduce((x, y) => (off(y) < off(x) ? y : x));
-    // (only for a real difference: not back and forth over a few pixels)
-    if (off(now) - off(best) > 60) put(best);
+    // (what's shown, by its height as it is: one not shown, the accuracy before it's come say, takes no room)
+    let ha = a.querySelector(".hero").offsetHeight + $("alerts").offsetHeight, hb = 0;
+    const A = [], B = [];
+    for (const x of list) { const h = x.offsetHeight ? x.offsetHeight + 22 : 0; if (ha <= hb) { A.push(x); ha += h; } else { B.push(x); hb += h; } }
+    put($("alerts"), A); put(b.querySelector(".skeleton"), B);
   });
 }
 let resized = 0, wasWide = null;
@@ -612,8 +628,7 @@ function sky(wx, now) {
   else if (kind === "partly") s = day ? "partly-day" : "partly-night";
   else s = day ? "cloudy-day" : "cloudy-night";
   document.body.dataset.sky = s;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", SKY_TOP[s] || "#2b5d96");
-  const top = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day": "#43566c", "rain-day": "#303f52", storm: "#1c2130", "snow-day": "#4f6580", fog: "#59626e", "clear-night": "#070d22", "partly-night": "#0c1428", "cloudy-night": "#151b27", "rain-night": "#10151f", "snow-night": "#1b2335", dusk: "#1f2b55", dawn: "#24376a" }[s];
+  const top = SKY_TOP[s] || "#2b5d96";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
   document.documentElement.style.backgroundColor = top;      // (what shows when the page is pulled past its ends)
 }
@@ -643,6 +658,18 @@ function hero(wx, now) {
   // (and written, so read out, only when what it says has changed: not every minute, nor as each part comes in)
   const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""], brief = $("brief");
   if (brief.dataset.said !== said) { brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; }
+  keepHero(wx);
+}
+
+// what the top of the page shows, kept for boot.js to put up the moment the page is next opened (written when it
+// changes, and every ten minutes or so meanwhile: how long ago it was shown is what boot.js goes by)
+let heroKept = "", heroAt = 0;
+function keepHero(wx) {
+  const c = $("now-temp"), v = JSON.stringify({ lat: wx.place.lat, lon: wx.place.lon, sky: document.body.dataset.sky, top: SKY_TOP[document.body.dataset.sky] || "#2b5d96",
+    temp: c.textContent, v: Number(c.dataset.v), cond: $("now-cond").textContent, hl: $("now-hl").textContent });
+  if (v === heroKept && Date.now() - heroAt < 10 * 60e3) return;
+  heroKept = v; heroAt = Date.now();
+  store.set("wx:hero", { ...JSON.parse(v), at: heroAt });
 }
 
 // the place on the radar's map as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how
@@ -774,9 +801,33 @@ function cards(wx, now) {
   const all = I.insights(wx, now, S.f, { prev: baseline(wx, now), commute: S.settings.commute });
   // official warnings first; the app's own after, less any an official one already says
   const official = inForce(wx.official), said = covered(official);
-  const warn = all.filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon)), rest = all.filter((c) => c.level !== "alert" && c.level !== "warn");
+  const warn = all.filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon));
+  // Highlights: only what the rest of the page doesn't say already (the tiles: UV, air, pressure and wind; the briefing:
+  // rain today; this time of year: today against what's normal)
+  const brief = $("brief").dataset.said || "", today = keyOf(now);     // (the briefing as hero has just said it)
+  const elsewhere = (c) => ["uv", "air", "pressure", "wind"].includes(c.id) || (c.id === "umbrella" && /\b(rain|showers?|drizzle|snow|sleet)\b/i.test(brief)) || (c.id === "normal" && c.day === today);
+  const rest = all.filter((c) => c.level !== "alert" && c.level !== "warn" && !elsewhere(c));
   const n = official.length + warn.length;
-  $("alerts").replaceChildren(...(n ? [h("h2", { class: "sr-only" }, n === 1 ? "Warning" : "Warnings"), ...official.map((w) => officialCard(w, wx, now)), ...warn.map(insightCard)] : []));
+  // straight under the temperature: one warning as its card; more, one banner saying what they are (the most severe
+  // first), that opens to all of them, rather than a stack of them pushing the forecast down the page
+  const worst = [...official].sort((a, b) => (b.level || 0) - (a.level || 0)), mine = [...warn].sort((a, b) => (b.level === "alert") - (a.level === "alert"));
+  const each = [...worst.map((w) => officialCard(w, wx, now)), ...mine.map(insightCard)];
+  if (n < 2) $("alerts").replaceChildren(...(n ? [h("h2", { class: "sr-only" }, "Warning"), ...each] : []));
+  else {
+    const name = (w) => { const b = badgeOf(w), t = titleOf(w).replace(/\s+warning$/i, ""); return b ? `${b} ${t.toLowerCase()}` : t; };
+    const top = worst[0], colour = top ? colourOf(top) : null, all = h("div", { class: "stack warn-all", id: "warn-all", hidden: !S.warnOpen }, ...each);
+    const open = h("button", { class: "ins-open", type: "button", "aria-expanded": String(!!S.warnOpen), "aria-controls": "warn-all", onclick: () => {
+      S.warnOpen = !S.warnOpen; all.hidden = !S.warnOpen; open.setAttribute("aria-expanded", String(S.warnOpen)); sum.classList.toggle("open", S.warnOpen);
+      // (they come in under it, one after another)
+      if (S.warnOpen && !calm.matches) [...all.children].forEach((c, i) => { c.classList.remove("rise"); c.style.setProperty("--i", String(i)); void c.offsetWidth; c.classList.add("rise"); });
+    } }, `${n} warnings`);
+    const sum = h("article", { class: `ins official warn-sum${S.warnOpen ? " open" : ""}`, "data-level": colour === "red" || (!top && mine[0].level === "alert") ? "alert" : "warn", "data-colour": colour },
+      h("div", { class: "ins-icon", svg: glyph(top ? glyphOf(top) : mine[0].icon, 18) }),
+      h("h3", {}, open),
+      h("p", {}, [...worst.map(name), ...mine.map((c) => c.title)].join(", ")),
+      h("span", { class: "ws-chev", svg: glyph("chevron", 16) }));
+    $("alerts").replaceChildren(h("h2", { class: "sr-only" }, "Warnings"), sum, all);
+  }
   // the app's own, in one card: the first three, and the rest under "N more"
   const shown = S.allInsights ? rest : rest.slice(0, FIRST_INSIGHTS);
   const box = $("insights");
@@ -1242,155 +1293,6 @@ function tiles(wx, now) {
   motion("tiles", ...out);
 }
 
-/* ---------- a tile, in full ---------- */
-// A tile in its own sheet: what it says now (as the tile has it), the hours around now on a chart (for the wind, which
-// way it'll blow too), and a line on what it means
-const ABOUT = {
-  feels: () => "How warm it feels on the skin: the temperature with the wind's chill, the air's dampness and the sun's warmth taken into account.",
-  wind: () => "Its speed 10 m up, averaged over ten minutes. Gusts are its strongest few seconds.",
-  humidity: (f) => `The dew point says best how muggy it is: under ${f.temp(10)} it's dry and fresh, from about ${f.temp(16)} humid, and from ${f.temp(20)} oppressive.`,
-  rain: () => "What's expected to fall each hour (snow as its water).",
-  pressure: (f) => `Falling pressure tends to bring cloud, wind and rain, and rising pressure settled weather. ${f.pressureDelta(3)} or more in 3 hours is quick.`,
-  visibility: (f) => `How far you can see: under ${f.dist(1000)} is fog, up to ${f.dist(4000)} mist or haze, and over ${f.dist(10000)} good.`,
-  uv: () => "From 3, sun cream and shade around the middle of the day; from 6, cover up; from 8, keep out of the midday sun.",
-  air: () => "The European Air Quality Index: to 20 good, 40 fair, 60 moderate, 80 poor and 100 very poor; over that, extremely poor.",
-  sun: () => "Golden hour: the sun low in the sky, its light soft and warm. Dark by: the end of twilight, when it's too dark to read outdoors. Worked out on your phone from where the place is.",
-  moon: () => "Worked out on your phone from the Moon's orbit. Its rise and set are over a flat horizon: hills and buildings make it later to appear and sooner to go.",
-  sea: (f, wx) => `From an ocean model about ${f.dist((wx.marine?.km || 1) * 1000)} offshore: a guide to the sea, not a tide table, and not for navigation. Tide times can be out by an hour or so on the coast, and heights are about mean sea level; waves are the average height of the biggest third.`,
-};
-// the tiles there are to open, in their order (air quality only where it's known)
-const detailKinds = () => TILES.map((x) => x[0]).filter((k) => S.say?.[k]);
-function stepDetail(n, quiet = false) {
-  if (!S.wx || !$("detail").open) return;
-  const kinds = detailKinds(), next = kinds[kinds.indexOf(S.detailKind) + n];
-  if (next) openDetail(next, quiet ? 0 : n);
-}
-function openDetail(kind, dir = 0) {
-  const wx = S.wx, say = S.say?.[kind];
-  if (!wx || !say) return;
-  S.detailKind = kind;
-  const f = S.f, now = nowWall(wx.place.offset), [, title, icon] = TILES.find((x) => x[0] === kind);
-  const when = (v) => `${f.day(v, now)} ${f.time(v)}`, hrs = I.hoursFrom(wx, now, 48);
-  const chart = h("div"), chart2 = h("div"), kids = [h("div", { class: "detail-now" }, ...say())];
-  const section = (text) => h("h3", { class: "day-section" }, text);
-  let draw = null;
-  // a chart of some hours: the nights shaded, now marked
-  const plot = (hours, o, host = chart) => () => timeChart(host, { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights: nightsOf(hours), now, height: 180, key: `${cell(wx.place.lat, wx.place.lon)}:${kind}`, ...o });
-  if (kind === "feels") {
-    const t = T(), pts = hrs.map((x) => { const fl = x.feels ?? x.temp; return { t: x.t, v: t(fl), lo: t(Math.min(fl, x.temp)), hi: t(Math.max(fl, x.temp)), x }; });
-    const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
-    kids.push(section("Next 48 hours"), chart, h("p", { class: "chart-note" }, "Shaded: the difference from the actual temperature."));
-    draw = plot(hrs, { kind: "line", color: COLOR.temp, bandColor: "#b8c6dc", points: pts, y: { fmt: (v) => f.deg(v) },
-      marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.feels) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.feels) }] : [])],
-      summary: `Feels like, hour by hour: from ${f.temp(lo.x.feels)} to ${f.temp(hi.x.feels)}.`,
-      tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.feels), "feels like"], [f.temp(p.x.temp), "actual"], [f.wind(p.x.wind), "wind"]] }),
-      table: { head: ["Time", "Feels like", "Actual"], rows: pts.map((p) => [when(p.t), f.temp(p.x.feels), f.temp(p.x.temp)]) } });
-  } else if (kind === "wind") {
-    // which way it'll blow, every three hours for a day: arrows going the way it goes
-    const every = hrs.filter((_, i) => i % 3 === 0).slice(0, 8);
-    const ways = h("div", { class: "ways", role: "list", "aria-label": "Wind every three hours" }, ...every.map((x) => h("div", { class: "way", role: "listitem", "aria-label": `${f.time(x.t)}: ${f.wind(x.wind)} from the ${compassWord(x.dir ?? 0)}` },
-      h("span", { class: "w-time" }, f.hour(x.t)),
-      h("span", { class: "w-arrow", svg: `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g transform="rotate(${Math.round(((x.dir ?? 0) + 180) % 360)} 12 12)"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>` }),
-      h("b", {}, String(f.windNum(x.wind))))));
-    kids.push(section("Next 48 hours"), chart, section(`Which way, every 3 hours (${f.windUnit})`), ways);
-    draw = () => drawHourChart(wx, now, hrs, chart, "wind", true);
-  } else if (kind === "humidity") {
-    const pts = hrs.map((x) => ({ t: x.t, v: x.rh ?? 0, x }));
-    kids.push(section("Next 48 hours"), chart);
-    draw = plot(hrs, { kind: "line", color: "#4C9BE8", points: pts, y: { min: 0, max: 100, ticks: [0, 50, 100], fmt: (v) => `${v}%` },
-      summary: `Humidity, hour by hour, between ${Math.round(Math.min(...pts.map((p) => p.v)))}% and ${Math.round(Math.max(...pts.map((p) => p.v)))}%.`,
-      tip: (p) => ({ title: when(p.t), rows: [[`${Math.round(p.v)}%`, "humidity"], [f.temp(p.x.dew), "dew point"]] }),
-      table: { head: ["Time", "Humidity", "Dew point"], rows: pts.map((p) => [when(p.t), `${Math.round(p.v)}%`, f.temp(p.x.dew)]) } });
-  } else if (kind === "rain") {
-    // the last day and the next two, hour by hour
-    const span = I.hoursBetween(wx, now - DAY, now + 2 * DAY), inch = f.units.precip === "in", amt = (mm) => (inch ? mm / 25.4 : mm);
-    const pts = span.map((x) => ({ t: x.t, v: amt(x.precip || 0), x })), wet = span.reduce((a, x) => ((x.precip || 0) > (a.precip || 0) ? x : a), span[0]);
-    kids.push(section("The last 24 hours and the next 48"), chart);
-    draw = plot(span, { kind: "columns", color: COLOR.rain, points: pts, y: { min: 0, fmt: (v) => (inch ? v.toFixed(2) : String(Math.round(v * 10) / 10)) },
-      marks: wet && (wet.precip || 0) >= 0.3 ? [{ t: wet.t, v: amt(wet.precip), text: f.precip(wet.precip) }] : [],
-      summary: `Rain each hour, from a day ago to two days ahead${wet && (wet.precip || 0) >= 0.1 ? `; the wettest hour ${when(wet.t)}, ${f.precip(wet.precip)}` : ": little or none"}.`,
-      tip: (p) => ({ title: when(p.t), rows: [[f.precip(p.x.precip), p.t < now ? "fell" : "expected"], ...(p.t >= now && p.x.pop != null ? [[`${Math.round(p.x.pop)}%`, "chance"]] : [])] }),
-      table: { head: ["Time", "Rain"], rows: pts.map((p) => [when(p.t), f.precip(p.x.precip)]) } });
-  } else if (kind === "pressure") {
-    const span = I.hoursBetween(wx, now - DAY, now + 2 * DAY).filter((x) => x.pressure != null), u = f.units.pressure;
-    const conv = (p) => (u === "inhg" ? p * 0.02953 : u === "mmhg" ? p * 0.750062 : p), pts = span.map((x) => ({ t: x.t, v: conv(x.pressure), x }));
-    const first = span[0], last = span[span.length - 1];
-    kids.push(section("The last 24 hours and the next 48"), chart);
-    draw = plot(span, { kind: "line", color: "#9B8CF2", points: pts, y: { fmt: (v) => (u === "inhg" ? v.toFixed(2) : String(Math.round(v))) },
-      summary: first && last ? `Pressure from ${f.pressure(first.pressure)} a day ago to ${f.pressure(last.pressure)} two days ahead.` : "Pressure, hour by hour.",
-      tip: (p) => ({ title: when(p.t), rows: [[f.pressure(p.x.pressure), "pressure"]] }),
-      table: { head: ["Time", "Pressure"], rows: pts.map((p) => [when(p.t), f.pressure(p.x.pressure)]) } });
-  } else if (kind === "visibility") {
-    const mi = f.units.wind === "mph", far = (m) => (mi ? m / 1609.34 : m / 1000), pts = hrs.filter((x) => x.vis != null).map((x) => ({ t: x.t, v: far(x.vis), x }));
-    kids.push(section("Next 48 hours"), chart);
-    draw = plot(hrs, { kind: "line", color: "#7FB8D9", points: pts, y: { min: 0, fmt: (v) => `${Math.round(v)}` },
-      summary: `Visibility in ${mi ? "miles" : "kilometres"}, hour by hour.`,
-      tip: (p) => ({ title: when(p.t), rows: [[f.dist(p.x.vis), "visibility"]] }),
-      table: { head: ["Time", "Visibility"], rows: pts.map((p) => [when(p.t), f.dist(p.x.vis)]) } });
-  } else if (kind === "uv") {
-    // today and tomorrow, from midnight
-    const span = I.hoursBetween(wx, dayStart(now), dayStart(now) + 2 * DAY), pts = span.map((x) => ({ t: x.t, v: x.uv ?? 0, x }));
-    const peaks = [0, 1].map((k) => span.filter((x) => x.t >= dayStart(now) + k * DAY && x.t < dayStart(now) + (k + 1) * DAY).reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null)).filter((x) => x && x.uv >= 1);
-    kids.push(section("Today and tomorrow"), chart);
-    draw = plot(span, { kind: "columns", color: "#E0A100", points: pts, y: { min: 0, max: Math.max(8, Math.ceil(Math.max(...pts.map((p) => p.v)))), fmt: (v) => String(Math.round(v)) },
-      marks: peaks.map((x) => ({ t: x.t, v: x.uv, text: String(Math.round(x.uv)) })),
-      summary: `UV index, hour by hour, today and tomorrow.${peaks.length ? ` Peaks: ${peaks.map((x) => `${Math.round(x.uv)} at ${f.time(x.t)} ${f.day(x.t, now).toLowerCase()}`).join("; ")}.` : " Low throughout."}`,
-      tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), uvName(p.v).toLowerCase()]] }),
-      table: { head: ["Time", "UV index"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v))]) } });
-  } else if (kind === "air") {
-    const span = (wx.air?.hourly || []).filter((x) => x.t >= now - HOUR && x.t < now + 2 * DAY && x.eaqi != null), pts = span.map((x) => ({ t: x.t, v: x.eaqi, x }));
-    if (pts.length > 3) {
-      kids.push(section("Next 48 hours"), chart);
-      draw = plot(hrs, { kind: "line", color: "#5FC08A", points: pts, y: { min: 0, fmt: (v) => String(Math.round(v)) },
-        summary: `Air quality (the European index), hour by hour, between ${Math.round(Math.min(...pts.map((p) => p.v)))} and ${Math.round(Math.max(...pts.map((p) => p.v)))}.`,
-        tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), airName(p.v).toLowerCase()], ...(p.x.pm25 != null ? [[`${Math.round(p.x.pm25)} µg/m³`, "fine particles"]] : [])] }),
-        table: { head: ["Time", "Index", "Fine particles"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v)), p.x.pm25 != null ? `${Math.round(p.x.pm25)} µg/m³` : "–"]) } });
-    }
-  } else if (kind === "sun" || kind === "moon") {
-    kids.push(...(S.more?.[kind]?.() || []));
-  } else if (kind === "sea") {
-    // the tide for two days, its highs and lows marked with their times; the waves alongside
-    const m = wx.marine, span = m.hourly.filter((x) => x.t >= now - HOUR && x.t <= now + 2 * DAY), feet = f.units.temp === "f", ht = (v) => (feet ? v * 3.28084 : v);
-    const tp = span.filter((x) => x.tide != null).map((x) => ({ t: x.t, v: ht(x.tide), x })), wp = span.filter((x) => x.wave != null).map((x) => ({ t: x.t, v: ht(x.wave), x }));
-    const turns = m.tides.filter((x) => x.t > now && x.t <= now + 2 * DAY), say1 = (x) => `${x.high ? "High" : "Low"} ${when(x.t)}`;
-    const fmt = (v) => { const n = feet ? Math.round(v) : Math.round(v * 10) / 10; return `${n < 0 ? "−" : ""}${feet ? Math.abs(n) : Math.abs(n).toFixed(1)}`; }, unit = feet ? "ft" : "m";
-    const draws = [];
-    if (tp.length > 6) {
-      const lo = Math.min(...tp.map((p) => p.v)), hi = Math.max(...tp.map((p) => p.v)), r = Math.max(0.3, hi - lo);
-      kids.push(section(`Tide, next 48 hours (${unit})`), chart);
-      draws.push(plot(hrs, { kind: "line", color: "#5AC8FA", points: tp, y: { min: lo - r * 0.2, max: hi + r * 0.35, fmt },
-        marks: turns.map((x) => ({ t: x.t, v: ht(x.h), text: f.time(x.t) })),
-        summary: turns.length ? `The tide over the next two days: ${turns.map(say1).join("; ")}.` : "The tide over the next two days.",
-        tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.tide), "tide"]] }),
-        table: { head: ["Time", "Tide"], rows: tp.map((p) => [when(p.t), f.height(p.x.tide)]) }, key: `${cell(wx.place.lat, wx.place.lon)}:tide` }));
-      // (and their times, day by day: the heights are the chart's, about mean sea level, not a tide table's)
-      const days = [...new Set(turns.map((x) => f.day(x.t, now)))];
-      if (turns.length) kids.push(h("dl", { class: "kv tides" }, ...days.flatMap((d) => [h("dt", {}, d), h("dd", {}, turns.filter((x) => f.day(x.t, now) === d).map((x) => `${x.high ? "High" : "Low"} ${f.time(x.t)}`).join(" · "))])));
-    }
-    if (wp.length > 6) {
-      const top = wp.reduce((a, p) => (p.v > a.v ? p : a));
-      kids.push(section(`Waves, next 48 hours (${unit})`), chart2);
-      draws.push(plot(hrs, { kind: "line", color: "#4C9BE8", points: wp, y: { min: 0, fmt },
-        marks: [{ t: top.t, v: top.v, text: f.height(top.x.wave) }],
-        summary: `Wave height, hour by hour: highest ${f.height(top.x.wave)} ${when(top.t)}.`,
-        tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.wave), "waves"], ...(p.x.period != null ? [[`${Math.round(p.x.period)} s`, "apart"]] : []), ...(p.x.waveDir != null ? [[compassWord(p.x.waveDir), "from"]] : [])] }),
-        table: { head: ["Time", "Waves", "From"], rows: wp.map((p) => [when(p.t), f.height(p.x.wave), p.x.waveDir != null ? compassWord(p.x.waveDir) : "–"]) }, key: `${cell(wx.place.lat, wx.place.lon)}:waves` }, chart2));
-    }
-    draw = () => draws.forEach((d) => d());
-  }
-  kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f, wx)));
-  $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title);
-  // (which of them it is: a swipe sideways, or the arrow keys, for the one before or after)
-  const kinds = detailKinds();
-  $("detail-dots").replaceChildren(...kinds.map((k) => h("i", { class: k === kind ? "on" : null })));
-  const body = $("detail-body");
-  body.replaceChildren(...kids);
-  const dlg = $("detail");
-  if (!dlg.open) openSheet(dlg);
-  dlg.querySelector(".sheet-body").scrollTop = 0;
-  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
-  if (draw) requestAnimationFrame(draw);
-}
 
 /* ---------- one day, in full ---------- */
 // how close each model has been here (weather/skill.js, from the nearest airport's reports)
@@ -1425,80 +1327,8 @@ function tunedToo(l) {
   for (const [name, r] of [["wind", l.wind], ["gusts", l.gust]]) if (Math.abs(r - 1) >= 0.08) out.push(`${name} ${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "stronger" : "lighter"}`);
   return out.join(", ");
 }
-// One day in full, in its sheet; the days along the top to move between (or a swipe sideways, or the arrow keys)
-// a day's name and its date, once: "Tomorrow, 22 October", "Wednesday, 28 October" (f.day dates those a week out itself)
-const dayTitle = (w, now) => { const n = S.f.day(w, now); return `${/\d/.test(n) ? S.f.dayName(w) : n}, ${S.f.dateLong(w)}`; };
 // Today, Tomorrow and Yesterday mid-sentence: "Full Moon tomorrow."
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
-function openDay(key, dir = 0) {
-  const wx = S.wx; if (!wx) return;
-  const f = S.f, now = nowWall(wx.place.offset), d = wx.daily.find((x) => x.key === key); if (!d) return;
-  S.dayKey = key;
-  $("day-title").textContent = dayTitle(d.date, now);
-  const days = sheetDays(wx, now), strip = $("day-strip"), inStrip = strip.contains(document.activeElement);
-  strip.replaceChildren(...days.map((x, i) => h("button", { type: "button", class: "ds-day", "aria-current": x.key === key ? "true" : null, "aria-label": dayTitle(x.date, now),
-    onclick: () => { if (x.key !== key) openDay(x.key, i > days.indexOf(d) ? 1 : -1); } },
-    h("span", {}, i === 0 ? "Today" : f.dayShort(x.date)), h("b", {}, String(new Date(x.date).getUTCDate())))));
-  const cur = strip.querySelector("[aria-current]");
-  if (cur) { strip.scrollLeft = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2; if (inStrip) cur.focus({ preventScroll: true }); }
-  const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
-  const kids = [
-    h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
-    // (only when the tuning changed what it says)
-    d.tuned && (f.temp(d.tmax) !== f.temp(d.raw.tmax) || f.temp(d.tmin) !== f.temp(d.raw.tmin)) ? h("p", { class: "small tuned-note" }, `Tuned for here · forecast alone ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}`) : null,
-    h("p", { class: "day-desc" }, I.describeDay(wx, key, f)),
-    h("div", { class: "parts" }, ...parts.map((p) => h("div", { class: "part" }, h("span", { class: "p-name" }, p.name[0].toUpperCase() + p.name.slice(1)),
-      h("span", { svg: weatherIcon(iconOf(p.code, p.isDay), 34) }), h("span", { class: "p-temp" }, f.temp(p.name === "overnight" ? p.tmin : p.tmax)), h("span", { class: "p-pop" }, (p.pop ?? 0) >= 20 ? `${Math.round(p.pop)}%` : "")))),
-  ];
-  const hrs = I.hoursBetween(wx, d.date, d.date + DAY);
-  const tChart = h("div"), rChart = h("div"), wChart = h("div");
-  if (hrs.length > 3) kids.push(h("h3", { class: "day-section" }, "Temperature"), tChart, h("h3", { class: "day-section" }, "Chance of rain"), rChart, h("h3", { class: "day-section" }, "Wind"), wChart);
-  const stat = (k, v) => h("div", { class: "stat" }, h("span", {}, k), h("b", {}, v));
-  kids.push(h("h3", { class: "day-section" }, "Details"), h("div", { class: "stats" },
-    stat("Rain", `${f.precip(d.precip)}${d.precipHours ? ` over ${Math.round(d.precipHours)} h` : ""}`),
-    stat("Chance of rain", d.popMax != null ? `${Math.round(d.popMax)}%` : "–"),
-    stat("Wind", `${f.wind(d.windMax)} ${compass(d.dir ?? 0)}`),
-    stat("Gusts", f.wind(d.gustMax)),
-    stat("Feels like", `${f.temp(d.fmin)} to ${f.temp(d.fmax)}`),
-    stat("Peak UV", d.uvMax != null ? String(Math.round(d.uvMax)) : "–"),
-    stat("Sunshine", d.sunshine != null ? f.dur(d.sunshine) : "–"),
-    stat("Sun", `${f.time(d.sunrise)} – ${f.time(d.sunset)}`),
-    (d.snow ?? 0) > 0 ? stat("Snow", f.snow(d.snow)) : null));
-  // against the climate
-  const c = wx.climate && climateOn(wx.climate, d.date);
-  if (c?.tmax) {
-    const p = rankIn(c.tmax.sorted, d.tmax), an = d.tmax - c.tmax.mean;
-    kids.push(h("h3", { class: "day-section" }, "For the time of year"), h("div", { class: "stats" },
-      stat("Against normal", Math.abs(an) < 1 ? "About normal" : `${f.delta(an)} ${an > 0 ? "warmer" : "colder"}`), stat("Normal high", f.temp(c.tmax.mean)),
-      stat("Warmer than", `${Math.round(p)}% of days`), c.recordHigh ? stat("Record", `${f.temp(c.recordHigh.v)} · ${c.recordHigh.year}`) : null));
-  }
-  // how sure, and what each model says
-  if (conf && d.date >= dayStart(now)) {
-    const bar = h("span", { class: "conf-bar" }), fill = h("i"); fill.style.width = `${conf.score}%`; bar.append(fill);
-    const why = conf.why.length ? `The models differ on the ${conf.why.join(" and the ")}.` : "";
-    kids.push(h("h3", { class: "day-section" }, "Forecast confidence"), h("div", { class: "conf" }, bar, h("b", {}, `${conf.level[0].toUpperCase() + conf.level.slice(1)} (${conf.score})`)),
-      why ? h("p", { class: "small muted" }, why) : null);
-    // (the ensembles: where the high and low most likely land, the middle 80% of their runs, tuned as the day is)
-    const ens = I.likely(d, wx.ensemble?.days?.[key]), span = (r) => `${f.temp(r[0])} to ${f.temp(r[1])}`;
-    if (ens) kids.push(h("div", { class: "stats" }, stat("Likely high", span(ens.hi)), ens.lo ? stat("Likely low", span(ens.lo)) : null));
-    const mods = wx.models?.days?.[key];
-    if (mods?.length) kids.push(h("table", { class: "models" }, h("caption", { class: "sr-only" }, "What each weather model forecasts"),
-      h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "High"), h("th", { scope: "col" }, "Low"), h("th", { scope: "col" }, "Rain")),
-      d.tuned ? h("tr", { class: "tuned-row" }, h("td", {}, "Tuned for here"), h("td", {}, f.temp(d.tmax)), h("td", {}, f.temp(d.tmin)), h("td", {}, "–")) : null,
-      ...mods.map((m) => h("tr", {}, h("td", {}, m.name), h("td", {}, f.temp(m.tmax)), h("td", {}, f.temp(m.tmin)), h("td", {}, m.precip != null ? f.precip(m.precip) : "–")))));
-  }
-  body.replaceChildren(...kids.filter(Boolean));
-  const dlg = $("day");
-  if (!dlg.open) openSheet(dlg);
-  dlg.querySelector(".sheet-body").scrollTop = 0;
-  // (moving to the next day or the one before, it slides in from that side)
-  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
-  if (hrs.length > 3) requestAnimationFrame(() => {
-    drawHourChart(wx, now, hrs, tChart, "temp", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, rChart, "rain", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, wChart, "wind", d.key === keyOf(now));
-  });
-}
 
 /* ---------- places ---------- */
 async function locate(quiet = false) {
@@ -1617,76 +1447,6 @@ function onSearch(now = false) {
   }, now === true ? 0 : 280);
 }
 
-/* ---------- settings ---------- */
-function drawSettings() {
-  drawAccount();
-  const form = $("settings-form");
-  for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
-  form.commute.checked = !!S.settings.commute?.on;
-  fillTimes(form.am, S.settings.commute?.am || "08:00"); fillTimes(form.pm, S.settings.commute?.pm || "17:30");
-  form.tune.checked = S.settings.tune !== false;
-  for (const k of ["laundry", "stars", "sunset"]) form[`x_${k}`].checked = S.settings.extras?.[k] !== false;
-  drawNotify(); drawActs(); drawFolders();
-}
-// Settings is a short list of folders (index.html), each with what's in it said beside it, opening over the list
-// with a way back (‹) where the sheet's title is; an activity's own page is a folder in Best times. setStack: the
-// folders open, in order, each with where it was opened from (focus goes back there) and how far the one under it
-// had scrolled.
-let setStack = [], actEdit = null;
-function drawFolders() {
-  const s = S.settings, form = $("settings-form"), said = (k) => form.querySelector(`input[name="${k}"]:checked`)?.closest("label").textContent.trim() || "";
-  const acts = s.activities.filter((a) => a.on !== false).map((a) => a.name);
-  $("fv-notify").textContent = notifying(s.notify) ? "On" : "Off";
-  $("fv-commute").textContent = s.commute?.on ? `${atText(s.commute.am)}, ${atText(s.commute.pm)}` : "Off";
-  $("fv-acts").textContent = acts.length ? acts.join(", ") : "Off";
-  $("fv-units").textContent = ["temp", "wind", "precip"].map(said).join(", ");
-  $("fv-look").textContent = said("glass");
-  $("fv-forecast").textContent = s.tune !== false ? "Tuned" : "Off";
-}
-function setShow(name, back, quiet = false) {
-  const top = setStack.at(-1), under = setStack.at(-2);
-  for (const pg of $("settings").querySelectorAll(".set-page")) {
-    const on = pg.dataset.page === name;
-    pg.hidden = !on; pg.classList.remove("in-next", "in-back");
-    if (on && !quiet && !calm.matches) pg.classList.add(back ? "in-back" : "in-next");
-  }
-  $("settings-title").textContent = name === "root" ? "Settings" : top?.title || "Settings";
-  $("set-back").hidden = name === "root";
-  $("set-back").setAttribute("aria-label", `Back to ${under?.title || "Settings"}`);
-}
-function setGo(name, title = $("settings").querySelector(`.set-page[data-page="${name}"]`)?.dataset.title) {
-  const body = $("settings").querySelector(".sheet-body");
-  setStack.push({ name, title, from: document.activeElement, scroll: body.scrollTop });
-  setShow(name, false);
-  body.scrollTop = 0;
-  $("settings-title").focus({ preventScroll: true });
-}
-function setBack() {
-  const top = setStack.pop(); if (!top) return;
-  const prev = setStack.at(-1);
-  setShow(prev?.name || "root", true);
-  $("settings").querySelector(".sheet-body").scrollTop = top.scroll;
-  if (!prev) drawFolders();
-  // (an activity's changes kept on the way back, as iOS keeps them; its row, drawn anew, has the focus)
-  if (top.name === "act" && actEdit) { const keep = actEdit; actEdit = null; keep(); }
-  else top.from?.focus?.({ preventScroll: true });
-}
-const setHome = () => { setStack = []; setShow("root", true, true); $("settings").querySelector(".sheet-body").scrollTop = 0; };
-function readSettings(e) {
-  if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
-  const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
-  const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join();
-  for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
-  S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
-  S.settings.tune = form.tune.checked;
-  S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
-  saveSettings(); afterFrame(redraw); drawFolders();
-  // (the times to choose from said the new way)
-  if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
-  // notifications speak your units too
-  const n = S.settings.notify;
-  if ((notifying(n) || n.endpoint) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
-}
 
 // The page behind redrawn once the next frame is out, so a choice's lens has begun to glide (started, it runs by
 // itself; redrawn first, the lens would wait for it, then jump). A sheet closing does any that's waiting at once.
@@ -1697,25 +1457,24 @@ function afterFrame(fn) {
   requestAnimationFrame(() => setTimeout(() => { if (waiting.delete(fn)) fn(); }, 0));
 }
 const flushWaiting = () => { for (const fn of [...waiting]) { waiting.delete(fn); fn(); } };
-const redraw = () => { render(); drawActs(); };
+const redraw = () => { render(); SE()?.drawActs(); };
 
 /* ---------- notifications ---------- */
 const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
 // A word about the alerts, until they're on or it's put away (for a month): what they are, and a way to them (or, on an
 // iPhone not yet running Weather from its Home Screen, how to get there first)
 function nudge() {
+  // (put away, it's a row at the top of Settings instead, till they're on: settings.js drawSettings)
   const box = $("nudge"), n = S.settings.notify, away = store.get("wx:nudge");
-  if (notifying(n) || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
+  if (notifying(n) || away) { box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
   box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
     h("p", {}, why || "A heads-up here before rain starts, official warnings as they're issued, and a morning briefing if you'd like one."),
-    h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify"); } }, "Turn on"),
+    h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettings("notify"); } }, "Turn on"),
       h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
   box.hidden = false;
 }
-// Settings, open at one of its folders
-function openSettingsAt(page) { $("settings-btn").click(); setGo(page); }
 // why this phone can't have them, if it can't
 function notifyWhy() {
   if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site (browser settings)." : null;
@@ -1775,106 +1534,15 @@ async function keepNotify() {
     await syncNotify();
   } catch (_) {}
 }
-// a time to choose, as "HH:MM": every quarter of an hour, said as the Clock setting says them (and the one chosen,
-// should it be between)
-function fillTimes(sel, at) {
-  const list = Array.from({ length: 96 }, (_, k) => `${String(Math.floor(k / 4)).padStart(2, "0")}:${String((k % 4) * 15).padStart(2, "0")}`);
-  if (/^\d\d:\d\d$/.test(at) && !list.includes(at)) list.push(at), list.sort();
-  sel.replaceChildren(...list.map((v) => h("option", { value: v }, atText(v))));
-  sel.value = at;
-}
 // (any of them on: rain alerts or official warnings for a place, the briefing)
 const notifying = (n) => !!(n.places.length || n.brief);
-const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
 // a place, as notifications know it (My Location: wherever it is now)
 const nkey = (p) => A.nkeyOf(p);
-const nname = (p) => (p.gps ? "My Location" : p.name);
-const spotOf = (p) => ({ lat: p.lat, lon: p.lon, name: p.name, ...(p.gps ? { gps: true } : {}) });
-// Allowed to show them here? (asked straight away, while the tap still counts: Safari won't ask otherwise.) Signed in,
-// a choice is the account's whether or not this device can show it: its other devices will. → [go on?, a word to say]
-async function allowed() {
-  const why = notifyWhy(), perm = why ? "denied" : Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-  if (perm === "granted") return [true, ""];
-  const said = why || "Notifications weren't allowed.";
-  return S.acct ? [true, `${said} Your other devices will still get them.`] : [false, said];
-}
-const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
-// What's on is shown by the switches and chips, so the line that says it is only heard (a screen reader's); shown when
-// there's more to it (saving, a note, why they can't be on)
-function notifySay(text, quiet = false) { const st = $("notify-status"); st.textContent = text; st.classList.toggle("sr-only", quiet); }
-function onText() {
-  const n = S.settings.notify, rain = n.places.filter((p) => p.rain).map(nname), warn = n.places.filter((p) => p.warn).map(nname);
-  const on = [rain.length ? `rain alerts for ${and(rain)}` : "", warn.length ? `official warnings for ${and(warn)}` : "", n.brief ? `a briefing at ${atText(n.briefAt)} for ${nname(n.brief)}` : ""].filter(Boolean);
-  const mail = S.acct && [n.email?.warn && warn.length ? "the warnings" : "", n.email?.brief && n.brief ? "the briefing" : ""].filter(Boolean);
-  return on.length ? `On: ${and(on)}.${mail?.length ? ` ${and(mail).replace(/^t/, "T")} by email too.` : ""}` : "Off.";
-}
 // a choice made: kept, and (signed in) the account's first, then this device told
 async function notifySaved() {
   if (!S.acct) return syncNotify();
   await keepInStep();
   if (!hereToo() && canShow()) { await syncNotify(); refreshDevices(); }
-}
-async function notifyChanged(note = "") {
-  saveSettings(); drawNotify(true);
-  notifySay("Saving…");
-  try { await notifySaved(); notifySay(`${onText()}${note ? ` ${note}` : ""}`, !note); }
-  catch (err) { notifySay(`Couldn't save that just now (${err.message}).`); }
-  drawNotify(true); drawAccount();
-}
-// rain alerts or official warnings (k) for a place, on or off
-async function togglePlace(p, k) {
-  const n = S.settings.notify, key = nkey(p), e = n.places.find((x) => nkey(x) === key), on = !e?.[k];
-  let note = "";
-  if (on) { const [go, said] = await allowed(); if (!go) { notifySay(said); return; } note = said; }
-  if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
-  n.places = n.places.filter((x) => x.rain || x.warn);
-  await notifyChanged(note);
-}
-// the warnings and the briefing by email too (signed in: the account's choice, kept with it; the server sends them to its
-// email, once that's confirmed)
-async function onMail() {
-  const form = $("settings-form");
-  S.settings.notify.email = { warn: form.mailWarn.checked, brief: form.mailBrief.checked };
-  await notifyChanged();
-}
-// the briefing: on or off, for which place, at what time
-async function onNotify() {
-  const form = $("settings-form"), n = S.settings.notify;
-  let note = "";
-  if (form.brief.checked && !n.brief) { const [go, said] = await allowed(); if (!go) { form.brief.checked = false; notifySay(said); return; } note = said; }
-  const key = form.briefFor.value, p = S.places.find((x) => nkey(x) === key) || (n.brief && nkey(n.brief) === key ? n.brief : place());
-  n.brief = form.brief.checked && p ? spotOf(p) : null;
-  n.briefAt = form.briefAt.value || "07:00";
-  await notifyChanged(note);
-}
-function drawNotify(keepStatus = false) {
-  const n = S.settings.notify, form = $("settings-form"), mine = (p) => n.places.find((e) => nkey(e) === nkey(p)) || {};
-  // each saved place, and any notified of that isn't saved (from before)
-  const rows = [...S.places, ...n.places.filter((e) => !S.places.some((p) => nkey(p) === nkey(e)))];
-  $("notify-places").replaceChildren(...rows.map((p) => {
-    const e = mine(p), name = nname(p);
-    const chip = (k, text) => h("button", { class: "np-chip", type: "button", "data-k": k, "aria-pressed": String(!!e[k]), "aria-label": `${text} for ${name}`, onclick: () => togglePlace(p, k) }, text);
-    return h("li", { class: "np-row", "data-key": nkey(p) }, h("span", { class: "np-name" }, name, p.gps && p.name !== "My Location" ? h("small", {}, p.name) : null), chip("rain", "Rain"), chip("warn", "Warnings"));
-  }));
-  form.brief.checked = !!n.brief;
-  const opts = S.places.map((p) => h("option", { value: nkey(p) }, nname(p)));
-  if (n.brief && !S.places.some((p) => nkey(p) === nkey(n.brief))) opts.push(h("option", { value: nkey(n.brief) }, n.brief.name));
-  form.briefFor.replaceChildren(...opts);
-  form.briefFor.value = n.brief ? nkey(n.brief) : place() ? nkey(place()) : "";
-  fillTimes(form.briefAt, n.briefAt || "07:00");
-  if (!keepStatus) notifySay(notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "", notifying(n));
-  drawMail(); drawNotifyAcct(); drawFolders();
-}
-// By email: signed in only, to the account's email once it's confirmed (the rain alerts not: an hour's notice by email
-// comes too late)
-function drawMail() {
-  const a = S.acct, form = $("settings-form"), n = S.settings.notify;
-  $("notify-mail").hidden = !a;
-  if (!a) return;
-  form.mailWarn.checked = !!n.email?.warn; form.mailBrief.checked = !!n.email?.brief;
-  form.mailWarn.disabled = form.mailBrief.disabled = !a.emailOk;
-  $("notify-mail-foot").replaceChildren(...(a.emailOk ? [`To ${a.email}, for the places and time above. Rain alerts aren’t emailed: they’d come too late.`]
-    : ["Confirm your email first, on ", h("button", { class: "link", type: "button", onclick: openAccount }, "your account page"), "."]));
 }
 
 /* ---------- your account ---------- */
@@ -1882,9 +1550,7 @@ function drawMail() {
 // kept with it, in step on every device you're signed in on. S.acct: { name, handle, devices, state } while signed in;
 // kept (wx:acct) with the version last in step and what was kept then (snap), so a change made meanwhile, here or on
 // another device, is put together with the other's rather than either being lost.
-const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities"];
-const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
-const PASSKEY = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="M2.5 20c.8-3 2.9-4.6 5.5-4.6 1.1 0 2.1.3 3 .8M16.5 8.5a2.5 2.5 0 1 1 0 5v5l1.5-1.5 1.5 1.5v-3.2"/></svg>';
+const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities", "layout"];
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 // what's here, as it's kept with the account (My Location is each device's own)
@@ -1919,7 +1585,7 @@ function takeUp(d) {
   loadSettings();
   if (here && at < 0) go(); else if (S.wx) render();
   if (units !== canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]) && notifying(S.settings.notify)) syncNotify().catch(() => {});
-  drawSaved(); if ($("settings").open) drawSettings();
+  drawSaved(); if ($("settings").open) SE()?.drawSettings();
 }
 // Sending what's changed here (one at a time; a change while one's going goes after it), and if the account's moved on
 // meanwhile, putting the two together and sending that
@@ -1945,7 +1611,7 @@ async function stepOnce() {
     store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) });
   }
 }
-function inStep(state) { if (!S.acct || S.acct.state === state) return; S.acct.state = state; drawInStep(); drawAccount(); }
+function inStep(state) { if (!S.acct || S.acct.state === state) return; S.acct.state = state; drawInStep(); SE()?.drawAccount(); }
 // The account as the server has it (on opening, and again on coming back after a minute): signed out elsewhere, signed
 // in elsewhere on the site, or changed on another device
 let pulledAt = 0;
@@ -1964,25 +1630,25 @@ async function pull() {
 // here: signed in on this page just now (so this device's places are meant for the account)
 async function adopt(r, here = false) {
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle);
-  if (fresh && !here && mine().places.length) { S.ask = r; drawAccount(); return; }
+  if (fresh && !here && mine().places.length) { S.ask = r; SE()?.drawAccount(); return; }
   S.ask = null;
   S.acct = { ...profileOf(r), devices: r.devices || [], state: S.acct?.state || "ok" };
   if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
   store.set("wx:acct", { ...profileOf(r), devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
-  drawAccount(); drawInStep(); drawMail();
+  SE()?.drawAccount(); drawInStep(); SE()?.drawMail();
   try { await keepInStep(); } catch (_) {}
   // (this device, if it shows notifications, one of the account's)
   if (fresh && canShow() && (notifying(S.settings.notify) || S.settings.notify.endpoint)) { await syncNotify().catch(() => {}); refreshDevices(); }
 }
 async function refreshDevices() {
-  try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); drawAccount(); } } catch (_) {}
+  try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); SE()?.drawAccount(); } } catch (_) {}
 }
 // who, as the account has them: name, handle, email, the photo's time (and the account's own id, to know it again)
 const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", emailOk: !!r.emailOk, photoAt: r.photoAt || null });
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
-function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount(); drawInStep(); if ($("settings").open) SE()?.drawNotify(); }
 // Signing out here (the foot of Settings): of the site's account in this browser; this device keeps its places and
 // settings, and its notifications go on as its own
 async function signOutHere() {
@@ -1998,101 +1664,9 @@ function signedOutElsewhere() {
   if (n.endpoint && n.devId) A.leave(n.endpoint).catch(() => {});
   signedOut();
 }
-async function signIn(how, email, password) {
-  const said = $("acct-said"), btns = [...$("acct-in").querySelectorAll("button")];
-  // (as on every page of the site that signs in: the same words for what's missing)
-  if (how !== "passkey" && (!email || !password)) { said.textContent = email ? "Enter your password." : "Enter your email."; said.classList.add("bad"); return; }
-  said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
-  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password), true); }
-  catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
-  finally { btns.forEach((b) => (b.disabled = false)); }
-}
-// this device getting the account's notifications too
-async function sendHere() {
-  const [go, said] = await allowed();
-  if (!go || !canShow()) { notifySay(said); return; }
-  try { await syncNotify(); await refreshDevices(); } catch (e) { notifySay(`Couldn't do that just now (${e.message}).`); }
-}
 // (said only when there's something to say: in step, nothing; as a note under the saved places, and short on the account's card)
 const STATES = { saving: ["Syncing…", "Syncing…"], waiting: ["Offline. Your places will sync when you’re back online.", "Offline, will sync later"],
   error: ["Couldn’t sync just now. It’ll try again.", "Couldn’t sync"] };
-function drawAccount() {
-  const box = $("acct"); if (!box) return;
-  box.hidden = !!S.noAcct;
-  // (signed in elsewhere on the site to an account this device hasn't been in step with: asked before its places go to it)
-  if (S.ask && !S.acct) {
-    const r = S.ask;
-    return box.replaceChildren(
-      h("div", { class: "acct-card" }, avatarOf(r), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, r.name), h("span", {}, `@${r.handle} · signed in on this browser`))),
-      h("p", { class: "acct-new" }, "Keep this device’s places and settings with this account, the same on every device it’s signed in on?"),
-      h("button", { class: "acct-btn primary", type: "button", id: "acct-keep", onclick: () => adopt(r, true) }, `Keep them with @${r.handle}`),
-      h("button", { class: "acct-btn", type: "button", id: "acct-notme", onclick: async () => { try { await A.signOut(); } catch (_) {} S.ask = null; signedOut(); } }, "Not you? Sign out"));
-  }
-  const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
-  $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
-  $("out-grp").hidden = !a;
-  $("acct-in").replaceChildren();
-  if (!a) {
-    // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
-    // and a new account, on the account's own page)
-    const pk = A.passkeysWork(), page = accountPage();
-    const form = h("form", { class: "acct-form", novalidate: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
-      h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", placeholder: "Email", "aria-label": "Email", autocapitalize: "off", spellcheck: "false" }),
-      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", onfocus: () => import("./argon2.js").catch(() => {}) }),
-      h("button", { class: pk ? "acct-btn" : "acct-btn primary", type: "submit" }, "Sign in"));
-    // (in Settings, a row; signing in, a folder of its own)
-    box.replaceChildren(h("button", { class: "acct-card go", type: "button", id: "acct-signin", "data-go": "signin" }, h("span", { class: "acct-ic", svg: PERSON }),
-      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) })));
-    $("acct-in").replaceChildren(...[
-      h("p", { class: "acct-lead" }, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."),
-      pk ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
-      pk ? h("p", { class: "acct-or" }, "or with your email") : null,
-      form,
-      page ? h("a", { class: "acct-link", href: `${page}#forgot` }, "Forgot password?") : null,
-      said,
-      page ? h("p", { class: "acct-new" }, "New here? ", h("a", { href: `${page}#join` }, "Create your account")) : null].filter(Boolean));
-    return;
-  }
-  // (signed in from its own folder: back to the list, the account's card at its top)
-  if (setStack.at(-1)?.name === "signin") setBack();
-  // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
-  // there), and how your places and settings are doing, said only when there's something to say
-  const said2 = STATES[a.state]?.[1];
-  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name),
-    h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle}${said2 ? ` · ${said2}` : ""}`))];
-  box.replaceChildren(...[
-    accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
-      : h("div", { class: "acct-card in" }, ...who),
-    said].filter(Boolean));
-  drawNotifyAcct();
-}
-// Where notifications go, signed in (in Notifications): the account's devices, and this one if it isn't among them yet
-function drawNotifyAcct() {
-  const box = $("notify-acct"); if (!box) return;
-  const a = S.acct, n = S.settings.notify;
-  if (!a) return box.replaceChildren();
-  const to = a.devices.map((d) => (d.id === n.devId ? "this device" : d.label));
-  box.replaceChildren(...[
-    to.length ? h("p", { class: "note", id: "notify-where" }, `Notifications go to ${and(to)}.`) : null,
-    notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn small", type: "button", id: "acct-here", onclick: sendHere }, "Send them here too") : null,
-  ].filter(Boolean));
-}
-// The account's own page (account.<site>, beside weather.<site>), opened signed in as you: a code good once, for a
-// minute, handed over in the address's # (the page swaps it for a sign-in of its own, in whichever browser it opens in,
-// a Home Screen app's included, and takes it out of the address). The window's opened at once, from the tap (a phone
-// won't open one later), and sent on when the code's back.
-const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
-async function openAccount() {
-  const w = window.open("", "_blank");
-  try {
-    const { code } = await A.accountLink();
-    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather" })}`;
-    if (w && !w.closed) w.location.href = url; else location.href = url;
-  } catch (e) { w?.close(); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
-}
-// Your photo (the account's: the same in every app on the site), or your initial
-const avatarOf = (a, url = a.photoAt ? A.photoUrl(a.photoAt) : null) => h("span", { class: "acct-av", "aria-hidden": "true" },
-  url ? h("img", { src: url, alt: "", width: "48", height: "48", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase());
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {
   const note = $("sync-note"), said = S.acct && STATES[S.acct.state]?.[0];
@@ -2100,63 +1674,8 @@ function drawInStep() {
   note.hidden = !said; note.textContent = said || "";
 }
 
-/* ---------- your activities ---------- */
-// (focus: where the focus goes, the list drawn anew: [row, "on"] its switch, [row, "change"] its Change)
-function saveActs(focus) { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(focus); drawFolders(); }
-function drawActs(focus) {
-  const f = S.f, acts = S.settings.activities, have = new Set(acts.map((a) => a.id));
-  $("acts-list").replaceChildren(...acts.map((a, i) => h("li", { class: "act" },
-    h("button", { class: "act-open", type: "button", "aria-label": `${a.name}, ${I.limitsText(a, f)}: change`, onclick: () => editAct(i) },
-      h("span", { class: "act-icon", svg: glyph(a.icon || "star", 18) }),
-      h("span", { class: "act-txt" }, h("b", {}, a.name), h("span", { class: "act-lim" }, I.limitsText(a, f))),
-      h("span", { class: "act-chev", svg: glyph("chevron", 14) })),
-    h("label", { class: "switch act-on" }, h("input", { type: "checkbox", "aria-label": a.name, checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs([i, "on"]); } })))));
-  $("act-add").replaceChildren(h("option", { value: "" }, "Choose…"),
-    ...Object.entries(I.ACTIVITIES).filter(([id]) => !have.has(id)).map(([id, a]) => h("option", { value: id }, a.name)), h("option", { value: "custom" }, "Something else…"));
-  if (focus) { const li = $("acts-list").children[Math.min(focus[0], acts.length - 1)]; (li?.querySelector(focus[1] === "on" ? "input" : "button") || $("act-add")).focus(); }
-}
-function editAct(i) {
-  const a = S.settings.activities[i], f = S.f;
-  const tU = (c) => Math.round(f.units.temp === "f" ? c * 9 / 5 + 32 : c), tM = (v) => (f.units.temp === "f" ? (v - 32) * 5 / 9 : v);
-  const wk = f.windNum(1000) / 1000, wU = (k) => Math.round(k * wk), wM = (v) => v / wk;
-  const num = (name, text, v, unit) => h("label", { class: "fld" }, h("span", {}, text), h("span", { class: "fld-in" }, h("input", { type: "number", name, value: String(v), inputmode: "numeric", step: "1" }), unit ? h("small", {}, unit) : null));
-  const hour = (name, text, v) => h("label", { class: "fld" }, h("span", {}, text), h("select", { name }, ...Array.from({ length: 25 }, (_, k) => h("option", { value: String(k), selected: k === v ? true : null }, k === 24 ? "midnight" : f.time(Date.UTC(2000, 0, 1, k))))));
-  const ed = h("div", { class: "act-edit" },
-    h("label", { class: "fld wide" }, h("span", {}, "Name"), h("input", { type: "text", name: "name", value: a.name, maxlength: "24" })),
-    num("tmin", "Feels like from", tU(a.tmin), "°"), num("tmax", "to", tU(a.tmax), "°"),
-    num("windMin", "Wind at least", wU(a.windMin || 0), f.windUnit), num("windMax", "Wind at most", wU(a.windMax), f.windUnit),
-    num("gustMax", "Gusts at most", wU(a.gustMax), f.windUnit),
-    h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
-    num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
-    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: setBack }, "Done"),
-      h("button", { class: "link danger", type: "button", onclick: () => { actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
-  const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
-  function done() {
-    Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),
-      windMax: Math.max(1, wM(n("windMax", wU(a.windMax)))), gustMax: Math.max(1, wM(n("gustMax", wU(a.gustMax)))), rain: val("rain"), hours: Math.max(1, Math.min(8, Math.round(n("hours", a.hours)))), from: Number(val("from")), to: Number(val("to")) });
-    if (a.tmax < a.tmin) [a.tmin, a.tmax] = [a.tmax, a.tmin];
-    if (a.to <= a.from) a.to = Math.min(24, a.from + a.hours);
-    saveActs([i, "change"]);
-  }
-  $("act-page").replaceChildren(ed);
-  actEdit = done;
-  setGo("act", a.name);
-}
-function addAct() {
-  const id = $("act-add").value; if (!id) return;
-  const a = id === "custom" ? { id: `my${Date.now().toString(36)}`, name: "My activity", icon: "star", tmin: 10, tmax: 22, windMin: 0, windMax: 30, gustMax: 50, rain: "dry", hours: 2, from: 8, to: 20 } : { id, ...I.ACTIVITIES[id] };
-  S.settings.activities.push({ ...a, on: true });
-  saveActs();
-  if (id === "custom") editAct(S.settings.activities.length - 1);
-}
 
 const sheetDays = (wx, now) => wx.daily.filter((x) => x.date >= dayStart(now)).slice(0, 16);
-// (quiet: without its own slide in, when a swipe's moving it)
-function stepDay(n, quiet = false) {
-  if (!S.wx || !$("day").open) return;
-  const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey), next = days[i + n];
-  if (i >= 0 && next) openDay(next.key, quiet ? 0 : n);
-}
 
 // A swipe across a sheet to the next of what it shows or the one before (a day, a tile), as across the page between
 // places: what's shown follows the finger (giving at the first and last), and let go far enough, or flicked, it
@@ -2249,6 +1768,19 @@ function motion(key, ...els) {
   });
 }
 
+/* ---------- what's seldom wanted ---------- */
+// fetched the first time it is (and kept by the service worker with the rest, so offline too): a tile or a day in full
+// (detail.js), and Settings (settings.js). DE() and SE(): the one that's come, if it has (what would only be drawn in
+// it, not yet open, needn't be)
+const later = (get) => { let p = null, m = null; return [() => (p ||= get().then((x) => (m = x), (e) => { p = null; throw e; })), () => m]; };
+const [detailJs, DE] = later(() => import("./detail.js")), [settingsJs, SE] = later(() => import("./settings.js"));
+const openDetail = (kind) => detailJs().then((m) => m.openDetail(kind)).catch(() => {});
+const openDay = (key) => detailJs().then((m) => m.openDay(key)).catch(() => {});
+// Settings, at its list (or at one of its folders)
+function openSettings(page) {
+  return settingsJs().then((m) => { m.drawSettings(); m.setHome(); openSheet($("settings")); if (page) m.setGo(page); }).catch(() => {});
+}
+
 /* ---------- sheets ---------- */
 // They rise over the page, which steps back; they slide away when closed (×, a tap outside, Escape),
 // or when swiped down. With Reduce Motion, they simply come and go.
@@ -2287,7 +1819,7 @@ function sheetGestures(d) {
   const body = d.querySelector(".sheet-body");
   d.addEventListener("touchstart", (e) => {
     head = !!e.target.closest(".sheet-head");
-    if (e.touches.length > 1 || e.target.closest("input, select, textarea, .leaflet-container") || (!head && body.scrollTop > 0)) { y0 = null; return; }
+    if (e.touches.length > 1 || e.target.closest("input, select, textarea, .leaflet-container, .arr-grip") || (!head && body.scrollTop > 0)) { y0 = null; return; }
     y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0; t0 = performance.now(); told = false;
   }, { passive: true });
   d.addEventListener("touchmove", (e) => {
@@ -2356,8 +1888,9 @@ function wire() {
   // each sheet: closing by Escape or a tap outside, and swiping down
   for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
   // a swipe across a day to the next or the one before, and across a tile's sheet to the next tile or the one before
-  sideSwipe($("day"), $("day-body"), (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); }, stepDay);
-  sideSwipe($("detail"), $("detail-body"), (d) => { const kinds = detailKinds(), i = kinds.indexOf(S.detailKind); return (d > 0 && i <= 0) || (d < 0 && i >= kinds.length - 1); }, stepDetail);
+  // (either sheet open, detail.js has come)
+  sideSwipe($("day"), $("day-body"), (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); }, (n, quiet) => DE()?.stepDay(n, quiet));
+  sideSwipe($("detail"), $("detail-body"), (d) => { const kinds = DE()?.detailKinds() || [], i = kinds.indexOf(S.detailKind); return (d > 0 && i <= 0) || (d < 0 && i >= kinds.length - 1); }, (n, quiet) => DE()?.stepDetail(n, quiet));
   placeSwipe();
   pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
@@ -2376,16 +1909,8 @@ function wire() {
     list[Math.max(0, Math.min(list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))].focus();
   });
   $("locate-btn").addEventListener("click", () => locate());
-  $("settings-btn").addEventListener("click", () => { drawSettings(); setHome(); openSheet($("settings")); });
-  $("settings").addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (go) setGo(go.dataset.go); });
-  $("set-back").addEventListener("click", setBack);
-  // (closed while changing an activity: what's been changed kept)
-  $("settings").addEventListener("close", () => { if (actEdit) { const keep = actEdit; actEdit = null; keep(); } });
-  $("settings-form").addEventListener("change", readSettings);
-  for (const k of ["brief", "briefFor", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
-  for (const k of ["mailWarn", "mailBrief"]) $("settings-form")[k].addEventListener("change", onMail);
-  $("sign-out").addEventListener("click", signOutHere);
-  $("act-add").addEventListener("change", addAct);
+  // (what's in Settings answers once settings.js has come: settings.js)
+  $("settings-btn").addEventListener("click", () => openSettings());
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
   // (full screen, it closes with an ×, as Apple's Weather map does)
   for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="ic g-off">${glyph("expand", 16)}</span><span class="ic g-on">${glyph("close", 18)}</span>`;
@@ -2462,3 +1987,7 @@ function wire() {
 }
 
 start();
+
+// (for what's fetched when it's wanted: detail.js, settings.js)
+export { $, h, S, T, COLOR, TILES, CARDS, balance, uvName, airName, calm, drawHourChart, nightsOf, openSheet, sheetDays, STATES, adopt, afterFrame, canShow, go, hereToo, mine, nkey,
+  notifySaved, notifyWhy, notifying, place, redraw, refreshDevices, saveSettings, signedOut, signOutHere, syncNotify, windows };
