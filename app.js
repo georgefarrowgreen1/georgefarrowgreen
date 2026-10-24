@@ -588,13 +588,16 @@ const fold = () => {
 $("#c-message").addEventListener("input", fold);
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
 // (once the sheet's changed size under a field that's being typed in: an iPhone leaves its caret where the field was
-// until the selection changes, so it's set again where it is; and the keyboard's measured again for a moment, as the
-// phone settles its view of the page, so the sheet sits on it rather than short of it or under it)
+// until the selection changes, so it's moved for a frame and put back (moved and put back at once, it's no change to
+// the phone); and the keyboard's measured again for a moment, as the phone settles its view of the page, so the sheet
+// sits on it rather than short of it or under it)
 function steady() {
   const el = document.activeElement;
   if (el?.setSelectionRange && contact.sheet.contains(el)) {
     const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection;
-    el.setSelectionRange(0, 0); el.setSelectionRange(a, b, dir);
+    const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
+    el.setSelectionRange(away, away);
+    requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
   }
   let n = 0;
   const tick = () => { window.relift?.(); if (++n < 20) requestAnimationFrame(tick); };
