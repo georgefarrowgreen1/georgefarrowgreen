@@ -172,7 +172,7 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 
 /* ---- a section: its heading, then a group of rows ---- */
 .section { margin: 0 0 26px; }
-.section > h3 { margin: 0 20px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); text-align: center; }
+.section > h3 { margin: 0 18px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }   /* (over its group, from where its rows start) */
 .section > .foot { margin: 8px 20px 0; font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .group { border-radius: var(--r-group); overflow: hidden; }
 .row { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 58px; padding: 10px 18px; border: 0; background: none; text-align: left;
@@ -194,7 +194,7 @@ button.row:active, a.row:active { background-color: var(--press); }
 .row .tx b { font-weight: 500; font-size: 17px; overflow-wrap: anywhere; }
 .row .tx small { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
 .row .val { flex: none; color: var(--text-2); font-size: 16px; font-variant-numeric: tabular-nums; }
-.row .chev { flex: none; color: var(--text-3); transition: transform 0.25s var(--ease); }
+.row .chev { flex: none; display: grid; color: var(--text-3); transition: transform 0.25s var(--ease); }   /* (a grid: as a line of text it sat 3.5 px high) */
 .row .get { flex: none; display: grid; color: var(--tint-text); }
 .sheet-body .group.apart { margin-top: 22px; }
 button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
