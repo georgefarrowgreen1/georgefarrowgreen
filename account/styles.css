@@ -561,7 +561,7 @@ dialog.sheet.dragging { transition: none; }
 .code-who > div { display: grid; min-width: 0; }
 .code-who b { font-weight: 600; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-who span { color: var(--text-2); font-size: 14.5px; }
-.code-big { padding: 22px; border-radius: 28px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
+.code-big { justify-self: center; width: min(300px, 84%); padding: 20px; border-radius: 26px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
 .qr { width: 100%; aspect-ratio: 1; }
 .qr svg { display: block; width: 100%; height: 100%; }
 .qr-none { display: grid; place-items: center; height: 100%; padding: 12px; text-align: center; font-size: 14px; color: #3a405c; }
