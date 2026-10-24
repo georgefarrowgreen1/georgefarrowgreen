@@ -1699,18 +1699,14 @@ html.night .nightsky{display:block}
 .welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
 .welcome .wquiet:active{color:#fff}
 @media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper,.welcome .wcta{animation:none;opacity:1;filter:none;transform:none}.welcome .wglow{animation:none}}
-/* the welcome's logo: out of the dark, with a slow orbit around it */
-.welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:200px;height:200px}
+/* the welcome's logo: out of the dark, in a soft glow */
+.welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:160px;height:160px}
 .welcome .wlogo .appicon{position:relative;width:96px;height:96px;border-radius:26px;font-size:58px;opacity:0;filter:blur(14px);transform:scale(.86);will-change:auto;
   box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 10px 30px rgba(10,40,120,.45);animation:wlogo 1.8s cubic-bezier(.2,.7,.2,1) .3s forwards}
 @keyframes wlogo{80%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
-.welcome .wlogo::before{content:"";position:absolute;inset:-10px;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.55),rgba(70,140,255,.18) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards,wbreathe 5s ease-in-out 2.8s infinite}
-@keyframes wbreathe{50%{transform:scale(1.12);filter:brightness(1.25)}}
-.welcome .wring{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(160,190,255,.32);opacity:0;animation:wfade 2s ease 1.4s forwards,wspin 60s linear infinite}
-.welcome .wring::after{content:"";position:absolute;top:-3px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#cfe0ff;box-shadow:0 0 10px 2px rgba(150,190,255,.8)}
-@keyframes wspin{to{transform:rotate(360deg)}}
+.welcome .wlogo::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.4),rgba(70,140,255,.12) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards}
 .welcome .wtop{margin-top:max(16vh,80px)}
-@media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wring{animation:none;opacity:1;filter:none;transform:none}}
+@media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wlogo::before{animation:none;opacity:1;filter:none;transform:none}}
 /* "You've been invited" in the same quiet capitals as "By invitation only" */
 .welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
 /* every screen before you're in, under the same night: the sky carries on behind,
@@ -1737,8 +1733,7 @@ html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s
 html.night .nav-ghost .night{background:none}
 /* back on the welcome: the logo and words are already there */
 .welcome.again .wlogo .appicon{animation:none;opacity:1;filter:none;transform:none}
-.welcome.again .wring{animation:wspin 60s linear infinite;opacity:1}
-.welcome.again .wlogo::before{animation:wbreathe 5s ease-in-out infinite;opacity:1}
+.welcome.again .wlogo::before{animation:none;opacity:1}
 .welcome.again .wcta{animation:wfade .5s ease forwards}
 @media (prefers-reduced-motion:reduce){html.night .view.nav-push,html.night .view.nav-pop,html.night .nav-ghost{animation:none}html.night .nav-ghost{display:none}}
 

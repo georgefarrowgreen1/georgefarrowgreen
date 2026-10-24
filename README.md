@@ -769,7 +769,7 @@ so there's nothing to set up beyond the address.
   (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
   into the account's card, your places ticked off under it as they go with the account ("Your places go with your
   account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
-  within six seconds whatever happens (the offline copy, `wx-86`). Signed in, it's just **one card for the account** (your
+  within six seconds whatever happens (the offline copy, `wx-87`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page

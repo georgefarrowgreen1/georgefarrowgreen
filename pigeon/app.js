@@ -2251,90 +2251,39 @@ function dusk() {
 }
 
 /* ---------- the welcome sky ----------
-   Night: stars that breathe, now and then a shooting star, a planet's rim of
-   light far below, and one pigeon crossing in its own glow, leaving a dashed
-   trail that fades behind it. (Still, for anyone who asks for less motion.) */
+   Night: a quiet field of stars, breathing slowly. (Still, for anyone who asks for less motion.) */
 let skyLoop = 0, skyOn = null;
 function nightSky(cv) {
-  if (!cv || skyOn === cv) return;            // already flying: it carries on
+  if (!cv || skyOn === cv) return;            // already shining: it carries on
   cancelAnimationFrame(skyLoop); skyOn = cv;
   const g = cv.getContext("2d"), still = STILL.matches, t0 = performance.now();
-  const bird = new Path2D(BIRD);
-  let W = 0, H = 0, dpr = 1, stars = [], shoot = null, nextShoot = t0 + 2500, ground = null, last = 0;
+  let W = 0, H = 0, dpr = 1, stars = [], last = 0;
   const seed = (n) => { let x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); };
   const size = () => {
     const w = cv.clientWidth, h = cv.clientHeight; if (w === W && h === H) return;
     W = w; H = h; dpr = Math.min(2, devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr;
-    stars = Array.from({ length: Math.round((W * H) / 2600) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H * 0.92, r: 0.35 + seed(i + 900) ** 3 * 1.5,
-      p: seed(i + 1300) * 6.28, s: 0.4 + seed(i + 1700) * 1.4, b: 0.35 + seed(i + 2100) * 0.65 }));
-    // the planet's edge, far below: the same every frame, so drawn once for this size
-    ground = Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
-    const k = ground.getContext("2d"); k.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const R = W * 2.2, py = H + R - H * 0.13;
-    const rim = k.createRadialGradient(W / 2, py, R * 0.985, W / 2, py, R * 1.06);
-    rim.addColorStop(0, "rgba(70,120,255,0)"); rim.addColorStop(0.24, "rgba(90,150,255,.42)"); rim.addColorStop(0.32, "rgba(60,90,220,.14)"); rim.addColorStop(1, "rgba(20,30,90,0)");
-    k.fillStyle = rim; k.beginPath(); k.arc(W / 2, py, R * 1.06, 0, 6.29); k.fill();
-    k.fillStyle = "#020309"; k.beginPath(); k.arc(W / 2, py, R, 0, 6.29); k.fill();
+    stars = Array.from({ length: Math.round((W * H) / 3400) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H, r: 0.35 + seed(i + 900) ** 3 * 1.3,
+      p: seed(i + 1300) * 6.28, s: 0.3 + seed(i + 1700) * 0.9, b: 0.3 + seed(i + 2100) * 0.6 }));
   };
-  // the flight: a long arc, left to right, then a rest, then again
-  const FLY = 11000, REST = 2600;
-  const at = (u) => { const ax = -0.06 * W, ay = H * 0.86, cx = W * 0.5, cy = H * 0.26, bx = W * 1.08, by = H * 0.62;     // up off the horizon, across the open sky
-    const a = (1 - u) ** 2, b = 2 * (1 - u) * u, c = u * u; return [a * ax + b * cx + c * bx, a * ay + b * cy + c * by]; };
   const frame = (now) => {
     if (!cv.isConnected || !document.documentElement.classList.contains("night")) { skyOn = null; return; }
-    // 30 frames a second is plenty for a slow sky; while you type (the keyboard up), fewer still
+    // 20 frames a second is plenty for stars breathing; while you type (the keyboard up), fewer still
     const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
-    if (!still && now - last < (typing ? 120 : 31)) { skyLoop = requestAnimationFrame(frame); return; }
+    if (!still && now - last < (typing ? 120 : 48)) { skyLoop = requestAnimationFrame(frame); return; }
     last = now;
     size();
     const t = now - t0;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    // stars, breathing, drifting very slowly (drawn in a dozen or so batches, by brightness, not one by one)
+    // drawn in a dozen or so batches, by brightness, not one by one
     const lit = new Map();
     for (const s of stars) {
-      const tw = still ? s.b : s.b * (0.55 + 0.45 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
-      const x = (s.x + t * 0.003 * s.r) % W;
+      const tw = still ? s.b : s.b * (0.6 + 0.4 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
       let path = lit.get(a); if (!path) lit.set(a, (path = new Path2D()));
-      path.moveTo(x + s.r, s.y); path.arc(x, s.y, s.r, 0, 6.29);
+      path.moveTo(s.x + s.r, s.y); path.arc(s.x, s.y, s.r, 0, 6.29);
     }
     g.fillStyle = "#dfe8ff";
     for (const [a, path] of lit) { g.globalAlpha = a; g.fill(path); }
-    g.globalAlpha = 1;
-    // the planet's edge, far below
-    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(ground, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!still) {
-      // a shooting star, now and then
-      if (!shoot && now > nextShoot) shoot = { x: W * (0.2 + Math.random() * 0.7), y: H * (0.05 + Math.random() * 0.3), at: now, a: 2.5 + Math.random() * 0.5 };
-      if (shoot) {
-        const k = (now - shoot.at) / 900;
-        if (k >= 1) { shoot = null; nextShoot = now + 5000 + Math.random() * 7000; }
-        else {
-          const len = 120 * Math.sin(k * Math.PI), hx = shoot.x - Math.cos(shoot.a) * k * 260, hy = shoot.y + Math.sin(shoot.a) * k * 260 * -1 + k * 120;
-          const gr = g.createLinearGradient(hx, hy, hx + Math.cos(shoot.a) * len, hy - Math.sin(shoot.a) * len);
-          gr.addColorStop(0, "rgba(255,255,255,.95)"); gr.addColorStop(1, "rgba(255,255,255,0)");
-          g.strokeStyle = gr; g.lineWidth = 1.4; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + Math.cos(shoot.a) * len, hy - Math.sin(shoot.a) * len); g.stroke();
-        }
-      }
-    }
-    // the pigeon and its trail
-    const cyc = t % (FLY + REST), u = still ? 0.62 : Math.min(1, cyc / FLY), fade = still ? 1 : cyc > FLY ? Math.max(0, 1 - (cyc - FLY) / REST) : Math.min(1, cyc / 900);
-    const ease = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
-    g.setLineDash([3, 7]); g.lineWidth = 1.3; g.lineCap = "round";
-    const N = 90, upto = Math.max(1, Math.round(N * ease));
-    for (let i = 1; i <= upto; i++) {
-      const [x0, y0] = at((i - 1) / N), [x1, y1] = at(i / N);
-      g.strokeStyle = `rgba(160,190,255,${(0.05 + 0.5 * (i / upto) ** 2) * fade})`;
-      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-    }
-    g.setLineDash([]);
-    const [bx, by] = at(ease), [nx, ny] = at(Math.min(1, ease + 0.01)), ang = Math.atan2(ny - by, nx - bx);
-    const glow = g.createRadialGradient(bx, by, 0, bx, by, 46);
-    glow.addColorStop(0, `rgba(120,170,255,${0.45 * fade})`); glow.addColorStop(1, "rgba(120,170,255,0)");
-    g.fillStyle = glow; g.beginPath(); g.arc(bx, by, 46, 0, 6.29); g.fill();
-    const flap = still ? 1 : 0.78 + 0.22 * Math.sin(t / 95);
-    g.save(); g.translate(bx, by); g.rotate(ang * 0.6); g.scale(1.6, 1.6 * flap); g.translate(-12, -12);
-    g.shadowColor = "rgba(150,190,255,.9)"; g.shadowBlur = 14; g.globalAlpha = fade; g.fillStyle = "#fff"; g.fill(bird); g.restore();
     g.globalAlpha = 1;
     if (!still) skyLoop = requestAnimationFrame(frame);
   };
@@ -5299,7 +5248,7 @@ function vAuth() {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
     case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
         <div class="wtop">
-          <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+          <h1 class="wlogo" aria-label="InFlight"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
