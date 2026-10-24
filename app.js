@@ -96,10 +96,12 @@ const linked = CSS.supports("animation-timeline: scroll()");
     // Each line fades from 78 px under the bar to 12 px into it, over 64 px of scroll at least, within the scroll there
     // is: on a short page (a computer's tall window) a fade that wouldn't finish is fitted into what scroll there is, and
     // one that can't have its 64 px isn't begun (a line left half-faded at the bottom looks broken, and the hero gone at
-    // one notch of a wheel looks like a glitch); if the name itself can't fade, nothing does. The name comes into the
-    // bar as the name in the hero goes.
+    // one notch of a wheel looks like a glitch); a line the scroll never brings up to the bar doesn't fade at all (on a
+    // short page, faded lines well clear of the bar left half the screen empty); if the name itself can't fade, nothing
+    // does. The name comes into the bar as the name in the hero goes.
     const most = Math.max(0, document.documentElement.scrollHeight - innerHeight);
     ranges = tops.map((top) => {
+      if (top - edge > most) return null;
       let a = Math.max(0, top - edge - 78), b = Math.max(a + FADE, top - edge + 12);
       if (b > most) { b = most; a = Math.min(a, b - FADE); if (a < 0) return null; }
       return [a, b];
