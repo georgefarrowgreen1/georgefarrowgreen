@@ -567,9 +567,60 @@ for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
 });
 // (their own details changed for this message: the two rows instead)
 $("#from-change").addEventListener("click", () => {
-  settle(contact.sheet, () => { $("#from").hidden = true; $("#sender").classList.remove("known"); });
-  $("#c-name").focus();
+  morphFrom(false);
+  $("#c-name").focus({ preventScroll: true });
 });
+// Someone not signed in, name and email given, starting on the message: the two rows fold into the one From row, as
+// they'd be signed in. The words they typed glide to where they sit in the row, the labels fade as they go, their
+// initial comes in beside them and the box closes up around it (Change unfolds it again, the same way back).
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const fold = () => {
+  const name = $("#c-name").value.trim(), email = $("#c-email").value.trim();
+  if ($("#sender").classList.contains("known") || !name || !EMAIL.test(email)) return;
+  $("#from-name").textContent = name; $("#from-email").textContent = email;
+  // (theirs, signed in, if these are still their details; otherwise their initial)
+  const mine = me?.signedIn && name === me.name && email === me.email, face = $("#face");
+  if (mine && face.childNodes.length) $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+  else $("#from-face").textContent = name[0].toUpperCase();
+  morphFrom(true);
+};
+$("#c-message").addEventListener("input", fold);
+$("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
+function morphFrom(on) {
+  const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
+  const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
+  const swap = () => { from.hidden = !on; s.classList.toggle("known", on); };
+  for (const el of [box, s, ...$$("*", s)]) for (const a of el.getAnimations()) a.cancel();
+  if (motion.matches || !d.open) return swap();
+  // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
+  const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
+  const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
+  const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
+  const ghosts = (on ? rows : [from]).map((el) => {
+    const r = el.getBoundingClientRect(), g = el.cloneNode(true);
+    g.removeAttribute("id"); g.classList.add("ghost"); g.hidden = false; g.setAttribute("aria-hidden", "true"); g.inert = true;
+    for (const x of $$("[id]", g)) x.removeAttribute("id");
+    for (const x of $$("input, b, small", g)) x.style.visibility = "hidden";      // (the words themselves are moving)
+    Object.assign(g.style, { position: "absolute", left: `${r.left - sAt.left}px`, top: `${r.top - sAt.top}px`, width: `${r.width}px`, height: `${r.height}px`, pointerEvents: "none", margin: 0 });
+    s.append(g);
+    return g;
+  });
+  swap();
+  // (and where it all goes)
+  const hBox1 = box.getBoundingClientRect().height, hS1 = s.getBoundingClientRect().height;
+  const T = 520, slide = { duration: T, easing: GLIDE };
+  box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
+  s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide);
+  words.forEach(([input, shown], i) => {
+    const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
+    el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
+  });
+  // (the labels or the face and Change: out quickly where they were, the others in a moment after, rising to their place)
+  for (const g of ghosts) g.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: on ? "translateX(-10px)" : "scale(0.96)" }], { duration: 220, easing: EASE_OUT, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
+  const arriving = on ? [$("#from-face"), $("#from-change")] : rows.map((r) => $("span", r));
+  arriving.forEach((el, i) => el.animate(on ? [{ opacity: 0, transform: "scale(0.5)" }, { opacity: 1, transform: "none" }] : [{ opacity: 0, transform: "translateX(-10px)" }, { opacity: 1, transform: "none" }],
+    { duration: 420, delay: 120 + i * 50, easing: on ? "cubic-bezier(0.2, 1.3, 0.4, 1)" : EASE_OUT, fill: "backwards" }));
+}
 // Send looks ready once there's something to send (tapped before, it says what's missing, and takes you there); the
 // message grows as it's written, a line at a time, smoothly (styles.css)
 const ready = () => { contact.send.classList.toggle("idle", !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim())); };

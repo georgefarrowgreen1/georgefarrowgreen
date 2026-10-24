@@ -330,7 +330,8 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .fld.from .who b { font-weight: 600; font-size: 17px; }
 .fld.from .who small { color: var(--text-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fld.from .change { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(61, 139, 255, 0.18); color: var(--tint-text); }
-#sender.known .fld:not(.from) { display: none; }
+#sender { position: relative; }
+#sender.known .fld:not(.from, .ghost) { display: none; }
 .fields input, .fields textarea {
   display: block; width: 100%; min-width: 0; border: 0; background: none; color: var(--text);
   font: 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
