@@ -501,15 +501,46 @@ if (window.visualViewport) {
   // (#kb in the address: the measurements, shown over the page, to see what a phone says of its keyboard)
   const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:fixed;z-index:999;top:env(safe-area-inset-top);left:8px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#7f7;font:11px/1.3 ui-monospace,monospace;pointer-events:none" }) : null;
   if (probe) document.body.append(probe);
+  let kb = 0, moved = null;
   const lift = () => {
-    root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
+    const k = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+    if (k !== kb) {
+      kb = k; root.style.setProperty("--kb", k + "px");
+      // (the sheet moved under the field being typed in: its caret drawn again once it's settled, styles.css)
+      clearTimeout(moved); moved = setTimeout(recaret, 400);
+    }
     if (!probe) return;
     const r = $("dialog.sheet[open]")?.getBoundingClientRect();
     probe.textContent = `inner ${innerHeight}  screen ${screen.height}\nvv h ${vv.height.toFixed(1)} top ${vv.offsetTop.toFixed(1)} pageTop ${vv.pageTop.toFixed(1)}\nscrollY ${scrollY}  kb ${getComputedStyle(root).getPropertyValue("--kb")}\nsheet ${r ? `${r.top.toFixed(0)}–${r.bottom.toFixed(0)}` : "-"}`;
   };
   if (probe) { addEventListener("scroll", lift, { passive: true }); setInterval(lift, 250); }
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
+  // (and measured every frame while something in a sheet's being typed in: an iPhone doesn't always say when it moves
+  // its view of the page under the keyboard, and a sheet left where it was stands off the keyboard, or under it)
+  let watching = false;
+  const watch = () => {
+    if (!typingInSheet()) { watching = false; return; }
+    lift(); requestAnimationFrame(watch);
+  };
+  document.addEventListener("focusin", () => { if (!watching && typingInSheet()) { watching = true; watch(); } });
   window.relift = lift;
+}
+function typingInSheet() {
+  const el = document.activeElement;
+  return !!el?.matches?.("input, textarea") && !!el.closest("dialog.sheet[open]");
+}
+// An iPhone draws its caret where the field was until the selection changes, even when the field's moved (a sheet
+// lifted, or changed size): so the caret's moved for a frame and put back (moved and put back at once, it's no change
+// to the phone)
+function recaret() {
+  const el = document.activeElement;
+  if (!typingInSheet() || !el.setSelectionRange) return;
+  let a, b, dir;
+  try { a = el.selectionStart; b = el.selectionEnd; dir = el.selectionDirection; } catch (_) { return; }   // (an email field has none)
+  if (a == null) return;
+  const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
+  el.setSelectionRange(away, away);
+  requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
 }
 // (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
 function scrollsIn(el, top) {
@@ -596,22 +627,8 @@ const fold = () => {
 };
 $("#c-message").addEventListener("input", fold);
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
-// (once the sheet's changed size under a field that's being typed in: an iPhone leaves its caret where the field was
-// until the selection changes, so it's moved for a frame and put back (moved and put back at once, it's no change to
-// the phone); and the keyboard's measured again for a moment, as the phone settles its view of the page, so the sheet
-// sits on it rather than short of it or under it)
-function steady() {
-  const el = document.activeElement;
-  if (el?.setSelectionRange && contact.sheet.contains(el)) {
-    const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection;
-    const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
-    el.setSelectionRange(away, away);
-    requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
-  }
-  let n = 0;
-  const tick = () => { window.relift?.(); if (++n < 20) requestAnimationFrame(tick); };
-  tick();
-}
+// (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
+function steady() { recaret(); window.relift?.(); }
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
