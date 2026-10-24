@@ -664,6 +664,7 @@ const fold = () => {
   morphFrom(true);
 };
 $("#c-message").addEventListener("input", fold);
+$("#c-message").addEventListener("blur", () => { if (document.activeElement !== standIn) caretShown(); });
 $("#c-message").addEventListener("focus", () => setTimeout(() => window.kbSnap?.("focused"), 800));
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
 // (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
@@ -673,9 +674,12 @@ function steady() { window.kbSnap?.("settled"); refocus(); window.relift?.(); se
 // frame to a stand-in where the field is, and comes back, the caret where it was; with a field focused all the while,
 // the keyboard stays up)
 let standIn = null;
+// (and while the sheet's changing shape under it, the caret's hidden, so it isn't seen drawn out of place and put back)
+const caretHidden = () => { $("#c-message").style.caretColor = "transparent"; };
+const caretShown = () => { $("#c-message").style.caretColor = ""; };
 function refocus() {
   const el = document.activeElement;
-  if (!typingInSheet() || el.tagName !== "TEXTAREA") return recaret();
+  if (!typingInSheet() || el.tagName !== "TEXTAREA") { caretShown(); return recaret(); }
   const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection, r = el.getBoundingClientRect();
   if (!standIn) {
     standIn = document.createElement("textarea");
@@ -692,6 +696,7 @@ function refocus() {
       if (standIn.value) { el.setRangeText(standIn.value, a, b, "end"); el.dispatchEvent(new Event("input", { bubbles: true })); }
     }
     standIn.value = ""; standIn.remove();
+    caretShown();
     window.kbSnap?.("refocused");
   });
 }
@@ -732,7 +737,7 @@ function morphFrom(on) {
     if (Math.abs(dy) > 0.5 && box.scrollHeight > box.clientHeight) box.scrollTop += dy;
     if (performance.now() < until) requestAnimationFrame(keep);
   };
-  if (document.activeElement === msg) requestAnimationFrame(keep);
+  if (document.activeElement === msg) { caretHidden(); requestAnimationFrame(keep); }
   words.forEach(([input, shown], i) => {
     const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
     el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
@@ -762,6 +767,7 @@ const grow = () => {
   const cs = getComputedStyle(t), h1 = Math.min(Math.max(gauge.scrollHeight + 2, parseFloat(cs.minHeight) || 0), parseFloat(cs.maxHeight) || Infinity);
   if (!t.offsetHeight || Math.abs(h1 - t.offsetHeight) < 1) return;
   t.style.height = `${h1}px`;
+  if (document.activeElement === t) caretHidden();
   if (document.activeElement === t) setTimeout(steady, 260);      // (once it's grown: styles.css)
 };
 // (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
