@@ -498,7 +498,16 @@ for (const d of $$("dialog.sheet")) {
 // On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it (smoothly: styles.css)
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  const lift = () => root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
+  // (#kb in the address: the measurements, shown over the page, to see what a phone says of its keyboard)
+  const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:fixed;z-index:999;top:env(safe-area-inset-top);left:8px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#7f7;font:11px/1.3 ui-monospace,monospace;pointer-events:none" }) : null;
+  if (probe) document.body.append(probe);
+  const lift = () => {
+    root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
+    if (!probe) return;
+    const r = $("dialog.sheet[open]")?.getBoundingClientRect();
+    probe.textContent = `inner ${innerHeight}  screen ${screen.height}\nvv h ${vv.height.toFixed(1)} top ${vv.offsetTop.toFixed(1)} pageTop ${vv.pageTop.toFixed(1)}\nscrollY ${scrollY}  kb ${getComputedStyle(root).getPropertyValue("--kb")}\nsheet ${r ? `${r.top.toFixed(0)}–${r.bottom.toFixed(0)}` : "-"}`;
+  };
+  if (probe) { addEventListener("scroll", lift, { passive: true }); setInterval(lift, 250); }
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
   window.relift = lift;
 }

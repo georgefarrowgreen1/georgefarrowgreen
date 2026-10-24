@@ -287,7 +287,7 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 /* up from the foot (as every app's sheets come, quick then soft), and back down from wherever it's got to: closed while
    still coming up, or reopened while going, it carries on from there rather than jumping (app.js sets --from) */
 .sheet {
-  position: fixed; inset: auto 8px calc(env(safe-area-inset-bottom) + 8px + var(--kb, 0px)); margin: 0;
+  position: fixed; inset: auto 8px calc(8px + max(env(safe-area-inset-bottom), var(--kb, 0px))); margin: 0;   /* (the keyboard covers the home bar's room: one or the other) */
   width: auto; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - 40px - var(--kb, 0px));
   border: 0; border-radius: 34px; padding: 0; color: var(--text);
   background: var(--glass-strong);
