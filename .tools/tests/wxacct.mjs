@@ -238,7 +238,7 @@ ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,
 // you, as that's what opens the key in InFlight) ----
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome [data-act=acctsignin]:has-text("Continue as")', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
-ok(/Signed in as Sam Taylor \(@sam\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
+ok(/Continue as Sam/.test(offer || '') && !/Signed in as/i.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: just "Continue as Sam" (no other app named)', offer);
 await K.p.click('.welcome [data-act=acctsignin]'); await K.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
 await K.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 });
 ok(/Continue to InFlight as this account\?/.test(await K.p.textContent('main')) && !(await K.p.$('main input[name=email]')), 'on the account\'s page: carrying on as Sam, showing it\'s you (no email asked) to unlock the key here');
