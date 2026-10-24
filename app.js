@@ -528,9 +528,14 @@ for (const d of $$("dialog.sheet")) {
 // On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it (smoothly: styles.css)
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  // (#kb in the address: the measurements, shown over the page, to see what a phone says of its keyboard)
-  const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:fixed;z-index:999;top:env(safe-area-inset-top);left:8px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#7f7;font:11px/1.3 ui-monospace,monospace;pointer-events:none" }) : null;
-  if (probe) document.body.append(probe);
+  // (#kb in the address: the measurements, shown in the open sheet (or over the page), to see what a phone does)
+  const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:absolute;z-index:999;top:4px;left:12px;right:12px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.8);color:#7f7;font:10px/1.3 ui-monospace,monospace;pointer-events:none;white-space:pre-wrap" }) : null;
+  window.kbSnap = (label) => {
+    if (!probe) return;
+    const d = $("dialog.sheet[open]"), box = d && $(".sheet-in", d), m = $("#c-message"), r = d?.getBoundingClientRect();
+    const line = `${label}: msg ${m.getBoundingClientRect().top.toFixed(0)} box ${box ? `${box.scrollTop}/${box.clientHeight}/${box.scrollHeight}` : "-"} sheet ${r ? `${r.top.toFixed(0)}-${r.bottom.toFixed(0)}` : "-"} vv ${vv.height.toFixed(0)}@${vv.offsetTop.toFixed(0)} kb ${kb} y ${scrollY}`;
+    (window.kbLog ||= []).push(line); if (kbLog.length > 8) kbLog.shift();
+  };
   let kb = 0, moved = null;
   const lift = () => {
     const k = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
@@ -540,8 +545,11 @@ if (window.visualViewport) {
       clearTimeout(moved); moved = setTimeout(recaret, 400);
     }
     if (!probe) return;
-    const r = $("dialog.sheet[open]")?.getBoundingClientRect();
-    probe.textContent = `inner ${innerHeight}  screen ${screen.height}\nvv h ${vv.height.toFixed(1)} top ${vv.offsetTop.toFixed(1)} pageTop ${vv.pageTop.toFixed(1)}\nscrollY ${scrollY}  kb ${getComputedStyle(root).getPropertyValue("--kb")}\nsheet ${r ? `${r.top.toFixed(0)}–${r.bottom.toFixed(0)}` : "-"}`;
+    const d = $("dialog.sheet[open]") || body;
+    if (probe.parentNode !== d) d.append(probe);
+    probe.style.position = d === body ? "fixed" : "absolute";
+    window.kbSnap("now"); const now = kbLog.pop();
+    probe.textContent = `inner ${innerHeight} screen ${screen.height}\n${now}\n${(window.kbLog || []).join("\n")}`;
   };
   if (probe) { addEventListener("scroll", lift, { passive: true }); setInterval(lift, 250); }
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
@@ -656,9 +664,10 @@ const fold = () => {
   morphFrom(true);
 };
 $("#c-message").addEventListener("input", fold);
+$("#c-message").addEventListener("focus", () => setTimeout(() => window.kbSnap?.("focused"), 800));
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
 // (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
-function steady() { recaret(); window.relift?.(); }
+function steady() { window.kbSnap?.("settled"); recaret(); window.relift?.(); setTimeout(() => window.kbSnap?.("1s on"), 1000); }
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
@@ -669,6 +678,7 @@ function morphFrom(on) {
   const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
   const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
   const y0 = $("#c-message").getBoundingClientRect().top, st = box.scrollTop;
+  window.kbSnap?.(on ? "fold before" : "unfold before");
   const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
   const ghosts = (on ? rows : [from]).map((el) => {
     const r = el.getBoundingClientRect(), g = el.cloneNode(true);
