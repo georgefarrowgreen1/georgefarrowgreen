@@ -1898,7 +1898,7 @@ async function resumeCheck() {
 function welcomeCta() {
   const r = S.resumable;
   if (S.signingIn) return `<div class="wcta"><div class="stack"><button class="btn wide wglow" disabled>Signing in…</button></div></div>`;
-  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Continue as ${esc(first(r.name))}</button></div></div>`;
+  if (r) return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Continue as ${esc(first(r.name))}</button></div></div>`;
   return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Sign in</button></div>${newHere()}</div>`;
 }
 // Signing in is on the account's own page (account.<site>), where every app on the site signs in: there with a word for

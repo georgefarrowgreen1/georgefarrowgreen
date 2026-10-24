@@ -1864,7 +1864,7 @@ own pages (the browser's Origin), so a sign-in another site sends in your browse
 sign the browser in. InFlight keeps its own bearer token as before, given to it by the hand-back with what unlocks its
 key (where the browser shares the site's sign-in, the one the account's page just made is moved to it, so it's one
 sign-in); it gives an existing sign-in a cookie the first time it syncs; and, opened signed out where the browser's
-signed in elsewhere on the site, its welcome says "Signed in as …" with **Continue as …**, which takes you to the
+signed in elsewhere on the site, its welcome has **Continue as …**, which takes you to the
 account's page to show it's you (the cookie alone starts no InFlight session). Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
 made for the site (rpId georgefarrowgreen.com) at chat., the site's own address, weather. and account., so one passkey works at
