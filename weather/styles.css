@@ -200,12 +200,14 @@ body[data-sky="dawn"] .sky, .sky-alt[data-sky="dawn"] { --s1: #24376a; --s2: #5b
    only, faded in and out with the sky (and once it's faded out, gone, its motion with it) */
 .sky-stars, .sky-rain, .sky-snow { position: absolute; inset: 0; display: none; opacity: 0; pointer-events: none;
   transition: opacity 1s var(--ease); transition: opacity 1s var(--ease), display 1s var(--ease) allow-discrete; }
-body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky-stars { display: block; opacity: 0.8; }
-body[data-sky="partly-night"] .sky-stars { opacity: 0.4; }
-body:is([data-sky^="rain"], [data-sky="storm"]) .sky-rain { display: block; opacity: 0.22; }
-body[data-sky^="snow"] .sky-snow { display: block; opacity: 1; }
+/* (the page's sky's, by the place showing; and each of the skies of the places either side, as it comes in over this one
+   as the page is swiped: styles.css .sky-alt) */
+body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky > .sky-stars, .sky-alt:is([data-sky="clear-night"], [data-sky="partly-night"]) > .sky-stars { display: block; opacity: 0.8; }
+body[data-sky="partly-night"] .sky > .sky-stars, .sky-alt[data-sky="partly-night"] > .sky-stars { opacity: 0.4; }
+body:is([data-sky^="rain"], [data-sky="storm"]) .sky > .sky-rain, .sky-alt:is([data-sky^="rain"], [data-sky="storm"]) > .sky-rain { display: block; opacity: 0.22; }
+body[data-sky^="snow"] .sky > .sky-snow, .sky-alt[data-sky^="snow"] > .sky-snow { display: block; opacity: 1; }
 @starting-style {
-  body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky-stars, body:is([data-sky^="rain"], [data-sky="storm"]) .sky-rain, body[data-sky^="snow"] .sky-snow { opacity: 0; }
+  body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky > .sky-stars, body:is([data-sky^="rain"], [data-sky="storm"]) .sky > .sky-rain, body[data-sky^="snow"] .sky > .sky-snow { opacity: 0; }
 }
 .sky-stars {
   background-image: radial-gradient(1.2px 1.2px at 12% 18%, #fff 50%, transparent), radial-gradient(1px 1px at 28% 8%, #fff 50%, transparent),
@@ -229,12 +231,12 @@ body[data-sky^="snow"] .sky-snow { display: block; opacity: 1; }
   animation: clouds 80s steps(160) infinite alternate; }
 /* (moved on in small steps, twice a second: a slow drift looks the same, and the glass over it is blurred afresh twice
    a second rather than at every frame; and held still where there are no clouds to see) */
-body:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) .sky-clouds { animation-play-state: paused; }
-body[data-sky^="partly"] .sky-clouds { opacity: 0.55; }
-body[data-sky^="cloudy"] .sky-clouds, body[data-sky="fog"] .sky-clouds { opacity: 1; }
-body[data-sky^="rain"] .sky-clouds, body[data-sky^="snow"] .sky-clouds, body[data-sky="storm"] .sky-clouds { opacity: 0.8; }
-body[data-sky$="night"]:not([data-sky="clear-night"]) .sky-clouds { opacity: 0.4; }
-body[data-sky="fog"] .sky-clouds { inset: 20% -50% auto; height: 90%; }
+body:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) > .sky-clouds { animation-play-state: paused; }
+body[data-sky^="partly"] .sky > .sky-clouds, .sky-alt[data-sky^="partly"] > .sky-clouds { opacity: 0.55; }
+body:is([data-sky^="cloudy"], [data-sky="fog"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="cloudy"], [data-sky="fog"]) > .sky-clouds { opacity: 1; }
+body:is([data-sky^="rain"], [data-sky^="snow"], [data-sky="storm"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="rain"], [data-sky^="snow"], [data-sky="storm"]) > .sky-clouds { opacity: 0.8; }
+body[data-sky$="night"]:not([data-sky="clear-night"]) .sky > .sky-clouds, .sky-alt[data-sky$="night"]:not([data-sky="clear-night"]) > .sky-clouds { opacity: 0.4; }
+body[data-sky="fog"] .sky > .sky-clouds, .sky-alt[data-sky="fog"] > .sky-clouds { inset: 20% -50% auto; height: 90%; }
 @keyframes clouds { from { transform: translateX(-9%); } to { transform: translateX(9%); } }
 /* (the twinkling ones: a layer of them on both nights, a second on a clear one, faded in and out as it clears or
    clouds over: by a filter, as their twinkle is their opacity) */
@@ -247,7 +249,7 @@ body[data-sky="fog"] .sky-clouds { inset: 20% -50% auto; height: 90%; }
   background-image: radial-gradient(1.2px 1.2px at 24% 21%, #fff 50%, transparent), radial-gradient(1px 1px at 46% 14%, #fff 50%, transparent),
     radial-gradient(1.4px 1.4px at 66% 24%, #fff 50%, transparent), radial-gradient(1px 1px at 93% 30%, #fff 50%, transparent),
     radial-gradient(1px 1px at 12% 48%, #fff 50%, transparent), radial-gradient(1.2px 1.2px at 79% 42%, #fff 50%, transparent); }
-body[data-sky="clear-night"] .sky-stars::after { filter: none; }
+body[data-sky="clear-night"] .sky > .sky-stars::after, .sky-alt[data-sky="clear-night"] > .sky-stars::after { filter: none; }
 @keyframes twinkle { from { opacity: 0.15; } to { opacity: 1; } }
 .sky-snow::before, .sky-snow::after {
   content: ""; position: absolute; inset: -240px 0 0; opacity: 0.75;
@@ -509,14 +511,18 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
    place coming in's sky coming in over this one's and its name over this one's in the bar, each by how far across it's
    got (where the weather now is in the scroller, a timeline: --cur). Where that can't be had, app.js does the same as
    it scrolls. Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
-.sky-alt { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
+.sky-alt { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
+/* (its clouds, stars, rain or snow with it, over this sky's own, as it comes in; there only while it's swiped: nothing of
+   them kept moving out of sight) */
+.sky-alt > * { transition: none !important; }
+:root:not(.pg-drag) .sky-alt > * { display: none !important; }
 .place-name { position: relative; }
 .pg-name { position: absolute; left: 0; top: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; }
 /* (and the line under it: the next place's over this one's, in its place in the line; not once the bar's taken up the
    temperature there) */
 .pg-sub { opacity: 0; pointer-events: none; }
 .top.collapsed .pg-sub { visibility: hidden; }
-:root.pg-snap, :root.pg-snap .sky, :root.pg-snap .dots i { transition: none !important; }
+:root.pg-snap, :root.pg-snap :is(.sky, .sky > *, .sky-stars::after, .dots i) { transition: none !important; }
 @supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
   body { timeline-scope: --cur; }
   .hero { view-timeline: --cur x; }
