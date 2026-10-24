@@ -316,9 +316,11 @@ function paint() {
     if (!ready && Date.now() < h.until) { h.timer = setTimeout(paint, h.until - Date.now()); return; }
     S.hold = null;
   }
+  // (not while the places are being swiped through, under the finger: once it's still; landed on one, at once)
+  clearTimeout(S.paintT);
+  if (!snapping && swiping()) { S.paintT = setTimeout(paint, 250); return; }
   // (parts coming in close together, as they do, drawn together: twice a second at most, rather than the whole page
   // over again for each, moving under the eye each time)
-  clearTimeout(S.paintT);
   const wait = (S.painted || 0) + 500 - Date.now();
   if (wait > 0) { S.paintT = setTimeout(paint, wait); return; }
   S.painted = Date.now();
@@ -454,8 +456,8 @@ function flickSpeed(trail) {
 const nearby = () => [S.places[S.cur - 1] || null, S.places[S.cur + 1] || null];
 // (where it can't be led by the scroller's own timeline, done here as it scrolls: follow)
 const linked = !!globalThis.CSS?.supports?.("timeline-scope: --a") && CSS.supports("animation-range: cover 0% cover 100%");
-let held = false, movedAt = 0, dirty = false, dragging = false, settleT = 0, heroLeft = 0, pageW = 0, snapping = false;
-const pagerBusy = () => held || performance.now() - movedAt < 160 || turning;
+let held = false, heldAt = 0, movedAt = 0, dirty = false, dragging = false, settleT = 0, heroLeft = 0, pageW = 0, snapping = false;
+const swiping = () => held || performance.now() - movedAt < 160, pagerBusy = () => swiping() || turning;
 // a place's weather now, the hero's own lines (as hero has them), and its sky
 function heroView(wx, now) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now);
@@ -546,11 +548,15 @@ const settleSoon = () => { clearTimeout(settleT); settleT = setTimeout(landed, 1
 // stopped: on the weather now, it's left be; on a place either side, that's the one showing now
 function landed() {
   clearTimeout(settleT);
-  if (held) return;
-  const x = $("pager").scrollLeft - heroLeft, k = Math.max(-1, Math.min(1, Math.round(x / (pageW || 1))));
+  // (not with a finger still on it; unless it's been a good while, and its lifting was missed)
+  if (held && performance.now() - Math.max(heldAt, movedAt) < 4000) { settleT = setTimeout(landed, 500); return; }
+  held = false;
+  // (where the weather now is in it, as laid out: x, in pages along, past it towards the next)
+  const el = $("pager"), r = el.getBoundingClientRect(), hr = el.querySelector(".hero").getBoundingClientRect(), w = hr.width || 1;
+  const x = (r.left - hr.left) / w, k = Math.max(-1, Math.min(1, Math.round(x))), off = Math.abs(x - k) * w;
   // (still on its way; or, still a while between two, the nearer)
-  if (Math.abs(x - k * pageW) > 2 && performance.now() - movedAt < 600) { settleSoon(); return; }
-  if (!k || !S.places[S.cur + k]) { dragOff(); if (Math.abs(x) > 1) centre(); if (dirty) layoutPager(); return; }
+  if (off > 2 && performance.now() - movedAt < 600) { settleSoon(); return; }
+  if (!k || !S.places[S.cur + k]) { dragOff(); if (Math.abs(x) * w > 1) centre(); if (dirty) layoutPager(); return; }
   commit(k);
 }
 // Landed on the next place: it's drawn in the weather now's place (as it was drawn beside it: no roll, no crossfade,
@@ -595,8 +601,13 @@ function readyNearby() {
 }
 function pager() {
   const el = $("pager");
-  el.addEventListener("touchstart", () => { held = true; dragOn(); }, { passive: true });
   const up = () => { held = false; settleSoon(); };
+  el.addEventListener("touchstart", (e) => {
+    held = true; heldAt = performance.now(); dragOn();
+    // (its lifting heard where it started, too: what was touched may be drawn again meanwhile, a forecast come in, and
+    // gone from the page, from where it would never reach the scroller)
+    for (const t of ["touchend", "touchcancel"]) e.target.addEventListener(t, up, { once: true, passive: true });
+  }, { passive: true });
   el.addEventListener("touchend", up, { passive: true });
   el.addEventListener("touchcancel", up, { passive: true });
   el.addEventListener("scroll", () => {
