@@ -686,9 +686,21 @@ function drawAlts(g, m, xy, W, H) {
 }
 function drawMap(cv, m, cardH) {
   cv._m = m; cv._cardH = cardH;
+  // a map just opened: its first picture (a long moment's drawing on a phone) waits until the sheet has started up,
+  // then fades in (over the sea's colour meanwhile: styles.css), so the sheet never stands still at the bottom
+  if (!cv._shown && cv.classList.contains("map")) {
+    cv._shown = 1;
+    requestAnimationFrame(() => setTimeout(() => {
+      if (!cv.isConnected || S.sheet?.type !== "map") return;
+      drawMap(cv, cv._m, cv._cardH);
+      if (!STILL.matches) cv.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease" });
+    }, 0));
+    return;
+  }
   if (mapMoving() && cv._base) return fastFrame(cv);        // fingers on it: the quick version; the full one follows
   $(".mapctl [data-act=mapglobe]", $layer)?.setAttribute("aria-pressed", String(globeOn(m)));
   if (globeOn(m)) return drawGlobe(cv, m, cardH);
+  if (cv._wasFast) { cv._wasFast = false; mapFadeFrom(cv); }   // (after the quick pictures as it moved: the sharp one, names and all, fades in)
   const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
   const { cx, cy, k } = view;
   const dpr = cv._dprFix || window.devicePixelRatio || 1; cv._dpr = dpr;
@@ -783,7 +795,7 @@ function drawMap(cv, m, cardH) {
     let lon = n.lon; while (lon - near.x > 180) lon -= 360; while (lon - near.x < -180) lon += 360;
     sparkAt(g, X(lon), Y(mercY(n.lat)), col("--cell"), col("--orange"));
   }
-  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
+  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, rp, P, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H], ...suns];
   const ctlEl = $(".mapctl", $layer);
@@ -866,8 +878,9 @@ function drawMap(cv, m, cardH) {
   });
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
   cv._wx = wxCells(tracks.map(({ r }) => r)); cv._wxText = col("--label-2"); cv._wxHalo = col("--land");
+  cv._fullAt = performance.now(); cv._sig = routesSig(m); cv._sigM = m; cv._stale = cv._dirty = false;
   drawBirds(cv, performance.now());
-  if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
+  if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view && !cv._fitting);
 }
 // Mountains: each range a soft ridge, a light side to the north-west and a
 // shadow to the south-east, built from a few wide translucent strokes.
@@ -1061,8 +1074,15 @@ function birdTip(cv, bird) {
   tip.hidden = false;
   const w = tip.offsetWidth, h = tip.offsetHeight, [x, y] = bird.at;
   tip.style.left = `${Math.max(8, Math.min(cv.clientWidth - w - 8, x - w / 2))}px`; tip.style.top = `${y - h - 26 < 8 ? y + 26 : y - h - 26}px`;
-  tip.classList.remove("pop"); void tip.offsetWidth; tip.classList.add("pop");
-  clearTimeout(birdTip.t); birdTip.t = setTimeout(() => { tip.hidden = true; }, 6000);
+  tip.classList.remove("pop", "out"); void tip.offsetWidth; tip.classList.add("pop");
+  clearTimeout(birdTip.t); birdTip.t = setTimeout(() => tipAway(tip), 6000);
+}
+// a tip on the map goes as a quick fade (styles.css .out), not in one frame
+function tipAway(tip) {
+  if (!tip || tip.hidden || tip.classList.contains("out")) return;
+  if (STILL.matches) { tip.hidden = true; return; }
+  tip.classList.remove("pop"); tip.classList.add("out");
+  setTimeout(() => { if (tip.classList.contains("out")) { tip.hidden = true; tip.classList.remove("out"); } }, 200);
 }
 
 /* ---------- the wind map: the wind everywhere, as drifting trails ---------- */
@@ -1162,8 +1182,8 @@ function windTip(cv, x, y) {
   const ll = cv._inv(x, y), w = ll && windAt(gr, ll[0], ll[1]); if (!w) return;
   const sp = Math.hypot(w[0], w[1]), from = (Math.atan2(w[0], w[1]) * R2D + 540) % 360;
   tip.innerHTML = `<small>${["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(from / 45) % 8]}</small><b>${Math.round(sp * 0.621371)}</b><small>mph</small>`;
-  tip.style.left = `${x - 34}px`; tip.style.top = `${y - 34}px`; tip.hidden = false; tip.classList.remove("pop"); void tip.offsetWidth; tip.classList.add("pop");
-  clearTimeout(windTip.t); windTip.t = setTimeout(() => { tip.hidden = true; }, 4000);
+  tip.style.left = `${x - 34}px`; tip.style.top = `${y - 34}px`; tip.hidden = false; tip.classList.remove("pop", "out"); void tip.offsetWidth; tip.classList.add("pop");
+  clearTimeout(windTip.t); windTip.t = setTimeout(() => tipAway(tip), 4000);
 }
 // Wind: short streaks drifting beside the route, with the pigeon for a
 // tailwind (green), against it for a headwind (orange); faster the stronger it blew.
@@ -1392,13 +1412,25 @@ function drawBirds(cv, ts, xf) {
   drawRadar(g, cv, ts, xf);
   drawWx(g, cv, ts, xf);
   if (!xf) drawWind(g, cv, STILL.matches ? 0 : ts);
+  const tilts = cv._tilt || (cv._tilt = new Map()), still = STILL.matches;
   for (const { r, at: [px0, py0], dx, dy, phase, color } of cv._birds) {
     const px = xf ? xf.a * px0 + xf.bx : px0, py = xf ? xf.a * py0 + xf.by : py0;
     const flying = phase === "up" || phase === "cruise" || phase === "down", hz = phase === "cruise" ? 2.2 : 5;
-    const w = !flying ? 0.45 : STILL.matches ? 1 : 0.62 + 0.38 * Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997));
-    const bob = flying && !STILL.matches ? Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997) - 1.2) * 1.2 : 0;
-    const flip = dx > 0 ? -1 : 1;                                 // the icon faces left; turn it the way it's flying
-    const tilt = flying ? Math.max(-0.35, Math.min(0.35, Math.atan2(dy, Math.abs(dx) || 1))) * -flip : 0;   // nose up or down with its course
+    // landing: its wings come up as it touches down, then fold over a third of a second (none of it snaps)
+    const since = r.lost ? Infinity : now() - r.deliverAt, flap = 0.62 + 0.38 * Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997)), near = Math.min(1, Math.max(0, 1 + since / 350));
+    const w = still ? (flying ? 1 : 0.45) : flying ? flap + (1 - flap) * near : phase === "landed" && since < 350 ? 0.45 + 0.55 * (1 - Math.max(0, since) / 350) ** 2 : 0.45;
+    const bob = flying && !still ? Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997) - 1.2) * 1.2 * (1 - near) : 0;
+    // the icon faces left: it turns to the way it's flying, and noses up or down with its course, easing into each
+    // (rather than snapping at every point of its route)
+    const flip0 = dx > 0 ? -1 : 1, tilt0 = flying ? Math.max(-0.35, Math.min(0.35, Math.atan2(dy, Math.abs(dx) || 1))) * -flip0 : 0;
+    const key = `${r.id}|${r.to || ""}`, was = tilts.get(key), k = was && !still ? 1 - Math.exp(-Math.max(0, ts - was.t) / 90) : 1;
+    const tilt = was ? was.v + (tilt0 - was.v) * k : tilt0, flip = was ? was.f + (flip0 - was.f) * k : flip0;
+    tilts.set(key, { v: tilt, f: flip, t: ts });
+    // just landed: a ring spreads from where it came down
+    if (phase === "landed" && since >= 0 && since < 900 && !still) {
+      const e = 1 - (1 - since / 900) ** 3;
+      g.save(); g.globalAlpha = 0.5 * (1 - e); g.strokeStyle = color; g.lineWidth = 2.5; g.beginPath(); g.arc(px, py, 8 + 28 * e, 0, 7); g.stroke(); g.restore();
+    }
     // at sea on a ship: the ship under it, rocking a little
     if (phase === "sail") {
       const rock = STILL.matches ? 0 : Math.sin(ts / 700 + (r.deliverAt % 97)) * 0.06;
@@ -1459,15 +1491,19 @@ function moveGlobe(cv, z, dx, dy) {
 }
 function drawGlobe(cv, m, cardH, fast) {
   const { W, H, cx, cy, R, v } = globeFrame(cv, m, cardH); if (!W || !H) return;
+  // a little spin as it opens: drawn the quick way while it turns (as it is while dragged), sharp once it stops
+  if (cv._spin == null || cv._spin === 0) cv._spin = STILL.matches || S.sheet?.gview ? -1 : performance.now();
+  const spun = cv._spin > 0 ? Math.min(1, (performance.now() - cv._spin) / 1100) : 1;
+  if (spun < 1 && !cv._dprFix) fast = true;
+  // (and the sharp picture after the quick ones, with its night, mountains and names, fades in over them)
+  if (fast) cv._wasFast = true; else if (cv._wasFast) { cv._wasFast = false; mapFadeFrom(cv); }
   const dpr = cv._dprFix || (fast ? Math.min(1, window.devicePixelRatio || 1) : window.devicePixelRatio || 1);     // fewer pixels while it turns
   cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const col = (n) => cssVar(cv, n), rad = Math.PI / 180;
-  // a little spin as it opens
-  if (cv._spin == null || cv._spin === 0) cv._spin = STILL.matches || S.sheet?.gview ? -1 : performance.now();
   let lon0 = v.lon; const lat0 = v.lat;
-  if (cv._spin > 0) { const p = Math.min(1, (performance.now() - cv._spin) / 1100); lon0 -= 40 * (1 - p) ** 3; if (p < 1) requestAnimationFrame(redrawMap); else cv._spin = -1; }
+  if (cv._spin > 0) { lon0 -= 40 * (1 - spun) ** 3; if (spun < 1) requestAnimationFrame(redrawMap); else cv._spin = -1; }
   const s0 = Math.sin(lat0 * rad), c0 = Math.cos(lat0 * rad);
   // orthographic: [x, y, in sight]; out of sight points go to the rim
   const proj = (lon, lat) => {
@@ -1559,7 +1595,7 @@ function drawGlobe(cv, m, cardH, fast) {
   for (const { r } of tracks) for (const n of r.near || []) { const p = proj(n.lon, n.lat); if (p[2]) sparkAt(g, p[0], p[1], col("--cell"), col("--orange")); }
   g.restore();                                                         // (out of the globe's clip)
   // ends and labels
-  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P, up }) => { const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft); return { r, vis: up[i < 0 ? up.length - 1 : i], ...pigeonOn(P, rp, ft) }; }).filter((b) => b.vis);
+  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P, up }) => { const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft); return { r, rp, P, up, vis: up[i < 0 ? up.length - 1 : i], ...pigeonOn(P, rp, ft) }; }).filter((b) => b.vis);
   const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H], ...suns];
   const ctl = $(".mapctl", $layer);
   if (ctl) { const r = ctl.getBoundingClientRect(), c = cv.getBoundingClientRect(); taken.push([r.left - c.left - 4, r.top - c.top - 4, r.right - c.left + 4, r.bottom - c.top + 4]); }
@@ -1617,16 +1653,17 @@ function drawGlobe(cv, m, cardH, fast) {
   });
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
   cv._wx = wxCells(tracks.map(({ r }) => r)); cv._wxText = col("--label-2"); cv._wxHalo = col("--land");
+  if (!fast) { cv._fullAt = performance.now(); cv._sig = routesSig(m); cv._sigM = m; cv._stale = cv._dirty = false; }
   drawBirds(cv, performance.now());
-  $(".mapctl", $layer)?.classList.toggle("moved", !!S.sheet?.gview);
+  $(".mapctl", $layer)?.classList.toggle("moved", !!S.sheet?.gview && !cv._fitting);
 }
 /* ---------- moving the map smoothly ---------- */
 let mapMotionUntil = 0, mapSettle = 0, mapFastReq = 0, mapGlide = 0;
 const mapMoving = () => performance.now() < mapMotionUntil;
 // Something moved it: quick frames now, the full map once it's been still a moment.
 function nudgeMap(cv) {
-  mapMotionUntil = performance.now() + 140;
-  if (!mapFastReq) mapFastReq = requestAnimationFrame(() => { mapFastReq = 0; if (S.sheet?.type === "map") fastFrame(cv); });
+  mapMotionUntil = performance.now() + 140; cv._dirty = true;      // (the picture kept is for where the map was: until it's drawn again, only moved and scaled)
+  if (!mapFastReq) mapFastReq = requestAnimationFrame((ts) => { mapFastReq = 0; cv._ffTs = ts; if (S.sheet?.type === "map") fastFrame(cv); });
   clearTimeout(mapSettle);
   mapSettle = setTimeout(function settle() { if (mapMoving()) { mapSettle = setTimeout(settle, 60); return; } redrawMap(); }, 150);
 }
@@ -1637,9 +1674,52 @@ function fastFrame(cv) {
   const { W, sy0, view } = mapFrame(cv, cv._m, cv._cardH), ox = W / 2 - view.cx * view.k, oy = sy0 + view.cy * view.k, s0 = cv._snap;
   const a = view.k / s0.k;
   if (a > 3 || a < 0.33) return redrawMapNow(cv);           // too far from the last full picture: draw it again
+  cv._wasFast = true; placeBirds(cv, cv._m);
   drawBirds(cv, performance.now(), { a, bx: ox - s0.ox * a, by: oy - s0.oy * a });
 }
-function redrawMapNow(cv) { const until = mapMotionUntil; mapMotionUntil = 0; drawMap(cv, cv._m, cv._cardH); mapMotionUntil = until; }
+function redrawMapNow(cv) { const until = mapMotionUntil; mapMotionUntil = 0; cv._wasFast = false; drawMap(cv, cv._m, cv._cardH); mapMotionUntil = until; }
+// what the routes on a map are (where, and when along them, from when each set off), to tell whether only its pigeons
+// have moved since it was drawn
+const routesSig = (m) => routesOf(m).map((r) => `${r.id}|${r.to || ""}|${r.deliverAt - r.sentAt}|${r.lost ? r.lostAt - r.sentAt : ""}|${r.recalled ? 1 : 0}|${r.route}|${(r.legs || []).map((l) => `${l[0]},${l[1]},${l[2] - r.sentAt},${l[3] || ""}`).join(" ")}`).join(";");
+// Between full drawings of the map, the pigeons alone move on: each is put where it is now along its route as it was
+// drawn (its points kept with it), with no coast, night or names drawn again. false: more than that has changed (a
+// route, a take-off, a rest or a landing, one gone round the back of the globe), so the whole map is wanted
+// (the pigeons are moved on all the same, for a quick picture meanwhile)
+function placeBirds(cv, m) {
+  const bs = cv._birds; if (!cv._base || !bs || !m) return false;
+  if (m !== cv._sigM) { if (routesSig(m) !== cv._sig) cv._stale = true; else cv._sigM = m; }
+  const t = now();
+  for (const b of bs) {
+    const r = b.r, ft = flightAt(r, r.lost ? r.lostAt : t).t, ph = birdPhase(r);
+    if (ph !== b.phase) { b.phase = ph; cv._stale = true; }
+    if (b.up) { const i = b.rp.findIndex((p) => p.t >= ft); if (!b.up[i < 0 ? b.up.length - 1 : i]) cv._stale = true; }
+    Object.assign(b, pigeonOn(b.P, b.rp, ft));
+  }
+  return !cv._stale;                                                // (until the whole map's been drawn again)
+}
+// A map's regular redraw (each second, or each frame while a pigeon visibly moves): just its pigeons while nothing
+// else has changed, and the whole map at most every `every` ms (so the line flown keeps up with them)
+function mapTick(cv, m, H, every = 5000) {
+  if (cv._cardH === H && !cv._dirty && !mapMoving() && performance.now() - (cv._fullAt || 0) < every && placeBirds(cv, m)) { cv._m = m; return drawBirds(cv, performance.now()); }
+  drawMap(cv, m, H);
+}
+// A picture of a canvas as it is now, laid over it (in a closed shadow root, so it's never taken for the canvas itself)
+function canvasCopy(cv, cls) {
+  const c = Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
+  c.getContext("2d").drawImage(cv, 0, 0); Object.assign(c.style, { display: "block", width: "100%", height: "100%" });
+  const host = document.createElement("div"); host.className = cls; host.inert = true; host.setAttribute("aria-hidden", "true");
+  host.attachShadow({ mode: "closed" }).append(c); cv.after(host);
+  return host;
+}
+// The map as it was, laid over it as a picture that fades away: the globe turning into the flat map (shrinking or
+// growing as it goes), or the quick picture drawn while it moved, with the sharp one coming through it
+function mapFadeFrom(cv, to) {
+  if (STILL.matches || !cv.width || !cv.isConnected || !cv.classList.contains("map")) return;
+  for (const x of $layer.querySelectorAll(".mapghost")) x.remove();
+  const g = canvasCopy(cv, "mapghost");
+  const a = g.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: to || "none" }], { duration: to ? 380 : 240, easing: "cubic-bezier(.32,.72,0,1)", fill: "forwards" });
+  a.onfinish = a.oncancel = () => g.remove();
+}
 // Glide: run step(e, prev) with e easing 0 → 1 over ms (zoom buttons, double tap, fit, flicks)
 function glideMap(step, ms = 300) {
   cancelAnimationFrame(mapGlide);
@@ -1649,16 +1729,18 @@ function glideMap(step, ms = 300) {
   mapGlide = requestAnimationFrame(run);
 }
 function zoomMapBy(cv, factor, sx, sy) { const L = Math.log(factor); glideMap((e, prev) => moveMap(cv, Math.exp(L * (e - prev)), sx, sy), 280); }
-// Back to the whole route, gliding there
+// Back to the whole route, gliding there. Its button goes as it's tapped (cv._fitting: not back with the drawings on
+// the way; a finger or a zoom on the way brings it back), and the glide ends with the sheet it was for.
 function fitMap(cv) {
+  const sh = S.sheet, go = (set) => { cv._fitting = true; $(".mapctl", $layer)?.classList.remove("moved");
+    glideMap((e) => { if (S.sheet !== sh) return; if (e >= 1) cv._fitting = false; set(e); e >= 1 ? redrawMap() : nudgeMap(cv); }, 420); };
   if (globeOn(cv._m)) {
-    const { v, fit } = globeFrame(cv, cv._m, cv._cardH); if (!S.sheet.gview) return;
+    const { v, fit } = globeFrame(cv, cv._m, cv._cardH); if (!sh.gview) return;
     const dLon = ((fit.lon - v.lon + 540) % 360) - 180;
-    glideMap((e) => { S.sheet.gview = e >= 1 ? null : { lon: v.lon + dLon * e, lat: v.lat + (fit.lat - v.lat) * e, s: Math.exp(Math.log(v.s) + (Math.log(fit.s) - Math.log(v.s)) * e) }; e >= 1 ? redrawMap() : nudgeMap(cv); }, 420);
-    return;
+    return go((e) => { sh.gview = e >= 1 ? null : { lon: v.lon + dLon * e, lat: v.lat + (fit.lat - v.lat) * e, s: Math.exp(Math.log(v.s) + (Math.log(fit.s) - Math.log(v.s)) * e) }; });
   }
-  const { view, fit } = mapFrame(cv, cv._m, cv._cardH); if (!S.sheet.view) return;
-  glideMap((e) => { S.sheet.view = e >= 1 ? null : { cx: view.cx + (fit.cx - view.cx) * e, cy: view.cy + (fit.cy - view.cy) * e, k: Math.exp(Math.log(view.k) + (Math.log(fit.k) - Math.log(view.k)) * e) }; e >= 1 ? redrawMap() : nudgeMap(cv); }, 420);
+  const { view, fit } = mapFrame(cv, cv._m, cv._cardH); if (!sh.view) return;
+  go((e) => { sh.view = e >= 1 ? null : { cx: view.cx + (fit.cx - view.cx) * e, cy: view.cy + (fit.cy - view.cy) * e, k: Math.exp(Math.log(view.k) + (Math.log(fit.k) - Math.log(view.k)) * e) }; });
 }
 let mapFrameReq = 0;
 function redrawMap() {
@@ -1668,6 +1750,7 @@ function redrawMap() {
 // Move the map: zoom by `z` about screen point (sx, sy), then pan by (dx, dy) pixels.
 function moveMap(cv, z, sx, sy, dx = 0, dy = 0) {
   if (!cv._m || S.sheet?.type !== "map") return;
+  cv._fitting = false;
   if (globeOn(cv._m)) return moveGlobe(cv, z, dx, dy);
   const { W, sy0, fit, view, kMin, pts } = mapFrame(cv, cv._m, cv._cardH);
   const k = Math.max(kMin, Math.min(MAP_KMAX, view.k * z));
@@ -1691,8 +1774,8 @@ function mapGestures(cv) {
   // (iPhone ignores touch-action: none, so say it with the touches themselves)
   cv.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
   cv.addEventListener("pointerdown", (e) => {
-    cancelAnimationFrame(mapGlide);                                // a finger stops a glide or a flick
-    for (const el of $layer.querySelectorAll(".windtip, .birdtip")) el.hidden = true;
+    cancelAnimationFrame(mapGlide); cv._fitting = false;           // a finger stops a glide or a flick
+    for (const el of $layer.querySelectorAll(".windtip, .birdtip")) tipAway(el);
     cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state(); trail = [];
     down = pts.size === 1 ? { at: performance.now(), p: local(e), moved: 0 } : null;
     if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 280) { const [x, y] = local(e); zoomMapBy(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
@@ -2169,6 +2252,7 @@ async function startScan(p, want) {
   try { scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
   catch (_) { S.scan = null; return say("InFlight can’t use the camera here. Compare the 60 digits instead."); }
   if (!scan.on || S.scan !== scan) { scan.stream.getTracks().forEach((t) => t.stop()); return; }     // (closed, or another scan began, while asking)
+  v.addEventListener("playing", () => v.classList.add("on"), { once: true });          // (it fades in once there's a picture: styles.css)
   v.srcObject = scan.stream; await v.play().catch(() => {});
   // the browser's own reader where there is one (Android), else jsQR (loaded only now)
   let det = null;
@@ -2535,16 +2619,17 @@ async function viewOnce(id) {
   el.innerHTML = `<canvas aria-hidden="true"></canvas><div class="obar"><span class="oring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/></svg></span><span class="otext">Opening…</span><button type="button" class="oclose" aria-label="Close">${I.x}</button></div>`;
   root().append(el);
   const state = onceOpen = { el, timer: 0, bmp: null };
-  const close = () => {
+  // closed, it fades away (the photo with it) and is wiped as it goes; leaving the app wipes it there and then
+  const close = (atOnce) => {
     if (onceOpen !== state) return; onceOpen = null;
     clearTimeout(state.timer); document.removeEventListener("visibilitychange", hide);
-    const cv = $("canvas", el); if (cv) { cv.width = cv.height = 0; }
-    state.bmp?.close?.(); state.bmp = null;
-    el.classList.add("out"); setTimeout(() => el.remove(), 220);
+    const wipe = () => { const cv = $("canvas", el); if (cv) { cv.width = cv.height = 0; } state.bmp?.close?.(); state.bmp = null; };
+    if (atOnce === true) wipe();
+    el.classList.add("out"); setTimeout(() => { wipe(); el.remove(); }, 210);
   };
-  const hide = () => { if (document.visibilityState !== "visible") close(); };
+  const hide = () => { if (document.visibilityState !== "visible") close(true); };
   document.addEventListener("visibilitychange", hide);
-  el.addEventListener("click", close);
+  el.addEventListener("click", () => close());
   // counted as opened now (no second go), unless it never arrives
   m.viewedAtServer = !!m.viewedAt; m.viewedAt = m.viewedAt || now(); opened().add(id); saveOpened(); render();
   let plain, got = false;
@@ -2570,7 +2655,7 @@ async function viewOnce(id) {
   cv.getContext("2d").drawImage(state.bmp, 0, 0, cv.width, cv.height);
   state.bmp.close?.(); state.bmp = null;
   el.classList.add("on"); $(".otext", el).textContent = "View once";
-  $(".oring circle", el).style.animationDuration = `${ONCE_MS}ms`;
+  $(".oring circle", el).style.setProperty("animation-duration", `${ONCE_MS}ms`, "important");     // (Reduce Motion too: it says how long is left)
   state.timer = setTimeout(close, ONCE_MS);
 }
 async function loadPhoto(fid, m, p) {
@@ -2769,8 +2854,10 @@ function haptic(kind = "tick") {
   try {
     if (navigator.vibrate && !/iPhone|iPad/.test(navigator.userAgent)) { navigator.vibrate(kind === "success" ? [10, 70, 16] : kind === "heavy" ? [22, 40, 22] : 8); return; }
     if (!hapticEl) { hapticEl = document.createElement("label"); hapticEl.className = "hapt"; hapticEl.setAttribute("aria-hidden", "true"); hapticEl.innerHTML = '<input type="checkbox" switch tabindex="-1">'; document.body.appendChild(hapticEl); }
-    hapticEl.click();
-    if (kind === "success" || kind === "heavy") setTimeout(() => hapticEl.click(), kind === "heavy" ? 60 : 110);
+    // (flipping it would take the focus: it goes straight back to wherever it was, for a keyboard or VoiceOver)
+    const tap = () => { const a = document.activeElement; hapticEl.click(); if (a && a !== document.body && a !== document.activeElement && a.isConnected) a.focus({ preventScroll: true }); };
+    tap();
+    if (kind === "success" || kind === "heavy") setTimeout(tap, kind === "heavy" ? 60 : 110);
   } catch (_) { /* no haptics here */ }
 }
 function pullToRefresh() {
@@ -2819,10 +2906,22 @@ function pullToRefresh() {
    away. Escape closes whatever is on top, for a keyboard. */
 const EDGE = 28;                                                   // how near the left edge a back swipe starts
 const speed = (st, x, y) => { const t = performance.now(), dt = Math.max(1, t - st.lt); st.vx = (x - st.lx) / dt; st.vy = (y - st.ly) / dt; st.lx = x; st.ly = y; st.lt = t; };
-const settle = (els, css, ms, then) => {
-  const quick = STILL.matches;
-  for (const [el, tf, op] of els) { if (!el) continue; el.style.transition = quick ? "none" : `transform ${ms}ms cubic-bezier(.25,.75,.35,1), opacity ${ms}ms ease`; el.style.transform = tf; if (op != null) el.style.opacity = op; }
-  setTimeout(then, quick ? 0 : ms + 30);                           // (a beat over, so the last frame has landed)
+// A finger lets go of what it was moving: it carries on where it was going on the sheets' curve (--nav), as long as it
+// takes to start at about the finger's own speed: a flick quickly, a slow push gently (within lo to hi ms), the
+// curve's first handle tilted to match (--nav is .32,.72,0,1: it starts at 2.25 times its average pace), so nothing
+// lurches as it's let go. left: px still to go; v: px/ms towards there.
+const flick = (left, v, lo = 180, hi = 380) => {
+  const d = Math.abs(left), u = Math.max(0, v), ms = Math.round(Math.min(hi, Math.max(lo, d > 1 ? (2.25 * d) / Math.max(0.05, u) : lo)));
+  return { ms, ease: `cubic-bezier(.32,${(d > 1 ? Math.min(1, Math.max(0.12, (0.32 * u * ms) / d)) : 0.72).toFixed(3)},0,1)` };
+};
+// (the finger held still a moment before it let go: no speed left in it)
+const leftSpeed = (st, v) => (performance.now() - st.lt > 80 ? 0 : v);
+// ease: the curve (--nav if none). Reduce Motion: a short settle into place, not a jump (marked important: past the
+// rule that stops every transition)
+const settle = (els, ease, ms, then) => {
+  const quick = STILL.matches, t = quick ? "transform 150ms ease-out, opacity 150ms ease" : `transform ${ms}ms ${ease || cssVar(document.documentElement, "--nav") || "ease-out"}, opacity ${ms}ms ease`;
+  for (const [el, tf, op] of els) { if (!el) continue; el.style.setProperty("transition", t, quick ? "important" : ""); el.style.transform = tf; if (op != null) el.style.opacity = op; }
+  setTimeout(then, (quick ? 150 : ms) + 30);                       // (a beat over, so the last frame has landed)
 };
 const unstyle = (...els) => { for (const el of els) if (el) { el.style.transition = el.style.transform = el.style.opacity = el.style.animation = ""; } };
 // what you'd see behind the screen you're on: the one you came from, as you left it
@@ -2870,8 +2969,8 @@ function edgeBack() {
   const end = (cancel) => {
     if (!st) return; const s2 = st; st = null;
     if (!s2.dir) return;
-    const go = !cancel && (s2.dx > s2.w * 0.35 || (s2.vx > 0.45 && s2.dx > 24));
-    const els = moving();
+    const vx = leftSpeed(s2, s2.vx), go = !cancel && (s2.dx > s2.w * 0.35 || (vx > 0.45 && s2.dx > 24));
+    const els = moving(), f = go ? flick(s2.w - s2.dx, vx, 180, 360) : flick(s2.dx, -vx, 160, 300);
     const done = () => {
       if (go) { S.navQuiet = true; s2.b.click(); }
       // back in place in one step: the screen's own transition mustn't replay the slide
@@ -2880,7 +2979,7 @@ function edgeBack() {
       void $view.offsetWidth;
       for (const el of els) if (el) el.style.transition = "";
     };
-    settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-28%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], null, go ? 260 : 220, done);
+    settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-28%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], f.ease, f.ms, done);
   };
   r.addEventListener("touchend", () => end(false)); r.addEventListener("touchcancel", () => end(true));
 }
@@ -2912,8 +3011,11 @@ function sheetDrag() {
   const end = (cancel) => {
     if (!st) return; const s2 = st; st = null;
     if (!s2.dir) return;
-    const go = !cancel && (s2.dy > s2.h * 0.25 || (s2.vy > 0.6 && s2.dy > 40));
-    settle([[s2.sh, go ? "translateY(100%)" : "translateY(0)"], [s2.scrim, "", go ? "0" : "1"]], null, go ? 240 : 260, () => {
+    const vy = leftSpeed(s2, s2.vy), go = !cancel && (s2.dy > s2.h * 0.25 || (vy > 0.6 && s2.dy > 40));
+    // (Reduce Motion: it fades from where it's been dragged to, as the ✕ does: styles.css)
+    if (go && STILL.matches) return closeTop();
+    const f = go ? flick(s2.h - s2.dy, vy) : flick(s2.dy, -vy, 160, 320);
+    settle([[s2.sh, go ? "translateY(100%)" : "translateY(0)"], [s2.scrim, "", go ? "0" : "1"]], f.ease, f.ms, () => {
       if (!go) { unstyle(s2.sh, s2.scrim); return; }
       // already out of sight: closing shouldn't play its own slide again
       s2.sh.style.animation = "none"; if (s2.scrim) s2.scrim.style.animation = "none";
@@ -2940,9 +3042,17 @@ function viewerDrag() {
   $layer.addEventListener("touchend", () => {
     if (!st) return; const s2 = st; st = null;
     if (!s2.dir) return;
-    if (Math.abs(s2.dy) > 90 || Math.abs(s2.vy) > 0.7) {
-      settle([[s2.img, `translateY(${s2.dy > 0 ? "" : "-"}110vh)`]], null, 220, () => { s2.v.style.animation = "none"; s2.v.style.opacity = "0"; S.sheet = null; renderSheet(); });
-    } else settle([[s2.img, "translateY(0)"]], null, 220, () => { unstyle(s2.img); s2.v.style.backgroundColor = ""; });
+    const vy = leftSpeed(s2, s2.vy), down = s2.dy > 0;
+    if (Math.abs(s2.dy) > 90 || Math.abs(vy) > 0.7) {
+      // away the way it was flicked, the black fading with it (Reduce Motion: it all fades where it is)
+      if (STILL.matches) { S.sheet = null; return renderSheet(); }
+      const f = flick(s2.v.clientHeight * 1.1 - Math.abs(s2.dy), down ? vy : -vy, 160, 320);
+      settle([[s2.img, `translateY(${down ? "" : "-"}110vh)`], [s2.v, "", "0"]], f.ease, f.ms, () => { s2.v.style.animation = "none"; s2.v.style.opacity = "0"; S.sheet = null; renderSheet(); });
+    } else {
+      const f = flick(Math.abs(s2.dy), down ? -vy : vy, 160, 300);
+      s2.v.style.setProperty("transition", `background-color ${STILL.matches ? 150 : f.ms}ms ease`, STILL.matches ? "important" : ""); s2.v.style.backgroundColor = "";
+      settle([[s2.img, "translateY(0)"]], f.ease, f.ms, () => { unstyle(s2.img, s2.v); });
+    }
   });
 }
 // a banner: flick it up and it goes
@@ -3573,7 +3683,7 @@ function vNotifySheet() {
     <div class="group">${toggleCell({ act: "emailtoggle", icon: I.mail, tile: "blue", label: "Email Me", sub: esc(u.email), on: u.notifyEmail })}</div>
     <div class="gfoot">${u.emailOk === false ? `Emails start once you confirm your address: tap the link we sent to ${esc(u.email)}. <button type="button" class="link inl" data-act="confirmsend">Send it again</button>`
       : "Only when a pigeon has waited 10 minutes unread, and at most every half hour. Every email has a link to turn them off."}</div>` : ""}
-    <div class="${anyOn ? "" : "dim"}">
+    <div class="nwrap${anyOn ? "" : " dim"}">
     <div class="ghead">Notify Me When</div>
     <div class="group">
       ${t("landed", I.bird, "orange", "A Pigeon Lands")}
@@ -4026,8 +4136,12 @@ async function shareRender(s) {
     if (S.sheet !== s || s.gen !== gen) return;
     const url = URL.createObjectURL(blob); shareUrls.push(url);
     s.blobs[fmt] = blob; s.urls[fmt] = url;
+    // (the new picture fades in over the waiting bird, or over the one it replaces, which then goes)
     const slot = $(`.shopt.${fmt} .shimg`, $layer);
-    if (slot) { slot.classList.remove("stale"); slot.innerHTML = `<img src="${url}" alt="">`; }
+    if (slot) {
+      slot.classList.remove("stale"); slot.insertAdjacentHTML("beforeend", `<img src="${url}" alt="">`);
+      const img = slot.lastElementChild; setTimeout(() => { for (const x of [...slot.children]) if (x !== img && slot.contains(img)) x.remove(); }, STILL.matches ? 0 : 320);
+    }
     const go = $("[data-act=shareimg]", $layer); if (go) go.disabled = !s.urls[s.fmt];
   }
 }
@@ -4324,12 +4438,14 @@ async function openPassport(trip) {
     renderSheet();
   } catch (err) { if (S.sheet === sh) { S.sheet = null; renderSheet(); } toast(esc(err.message)); }
 }
+// (kept until the Flight Log is left: renderSheet notes them as seen then)
+let badgesSeen = null;
 function badgesHtml(list) {
   if (!list.length) return "";
   // badges earned since this phone last looked get a "New" tag (remembered on this phone only)
   let seen = null; try { seen = JSON.parse(localStorage.getItem("inflight-badges") || "null"); } catch (_) {}
   const earned = list.filter((b) => b.earned).map((b) => b.id);
-  try { localStorage.setItem("inflight-badges", JSON.stringify(earned)); } catch (_) {}
+  badgesSeen = earned;
   const tile = (b) => {
     const [icon, tint] = BADGE_LOOK[b.id] || ["bird", "gray"], fresh = b.earned && seen && !seen.includes(b.id);
     return `<div class="badge2${b.earned ? " earned" : ""}"><span class="bico tile ${b.earned ? tint : "gray"}">${I[icon] || I.bird}</span>
@@ -5004,32 +5120,45 @@ async function searchMessages(q) {
 let gifTimer = 0;
 /* ---------- Add Friend: look them up as you type ---------- */
 const myLink = () => `${NEW_HOME ? NEW_HOME + "/" : location.origin + "/pigeon/"}#add=${S.me.handle}`;
-let addTimer = 0;
+let addTimer = 0, addSeq = 0;
 function addLookup() {
-  clearTimeout(addTimer);
+  clearTimeout(addTimer); const seq = ++addSeq;
   const i = $("#add-h", $layer), box = $(".addres", $layer); if (!i || !box) return;
   const h = i.value.trim().replace(/^@/, "").toLowerCase();
-  if (h.length < 3) { box.innerHTML = ""; return; }
-  box.innerHTML = `<div class="group"><div class="cell addrow"><span class="spin"></span><span class="ctext"><span>@${esc(h)}</span><span class="csub">Looking…</span></span></div></div>`;
+  // It folds open under the field from three letters (and away again under them), and the row stays put as you type:
+  // its handle follows you and a spinner fades in over its last answer, until the new answer takes its place.
+  // (no flashing between "Looking…" and an answer at every key, and nothing below jumps: styles.css .addres)
+  if (h.length < 3) { box.classList.remove("has"); return; }
+  const in1 = box.firstElementChild || box.appendChild(document.createElement("div")), was = $(".addrow", in1);
+  const row = (sub, btn = "", cls = "", hd = h) => `<div class="group"><div class="cell addrow ${cls}"><span class="addav">${avatar({ name: hd }, "s", false, true)}<span class="spin"></span></span><span class="ctext"><span class="addh">@${esc(hd)}</span><span class="csub">${sub}</span></span>${btn}</div></div>`;
+  if (was) { was.classList.add("looking"); $(".addh", was).textContent = `@${h}`; $(".csub", was).textContent = "Looking…"; const b = $(".btn", was); if (b) b.disabled = true; }
+  else in1.innerHTML = row("Looking…", "", "looking");
+  box.classList.add("has");
   addTimer = setTimeout(async () => {
-    let r; try { r = await api("friend-status?h=" + encodeURIComponent(h)); } catch (_) { box.innerHTML = ""; return; }
+    let r; try { r = await api("friend-status?h=" + encodeURIComponent(h)); } catch (_) { if (seq === addSeq) box.classList.remove("has"); return; }
+    if (seq !== addSeq) return;                                     // typed on, or sent already (addGo: this answer's from before)
     if (($("#add-h", $layer)?.value || "").trim().replace(/^@/, "").toLowerCase() !== h) return;     // typed on
-    const ini = avatar({ name: h }, "s", false, true);
-    const row = (sub, btn, cls = "") => `<div class="group"><div class="cell addrow ${cls}">${ini}<span class="ctext"><span>@${esc(r.handle || h)}</span><span class="csub">${sub}</span></span>${btn}</div></div>`;
-    box.innerHTML = {
+    const hd = r.handle || h, html = {
       invalid: `<p class="gfoot bad">Handles use 3 to 20 letters, numbers or underscores.</p>`,
-      none: row("No one has that handle yet", `<button type="button" class="btn small gray" data-act="share">Invite</button>`, "dim"),
-      self: row("That’s you", ""),
-      new: row("On InFlight", `<button type="button" class="btn small" data-act="addgo" data-id="${esc(r.handle)}">Add</button>`),
-      sent: row("Request sent · waiting for them", `<button type="button" class="btn small gray" data-act="cancelreq" data-id="${esc(r.id)}">Cancel</button>`),
-      incoming: row("Wants to be your friend", `<button type="button" class="btn small" data-act="accept" data-id="${esc(r.id)}">Accept</button>`),
-      friends: row("Already friends", `<button type="button" class="btn small gray" data-act="addchat" data-id="${esc(r.id)}">Message</button>`),
-      blocked: row("You blocked them", `<button type="button" class="btn small gray" data-act="unblock" data-id="${esc(r.id)}">Unblock</button>`),
+      none: row("No one has that handle yet", `<button type="button" class="btn small gray" data-act="share">Invite</button>`, "dim looking", hd),
+      self: row("That’s you", "", "looking", hd),
+      new: row("On InFlight", `<button type="button" class="btn small" data-act="addgo" data-id="${esc(r.handle)}">Add</button>`, "looking", hd),
+      sent: row("Request sent · waiting for them", `<button type="button" class="btn small gray" data-act="cancelreq" data-id="${esc(r.id)}">Cancel</button>`, "looking", hd),
+      incoming: row("Wants to be your friend", `<button type="button" class="btn small" data-act="accept" data-id="${esc(r.id)}">Accept</button>`, "looking", hd),
+      friends: row("Already friends", `<button type="button" class="btn small gray" data-act="addchat" data-id="${esc(r.id)}">Message</button>`, "looking", hd),
+      blocked: row("You blocked them", `<button type="button" class="btn small gray" data-act="unblock" data-id="${esc(r.id)}">Unblock</button>`, "looking", hd),
     }[r.state] || "";
+    if (!html) { box.classList.remove("has"); return; }
+    // (drawn still looking, then let go of that: the spinner fades out, the picture and the button in, the words after)
+    in1.innerHTML = html;
+    const nr = $(".addrow", in1); if (!nr) return;
+    void nr.offsetWidth; nr.classList.remove("looking");
+    if (!STILL.matches) $(".csub", nr).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: "ease" });
   }, 300);
 }
 // Add: the button folds into a circle, a pigeon flies out of it, and it lands as a green tick.
 async function addGo(h, btn) {
+  clearTimeout(addTimer); addSeq++;                                 // (an answer still on its way is from before this)
   const msg = $(".add-msg", $layer), row = $(".addres .addrow", $layer);
   const b = row?.querySelector("[data-act=addgo]") || (btn?.classList.contains("btn") ? btn : null);
   const still = STILL.matches, wait = (ms) => new Promise((r) => setTimeout(r, still ? 0 : ms));
@@ -5044,12 +5173,13 @@ async function addGo(h, btn) {
     if (b) { b.classList.remove("sending"); b.classList.add("sent"); b.innerHTML = I.check; b.setAttribute("aria-label", "Sent"); }
     haptic("success");
     const sub = row?.querySelector(".csub"); if (sub) sub.textContent = /joined/.test(r.message) ? "You’re friends now" : "Request sent";
+    if (!b && row) { row.classList.remove("looking", "dim"); row.querySelector(".btn")?.remove(); }   // (sent before its answer came: it says so instead)
     if (!b) toast(esc(r.message));
     await sync();
     await wait(1200);
     // ready for the next one (unless they've started typing another already)
     const i = $("#add-h", $layer);
-    if (i && i.value.trim().replace(/^@/, "").toLowerCase() === h.toLowerCase()) { i.value = ""; const box = $(".addres", $layer); if (box) box.innerHTML = ""; }
+    if (i && i.value.trim().replace(/^@/, "").toLowerCase() === h.toLowerCase()) { i.value = ""; $(".addres", $layer)?.classList.remove("has"); }
     if (msg) { msg.className = "gfoot add-msg"; msg.textContent = "Add another, or let them scan your code."; }
     if (S.sheet?.type === "addfriend") renderSheet();
     return;
@@ -5088,7 +5218,11 @@ const switchStates = (el) => new Map([...el.querySelectorAll("[role=switch]")].m
 // A box that was already ticked stays still when its sheet redraws: only a new tick pops in.
 const TICKED = "[aria-checked=true],[aria-pressed=true]";
 const tickedKeys = (el) => new Set([...el.querySelectorAll(TICKED)].map(switchKey));
-const keepTicks = (el, was) => { for (const b of el.querySelectorAll(TICKED)) if (was.has(switchKey(b))) b.classList.add("kept"); };
+// (and one that was ticked and isn't now loses its fill gently: styles.css .unticked)
+const keepTicks = (el, was) => {
+  for (const b of el.querySelectorAll(TICKED)) if (was.has(switchKey(b))) b.classList.add("kept");
+  for (const b of el.querySelectorAll("[aria-checked=false],[aria-pressed=false]")) if (was.has(switchKey(b))) b.classList.add("unticked");
+};
 function keepGlides(el, before) {
   for (const b of el.querySelectorAll("[role=switch]")) {
     const k = switchKey(b), was = before.get(k), is = b.getAttribute("aria-checked") === "true", sw = $(".switch", b);
@@ -5104,6 +5238,84 @@ function keepGlides(el, before) {
     const timing = { duration: 500, delay: run.at - t, easing: cssVar(document.documentElement, "--snappy") || "ease-out", fill: "backwards" };
     sw.animate([{ transform: `translateX(${run.from ? 21 : 0}px)` }, { transform: `translateX(${run.to ? 21 : 0}px)` }], { ...timing, pseudoElement: "::after" });
     sw.animate([{ backgroundColor: run.from ? onCol : off }, { backgroundColor: run.to ? onCol : off }], { ...timing, duration: 300 });
+  }
+}
+// A copy of something just left or taken away, fading where it was, kept out of everything's way: in a closed shadow
+// root of its own (styled as the page is, from a copy of its rules), so nothing can find it by mistake, whether the
+// app looking for what's drawn, a screen reader or a test, and nothing in it can be reached
+let ghostCSS = null;
+// (the page's own theme rules, :root's, apply to the copy's host instead: it carries the theme too. A host matches
+// only as :host(…), so :root[data-theme="dark"] becomes :host([data-theme="dark"]))
+const ghostStyles = () => ghostCSS || (ghostCSS = (() => { const c = new CSSStyleSheet(); try { c.replaceSync([...document.styleSheets].flatMap((x) => { try { return [...x.cssRules].map((r) => r.cssText); } catch (_) { return []; } }).join("\n").replace(/:root((?:\[[^\]]*\]|:not\([^)]*\))+)/g, ":host($1)").replace(/:root\b/g, ":host")); } catch (_) {} return c; })());
+const canGhost = () => !STILL.matches && typeof CSSStyleSheet.prototype.replaceSync === "function" && "adoptedStyleSheets" in Document.prototype;
+function ghostHost(cls, ...parts) {
+  const host = document.createElement("div"); host.className = cls; host.inert = true; host.setAttribute("aria-hidden", "true");
+  host.setAttribute("data-theme", document.documentElement.getAttribute("data-theme") || "light");
+  const sr = host.attachShadow({ mode: "closed" }); sr.adoptedStyleSheets = [ghostStyles()]; sr.append(...parts);
+  return host;
+}
+// Something closed while it was still coming in (or being dragged) goes away from where it is, not from fully open:
+// where it's got to, read off it now, for the exit's keyframes (styles.css: down, fade-out, menu-out)
+const freeze = (e) => { const cs = getComputedStyle(e), m = new DOMMatrix(cs.transform === "none" ? undefined : cs.transform); e.style.setProperty("--y0", `${m.m42}px`); e.style.setProperty("--s0", String(m.a)); e.style.setProperty("--o0", cs.opacity); };
+// A sheet redrawn with what's on it changed (a switch that brings rows with it, a list arriving, a row signed out):
+// each part that moved glides there from where it was, one that's new fades in, one that's gone fades out where it
+// was, and a card that grew opens out. Where things were is measured on screen, so a redraw in the middle of one
+// carries on from there. Each part is known by its button (or its row's), else by what it is and the heading it's under.
+const FLIP_SEL = ":scope > *, :scope > :is(form, .nwrap, .addreqs, .profile-head, .wnhero) > *, :scope .group > *";
+const headText = (h) => (h ? (h.firstChild?.nodeType === 3 ? h.firstChild.textContent : h.textContent).trim().slice(0, 30) : "");
+function flipParts(root) {
+  const n = new Map(), out = [];
+  for (const el of root.querySelectorAll(FLIP_SEL)) {
+    if (el.classList.contains("flipgone")) continue;
+    const row = el.parentElement.classList.contains("group"), a = el.dataset.act ? el : row ? el.querySelector("[data-act]") : null;
+    let k;
+    if (a) k = `${a.dataset.act}|${a.dataset.id || ""}`;
+    else {
+      const box = row ? el.parentElement : el; let h = box.previousElementSibling;
+      while (h && !h.classList.contains("ghead")) h = h.previousElementSibling;
+      k = `${el.tagName}.${el.classList[0] || ""}|${headText(el.classList.contains("ghead") ? el : h)}|${row ? ($(".ctext > span", el)?.textContent || "").slice(0, 24) : ""}`;
+    }
+    const i = (n.get(k) || 0) + 1; n.set(k, i);
+    out.push([i > 1 ? `${k}#${i}` : k, el]);
+  }
+  return out;
+}
+const flipOK = (body) => body && !body.classList.contains("flush") && !STILL.matches;
+function flipRects(body) {
+  const m = new Map(); if (!flipOK(body)) return m;
+  for (const [k, el] of flipParts(body)) m.set(k, { el, r: el.getBoundingClientRect(), o: +getComputedStyle(el).opacity });
+  return m;
+}
+function flipPlay(body, was) {
+  if (!was?.size || !flipOK(body)) return;
+  const ease = "cubic-bezier(.32,.72,0,1)", parts = flipParts(body), at = new Map(), keys = new Set(), br = body.getBoundingClientRect();
+  const kept = new Map([...was.values()].map((w) => [w.el, w]));        // (a part left as it was, whatever it's called now)
+  for (const [k, el] of parts) { keys.add(k); at.set(el, { k, r: el.getBoundingClientRect() }); }
+  // (how far its nearest part that's moving too has moved: that part carries it the rest of the way)
+  const carried = (el) => { for (let p = el.parentElement; p && p !== body; p = p.parentElement) { const c = at.get(p), w = c && (was.get(c.k) || kept.get(p)); if (w) return w.r.top - c.r.top; } return 0; };
+  for (const [el, { k, r }] of at) {
+    if (!r.height || r.bottom < 0 || r.top > innerHeight) continue;
+    const w = was.get(k) || kept.get(el), busy = el.getAnimations({ subtree: true }).some((x) => x.animationName);
+    if (!w) { if (!busy) el.animate([{ opacity: 0 }, { opacity: +getComputedStyle(el).opacity }], { duration: 240, delay: 60, easing: "ease", fill: "backwards" }); continue; }
+    const dy = w.r.top - r.top - carried(el);
+    if (Math.abs(dy) > 1) el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 340, easing: ease });
+    if (el.classList.contains("group") && r.height > w.r.height + 1) el.animate([{ clipPath: `inset(0 0 ${r.height - w.r.height}px 0 round 26px)` }, { clipPath: "inset(0 round 26px)" }], { duration: 340, easing: ease });
+    const o = +getComputedStyle(el).opacity;
+    if (!busy && Math.abs(o - w.o) > 0.05) el.animate([{ opacity: w.o }, { opacity: o }], { duration: 220, easing: "ease" });     // (dimmed or brought back: .dim)
+  }
+  // gone: a whole section or line fades where it was (not a row in a card, nor a word in a heading: those just go)
+  for (const [k, w] of was) {
+    const p = w.el.parentElement;
+    if (keys.has(k) || w.el.isConnected || !w.r.height || !p?.matches(".body, form, .nwrap, .addreqs") || w.r.bottom < br.top || w.r.top > br.bottom) continue;
+    if (!canGhost()) continue;
+    // (in the sheet as it was, for its rules: wrappers that make no box of their own)
+    const ws = document.createElement("div"), wb = document.createElement("div"); ws.className = "sheet gwrap"; wb.className = "body gwrap";
+    w.el.style.margin = "0"; wb.append(w.el); ws.append(wb);
+    const g = ghostHost("flipgone", ws);
+    Object.assign(g.style, { left: `${w.r.left - br.left}px`, top: `${w.r.top - br.top + body.scrollTop}px`, width: `${w.r.width}px` });
+    body.append(g);
+    const a = g.animate([{ opacity: w.o }, { opacity: 0 }], { duration: 200, easing: "ease", fill: "forwards" });
+    a.onfinish = a.oncancel = () => g.remove(); setTimeout(() => g.remove(), 400);
   }
 }
 // Opening springs the sheet up and settles the screen back behind it; closing
@@ -5124,11 +5336,15 @@ function focusBack(from) {
   const b = sel && ($(sel, $view) || $(sel, $tabbar));
   if (b) { try { b.focus({ preventScroll: true }); } catch (_) {} } else focusTitle();
 }
+// (going back to a page you came from inside a sheet: How It Flies doesn't play itself in again)
+let sheetBack = false;
 function renderSheet(refresh) {
   if (S.scan && S.sheet?.type !== "scan") stopScan();
   if (S.sheet && !shownSheet && !sheetFrom) sheetFrom = lastTap;
   if (!S.sheet && shownSheet) { const f = sheetFrom; sheetFrom = null; setTimeout(() => { if (!S.sheet) focusBack(f); }, 340); }
   if (S.sheet?.type !== "lookup" && (look.on || look.stream || look.camPending || look.watch != null)) lookStop();
+  // the Flight Log's achievements seen: noted once you've left it (so a redraw while you're in it keeps their New tags)
+  if (badgesSeen && S.sheet?.type !== "flightlog" && S.sheet?.type !== "passport") { try { localStorage.setItem("inflight-badges", JSON.stringify(badgesSeen)); } catch (_) {} badgesSeen = null; }
   // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
@@ -5136,8 +5352,9 @@ function renderSheet(refresh) {
     root().classList.remove("sheeted"); sheetType = null;
     if (!open) { $layer.innerHTML = ""; return; }
     if (closing) return;
-    $layer.querySelectorAll(".sheet, .scrim, .viewer").forEach((e) => { e.classList.remove("still"); e.classList.add("closing"); });
-    clearTimeout(sheetTimer); sheetTimer = setTimeout(() => { if (!S.sheet) $layer.innerHTML = ""; }, 330);
+    // (from wherever it had got to: closed while still coming up, or while dragged, it goes from there)
+    $layer.querySelectorAll(".sheet, .scrim, .viewer").forEach((e) => { freeze(e); e.classList.remove("still"); e.classList.add("closing"); });
+    clearTimeout(sheetTimer); sheetTimer = setTimeout(() => { if (!S.sheet) $layer.innerHTML = ""; }, STILL.matches ? 220 : 330);
     return;
   }
   clearTimeout(sheetTimer); clearTimeout(sheetLater);
@@ -5151,10 +5368,21 @@ function renderSheet(refresh) {
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
   const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
-  // the same sheet drawn again (fresh data): it stays where you'd scrolled it, and a field you're typing in keeps its focus and caret
+  // opened again while the last was still closing: up from where that one had got to, over the dimming as it was
+  // (not from the bottom, with the screen behind showing through for a moment)
+  const sc = $(".scrim", $layer), reopen = open && closing && open.classList.contains("sheet") && !STILL.matches
+    ? { y: new DOMMatrix(getComputedStyle(open).transform === "none" ? undefined : getComputedStyle(open).transform).m42, o: sc ? +getComputedStyle(sc).opacity : 0 } : null;
+  // the same sheet drawn again (fresh data): it stays where you'd scrolled it, and what you're typing in (or the
+  // button you'd reached by keyboard) keeps its focus, and a field its caret
   const same = had && !swapped, top = same ? $(".sheet .body", $layer)?.scrollTop || 0 : 0;
-  const fe = same && document.activeElement && $layer.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  const fa = had && $layer.contains(document.activeElement) ? document.activeElement : null;
+  const fe = same && fa?.id ? fa : null, fk = same && !fe && fa?.dataset?.act ? switchKey(fa) : null;
   const caret = fe && typeof fe.selectionStart === "number" ? [fe.selectionStart, fe.selectionEnd] : null;
+  // gone on to another page in the sheet: the one left is kept, to slide away under the new one (and its colour, to fade from)
+  const leaving = swapped && old && !STILL.matches ? { b: $(":scope > .body", old), h: $(":scope > header", old), top: $(":scope > .body", old)?.scrollTop || 0, bg: getComputedStyle(old).backgroundColor,
+    cls: [...old.classList].filter((c) => !["go-on", "go-back", "still", "closing"].includes(c)).join(" ") } : null;
+  const flipWas = same ? flipRects($(".sheet .body", $layer)) : null;
+  sheetBack = swapped && sheetPath.includes(S.sheet.type);
   drawSheet(refresh);
   sheetType = S.sheet?.type || null;
   const now = $(".sheet", $layer);
@@ -5162,11 +5390,9 @@ function renderSheet(refresh) {
     // redrawn as it comes up (its plan or friends arriving): it carries on from where it had got to, rather than
     // jumping the rest of the way up, and its rows keep growing
     const late = performance.now() - sheetUpAt;
-    try { for (const a of $layer.getAnimations({ subtree: true })) if (a.animationName !== "fc-pick") a.currentTime = late; } catch (_) {}
+    try { for (const a of $layer.getAnimations({ subtree: true })) if (a.animationName && a.animationName !== "fc-pick") a.currentTime = late; } catch (_) {}
     keepGlides($layer, before); keepTicks($layer, ticked);
     const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top;
-    const back = fe && document.getElementById(fe.id);
-    if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
   } else if (had && now && now !== old) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
     if (swapped) {
@@ -5174,15 +5400,35 @@ function renderSheet(refresh) {
       const i = sheetPath.indexOf(sheetType), back = i >= 0;
       sheetPath = back ? sheetPath.slice(0, i + 1) : [...sheetPath, sheetType];
       now.classList.add(back ? "go-back" : "go-on"); $(".sheet .body", $layer)?.classList.add(back ? "go-back" : "go-on"); sheetOnAt = performance.now();
+      // the page left slides the other way as it fades, under the new one, its header fading over the new header:
+      // never an empty sheet (a copy of the sheet as it was, in a shadow root: styles.css .gsheet)
+      if (leaving?.b && canGhost()) {
+        const gs = document.createElement("div"), grab = document.createElement("div");
+        gs.className = `${leaving.cls} gsheet${back ? " back" : ""}`; grab.className = "grab";
+        leaving.b.classList.remove("go-on", "go-back", "enter");
+        gs.append(grab, ...(leaving.h ? [leaving.h] : []), leaving.b);
+        const host = ghostHost("sheetghost", gs); now.append(host); leaving.b.scrollTop = leaving.top;
+        setTimeout(() => host.remove(), SHEET_ON_MS + 60);
+      }
+      // from a light sheet to a dark one (the map and Look Up, a trip to the Moon), or back: its colour fades across
+      const bg = getComputedStyle(now).backgroundColor;
+      if (leaving?.bg && leaving.bg !== bg) now.animate([{ backgroundColor: leaving.bg }, { backgroundColor: bg }], { duration: 420, easing: "cubic-bezier(.32,.72,0,1)" });
+      if (fa) $("h2", now)?.focus({ preventScroll: true });       // (the new page starts at its title, as a new screen does)
     }
     keepGlides($layer, before); keepTicks($layer, ticked);
-    if (same) {
-      const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top;
-      const back = fe && document.getElementById(fe.id);
-      if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
-    }
+    if (same) { const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top; }
   }
-  if (!had && now) { sheetUpAt = performance.now(); sheetPath = [sheetType]; }
+  if (same && now) {
+    const back = fe ? document.getElementById(fe.id) : fk ? [...$layer.querySelectorAll(`[data-act="${CSS.escape(fa.dataset.act)}"]`)].find((x) => switchKey(x) === fk) : null;
+    if (back && back !== fa && !$layer.contains(document.activeElement)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
+    flipPlay($(".sheet .body", $layer), flipWas);
+  }
+  if (!had && now) {
+    sheetUpAt = performance.now(); sheetPath = [sheetType];
+    if (reopen) { now.style.setProperty("--y1", `${reopen.y}px`); $(".scrim", $layer)?.style.setProperty("--o1", String(reopen.o)); }
+    // (ready before a page is gone on to: built when there's nothing else to do, or, without that, once it's up)
+    if (!ghostCSS && canGhost()) window.requestIdleCallback ? requestIdleCallback(() => ghostStyles(), { timeout: 2000 }) : setTimeout(() => ghostStyles(), SHEET_SLIDE_MS + 200);
+  }
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);
@@ -5256,7 +5502,7 @@ function drawSheet(refresh) {
     }
     case "bird": {
       const b = [...S.birds, ...S.hall].find((x) => x.id === s.id); if (!b) { S.sheet = { type: "birds" }; return renderSheet(); }
-      const active = !b.lostAt && !b.retiredAt, from = RANKS.find((r) => r[0] === b.rank)[1], rest = Math.round((0.5 - (0.4 * b.stamina) / 100) * 100);
+      const active = !b.lostAt && !b.retiredAt, from = RANKS.find((r) => r[0] === b.rank)[1], rest = Math.round((0.5 - (0.4 * b.stamina) / 100) * 100), again = !!$(".sheet .bbar", $layer);
       const stat = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
       $layer.innerHTML = sheetHtml("", `<div class="profile-head"><span class="birdbig tile wtile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${I.bird}${active ? wearOn(b.wear) : ""}</span><span class="name">${esc(b.name)}</span>
           <span class="sub">${esc(b.rank)}${active ? ` · ${birdState(b)}` : b.lostAt ? " · Lost" : " · Retired"}</span></div>
@@ -5268,7 +5514,9 @@ function drawSheet(refresh) {
         ${active ? `<div class="group mt">${cell({ act: "birdrename", id: b.id, label: "Rename", cls: "action" })}${b.rank === "Legend" ? cell({ act: "birdretire", id: b.id, label: "Retire to the Hall of Fame", cls: "action" }) : ""}</div>
           ${b.rank === "Legend" ? `<div class="gfoot">${esc(b.name)} has flown once around the world. Retire it to your Hall of Fame to make room for a new pigeon.</div>` : ""}` : ""}`,
         { left: { label: "Back", act: "birds" }, name: b.name });
-      const bar = $(".bbar b", $layer); if (bar && b.next) bar.style.width = `${(Math.max(0, Math.min(1, (b.km - from) / (b.next.km - from))) * 100).toFixed(1)}%`;
+      // (its rank bar fills as the page opens; drawn again, it's just there)
+      const bar = $(".bbar b", $layer), fill = () => { bar.style.width = `${(Math.max(0, Math.min(1, (b.km - from) / (b.next.km - from))) * 100).toFixed(1)}%`; };
+      if (bar && b.next) again ? fill() : requestAnimationFrame(() => requestAnimationFrame(fill));
       return;
     }
     case "birdname": {
@@ -5401,7 +5649,7 @@ function drawSheet(refresh) {
       const g = s.type === "groupadd" ? group(s.id) : null;
       const pool = S.friends.filter((x) => !g || !member(g, x.id)).sort((a, b) => a.name.localeCompare(b.name));
       const name = $("#f-gname", $layer)?.value ?? s.name ?? "";
-      const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
+      const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0, hadGo = !!$(".sheet > header [data-act=submit]", $layer);
       const rows = pool.map((x) => `<button type="button" class="cell pickrow" role="checkbox" aria-checked="${s.pick.has(x.id)}" data-act="gpick" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}</span></span><span class="tickbox" aria-hidden="true">${I.check}</span></button>`).join("");
       const n = s.pick.size + (g ? g.members.length : 1);
       $layer.innerHTML = sheetHtml(g ? "Add People" : "New Group", `<form id="group-form" data-form="${g ? "groupadd" : "newgroup"}" novalidate>
@@ -5413,6 +5661,7 @@ function drawSheet(refresh) {
         { left: g ? { label: "Back", act: "groupinfo" } : { label: "Cancel", act: "close" }, right: s.pick.size && n <= GROUP_MAX ? { label: g ? "Add" : "Create", form: "group-form" } : null });
       if ($("#f-gname", $layer)) $("#f-gname", $layer).value = name;
       if (top) $(".sheet .body", $layer).scrollTop = top;
+      if (old && !hadGo) $(".sheet > header [data-act=submit]", $layer)?.classList.add("popin");     // (the ✓ pops in with the first one picked)
       return;
     }
     case "groupinfo": {
@@ -5580,7 +5829,9 @@ function drawSheet(refresh) {
       // (it plays in when it opens; redrawn for a new choice, only what changed moves)
       const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
       const rails = fresh ? [] : [...$layer.querySelectorAll(".sheet .chiprail")].map((r) => r.scrollLeft);
-      const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
+      const nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) }, was = s.shown || (fresh && sheetBack ? nowKey : {});
+      // (each pigeon's bar as it was, so a new plan's times grow or shrink them from there; and whether the way was still coming)
+      const barW = fresh ? null : new Map([...$layer.querySelectorAll(".sheet .kinds .kc")].map((r) => [r.dataset.id, $(".kdur", r)?.getBoundingClientRect().width || 0])), wasLoading = !!$(".sheet .waycard.loading", $layer);
       const orbNote = kind === "orbital" ? (() => { const o = spaceFlight("orbital", asSent(endFor(S.me)), asSent(endFor(f)), now()); return `<div class="gfoot">It lifts off into orbit 250 miles up, goes round the Earth every 92 minutes at 17,000 mph, and comes down on the first pass near ${who}: ${((n) => `${n} lap${n === 1 ? "" : "s"}`)(Math.max(1, Math.round(o.laps)))} this time, then a gliding re-entry. Nearer isn’t quicker.</div>`; })() : "";
       $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}${orb}</div>${orbNote}${kind === "orbital" ? "" : `${carriers}${landing}${stop}${route}${way}${sea}`}
         ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
@@ -5592,12 +5843,18 @@ function drawSheet(refresh) {
       // the chip just tapped gives a little bounce
       if (S.flyTap) { const k = S.flyTap; S.flyTap = null; body.querySelector(`.chiprail [data-act="${k.dataset.act}"]${k.dataset.id ? `[data-id="${CSS.escape(k.dataset.id)}"]` : ""}`)?.classList.add("picked"); }
       body.querySelectorAll(".chiprail").forEach((r, i) => { r.scrollLeft = rails[i] || 0; const on = $("[aria-checked=true]", r); if (on && fresh) r.scrollLeft = Math.max(0, on.offsetLeft - 16 - (r.clientWidth - on.offsetWidth) / 3); });
-      const entering = fresh || sheetEntering();         // (redrawn as it comes up: its rows keep growing, renderSheet keeps their place)
+      // (redrawn as it comes up: its rows keep growing, renderSheet keeps their place; come back to from The Way, it doesn't play in again)
+      const entering = (fresh && !sheetBack) || sheetEntering();
       body.classList.toggle("enter", entering);
       if (!entering && was.land !== nowKey.land) $(".flyhero", body).classList.add("chg");
       if (!entering && (was.style !== style || was.kind !== kind)) $(".waycard", body)?.classList.add("chg");
       s.shown = nowKey;
       flyBits(body, fresh ? null : was.style);
+      if (barW && !entering && !STILL.matches) body.querySelectorAll(".kinds .kc").forEach((r) => {
+        const k = $(".kdur", r), a = barW.get(r.dataset.id), b = k?.getBoundingClientRect().width;
+        if (a && b && Math.abs(a - b) > 1) k.animate([{ transform: `scaleX(${a / b})` }, { transform: "none" }], { duration: 450, easing: "cubic-bezier(.32,.72,0,1)" });
+      });
+      if (wasLoading && !entering) $(".waycard:not(.loading)", body)?.classList.add("chg");        // (the way arriving late: its stops pop on)
       return;
     }
     case "via": {
@@ -5663,8 +5920,10 @@ function drawSheet(refresh) {
       // requests, kept here too (they change as you accept, decline or cancel)
       { const rq = $(".addreqs", $layer), row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
           <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${esc(p.id)}">Decline</button><button class="btn small" data-act="accept" data-id="${esc(p.id)}">Accept</button>` : `<button class="btn small gray" data-act="cancelreq" data-id="${esc(p.id)}">Cancel</button>`}</span></div>`;
-        if (rq) rq.innerHTML = (S.incoming.length ? `<div class="ghead">Want to be your friend</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "")
-          + (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : ""); }
+        // (drawn again only when they've changed: renderSheet glides what moves and fades what comes and goes)
+        const html = (S.incoming.length ? `<div class="ghead">Want to be your friend</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "")
+          + (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : "");
+        if (rq && rq._html !== html) { rq.innerHTML = html; rq._html = html; } }
       return;
     case "whohas": {
       const g = group(S.chat), m = (S.msgs.get(S.chat) || []).find((x) => x.id === S.sheet.id);
@@ -5781,6 +6040,8 @@ function drawSheet(refresh) {
     case "moved": {
       // InFlight's new address, from its old one: in a browser it's one tap (the sign-in comes
       // too, pigeon/handover.js); a Home Screen app has its own storage, so it's a few steps
+      // (drawn once: it never changes while it's open, and a redraw would play its rows in again)
+      if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
       const home = NEW_HOME.replace(/^https?:\/\//, ""), app = standalone(), ios = isIOS();
       const row = ([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`;
       const rows = app ? [
@@ -5801,7 +6062,8 @@ function drawSheet(refresh) {
       return;
     }
     case "whatsnew": {
-      // what's new: every release, newest first
+      // what's new: every release, newest first (drawn once, like the move's)
+      if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
       const list = RELEASES;
       const rows = (r) => `<div class="wnlist">${r.items.map(([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic] || I.bird}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`).join("")}</div>`;
       $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in InFlight</h2><p>Version ${APP_VERSION}</p></div>
@@ -5812,6 +6074,7 @@ function drawSheet(refresh) {
     }
     case "credits": {
       // where the weather, the heights and the maps come from, as their licences ask
+      if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
       const out = (href, icon, tile, label, sub) => `<a class="cell has-icon" href="${href}" target="_blank" rel="noopener noreferrer"><span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span><span class="csub">${sub}</span></span>${chevSm}</a>`;
       $layer.innerHTML = sheetHtml("Map & Weather Data", `<div class="ghead">Weather</div>
         <div class="group">${out("https://open-meteo.com/", I.wind, "blue", "Open-Meteo", "Forecasts and the wind · CC BY 4.0")}
@@ -5906,6 +6169,8 @@ function drawSheet(refresh) {
       const name = mark ? siteName(mark.lat, mark.lon, body) : null, here = (x) => (mars ? (side === "west") === (x[2] < 0) : (side === "far") === farSide(x[2]));
       const SITES = BODIES[body].sites, world = BODIES[body].name;
       const chip = (act, id, on, b, small) => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}" data-id="${esc(id)}"><span><b>${esc(b)}</b><small>${esc(small)}</small></span></button>`;
+      // (the places' rail stays where you'd scrolled it when a place or a spot is picked: only a new side starts it again)
+      const rail0 = $(".moonpick", $layer) && $(".sheet .chiprail", $layer), railAt = rail0 && s.railSide === side ? rail0.scrollLeft : 0;
       const ll = mark ? `${Math.abs(mark.lat).toFixed(1)}° ${mark.lat >= 0 ? "N" : "S"}, ${Math.abs(mark.lon).toFixed(1)}° ${mark.lon >= 0 ? "E" : "W"}` : "";
       const where = !mark ? "" : mars ? `${ll} · ${marsClock(mark.lon, now()).hm} there now` : `${ll} · ${farSide(mark.lon) ? "far side: Earth is never in the sky" : "near side: Earth hangs in the sky"}`;
       const sides = mars ? chip("moonside", "east", side === "east", "East", "Syrtis, Jezero, Hellas") + chip("moonside", "west", side === "west", "West", "Olympus, Valles")
@@ -5917,6 +6182,13 @@ function drawSheet(refresh) {
         <div class="sharego"><button type="button" class="btn wide" data-act="moonland"${mark ? "" : " disabled"}>${mars ? I.up : I.moon}${mine ? "Move Here" : "Land Here"}</button></div>
         <div class="gfoot">Your friends see you on ${esc(world)}, at this spot. While you’re there your spot on Earth isn’t kept, and Update Automatically is off. ${mars ? "Only laser pigeons reach you: at the speed of light, 3 to 22 minutes from Earth as the planets move." : "Only lunar pigeons reach you: about 3 days from Earth, or a day by Lunar Express."}</div>`,
         { left: { label: "Back", act: "profile" }, right: { label: "Close", act: "close" } });
+      const rail = $(".sheet .chiprail", $layer), pick = rail && $("[aria-checked=true]", rail); s.railSide = side;
+      if (rail) {
+        rail.scrollLeft = railAt;
+        // (and the one picked, if it's off the edge, comes into view)
+        const rr = rail.getBoundingClientRect(), cr = pick?.getBoundingClientRect();
+        if (cr && (cr.left < rr.left || cr.right > rr.right)) rail.scrollBy({ left: cr.left - rr.left - 16, behavior: railAt && !STILL.matches ? "smooth" : "auto" });
+      }
       const cv = $(".moonpick", $layer);
       s.view = drawPick(cv, { body, side, mark, focus: name });
       cv.addEventListener("click", (e) => {
@@ -5954,7 +6226,7 @@ function drawLunarFly(c) {
   $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}</div>
     <div class="gfoot">Only ${mars ? "laser pigeons reach Mars or leave it" : `lunar pigeons reach ${same ? "across the Moon" : "the Moon or leave it"}`}. They go any time, straight there: no stopovers, no booking ahead and no weather. ${esc(how)}</div>
     ${S.me.risky && !mars ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost in space.</div>` : ""}`);
-  const body = $(".sheet .body", $layer); body.classList.add("flysheet"); body.classList.toggle("enter", fresh || sheetEntering());
+  const body = $(".sheet .body", $layer); body.classList.add("flysheet"); body.classList.toggle("enter", (fresh && !sheetBack) || sheetEntering());
   flyBits(body, null);
 }
 // each way's plan for a kind of pigeon as if it left now (the same clock as the card's)
@@ -5990,10 +6262,11 @@ function tickPreview(card, cv) {
     fcFades(tl); if (!tl._f) { tl._f = 1; tl.addEventListener("scroll", () => fcFades(tl), { passive: true }); }
     segGlide(card, card._style); card._style = m.style;
   }
-  drawMap(cv, live, card.offsetHeight + 14);
+  mapTick(cv, live, card.offsetHeight + 14);
   fcAside(card);
 }
-function tickMap() {
+// (every: how long the whole map may go without being drawn again; smoothMap asks for twice a second)
+function tickMap(every) {
   const s = S.sheet; if (!s || s.type !== "map") return;
   const m = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   if (m && moonOf(m)) return tickMoon(m);
@@ -6010,11 +6283,12 @@ function tickMap() {
   if (s.way != null && s.way !== way && !m.lost && m.deliverAt > now()) { const n = routeNote(m); toast(esc(n ? `Its way just changed: ${n.text[0].toLowerCase()}${n.text.slice(1)}.` : `Its way just changed: it now lands ${atTime(m.deliverAt)}.`)); haptic("tick"); }
   s.way = way;
   const { share, cheer, look } = cardShell(card), canShare = shareable(m);
-  if (share.hidden === canShare) share.hidden = !canShare;
-  share.dataset.id = m.id;
-  cheerState(cheer, m); lookState(look, m);
-  flightCard(card, m);
-  drawMap(cv, m, card.offsetHeight + 14);
+  const fill = () => { if (share.hidden === canShare) share.hidden = !canShare; share.dataset.id = m.id; cheerState(cheer, m); lookState(look, m); flightCard(card, m); };
+  // the card becoming something else (landed, lost or called back; its cheer, share or Look Up coming or going): it
+  // springs to its new shape, the map re-fitting with it, rather than all of it changing in one frame
+  const shape = `${m.lost ? "l" : m.recalled ? "b" : now() >= m.deliverAt ? "d" : "a"}|${canShare}|${cheerable(m).flying}|${!!lookAt(m)}`;
+  if (s.shape && s.shape !== shape && !STILL.matches) { s.shape = shape; fcMorph(card, fill); } else { s.shape = shape; fill(); }
+  mapTick(cv, m, card.offsetHeight + 14, every);
   smoothMap(m);
 }
 /* ---------- a pigeon to, from or across the Moon ----------
@@ -6168,10 +6442,12 @@ function mapFold(open) {
 }
 // redraw the card, then spring its height from the old to the new while the
 // map follows it (the new side plays in once; the once-a-second redraws don't replay it)
-function fcMorph(card, redraw) {
+// (replay: its rows play in again, as when it's folded or unfolded; not for The Way's switch, which only changes some)
+function fcMorph(card, redraw, replay = true) {
   const h0 = card.offsetHeight;
   card.classList.remove("swap", "morph"); card.style.height = ""; void card.offsetWidth;
-  card.classList.add("swap"); clearTimeout(card._sw);
+  if (replay) card.classList.add("swap");
+  clearTimeout(card._sw);
   redraw();
   const done = () => { card.classList.remove("swap", "morph"); card.style.height = ""; };
   if (STILL.matches) { card._sw = setTimeout(done, 50); return; }
@@ -6181,16 +6457,28 @@ function fcMorph(card, redraw) {
   fcFollow(card, 650);
   card._sw = setTimeout(done, 760);
 }
-// keep the map fitted above the card while it changes size
+// keep the map fitted above the card while it changes size: the picture as it was, moved and scaled to fit each frame
+// (quick), and the whole map drawn again once the card has settled (drawing all of it every frame left it at a few
+// frames a second on a phone)
 function fcFollow(card, ms) {
   const cv = $(".map", $layer), end = performance.now() + ms;
   cancelAnimationFrame(fcFollow.raf);
   const step = () => {
     if (!cv?._m || !card.isConnected || S.sheet?.type !== "map") return;
-    drawMap(cv, cv._m, card.offsetHeight + 14); fcAside(card);
+    cv._cardH = card.offsetHeight + 14; nudgeMap(cv); fcAside(card);
     if (performance.now() < end) fcFollow.raf = requestAnimationFrame(step);
   };
-  fcFollow.raf = requestAnimationFrame(step);
+  step();
+}
+// the same for a card that isn't a pigeon's own (The Skies, a group's flights) when what's on it changes
+function cardMorph(card, redraw) {
+  const h0 = card.offsetHeight; redraw();
+  const h1 = card.offsetHeight;
+  if (STILL.matches || !h0 || Math.abs(h1 - h0) < 2) return;
+  card.style.overflow = "hidden";
+  const a = card.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 500, easing: cssVar(document.documentElement, "--snappy") || "ease-out" });
+  a.onfinish = a.oncancel = () => { card.style.overflow = ""; };
+  fcFollow(card, 520);
 }
 // the map's buttons step aside when the card comes up over them (and back when it folds)
 function fcAside(card) {
@@ -6299,7 +6587,10 @@ function fcRow(r) {
     <span class="fcwhat"><span class="fctitle">${r.title}</span>${r.sub ? `<span class="fcs">${r.sub}</span>` : ""}${r.extra || ""}</span></li>`;
 }
 // the sheet's title follows the flight (it opened "Pigeon in Flight"; once it's down, it's "The Flight")
-function sheetTitle(text) { const h = $(".sheet header h2", $layer); if (h && h.textContent !== text) h.textContent = text; }
+function sheetTitle(text) {
+  const h = $(".sheet header h2", $layer); if (!h || h.textContent === text) return;
+  h.textContent = text; if (!STILL.matches) h.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease" });     // (fading in, not a cut)
+}
 function flightCard(card, m) {
   const open = mapOpen(), t = m.lost ? m.lostAt : now(), left = m.deliverAt - now(), f = flightAt(m, t), k = kindOf(m);
   const landed = !m.lost && left <= 0, resting = restingOn(m), flew = m.deliverAt - m.sentAt, note = routeNote(m), wx = wxSay(m);
@@ -6369,6 +6660,8 @@ function flightCard(card, m) {
     body.innerHTML = html; body._html = html;
     // the timeline keeps its place; opened, it starts at now (with a little of what came before)
     const tl2 = $(".fctl", card), nr = tl2 && $(".now", tl2);
+    // (the ping where it is now keeps its beat when the rows are drawn again, each minute, rather than starting over)
+    if (nr) { card._ping ??= performance.now() + 800; nr.style.setProperty("--ping", `${Math.round(card._ping - performance.now())}ms`); }
     if (tl2) {
       [...tl2.children].forEach((li, i) => li.style.setProperty("--i", i));        // (each row a beat after the last, as they rise in)
       if (card._tl) tl2.scrollTop = top;
@@ -6617,20 +6910,22 @@ function skyRoutes(all) {
 function tickSkies(card, cv) {
   if (!card || !cv) return;
   const list = skyRoutes();
-  if (!list) { card.innerHTML = `<span class="speed">Looking up…</span>`; return; }
+  if (!list) { if (!card._sk) { card._sk = 1; card.innerHTML = `<span class="speed">Looking up…</span>`; } return; }
   const onMap = list.filter((r) => r.route), n = list.length, key = list.map((r) => r.id).join() || "-";
   if (card.dataset.k !== key) {           // rows only change when the list does (the times tick by themselves)
-    card.dataset.k = key;
+    const first = !card._sk; card._sk = 1; card.dataset.k = key;
     const rows = list.map((r) => `<button type="button" class="frow skyrow" data-act="skyopen" data-id="${esc(r.chat)}">${r.g && !r.who ? gavatar(r.g, "xs") : avatar(r.who || { name: "?" }, "xs")}
         ${pgm(r)}<span class="one">${esc(r.label)}${r.route ? "" : ` <span class="hid">· not on map</span>`}</span><b><span data-eta="${esc(r.deliverAt)}">${fmtDur(r.deliverAt - now())}</span></b></button>`).join("");
-    card.innerHTML = `<span class="big">${I.globe}<span>${n ? `${n} pigeon${n === 1 ? "" : "s"} in the air` : "Clear skies"}</span></span>
+    // (a pigeon taking off or landing: the card springs to its new size, the map re-fitting with it)
+    const fill = () => { const top = $(".frows", card)?.scrollTop || 0; card.innerHTML = `<span class="big">${I.globe}<span>${n ? `${n} pigeon${n === 1 ? "" : "s"} in the air` : "Clear skies"}</span></span>
       ${n ? `<span class="speed">${list.filter((r) => r.out).length} yours, ${list.filter((r) => !r.out).length} coming to you</span>` : `<span class="speed">No pigeons are flying to or from you right now.</span>`}
-      ${n ? `<span class="frows">${rows}</span>` : ""}`;
+      ${n ? `<span class="frows">${rows}</span>` : ""}`; const fr = $(".frows", card); if (fr && top) fr.scrollTop = top; };
+    first ? fill() : cardMorph(card, fill);
   }
   // nothing in the air: just your roost
   const here = S.me.lat != null ? [{ here: true, route: [S.me.lat, S.me.lon, S.me.lat, S.me.lon], sentAt: 0, deliverAt: 1, km: 0, fromPlace: S.me.place, toPlace: S.me.place }] : [];
   const skies = onMap.length ? onMap : here;
-  if (skies.length) { drawMap(cv, { skies }, card.offsetHeight + 14); smoothMap({ skies, lost: true }); }
+  if (skies.length) { mapTick(cv, { skies }, card.offsetHeight + 14); smoothMap({ skies, lost: true }); }
 }
 
 // Your message to a group: how far each pigeon has got.
@@ -6646,7 +6941,8 @@ const CHEER_EACH = 3, CHEER_MAX = 12;
 function cheerable(m) {
   const t = now();
   if (m.flock) { const up = m.flock.filter((x) => x.flying && x.deliverAt - t > 60e3 && (x.cheers || 0) < CHEER_MAX); return { flying: m.flying, can: up.length > 0 && (m.cheered || 0) < CHEER_EACH, left: CHEER_EACH - (m.cheered || 0), them: true }; }
-  const flying = m.flying && !m.waiting && !m.lost && !m.stopover && !(m.via && t < m.viaOff);
+  // (landed by the clock, it's not flying: not only once the server's word comes, which would change the card a second time)
+  const flying = m.flying && !m.waiting && !m.lost && !m.stopover && !(m.via && t < m.viaOff) && t < m.deliverAt;
   return { flying, can: flying && m.deliverAt - t > 60e3 && (m.cheered || 0) < CHEER_EACH && (m.cheers || 0) < CHEER_MAX, left: CHEER_EACH - (m.cheered || 0) };
 }
 function cheerState(btn, m) {
@@ -6813,6 +7109,14 @@ function lookDraw(cv, m) {
   // (a camera the phone ended while the app was away isn't a view: back to the sky drawn)
   const live = look.heading != null && !look.denied, v = $(".lookvid", $layer), cam = live && look.stream?.getVideoTracks()[0]?.readyState === "live" && v?.videoWidth > 0;
   $(".lookcam", $layer).hidden = !live || !navigator.mediaDevices?.getUserMedia;
+  // the camera coming on: the sky drawn until now fades away over it, rather than cutting to it
+  if (cam !== !!look.camWas) {
+    look.camWas = cam;
+    if (cam && !STILL.matches && cv.width) {
+      const gh = canvasCopy(cv, "lookghost");
+      const a = gh.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: "ease", fill: "forwards" }); a.onfinish = a.oncancel = () => gh.remove();
+    }
+  }
   if (cam) g.clearRect(0, 0, W, H);
   else {
     const sky = g.createLinearGradient(0, 0, 0, H);
@@ -6924,14 +7228,22 @@ function tickFlockMap(m, card, cv) {
     return `<span class="frow${x.flying ? " flying" : ""}">${avatar(p || { name: "?" }, "xs")}<span class="one">${esc(first(p?.name || "Someone"))}${x.route ? "" : ` <span class="hid">· not on map</span>`}</span><b>${state}</b></span>`;
   }).join("");
   const { share, cheer, look } = cardShell(card); share.hidden = true; look.hidden = true; cheerState(cheer, m);
-  $(".mcb", card).innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
+  const html = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
     ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}${birdLine(m)}
     <span class="prog k-${kindOf(m)}"><i>${I.bird}</i></span><span class="frows">${rows}</span>`;
+  // (drawn again only when what it says changes, not every second: a list you'd scrolled stays put, and the card
+  // springs to a new size)
+  const mcb = $(".mcb", card);
+  if (mcb._html !== html) {
+    const fill = () => { const top = $(".frows", card)?.scrollTop || 0; mcb.innerHTML = html; mcb._html = html; const fr = $(".frows", card); if (fr && top) fr.scrollTop = top; };
+    mcb._html ? cardMorph(card, fill) : fill();
+  }
   $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
-  if (routesOf(m).length) { drawMap(cv, m, card.offsetHeight + 14); smoothMap({ ...m, lost: true }); }
+  if (routesOf(m).length) { mapTick(cv, m, card.offsetHeight + 14); smoothMap({ ...m, lost: true }); }
 }
-// The once-a-second tick is plenty for a slow pigeon, but taking off, landing
-// or a fast short hop would judder, so then the map redraws ~30 times a second.
+// The once-a-second tick is plenty for a slow pigeon, but taking off, landing or a fast short hop would judder: then
+// the pigeon moves on over the map as drawn every frame, and the whole map is drawn again twice a second (so the line
+// flown keeps up). Otherwise just the wings flap (and the wind blows), and a pigeon just landed gets its ring.
 let mapAnim = 0, mapAnimAt = 0;
 function smoothMap(m) {
   if (mapAnim || STILL.matches) return;
@@ -6940,12 +7252,20 @@ function smoothMap(m) {
     mapAnim = 0;
     if (S.sheet?.type !== "map" || document.hidden) return;
     const cv = $(".map", $layer);
+    if (!cv) return;
+    // (its first picture still to come, or the map moving or just moved: the picture as it was, moved and scaled to fit, till it's drawn again)
+    if (!cv._base || mapMoving() || cv._dirty) { if (cv._base && cv._ffTs !== ts) fastFrame(cv); mapAnim = requestAnimationFrame(step); return; }
+    if (moving) {
+      const ok = placeBirds(cv, cv._m);
+      if ((!ok || ts - (cv._fullAt || 0) > 500) && ts - mapAnimAt >= 30) { mapAnimAt = ts; return tickMap(500); }     // (tickMap calls back here)
+      drawBirds(cv, ts); mapAnim = requestAnimationFrame(step); return;
+    }
     if (ts - mapAnimAt < 30) { mapAnim = requestAnimationFrame(step); return; }
     mapAnimAt = ts;
-    if (moving) return tickMap();       // it visibly moves: redraw it all (tickMap calls back here)
-    if (!cv?._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost") && !(windOn() && S.windGrid)) return;
-    if (mapMoving()) fastFrame(cv); else drawBirds(cv, ts);
-    mapAnim = requestAnimationFrame(step);   // just the wings
+    const landing = cv._birds?.some((b) => b.phase === "landed" && now() - b.r.deliverAt < 1000);
+    if (!cv._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost") && !(windOn() && S.windGrid) && !landing) return;
+    placeBirds(cv, cv._m); drawBirds(cv, ts);
+    mapAnim = requestAnimationFrame(step);
   });
 }
 // (as a share, --f, that the bar and its pigeon are moved by: transforms only, so the second-by-second glide doesn't lay
@@ -6979,6 +7299,7 @@ function openMenu(anchor, items) {
   if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
   if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
   m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
+  popOpened($(".mi", m));
 }
 function openActions({ title, message, actions }) {
   clearTimeout(popTimer);
@@ -6986,14 +7307,37 @@ function openActions({ title, message, actions }) {
     <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
       `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
     <button class="cancel" data-act="closepop">Cancel</button></div>`;
+  popOpened($(".asheet .ab", $pop));
 }
-let popTimer = 0;
+let popTimer = 0, popFrom = null, keyAt = -1e9;
+// For a keyboard or VoiceOver: a menu or question opened with Enter or Space starts on its first choice, Up and Down
+// (Home, End) move through them, and once it's closed (Escape, or a choice made) focus goes back to what opened it
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") keyAt = performance.now(); }, true);
+document.addEventListener("pointerdown", () => { keyAt = -1e9; }, true);
+function popOpened(first) {
+  const a = document.activeElement;
+  if (a && a !== document.body && !$pop.contains(a)) popFrom = a;
+  if (!$pop._keys) { $pop._keys = 1; $pop.addEventListener("keydown", popKeys); }
+  if (performance.now() - keyAt < 600) first?.focus({ preventScroll: true });
+}
+function popKeys(e) {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  const items = [...$pop.querySelectorAll(".menu-pop:not(.closing) .mi, .asheet:not(.closing) button")], n = items.length; if (!n) return;
+  const i = items.indexOf(document.activeElement);
+  e.preventDefault();
+  items[e.key === "Home" ? 0 : e.key === "End" ? n - 1 : e.key === "ArrowDown" ? (i + 1) % n : i < 0 ? n - 1 : (i - 1 + n) % n].focus({ preventScroll: true });
+}
 function closePop() {
   if (!$pop || !$pop.firstElementChild) return;
   const live = $pop.querySelectorAll(".menu-pop:not(.closing), .asheet:not(.closing)");
   if (!live.length) return;
-  $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => e.classList.add("closing"));
-  clearTimeout(popTimer); popTimer = setTimeout(() => { $pop.innerHTML = ""; }, 260);
+  // (from wherever it had got to, if it's still coming in; taken away once its exit has played: styles.css .asheet.closing)
+  $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => { freeze(e); e.classList.add("closing"); });
+  clearTimeout(popTimer); popTimer = setTimeout(() => {
+    const f = popFrom, lost = $pop.contains(document.activeElement); popFrom = null;
+    $pop.innerHTML = "";
+    if (lost && f?.isConnected) f.focus({ preventScroll: true });
+  }, STILL.matches ? 220 : 320);
 }
 let toastTimer = 0;
 function toast(html, btn, fn) {
@@ -7015,13 +7359,14 @@ function showErr(msg, field) {
   const scope = S.sheet && $("form", $layer) ? $layer : root();
   scope.querySelectorAll(".fcell.bad").forEach((e) => e.classList.remove("bad"));
   const f = field && $(`#f-${field}`, scope)?.closest(".fcell");
-  if (f) { f.classList.add("bad"); $("input", f)?.focus(); }
+  if (f) { f.classList.add("bad"); $("input, textarea", f)?.focus(); }
   const g = $(".ferr", scope); if (g) { g.textContent = msg; g.hidden = false; } else toast(esc(msg));
 }
+// (the button's words fade to what it's doing, and back, and it keeps at least the width it had: nothing beside it jumps)
 async function busyBtn(btn, label, fn) {
-  const old = btn?.innerHTML;
-  if (btn) { btn.disabled = true; btn.textContent = label; }
-  try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
+  const old = btn?.innerHTML, fade = (b) => { if (!STILL.matches) b.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 200, easing: "ease" }); };
+  if (btn) { btn.style.minWidth = `${btn.offsetWidth}px`; btn.disabled = true; btn.textContent = label; fade(btn); }
+  try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = old; btn.style.minWidth = ""; fade(btn); } }
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
@@ -7149,7 +7494,7 @@ async function onClick1(e, t) {
       return;
     }
     case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
-    case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), 300); return;
+    case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), SHEET_SLIDE_MS); return;     // (once it's up: the keyboard doesn't rise while it slides)
     case "groupadd": S.sheet = { type: "groupadd", id: id || S.sheet?.id, pick: new Set() }; return renderSheet();
     case "gpick": {
       const s = S.sheet; if (!s?.pick) return;
@@ -7329,7 +7674,12 @@ async function onClick1(e, t) {
       redrawMap(); return;
     }
     case "mapfold": return mapFold(!mapOpen());
-    case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
+    case "mapglobe": {
+      // (the picture it was shrinks into the globe, or grows away into the flat map, as it fades)
+      const cv = $(".map", $layer); if (!cv?._m) return;
+      const toGlobe = !globeOn(cv._m); mapFadeFrom(cv, toGlobe ? "scale(.55)" : "scale(1.8)"); cv._wasFast = false;
+      S.sheet.globe = toGlobe; S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap();
+    }
     case "safety": {
       const f = personById(id); if (!f) return;
       S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : S.sheet?.type === "groupinfo" ? "groupinfo" : null), backId: S.sheet?.id, digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
@@ -7473,7 +7823,7 @@ async function onClick1(e, t) {
     case "movego": if (!standalone()) { e?.preventDefault?.(); location.href = `${NEW_HOME}/${S.view === "welcome" ? location.hash : ""}`; } return;
     case "movecopy": try { await navigator.clipboard.writeText(NEW_HOME + "/"); toast("Address copied."); } catch (_) { toast(esc(NEW_HOME.replace(/^https?:\/\//, ""))); } return;
     case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
-    case "theme": setTheme(id); render(); return renderSheet();
+    case "theme": return themeFade(() => { setTheme(id); render(); renderSheet(); });
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "routepreview": {
@@ -7489,7 +7839,7 @@ async function onClick1(e, t) {
       if (S.sheet?.type === "map" && S.sheet.id === "preview") {
         const p = previewFrom(id), card = $(".mapcard", $layer); if (!p || !card) return;
         S.preview = p; S.sheet.view = S.sheet.gview = null;
-        return fcMorph(card, () => tickMap());
+        return fcMorph(card, () => tickMap(), false);         // (its rows change in place, rather than all playing in again)
       }
       return renderSheet();
     }
@@ -7674,14 +8024,14 @@ async function submitForm(e, form, kind) {
   if (kind === "compose") return send();
   if (kind === "schedule") {
     const v = $("#f-landat", $layer)?.value, at = v ? +new Date(v) : NaN;
-    if (!Number.isFinite(at) || at <= now()) return showErr("Pick a time that’s still to come.");
-    if (at > now() + 30 * DAY) return showErr("Pick a time in the next 30 days.");
+    if (!Number.isFinite(at) || at <= now()) return showErr("Pick a time that’s still to come.", "landat");
+    if (at > now() + 30 * DAY) return showErr("Pick a time in the next 30 days.", "landat");
     S.sched = { chat: S.sheet.chat, at }; S.via = null; S.sheet = null; renderSheet(); return renderCompose();
   }
   if (kind === "vianote") {
     const s = S.sheet, text = String($("#f-vianote", $layer)?.value || "").trim();
     const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id), to = m && friend(m.finalTo);
-    if (!text) return showErr("Write a line first.");
+    if (!text) return showErr("Write a line first.", "vianote");
     if (!m || !to) return showErr("You’re not friends with who it’s going to any more.");
     try {
       await busyBtn(btn, "…", async () => {
@@ -7694,7 +8044,7 @@ async function submitForm(e, form, kind) {
   }
   if (kind === "birdname") {
     const s = S.sheet, name = String($("#f-bname", $layer)?.value || "").trim();
-    if (!name) return showErr("Give your pigeon a name.");
+    if (!name) return showErr("Give your pigeon a name.", "bname");
     try {
       const r = await busyBtn(btn, "…", () => api(s.id ? "bird-name" : "birds", { method: "POST", body: s.id ? { id: s.id, name } : { name } }));
       S.birds = r.birds; S.hall = r.hall; haptic("success");
@@ -7833,11 +8183,16 @@ function drawGifs() {
   const s = S.sheet, grid = $(".gifgrid", $layer); if (!s || !grid) return;
   const tile = (g) => `<button type="button" class="giftile${s.picking === g.id ? " busy" : ""}" data-act="gifpick" data-id="${esc(g.id)}" aria-label="${esc(g.title || "GIF")}" data-ar="${(g.w / g.h).toFixed(3)}">${gifPrev.get(g.id) ? `<img src="${gifPrev.get(g.id)}" alt="">` : ""}</button>`;
   // two columns, each tile into whichever is shorter, so the grid packs like a wall of photos
-  const cols = [[], []], hgt = [0, 0];
-  for (const g of s.list) { const c = hgt[0] <= hgt[1] ? 0 : 1; cols[c].push(g); hgt[c] += g.h / g.w; }
-  grid.innerHTML = s.list.length ? cols.map((c) => `<div class="gifcol">${c.map(tile).join("")}</div>`).join("")
-    : `<p class="empty">${s.err ? esc(s.err) : s.busy ? "Finding GIFs…" : "No GIFs found. Try another word."}</p>`;
-  grid.querySelectorAll("[data-ar]").forEach((el) => el.style.setProperty("--ar", el.dataset.ar));   // (inline style attributes are blocked)
+  // (drawn again only when what's in it changes: not on every redraw of the app, which made its pictures flicker)
+  const key = JSON.stringify([s.list.map((g) => g.id), s.picking || "", s.list.length ? "" : s.err || (s.busy ? 1 : 0)]);
+  if (grid._k !== key) {
+    grid._k = key;
+    const cols = [[], []], hgt = [0, 0];
+    for (const g of s.list) { const c = hgt[0] <= hgt[1] ? 0 : 1; cols[c].push(g); hgt[c] += g.h / g.w; }
+    grid.innerHTML = s.list.length ? cols.map((c) => `<div class="gifcol">${c.map(tile).join("")}</div>`).join("")
+      : `<p class="empty">${s.err ? esc(s.err) : s.busy ? "Finding GIFs…" : "No GIFs found. Try another word."}</p>`;
+    grid.querySelectorAll("[data-ar]").forEach((el) => el.style.setProperty("--ar", el.dataset.ar));   // (inline style attributes are blocked)
+  }
   grid.parentElement.querySelector(".gifmore")?.remove();
   if (s.list.length && s.next != null) grid.insertAdjacentHTML("afterend", `<div class="gifmore"><button type="button" class="btn gray" data-act="gifmore"${s.busy ? " disabled" : ""}>${s.busy ? "Loading…" : "More GIFs"}</button></div>`);
   // previews come through the server too, then stay as blob URLs
@@ -7846,7 +8201,7 @@ function drawGifs() {
     api(`gif/${encodeURIComponent(g.id)}?s=p`, { raw: true }).then((r) => r.blob()).then((b) => {
       gifPrev.set(g.id, URL.createObjectURL(b));
       const el = $(`.giftile[data-id="${CSS.escape(g.id)}"]`, $layer);
-      if (el && !el.querySelector("img")) el.insertAdjacentHTML("afterbegin", `<img src="${gifPrev.get(g.id)}" alt="">`);
+      if (el && !el.querySelector("img")) el.insertAdjacentHTML("afterbegin", `<img class="in" src="${gifPrev.get(g.id)}" alt="">`);     // (fading in: styles.css)
     }).catch(() => gifPrev.delete(g.id));
   }
 }
@@ -8265,9 +8620,12 @@ function keepTheme(t) {
 function syncTheme() {
   if (!S.me) return;
   const mine = S.me.appearance;
-  if (THEMES.includes(mine)) { if (mine !== theme()) { keepTheme(mine); if (S.view === "account" || S.sheet?.type === "appearance") { render(); renderSheet(); } } }
+  if (THEMES.includes(mine)) { if (mine !== theme()) themeFade(() => { keepTheme(mine); if (S.view === "account" || S.sheet?.type === "appearance") { render(); renderSheet(); } }); }
   else if (!S.themeSent && chosenTheme()) { S.themeSent = true; api("me", { method: "PATCH", body: { appearance: theme() } }).then((r) => { S.me = r.me; }).catch(() => {}); }
 }
+// Light to Dark (or back): the whole app cross-fades to its new colours, rather than changing in one frame
+// (a cross-fade is what Reduce Motion keeps too: shorter, styles.css)
+function themeFade(go) { if (document.startViewTransition && !document.hidden) document.startViewTransition(go); else go(); }
 function chosenTheme() { try { return THEMES.includes(localStorage.getItem("inflight-theme")); } catch (_) { return false; } }
 function applyTheme(t = theme()) {
   document.documentElement.setAttribute("data-theme", t);
@@ -8367,6 +8725,7 @@ async function openFlightLog(at) {
   const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
   try {
     sh.data = await api("flight-log"); if (S.sheet !== sh) return;
+    shapesLoad();                       // (the passport's country outlines, fetched now: it opens as a book straight away)
     renderSheet();
     // straight to the looks, once they're drawn (that can wait until the sheet is up)
     if (at === "skins") { const t0 = performance.now(), go = () => { const el = $(".badges.skins", $layer)?.previousElementSibling; if (el) return setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 150); if (performance.now() - t0 < 2000 && S.sheet) setTimeout(go, 100); }; go(); }
