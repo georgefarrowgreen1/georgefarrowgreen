@@ -569,7 +569,14 @@ function placePages(a, b, va, vb) {
     pv.replaceChildren(...(id ? [h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })),
       ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
   }
-  for (const id of pages.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) pages.delete(id);
+  keepNear(pages);
+}
+// (what's kept of each saved place, its whole page and its weather now made ready, kept for all of them, not just the
+// two either side, so a place a swipe or two away has its page ready as it comes: a few at most, the nearest)
+function keepNear(m) {
+  const at = new Map(S.places.map((q, i) => [cell(q.lat, q.lon), Math.abs(i - S.cur)]));
+  for (const id of m.keys()) if (!at.has(id)) m.delete(id);
+  if (m.size > 6) for (const id of [...m.keys()].sort((x, y) => at.get(y) - at.get(x)).slice(0, m.size - 6)) m.delete(id);
 }
 // The places either side laid out beside the weather now (as the page is drawn: from what's ready; force, as a place
 // is landed on); not while it's being swiped, when it's done once it's still
@@ -585,8 +592,7 @@ function layoutPager(force = false, only = true) {
   document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
   placePages(a, b, va, vb);
-  // (what's made ready of places no longer either side let go)
-  for (const id of ready.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) ready.delete(id);
+  keepNear(ready);
   if (force || el._shape !== shape) { el._shape = shape; centre(); }
 }
 // the scroller put back to the weather now
@@ -660,27 +666,34 @@ function commit(dir) {
   if (!whole) { for (const c of document.querySelectorAll("main > .col")) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: EASE_OUT }); arrive(true); }
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("pg-snap")));
   setTimeout(() => hush(false), 400);
-  nearbySoon();
+  nearbySoon(true);
 }
 // the places either side made ready, and kept fresh (the forecast and the warnings, as the page asks for them: data.js
 // due), when the page is idle a moment after it's drawn; then drawn beside it again, once it's still
 let nearbyT = 0;
 const fetchedAt = new Map(), asking = new Set();
-function nearbySoon() {
-  clearTimeout(nearbyT);
-  nearbyT = setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(readyNearby, { timeout: 2000 }), 600);
+// (soon: as a place is landed on, or the page first drawn: the places now beside it drawn straight after, both, not
+// waiting till the page is idle, so there's no placeholder to swipe to; one a swipe away may be swiped to in a moment)
+let nearbyFirst = true, nearbyNow = false;
+function nearbySoon(soon = false) {
+  if (nearbyFirst && S.wx) { nearbyFirst = false; soon = true; }
+  // (not put off by the page drawn again meanwhile)
+  if (nearbyNow && !soon) return;
+  clearTimeout(nearbyT); nearbyNow = soon;
+  nearbyT = soon ? setTimeout(() => readyNearby(true), 250) : setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(() => readyNearby(), { timeout: 2000 }), 600);
 }
-function readyNearby() {
+function readyNearby(soon = false) {
+  nearbyNow = false;
   if (document.visibilityState !== "visible") return;
-  if (pagerBusy()) { nearbySoon(); return; }
+  if (pagerBusy()) { nearbySoon(soon); return; }
   const list = nearby().filter(Boolean);
   for (const q of list) prepare(q);
   layoutPager(false, true);
-  // (a whole page, one at a time, each when the page is idle)
+  // (a whole page, one at a time, each when the page is idle; or straight after a place is landed on, both)
   if (onePage()) for (const pv of document.querySelectorAll(".pv")) {
     const q = list.find((x) => cell(x.lat, x.lon) === pv._id);
     if (!q || pages.get(pv._id)?.key === pageKey(q)) continue;
-    if (drawWhole(pv, q)) { pv._for = pages.get(pv._id); pv.dataset.whole = "1"; nearbySoon(); break; }
+    if (drawWhole(pv, q)) { pv._for = pages.get(pv._id); pv.dataset.whole = "1"; if (!soon) { nearbySoon(); break; } }
   }
   for (const q of list) {
     const id = cell(q.lat, q.lon);
