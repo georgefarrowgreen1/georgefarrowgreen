@@ -969,6 +969,14 @@ service, with made-up forecasts for the time it runs).
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
+**1.3.3** (coming and going): signing in is one movement. **Sign in** grows to fill the screen in the account page's
+sky as it goes there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
+ended on (`theme.js` marks the page before it's drawn, styles.css `html.arriving`): your picture comes into the ring,
+the sky clears to Messages as a padlock opens in the middle ("Messages unlocked"), your picture flies down into Account,
+your chats come in a row at a time, and "Welcome back" (`arriving`). Someone new goes straight on to choosing where they
+are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
+welcome (`dusk`). With Reduce Motion each part fades where it is; none of it ever takes a tap or stays on screen.
+
 **1.3.2** (one sign-in): InFlight signs in on the account's page, the one place every app on the site signs in. Its
 welcome's **Sign in** (or **Continue as …**, signed in elsewhere on the site already) and **Create your account** go
 there, and it's handed the sign-in back with what unlocks the key, sealed to this tab, so your messages open as you come
