@@ -344,7 +344,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* the weather now, the saved places either side of it beside it, in a scroller that stops at each (app.js pager): the
    one either side drawn to its height, not adding to it (contain), and on a phone reaching the screen's edges, so a
    place comes in from the edge, not from inside the page's margin; faded and shrunk a little as the page is scrolled
-   down (app.js: --c) */
+   down (app.js: --c, on the page) */
 .pager { position: relative; display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
   transform-origin: 0 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
 .pager::-webkit-scrollbar { display: none; }
@@ -360,9 +360,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .pv { display: none; }
 @media (max-width: 979px) {
   main > .pager { grid-row: 1; }
-  main > .col-a, .pv { grid-row: 2; grid-column: 1; }
+  main > .col-a { grid-row: 2; }
   main > .col-b { grid-row: 3; }
-  .pv { display: block; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
+  /* (each from the top of the weather now, its own over its cards, a gap between as the page has; the scroller's own
+     pages either side left empty here) */
+  .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
+  .pv-hero { flex: none; transform-origin: calc(-1 * var(--pad)) 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
+  .pager > .pg-page { visibility: hidden; }
   .pv-prev { translate: -100vw 0; }
   .pv-next { translate: 100vw 0; }
   .pv .skeleton { display: grid; gap: 14px; }
@@ -385,6 +389,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   .col { display: contents; }
   main > .col > * { grid-column: 2; grid-row: auto; }
   .pv { display: none; }
+  .pager > .pg-page { visibility: visible; }
   main > .col { touch-action: auto; }
   main > .pager { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; margin-inline: 0; }
   .pager > :is(.hero, .pg-page) { padding-inline: 4px; }
@@ -415,7 +420,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 
 /* ---------- now ---------- */
 /* (positioned: words on their way out are laid over where they were, app.js fadeOff) */
-.hero, .pg-page { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
+.hero, .pg-page, .pv-hero { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
 /* (positioned: a temperature on its way out is laid over the new one, at its start: app.js roll) */
 .hero-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }

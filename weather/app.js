@@ -495,17 +495,20 @@ function glanceView(q) {
   return k ? { temp: f.temp(k.temp), icon: iconOf(k.code, k.isDay), cond: label(k.code, k.isDay), lead: "", rest: "", sky: skyOf(k.code, k.isDay),
     hl: k.hi != null && k.lo != null ? `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}` : "" } : null;
 }
+// a place's weather now as the hero draws it (v: its heroView, or at a glance), the place i of the saved ones
+const heroBits = (v, i) => [
+  h("div", { class: "dots" }, S.places.map((p, j) => h("i", { class: [p.gps ? "gps" : "", j === i ? "on" : ""].join(" ").trim() || null, svg: p.gps ? glyph("here", 9) : null }))),
+  h("div", { class: "hero-row" }, h("div", { class: "hero-temp" }, v?.temp || "–"), h("div", { class: "pg-icon", svg: v ? weatherIcon(v.icon, 76) : null })),
+  h("div", { class: "hero-cond" }, v?.cond || ""),
+  h("div", { class: "hero-hl" }, v?.hl || ""),
+  h("p", { class: "brief" }, v?.lead ? h("b", {}, v.lead) : null, v?.rest ? ` ${v.rest}` : null)];
+const heroSig = (v, i) => JSON.stringify([i, S.places.map((p) => (p.gps ? "g" : ".")).join(""), v]);
 // a place either side, drawn as the hero would draw it (only: from what's made ready already, not made now)
 function drawPage(el, q, i, only) {
-  const v = prepare(q, only) || glanceView(q), sig = JSON.stringify([i, S.places.map((p) => (p.gps ? "g" : ".")).join(""), v]);
+  const v = prepare(q, only) || glanceView(q), sig = heroSig(v, i);
   if (el._sig === sig) return v;
   el._sig = sig;
-  el.replaceChildren(
-    h("div", { class: "dots" }, S.places.map((p, j) => h("i", { class: [p.gps ? "gps" : "", j === i ? "on" : ""].join(" ").trim() || null, svg: p.gps ? glyph("here", 9) : null }))),
-    h("div", { class: "hero-row" }, h("div", { class: "hero-temp" }, v?.temp || "–"), h("div", { class: "pg-icon", svg: v ? weatherIcon(v.icon, 76) : null })),
-    h("div", { class: "hero-cond" }, v?.cond || ""),
-    h("div", { class: "hero-hl" }, v?.hl || ""),
-    h("p", { class: "brief" }, v?.lead ? h("b", {}, v.lead) : null, v?.rest ? ` ${v.rest}` : null));
+  el.replaceChildren(...heroBits(v, i));
   return v;
 }
 // A place's whole page as it'll be drawn once it's turned to, for beside this one (index.html .pv): a copy of the page's
@@ -534,7 +537,9 @@ function drawWhole(pv, q) {
   Object.assign(S, { base, rain: rain && Date.now() - rain.asked < 5 * 60e3 ? rain : null, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
   const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true), said = h("p", { id: "brief", hidden: true });
   said.dataset.said = heroView(wx, now)?.said || "";
-  pv.replaceChildren(col, said);
+  // (beside its own weather now, kept: placePages)
+  const top = pv.querySelector(":scope > .pv-hero");
+  pv.replaceChildren(...(top ? [top] : []), col, said);
   R = pv; hush(true);
   try {
     showMode(S.modeChosen ? keep.mode : viewFor(wx, now));
@@ -545,13 +550,17 @@ function drawWhole(pv, q) {
   pages.set(id, { key, nodes: [stillCopy(col)] });
   return true;
 }
-// the places either side's whole pages put beside this one, where they're drawn (or placeholders, till they are)
-function placePages(a, b) {
-  for (const [pv, q] of [[document.querySelector(".pv-prev"), a], [document.querySelector(".pv-next"), b]]) {
-    const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id;
-    if (pv._for === want) continue;
-    pv._for = want; pv._id = id; pv.dataset.whole = e ? "1" : "";
-    pv.replaceChildren(...(e ? e.nodes : id ? [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))] : []));
+// The places either side's whole pages put beside this one: each its own weather now, as the hero would draw it, over
+// its cards, where they're drawn (placeholders till they are); so each card is where it'll be when that place is the one
+// showing, under its own weather now (a longer briefing, say, a line further down), not under this one's
+function placePages(a, b, va, vb) {
+  for (const [pv, q, v, i] of [[document.querySelector(".pv-prev"), a, va, S.cur - 1], [document.querySelector(".pv-next"), b, vb, S.cur + 1]]) {
+    const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id, top = id ? heroSig(v, i) : "";
+    if (pv._for === want && pv._top === top) continue;
+    pv._for = want; pv._id = id; pv._top = top; pv.dataset.whole = e ? "1" : "";
+    // (with the hero's line under its briefing, as tall as it is, said or not)
+    pv.replaceChildren(...(id ? [h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })),
+      ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
   }
   for (const id of pages.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) pages.delete(id);
 }
@@ -568,7 +577,7 @@ function layoutPager(force = false, only = true) {
   document.querySelector(".sky-next").dataset.sky = vb?.sky || "";
   document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
-  placePages(a, b);
+  placePages(a, b, va, vb);
   // (what's made ready of places no longer either side let go)
   for (const id of ready.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) ready.delete(id);
   if (force || el._shape !== shape) { el._shape = shape; centre(); }
@@ -629,7 +638,8 @@ function commit(dir) {
   root.classList.add("pg-snap"); hush(true);
   // (the place left, now beside it: its forecast as read already, made ready from that when it's idle)
   const was = place(), k = was && peek(was), whole = onePage() && document.querySelector(dir > 0 ? ".pv-next" : ".pv-prev").dataset.whole === "1";
-  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: -1, base: S.base, v: null });
+  // (its weather now as the hero had it, for beside the one landed on)
+  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: Math.floor(Date.now() / 60e3), base: S.base, v: S.wx ? heroView(S.wx, nowWall(S.wx.place.offset)) : null });
   // (and its page as it was, a copy, for beside the one landed on: unless something on it is open or folded out, which
   // it won't be when it's turned back to (go), when it's drawn again, when the page is idle)
   if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage())] });
@@ -2846,14 +2856,14 @@ function wire() {
     });
   }
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
-  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), pagerEl = $("pager"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), mainEl = $("main"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
   let ticking = 0;
   const onScroll = () => {
     ticking = 0;
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
     // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
     const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
-    pagerEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
+    mainEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);
