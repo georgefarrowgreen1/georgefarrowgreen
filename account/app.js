@@ -510,9 +510,6 @@ function signedIn(r) {
     r(sec("card", posterCard(m))),
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
     pw.leaked && r(sec("leak", leakBanner())),
-    // (the site's admin, for the linked account only, under your card; #admin, from the old dashboard or its email,
-    // opens it, once the page has settled)
-    m.admin && r(sec("admin", adminRow(m))),
   ];
   if (m.admin && location.hash === "#admin") {
     history.replaceState(null, "", location.pathname + location.search);
@@ -531,6 +528,9 @@ function signedIn(r) {
   // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
   // of its own, so from there it's here)
   const ending = [
+    // (the site's admin, for the linked account only, at the foot, over Sign out: the top's about you and your apps;
+    // #admin, from the old dashboard or its email, opens it, once the page has settled)
+    m.admin && r(sec("admin", adminRow(m))),
     (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
