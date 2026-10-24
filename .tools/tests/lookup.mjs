@@ -20,6 +20,15 @@ const m = one(`SELECT id FROM pg_msgs WHERE sender = '${as.me.id}'`)[0];
 one(`UPDATE pg_msgs SET sent_at = ${now() - 4 * H}, deliver_at = ${now() + 8 * H}, legs = NULL WHERE id = '${m.id}'`);
 await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, bs.me.id); await openMap(A, m.id);
 ok(await A.p.locator('.mapcard .lookbtn').isVisible(), 'its map has Look Up while it flies');
+// folded, Look Up is still a button of its own: the bar that unfolds the card doesn't cover it
+await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(700);
+await A.p.evaluate(() => localStorage.setItem('inflight-mapcard', 'fold')); await openMap(A, m.id);
+const onTop = await A.p.evaluate(() => { const b = document.querySelector('.mapcard.fold .lookbtn'); if (!b) return 'no folded card'; const r = b.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e) ? 'lookbtn' : String(e?.className); });
+ok(onTop === 'lookbtn', 'folded: Look Up can be tapped (not the bar that unfolds it)', onTop);
+await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud');
+ok(await A.p.locator('.looksheet').isVisible(), 'and a tap on it opens Look Up (rather than unfolding the card)');
+await A.p.click('.looksheet header [data-act=close]'); await A.p.waitForTimeout(700);
+await A.p.evaluate(() => localStorage.setItem('inflight-mapcard', 'open')); await openMap(A, m.id);
 
 // 1. no compass: a dial, and which way to face in words
 await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud'); await A.p.waitForTimeout(700);

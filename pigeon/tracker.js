@@ -32,6 +32,20 @@ function start() {
   let data = null, shown = [], marks = [], when = 0, failed = false, W = 0, H = 0, dpr = 1, base = null, hover = null;
   // where the map looks (it wraps round the world): its middle, and how close in
   let cLon = 15, cLat = 22, zoom = 1.5;          // (zoom 1: the whole world)
+  // (drawn every frame for the dots' pulse; with Reduce Motion, only when something changes)
+  const STILL = matchMedia("(prefers-reduced-motion: reduce)");
+  // each kind's colour, looked up once (asking the page's style for it, for every dot every frame, was most of the work)
+  const KC = {}, kc = (k) => (KC[k] ||= css(`--k-${k}`) || css("--k-standard"));
+  // and its glow, drawn once as a soft disc, stamped under each dot (not a new gradient for every dot every frame)
+  const GLOW = {}, glowOf = (k) => GLOW[k] ||= (() => {
+    const c = document.createElement("canvas"), R = 48, x = c.getContext("2d"), col = kc(k); c.width = c.height = R * 2;
+    const gr = x.createRadialGradient(R, R, 0, R, R, R); gr.addColorStop(0, col + "66"); gr.addColorStop(1, col + "00");
+    x.fillStyle = gr; x.fillRect(0, 0, R * 2, R * 2); return c;
+  })();
+  // the land and night, kept as a picture: while the map moves it's drawn moved and scaled (bv: the view it was drawn
+  // for), and drawn again once it's been still a moment; a new minute's dots fade in over the last ones (fadeFrom)
+  let bv = null, movedAt = 0, fadeFrom = null, fadeAt = 0, glide = 0, goal = null, req = 0, mk = "";
+  const bgCanvas = document.createElement("canvas");
   const PANEL = () => ($(".tk-panel").getBoundingClientRect().right || 0) + 20;
 
   // equirectangular: the whole world fits the space beside the panel at zoom 1
@@ -46,12 +60,13 @@ function start() {
 
   function size() {
     dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); base = null; draw();
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); base = null; fadeFrom = null; mk = ""; frame();
   }
-  // the land, the grid and the night, drawn once a minute (or on resize)
-  function background() {
-    const c = document.createElement("canvas"); c.width = cv.width; c.height = cv.height;
-    const b = c.getContext("2d"), v = view(); b.scale(dpr, dpr);
+  // the land, the grid and the night, drawn once a minute (or on resize, or once it's stopped moving), into one canvas
+  // kept for it; and the dots' trails over them (they change only as the dots or the view do)
+  function background(v, ms) {
+    const c = bgCanvas; c.width = cv.width; c.height = cv.height;
+    const b = c.getContext("2d"); b.scale(dpr, dpr);
     // the world between 85° north and south; beyond it, the night sky
     b.fillStyle = css("--bg"); b.fillRect(0, 0, W, H);
     const yN = v.cy + (v.lat - 85) * v.s, yS = v.cy + (v.lat + 85) * v.s;
@@ -85,32 +100,42 @@ function start() {
       b.fillStyle = css("--night"); b.fill();
     }
     b.restore();
+    // where they've been: a fading line back along each trail (under the dots, drawn over it every frame)
+    b.lineCap = b.lineJoin = "round";
+    for (const p of ms) {
+      if (!p.tr?.length) continue;
+      const c = kc(p.k), pts = [[p.x, p.y]];
+      let lon = p.lon;
+      for (const [la, lo] of p.tr) { let d = lo - lon; d -= Math.round(d / 360) * 360; lon += d; pts.push([pts.at(-1)[0] + d * v.s, v.cy + (v.lat - la) * v.s]); }
+      const [ex, ey] = pts.at(-1), grad = b.createLinearGradient(p.x, p.y, ex, ey);
+      grad.addColorStop(0, c + "aa"); grad.addColorStop(1, c + "00");
+      b.strokeStyle = grad; b.lineWidth = 2;
+      b.beginPath(); b.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; b.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2); }
+      b.lineTo(ex, ey); b.stroke();
+    }
     return c;
   }
   function draw(now = performance.now()) {
     if (!W) return;
-    base ||= background();
-    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(base, 0, 0); g.scale(dpr, dpr);
-    const v = view(), pulse = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (Math.sin(now / 700) + 1) / 2;
-    marks = merge(v);
-    // where they've been: a fading line back along each trail (drawn first, under the dots)
-    g.lineCap = g.lineJoin = "round";
-    for (const p of marks) {
-      if (!p.tr?.length) continue;
-      const c = css(`--k-${p.k}`) || css("--k-standard"), pts = [[p.x, p.y]];
-      let lon = p.lon;
-      for (const [la, lo] of p.tr) { let d = lo - lon; d -= Math.round(d / 360) * 360; lon += d; pts.push([pts.at(-1)[0] + d * v.s, v.cy + (v.lat - la) * v.s]); }
-      const [ex, ey] = pts.at(-1), grad = g.createLinearGradient(p.x, p.y, ex, ey);
-      grad.addColorStop(0, c + "aa"); grad.addColorStop(1, c + "00");
-      g.strokeStyle = grad; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; g.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2); }
-      g.lineTo(ex, ey); g.stroke();
+    const v = view(), same = bv && bv.s === v.s && bv.cx === v.cx && bv.cy === v.cy && bv.lon === v.lon && bv.lat === v.lat;
+    // (the dots worked out again only when the view or the dots change)
+    const key = `${v.s},${v.cx},${v.cy},${v.lon},${v.lat},${when}`;
+    if (key !== mk) { mk = key; marks = merge(v); }
+    if (!base || (!same && now - movedAt > 150)) { base = background(v, marks); bv = v; }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (base && bv === v || same) g.drawImage(base, 0, 0);
+    else {
+      // moving: the last picture, moved and scaled to where the map is now (the edges it uncovers in the night's colour)
+      const a = v.s / bv.s, tx = v.cx - a * bv.cx + (bv.lon - v.lon) * v.s, ty = v.cy - a * bv.cy + (v.lat - bv.lat) * v.s;
+      g.fillStyle = KC.bg ||= css("--bg"); g.fillRect(0, 0, cv.width, cv.height);
+      g.setTransform(a, 0, 0, a, tx * dpr, ty * dpr); g.drawImage(base, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
     }
+    g.scale(dpr, dpr);
+    const pulse = STILL.matches ? 0 : (Math.sin(now / 700) + 1) / 2;
     for (const p of marks) {
-      const { x, y } = p, c = css(`--k-${p.k}`) || css("--k-standard"), r = p.n > 1 ? 5 : 4;
-      const glow = g.createRadialGradient(x, y, 0, x, y, r * 4); glow.addColorStop(0, c + "66"); glow.addColorStop(1, c + "00");
-      g.fillStyle = glow; g.beginPath(); g.arc(x, y, r * (3.4 + pulse * .8), 0, 7); g.fill();
+      const { x, y } = p, c = kc(p.k), r = p.n > 1 ? 5 : 4, gr = r * (3.4 + pulse * .8);
+      g.drawImage(glowOf(p.k), x - gr, y - gr, gr * 2, gr * 2);
       g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
       // which way it's going: a small arrowhead ahead of it
       const a = { north: 0, "north-east": 45, east: 90, "south-east": 135, south: 180, "south-west": 225, west: 270, "north-west": 315 }[p.h] * Math.PI / 180;
@@ -122,8 +147,22 @@ function start() {
       if (p.n > 1) { g.font = "700 11px -apple-system, system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.lineWidth = 3; g.strokeStyle = "#060b16"; g.strokeText(`×${p.n}`, x + r + 4, y + 1); g.fillStyle = c; g.fillText(`×${p.n}`, x + r + 4, y + 1); }
       if (hover && p.key === hover.key) { g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, r + 3, 0, 7); g.stroke(); }
     }
+    // a new minute's dots: the last picture fades out over them, so none of them jumps (not while it's moved, which would smear it)
+    if (fadeFrom) {
+      const f = (now - fadeAt) / (STILL.matches ? 200 : 600);        // (a cross-fade, quicker, with Reduce Motion too)
+      if (f >= 1 || !same) fadeFrom = null;
+      else { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1 - f; g.drawImage(fadeFrom, 0, 0); g.globalAlpha = 1; }
+    }
   }
-  const loop = (t) => { draw(t); requestAnimationFrame(loop); };
+  // a frame, and another after it while anything's still changing (always, for the pulse, unless Reduce Motion; the
+  // slow pulse alone needs only every other frame)
+  let drawnAt = 0;
+  const frame = () => { if (!req) req = requestAnimationFrame((t) => {
+    req = 0; const busy = fadeFrom || glide || performance.now() - movedAt < 300;
+    if (busy || t - drawnAt >= 30 || STILL.matches) { drawnAt = t; draw(t); }
+    if (!STILL.matches || busy) frame();
+  }); };
+  STILL.addEventListener?.("change", () => frame());               // (Reduce Motion turned off while it's open: the pulse starts again)
   // dots of a kind that touch at this zoom drawn as one, "×n" (headings kept only when they agree)
   function merge(v) {
     const out = [];
@@ -187,8 +226,9 @@ function start() {
       data = { today: td && { landed: Number(td.landed) || 0, km: Number(td.km) || 0, seas: (Array.isArray(td.seas) ? td.seas : []).filter((x) => typeof x === "string").slice(0, 60) },
         inAir: Number(d.inAir) || 0, moon: Math.max(0, Math.floor(Number(d.moon) || 0)), pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
         .map((p) => ({ ...p, tr: (Array.isArray(p.tr) ? p.tr : []).filter((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).slice(0, 8) })) };
+      if (shown.length && cv.width) { const f = fadeFrom || document.createElement("canvas"); f.width = cv.width; f.height = cv.height; f.getContext("2d").drawImage(cv, 0, 0); fadeFrom = f; fadeAt = performance.now(); }
       shown = group(data.pigeons); when = Date.now(); failed = false; base = null; hover = null; tip.hidden = true;
-      panel();
+      panel(); frame();
     } catch (_) { failed = true; }
     ago();
   }
@@ -197,35 +237,51 @@ function start() {
     const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top, v = view();
     let best = null, bd = 14;
     for (const p of marks) { const d = Math.hypot(p.x - mx, p.y - my); if (d < bd) { bd = d; best = p; } }
+    if (hover?.key !== best?.key) frame();
     hover = best; cv.classList.toggle("hot", !!best);
     if (!best) { tip.hidden = true; return; }
     const { x, y } = best;
     tip.innerHTML = `${best.n > 1 ? `${best.n} ${esc(NAME[best.k].toLowerCase())} pigeons` : `A ${esc(NAME[best.k].toLowerCase())} pigeon`}<small>Over ${esc(best.where)}${best.h ? ` · heading ${esc(best.h)}` : ""}</small>`;
     tip.style.left = `${x}px`; tip.style.top = `${y}px`; tip.hidden = false;
   });
-  cv.addEventListener("mouseleave", () => { hover = null; tip.hidden = true; });
+  cv.addEventListener("mouseleave", () => { if (hover) frame(); hover = null; tip.hidden = true; });
   // drag to look round the world, scroll or the buttons to zoom
-  const moved = () => { base = null; hover = null; tip.hidden = true; $(".tk-zoom [data-z=reset]").hidden = zoom === 1; };
+  const moved = () => { movedAt = performance.now(); hover = null; tip.hidden = true; $(".tk-zoom [data-z=reset]").hidden = zoom === 1 && !goal; frame(); };
+  // the buttons, the wheel and the arrow keys glide there (the zoom evenly, however far), rather than jumping; at once with Reduce Motion
+  const glideTo = (z1, lon1, lat1) => {
+    cancelAnimationFrame(glide); glide = 0;
+    if (STILL.matches) { zoom = z1; cLon = lon1; cLat = lat1; goal = null; return moved(); }
+    const z0 = zoom, lon0 = cLon, lat0 = cLat, t0 = performance.now(); goal = { z: z1, lon: lon1, lat: lat1 };
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / 320), e = 1 - (1 - p) ** 3;
+      zoom = Math.exp(Math.log(z0) + (Math.log(z1) - Math.log(z0)) * e); cLon = lon0 + (lon1 - lon0) * e; cLat = lat0 + (lat1 - lat0) * e;
+      if (p < 1) glide = requestAnimationFrame(step); else { glide = 0; goal = null; }
+      moved();
+    };
+    glide = requestAnimationFrame(step);
+  };
   let drag = null;
-  cv.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, lon: cLon, lat: cLat }; cv.setPointerCapture(e.pointerId); cv.classList.add("drag"); });
+  cv.addEventListener("pointerdown", (e) => { cancelAnimationFrame(glide); glide = 0; goal = null; drag = { x: e.clientX, y: e.clientY, lon: cLon, lat: cLat }; cv.setPointerCapture(e.pointerId); cv.classList.add("drag"); });
   cv.addEventListener("pointermove", (e) => { if (!drag) return; const s = view().s; cLon = drag.lon - (e.clientX - drag.x) / s; cLat = drag.lat + (e.clientY - drag.y) / s; moved(); });
   const end = () => { drag = null; cv.classList.remove("drag"); };
   cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
-  const zoomBy = (f) => { zoom = Math.min(6, Math.max(1, zoom * f)); moved(); };
+  const zoomBy = (f) => { const t = goal || { z: zoom, lon: cLon, lat: cLat }; glideTo(Math.min(6, Math.max(1, t.z * f)), t.lon, t.lat); };
   cv.addEventListener("wheel", (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
   $(".tk-zoom").addEventListener("click", (e) => {
     const z = e.target.closest("[data-z]")?.dataset.z; if (!z) return;
-    if (z === "reset") { zoom = 1; cLon = 15; cLat = 22; moved(); $(".tk-zoom [data-z=out]").focus(); } else zoomBy(z === "in" ? 1.5 : 1 / 1.5);
+    if (z === "reset") { glideTo(1, 15, 22); $(".tk-zoom [data-z=out]").focus(); } else zoomBy(z === "in" ? 1.5 : 1 / 1.5);
   });
   addEventListener("keydown", (e) => {
     if (e.target.closest?.("a, button")) return;
-    const s = view().s, step = 120 / s;
-    if (e.key === "ArrowLeft") cLon -= step; else if (e.key === "ArrowRight") cLon += step; else if (e.key === "ArrowUp") cLat += step; else if (e.key === "ArrowDown") cLat -= step;
-    else if (e.key === "+" || e.key === "=") return zoomBy(1.5); else if (e.key === "-") return zoomBy(1 / 1.5); else return;
-    e.preventDefault(); moved();
+    const t = goal || { z: zoom, lon: cLon, lat: cLat }, step = 120 / view().s;
+    if (e.key === "ArrowLeft") glideTo(t.z, t.lon - step, t.lat); else if (e.key === "ArrowRight") glideTo(t.z, t.lon + step, t.lat);
+    else if (e.key === "ArrowUp") glideTo(t.z, t.lon, t.lat + step); else if (e.key === "ArrowDown") glideTo(t.z, t.lon, t.lat - step);
+    else if (e.key === "+" || e.key === "=") zoomBy(1.5); else if (e.key === "-") zoomBy(1 / 1.5); else return;
+    e.preventDefault();
   });
   addEventListener("resize", size);
-  size(); requestAnimationFrame(loop);
+  STILL.addEventListener?.("change", frame);
+  size();
   load(); setInterval(load, EVERY); setInterval(ago, 5000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - when > EVERY) load(); });
 }
