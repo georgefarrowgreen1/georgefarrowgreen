@@ -500,6 +500,7 @@ if (window.visualViewport) {
   const vv = window.visualViewport;
   const lift = () => root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
+  window.relift = lift;
 }
 // (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
 function scrollsIn(el, top) {
@@ -586,12 +587,25 @@ const fold = () => {
 };
 $("#c-message").addEventListener("input", fold);
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
+// (once the sheet's changed size under a field that's being typed in: an iPhone leaves its caret where the field was
+// until the selection changes, so it's set again where it is; and the keyboard's measured again for a moment, as the
+// phone settles its view of the page, so the sheet sits on it rather than short of it or under it)
+function steady() {
+  const el = document.activeElement;
+  if (el?.setSelectionRange && contact.sheet.contains(el)) {
+    const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection;
+    el.setSelectionRange(0, 0); el.setSelectionRange(a, b, dir);
+  }
+  let n = 0;
+  const tick = () => { window.relift?.(); if (++n < 20) requestAnimationFrame(tick); };
+  tick();
+}
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
   const swap = () => { from.hidden = !on; s.classList.toggle("known", on); if (!on) fit(); };
   for (const el of [box, s, ...$$("*", s)]) for (const a of el.getAnimations()) a.cancel();
-  if (motion.matches || !d.open) return swap();
+  if (motion.matches || !d.open) { swap(); return steady(); }
   // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
   const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
   const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
@@ -610,7 +624,7 @@ function morphFrom(on) {
   const hBox1 = box.getBoundingClientRect().height, hS1 = s.getBoundingClientRect().height;
   const T = 520, slide = { duration: T, easing: GLIDE };
   box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
-  s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide);
+  s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
   words.forEach(([input, shown], i) => {
     const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
     el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
