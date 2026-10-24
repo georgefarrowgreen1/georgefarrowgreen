@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-88" />
+  <meta name="app-version" content="wx-91" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -34,12 +34,12 @@
 <body data-sky="cloudy-day">
   <!-- (the sky the page opens on, set before it's first drawn: early.js) -->
   <script src="./early.js"></script>
-  <div class="sky" aria-hidden="true"><div class="sky-clouds"></div><div class="sky-stars"></div><div class="sky-rain"></div><div class="sky-snow"></div><div class="sky-flash"></div></div>
+  <div class="sky" aria-hidden="true"><div class="sky-alt sky-prev"></div><div class="sky-alt sky-next"></div><div class="sky-clouds"></div><div class="sky-stars"></div><div class="sky-rain"></div><div class="sky-snow"></div><div class="sky-flash"></div></div>
 
   <div class="page">
   <header class="top">
     <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
-      <span class="place-name"><span id="place-name">Weather</span><span class="place-temp" id="place-temp" aria-hidden="true"></span></span>
+      <span class="place-name"><span id="place-name">Weather</span><span class="pg-name pg-name-prev" aria-hidden="true"></span><span class="pg-name pg-name-next" aria-hidden="true"></span><span class="place-temp" id="place-temp" aria-hidden="true"></span></span>
       <span class="place-line"><span class="place-sub" id="place-sub"></span><span class="place-now" id="place-now" aria-hidden="true"></span></span>
     </button>
     <div class="top-actions">
@@ -50,7 +50,10 @@
   </header>
 
   <main id="main" aria-busy="true" data-empty="loading">
-    <div class="col col-a">
+    <!-- the weather now, with the saved places either side of it drawn beside it ready to swipe to: a sideways scroller
+         that stops at each (app.js pager) -->
+    <div class="pager" id="pager">
+      <div class="pg-page pg-prev" aria-hidden="true" inert hidden></div>
       <section class="hero" aria-labelledby="hero-title">
         <h1 class="sr-only" id="hero-title">Weather for <span id="sr-place">your place</span></h1>
         <div class="dots" id="dots" hidden aria-hidden="true"></div>
@@ -64,8 +67,11 @@
         <p class="status" id="status" role="status"></p>
         <button class="pill-btn retry" id="retry-btn" type="button" hidden>Try again</button>
       </section>
-      <!-- (the weather as it was last shown, put up before the page is first painted: boot.js) -->
-      <script src="./boot.js"></script>
+      <div class="pg-page pg-next" aria-hidden="true" inert hidden></div>
+    </div>
+    <!-- (the weather as it was last shown, put up before the page is first painted: boot.js) -->
+    <script src="./boot.js"></script>
+    <div class="col col-a">
       <!-- warnings, straight under the temperature (several: one banner that opens to them all) -->
       <section class="stack" id="alerts" aria-label="Warnings"></section>
 
@@ -177,6 +183,9 @@
         <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
       </div>
     </div>
+    <!-- the places either side's whole pages, beside this one as it's swiped (app.js drawWhole) -->
+    <div class="pv pv-prev" aria-hidden="true" inert></div>
+    <div class="pv pv-next" aria-hidden="true" inert></div>
   </main>
 
   <footer class="foot">

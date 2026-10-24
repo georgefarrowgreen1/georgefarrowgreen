@@ -104,21 +104,26 @@ const watch = typeof IntersectionObserver === "function" && new IntersectionObse
 // not by each as it's drawn, which would lay the page out once for each; meanwhile it holds where it starts from)
 const toEnter = new Set();
 let entering = 0;
+// (and not while the page is turning to another place: its charts come with it, drawn, rather than all drawing in at once
+// as it moves: app.js turnPage, pager)
+// (asked for by more than one at once, a page turning and a page drawn beside it, say: hushed till each has done)
+let hushes = 0;
+export const hush = (on) => { hushes = Math.max(0, hushes + (on ? 1 : -1)); };
 function enter(host, svg, k = "c") {
-  if (still?.matches) return;
+  if (still?.matches || hushes) return;
   svg._k = k;
   svg.classList.add(`${k}-wait`);
   waiting.set(host, svg); toEnter.add(host);
   entering ||= requestAnimationFrame(() => {
     entering = 0;
-    for (const el of toEnter) {
-      const s = waiting.get(el);
-      if (!s) continue;
-      const r = el.getBoundingClientRect();
-      if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { waiting.delete(el); s.classList.remove(`${s._k}-wait`); s.classList.add(`${s._k}-enter`); el._enterAt = performance.now(); }
-      else watch.observe(el);
-    }
+    // (all measured, then all marked: marking one before measuring the next would lay the page out again each time)
+    const seen = [...toEnter].filter((el) => waiting.get(el)).map((el) => { const r = el.getBoundingClientRect(); return [el, !watch || (r.bottom > 0 && r.top < innerHeight - 40)]; });
     toEnter.clear();
+    for (const [el, now] of seen) {
+      const s = waiting.get(el);
+      if (!now) { watch.observe(el); continue; }
+      waiting.delete(el); s.classList.remove(`${s._k}-wait`); s.classList.add(`${s._k}-enter`); el._enterAt = performance.now();
+    }
   });
 }
 // drawn again (more of the forecast in, a new size) while it's still drawing in: it carries on from there

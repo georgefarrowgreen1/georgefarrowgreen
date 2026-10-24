@@ -1,10 +1,10 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, searchPlaces, nameOf, store, peek, cell } from "./data.js";
+import { load, due, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
 import { weatherIcon, moonIcon, glyph } from "./icons.js";
-import { timeChart, rangeChart } from "./charts.js";
+import { timeChart, rangeChart, hush } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
 import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS } from "./skill.js";
@@ -14,13 +14,23 @@ import { oneRain } from "./agree.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 import * as A from "./account.js";
 
-const $ = (id) => document.getElementById(id);
+// (while a place's whole page is drawn for beside this one, in that: drawWhole)
+let R = null;
+const $ = (id) => (R ? R.querySelector(`#${CSS.escape(id)}`) : document.getElementById(id));
+// (an icon's markup read once, and copied after that: the 48 hours' strip alone has a few icons forty-eight times over,
+// and reading each afresh was most of the time it took to draw a place)
+const icons = new Map();
+const iconNode = (svg) => {
+  let t = icons.get(svg);
+  if (!t) { if (icons.size > 300) icons.clear(); t = document.createElement("template"); t.innerHTML = svg; icons.set(svg, t); }
+  return t.content.cloneNode(true);
+};
 function h(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
     if (k === "class") n.className = v;
-    else if (k === "svg") n.innerHTML = v;                 // (only ever the app's own icons)
+    else if (k === "svg") n.append(iconNode(v));             // (only ever the app's own icons)
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v === true ? "" : v);
   }
@@ -183,13 +193,14 @@ async function go(force = false, fresh = null) {
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
-  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; S.openIns.clear(); }
+  // (the radar's say on its next hours, if it's had it lately: so it's drawn as it was, and as its page beside this one was)
+  if (moved) { const r = rains.get(cell(p.lat, p.lon)); S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = r && Date.now() - r.asked < 5 * 60e3 ? r : null; S.openIns.clear(); }
   // (a place with nothing kept: its first picture waits, a second at most from the forecast's coming, for the warnings
   // and the radar's say, which would otherwise come in over the top of it and push it down as it's read: paint)
   clearTimeout(S.hold?.timer);
   // (a new place's first picture straight away, not held back by the last place's drawing: paint)
   if (moved) { clearTimeout(S.paintT); S.painted = 0; }
-  S.hold = moved && !S.wx && !store.get(`wx:${cell(p.lat, p.lon)}`)?.forecast ? { id: cell(p.lat, p.lon), until: 0, timer: 0 } : null;
+  S.hold = moved && !S.wx && !hasKept(p) ? { id: cell(p.lat, p.lon), until: 0, timer: 0 } : null;
   // (meanwhile, a sky for the time of day, by this phone's clock: not a day's sky that turns to night as the forecast
   // comes, nor the last place's)
   if (S.hold) { const hr = new Date().getHours(); document.body.dataset.sky = hr >= 7 && hr < 19 ? "cloudy-day" : "cloudy-night"; }
@@ -288,6 +299,7 @@ const shaped = (wx) => {
 };
 // The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
 // again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
+const rains = new Map();
 async function radarRain(p, my) {
   const r = await rainAt(p.lat, p.lon).catch(() => null);
   if (my !== seq) return;
@@ -295,6 +307,7 @@ async function radarRain(p, my) {
   // again only if what the radar says has changed)
   const was = S.rain, id = cell(p.lat, p.lon), said = r ? JSON.stringify([r.at, r.steps]) : "";
   S.rain = { ...r, id, asked: Date.now(), said };
+  rains.set(id, S.rain);
   if (S.base && !(was?.id === id && was.said === said)) paint();
 }
 // The page drawn, unless a new place's first picture is still waiting (go): for its warnings and the radar's say, or
@@ -308,9 +321,11 @@ function paint() {
     if (!ready && Date.now() < h.until) { h.timer = setTimeout(paint, h.until - Date.now()); return; }
     S.hold = null;
   }
+  // (not while the places are being swiped through, under the finger: once it's still; landed on one, at once)
+  clearTimeout(S.paintT);
+  if (!snapping && swiping()) { S.paintT = setTimeout(paint, 250); return; }
   // (parts coming in close together, as they do, drawn together: twice a second at most, rather than the whole page
   // over again for each, moving under the eye each time)
-  clearTimeout(S.paintT);
   const wait = (S.painted || 0) + 500 - Date.now();
   if (wait > 0) { S.paintT = setTimeout(paint, wait); return; }
   S.painted = Date.now();
@@ -334,10 +349,10 @@ function baseline(wx, now) {
 function showPlace() {
   const p = place(), btn = $("place-btn"), named = btn.classList.contains("named");
   // (its name faded in once it's known, as the app starts; found later (My Location's, say), the new one rising in)
-  swap($("place-name"), p ? p.name : "Weather", named);
+  swap($("place-name"), p ? p.name : "Weather", named && !snapping);
   $("sr-place").textContent = p ? p.name : "your place";
   const sub = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
-  swap($("place-sub"), sub, named && !document.querySelector(".top").classList.contains("collapsed"));
+  swap($("place-sub"), sub, named && !snapping && !document.querySelector(".top").classList.contains("collapsed"));
   btn.classList.toggle("no-sub", !sub);
   if (p) btn.classList.add("named");
   document.title = p ? `${p.name} · Weather` : "Weather";
@@ -427,32 +442,317 @@ function glide(v, dist, ease, span = dist) {
   if (!curves) return { duration: end, easing: ease };
   return { duration: end, easing: `linear(${Array.from({ length: 31 }, (_, i) => (i === 30 ? 1 : +(1 - left((end * i) / 30)).toFixed(4))).join(", ")})` };
 }
-// Swipe across the top of the page to the next or previous saved place, as iOS Weather pages through its cities (the
-// places sheet is still the way to choose one; this is the shortcut). The page follows the finger (giving at the first
-// and last, as iOS's do at their ends), from where the swipe was told from a scroll, not with a jump. Let go far
-// enough, or flicked, it carries on off the screen at the speed it was let go at as the next place's page comes in
-// beside it (a view transition, of just what's on screen; where there aren't any, one goes and then the other comes);
-// not far enough, it springs back. With Reduce Motion, the next place is just there.
 // how fast a swipe was let go: pixels a millisecond over its last moment, up to the finger lifting (held still a moment
 // before it lifted, it wasn't flicked, as on iOS). trail: [[ms, x], ...] as it moved
 function flickSpeed(trail) {
   const now = performance.now(), last = trail.filter(([t]) => now - t <= 90);
   return last.length > 1 ? (last[last.length - 1][1] - last[0][1]) / (now - last[0][0]) : 0;
 }
+// Swipe across the weather now to the next or previous saved place, as iOS Weather pages through its cities (the
+// places sheet is still the way to choose one; this is the shortcut). The places either side are drawn beside it in a
+// scroller (index.html .pager), so the swipe is the browser's own scroll: it moves with the finger from the first
+// touch, carries on at the speed it's let go and stops at the next place, giving at the first and last, however busy
+// the page is meanwhile. What's drawn there is that place's weather now as it'll be drawn once it's turned to (its
+// forecast as kept, shaped as the page shapes it: made ready when the page is idle, prepare; until then, its weather
+// now at a glance). On a phone upright, as iOS does, the whole page goes: its cards along with it, the next place's
+// whole page coming in beside it, cards and all (drawWhole), and a swipe across the cards turns it too (cardSwipe);
+// wide, or on its side, the cards fade as it goes. The sky and the name in the bar turn to the next place's meanwhile
+// (styles.css, --cur). Landed, that place is the one showing (commit), drawn in this one's place as the scroller's put
+// back, in the one frame, so nothing moves. The places either side kept fresh meanwhile, in the background, so what's
+// there to swipe to is up to date (readyNearby)
+const nearby = () => [S.places[S.cur - 1] || null, S.places[S.cur + 1] || null];
+// (where it can't be led by the scroller's own timeline, done here as it scrolls: follow)
+const linked = !!globalThis.CSS?.supports?.("timeline-scope: --a") && CSS.supports("animation-range: cover 0% cover 100%");
+let held = false, heldAt = 0, movedAt = 0, dirty = false, dragging = false, settleT = 0, heroLeft = 0, pageW = 0, snapping = false;
+const swiping = () => held || performance.now() - movedAt < 160, pagerBusy = () => swiping() || turning;
+// (one page at a time: a phone upright, where the page goes whole as it's swiped)
+const onePage = () => !twoCols.matches && !onSide.matches;
+// a place's weather now, the hero's own lines (as hero has them), and its sky
+function heroView(wx, now) {
+  const f = S.f, c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now);
+  if (!c) return null;
+  const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""];
+  return { temp: f.temp(c.temp), icon: iconOf(c.code, c.isDay), cond: label(c.code, c.isDay), said, lead, rest, sky: skyFor(wx, now),
+    hl: d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}` };
+}
+// (what's made ready of each, kept while it's the same forecast in the same units: its forecast as kept read once)
+const ready = new Map();
+function prepare(q, only = false) {
+  const id = cell(q.lat, q.lon), k = peek(q), had = ready.get(id), min = Math.floor(Date.now() / 60e3);
+  if (!k) return null;
+  const same = had && had.at === k.at && had.f === S.f;
+  if (same && (only || had.min === min)) return had.v;
+  if (only) return null;
+  const base = same || had?.at === k.at ? had.base : keptWx(q);
+  if (!base || runOut(base)) return null;
+  const wx = shaped(base), v = heroView(wx, nowWall(wx.place.offset));
+  ready.set(id, { at: k.at, f: S.f, min, base, v });
+  return v;
+}
+// (one with nothing kept: its weather now as the list of places has it)
+function glanceView(q) {
+  const k = glance(q), f = S.f;
+  return k ? { temp: f.temp(k.temp), icon: iconOf(k.code, k.isDay), cond: label(k.code, k.isDay), lead: "", rest: "", sky: skyOf(k.code, k.isDay),
+    hl: k.hi != null && k.lo != null ? `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}` : "" } : null;
+}
+// a place either side, drawn as the hero would draw it (only: from what's made ready already, not made now)
+function drawPage(el, q, i, only) {
+  const v = prepare(q, only) || glanceView(q), sig = JSON.stringify([i, S.places.map((p) => (p.gps ? "g" : ".")).join(""), v]);
+  if (el._sig === sig) return v;
+  el._sig = sig;
+  el.replaceChildren(
+    h("div", { class: "dots" }, S.places.map((p, j) => h("i", { class: [p.gps ? "gps" : "", j === i ? "on" : ""].join(" ").trim() || null, svg: p.gps ? glyph("here", 9) : null }))),
+    h("div", { class: "hero-row" }, h("div", { class: "hero-temp" }, v?.temp || "–"), h("div", { class: "pg-icon", svg: v ? weatherIcon(v.icon, 76) : null })),
+    h("div", { class: "hero-cond" }, v?.cond || ""),
+    h("div", { class: "hero-hl" }, v?.hl || ""),
+    h("p", { class: "brief" }, v?.lead ? h("b", {}, v.lead) : null, v?.rest ? ` ${v.rest}` : null));
+  return v;
+}
+// A place's whole page as it'll be drawn once it's turned to, for beside this one (index.html .pv): a copy of the page's
+// cards drawn by the page's own drawing, each part as it draws itself but aimed at the copy (R, which $ looks in), with
+// the place's forecast as kept and as a place is first shown (go: nothing open or folded out, the view it calls for),
+// nothing moving and no chart drawing in; its ids then put by (data-pid), so the page's own are still the page's. Kept
+// for each place while it's the same forecast, the same few minutes, the same page (pages)
+const pages = new Map();
+const pageKey = (q) => { const k = peek(q); return k && JSON.stringify([k.at, Math.floor(Date.now() / 180e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
+const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
+// (the page's cards as they are, copied: without the placeholders, the map (one only), or anything about to move)
+function copyPage(blank = false) {
+  const col = $("main").querySelector(":scope > .col-a").cloneNode(true);
+  for (const x of col.querySelectorAll(".skeleton")) x.remove();
+  for (const x of col.querySelectorAll(".radar-map")) x.replaceChildren();
+  const note = col.querySelector(".radar-note > span"); if (note) note.textContent = "";
+  // (and, to be drawn afresh, what's drawn into what's there: the warnings, kept one by one as they're drawn again)
+  if (blank) for (const c of col.querySelectorAll("#alerts, #hourly-chart, #nowcast-chart, #climate-body > .range")) c.replaceChildren();
+  return col;
+}
+const stillCopy = (col) => { putIds(col); for (const x of col.querySelectorAll(".rise")) x.classList.remove("rise"); for (const x of col.querySelectorAll(".card, .ins, .tile")) x.classList.add("settled"); return col; };
+function drawWhole(pv, q) {
+  const id = cell(q.lat, q.lon), key = pageKey(q), base = ready.get(id)?.base || keptWx(q);
+  if (!key || !base || runOut(base)) return false;
+  const rain = rains.get(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
+  Object.assign(S, { base, rain: rain && Date.now() - rain.asked < 5 * 60e3 ? rain : null, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
+  const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true), said = h("p", { id: "brief", hidden: true });
+  said.dataset.said = heroView(wx, now)?.said || "";
+  pv.replaceChildren(col, said);
+  R = pv; hush(true);
+  try {
+    showMode(S.modeChosen ? keep.mode : viewFor(wx, now));
+    for (const part of [() => nowcast(wx, now, { fresh: true }), () => cards(wx, now, true), () => hourly(wx, now), () => daily(wx, now), () => windows(wx, now), () => accuracy(wx), () => climate(wx, now), () => tiles(wx, now), fits])
+      try { part(); } catch (e) { console.error(e); }
+  } finally { R = null; hush(false); Object.assign(S, keep); insWidth = w0; }
+  said.remove();
+  pages.set(id, { key, nodes: [stillCopy(col)] });
+  return true;
+}
+// the places either side's whole pages put beside this one, where they're drawn (or placeholders, till they are)
+function placePages(a, b) {
+  for (const [pv, q] of [[document.querySelector(".pv-prev"), a], [document.querySelector(".pv-next"), b]]) {
+    const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id;
+    if (pv._for === want) continue;
+    pv._for = want; pv._id = id; pv.dataset.whole = e ? "1" : "";
+    pv.replaceChildren(...(e ? e.nodes : id ? [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))] : []));
+  }
+  for (const id of pages.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) pages.delete(id);
+}
+// The places either side laid out beside the weather now (as the page is drawn: from what's ready; force, as a place
+// is landed on); not while it's being swiped, when it's done once it's still
+function layoutPager(force = false, only = true) {
+  const el = $("pager");
+  if (!force && pagerBusy()) { dirty = true; return; }
+  dirty = false;
+  const [a, b] = nearby(), pp = el.querySelector(".pg-prev"), pn = el.querySelector(".pg-next"), shape = `${!!a}${!!b}`;
+  pp.hidden = !a; pn.hidden = !b;
+  const va = a && drawPage(pp, a, S.cur - 1, only), vb = b && drawPage(pn, b, S.cur + 1, only);
+  document.querySelector(".sky-prev").dataset.sky = va?.sky || "";
+  document.querySelector(".sky-next").dataset.sky = vb?.sky || "";
+  document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
+  document.querySelector(".pg-name-next").textContent = b ? b.name : "";
+  placePages(a, b);
+  // (what's made ready of places no longer either side let go)
+  for (const id of ready.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) ready.delete(id);
+  if (force || el._shape !== shape) { el._shape = shape; centre(); }
+}
+// the scroller put back to the weather now
+function centre() {
+  const el = $("pager");
+  heroLeft = el.querySelector(".hero").offsetLeft; pageW = el.clientWidth;
+  if (Math.abs(el.scrollLeft - heroLeft) > 1) el.scrollLeft = heroLeft;
+}
+function dragOn() {
+  if (dragging || (!S.places[S.cur - 1] && !S.places[S.cur + 1])) return;
+  dragging = true; document.documentElement.classList.add("pg-drag");
+}
+function dragOff() {
+  if (!dragging) return;
+  dragging = false; document.documentElement.classList.remove("pg-drag");
+  $("pager").classList.remove("pg-led");
+  if (!linked) for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name")) { x.style.translate = ""; x.style.opacity = ""; }
+}
+// (as styles.css has it: the cards along with it (and the next place's beside them; or, wide, fading), the next sky over
+// this one, the next name over this one)
+let followRaf = 0;
+function follow() {
+  followRaf ||= requestAnimationFrame(() => {
+    followRaf = 0;
+    if (!dragging) return;
+    const x = Math.max(-1, Math.min(1, ($("pager").scrollLeft - heroLeft) / (pageW || 1))), ax = Math.abs(x), o = (n) => String(Math.max(0, Math.min(1, n)).toFixed(3));
+    const whole = onePage() && !calm.matches, vw = (n) => `${n.toFixed(2)}vw 0`;
+    for (const c of document.querySelectorAll("main > .col")) { c.style.translate = calm.matches ? "" : vw(-x * 100); c.style.opacity = whole ? "" : o(1 - 2 * ax); }
+    if (whole) { document.querySelector(".pv-prev").style.translate = vw(-100 - x * 100); document.querySelector(".pv-next").style.translate = vw(100 - x * 100); }
+    document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
+    $("place-name").style.opacity = o(1 - 3 * ax);
+    document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
+  });
+}
+const settleSoon = () => { clearTimeout(settleT); settleT = setTimeout(landed, 180); };
+// stopped: on the weather now, it's left be; on a place either side, that's the one showing now
+function landed() {
+  clearTimeout(settleT);
+  // (not with a finger still on it; unless it's been a good while, and its lifting was missed)
+  if (held && performance.now() - Math.max(heldAt, movedAt) < 4000) { settleT = setTimeout(landed, 500); return; }
+  held = false;
+  // (where the weather now is in it, as laid out: x, in pages along, past it towards the next)
+  const el = $("pager"), r = el.getBoundingClientRect(), hr = el.querySelector(".hero").getBoundingClientRect(), w = hr.width || 1;
+  const x = (r.left - hr.left) / w, k = Math.max(-1, Math.min(1, Math.round(x))), off = Math.abs(x - k) * w;
+  // (still on its way; or, still a while between two, the nearer)
+  if (off > 2 && performance.now() - movedAt < 600) { settleSoon(); return; }
+  if (!k || !S.places[S.cur + k]) { dragOff(); if (Math.abs(x) * w > 1) centre(); if (dirty) layoutPager(); return; }
+  el.classList.remove("pg-led");
+  commit(k);
+}
+// Landed on the next place: it's drawn in the weather now's place (as it was drawn beside it: no roll, no crossfade,
+// its sky at once, its charts drawn, not drawing in), the scroller put back to it and the cards coming up under it
+function commit(dir) {
+  const i = S.cur + dir, root = document.documentElement;
+  if (i < 0 || i >= S.places.length) return;
+  root.classList.add("pg-snap"); hush(true);
+  // (the place left, now beside it: its forecast as read already, made ready from that when it's idle)
+  const was = place(), k = was && peek(was), whole = onePage() && document.querySelector(dir > 0 ? ".pv-next" : ".pv-prev").dataset.whole === "1";
+  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: -1, base: S.base, v: null });
+  // (and its page as it was, a copy, for beside the one landed on: unless something on it is open or folded out, which
+  // it won't be when it's turned back to (go), when it's drawn again, when the page is idle)
+  if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage())] });
+  else if (was) pages.delete(cell(was.lat, was.lon));
+  snapping = true;
+  S.cur = i; savePlaces();
+  try { go(); } finally { snapping = false; }
+  layoutPager(true);
+  dragOff();
+  // (its page wasn't beside it yet: its cards come up under it)
+  if (!whole) { for (const c of document.querySelectorAll("main > .col")) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: EASE_OUT }); arrive(true); }
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("pg-snap")));
+  setTimeout(() => hush(false), 400);
+  nearbySoon();
+}
+// the places either side made ready, and kept fresh (the forecast and the warnings, as the page asks for them: data.js
+// due), when the page is idle a moment after it's drawn; then drawn beside it again, once it's still
+let nearbyT = 0;
+const fetchedAt = new Map();
+function nearbySoon() {
+  clearTimeout(nearbyT);
+  nearbyT = setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(readyNearby, { timeout: 2000 }), 600);
+}
+function readyNearby() {
+  if (document.visibilityState !== "visible") return;
+  if (pagerBusy()) { nearbySoon(); return; }
+  const list = nearby().filter(Boolean);
+  for (const q of list) prepare(q);
+  layoutPager(false, true);
+  // (a whole page, one at a time, each when the page is idle)
+  if (onePage()) for (const pv of document.querySelectorAll(".pv")) {
+    const q = list.find((x) => cell(x.lat, x.lon) === pv._id);
+    if (!q || pages.get(pv._id)?.key === pageKey(q)) continue;
+    if (drawWhole(pv, q)) { pv._for = pages.get(pv._id); pv.dataset.whole = "1"; nearbySoon(); break; }
+  }
+  for (const q of list) {
+    const id = cell(q.lat, q.lon);
+    if (!due(q) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
+    fetchedAt.set(id, Date.now());
+    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); nearbySoon(); }, () => {});
+  }
+}
+function pager() {
+  const el = $("pager");
+  const up = () => { held = false; settleSoon(); };
+  el.addEventListener("touchstart", (e) => {
+    held = true; heldAt = performance.now(); dragOn();
+    // (its lifting heard where it started, too: what was touched may be drawn again meanwhile, a forecast come in, and
+    // gone from the page, from where it would never reach the scroller)
+    for (const t of ["touchend", "touchcancel"]) e.target.addEventListener(t, up, { once: true, passive: true });
+  }, { passive: true });
+  el.addEventListener("touchend", up, { passive: true });
+  el.addEventListener("touchcancel", up, { passive: true });
+  el.addEventListener("scroll", () => {
+    // (put back to the weather now: not a swipe)
+    if (!held && Math.abs(el.scrollLeft - heroLeft) < 1) return;
+    movedAt = performance.now(); dragOn();
+    if (!linked) follow();
+    settleSoon();
+  }, { passive: true });
+  el.addEventListener("scrollend", landed);
+  addEventListener("resize", () => { if (!pagerBusy()) centre(); });
+  centre();
+}
+// A swipe across the cards turns the page too, as on iOS (a phone upright): the scroller led by the finger, its stops off
+// meanwhile (styles.css .pg-led), then on to the next place, or back, as it's let go (far enough, or flicked). Not on
+// what's dragged sideways itself: the hours, the days, the map, a chart's reading, a choice of view
+function cardSwipe() {
+  const pg = $("pager"), main = $("main");
+  const own = (t) => !t.closest?.("main > .col") || t.closest("#hourly-chart, #nowcast-chart, .range, .strip, .day-strip, .radar, .seg, input, select, textarea");
+  let x0 = null, y0 = 0, s0 = 0, axis = null, trail = [], raf = 0, want = 0;
+  const lift = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (axis !== "x") return;
+    cancelAnimationFrame(raf); raf = 0; pg.scrollLeft = want;
+    // (how fast the scroller was going, towards the next, and how far it's gone)
+    const v = -flickSpeed(trail), W = pg.clientWidth, d = want - s0;
+    const on = Math.abs(d) > W * 0.28 || (Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(d) && Math.abs(d) > 16);
+    held = false; movedAt = performance.now();
+    pg.scrollTo({ left: Math.max(0, Math.min(pg.scrollWidth - W, on ? s0 + Math.sign(d) * W : s0)), behavior: calm.matches ? "instant" : "smooth" });
+    settleSoon();
+  };
+  main.addEventListener("touchstart", (e) => {
+    x0 = null;
+    if (e.touches.length > 1 || !onePage() || turning || own(e.target) || (!S.places[S.cur - 1] && !S.places[S.cur + 1])) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; axis = null; trail = [];
+    // (its lifting heard where it started, too: pager)
+    for (const t of ["touchend", "touchcancel"]) e.target.addEventListener(t, lift, { once: true, passive: true });
+  }, { passive: true });
+  main.addEventListener("touchmove", (e) => {
+    if (x0 == null) return;
+    const x = e.touches[0].clientX, mx = x - x0, my = e.touches[0].clientY - y0;
+    if (!axis && Math.hypot(mx, my) > 10) {
+      axis = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y";
+      // (from here: the page starts where the finger is, rather than jumping the 10 pixels it took to tell)
+      if (axis === "x") { x0 = x; s0 = want = pg.scrollLeft; held = true; heldAt = performance.now(); pg.classList.add("pg-led"); dragOn(); }
+    }
+    if (axis !== "x") return;
+    const t = performance.now();
+    trail.push([t, x]); while (trail.length > 2 && t - trail[0][0] > 90) trail.shift();
+    heldAt = t;
+    want = Math.max(0, Math.min(pg.scrollWidth - pg.clientWidth, s0 - (x - x0)));
+    raf ||= requestAnimationFrame(() => { raf = 0; pg.scrollLeft = want; });
+  }, { passive: true });
+  main.addEventListener("touchend", lift, { passive: true });
+  main.addEventListener("touchcancel", lift, { passive: true });
+}
 // The page turning to another place, once S.cur is on it (update draws it): this page carried off the way it's going as
 // the next one comes in beside it (a view transition, of just what's on screen; where there aren't any, one goes and
 // then the other comes), the sky and the bar crossfading meanwhile, as long as the page takes (styles.css :root.turning).
-// from: where a finger left the page (pixels along), v: how fast it was going (a swipe: placeSwipe); reset: puts the
+// from: where a finger left the page (pixels along), v: how fast it was going (a swipe); reset: puts the
 // page back where the finger had it, as it turns. With Reduce Motion, the one page dissolves into the next. Scrolled a
 // long way down, too much of the page to carry: the next one's cards on screen come in where they are (arrive).
 let turning = false;
+const afterTurn = [];
 function turnPage(dir, { from = 0, v = 0, update = () => go(), reset = () => {}, done = () => {} } = {}) {
   const main = $("main"), root = document.documentElement, w = root.clientWidth;
   const ease = "cubic-bezier(0.22, 0.8, 0.3, 1)", g = glide(Math.max(0, -dir * v), w - Math.abs(from), ease, w);
-  const finish = () => { turning = false; root.classList.remove("turning", "vt-fade"); main.classList.remove("paging"); for (const k of ["height", "overflow", "viewTransitionName"]) main.style[k] = ""; done(); };
+  const finish = () => { turning = false; hush(false); root.classList.remove("turning", "vt-fade"); for (const k of ["height", "overflow", "viewTransitionName"]) main.style[k] = ""; done(); for (const f of afterTurn.splice(0)) f(); };
   const top = main.getBoundingClientRect().top;
   if (top < -innerHeight || (calm.matches && !document.startViewTransition)) { reset(); update(); finish(); arrive(true); return; }
-  turning = true;
+  turning = true; hush(true);
   if (document.startViewTransition) {
     // (just what's on screen is taken along: the rest of the page, out of sight, isn't drawn into the picture)
     main.style.height = `${Math.ceil(innerHeight - top)}px`;
@@ -490,61 +790,6 @@ function turnTo(i) {
   if (!shown || !dir || shown === cell(p.lat, p.lon) || turning || document.querySelector("dialog[open]")) { go(); return; }
   turnPage(dir);
 }
-function placeSwipe() {
-  // (it's the page's columns that follow the finger, not the page itself: a page that's been moved isn't one the
-  // browser will turn from)
-  const zone = document.querySelector(".hero"), main = $("main"), cols = [...main.querySelectorAll(":scope > .col")];
-  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0;
-  const W = () => document.documentElement.clientWidth;
-  const atEnd = (d) => (d > 0 && S.cur === 0) || (d < 0 && S.cur === S.places.length - 1);
-  // (past the first or last, the page gives less the further it's pulled, as iOS's rubber band does)
-  const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
-  const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;     // (how far the page moves for the finger's pixel, there)
-  const offset = () => (atEnd(dx) ? give(dx) : dx);
-  const shift = (x) => { for (const c of cols) c.style.translate = x ? `${x.toFixed(1)}px 0` : ""; };
-  const show = () => { raf = 0; shift(offset()); };
-  zone.addEventListener("touchstart", (e) => {
-    if (S.places.length < 2 || e.touches.length > 1 || turning) { x0 = null; return; }
-    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; axis = null;
-  }, { passive: true });
-  zone.addEventListener("touchmove", (e) => {
-    if (x0 == null) return;
-    const x = e.touches[0].clientX, mx = x - x0, my = e.touches[0].clientY - y0;
-    if (!axis && Math.hypot(mx, my) > 10) {
-      axis = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y";
-      // (from here: the page starts where the finger is, rather than jumping the 10 pixels it took to tell)
-      if (axis === "x") { x0 = x; trail = []; main.classList.add("paging"); }
-    }
-    if (axis !== "x") return;
-    e.preventDefault(); dx = x - x0;
-    const t = performance.now();
-    trail.push([t, x]); while (trail.length > 2 && t - trail[0][0] > 90) trail.shift();
-    raf ||= requestAnimationFrame(show);
-  }, { passive: false });
-  const end = () => {
-    if (x0 == null) return;
-    x0 = null;
-    if (axis !== "x") return;
-    cancelAnimationFrame(raf); raf = 0;
-    const v = flickSpeed(trail), dir = dx < 0 ? 1 : -1, next = S.cur + dir, from = offset();
-    const far = Math.abs(dx) > W() * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
-    if (!atEnd(dx) && next >= 0 && next < S.places.length && (far || flung)) turn(dir, from, v);
-    else back(from, atEnd(dx) ? v * band(dx) : v);
-  };
-  // not far enough: back into place from where it was let go, at the speed it was going
-  const back = (from, v) => {
-    shift(0);
-    if (!from) { main.classList.remove("paging"); return; }
-    // (with Reduce Motion, quickly)
-    const g = calm.matches ? { duration: 150, easing: EASE_OUT } : glide(-Math.sign(from) * v, Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)");
-    Promise.all(cols.map((c) => c.animate([{ translate: `${from}px 0` }, { translate: "0 0" }], g).finished))
-      .catch(() => {}).finally(() => { if (!turning) main.classList.remove("paging"); });
-  };
-  // on to the next: this page off the screen the way it was going, the next one in beside it (the page goes on at the
-  // finger's speed; the next, with further to come, comes in faster and meets it)
-  const turn = (dir, from, v) => { S.cur += dir; savePlaces(); turnPage(dir, { from, v, reset: () => shift(0) }); };
-  zone.addEventListener("touchend", end); zone.addEventListener("touchcancel", end);
-}
 // (one kept so long that it's run out, or all but, has nothing to show: two weeks away, say)
 const runOut = (wx) => I.hoursFrom(wx, nowWall(wx.place.offset), 6).length < 6;
 function render() {
@@ -565,7 +810,7 @@ function render() {
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("hourly-strip")._sig = $("insights")._sig = null;
     $("nowcast").hidden = true;
-    status(); return;
+    status(); layoutPager(); return;
   }
   // (and arriving where there were placeholders, or a message: the cards on screen come up into place after the hero)
   if (before) arrive();
@@ -601,7 +846,10 @@ function render() {
   };
   // a place's first drawing, on a phone: what's on the screen first, and the rest (all below it) a moment after, once
   // that's shown, rather than all at once before anything is; unless it's been drawn again meanwhile (all of it then)
-  if (drawnFor !== key && !twoCols.matches) { drawnFor = key; requestAnimationFrame(() => setTimeout(() => { if (my === drawing) { rest(); requestAnimationFrame(keepTops); } }, 0)); return; }
+  layoutPager(); nearbySoon();
+  // (and not while the page is turning to it: once it has)
+  const after = () => { if (my !== drawing) return; if (turning) { afterTurn.push(after); return; } rest(); requestAnimationFrame(keepTops); };
+  if (drawnFor !== key && !twoCols.matches && !snapping) { drawnFor = key; requestAnimationFrame(() => setTimeout(after, 0)); return; }
   drawnFor = key;
   rest();
   // (where each is now, read as the page is about to be shown, when it's laid out anyway)
@@ -658,7 +906,7 @@ function arrive(now = false) {
 let levelled = "", keyed = "";
 const twoCols = matchMedia("(min-width: 980px)"), onSide = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
 function balance(key = keyed, again = false) {
-  const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), L = S.settings.layout;
+  const main = $("main"), b = main.querySelector(".col-b"), L = S.settings.layout;
   const wide = twoCols.matches && !onSide.matches, want = `${key}|${wide}|${L.order}|${L.off}`;
   if ((want === levelled && !again) || $("radar").classList.contains("radar-big")) return;
   const first = !levelled.startsWith(`${key.split("|")[0]}|`) || again;
@@ -673,7 +921,7 @@ function balance(key = keyed, again = false) {
   if (!wide) { put($("alerts"), list); return; }
   requestAnimationFrame(() => {
     // (what's shown, by its height as it is: one not shown, the accuracy before it's come say, takes no room)
-    let ha = a.querySelector(".hero").offsetHeight + $("alerts").offsetHeight, hb = 0;
+    let ha = $("pager").offsetHeight + $("alerts").offsetHeight, hb = 0;
     const A = [], B = [];
     for (const x of list) { const h = x.offsetHeight ? x.offsetHeight + 22 : 0; if (ha <= hb) { A.push(x); ha += h; } else { B.push(x); hb += h; } }
     // (moved once the place has been shown, as its climate and its accuracy come: each card on screen glides from where
@@ -709,7 +957,7 @@ function status() {
 // the top of each sky (styles.css), for the browser's bar to match
 const SKY_TOP = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day": "#43566c", "rain-day": "#303f52", storm: "#1c2130", "snow-day": "#4f6580", fog: "#59626e",
   "clear-night": "#070d22", "partly-night": "#0c1428", "cloudy-night": "#151b27", "rain-night": "#10151f", "snow-night": "#1b2335", dusk: "#1f2b55", dawn: "#24376a" };
-function sky(wx, now) {
+function skyFor(wx, now) {
   const c = wx.current || I.hourAt(wx, now) || {}, kind = codeInfo(c.code).kind, day = !!c.isDay, d = I.dayOf(wx, now);
   let s;
   if (kind === "storm") s = "storm";
@@ -721,6 +969,10 @@ function sky(wx, now) {
   else if (kind === "clear") s = day ? "clear-day" : "clear-night";
   else if (kind === "partly") s = day ? "partly-day" : "partly-night";
   else s = day ? "cloudy-day" : "cloudy-night";
+  return s;
+}
+function sky(wx, now) {
+  const s = skyFor(wx, now);
   // (a new sky eases in over the last: styles.css)
   document.body.dataset.sky = s;
   const top = SKY_TOP[s] || "#2b5d96";
@@ -2265,7 +2517,7 @@ function sideSwipe(dlg, page, atEnd, step) {
 
 /* ---------- what changes, changing smoothly ---------- */
 // motion on the page worth making: not with Reduce Motion, nor behind a sheet, where the page holds still (styles.css)
-const moving = () => !calm.matches && !document.body.classList.contains("sheet-up");
+const moving = () => !R && !calm.matches && !document.body.classList.contains("sheet-up");
 const heroAway = () => document.querySelector(".hero").classList.contains("away");
 // Words changed where they are, as iOS changes its figures: the new ones rising into place from a little below, quickly,
 // from faint; not the first time they're written, nor where they can't be seen (shown), and with Reduce Motion, a quick
@@ -2548,7 +2800,8 @@ function wire() {
   // (either sheet open, detail.js has come)
   sideSwipe($("day"), $("day-body"), (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); }, (n, quiet) => DE()?.stepDay(n, quiet));
   sideSwipe($("detail"), $("detail-body"), (d) => { const kinds = DE()?.detailKinds() || [], i = kinds.indexOf(S.detailKind); return (d > 0 && i <= 0) || (d < 0 && i >= kinds.length - 1); }, (n, quiet) => DE()?.stepDetail(n, quiet));
-  placeSwipe();
+  pager();
+  cardSwipe();
   pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
   $("use-location").addEventListener("click", () => locate(false, closeSheet($("places"))));
@@ -2593,14 +2846,14 @@ function wire() {
     });
   }
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
-  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), pagerEl = $("pager"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
   let ticking = 0;
   const onScroll = () => {
     ticking = 0;
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
     // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
     const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
-    heroEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
+    pagerEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);

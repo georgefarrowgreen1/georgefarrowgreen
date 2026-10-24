@@ -182,20 +182,20 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
 html { background: #2a3546; transition: background-color 1s var(--ease); }
 body { background: transparent; }
 /* (three colours down the sky make four with the one halfway between the last two, so each looks as it always has) */
-body[data-sky="clear-day"] .sky { --s1: #1f5fae; --s2: #3b82cf; --p2: 50%; --s3: #5395d9; --p3: 75%; --s4: #6aa7e2; --glow: rgba(255, 236, 180, 0.32); --glow-2: rgba(120, 200, 255, 0.22); }
-body[data-sky="partly-day"] .sky { --s1: #2c5f99; --s2: #4e7fb6; --p2: 55%; --s3: #6691c0; --p3: 77.5%; --s4: #7ea2c9; --glow: rgba(255, 236, 190, 0.22); }
-body[data-sky="cloudy-day"] .sky { --s1: #43566c; --s2: #5c6f85; --p2: 55%; --s3: #6b7d91; --p3: 77.5%; --s4: #7a8a9c; }
-body[data-sky="rain-day"] .sky { --s1: #303f52; --s2: #46576b; --p2: 55%; --s3: #526276; --p3: 77.5%; --s4: #5d6d80; --glow-2: rgba(80, 150, 255, 0.16); }
-body[data-sky="storm"] .sky { --s1: #1c2130; --s2: #2c3245; --p2: 55%; --s3: #363c4f; --p3: 77.5%; --s4: #3f4559; --glow: rgba(170, 150, 255, 0.14); }
-body[data-sky="snow-day"] .sky { --s1: #4f6580; --s2: #6d819b; --p2: 55%; --s3: #8092aa; --p3: 77.5%; --s4: #92a3b8; --glow: rgba(255, 255, 255, 0.2); }
-body[data-sky="fog"] .sky { --s1: #59626e; --s2: #737c87; --p2: 55%; --s3: #808993; --p3: 77.5%; --s4: #8d959f; --glow: rgba(255, 255, 255, 0.16); }
-body[data-sky="clear-night"] .sky { --s1: #070d22; --s2: #101c3e; --p2: 55%; --s3: #17244b; --p3: 77.5%; --s4: #1d2c57; --glow: rgba(190, 210, 255, 0.16); --glow-2: rgba(110, 90, 220, 0.16); }
-body[data-sky="partly-night"] .sky { --s1: #0c1428; --s2: #18233f; --p2: 55%; --s3: #1f2c49; --p3: 77.5%; --s4: #263453; --glow: rgba(190, 210, 255, 0.12); }
-body[data-sky="cloudy-night"] .sky { --s1: #151b27; --s2: #222a3a; --p2: 55%; --s3: #2a3243; --p3: 77.5%; --s4: #313a4c; }
-body[data-sky="rain-night"] .sky { --s1: #10151f; --s2: #1c2432; --p2: 55%; --s3: #232c3b; --p3: 77.5%; --s4: #2a3343; --glow-2: rgba(70, 120, 220, 0.14); }
-body[data-sky="snow-night"] .sky { --s1: #1b2335; --s2: #2c374d; --p2: 55%; --s3: #354158; --p3: 77.5%; --s4: #3e4a62; }
-body[data-sky="dusk"] .sky { --s1: #1f2b55; --s2: #5a4a78; --p2: 45%; --s3: #b0666a; --p3: 80%; --s4: #d98b62; --glow: rgba(255, 170, 120, 0.3); --glow-2: rgba(140, 100, 230, 0.2); }
-body[data-sky="dawn"] .sky { --s1: #24376a; --s2: #5b6a9a; --p2: 45%; --s3: #c58a86; --p3: 80%; --s4: #e7ad7c; --glow: rgba(255, 200, 150, 0.3); }
+body[data-sky="clear-day"] .sky, .sky-alt[data-sky="clear-day"] { --s1: #1f5fae; --s2: #3b82cf; --p2: 50%; --s3: #5395d9; --p3: 75%; --s4: #6aa7e2; --glow: rgba(255, 236, 180, 0.32); --glow-2: rgba(120, 200, 255, 0.22); }
+body[data-sky="partly-day"] .sky, .sky-alt[data-sky="partly-day"] { --s1: #2c5f99; --s2: #4e7fb6; --p2: 55%; --s3: #6691c0; --p3: 77.5%; --s4: #7ea2c9; --glow: rgba(255, 236, 190, 0.22); }
+body[data-sky="cloudy-day"] .sky, .sky-alt[data-sky="cloudy-day"] { --s1: #43566c; --s2: #5c6f85; --p2: 55%; --s3: #6b7d91; --p3: 77.5%; --s4: #7a8a9c; }
+body[data-sky="rain-day"] .sky, .sky-alt[data-sky="rain-day"] { --s1: #303f52; --s2: #46576b; --p2: 55%; --s3: #526276; --p3: 77.5%; --s4: #5d6d80; --glow-2: rgba(80, 150, 255, 0.16); }
+body[data-sky="storm"] .sky, .sky-alt[data-sky="storm"] { --s1: #1c2130; --s2: #2c3245; --p2: 55%; --s3: #363c4f; --p3: 77.5%; --s4: #3f4559; --glow: rgba(170, 150, 255, 0.14); }
+body[data-sky="snow-day"] .sky, .sky-alt[data-sky="snow-day"] { --s1: #4f6580; --s2: #6d819b; --p2: 55%; --s3: #8092aa; --p3: 77.5%; --s4: #92a3b8; --glow: rgba(255, 255, 255, 0.2); }
+body[data-sky="fog"] .sky, .sky-alt[data-sky="fog"] { --s1: #59626e; --s2: #737c87; --p2: 55%; --s3: #808993; --p3: 77.5%; --s4: #8d959f; --glow: rgba(255, 255, 255, 0.16); }
+body[data-sky="clear-night"] .sky, .sky-alt[data-sky="clear-night"] { --s1: #070d22; --s2: #101c3e; --p2: 55%; --s3: #17244b; --p3: 77.5%; --s4: #1d2c57; --glow: rgba(190, 210, 255, 0.16); --glow-2: rgba(110, 90, 220, 0.16); }
+body[data-sky="partly-night"] .sky, .sky-alt[data-sky="partly-night"] { --s1: #0c1428; --s2: #18233f; --p2: 55%; --s3: #1f2c49; --p3: 77.5%; --s4: #263453; --glow: rgba(190, 210, 255, 0.12); }
+body[data-sky="cloudy-night"] .sky, .sky-alt[data-sky="cloudy-night"] { --s1: #151b27; --s2: #222a3a; --p2: 55%; --s3: #2a3243; --p3: 77.5%; --s4: #313a4c; }
+body[data-sky="rain-night"] .sky, .sky-alt[data-sky="rain-night"] { --s1: #10151f; --s2: #1c2432; --p2: 55%; --s3: #232c3b; --p3: 77.5%; --s4: #2a3343; --glow-2: rgba(70, 120, 220, 0.14); }
+body[data-sky="snow-night"] .sky, .sky-alt[data-sky="snow-night"] { --s1: #1b2335; --s2: #2c374d; --p2: 55%; --s3: #354158; --p3: 77.5%; --s4: #3e4a62; }
+body[data-sky="dusk"] .sky, .sky-alt[data-sky="dusk"] { --s1: #1f2b55; --s2: #5a4a78; --p2: 45%; --s3: #b0666a; --p3: 80%; --s4: #d98b62; --glow: rgba(255, 170, 120, 0.3); --glow-2: rgba(140, 100, 230, 0.2); }
+body[data-sky="dawn"] .sky, .sky-alt[data-sky="dawn"] { --s1: #24376a; --s2: #5b6a9a; --p2: 45%; --s3: #c58a86; --p3: 80%; --s4: #e7ad7c; --glow: rgba(255, 200, 150, 0.3); }
 /* stars on a clear night, rain falling on a wet one, snow on a snowy one: each a layer of its own, there for its skies
    only, faded in and out with the sky (and once it's faded out, gone, its motion with it) */
 .sky-stars, .sky-rain, .sky-snow { position: absolute; inset: 0; display: none; opacity: 0; pointer-events: none;
@@ -337,22 +337,59 @@ body:is(.sheet-up, .no-scroll) .top::before { background-color: rgba(12, 18, 30,
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- the layout ---------- */
-main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: grid; gap: 16px; }
+/* (nothing past its sides counted as the page's: the places either side's pages out there, and the cards as they're
+   swiped, would have a phone take the page for twice as wide, and show it smaller) */
+main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: grid; gap: 16px; overflow-x: clip; }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* the weather now, the saved places either side of it beside it, in a scroller that stops at each (app.js pager): the
+   one either side drawn to its height, not adding to it (contain), and on a phone reaching the screen's edges, so a
+   place comes in from the edge, not from inside the page's margin; faded and shrunk a little as the page is scrolled
+   down (app.js: --c) */
+.pager { position: relative; display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+  transform-origin: 0 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
+.pager::-webkit-scrollbar { display: none; }
+.pager > :is(.hero, .pg-page) { flex: 0 0 100%; min-width: 0; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always; }
+.pg-page { contain: size layout paint; }
+@media (max-width: 979px) {
+  .pager { margin-inline: calc(-1 * var(--pad)); }
+  .pager > :is(.hero, .pg-page) { padding-inline: calc(var(--pad) + 4px); }
+}
+/* the places either side's whole pages (app.js drawWhole), on a phone upright: each where this one's cards are, but a
+   screen to either side, out of sight but for while it's swiped; as tall as this one's (contain), cut off there. The
+   cards here led by the finger across them too (app.js cardSwipe), their own sideways scrolling as ever */
+.pv { display: none; }
+@media (max-width: 979px) {
+  main > .pager { grid-row: 1; }
+  main > .col-a, .pv { grid-row: 2; grid-column: 1; }
+  main > .col-b { grid-row: 3; }
+  .pv { display: block; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
+  .pv-prev { translate: -100vw 0; }
+  .pv-next { translate: 100vw 0; }
+  .pv .skeleton { display: grid; gap: 14px; }
+  :root.pg-drag .pv { visibility: visible; }
+  main > .col { touch-action: pan-y pinch-zoom; }
+}
+.pager.pg-led { scroll-snap-type: none; }
 @media (min-width: 980px) {
-  main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 22px; }
-  .col-b { padding-top: 8px; }
+  /* (the second column alongside the weather now, as it always was, the first's cards under it) */
+  main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: start; gap: 22px; }
+  .pager { grid-column: 1; grid-row: 1; }
+  .col-a { grid-column: 1; grid-row: 2; }
+  .col-b { grid-column: 2; grid-row: 1 / span 2; padding-top: 8px; }
 }
 
 /* a phone on its side (iOS 27's Weather turns too): the weather now held on the left, everything else beside it, and a
    slimmer bar */
 @media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
-  main { grid-template-columns: minmax(0, 0.36fr) minmax(0, 0.64fr); align-items: start; gap: 12px 18px; }
+  main { grid-template-columns: minmax(0, 0.36fr) minmax(0, 0.64fr); grid-template-rows: none; align-items: start; gap: 12px 18px; }
   .col { display: contents; }
-  main > .col > * { grid-column: 2; }
-  main > .col > .hero { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; }
+  main > .col > * { grid-column: 2; grid-row: auto; }
+  .pv { display: none; }
+  main > .col { touch-action: auto; }
+  main > .pager { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; margin-inline: 0; }
+  .pager > :is(.hero, .pg-page) { padding-inline: 4px; }
   .hero-temp { font-size: 76px; }
-  .hero-icon .wi { width: 60px; height: 60px; }
+  :is(.hero-icon, .pg-icon) .wi { width: 60px; height: 60px; }
   .brief { font-size: 15px; }
   .top { min-height: 56px; padding-top: 6px; padding-bottom: 4px; }
   .top .place { min-height: 40px; padding-top: 4px; padding-bottom: 4px; }
@@ -378,12 +415,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 
 /* ---------- now ---------- */
 /* (positioned: words on their way out are laid over where they were, app.js fadeOff) */
-.hero { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
-  opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
+.hero, .pg-page { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
 /* (positioned: a temperature on its way out is laid over the new one, at its start: app.js roll) */
 .hero-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
-.hero-icon .wi { width: 78px; height: 78px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22)); }
+:is(.hero-icon, .pg-icon) .wi { width: 78px; height: 78px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22)); }
 /* (a new sky's icon comes in over the last as it goes, the two in the one place: the one going laid over the new, app.js
    hero. Not as a grid: there its drifting cloud has the browser take the page's width afresh, and mid-swipe, with
    the page's columns out past the screen's edge, it would widen the page to take them in) */
@@ -427,24 +463,24 @@ main:is([data-empty="loading"], [data-empty="kept"]) ~ .foot { display: none; }
 /* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
    the cards that would be empty wait out of sight */
 .skeleton { display: none; }
-main:is([data-empty="loading"], [data-empty="kept"]) .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
-main[data-empty] .col > :not(.hero):not(.skeleton) { display: none !important; }
-main[data-empty="error"] .hero-row { display: none; }
+main:is([data-empty="loading"], [data-empty="kept"]) > .col > .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
+main[data-empty] > .col > :not(.hero):not(.skeleton) { display: none !important; }
+main[data-empty="error"] .hero .hero-row { display: none; }
 /* (in one column, the second's placeholders would sit under the first's, only to be pushed away as the forecast came) */
 @media (max-width: 979px) { main[data-empty] .col-b { display: none; } }
-main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
+main[data-empty="loading"] .hero .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
 /* (and the lines the hero will have, the high and low and the briefing, kept for them: so the cards come in where the
    placeholders were, not some way further down) */
-main[data-empty="loading"] :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
-main[data-empty="loading"] .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
-main[data-empty="loading"] .brief { width: 88%; height: 49px; }
+main[data-empty="loading"] .hero :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="loading"] .hero .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
+main[data-empty="loading"] .hero .brief { width: 88%; height: 49px; }
 /* (the weather as it was last shown, put up as the page opens (boot.js): the temperature and its lines as they were,
    placeholders for the rest) */
-main[data-empty="kept"] .brief { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="kept"] .hero .brief { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
 .sk { display: flex; flex-direction: column; gap: 12px; }
 /* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
-.sk i, main[data-empty="loading"] .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
-.sk i::after, main[data-empty="loading"] .hero-temp::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+.sk i, main[data-empty="loading"] .hero .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
+.sk i::after, main[data-empty="loading"] .hero .hero-temp::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.09) 50%, transparent 80%); animation: sk 1.6s ease-in-out infinite; }
 .sk-l { height: 12px; border-radius: 6px; width: 100%; }
 .sk-l.w30 { width: 30%; } .sk-l.w35 { width: 35%; } .sk-l.w40 { width: 40%; } .sk-l.w50 { width: 50%; } .sk-l.w80 { width: 80%; } .sk-l.w90 { width: 90%; }
@@ -463,11 +499,42 @@ main[data-empty="kept"] .brief { display: block; width: 88%; height: 49px; borde
 /* (and as the page opens, for the weather last shown: the same rise carried on, not started again, as the forecast comes) */
 main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s var(--glide) backwards; }
 .ins.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
-/* swiping between places (app.js placeSwipe): the page follows the finger, then turns to the next place, its picture
-   carried off as the next one's comes in beside it (each moved by the swipe's own speed: none of the browser's own
-   fades), or springs back */
-.hero { touch-action: pan-y pinch-zoom; }
-main.paging > .col { will-change: translate; }
+/* swiping between places (app.js pager): the scroller under the finger moves by itself, the browser's own, as quick and
+   as smooth as any; and while it's being swiped (:root.pg-drag), the cards under it carried along with it, fading, the
+   place coming in's sky coming in over this one's and its name over this one's in the bar, each by how far across it's
+   got (where the weather now is in the scroller, a timeline: --cur). Where that can't be had, app.js does the same as
+   it scrolls. Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
+.sky-alt { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
+.place-name { position: relative; }
+.pg-name { position: absolute; left: 0; top: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; }
+:root.pg-snap, :root.pg-snap .sky, :root.pg-snap .dots i { transition: none !important; }
+@supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
+  body { timeline-scope: --cur; }
+  .hero { view-timeline: --cur x; }
+  :root.pg-drag :is(main > .col, .pv, .sky-alt, .pg-name), :root.pg-drag #place-name { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  :root.pg-drag main > .col { animation-name: pg-col; }
+  :root.pg-drag .pv-prev { animation-name: pv-prev; }
+  :root.pg-drag .pv-next { animation-name: pv-next; }
+  @media (min-width: 980px) { :root.pg-drag main > .col { animation-name: pg-col-fade; } }
+  :root.pg-drag .sky-prev { animation-name: pg-sky-prev; }
+  :root.pg-drag .sky-next { animation-name: pg-sky-next; }
+  :root.pg-drag #place-name { animation-name: pg-name; }
+  :root.pg-drag .pg-name-prev { animation-name: pg-name-prev; }
+  :root.pg-drag .pg-name-next { animation-name: pg-name-next; }
+  @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } :root.pg-drag .pv { visibility: hidden; } }
+}
+@keyframes pg-col { 0% { translate: 100vw 0; } 50% { translate: 0 0; } 100% { translate: -100vw 0; } }
+@keyframes pv-prev { 0% { translate: 0 0; } 50% { translate: -100vw 0; } 100% { translate: -200vw 0; } }
+@keyframes pv-next { 0% { translate: 200vw 0; } 50% { translate: 100vw 0; } 100% { translate: 0 0; } }
+@keyframes pg-col-fade { 0% { translate: 100vw 0; opacity: 0; } 25% { opacity: 0; } 50% { translate: 0 0; opacity: 1; } 75% { opacity: 0; } 100% { translate: -100vw 0; opacity: 0; } }
+@keyframes pg-col-calm { 0%, 25% { opacity: 0; } 50% { opacity: 1; } 75%, 100% { opacity: 0; } }
+@keyframes pg-sky-prev { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes pg-sky-next { 0%, 50% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes pg-name { 0%, 33% { opacity: 0; } 50% { opacity: 1; } 67%, 100% { opacity: 0; } }
+@keyframes pg-name-prev { 0% { opacity: 1; } 25%, 100% { opacity: 0; } }
+@keyframes pg-name-next { 0%, 75% { opacity: 0; } 100% { opacity: 1; } }
+/* turning to a place chosen in Places or on the map: the page's picture carried off as the next one's comes in beside
+   it (app.js turnPage) */
 ::view-transition-group(page) { animation: none; }
 ::view-transition-image-pair(page) { isolation: auto; }
 ::view-transition-old(page), ::view-transition-new(page) { animation: none; mix-blend-mode: normal; }
@@ -481,7 +548,7 @@ main.paging > .col { will-change: translate; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
 @media (prefers-reduced-motion: reduce) { main:is(:not([data-empty]), [data-empty="kept"]) .hero, .ins.rise, .retry:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
-@media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
 
 /* ---------- cards ---------- */
 .card { border-radius: var(--r-card); padding: 16px var(--card-x) 18px; min-width: 0; }
