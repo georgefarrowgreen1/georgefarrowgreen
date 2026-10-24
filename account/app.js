@@ -252,6 +252,7 @@ async function fromLink() {
 }
 // (and one opened in a tab where the page is already open)
 addEventListener("hashchange", async () => {
+  Sheet.hist = 0;          // (a link arrived over an open sheet: its steps are behind this one now, and stay there)
   if (fromGate()) { if (sheetEl.open) closeSheet(); S.settled = false; return render(); }
   if (!/^#(confirm|email|keep)=/.test(location.hash)) return;
   await fromLink();
@@ -284,7 +285,7 @@ function section(title, group, foot) {
 }
 // (value: how things are, amber where it needs you (warn); or, where there's one thing to do, that (a node: a button's look))
 function row({ icon: ic, tint, title, sub, subWarn, value, warn, onclick, label, cls = "" }) {
-  return h("button.row" + cls, { type: "button", onclick, "aria-label": label },
+  return h("button.row" + cls, { type: "button", onclick, "aria-label": label, "data-k": title },
     h(`span.ic.${tint}`, {}, icon(ic, 19)),
     h("span.tx", {}, h("b", { text: title }), sub && h("small" + (subWarn ? ".warn" : ""), { text: sub })),
     value != null && (value instanceof Node ? h("span.val", {}, value) : h("span.val" + (warn ? ".warn" : ""), { text: String(value) })),
@@ -490,16 +491,17 @@ function banner(m) {
     catch (e) { toast(e.message, true); }
   };
   return m.emailNew
-    ? h("section.banner.glass", { role: "status" }, h("span.ic.blue", {}, icon("mail", 19)),
+    ? h("section.banner.glass", {}, h("span.ic.blue", {}, icon("mail", 19)),
       h("span.tx", {}, h("b", { text: "Confirm your new email" }), h("small", { text: `We sent a link to ${m.emailNew}. Your email changes when you open it.` })),
       h("button.mini.go", { type: "button", onclick: () => openSheet(emailView) }, "Details"))
-    : h("section.banner.warn.glass", { role: "status" }, h("span.ic.amber", {}, icon("alert", 19)),
+    : h("section.banner.warn.glass", {}, h("span.ic.amber", {}, icon("alert", 19)),
       h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "So password resets and security notes reach you. We’ll send a link to it." })),
       h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, "Send link"));
 }
 // Your password found in a data breach: said up top, as it's the one check that can't wait
 function leakBanner() {
-  return h("section.banner.warn.glass", { role: "alert" }, h("span.ic.red", {}, icon("alert", 19)),
+  // (no live role on these: the page is drawn again with every change, and each time it would be read out again)
+  return h("section.banner.warn.glass", {}, h("span.ic.red", {}, icon("alert", 19)),
     h("span.tx", {}, h("b", { text: "Your password is in a data breach" }), h("small", { text: "It’s one of the first anyone would try. Change it to keep your account safe." })),
     h("button.mini.go", { type: "button", onclick: () => openSheet(passwordView) }, "Change"));
 }
@@ -736,12 +738,17 @@ function forgotCard() {
 // InFlight, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
 // new key pair, and older messages stay sealed.
 async function resetCheck() {
-  try { S.reset.info = await post("reset/check", { token: S.reset.token }); } catch (e) { S.reset.error = e.message; }
+  S.reset.error = null; S.reset.away = false;
+  // (no signal, or the server not answering, isn't the link's fault: said so, with Try again, not "get a new one")
+  try { S.reset.info = await post("reset/check", { token: S.reset.token }); } catch (e) { S.reset.error = e.message; S.reset.away = !!e.offline || e.status >= 500; }
   S.settled = false; render();
 }
 function resetPage(r) {
   const R = S.reset, info = R.info;
   if (!info && !R.error) return [h("div.welcome", {}, r(h("div.empty", {}, h("span.spin"))))];
+  if (R.error && R.away) return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "Can’t check this link" })), r(h("p", { text: R.error })),
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { R.error = null; render(); resetCheck(); } }, "Try again"))))];
   if (R.error) return [h("div.welcome", {},
     r(h("div", {}, h("div.mark.red", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "This link won’t work" })), r(h("p", { text: R.error })),
     r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
@@ -866,7 +873,7 @@ async function busy(btn, label, fn) {
   finally { btn.disabled = was; btn.replaceChildren(...kids); }
 }
 let toastT = 0;
-function toast(text, bad, ms = 2800) {
+function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong stays long enough to read)
   const top = !!toastEl.showPopover;
   toastEl.replaceChildren(bad ? icon("x", 18, 2.4) : icon("check", 18, 2.4), h("span", { text }));
   toastEl.classList.toggle("bad", !!bad);
@@ -916,16 +923,31 @@ async function leave(el) {
 }
 
 // ---- sheets: one dialog, each view drawn into it; the page steps back while it's up ----
-const Sheet = { stack: [], cancel: null, ask: null };
+// Each sheet, and each one gone on to inside it, is a step in the browser's history too, so the phone's back swipe (or
+// a computer's Back) closes it, or goes back a step in it, rather than leaving the page. (Sheet.hist: the steps added.)
+const Sheet = { stack: [], cancel: null, ask: null, from: null, hist: 0 };
+let histSkip = 0;
+function histPush() { try { history.pushState({ sheet: Sheet.hist + 1 }, ""); Sheet.hist++; } catch (_) {} }
+function histDrop(n) { n = Math.min(n, Sheet.hist); if (n > 0) { Sheet.hist -= n; histSkip++; history.go(-n); } }
+addEventListener("popstate", () => {
+  if (histSkip) { histSkip--; return; }                 // (ours, from a sheet closed here)
+  if (!sheetEl.open || !Sheet.hist) return;
+  Sheet.hist--; stepBack();
+});
 function openSheet(view) {
+  const was = sheetEl.open;
   Sheet.stack = [view]; draw(false);
   // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
-  // nor a button, with a ring round it)
-  if (!sheetEl.open) { sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); }
+  // nor a button, with a ring round it; the row it was opened from has it back when it closes)
+  if (!was) {
+    Sheet.from = document.activeElement?.closest?.("[data-k]")?.dataset.k || null;
+    sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); histPush();
+  } else histDrop(Sheet.hist - 1);
 }
 sheetEl.tabIndex = -1;
-function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw(true); }
-function popSheet() { Sheet.ask?.no(); Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
+function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw(true); histPush(); }
+function popSheet() { if (Sheet.hist > 1) histDrop(1); stepBack(); }
+function stepBack() { Sheet.ask?.no(); Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
 const redraw = () => sheetEl.open && Sheet.stack.length && draw(false);
 function draw(swap) {
   const v = Sheet.stack.at(-1)(), deep = Sheet.stack.length > 1;
@@ -934,13 +956,21 @@ function draw(swap) {
   const body = h("div.sheet-body", {}, ...v.body);
   if (swap && !still.matches) body.classList.add("swap");
   if (Sheet.ask) { body.classList.add("asking"); body.append(Sheet.ask.card); }
-  sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title }), h("div.r", {}, right)), body);
+  sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title, tabindex: "-1" }), h("div.r", {}, right)), body);
+  // (on to another sheet, or back: the new one's title has the focus, so it's read out, and you're not left nowhere)
+  if (swap) $("#sheet-title", sheetEl)?.focus({ preventScroll: true });
 }
 function closeSheet() {
   if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
-  const cancel = Sheet.cancel; Sheet.cancel = null;
+  const cancel = Sheet.cancel, from = Sheet.from; Sheet.cancel = null; Sheet.from = null;
+  histDrop(Sheet.hist);
   document.body.classList.remove("sheet-up");
-  const done = () => { sheetEl.classList.remove("closing"); sheetEl.style.removeProperty("--from"); sheetEl.close(); sheetEl.replaceChildren(); Sheet.stack = []; cancel?.(); };
+  const done = () => {
+    sheetEl.classList.remove("closing"); sheetEl.style.removeProperty("--from"); sheetEl.close(); sheetEl.replaceChildren(); Sheet.stack = []; cancel?.();
+    // (the page may have been drawn again meanwhile: the row it was opened from, found again by what it says)
+    const back = from && [...main.querySelectorAll("[data-k]")].find((el) => el.dataset.k === from);
+    if (back && (document.activeElement === document.body || !document.activeElement)) back.focus({ preventScroll: true });
+  };
   if (still.matches) return done();
   sheetEl.classList.add("closing");
   const end = (e) => { if (e.target !== sheetEl) return; sheetEl.removeEventListener("animationend", end); clearTimeout(t); done(); };
@@ -1471,7 +1501,7 @@ function adminView() {
       row({ icon: "mail", tint: "red", title: "Email", value: !s.email ? "Off" : s.mailFail ? "Not sending" : h("span.adm-ok", {}, icon("check", 15, 3), "Working"),
         warn: !s.email || !!s.mailFail, onclick: () => pushSheet(admEmailView) }),
       ((late) => row({ icon: "info", tint: "blue", title: "Server", value: late ? "Late" : s.errors?.length ? nOf(s.errors.length, "error") : h("span.adm-ok", {}, icon("check", 15, 3), "Running"),
-        warn: late || !!s.errors?.length, onclick: () => pushSheet(admServerView) }))(!!s.ticks && [s.ticks.inflight, s.ticks.weather].some((k) => !k || Date.now() - k.at > 20 * 60e3)),
+        warn: late || !!s.errors?.length, onclick: () => pushSheet(admServerView) }))(!!s.ticks && [s.ticks.inflight, s.ticks.weather].some((k) => k && Date.now() - k.at > 20 * 60e3)),
       row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
     h("h4.app-k", { text: "Home page" }),
     h("div.group", {},
@@ -1817,6 +1847,8 @@ function checkView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const pw = h("input", { type: "password", autocomplete: "current-password" });
   const go = h("button.btn", { type: "submit" }, "Check");
+  // (one Change password, shown once a check finds it: checking again doesn't add another)
+  const change = h("button.btn.danger", { type: "button", hidden: true, onclick: () => pushSheet(passwordView) }, "Change password");
   return { title: "Check your password", body: [
     h("p", { text: "See if your password has turned up in a known data breach. It’s checked here, on this device: only the first 5 characters of a scrambled copy of it are sent to Have I Been Pwned, so neither they nor the site learn it." }),
     h("form.form", { onsubmit: async (e) => {
@@ -1829,11 +1861,11 @@ function checkView() {
           return n;
         });
         patch();
-        if (n) { say(said, leakedSay(n).replace("Choose another.", "Change it now.")); sheetEl.querySelector(".sheet-body").append(h("button.btn.danger", { type: "button", onclick: () => pushSheet(passwordView) }, "Change password")); }
+        if (n) { say(said, leakedSay(n).replace("Choose another.", "Change it now.")); change.hidden = false; }
         else { if (Sheet.stack.length > 1) popSheet(); else closeSheet(); toast("Your password isn’t in any known data breach."); }
       } catch (err) { say(said, err.message, pw); }
     } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Your password", pw), go),
-    said] };
+    said, change] };
 }
 
 // ---- preferences, for every app on the site that has them ----
@@ -1865,10 +1897,19 @@ const UNIT_OPTS = [
 function seg(name, opts, value, onpick) {
   const thumb = h("span.thumb", { "aria-hidden": "true" }), el = h("div.seg", { role: "radiogroup", "aria-label": name }, thumb);
   const place = (k) => { el.style.setProperty("--n", opts.length); el.style.setProperty("--k", Math.max(0, opts.findIndex(([v]) => v === k))); };
-  for (const [v, label] of opts) el.append(h("button", { type: "button", role: "radio", "aria-checked": String(v === value), onclick: () => {
-    for (const b of el.querySelectorAll("button")) b.setAttribute("aria-checked", String(b.textContent === label));
+  // (as radio buttons are, by keyboard: one stop for the group, on what's chosen, and the arrow keys move the choice)
+  const pick = (b, v, label) => {
+    for (const x of el.querySelectorAll("button")) { const on = x.textContent === label; x.setAttribute("aria-checked", String(on)); x.tabIndex = on ? 0 : -1; }
     place(v); onpick(v);
-  } }, label));
+  };
+  for (const [v, label] of opts) el.append(h("button", { type: "button", role: "radio", "aria-checked": String(v === value), tabindex: v === value ? "0" : "-1", onclick: (e) => pick(e.currentTarget, v, label) }, label));
+  el.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!step) return;
+    e.preventDefault();
+    const bs = [...el.querySelectorAll("button")], i = bs.indexOf(document.activeElement), j = (Math.max(0, i) + step + bs.length) % bs.length;
+    bs[j].focus(); pick(bs[j], opts[j][0], opts[j][1]);
+  });
+  if (!opts.some(([v]) => v === value)) el.querySelector("button")?.setAttribute("tabindex", "0");
   place(value);
   return el;
 }
@@ -1994,7 +2035,7 @@ async function refresh() {
 }
 document.addEventListener("visibilitychange", refresh);
 addEventListener("focus", refresh);
-setInterval(refresh, 60000);
+setInterval(refresh, 5 * 60000);      // (and on coming back to the page: a look every minute redid the account's figures for nothing)
 
 // ---- whose account, kept in sight: once the profile's scrolled away, your photo and name in a bar of glass at the top
 // (a tap on it goes back to the top) ----

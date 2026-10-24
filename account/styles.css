@@ -8,7 +8,7 @@
   color-scheme: dark;
   --sky-a: #121a3c; --sky-b: #0a0f26; --sky-c: #05060e;
   --aura-1: rgba(80, 120, 255, 0.55); --aura-2: rgba(160, 90, 255, 0.4); --aura-3: rgba(40, 190, 230, 0.32);
-  --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.5);
+  --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.56);
   --glass: rgba(34, 40, 66, 0.5); --glass-strong: rgba(28, 33, 56, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
   --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --danger: #ff6a5f; --good: #4fdc8e; --warn: #ffbd4a;
@@ -33,10 +33,10 @@
     color-scheme: light;
     --sky-a: #e9eefc; --sky-b: #f3f0fb; --sky-c: #f7f8fc;
     --aura-1: rgba(110, 150, 255, 0.42); --aura-2: rgba(200, 150, 255, 0.36); --aura-3: rgba(90, 210, 240, 0.3);
-    --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.46);
+    --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #b26b00;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -53,10 +53,10 @@
     color-scheme: light;
     --sky-a: #e9eefc; --sky-b: #f3f0fb; --sky-c: #f7f8fc;
     --aura-1: rgba(110, 150, 255, 0.42); --aura-2: rgba(200, 150, 255, 0.36); --aura-3: rgba(90, 210, 240, 0.3);
-    --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.46);
+    --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #b26b00;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -165,7 +165,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 360px) { .apps { grid-template-columns: 1fr; } }
 /* each app: its icon (and ⓘ, for what it keeps of yours), what you have there, and Open */
-.app { display: grid; align-content: start; padding: 16px 16px 14px; border-radius: var(--r-group); color: var(--text); min-width: 0; }
+.app { display: flex; flex-direction: column; padding: 16px 16px 14px; border-radius: var(--r-group); color: var(--text); min-width: 0; }
 .app-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .app img { width: 54px; height: 54px; border-radius: 13px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app .about { position: relative; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl);
@@ -176,7 +176,9 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .app b { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .app .use { font-size: 14.5px; line-height: 1.35; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
 .app .sub { font-size: 13px; line-height: 1.35; color: var(--text-3); margin-top: 2px; overflow-wrap: anywhere; }
-.app .open-app { margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 999px; font-size: 15px; font-weight: 600;
+/* (Open at the foot of each card, so two side by side line up however long what's above it) */
+.app > :not(.open-app):nth-last-child(2) { margin-bottom: 14px; }
+.app .open-app { margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 999px; font-size: 15px; font-weight: 600;
   color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform 0.25s var(--spring), background-color 0.2s; }
 .app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); }
 @media (hover: hover) { .app .open-app:hover { background: color-mix(in srgb, var(--tint) 22%, transparent); } }
@@ -369,7 +371,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
   transition: transform 0.42s var(--spring); }
 :root[data-theme="light"] .seg .thumb { background: #fff; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .seg .thumb { background: #fff; } }
-.seg button { position: relative; z-index: 1; min-height: 36px; border: 0; background: none; font-size: 14.5px; font-weight: 500; color: var(--text-2); border-radius: 11px; transition: color 0.2s; }
+.seg button { position: relative; z-index: 1; min-height: 40px; border: 0; background: none; font-size: 14.5px; font-weight: 500; color: var(--text-2); border-radius: 11px; transition: color 0.2s; }
 .seg button[aria-checked="true"] { color: var(--text); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .seg .thumb, .ring .arc, .ck-row.ok .ck-dot { transition: none; animation: none; } }
 
@@ -647,3 +649,8 @@ button.adm-alert:active { transform: scale(0.98); }
 .pv-circle { flex: none; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 0.5px var(--line); }
 .pv-circle img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pv-also p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-2); }
+
+/* the small round and pill controls keep their size, and are each a finger's width to tap (44 px) */
+.x, .mini, .sheet-head .link.back { position: relative; }
+.x::after, .mini::after, .sheet-head .link.back::after { content: ""; position: absolute; inset: -6px; }
+.sheet-head h2:focus { outline: none; }
