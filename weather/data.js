@@ -338,7 +338,7 @@ function buildWx(raw, place) {
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can. quiet: a place beside the one
-// shown, readied to swipe to (app.js pager): all of it but its climate and how the models have done there (only its
+// shown, readied to swipe to (app.js pager): all of it, how the models have done there and its climate too (only its
 // forecast and warnings with the phone saving data)
 export async function load(place, onUpdate, { force = false, quiet = false } = {}) {
   const id = cell(place.lat, place.lon), key = `wx:${id}`, kept = keptRaw(id) || {};
@@ -368,7 +368,7 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
   const get = async (k, fn) => {
     // (beside the one shown, all of it as it'd be asked for if it were shown, so it's drawn there as it will be; but with
     // the phone saving data, just the forecast and the warnings)
-    if (wait(k) || (quiet && globalThis.navigator?.connection?.saveData && k !== "forecast" && k !== "warnings")) return;
+    if (wait(k) || (quiet && saving() && k !== "forecast" && k !== "warnings")) return;
     try {
       const j = await fn(place.lat, place.lon);
       // the ensembles are big (143 runs): only their summary is kept
@@ -385,7 +385,9 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
   const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("marine", fetchMarine), get("warnings", fetchWarnings)]);
   try { await main; } catch (e) { if (!raw.forecast) throw e; onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
-  if (quiet) return build();
+  // (and, beside the one shown, how the models have done there and its climate, so it's drawn there as it will be when
+  // it's shown, not changing a moment after: not with the phone saving data)
+  if (quiet) { if (!saving()) await Promise.all([loadSkill(place).catch(() => null), climateBeside(place).catch(() => null)]); return build(); }
   // the climate, once a year per place, in the background (it's a lot to ask for)
   climateSoon(place, (c) => { if (c !== null && raw.forecast) try { onUpdate(build(), { partial: false, stale: false }); } catch (e) { console.error(e); } });
   // how the models have done here, twice a day per place, in the background too
@@ -442,8 +444,27 @@ function climateSoon(place, then) {
   if (of && Date.now() - of < 365 * 864e5) return;
   const kept = store.get(`clim2:${id}`);
   if (kept?.data && Date.now() - kept.at < 365 * 864e5) return;
-  climateWait = setTimeout(() => { climateAt = Date.now(); loadClimate(place).then(then); }, Math.max(3000, climateAt + 70e3 - Date.now()));
+  climateWait = setTimeout(() => { climateWait = null; climateAt = Date.now(); loadClimate(place).then(then); }, Math.max(3000, climateAt + 70e3 - Date.now()));
 }
+// (a place beside the one shown: its climate too, once, if none's been asked for in the last 70 seconds and the shown
+// one's isn't waiting to be; tried again for one that couldn't be had after a few hours)
+const climateTried = new Map();
+const climateHad = (id, now = Date.now()) => { const of = (figuresMemo.get(id) || store.get(`climf:${id}`))?.of; return !!of && now - of < 365 * 864e5; };
+function climateBeside(place) {
+  const id = cell(place.lat, place.lon);
+  if (climateHad(id) || climateWait || Date.now() - climateAt < 70e3 || Date.now() - (climateTried.get(id) || 0) < 6 * 3600e3) return null;
+  climateAt = Date.now(); climateTried.set(id, climateAt);
+  return loadClimate(place);
+}
+// whether a place beside the one shown still wants what load's quiet asks for besides its forecast: how the models have
+// done there, or its climate (not with the phone saving data)
+export function extrasDue(place, now = Date.now()) {
+  if (saving()) return false;
+  const id = cell(place.lat, place.lon), s = skillKept(place);
+  return !(s && now - s.at < (s.failed ? 3 * 3600e3 : SKILL_TTL)) || (!climateHad(id, now) && now - (climateTried.get(id) || 0) >= 6 * 3600e3);
+}
+// (the phone set to save data)
+const saving = () => !!globalThis.navigator?.connection?.saveData;
 async function loadClimate(place) {
   const id = cell(place.lat, place.lon), k = `clim2:${id}`, kept = store.get(k);
   if (kept?.data && Date.now() - kept.at < 365 * 864e5) return null;

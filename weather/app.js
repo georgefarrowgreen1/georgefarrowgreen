@@ -1,5 +1,5 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
+import { load, due, extrasDue, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
@@ -194,7 +194,7 @@ async function go(force = false, fresh = null) {
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   // (the radar's say on its next hours, if it's had it lately: so it's drawn as it was, and as its page beside this one was)
-  if (moved) { const r = rains.get(cell(p.lat, p.lon)); S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = r && Date.now() - r.asked < 5 * 60e3 ? r : null; S.openIns.clear(); }
+  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = rainOf(cell(p.lat, p.lon)); S.openIns.clear(); }
   // (a place with nothing kept: its first picture waits, a second at most from the forecast's coming, for the warnings
   // and the radar's say, which would otherwise come in over the top of it and push it down as it's read: paint)
   clearTimeout(S.hold?.timer);
@@ -291,15 +291,17 @@ function keepSaid(wx) {
 }
 // and its next couple of hours' rain led by the radar, where it sees (rainmap.js blend), while its frame is recent; and
 // its rain one story throughout (agree.js)
-const shaped = (wx) => {
-  const t = tuned(wx), r = S.rain;
+const shaped = (wx, r = S.rain) => {
+  const t = tuned(wx);
   if (!t) return t;
   const led = r && r.id === cell(t.place.lat, t.place.lon) && Date.now() - r.at <= 40 * 60e3 ? { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) } : t;
   return oneRain(led, nowWall(led.place.offset));
 };
 // The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
 // again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
+// (each place's, as last had: a place beside the one shown asked too, so it's drawn there as it will be: readyNearby)
 const rains = new Map();
+const rainOf = (id) => { const r = rains.get(id); return r && Date.now() - r.asked < 5 * 60e3 ? r : null; };
 async function radarRain(p, my) {
   const r = await rainAt(p.lat, p.lon).catch(() => null);
   if (my !== seq) return;
@@ -477,18 +479,23 @@ function heroView(wx, now) {
 }
 // (what's made ready of each, kept while it's the same forecast in the same units: its forecast as kept read once)
 const ready = new Map();
+// (only: what's ready, as it is, if anything, for drawing at once; otherwise made again if what it's from has changed:
+// its forecast, how the models have done there or its climate (stale), its radar say, the units, the minute)
 function prepare(q, only = false) {
-  const id = cell(q.lat, q.lon), k = peek(q), had = ready.get(id), min = Math.floor(Date.now() / 60e3);
+  const id = cell(q.lat, q.lon), k = peek(q), had = ready.get(id), min = Math.floor(Date.now() / 60e3), rain = rainOf(id);
   if (!k) return null;
-  const same = had && had.at === k.at && had.f === S.f;
-  if (same && (only || had.min === min)) return had.v;
-  if (only) return null;
-  const base = same || had?.at === k.at ? had.base : keptWx(q);
+  if (only) return had && had.f === S.f ? had.v : null;
+  const kept = had && had.at === k.at && !had.stale;
+  if (kept && had.f === S.f && had.rain === rain && had.min === min) return had.v;
+  const base = kept ? had.base : keptWx(q);
   if (!base || runOut(base)) return null;
-  const wx = shaped(base), v = heroView(wx, nowWall(wx.place.offset));
-  ready.set(id, { at: k.at, f: S.f, min, base, v });
+  const wx = shaped(base, rain), v = heroView(wx, nowWall(wx.place.offset));
+  ready.set(id, { at: k.at, f: S.f, min, base, v, rain });
   return v;
 }
+// (something new for a place beside the one shown: what's ready of it, and its whole page, made again when it's idle)
+const news = new Map();
+const renewed = (id) => { news.set(id, Date.now()); const r = ready.get(id); if (r) r.stale = true; };
 // (one with nothing kept: its weather now as the list of places has it)
 function glanceView(q) {
   const k = glance(q), f = S.f;
@@ -517,7 +524,7 @@ function drawPage(el, q, i, only) {
 // nothing moving and no chart drawing in; its ids then put by (data-pid), so the page's own are still the page's. Kept
 // for each place while it's the same forecast, the same few minutes, the same page (pages)
 const pages = new Map();
-const pageKey = (q) => { const k = peek(q); return k && JSON.stringify([k.at, Math.floor(Date.now() / 180e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
+const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 180e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
 const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
 // (the page's cards as they are, copied: without the placeholders, the map (one only), or anything about to move)
 function copyPage(blank = false) {
@@ -533,8 +540,8 @@ const stillCopy = (col) => { putIds(col); for (const x of col.querySelectorAll("
 function drawWhole(pv, q) {
   const id = cell(q.lat, q.lon), key = pageKey(q), base = ready.get(id)?.base || keptWx(q);
   if (!key || !base || runOut(base)) return false;
-  const rain = rains.get(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
-  Object.assign(S, { base, rain: rain && Date.now() - rain.asked < 5 * 60e3 ? rain : null, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
+  const rain = rainOf(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
+  Object.assign(S, { base, rain, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
   const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true), said = h("p", { id: "brief", hidden: true });
   said.dataset.said = heroView(wx, now)?.said || "";
   // (beside its own weather now, kept: placePages)
@@ -639,7 +646,7 @@ function commit(dir) {
   // (the place left, now beside it: its forecast as read already, made ready from that when it's idle)
   const was = place(), k = was && peek(was), whole = onePage() && document.querySelector(dir > 0 ? ".pv-next" : ".pv-prev").dataset.whole === "1";
   // (its weather now as the hero had it, for beside the one landed on)
-  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: Math.floor(Date.now() / 60e3), base: S.base, v: S.wx ? heroView(S.wx, nowWall(S.wx.place.offset)) : null });
+  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: Math.floor(Date.now() / 60e3), base: S.base, v: S.wx ? heroView(S.wx, nowWall(S.wx.place.offset)) : null, rain: rainOf(cell(was.lat, was.lon)) });
   // (and its page as it was, a copy, for beside the one landed on: unless something on it is open or folded out, which
   // it won't be when it's turned back to (go), when it's drawn again, when the page is idle)
   if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage())] });
@@ -658,7 +665,7 @@ function commit(dir) {
 // the places either side made ready, and kept fresh (the forecast and the warnings, as the page asks for them: data.js
 // due), when the page is idle a moment after it's drawn; then drawn beside it again, once it's still
 let nearbyT = 0;
-const fetchedAt = new Map();
+const fetchedAt = new Map(), asking = new Set();
 function nearbySoon() {
   clearTimeout(nearbyT);
   nearbyT = setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(readyNearby, { timeout: 2000 }), 600);
@@ -677,9 +684,15 @@ function readyNearby() {
   }
   for (const q of list) {
     const id = cell(q.lat, q.lon);
-    if (!due(q) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
+    // (the radar's say on its next hours, as the page asks for its own: radarRain; not with the phone saving data)
+    if (!rainOf(id) && !navigator.connection?.saveData && !asking.has(id)) {
+      asking.add(id);
+      rainAt(q.lat, q.lon).catch(() => null).then((r) => { asking.delete(id); rains.set(id, { ...r, id, asked: Date.now(), said: r ? JSON.stringify([r.at, r.steps]) : "" }); renewed(id); nearbySoon(); });
+    }
+    // (its forecast and the rest, how the models have done there and its climate: data.js load's quiet)
+    if (!(due(q) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
     fetchedAt.set(id, Date.now());
-    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); nearbySoon(); }, () => {});
+    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); renewed(id); nearbySoon(); }, () => {});
   }
 }
 function pager() {
