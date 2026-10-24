@@ -51,7 +51,8 @@ await G.screenshot({ path: `${out}/reauth.png` });
 await G.fill('#f-password', 'not my password'); await G.click('.sheet .nbtn.r'); await G.waitForTimeout(1500);
 ok(/isn’t right/.test(await txt('.sheet')), 'a wrong password says so', await txt('.sheet .ferr, .sheet .err').catch(() => ''));
 await G.fill('#f-password', 'a long test password'); await G.click('.sheet .nbtn.r');
-await G.waitForSelector('.toast', { timeout: 15000 });
+// (the toast that's said it: the one from Lock InFlight can still be up)
+await G.waitForFunction(() => /Passkey saved/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
 ok(/Passkey saved/.test(await txt('.toast')), 'the right one carries on and saves the passkey', await txt('.toast'));
 [st] = await api('vault'); ok(st === 200, 'and counts for the next 10 minutes');
 await G.waitForTimeout(800);
@@ -90,7 +91,8 @@ const r = await G.evaluate(async (token) => {
     return { reg: reg.status, flags, status: res.status };
   } catch (err) { return { err: String(err) }; }
 }, sess.token);
-ok(r.reg === 400 && r.status === 401 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person: not taken, and can’t sign in', JSON.stringify(r));
+// (and InFlight signs in on the account's page now, so its own passkey sign-in is gone: one not taken can't sign in there either)
+ok(r.reg === 400 && r.status === 410 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person: not taken, and InFlight has no sign-in of its own to try it on', JSON.stringify(r));
 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: bare });
 
 // changing the password is on the account's page too (which locks the messages' key with the new one), not in InFlight

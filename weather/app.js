@@ -78,6 +78,9 @@ const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur",
 
 /* ---------- start ---------- */
 async function start() {
+  // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
+  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  if (signedIn) history.replaceState(null, "", location.pathname + location.search);
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
   const cur = store.get("wx:cur");
@@ -132,7 +135,7 @@ async function start() {
   // your account: signed in, as it was last time, till the server says (and whether you've signed in elsewhere on the site)
   const k = store.get("wx:acct");
   if (k?.handle) S.acct = { ...profileOf(k), devices: k.devices || [], state: "ok" };
-  pull();
+  if (signedIn) signedBack(signedIn); else pull();
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
@@ -2230,7 +2233,6 @@ function drawMail() {
 // another device, is put together with the other's rather than either being lost.
 const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities"];
 const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
-const PASSKEY = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="M2.5 20c.8-3 2.9-4.6 5.5-4.6 1.1 0 2.1.3 3 .8M16.5 8.5a2.5 2.5 0 1 1 0 5v5l1.5-1.5 1.5 1.5v-3.2"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 // what's here, as it's kept with the account (My Location is each device's own)
@@ -2352,14 +2354,30 @@ function signedOutElsewhere() {
   if (n.endpoint && n.devId) A.leave(n.endpoint).catch(() => {});
   signedOut();
 }
-async function signIn(how, email, password) {
-  const said = $("acct-said"), btns = [...$("acct-in").querySelectorAll("button")];
-  // (as on every page of the site that signs in: the same words for what's missing)
-  if (how !== "passkey" && (!email || !password)) { said.textContent = email ? "Enter your password." : "Enter your email."; said.classList.add("bad"); return; }
-  said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
-  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password), true); }
-  catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
-  finally { btns.forEach((b) => (b.disabled = false)); }
+// Signing in is on the account's own page (account.<site>, beside weather.<site>), where every app on the site signs
+// in: there with a word for the sign-in (kept on this device for half an hour, or until it's used), and back with a code
+// for it (signedBack)
+async function toAccountSignIn() {
+  const page = accountPage(); if (!page) return;
+  try {
+    const { word, ask } = await A.signInWord();
+    localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
+    location.assign(`${page}#${new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` })}`);
+  } catch (_) { toast("This browser can’t sign in here. Try Safari or Chrome."); }
+}
+// Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the
+// sign-in (the site's: Weather keeps none of its own), and this device's places meant for the account, as signing in
+// was asked for here. A code from anywhere else, or one that's run out, is used up and goes no further.
+async function signedBack(code) {
+  let k = null;
+  try { k = JSON.parse(localStorage.getItem("wx:signin") || "null"); localStorage.removeItem("wx:signin"); } catch (_) {}
+  if (!k || Date.now() - k.at > 30 * 60e3) {
+    A.handback(code, "").catch(() => {}); pull();
+    return toast("That sign-in was started somewhere else. Sign in again here.");
+  }
+  pulledAt = Date.now();
+  try { const r = await A.handback(code, k.word); await adopt(r, true); toast(`Signed in as ${String(r.name).trim().split(/\s+/)[0]}.`); }
+  catch (e) { toast(e.message); pull(); }
 }
 // this device getting the account's notifications too
 async function sendHere() {
@@ -2396,30 +2414,14 @@ function drawAccount() {
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
   $("out-grp").hidden = !a;
-  $("acct-in").replaceChildren();
   if (!a) {
-    // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
-    // and a new account, on the account's own page)
-    const pk = A.passkeysWork(), page = accountPage();
-    const form = h("form", { class: "acct-form", novalidate: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
-      h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", placeholder: "Email", "aria-label": "Email", autocapitalize: "off", spellcheck: "false" }),
-      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", onfocus: () => import("./argon2.js").catch(() => {}) }),
-      h("button", { class: pk ? "acct-btn" : "acct-btn primary", type: "submit" }, "Sign in"));
-    // (in Settings, a row; signing in, a folder of its own)
-    if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", "data-go": "signin" }, h("span", { class: "acct-ic", svg: PERSON }),
+    // (in Settings, a row: signing in, or making an account, on the account's own page, which brings you back here; none
+    // where Weather's served at an address with no account's page beside it)
+    if (!accountPage()) { box.hidden = true; return; }
+    if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", onclick: toAccountSignIn }, h("span", { class: "acct-ic", svg: PERSON }),
       h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
-    $("acct-in").replaceChildren(...[
-      h("p", { class: "acct-lead" }, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."),
-      pk ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
-      pk ? h("p", { class: "acct-or" }, "or with your email") : null,
-      form,
-      page ? h("a", { class: "acct-link", href: `${page}#forgot` }, "Forgot password?") : null,
-      said,
-      page ? h("p", { class: "acct-new" }, "New here? ", h("a", { href: `${page}#join` }, "Create your account")) : null].filter(Boolean));
     return;
   }
-  // (signed in from its own folder: back to the list, the account's card at its top)
-  if (setStack.at(-1)?.name === "signin") setBack();
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
   // there), and how your places and settings are doing, said only when there's something to say (the same card kept as
   // that changes, its words changing where they are)

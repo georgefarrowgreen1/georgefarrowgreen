@@ -915,7 +915,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
 .link:active { opacity: 0.55; transition-duration: var(--dur-press); }
 /* (pointed at, with a mouse: a link, or a word that does something, fades a little, as the site's do) */
-@media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-link:hover, .acct-new a:hover, .win-poor:hover { opacity: 0.75; } }
+@media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-new a:hover, .win-poor:hover { opacity: 0.75; } }
 
 /* ---------- sheets: floating glass ---------- */
 /* (fixed, as a modal dialog is by default, so it stays put if the page behind scrolls, as when a keyboard opens) */
@@ -1120,9 +1120,6 @@ a.acct-btn { text-decoration: none; }
 .acct-btn:disabled { opacity: 0.55; cursor: default; }
 .acct-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .acct-btn > span { display: inline-grid; }
-.acct-form { display: grid; gap: 8px; }
-.acct-form input { font: inherit; font-size: 16px; color: inherit; min-height: 46px; padding: 0 16px; border-radius: 14px; border: 0; background-color: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16); }
-.acct-form input:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .acct-rows { list-style: none; margin: 0; padding: 2px 16px; border-radius: 18px; background-color: rgba(255, 255, 255, 0.06); }
 .acct-rows li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; font-size: 14.5px; }
 .acct-rows li + li { border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
@@ -1602,7 +1599,6 @@ body.no-scroll { overflow: hidden; }
 .f-k { flex: none; }
 .f-v { flex: 1; min-width: 0; text-align: right; color: var(--text-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* signing in, a folder of its own */
-.acct-lead { margin: 0 4px 6px; font-size: 15px; line-height: 1.45; color: var(--text-2); }
 .pill-btn { border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .pill-btn > * { position: relative; z-index: 3; }
 /* an activity: its name and limits (a way to its own page), and its switch */
@@ -1666,8 +1662,5 @@ select option { color: #fff; background: #1c2434; }
 
 /* signing in, as on every page of the site: "or with your email" between a passkey and the form; a forgotten password and
    a new account on the account's own page */
-.acct-or { display: flex; align-items: center; gap: 12px; margin: 2px 0; color: var(--text-2, rgba(255, 255, 255, 0.7)); font-size: 13px; }
-.acct-or::before, .acct-or::after { content: ""; flex: 1; height: 0.5px; background: rgba(255, 255, 255, 0.2); }
-.acct-link { justify-self: center; padding: 6px 10px; color: #9cc6ff; font-size: 15px; font-weight: 500; text-decoration: none; transition: opacity var(--dur-fast); }
 .acct-new { margin: 0; text-align: center; font-size: 14px; color: var(--text-2, rgba(255, 255, 255, 0.7)); }
 .acct-new a { color: #9cc6ff; font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }

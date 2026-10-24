@@ -120,19 +120,23 @@ ok((await txt(B, '.b.once')).includes('Photo expired'), 'a photo not opened in t
 await B.p.waitForTimeout(1500);
 ok(/"photo": 2/.test(sql("SELECT photo FROM pg_msgs WHERE photo > 0")), 'server marks the photo deleted');
 
-// ---- George: sign out, back in with the passkey alone ----
+// ---- George: sign out, and back in on the account's page (where InFlight signs in; a passkey there opening the
+// messages by itself is acctpkmsg.mjs's, as here the account's page has an address of its own for passkeys) ----
 await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await A.p.click('#screen > main.view [data-act=signout]'); await A.p.click('.asheet [data-act=signoutgo]');
 await A.p.waitForSelector('.welcome');
-await A.p.click('[data-act=to][data-id=signin]'); await A.p.click('[data-act=pkget]'); await A.p.waitForSelector('.tabs', { timeout: 20000 });
+await signInInFlight(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' }); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 await A.p.click('.mrow'); await A.p.waitForTimeout(1500);
-ok((await txt(A, '.msgs')).includes('Fancy trying'), 'passkey sign-in restores the history');
+ok((await txt(A, '.msgs')).includes('Fancy trying'), 'signing back in restores the history');
 
 // ---- Mira on a new phone, with her password ----
 const C = await phone('mira-new', 320, 568);
-await C.p.waitForSelector('.welcome'); await C.p.click('[data-act=to][data-id=signin]');
-await C.p.fill('#f-email', 'mira@example.com'); await C.p.fill('#f-password', 'wrong password!!'); await C.p.click('[data-form=signin] .btn');
-ok((await ferr(C)).length > 0, 'wrong password refused', await txt(C, '.ferr:not([hidden])'));
-await C.p.fill('#f-password', 'new york pigeons 7'); await C.p.click('[data-form=signin] .btn'); await C.p.waitForSelector('.tabs', { timeout: 20000 });
+await C.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 }); await C.p.click('.welcome [data-act=acctsignin]');
+await C.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
+await C.p.fill('main input[name=email]', 'mira@example.com'); await C.p.fill('main input[name=password]', 'wrong password!!'); await C.p.click('main .signin form .btn');
+const wrong = await C.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => '');
+ok(wrong.length > 0 && /account\./.test(C.p.url()), 'wrong password refused, on the account’s page', wrong);
+await C.p.fill('main input[name=password]', 'new york pigeons 7'); await C.p.click('main .signin form .btn');
+await C.p.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 30000 }); await C.p.waitForSelector('.tabs', { timeout: 20000 });
 await C.p.click('.mrow'); await C.p.waitForTimeout(1500);
 ok((await txt(C, '.msgs')).includes('Gorgeous'), 'new phone reads the history');
 await C.p.reload(); await C.p.waitForSelector('.tabs', { timeout: 15000 });

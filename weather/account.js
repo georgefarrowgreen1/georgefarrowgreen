@@ -1,8 +1,9 @@
-// Your georgefarrowgreen.com account, in Weather: signing in (a passkey, or your email and password), and keeping your
-// saved places, settings and notifications in step with it, so they're the same on every phone and computer you're
-// signed in on (functions/_wxacct.js). The sign-in is the site's: signed in anywhere on it in this browser, Weather is
-// too, and signing out (on the account's own page) signs you out everywhere on it in this browser. The page never holds
-// the sign-in itself (the browser keeps it, out of any page's reach); it asks with it.
+// Your georgefarrowgreen.com account, in Weather: signing in (on the account's own page, where every app on the site
+// signs in, and handed back here: functions/_handback.js), and keeping your saved places, settings and notifications in
+// step with it, so they're the same on every phone and computer you're signed in on (functions/_wxacct.js). The sign-in
+// is the site's: signed in anywhere on it in this browser, Weather is too, and signing out (on the account's own page)
+// signs you out everywhere on it in this browser. The page never holds the sign-in itself (the browser keeps it, out of
+// any page's reach); it asks with it.
 
 const API = "/api/weather";
 async function call(path, { method = "GET", body } = {}) {
@@ -27,37 +28,16 @@ export const accountLink = () => call("account-link", { method: "POST", body: {}
 export const signOut = (endpoint) => call("signout", { method: "POST", body: endpoint ? { endpoint } : {} });
 export const photoUrl = (at) => `${API}/me/photo?v=${at}`;
 
-// ---- signing in ----
+// ---- signing in, on the account's page ----
+// A word for this sign-in, kept on this device till it's used: its hash (ask) goes to the account's page, and the code
+// that comes back is good only with the word itself (functions/_handback.js)
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const fromB64url = (s) => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(s).length + 3) % 4)), (c) => c.charCodeAt(0));
-export const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials?.get);
-export async function withPasskey() {
-  const o = await call("signin/options", { method: "POST", body: {} });
-  let a;
-  try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000 } }); }
-  catch (e) { throw new Error(e?.name === "NotAllowedError" ? "No passkey was used." : "Your passkey couldn't be used here."); }
-  if (!a) throw new Error("No passkey was used.");
-  return call("signin/passkey", { method: "POST", body: { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
-    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) } });
+export async function signInWord() {
+  const word = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  return { word, ask: b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(word))) };
 }
-// The password, stretched on this device as everywhere on the site (Argon2id, 64 MiB and 3 passes, for a salt marked
-// "a2:"; PBKDF2 for an account from before), into the proof the server checks: the password itself never leaves here
-async function proofOf(password, salt) {
-  const pw = new TextEncoder().encode(String(password).normalize("NFKC"));
-  let bits;
-  if (String(salt).startsWith("a2:")) {
-    const m = await import("./argon2.js"), argon2id = m?.argon2id || m?.default?.argon2id || globalThis.hashwasm.argon2id;
-    bits = await argon2id({ password: pw, salt: fromB64url(salt.slice(3)), parallelism: 1, iterations: 3, memorySize: 65536, hashLength: 64, outputType: "binary" });
-  } else {
-    const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
-    bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: fromB64url(salt), iterations: 600000 }, base, 512));
-  }
-  return b64url(bits.slice(32));
-}
-export async function withPassword(email, password) {
-  const { salt } = await call("signin/salt", { method: "POST", body: { email } });
-  return call("signin/password", { method: "POST", body: { email, proof: await proofOf(password, salt) } });
-}
+// the code it came back with, and the word, swapped for the sign-in: the account, as me() has it
+export const handback = (code, verifier) => call("handback", { method: "POST", body: { code, verifier } });
 
 // ---- in step ----
 // A place's key: two decimal places (about a kilometre), as the app tells places apart when it saves them

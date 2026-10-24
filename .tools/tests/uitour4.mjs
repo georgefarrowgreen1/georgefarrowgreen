@@ -1,10 +1,10 @@
 // Every screen and sheet of InFlight, with real (encrypted) data: screenshots,
 // overlap/clipping audit and axe, in light and dark, at 390 and 320 wide.
+import { madeIn } from './handback.mjs';
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
 import { joinInFlight } from './join.mjs';
-import http from 'http';
 const [,, S, out, only] = process.argv;
 const BASE = 'http://localhost:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -28,16 +28,10 @@ const api = (t, path, body, method) => fetch(BASE + '/api/pigeon/' + path, { met
 const rnd = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 // (a real key: the app seals to it, so a made-up point won't do)
 const realPub = async () => { const k = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']); const j = await crypto.subtle.exportKey('jwk', k.publicKey); return { kty: j.kty, crv: j.crv, x: j.x, y: j.y }; };
-// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; then signed in to
-// InFlight with the same password proof)
-const acctPost = (path, data) => new Promise((done, no) => {
-  const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/' + path, method: 'POST', headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json' } },
-    (res) => { res.resume(); res.on('end', () => done(res.statusCode)); });
-  q.on('error', no); q.end(JSON.stringify(data));
-});
+// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; and signed in to
+// InFlight from there, as a phone is: handback.mjs)
 const apiUser = async (h, name) => { const proof = rnd(), email = h + '@example.com';
-  await acctPost('signup', { name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() });
-  return (await api(null, 'login', { email, proof }))[1]; };
+  return (await madeIn({ name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() })).j; };
 const act = (p, a, id) => p.evaluate(([a, id]) => { const x = document.createElement('button'); x.hidden = true; x.dataset.act = a; if (id) x.dataset.id = id; document.querySelector('#screen').append(x); x.click(); x.remove(); }, [a, id]);
 const openChat = async (p, id) => { await p.evaluate((id) => { location.hash = '#open=' + id; }, id); await p.waitForSelector('#msg', { timeout: 10000 }); await p.waitForTimeout(500); };
 const send = async (p, text, kind) => { if (kind) await p.click(`.pick [data-act=pigeon][data-id=${kind}]`).catch(() => {}); await p.fill('#msg', text); const t0 = Date.now(); await p.waitForSelector('.compose .send:enabled', { timeout: 30000 }).catch(() => console.log('DIAG send still disabled', text)); if (Date.now() - t0 > 300) console.log('DIAG waited', Date.now() - t0, 'ms to send', text); await p.click('.send'); await p.waitForTimeout(1500); };
@@ -180,8 +174,10 @@ for (const [w, h, th] of [[390, 844, 'light'], [390, 844, 'dark'], [320, 568, 'l
 const W = await (await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true })).newPage();
 size = '390'; theme = 'light';
 await W.goto(BASE + '/pigeon/'); await W.waitForSelector('.welcome'); await W.waitForTimeout(3500); await snap(W, 'welcome');
-await W.click('[data-act=to][data-id=signin]'); await snap(W, 'signin');
+// (Sign in: the account's page, for InFlight)
+const toSignIn = async () => { await W.click('.welcome [data-act=acctsignin]'); await W.waitForURL((u) => u.hostname.startsWith('account.')); await W.waitForSelector('main .signin input[name=email]'); await W.waitForTimeout(1500); };
+await toSignIn(); await snap(W, 'signin');
 await W.setViewportSize({ width: 320, height: 568 }); size = '320';
-await W.goto(BASE + '/pigeon/'); await W.waitForTimeout(3500); await snap(W, 'welcome'); await W.click('[data-act=to][data-id=signin]'); await snap(W, 'signin');
+await W.goto(BASE + '/pigeon/'); await W.waitForTimeout(3500); await snap(W, 'welcome'); await toSignIn(); await snap(W, 'signin');
 writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 1));
 console.log('errors', errs); await b.close();

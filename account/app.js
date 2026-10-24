@@ -38,6 +38,7 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
 const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, home: { name: "Home", sub: "" } };
+const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   if (!code) return null;
@@ -51,6 +52,33 @@ if (/^#from=home$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
   try { sessionStorage.setItem("acct-from", "home"); } catch (_) {}
 }
+// Sent here by an app to sign in: InFlight's welcome, Weather's Settings, the home page's Sign in (#signin=<app>, or
+// #join=<app> to make an account first). With it, the app's word for this sign-in (ask: the hash of what that tab
+// keeps: functions/_handback.js), InFlight's key for what unlocks its own key there (seal), and where the app is (back).
+// Signed in, or carrying on as yourself, you're sent straight back, the sign-in handed back with a code good once, for
+// two minutes, in that tab alone. Taken out of the address at once, and kept for the visit (half an hour), so a reload,
+// or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
+// drops one kept from before.
+const SIGN_FOR = (() => {
+  const m = /^#(signin|join)=(inflight|weather|home)(&|$)/.exec(ARRIVED);
+  if (!m) {
+    try {
+      const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
+      if (k && !ARRIVED && Date.now() - k.at < 30 * 60e3) return k;
+      // (and the way back it gave, unless the address gave one of its own just now)
+      if (k) { sessionStorage.removeItem("acct-for"); if (!ARRIVED) sessionStorage.removeItem("acct-from"); }
+    } catch (_) {}
+    return null;
+  }
+  history.replaceState(null, "", location.pathname + location.search);
+  const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
+  const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now() };
+  // (an app asks with its word, and InFlight with its key as well: without them, it didn't come from the app)
+  if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) return null;
+  try { sessionStorage.setItem("acct-for", JSON.stringify(a)); sessionStorage.setItem("acct-from", a.app); } catch (_) {}
+  return a;
+})();
+S.signFor = SIGN_FOR;
 // (from the home page, to show it's you before changing it: #confirm=edit; once that's done, back there, editing)
 if (/^#confirm=edit$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
@@ -76,6 +104,7 @@ const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
 function backToApp() {
+  if (S.signFor) return leaveFor(S.signFor.back);
   const from = fromApp(), app = APPS[from] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
   if (from === "home") return location.replace(siteUrl(app.sub));
@@ -176,6 +205,18 @@ function siteUrl(sub) {
   return `${protocol}//${sub ? sub + "." : ""}${hostname.slice(8)}${port ? ":" + port : ""}/`;
 }
 
+// Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
+// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, or <site>/ (beside this page's account.<site>, on the
+// same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
+function backFor(app, back) {
+  const usual = siteUrl(APPS[app].sub);
+  try {
+    const u = new URL(back), site = location.hostname.replace(/^account\./, "");
+    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], home: [`${site}/`] }[app];
+    return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
+  } catch (_) { return usual; }
+}
+
 // ---- words for times ----
 const rtf = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" }), rtfShort = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto", style: "short" });
 // (short: "24 min ago", for a row with a button beside it)
@@ -216,6 +257,7 @@ try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t 
 // ---- the page ----
 async function load() {
   fromGate();
+  if (S.signFor?.join && !S.gate) S.gate = "join";
   await fromLink();
   // (a sign-in handed over by an app: who it's for asked first, and only taken once that's said yes to, as a page
   // elsewhere could send this browser here with a code of its own; never over a different account's sign-in here)
@@ -294,7 +336,7 @@ function render() {
   const rise = !S.settled; S.settled = true;
   const was = rise ? null : where(), risers = [];
   const r = (el) => { if (rise && el) risers.push(el); return el; };
-  main.replaceChildren(...(S.reset ? resetPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)).filter(Boolean));
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
@@ -727,8 +769,9 @@ function signedOut(r) {
   if (S.handoff) return handoffPage(r);
   const mode = S.gate || "signin";
   if (!S.join) joinState();
+  const to = S.signFor && S.signFor.app !== "home" ? APPS[S.signFor.app].name : null;
   const head = { signin: ["Your account"],
-    join: ["Create your account", "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+    join: ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
@@ -736,8 +779,10 @@ function signedOut(r) {
     r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : logo())),
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
-    mode === "signin" && r(h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
-      " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
+    // (sent here by an app: which, as that's where you'll be once you're in)
+    mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
+      : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
+        " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : signinCard()),
     r(mode === "signin" ? joinLine() : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
@@ -762,6 +807,110 @@ function handoffPage(r) {
     r(h("h1", { text: w.name })),
     r(h("p", { text: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?` })),
     r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];
+}
+// ---- sent here by an app to sign in (S.signFor): back to it once you're in, the sign-in handed back (functions/
+// _handback.js), and for InFlight what unlocks its key there, sealed to its tab ----
+// Signed in here already: carrying on as yourself. For InFlight, once you've shown it's you, as what opens its key goes
+// back with you: a passkey with its own copy of the key, or your password (just the password, after signing in with a
+// passkey that hasn't one, or can't give its secret in this browser: S.need).
+function continuePage(r) {
+  const m = S.me, a = S.signFor, name = APPS[a.app].name, said = h("p.said" + (S.said?.bad ? ".bad" : ""), { role: "alert", text: S.said?.text || "" });
+  S.said = null;
+  const go = a.app !== "inflight" && h("button.btn", { type: "button", onclick: () => handBack(m, {}, go) }, a.app === "home" ? "Continue" : `Continue to ${name}`);
+  return [backButton(r), h("div.welcome", {},
+    r(h("div", {}, avatar(m))),
+    r(h("h1", { text: m.name })),
+    r(h("p", { text: `@${m.handle}. ${a.app === "home" ? "Carry on as this account?" : S.need ? `One more step for ${name}.` : `Continue to ${name} as this account?`}` })),
+    r(go ? h("div.signin.glass", {}, go, said) : unlockCard(m, said)),
+    r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => { S.need = null; signOut(e.currentTarget); } }, "Sign out"))))];
+}
+// (InFlight's key, opened there with what you show here)
+function unlockCard(m, said) {
+  const pks = S.need ? [] : (m.passkeys || []).filter((p) => p.messages), byKey = passkeysWork() && pks.length > 0;
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
+  const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Continue");
+  const form = h("form.form", { onsubmit: async (e) => {
+    e.preventDefault(); say(said, "");
+    if (!pw.value) return say(said, "Enter your password.", pw);
+    try {
+      const k = await busy(go, "Checking…", async () => {
+        const k = await E2E.fromPassword(pw.value, m.salt);
+        await post("reauth", { proof: k.proof });
+        const nk = !E2E.isCurrent(m.salt) && await restretch(pw.value, k);
+        if (nk) m.salt = nk.salt;
+        return nk || k;
+      });
+      handBack(m, { lock: k.lock }, go);
+    } catch (err) { say(said, err.message, pw); }
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  const key = byKey && h("button.btn", { type: "button", onclick: async (e) => {
+    const b = e.currentTarget; say(said, "");
+    try {
+      const way = await busy(b, "Waiting for your passkey…", async () => {
+        const o = await post("signin/options");
+        let a;
+        try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+          allowCredentials: pks.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
+        catch (_) { throw new Error("No passkey was used."); }
+        await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
+          authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
+        return { prf: prfOf(a), id: a.id };
+      });
+      if (way.prf) return handBack(m, way, b);
+      // (a passkey that can't give its secret in this browser: the password, then)
+      morph(b.parentElement, () => { b.remove(); or.remove(); go.classList.remove("quiet"); });
+      say(said, "That passkey can’t open your messages in this browser. Use your password.", pw);
+    } catch (err) { say(said, err.message); }
+  } }, icon("face", 21, 1.9), "Continue with a passkey");
+  const or = key && h("div.or", { text: "or with your password" });
+  return h("div.signin.glass", {},
+    h("p.hint.center", { text: S.need ? "Your InFlight messages are locked with a key only your devices hold, and that passkey can’t open it here. Enter your password, and they open in InFlight."
+      : "Your InFlight messages are locked with a key only your devices hold. Show it’s you, and they open in InFlight." }),
+    key, or, form, said);
+}
+// Back to the app, signed in (way: what opens InFlight's key, for InFlight: { lock } or { prf, id }): its code made, and
+// off there with it; for the home page, which shares this page's sign-in, just back. With nothing to open InFlight's key
+// with (a passkey that can't), the password's asked for first; with anything else wrong, it's said, to try again.
+async function handBack(m, way, btn) {
+  const a = S.signFor;
+  S.me = m; S.pulled = Date.now();
+  if (a.app === "home") return leaveFor(a.back);
+  const go = async () => {
+    const key = a.app === "inflight" ? await keyFor(m, way) : {};
+    if (!key) throw Object.assign(new Error(""), { more: true });
+    const { code } = await post("handback", { app: a.app, ask: a.ask, ...key });
+    leaveFor(`${a.back}#signin=${code}`);
+    await new Promise(() => {});             // (going: the button says so until the app's there)
+  };
+  try { await (btn?.isConnected ? busy(btn, `Opening ${APPS[a.app].name}…`, go) : go()); }
+  catch (e) {
+    S.need = e.more ? "password" : S.need; S.said = e.more ? null : { text: e.message, bad: true };
+    anew(() => { S.settled = false; render(); scrollTo(0, 0); });
+  }
+}
+// what opens InFlight's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
+// used, if it has its own copy of the key; else nothing (the password's needed)
+async function keyFor(m, way) {
+  if (way.lock) return { box: await E2E.sealFor(S.signFor.seal, { lock: way.lock }) };
+  if (way.prf && m.passkeys?.some((p) => p.id === way.id && p.messages)) return { box: await E2E.sealFor(S.signFor.seal, { prf: b64url(way.prf) }), pk: way.id };
+  return null;
+}
+// (off to the app, in this page's place in the history)
+function leaveFor(url) {
+  try { sessionStorage.removeItem("acct-for"); sessionStorage.removeItem("acct-from"); } catch (_) {}
+  S.signFor = null; S.need = null;
+  location.replace(url);
+}
+// An account from before Argon2id, signed in to with its password: stretched again the new way (a new salt, and the
+// key locked anew with what that gives; the same password and key), as InFlight did when it signed in itself. → what
+// the new one gives, and its salt; or nothing, if that didn't happen (the old one still works)
+async function restretch(pw, k) {
+  try {
+    const { vault } = await post("password/vault", { proof: k.proof });
+    const inner = await E2E.unlock(k.lockKey, vault), salt = E2E.newSalt(), nk = await E2E.fromPassword(pw, salt);
+    await post("password/upgrade", { oldProof: k.proof, salt, proof: nk.proof, vault: await E2E.lock(nk.lockKey, inner) });
+    return { ...nk, salt };
+  } catch (_) { return null; }
 }
 // (can an account be made: by anyone, on a test server; else with the invite this page was opened with)
 async function joinState() {
@@ -792,19 +941,28 @@ function signinCard() {
     if (!email.value.trim()) return say(said, "Enter your email.", email);
     if (!pw.value) return say(said, "Enter your password.", pw);
     try {
-      let proof;
+      let k;
       const m = await busy(go, "Signing in…", async () => {
         const { salt } = await post("signin/salt", { email: email.value.trim() });
-        ({ proof } = await E2E.fromPassword(pw.value, salt));
-        return post("signin/password", { email: email.value.trim(), proof });
+        k = await E2E.fromPassword(pw.value, salt);
+        const m = await post("signin/password", { email: email.value.trim(), proof: k.proof, app: S.signFor?.app });
+        // (an account from before Argon2id: stretched the new way, now the password's here)
+        const nk = !m.deleting && !E2E.isCurrent(salt) && await restretch(pw.value, k);
+        if (nk) { k = nk; m.salt = nk.salt; }
+        return m;
       });
+      if (S.signFor && !m.deleting) return handBack(m, { lock: k.lock }, go);
       welcome(m);
-      if (!m.deleting) { checkQuietly(pw.value, proof); maybeNudge(m); }
+      if (!m.deleting) { checkQuietly(pw.value, k.proof); maybeNudge(m); }
     } catch (err) { say(said, err.message, err.field === "email" ? email : pw); }
   } }, field("Email", email), field("Password", pw), go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: async (e) => {
     const b = e.currentTarget; say(said, "");
-    try { welcome(await busy(b, "Waiting for your passkey…", signInWithPasskey)); }
+    try {
+      const { m, prf, id } = await busy(b, "Waiting for your passkey…", signInWithPasskey);
+      if (S.signFor && !m.deleting) return handBack(m, { prf, id }, b);
+      welcome(m);
+    }
     catch (err) { say(said, err.message); }
   } }, icon("face", 21, 1.9), "Sign in with a passkey");
   return h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form,
@@ -856,7 +1014,7 @@ function joinCard() {
     if (!EMAIL_OK.test(v.email)) return say(said, "That doesn’t look like an email address.", email);
     if (v.password.length < 10) return say(said, "Use at least 10 characters for your password.", pw);
     try {
-      let proof;
+      let proof, lock;
       const m = await busy(go, "Creating your account…", async () => {
         const n = await leakedCount(v.password);
         if (n) throw Object.assign(new Error(leakedSay(n)), { field: "password" });
@@ -864,10 +1022,12 @@ function joinCard() {
         const { privJwk, pub } = await prep.keys;
         const done = prep.pw?.pw === v.password ? prep.pw : null, salt = done ? done.salt : E2E.newSalt();
         const k = await (done ? done.p : E2E.fromPassword(v.password, salt));
-        proof = k.proof;
+        proof = k.proof; lock = k.lock;
         return post("signup", { name: v.name, handle: v.handle, email: v.email, salt, proof, vault: await E2E.lock(k.lockKey, { ecdh: privJwk }), pub, invite: S.invite || undefined });
       });
       S.invite = null; S.gate = null; try { sessionStorage.removeItem("acct:invite"); } catch (_) {}
+      // (made for an app: straight back to it, the password already checked against data breaches, above)
+      if (S.signFor) { post("password/checked", { proof, leaked: false }).catch(() => {}); return handBack(m, { lock }, go); }
       welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
       checkQuietly(v.password, proof); maybeNudge(m);
     } catch (err) {
@@ -966,14 +1126,18 @@ function resetPage(r) {
       said))),
   ];
 }
+// → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for InFlight (where it sent you here: what
+// opens the passkey's own copy of its key, if it has one) }
 async function signInWithPasskey() {
-  const o = await post("signin/options");
+  const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
   let a;
-  try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000 } }); }
+  try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+    extensions: inflight ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } }); }
   catch (e) { throw new Error(e?.name === "NotAllowedError" ? "No passkey was used." : "Your passkey couldn’t be used here."); }
   if (!a) throw new Error("No passkey was used.");
-  return post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
-    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
+  const m = await post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
+    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature), app: S.signFor?.app });
+  return { m, prf: inflight ? prfOf(a) : null, id: a.id };
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
 async function welcome(m, word, next) {

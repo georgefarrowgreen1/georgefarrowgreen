@@ -10,7 +10,7 @@
 //   POST /api/weather/leave           a device signed out of its account elsewhere: its notifications its own
 //   GET  /api/weather/me           the site's account, as Weather has it: who, and your places, settings and
 //   PUT  /api/weather/me           notifications kept with it (functions/_wxacct.js)
-//   POST /api/weather/signin/...   signing in to it: salt and password, or options and passkey
+//   POST /api/weather/handback     signed in on the account's page, for Weather: its code swapped for the sign-in
 //   POST /api/weather/signout
 //   POST /api/weather/move         a phone's subscription replaced by its browser (weather/sw.js)
 //   POST /api/weather/tick         send what's due (the scheduler: .github/workflows/weather-tick.yml)

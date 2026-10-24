@@ -24,7 +24,8 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { maybeWxTick } from "../../_wxpush.js";
-import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn, accountMail } from "../../_account.js";
+import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, accountMail } from "../../_account.js";
+import { takeHandback } from "../../_handback.js";
 import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
@@ -57,8 +58,9 @@ function meView(u, t) {
 
 /* ---------------- accounts ----------------
    New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
-   invite; forgotten passwords are reset there too. InFlight signs in to them. (A copy of the app from before that
-   still asks here is told where to go.) */
+   invite; forgotten passwords are reset there too; and you sign in there, InFlight being handed the sign-in back, with
+   what unlocks its key (handback: functions/_handback.js). (A copy of the app from before that still asks here is
+   told where to go.) */
 const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.georgefarrowgreen.com.`, "moved"); };
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
@@ -101,12 +103,23 @@ async function salt({ request, env }) {
   return json({ salt: await saltFor(env, request, (await body(request)).email) });
 }
 
-// (the checks are the site's, the same wherever its account's signed in to: functions/_account.js)
-async function login({ request, env, waitUntil }) {
-  const u = await passwordUser(env, request, await body(request));
-  const token = await issueSession(env, u.id, request);
-  waitUntil(tellSignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) }), request, env, await hashOf(token));
+// Signed in on the account's page, for InFlight (functions/_handback.js): the code it was handed back with, and this
+// tab's word for it, swapped for InFlight's own sign-in; with the password-locked key, and the passkey's own copy where
+// it was a passkey that can open it, for what the page sealed to this tab to unlock (box). Where the browser shares the
+// site's sign-in, it's the one the page just made, moved to this one (as Continue as did); where it doesn't (a test
+// server's separate addresses), this one's given to the browser as well.
+async function handback({ request, env }) {
+  sameOrigin(request);
+  const { row, u, siteHash } = await takeHandback(env, request, "inflight", await body(request));
+  const token = await issueSession(env, u.id, request), hash = await hashOf(token), D = await db(env);
+  const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
+  const res = json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
+  const c = await cookieUser(request, env, true).catch(() => null);
+  if (c && c.sessionHash === row.session) {
+    await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(siteHash, hash), D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(row.session)]);
+    return res;
+  }
+  return withSession(res, request, env, hash, true);
 }
 
 async function logout({ request, env }) {
@@ -116,20 +129,15 @@ async function logout({ request, env }) {
   const c = cookieToken(request, env);
   return c && u.siteHash && (await hashOf(c)) === u.siteHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });
 }
-// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): who (and the salt for the
-// password), to carry on as; then, with the password's proof, this app's own sign-in, on the same session (the cookie's
-// moved to it), and the password-locked key, which the password unlocks on the phone. The cookie alone gets no more.
+// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): who, to carry on as (on the
+// account's page, which hands the sign-in back with what unlocks the key: handback). The cookie alone gets no more.
+// (Carrying on with the password's proof, here, as a copy of the app from before did: on the account's page now.)
 async function resume({ request, env }) {
   sameOrigin(request);
   const u = await cookieUser(request, env, true), b = await body(request).catch(() => ({}));
   if (!u) return json({ signedIn: false });
-  if (!b.proof) return json({ signedIn: true, name: u.name, handle: u.handle, salt: u.salt });
-  await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
-  if (!(await proofOk(env, b.proof, u.proof_hash))) throw new HttpError(401, "That password didn’t unlock your key.", "password");
-  const token = await issueSession(env, u.id, request), D = await db(env);
-  await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(u.siteHash, await hashOf(token)),
-    D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash)]);
-  return json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
+  if (b.proof) return elsewhere("Sign in")();
+  return json({ signedIn: true, name: u.name, handle: u.handle });
 }
 
 // The password-locked key, for a signed-in phone that needs to unlock it again
@@ -428,13 +436,6 @@ async function passkeyVault({ request, env }) {
   const r = await (await db(env)).prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND user_id = ?").bind(await lockVault(env, u.id, v), String(b.id), u.id).run();
   if (!r.meta.changes) throw new HttpError(404, "That passkey isn’t on your account.");
   return json({ ok: true });
-}
-
-async function passkeyLogin({ request, env, waitUntil }) {
-  const b = await body(request), { u, cred } = await passkeyUser(env, request, b);
-  const token = await issueSession(env, u.id, request);
-  waitUntil(tellSignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, await hashOf(token));
 }
 
 async function passkeyDelete({ request, env, waitUntil }) {
@@ -1103,19 +1104,6 @@ async function pwned({ request, env }) {
 // An account from before Argon2id, moved on at its next password sign-in: the same
 // password, stretched the new way (the phone sends the old proof as the check).
 // Not a password change: no email, and no one is signed out.
-async function passwordUpgrade({ request, env }) {
-  const u = await requireUser(request, env);
-  await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
-  const b = await body(request);
-  if (String(u.salt).startsWith("a2:")) return json({ ok: true });              // (already)
-  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
-  const vault = checkNewSecret(b);
-  if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
-  await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
-    .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
-  return json({ ok: true });
-}
-
 async function changePassword({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
@@ -1442,10 +1430,10 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": elsewhere("Sign in"), "POST handback": handback, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": elsewhere("Delete your account"),   // (on the account's page: a week's grace, and an email to keep it)
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
-  "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
+  "POST passkey-login": elsewhere("Sign in"), "DELETE passkey": passkeyDelete, "POST reauth": reauth,
   "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "POST account-link": accountLink, "GET pins": pinsGet, "POST pins": pinsPut,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
@@ -1453,7 +1441,8 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password-upgrade": elsewhere("Sign in"),   // (an older password moved on: on the account's page, as you sign in there)
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,

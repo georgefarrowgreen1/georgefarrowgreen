@@ -314,8 +314,8 @@ async function loadMe() {
   showMe();
 }
 function showMe() {
-  // (the account's page shows the way back here: #from=home)
-  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + "/#from=home";
+  // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
+  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + (a.id === "sign-in" ? "/#signin=home" : "/#from=home");
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
   body.classList.add("known");

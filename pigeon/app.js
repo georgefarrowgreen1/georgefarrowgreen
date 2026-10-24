@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.1";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.2";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -67,9 +67,9 @@ const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
-const AUTH_VIEWS = new Set(["welcome", "signin", "unlock", "locpick", "pkoffer"]);
+const AUTH_VIEWS = new Set(["welcome", "locpick", "pkoffer"]);
 // before you're in: all under the welcome's night sky, which carries on from one to the next
-const NIGHT_VIEWS = new Set(["welcome", "signin", "unlock"]);
+const NIGHT_VIEWS = new Set(["welcome"]);
 
 /* ---------------- state ---------------- */
 const S = {
@@ -78,7 +78,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true,
-  chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
@@ -1866,7 +1866,7 @@ async function forget() {
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map(),
+    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, drafts: new Map(), gevents: new Map(),
     avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
     syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0, resumable: null });
   clearAttach();
@@ -1885,19 +1885,64 @@ function keptAdd() {
   return null;
 }
 const toAccount = (hash = "") => (accountPage() || "https://account.georgefarrowgreen.com/") + hash;
-const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}">Create your account</a></p>`;
+const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
-// Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as once the
-// password's given (which unlocks the key here, and starts this app's own sign-in on the same session)
+// Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as (on the
+// account's page, showing it's you, as that's what unlocks the key here)
 async function resumeCheck() {
   try { const r = await api("resume", { method: "POST", body: {} }); if (r.signedIn && !S.me) { S.resumable = r; if (S.view === "welcome") render(); } } catch (_) {}
 }
-// (signed in to the account elsewhere on the site, in this browser: carrying on as them, once the password's given)
+// (signed in to the account elsewhere on the site, in this browser: carrying on as them; back from signing in, a moment
+// while it's taken up)
 function welcomeCta() {
   const r = S.resumable;
-  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.name))}</button><button class="wquiet" data-act="to" data-id="signin">Use another account</button></div></div>`;
-  return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="to" data-id="signin">Sign in</button></div>${newHere()}</div>`;
+  if (S.signingIn) return `<div class="wcta"><div class="stack"><button class="btn wide wglow" disabled>Signing in…</button></div></div>`;
+  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Continue as ${esc(first(r.name))}</button></div></div>`;
+  return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Sign in</button></div>${newHere()}</div>`;
+}
+// Signing in is on the account's own page (account.<site>), where every app on the site signs in: there with a word for
+// the sign-in, and a key pair for what unlocks the key here (pigeon/crypto.js handbackPair: kept on this phone, with the
+// link you came in on, for half an hour or until it's used; on the phone, not just the tab, as a Home Screen app can
+// open the account's page in a view of its own), and back with a code for it (signInBack).
+const SIGNIN_KEY = "inflight-signin";
+async function toAccountSignIn(e, mode) {
+  e?.preventDefault?.();
+  try {
+    const t = await E2E.handbackPair();
+    localStorage.setItem(SIGNIN_KEY, JSON.stringify({ word: t.word, pub: t.pub, priv: t.priv, at: now(), link: S.pendingLink || null }));
+    const back = location.origin + (location.pathname.startsWith("/pigeon/") ? "/pigeon/" : "/");
+    location.assign(toAccount(`#${new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back })}`));
+  } catch (_) { toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
+}
+// Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
+// InFlight's own sign-in, and the key unlocked with what the page sealed to this phone (the password's first half, or the
+// PRF secret of a passkey with its own copy of the key). A code from anywhere else, or one that's run out, is used up
+// and goes no further.
+async function signInBack(code) {
+  let k = null;
+  try { k = JSON.parse(localStorage.getItem(SIGNIN_KEY) || "null"); localStorage.removeItem(SIGNIN_KEY); } catch (_) {}
+  if (!k || now() - k.at > 30 * MIN) {
+    api("handback", { method: "POST", body: { code, verifier: "" } }).catch(() => {});
+    resumeCheck();
+    return toast("That sign-in was started somewhere else. Sign in again here.");
+  }
+  S.signingIn = true; render();
+  try {
+    const r = await api("handback", { method: "POST", body: { code, verifier: k.word } });
+    let ecdh;
+    try {
+      const got = await E2E.unseal(k.priv, k.pub, r.box);
+      ({ ecdh } = got.lock ? await E2E.unlock(await E2E.lockKeyOf(got.lock), r.vault) : await E2E.unlock(await E2E.fromSecret(fromB64url(got.prf)), r.pkVault));
+    } catch (_) { throw new Error("Signed in, but your key couldn’t be unlocked here. Sign in again."); }
+    await useKeys(r.token, r.me, ecdh);
+    if (k.link && !S.pendingLink) S.pendingLink = k.link;
+    S.signingIn = false;
+    await afterSignIn();
+  } catch (err) {
+    S.signingIn = false; render(); resumeCheck();
+    toast(esc(err.message));
+  }
 }
 
 /* ---------- the welcome sky ----------
@@ -1990,20 +2035,6 @@ function nightSky(cv) {
   };
   skyLoop = requestAnimationFrame(frame);
 }
-async function signInPassword(email, password) {
-  const { salt } = await api("salt", { method: "POST", body: { email } });
-  const { lockKey, proof } = await E2E.fromPassword(password, salt);
-  const r = await api("login", { method: "POST", body: { email, proof } });
-  let ecdh;
-  try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
-  catch (_) { throw new Error("Signed in, but your password couldn’t unlock your key. Try again."); }
-  await useKeys(r.token, r.me, ecdh);
-  // an account from before Argon2id: stretched again the new way, now that the password's here
-  if (!E2E.isCurrent(salt)) (async () => {
-    const ns = E2E.newSalt(), nw = await E2E.fromPassword(password, ns);
-    await api("password-upgrade", { method: "POST", body: { oldProof: proof, salt: ns, proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
-  })().catch((e) => console.warn("upgrade", e));
-}
 // The password-locked key, fetched with the password itself (its proof is the check)
 async function vaultWith(password) {
   const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
@@ -2040,35 +2071,6 @@ function deviceLabel() {
   return d;
 }
 const prfResult = (cred) => { const r = cred.getClientExtensionResults?.().prf; return r?.results?.first ? new Uint8Array(r.results.first) : null; };
-async function signInPasskey() {
-  const o = await api("passkey-options", { method: "POST", body: { mode: "login" } });
-  const a = await navigator.credentials.get({ publicKey: {
-    challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
-    extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
-  if (!a) throw new Error("No passkey was chosen.");
-  const r = await api("passkey-login", { method: "POST", body: {
-    challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
-    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) } });
-  const secret = prfResult(a);
-  if (secret && r.pkVault) {
-    try { const { ecdh } = await E2E.unlock(await E2E.fromSecret(secret), r.pkVault); return useKeys(r.token, r.me, ecdh); }
-    catch (_) { /* fall through to the password */ }
-  }
-  // This passkey signs in but can't unlock the key on its own: ask for the password once.
-  S.pendingUnlock = r;
-  go("unlock");
-}
-async function unlockWithPassword(password) {
-  let r = S.pendingUnlock;
-  const { lockKey, proof } = await E2E.fromPassword(password, r.salt);
-  // (signed in elsewhere on the site: the password's proof starts this app's sign-in, with the key to unlock)
-  if (r.resumed) r = await api("resume", { method: "POST", body: { proof } });
-  let ecdh;
-  try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
-  catch (_) { throw Object.assign(new Error("That password didn’t unlock your key."), { field: "password" }); }
-  S.pendingUnlock = null;
-  await useKeys(r.token, r.me, ecdh);
-}
 // Save a passkey; if the phone supports PRF, give it its own locked copy of the key.
 async function addPasskey() {
   const o = await api("passkey-options", { method: "POST", body: { mode: "register" } });
@@ -2474,6 +2476,10 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
+    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.georgefarrowgreen.com, where you sign in for every app on the site, and brings you straight back."],
+    ["person", "green", "Your messages open as you come back", "The password or passkey you sign in with there unlocks them here too, so you only show it’s you once."],
+  ] },
   { v: "1.3.1", at: Date.UTC(2026, 9, 24), title: "Smoother", items: [
     ["bubble", "blue", "Messages that move", "A pigeon comes down as it lands in front of you, chats slide to the top as news arrives, and what’s new fades in instead of jumping."],
     ["up", "green", "Sent at once", "What you send shows straight away as it takes off, and the box is ready for the next. Scrolled up, a pill says when a pigeon arrives below."],
@@ -2947,7 +2953,7 @@ function underlay() {
 }
 function edgeBack() {
   const r = root(); let st = null;
-  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked || onceOpen ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
+  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked || onceOpen ? null : $(".nb-left .nbtn.back", $view));
   const moving = () => [$view, $compose.hidden ? null : $compose];
   const place = (s2, dx) => {
     const p = Math.min(1, dx / s2.w);
@@ -4977,10 +4983,7 @@ function field(name, placeholder, type, ac, prefix) {
   return `<label class="fcell">${prefix ? `<span class="pre">${prefix}</span>` : ""}<input id="f-${name}" name="${name}" type="${type}" placeholder="${esc(placeholder)}" autocomplete="${ac}" aria-label="${esc(placeholder)}"${type === "email" || name === "handle" ? ' autocapitalize="off" spellcheck="false"' : ""}${name === "handle" ? ' maxlength="20"' : ""}>${type === "password" ? `<button type="button" class="peek" data-act="peek" aria-label="Show password">${I.eye}</button>` : ""}</label>`;
 }
 const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
-// a link out to the account's page (a forgotten password), as a row
-const linkCell = (href, label) => `<a class="cell action" href="${esc(href)}"><span class="ctext"><span>${label}</span></span></a>`;
 function vAuth() {
-  const back = (to) => navbar("", { left: backBtn("to", to) });
   switch (S.view) {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
     case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
@@ -4989,27 +4992,6 @@ function vAuth() {
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
-    // (as on every page of the site that signs in: a passkey first, then your email and password)
-    case "signin": return `<div class="auth night">${back("welcome")}
-        <h1 class="large">Sign in</h1>
-        <p class="sub">With your georgefarrowgreen.com account.</p>
-        ${passkeysSupported() ? `<div class="stack mt-s"><button type="button" class="btn wide" data-act="pkget">${I.face}Sign in with a passkey</button></div><p class="orline">or with your email</p>` : ""}
-        <form data-form="signin" novalidate>
-          <div class="group">${field("email", "Email", "email", "username webauthn")}${field("password", "Password", "password", "current-password")}</div>
-          ${ferr}
-          <div class="pad"><button class="btn wide${passkeysSupported() ? " plain" : ""}">Sign in</button></div>
-        </form>
-        <div class="group">${linkCell(toAccount("#forgot"), "Forgot password?")}</div>
-        ${newHere()}
-      </div>`;
-    case "unlock": return `<div class="auth night">${navbar("", { left: backBtn("cancelunlock") })}
-        <h1 class="large">Unlock messages</h1>
-        <p class="sub">${S.pendingUnlock?.resumed ? "You’re already signed in to your georgefarrowgreen.com account here." : "Your passkey signed you in."} Enter your password once so this phone can unlock your encryption key.</p>
-        <form data-form="unlock" novalidate>
-          <div class="group mt-s">${field("password", "Password", "password", "current-password")}</div>${ferr}
-          <div class="pad"><button class="btn wide">Unlock</button></div>
-        </form>
-        <div class="group">${linkCell(toAccount("#forgot"), "Forgot password?")}</div></div>`;
     case "locpick": return `<div class="auth">${navbar("")}
         <h1 class="large">Where are you?</h1>
         <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s rounded to about a mile, and only your friends see it.</p>
@@ -7557,7 +7539,7 @@ async function busyBtn(btn, label, fn) {
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
-const ONCE_ACTS = new Set(["accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh"]);
+const ONCE_ACTS = new Set(["acctsignin", "acctjoin", "accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh"]);
 const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
@@ -7991,16 +7973,12 @@ async function onClick1(e, t) {
         toast(unlocks ? "Passkey saved. It can sign you in and unlock your messages." : "Passkey saved. On a new phone you’ll also need your password once.");
       } catch (err) { if (!err.cancelled && err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
       return;
-    case "pkget":
-      try { await busyBtn(t, "Waiting for your passkey…", signInPasskey); if (S.priv) afterSignIn(); }
-      catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
-      return;
     case "pkdel":
       try { await withFresh(() => api("passkey", { method: "DELETE", body: { id } })); toast("Passkey removed. You can also delete it from your phone’s Passwords app."); }
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
-    case "cancelunlock": S.pendingUnlock = null; return go("welcome");
-    case "resume": if (!S.resumable) return; S.pendingUnlock = { salt: S.resumable.salt, resumed: true }; return go("unlock");
+    case "acctsignin": return toAccountSignIn(e, "signin");
+    case "acctjoin": return toAccountSignIn(e, "join");
     case "signout": {
       const waiting = S.outbox.filter((o) => !o.err).length;
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
@@ -8271,15 +8249,7 @@ async function submitForm(e, form, kind) {
     return addGo(h, btn);
   }
   const v = Object.fromEntries(new FormData(form));
-  if (kind === "signin") {
-    if (!String(v.email || "").trim()) return showErr("Enter your email.", "email");
-    if (!v.password) return showErr("Enter your password.", "password");
-    try { await busyBtn(btn, "Signing in…", () => signInPassword(String(v.email).trim(), v.password)); afterSignIn(); }
-    catch (err) { showErr(err.message); }
-  } else if (kind === "unlock") {
-    try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
-    catch (err) { showErr(err.message, err.field); }
-  } else if (kind === "reauth") {
+  if (kind === "reauth") {
     if (!v.password) return showErr("Enter your password.", "password");
     try {
       await busyBtn(btn, "Checking…", async () => {
@@ -9039,6 +9009,9 @@ async function start() {
   if (NEW_HOME && !standalone() && !(await idb.get("session"))?.token) return location.replace(`${NEW_HOME}/${location.hash}`);
   mount();
   textSize(); window.addEventListener("focus", textSize);
+  // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
+  const signedBack = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  if (signedBack) history.replaceState(null, "", location.pathname);
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
@@ -9069,7 +9042,9 @@ async function start() {
     if (!Object.keys(S.pins).length) await restorePins();
     else if (!(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
-    if (!S.token) { movedNote(); resumeCheck(); } else {
+    if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
+    // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
+    if (signedBack) { try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {} api("handback", { method: "POST", body: { code: signedBack, verifier: "" } }).catch(() => {}); }
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
@@ -9090,7 +9065,9 @@ async function start() {
       refreshPush(); autoLocate(); movedNote();
     } catch (e) { console.error("start", e); }
     }
-  } else { if (S.view !== "welcome") go("welcome"); movedNote(); resumeCheck(); }
+  } else { if (S.view !== "welcome") go("welcome"); movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); }
+  // (InFlight as it was before you went to sign in, brought back by the browser: anew, if you're signed in now)
+  addEventListener("pageshow", (e) => { if (e.persisted && !S.me) idb.get("session").then((x) => (x?.token ? location.reload() : resumeCheck()), () => {}); });
   // an add-a-friend link opened while InFlight is already open in this tab (an invite or a reset link: passed on)
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;

@@ -1,9 +1,9 @@
 // What a sync costs: someone with 8 friends and 5 groups, pigeons each way. How many trips to the
 // database it makes (the server counts them in tests: X-DB-Trips) and how long it takes, and that
 // what it returns is the same as last time it was saved (SAVE=1 ./run.sh syncperf saves it).
+import { madeIn } from './handback.mjs';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { randomUUID } from 'crypto';
-import http from 'http';
 const [,, S] = process.argv;
 const BASE = 'http://localhost:8788';
 let fails = 0; const ok = (c, l, x = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${x ? '  — ' + x : ''}`); if (!c) fails++; };
@@ -11,16 +11,10 @@ const api = async (t, path, body, method) => { const r = await fetch(BASE + '/ap
   return [r.status, await r.json().catch(() => ({})), r.headers]; };
 const rnd = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 const realPub = async () => { const k = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']); const j = await crypto.subtle.exportKey('jwk', k.publicKey); return { kty: j.kty, crv: j.crv, x: j.x, y: j.y }; };
-// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; then signed in to
-// InFlight with the same password proof)
-const acctPost = (path, data) => new Promise((done, no) => {
-  const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/' + path, method: 'POST', headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json' } },
-    (res) => { res.resume(); res.on('end', () => done(res.statusCode)); });
-  q.on('error', no); q.end(JSON.stringify(data));
-});
+// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; and signed in to
+// InFlight from there, as a phone is: handback.mjs)
 const user = async (h, name, lat, lon, place) => { const proof = rnd(), email = h + '@example.com';
-  await acctPost('signup', { name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() });
-  const [, u] = await api(null, 'login', { email, proof });
+  const u = (await madeIn({ name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() })).j;
   await api(u.token, 'me', { lat, lon, place }, 'PATCH'); return u; };
 const CITIES = [['Paris', 48.86, 2.35], ['Rome', 41.9, 12.5], ['Madrid', 40.4, -3.7], ['Berlin', 52.5, 13.4], ['Dublin', 53.35, -6.26], ['Oslo', 59.9, 10.75], ['Lisbon', 38.7, -9.14], ['Vienna', 48.2, 16.37]];
 const H = await user('hub', 'Hana Hub', 51.5, -0.12, 'London');

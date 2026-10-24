@@ -366,6 +366,10 @@ const MIGRATIONS = [
   // the profile card's poster: a larger copy of your photo (functions/_profile.js putPoster), and the point of it that
   // stays in view ("x y", in percent)
   "ALTER TABLE pg_users ADD COLUMN poster_at INTEGER", "ALTER TABLE pg_users ADD COLUMN poster_focus TEXT",
+  // a sign-in made on the account's page for an app that sent you there, handed back to it (functions/_handback.js): a
+  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for InFlight, what
+  // unlocks the key there, sealed to that tab (box), and the passkey whose own copy of the key it opens (pk)
+  "CREATE TABLE IF NOT EXISTS pg_handback (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, app TEXT NOT NULL, ask TEXT NOT NULL, box TEXT, pk TEXT, expires INTEGER NOT NULL)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

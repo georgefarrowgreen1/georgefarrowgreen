@@ -221,8 +221,27 @@ Motion, solid with Reduce Transparency.
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
-  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours". Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
-  email", the form, **Forgot password?**, and **New here? Create your account**, both of which open this page.
+  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours".
+- **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
+  and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
+  `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
+  password; or a new account made), you're sent straight back, the sign-in handed back with a code in the address's
+  `#` that's good once, for two minutes, and only in the tab that asked: the app keeps a secret for it (sessionStorage),
+  sends only its hash (`ask`), and swaps the code with the secret itself (`POST /api/pigeon/handback`, `POST
+  /api/weather/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
+  Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, <site>/, or
+  InFlight's old <site>/pigeon/). For InFlight it brings what unlocks the key there: the password's first half, or the
+  PRF secret of a passkey with its own copy of the key (asked for with the sign-in), sealed on this page to a key pair
+  InFlight's tab made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
+  neither the server nor anyone with the code can open it, and you show it's you once, here. A passkey that can't open
+  the messages (no copy of the key, or no PRF in that browser) asks for the password too, as "One more step for
+  InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
+  a passkey that opens the messages (a code for InFlight is made only for a sign-in that's just shown it's you), or one
+  tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
+  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself.
+  The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
+  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
+  has none.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
   No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
@@ -353,7 +372,8 @@ Motion, solid with Reduce Transparency.
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
   back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
-  sign-in in the same order and words, a new account and a forgotten password only here; a reset link by email,
+  Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
+  password only here; a reset link by email,
   passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
   refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
   over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
@@ -690,15 +710,14 @@ so there's nothing to set up beyond the address.
   moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate
   rain here now", or "No rain within about 290 km" (only as far as the radar
   sees; nothing where it doesn't see the place) (`weather/rainmap.js` rainSaid).
-- **Your account** (top of Settings; signed out, a row there opens the sign-in): signed in with your georgefarrowgreen.com
-  account, your saved places, settings and notification choices are kept with
+- **Your account** (top of Settings; signed out, a row there, **Sign in**, takes you to the account's page): signed in
+  with your georgefarrowgreen.com account, your saved places, settings and notification choices are kept with
   it and are the same on every device you're signed in on; the app works just
   the same without. The sign-in is the site's own (below, *One account*):
-  signed in on the site anywhere in this browser, Weather is too; or it signs in
-  itself, with a passkey (the site's: one made anywhere on the site works here)
-  or an email and password (stretched on the device as everywhere on the site,
-  Argon2id via a copy of hash-wasm's build, `weather/argon2.js`; the password
-  never leaves it). Signed in, it's just **one card for the account** (your
+  signed in on the site anywhere in this browser, Weather is too; or its Sign in row takes you to the account's page
+  (account.<site>, where every app on the site signs in), which sends you back signed in, the sign-in handed back with
+  a code only this tab can use (`functions/_handback.js`), and this device's places then go to the account without
+  asking, with "Signed in as Sam." Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -918,9 +937,16 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.1
+## InFlight (chat.georgefarrowgreen.com) — 1.3.2
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.2** (one sign-in): InFlight signs in on the account's page, the one place every app on the site signs in. Its
+welcome's **Sign in** (or **Continue as …**, signed in elsewhere on the site already) and **Create your account** go
+there, and it's handed the sign-in back with what unlocks the key, sealed to this tab, so your messages open as you come
+back and you show it's you once (*Your account* above). Its own sign-in screen and Unlock Messages screen are gone, and
+so are its sign-in routes (they answer 410, saying where to sign in). A link you came in on (a chat from a
+notification) waits through the trip and opens once you're in.
 
 **1.3.1** (smoother, from the motion audit below): a redraw moves rather than jumps. What matters on a screen carries
 a key (`data-key`, with `data-sig` for what it says and `data-in` for how it arrives), so after `render()` rows and
@@ -1746,25 +1772,26 @@ info. Every change to who's in a group (made, added, left, renamed) shows as a
 line in its chat, so no one can be slipped in without everyone seeing.
 
 **One account for the site.** The same account (email, password, passkeys) signs in to every app on
-georgefarrowgreen.com, and one sign-in serves them all in a browser (`functions/_account.js`). Each sign-in starts a
-session as before and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
-georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signing in to one app
-signs you in to the others in that browser, and signing out of any of them (or deleting the account, or a password
+georgefarrowgreen.com, on its own page, account.georgefarrowgreen.com, and only there (each app sends you there and is
+handed the sign-in back: *Your account* above), and one sign-in serves them all in a browser (`functions/_account.js`).
+Each sign-in starts a session and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
+georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signed in for one app,
+you're signed in to the others in that browser, and signing out of any of them (or deleting the account, or a password
 reset) ends it for all. The cookie holds a token of its own for the session (`pg_sessions.site_hash`), not the
 session's bearer token, so it opens nothing of InFlight's; and it's only given in answer to a sign-in from the app's
 own pages (the browser's Origin), so a sign-in another site sends in your browser, even with a good password, can't
-sign the browser in. InFlight keeps its own bearer token as before; it gives an existing sign-in a cookie the first
-time it syncs after this change; and, opened signed out where the browser's signed in elsewhere on the site, its
-welcome says "Signed in as …" with **Continue as …**, which asks for the password: its proof (`POST
-/api/pigeon/resume`, from InFlight's own pages only) starts InFlight's own session in place of the cookie's, and the
-password unlocks the key on the phone. Apps that keep nothing themselves (Weather) ask with the cookie, only from
+sign the browser in. InFlight keeps its own bearer token as before, given to it by the hand-back with what unlocks its
+key (where the browser shares the site's sign-in, the one the account's page just made is moved to it, so it's one
+sign-in); it gives an existing sign-in a cookie the first time it syncs; and, opened signed out where the browser's
+signed in elsewhere on the site, its welcome says "Signed in as …" with **Continue as …**, which takes you to the
+account's page to show it's you (the cookie alone starts no InFlight session). Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
 made for the site (rpId georgefarrowgreen.com) at chat., the site's own address, weather. and account., so one passkey works at
 all of them; an answer from one is taken only at the address it was given at. The profile (photo, name, handle, email) is the
 account's, one set of rules for every app (`functions/_profile.js`). The password and passkey checks, with
 their limits and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the
 same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
-signs in on its own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
+signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
 page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
 (Privacy & Security → Your Account).
@@ -1971,7 +1998,9 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   handles it had lately held for no one; an account being deleted gets no InFlight emails, and the "Keep my account"
   link goes only to a confirmed address. InFlight's old instant `DELETE /api/pigeon/me` is gone (410: the account's
   page, with its week's grace). A reset says it removes your passkeys. The account page has Sign out when opened from
-  the home page. Weather's copy of the password code is checked against InFlight's (`unit/sitecopies.test.mjs`).
+  the home page. (Weather once had a copy of the password code, kept in step with InFlight's by a test; it signs in on
+  the account's page now, so it has none: `unit/signin.test.mjs` checks the hand-back's sealing and word, where the page
+  will send a sign-in back to, and that no app signs in by itself.)
 - **Passkeys open InFlight's messages wherever they're added.** One added on the account's page asks the device for its
   PRF secret (as InFlight does), then the password once, and locks the passkey's own copy of the key to the messages
   with it (`POST /api/account/passkeys/vault`; the key is unlocked and locked again on the page, never sent as it is).

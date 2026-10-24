@@ -35,8 +35,7 @@ sql(`UPDATE pg_users SET email_ok = ${Date.now()} WHERE handle = 'geo'`);
 await K.pushOn(G);
 const t0 = Date.now(), m0 = mails().length;
 const G2 = await K.phone('george-laptop');
-await G2.p.waitForSelector('.welcome'); await G2.p.click('[data-act=to][data-id=signin]'); await G2.p.fill('#f-email', 'george@example.com'); await G2.p.fill('#f-password', 'a long test password');
-await G2.p.click('[data-form=signin] .btn'); await G2.p.waitForSelector('.tabs', { timeout: 20000 });
+await signInInFlight(G2.p, K.URL, { email: 'george@example.com' }); await G2.p.waitForSelector('.tabs', { timeout: 20000 });
 let push = null; for (let k = 0; k < 20 && !push; k++) { await G2.p.waitForTimeout(400); push = await K.lastPush(gKeys, t0); }
 ok(push && push.msg.title === 'New sign-in' && /signed in on .+(Android|iPhone|Safari|Chrome)/.test(push.msg.body), 'the first phone is told of the new sign-in', push?.msg.body);
 let mail = null; for (let k = 0; k < 20 && !mail; k++) { await G2.p.waitForTimeout(300); mail = mails().slice(m0).find((m) => /new sign-in/i.test(m.subject || '')); }

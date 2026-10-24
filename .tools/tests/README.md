@@ -10,8 +10,9 @@ every file parses.
 **End-to-end tests** (everything else here): real browsers (Playwright) drive the app against a
 fresh local copy of the site for each test (`wrangler pages dev` on :8788, an empty database),
 with stand-ins for Web Push, email, GIPHY, the weather and Have I Been Pwned (`mocks/`). People
-make accounts (on the account's page, as everyone does now: `join.mjs`), add friends, send pigeons,
-and the tests check what lands, what's drawn and what's pushed.
+make accounts and sign in (from the app, on the account's page, and back, as everyone does now: `join.mjs`; a test
+that drives InFlight's API directly signs in the same way, `handback.mjs`), add friends, send pigeons, and the tests
+check what lands, what's drawn and what's pushed.
 
     cd .tools/tests && npm ci
     npx playwright install chromium          # or point CHROMIUM at a Chromium you have

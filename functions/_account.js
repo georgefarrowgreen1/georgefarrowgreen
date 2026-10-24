@@ -1,18 +1,20 @@
 // The site's one account (georgefarrowgreen.com): the same email, password and passkeys in every app on it, and one
 // sign-in shared by them all in a browser.
 //
-// Each app's sign-in starts a session (pg_sessions: functions/_pigeon.js) and gives it to the browser as a cookie for
-// the whole site as well: HttpOnly (no page's own script can read it), SameSite=Lax, and Secure. So signing in to one
-// app signs you in to the others in that browser, and signing out of any of them ends the session for them all. The
-// cookie carries a token of its own for the session (site_hash), not the session's bearer token: it opens nothing of
-// InFlight's. An app that keeps its own copy of the session (InFlight's bearer token, for its keys and its messages)
-// carries on with that; with none, it can start one from the cookie's session only with the password (resume); one that
-// keeps nothing (Weather) asks with the cookie each time, for its own things only, and only from its own pages
-// (sameOrigin). The cookie's only given in answer to a sign-in from the app's own pages: a sign-in another site sends
-// in your browser (with its own account) can't sign the browser in.
+// You sign in on the account's own page (account.<site>), and only there: each app sends you there to sign in, and is
+// handed the sign-in back (functions/_handback.js). A sign-in starts a session (pg_sessions: functions/_pigeon.js) and
+// gives it to the browser as a cookie for the whole site as well: HttpOnly (no page's own script can read it),
+// SameSite=Lax, and Secure. So signed in for one app, you're signed in to the others in that browser, and signing out
+// of any of them ends the session for them all. The cookie carries a token of its own for the session (site_hash), not
+// the session's bearer token: it opens nothing of InFlight's. An app that keeps its own copy of the session (InFlight's
+// bearer token, for its keys and its messages) carries on with that; with none, it gets one only from a hand-back,
+// which brings what unlocks its key; one that keeps nothing (Weather) asks with the cookie each time, for its own things
+// only, and only from its own pages (sameOrigin). The cookie's only given in answer to a sign-in from the site's own
+// pages: a sign-in another site sends in your browser (with its own account) can't sign the browser in.
 //
 // (A web app added to an iPhone's Home Screen keeps cookies of its own, apart from Safari's and from other such apps,
-// so there each app is signed in to separately; with a passkey, that's one tap.)
+// so there each app is signed in to separately, the account's page opening inside it to do it; with a passkey, that's
+// one tap.)
 //
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
@@ -148,15 +150,16 @@ export async function accountMail(env, u, { icon = "shield", title, line, after,
 }
 
 // "A new sign-in", to the account's phones (in InFlight, as InFlight says it, with where to sign it out) and by email,
-// from the account, saying which app it was in
-export async function tellSignIn(env, u, request, how, origin, inflight = true) {
+// from the account, saying which app it was in (or for, signed in on the account's page for an app: inflight, or
+// forApp "weather")
+export async function tellSignIn(env, u, request, how, origin, inflight = true, forApp = null) {
   await logEvent(env, u.id, "signin", request, how);
   const device = deviceOf(request) || "a new phone";
   let where = regionOf(request.cf?.country);
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
   const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your InFlight account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
-  const app = inflight ? "InFlight" : new URL(request.url).hostname.startsWith("weather.") ? "Weather" : "Account page";
+  const app = inflight ? "InFlight" : forApp === "weather" || new URL(request.url).hostname.startsWith("weather.") ? "Weather" : "Account page";
   // (where it was, once, in the pill: the words and the details don't say it again)
   await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account", pill: ["phone", [device, where.replace(/^the /, "")].filter(Boolean).join(" · ")],
     line: "someone just signed in to your account. If it was you, there’s nothing to do.",

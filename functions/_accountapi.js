@@ -1,8 +1,8 @@
 // The account's own routes, answered the same way by every page on the site that keeps no session of its own (Weather,
-// and the account's page at account.georgefarrowgreen.com): signing in (salt and password, or options and passkey) and
-// out, and the profile (your photo, name and handle: functions/_profile.js). They act only with the site's cookie
-// (functions/_account.js), and only from the page's own address (sameOrigin). view(env, u): the account as that page
-// shows it.
+// and the account's page at account.georgefarrowgreen.com): signing in (salt and password, or options and passkey: on
+// the account's page only, where every app on the site signs in) and out, and the profile (your photo, name and handle:
+// functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
+// address (sameOrigin). view(env, u): the account as that page shows it.
 
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256 } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
@@ -25,20 +25,23 @@ export async function signedIn(request, env, { deleting = false } = {}) {
   return u;
 }
 
-// (deleting: an account being deleted signs in here, to keep it: the account's own page)
-export function accountRoutes(view, { onSignOut = null, deleting = false } = {}) {
-  // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's
+// (deleting: an account being deleted signs in here, to keep it: the account's own page; signIn: false for a page
+// that doesn't sign in itself, as every app on the site now signs in on the account's page: functions/_handback.js)
+export function accountRoutes(view, { onSignOut = null, deleting = false, signIn = true } = {}) {
+  // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's,
+  // or as the app's it's for, where an app sent you here to sign in (app: "inflight" or "weather")
   // (the session's own token's never given out here: only the cookie's)
-  async function started(request, env, waitUntil, u, how) {
+  async function started(request, env, waitUntil, u, how, app) {
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), false).catch(() => {}));
+    waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", app === "weather" ? "weather" : null).catch(() => {}));
     return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash);
   }
-  return {
+  const ins = {
     "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
     "POST signin/password": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
-      return started(request, env, waitUntil, await passwordUser(env, request, await body(request), { deleting }), "Password");
+      const b = await body(request);
+      return started(request, env, waitUntil, await passwordUser(env, request, b, { deleting }), "Password", b.app);
     },
     "POST signin/options": async ({ request, env }) => {
       sameOrigin(request);
@@ -47,8 +50,12 @@ export function accountRoutes(view, { onSignOut = null, deleting = false } = {})
     },
     "POST signin/passkey": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
-      return started(request, env, waitUntil, (await passkeyUser(env, request, await body(request), { deleting })).u, "Passkey");
+      const b = await body(request);
+      return started(request, env, waitUntil, (await passkeyUser(env, request, b, { deleting })).u, "Passkey", b.app);
     },
+  };
+  return {
+    ...(signIn ? ins : {}),
     // signing out: the site's sign-in ended (so everywhere it was shared)
     "POST signout": async ({ request, env }) => {
       sameOrigin(request);

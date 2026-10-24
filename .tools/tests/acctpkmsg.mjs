@@ -58,10 +58,12 @@ await p.evaluate(() => new Promise((res) => { const r = indexedDB.deleteDatabase
 await p.evaluate(() => fetch('/api/pigeon/signout', { method: 'POST' }).catch(() => {}));
 await ctx.clearCookies();
 await p.goto(`${CHAT}/`); await p.waitForSelector('.welcome', { timeout: 30000 });
-await p.click('[data-act=to][data-id=signin]'); await p.waitForSelector('[data-act=pkget]');
-await p.click('[data-act=pkget]');
-const where = await Promise.race([p.waitForSelector('.tabs', { timeout: 30000 }).then(() => 'app'), p.waitForSelector('[data-form=unlock]', { timeout: 30000 }).then(() => 'password')]).catch(() => 'nothing');
-ok(where === 'app', 'signed in to InFlight with the passkey: the messages open, no password asked', where);
+// (signing in is on the account's page: its passkey, which hands InFlight what opens the passkey's copy of the key)
+await p.click('.welcome [data-act=acctsignin]'); await p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await p.waitForSelector('main .btn:has-text("Sign in with a passkey")', { timeout: 20000 }); await p.click('main .btn:has-text("Sign in with a passkey")');
+const where = await Promise.race([p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).then(() => p.waitForSelector('.tabs', { timeout: 30000 })).then(() => 'app'),
+  p.waitForFunction(() => /One more step/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 30000 }).then(() => 'password')]).catch(() => 'nothing');
+ok(where === 'app' && /chat\./.test(p.url()), 'signed in to InFlight with the passkey, on the account’s page: the messages open, no password asked', where);
 await shot('03-inflight');
 
 // 3. a passkey from before, with no copy: set up from its own page

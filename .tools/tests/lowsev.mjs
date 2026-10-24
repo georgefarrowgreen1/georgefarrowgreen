@@ -1,6 +1,8 @@
 // Three small server fixes: guessing elsewhere can't lock you out, two standard pigeons at once
 // can't both take the turn, and unfriending puts booked pigeons back in their lofts.
 import { kit } from './lib.mjs';
+import { signInInFlight } from './join.mjs';
+import { acctCall } from './handback.mjs';
 import { randomUUID } from 'crypto';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -12,15 +14,14 @@ const [as, bs] = [await sess(A), await sess(B)];
 await api(as.token, 'friends', { handle: bs.me.handle }); await api(bs.token, 'friends-respond', { id: as.me.id, accept: true });
 const post = (path, body, headers = {}) => fetch(K.BASE + '/api/pigeon/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }).then(async (r) => [r.status, await r.json().catch(() => ({}))]);
 
-// 1. forty wrong passwords for Ann, from four other addresses
+// 1. forty wrong passwords for Ann, from four other addresses (on the account's page, where every app signs in)
 const codes = [];
-for (let ip = 1; ip <= 4; ip++) for (let i = 0; i < 10; i++) codes.push((await post('login', { email: 'ann@example.com', proof: 'x'.repeat(43) }, { 'CF-Connecting-IP': `203.0.113.${ip}` }))[0]);
+for (let ip = 1; ip <= 4; ip++) for (let i = 0; i < 10; i++) codes.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'x'.repeat(43) }, { ip: `203.0.113.${ip}` })).s);
 ok(codes.every((c) => c === 401), 'forty wrong tries from elsewhere: each just refused', JSON.stringify([...new Set(codes)]));
-const A2 = await K.phone('ann2'); await A2.p.waitForSelector('.welcome'); await A2.p.click('[data-act=to][data-id=signin]');
-await A2.p.fill('#f-email', 'ann@example.com'); await A2.p.fill('#f-password', 'a long test password'); await A2.p.click('[data-form=signin] .btn');
+const A2 = await K.phone('ann2'); await signInInFlight(A2.p, K.URL, { email: 'ann@example.com' });
 ok(await A2.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'Ann still signs in with her password, from her own phone');
 // one address that keeps guessing is held back (its own 10 per 15 minutes, before the account's 30)
-const more = []; for (let i = 0; i < 3; i++) more.push((await post('login', { email: 'ann@example.com', proof: 'y'.repeat(43) }, { 'CF-Connecting-IP': '203.0.113.1' }))[0]);
+const more = []; for (let i = 0; i < 3; i++) more.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'y'.repeat(43) }, { ip: '203.0.113.1' })).s);
 ok(more.every((c) => c === 429), 'the guessing address itself is held back', JSON.stringify(more));
 
 // 2. two standard pigeons at the same moment, one from each of them: only one takes the turn
