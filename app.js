@@ -667,7 +667,34 @@ $("#c-message").addEventListener("input", fold);
 $("#c-message").addEventListener("focus", () => setTimeout(() => window.kbSnap?.("focused"), 800));
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
 // (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
-function steady() { window.kbSnap?.("settled"); recaret(); window.relift?.(); setTimeout(() => window.kbSnap?.("1s on"), 1000); }
+function steady() { window.kbSnap?.("settled"); refocus(); window.relift?.(); setTimeout(() => window.kbSnap?.("1s on"), 1000); }
+// (an iPhone keeps a caret where it was in the sheet, even moved, when what's above it in the sheet changes size, and
+// even when the selection's moved: it only works it out afresh as the field takes the focus. So the focus goes for a
+// frame to a stand-in where the field is, and comes back, the caret where it was; with a field focused all the while,
+// the keyboard stays up)
+let standIn = null;
+function refocus() {
+  const el = document.activeElement;
+  if (!typingInSheet() || el.tagName !== "TEXTAREA") return recaret();
+  const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection, r = el.getBoundingClientRect();
+  if (!standIn) {
+    standIn = document.createElement("textarea");
+    standIn.tabIndex = -1; standIn.setAttribute("aria-hidden", "true");
+    Object.assign(standIn.style, { position: "fixed", width: "1px", height: "1px", padding: "0", border: "0", opacity: "0", pointerEvents: "none", fontSize: "17px", resize: "none" });
+  }
+  Object.assign(standIn.style, { top: `${r.top + 14}px`, left: `${r.left + 16}px` });
+  el.closest("dialog").append(standIn);
+  standIn.focus({ preventScroll: true });
+  requestAnimationFrame(() => {
+    if (document.activeElement === standIn) {
+      el.focus({ preventScroll: true }); el.setSelectionRange(a, b, dir);
+      // (anything typed in that frame, put where it was meant to go)
+      if (standIn.value) { el.setRangeText(standIn.value, a, b, "end"); el.dispatchEvent(new Event("input", { bubbles: true })); }
+    }
+    standIn.value = ""; standIn.remove();
+    window.kbSnap?.("refocused");
+  });
+}
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
