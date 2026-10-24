@@ -528,14 +528,6 @@ for (const d of $$("dialog.sheet")) {
 // On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it (smoothly: styles.css)
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  // (#kb in the address: the measurements, shown in the open sheet (or over the page), to see what a phone does)
-  const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:absolute;z-index:999;top:4px;left:12px;right:12px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.8);color:#7f7;font:10px/1.3 ui-monospace,monospace;pointer-events:none;white-space:pre-wrap" }) : null;
-  window.kbSnap = (label) => {
-    if (!probe) return;
-    const d = $("dialog.sheet[open]"), box = d && $(".sheet-in", d), m = $("#c-message"), r = d?.getBoundingClientRect();
-    const line = `${label}: msg ${m.getBoundingClientRect().top.toFixed(0)} box ${box ? `${box.scrollTop}/${box.clientHeight}/${box.scrollHeight}` : "-"} sheet ${r ? `${r.top.toFixed(0)}-${r.bottom.toFixed(0)}` : "-"} vv ${vv.height.toFixed(0)}@${vv.offsetTop.toFixed(0)} kb ${kb} y ${scrollY}`;
-    (window.kbLog ||= []).push(line); if (kbLog.length > 8) kbLog.shift();
-  };
   let kb = 0, moved = null;
   const lift = () => {
     const k = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
@@ -544,14 +536,7 @@ if (window.visualViewport) {
       // (the sheet moved under the field being typed in: its caret drawn again once it's settled, styles.css)
       clearTimeout(moved); moved = setTimeout(recaret, 400);
     }
-    if (!probe) return;
-    const d = $("dialog.sheet[open]") || body;
-    if (probe.parentNode !== d) d.append(probe);
-    probe.style.position = d === body ? "fixed" : "absolute";
-    window.kbSnap("now"); const now = kbLog.pop();
-    probe.textContent = `inner ${innerHeight} screen ${screen.height}\n${now}\n${(window.kbLog || []).join("\n")}`;
   };
-  if (probe) { addEventListener("scroll", lift, { passive: true }); setInterval(lift, 250); }
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
   // (and measured every frame while something in a sheet's being typed in: an iPhone doesn't always say when it moves
   // its view of the page under the keyboard, and a sheet left where it was stands off the keyboard, or under it)
@@ -664,18 +649,21 @@ const fold = () => {
   morphFrom(true);
 };
 $("#c-message").addEventListener("input", fold);
-$("#c-message").addEventListener("focus", () => setTimeout(() => window.kbSnap?.("focused"), 800));
+$("#c-message").addEventListener("blur", () => { if (document.activeElement !== standIn) caretShown(); });
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
 // (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
-function steady() { window.kbSnap?.("settled"); refocus(); window.relift?.(); setTimeout(() => window.kbSnap?.("1s on"), 1000); }
+function steady() { refocus(); window.relift?.(); }
 // (an iPhone keeps a caret where it was in the sheet, even moved, when what's above it in the sheet changes size, and
 // even when the selection's moved: it only works it out afresh as the field takes the focus. So the focus goes for a
 // frame to a stand-in where the field is, and comes back, the caret where it was; with a field focused all the while,
 // the keyboard stays up)
 let standIn = null;
+// (and while the sheet's changing shape under it, the caret's hidden, so it isn't seen drawn out of place and put back)
+const caretHidden = () => { $("#c-message").style.caretColor = "transparent"; };
+const caretShown = () => { $("#c-message").style.caretColor = ""; };
 function refocus() {
   const el = document.activeElement;
-  if (!typingInSheet() || el.tagName !== "TEXTAREA") return recaret();
+  if (!typingInSheet() || el.tagName !== "TEXTAREA") { caretShown(); return recaret(); }
   const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection, r = el.getBoundingClientRect();
   if (!standIn) {
     standIn = document.createElement("textarea");
@@ -692,7 +680,7 @@ function refocus() {
       if (standIn.value) { el.setRangeText(standIn.value, a, b, "end"); el.dispatchEvent(new Event("input", { bubbles: true })); }
     }
     standIn.value = ""; standIn.remove();
-    window.kbSnap?.("refocused");
+    caretShown();
   });
 }
 function morphFrom(on) {
@@ -705,7 +693,6 @@ function morphFrom(on) {
   const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
   const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
   const y0 = $("#c-message").getBoundingClientRect().top, st = box.scrollTop;
-  window.kbSnap?.(on ? "fold before" : "unfold before");
   const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
   const ghosts = (on ? rows : [from]).map((el) => {
     const r = el.getBoundingClientRect(), g = el.cloneNode(true);
@@ -732,7 +719,7 @@ function morphFrom(on) {
     if (Math.abs(dy) > 0.5 && box.scrollHeight > box.clientHeight) box.scrollTop += dy;
     if (performance.now() < until) requestAnimationFrame(keep);
   };
-  if (document.activeElement === msg) requestAnimationFrame(keep);
+  if (document.activeElement === msg) { caretHidden(); requestAnimationFrame(keep); }
   words.forEach(([input, shown], i) => {
     const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
     el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
@@ -762,6 +749,7 @@ const grow = () => {
   const cs = getComputedStyle(t), h1 = Math.min(Math.max(gauge.scrollHeight + 2, parseFloat(cs.minHeight) || 0), parseFloat(cs.maxHeight) || Infinity);
   if (!t.offsetHeight || Math.abs(h1 - t.offsetHeight) < 1) return;
   t.style.height = `${h1}px`;
+  if (document.activeElement === t) caretHidden();
   if (document.activeElement === t) setTimeout(steady, 260);      // (once it's grown: styles.css)
 };
 // (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
