@@ -30,6 +30,7 @@ const DEFAULTS = {
 let content = { ...DEFAULTS };
 let me = null;           // /api/me, once it's known
 let editing = false;
+let pinned = null;       // where the page was scrolled to, while it's held still behind a sheet
 
 // The server's answer, or an Error saying what went wrong
 // (20 seconds at most: a weak signal says so, rather than hanging; iOS 15 has no AbortSignal.timeout, so it's made here)
@@ -91,6 +92,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
     el.style.animationName = "";
   };
   const measure = () => {
+    if (pinned !== null) return;      // (again once it's let go)
     // (where each line is on the page as it's laid out, not where it looks mid-way through rising into place)
     const edge = bar.offsetHeight, tops = fades.map((el) => pageEl.offsetTop + el.offsetTop);
     // Each line fades from 78 px under the bar to 12 px into it, over 64 px of scroll at least, within the scroll there
@@ -115,6 +117,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
     } else draw();
   };
   addEventListener("scroll", () => {
+    if (pinned !== null) return;      // (held behind a sheet: it reads as the top, but it's still where it was)
     hold();
     if (!linked && !queued) { queued = true; requestAnimationFrame(draw); }
   }, { passive: true });
@@ -394,10 +397,36 @@ function openSheet(d) {
     if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: 500, easing: GLIDE });
   } else if (!d.open) d.classList.remove("shown");
   if (!d.open) d.showModal();
+  pin();
   // (the sheet itself takes the focus, not its first button, which a phone would ring as if it had been chosen)
   $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
   hold();
+}
+// The page held still behind a sheet, pinned where it's scrolled to (an iPhone draws the caret of a field in a sheet as
+// far out as the page behind is scrolled, once the keyboard's up); what moves with the scroll held as it looks, as
+// pinned there's no scroll for it to follow, and let go with it
+const STILL = ["opacity", "transform", "visibility", "animation-name"];
+let stills = [];
+function pin() {
+  if (pinned !== null) return;
+  pinned = scrollY;
+  stills = $$(".bar .mid, .barbg, #soft, .hero > *").map((el) => {
+    const cs = getComputedStyle(el), was = STILL.map((k) => el.style.getPropertyValue(k));
+    for (const k of STILL) el.style.setProperty(k, k === "animation-name" ? "none" : cs.getPropertyValue(k));
+    return [el, was];
+  });
+  Object.assign(body.style, { position: "fixed", top: `${-pinned}px`, left: "0", right: "0" });
+}
+function unpin() {
+  if (pinned === null) return;
+  const y = pinned;
+  Object.assign(body.style, { position: "", top: "", left: "", right: "" });
+  scrollTo({ top: y, behavior: "instant" });
+  pinned = null;
+  for (const [el, was] of stills) STILL.forEach((k, i) => (was[i] ? el.style.setProperty(k, was[i]) : el.style.removeProperty(k)));
+  stills = [];
+  window.redrawScroll?.();
 }
 function finishClose(d) {
   clearTimeout(d._done); d._throw = null;
@@ -408,6 +437,7 @@ function finishClose(d) {
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
   body.classList.remove("sheet-up", "pulling");
+  unpin();
   for (const el of behind) el.style.transform = "";
   hold();
   if (!thrown || motion.matches) {
@@ -444,7 +474,7 @@ for (const d of $$("dialog.sheet")) {
     else d.classList.add("shown");
   });
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
-  d.addEventListener("close", () => { body.classList.remove("sheet-up"); hold(); lastFocus?.focus?.({ preventScroll: true }); });
+  d.addEventListener("close", () => { body.classList.remove("sheet-up"); unpin(); hold(); lastFocus?.focus?.({ preventScroll: true }); });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
   // itself; and only a tap that began there, not a press that began in the sheet, choosing words, and let go outside it)
   let downOnDim = false;
