@@ -642,7 +642,8 @@ function pillWidths(a, b, va, vb) {
   const cur = { w: parseFloat(getComputedStyle(pill).width), n: parseFloat(getComputedStyle(name).width) };
   const of = (q, v) => {
     if (!q) return cur;
-    const sub = subOf(q), n = Math.min(w(q.name, name), most - edge - arrow), line = sub ? Math.max(w(sub, $("place-sub")), v ? w(`${v.temp} · ${v.cond}`, $("place-now")) : 0) : 0;
+    // (the line under the name as it is till the bar takes up the temperature: only then what's said there takes room)
+    const sub = subOf(q), n = Math.min(w(q.name, name), most - edge - arrow), line = sub ? w(sub, $("place-sub")) : 0;
     return { w: Math.min(most, Math.max(n + arrow, line) + edge), n };
   };
   const p = of(a, va), q = of(b, vb);
@@ -2969,7 +2970,15 @@ function wire() {
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
     // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
     const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
-    mainEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
+    mainEl.style.setProperty("--c", c.toFixed(3));
+    // (the bar taking up the temperature, or giving it back: the pill easing from the one's width to the other's, rather
+    // than jumping, as only what's showing in it takes room)
+    if ((c >= 0.72) !== top.classList.contains("collapsed")) {
+      const pill = $("place-btn"), w0 = pill.offsetWidth;
+      top.classList.toggle("collapsed", c >= 0.72);
+      const w1 = pill.offsetWidth;
+      if (Math.abs(w1 - w0) > 1 && moving()) pill.animate([{ width: `${w0}px` }, { width: `${w1}px` }], { duration: 320, easing: GLIDE });
+    }
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);

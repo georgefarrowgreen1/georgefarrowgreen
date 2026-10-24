@@ -303,6 +303,9 @@ body:is(.sheet-up, .no-scroll) .top::before { background-color: rgba(12, 18, 30,
 .place-line { display: grid; font-size: 12px; line-height: 15px; color: var(--text-3); }
 .place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.28s var(--glide); }
 .top.collapsed .place-sub { opacity: 0; }
+/* (only the one showing takes room, so the pill's as wide as what it says: the other laid over it as they crossfade,
+   the pill easing from the one's width to the other's: app.js) */
+.top:not(.collapsed) .place-now, .top.collapsed .place-sub { position: absolute; inset: 0; }
 .place-now { opacity: 0; color: var(--text-2); font-weight: 600; }
 .top.collapsed .place-now { opacity: 1; }
 .place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
