@@ -627,7 +627,9 @@ function pillWidths(a, b, va, vb) {
   };
   const p = of(a, va), q = of(b, vb);
   pillW = { prev: p, cur, next: q };
-  for (const [k, x] of [["prev", p], ["cur", cur], ["next", q]]) { pill.style.setProperty(`--w-${k}`, `${x.w.toFixed(1)}px`); pill.style.setProperty(`--n-${k}`, `${x.n.toFixed(1)}px`); }
+  // (and, as this one's fading, as wide as the wider of it and the next: styles.css pill-w)
+  const most2 = (x) => ({ w: Math.max(cur.w, x.w), n: Math.max(cur.n, x.n) });
+  for (const [k, x] of [["prev", p], ["cur", cur], ["next", q], ["prev-max", most2(p)], ["next-max", most2(q)]]) { pill.style.setProperty(`--w-${k}`, `${x.w.toFixed(1)}px`); pill.style.setProperty(`--n-${k}`, `${x.n.toFixed(1)}px`); }
 }
 // the scroller put back to the weather now
 function centre() {
@@ -660,15 +662,17 @@ function follow() {
     for (const c of document.querySelectorAll("main > .col")) { c.style.translate = calm.matches ? "" : vw(-x * 100); c.style.opacity = whole ? "" : o(1 - 2 * ax); }
     if (whole) { document.querySelector(".pv-prev").style.translate = vw(-100 - x * 100); document.querySelector(".pv-next").style.translate = vw(100 - x * 100); }
     document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
-    $("place-name").style.opacity = o(1 - 3 * ax);
+    $("place-name").style.opacity = o(1 - 5 * ax);
     document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
     // (and the line under it, the same, and the pill and the name in it from this place's width to the next one's, unless
     // the bar's taken up the temperature in its place)
     if (!document.querySelector(".top").classList.contains("collapsed")) {
-      $("place-sub").style.opacity = o(1 - 3 * ax);
+      $("place-sub").style.opacity = o(1 - 5 * ax);
       document.querySelector(".pg-sub-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-sub-next").style.opacity = o(2 * x - 1);
       if (pillW) {
-        const to = x > 0 ? pillW.next : pillW.prev, at = (k) => `${(pillW.cur[k] + (to[k] - pillW.cur[k]) * ax).toFixed(1)}px`;
+        // (as styles.css pill-w: towards the wider of the two as this one fades, then to the next one's before it comes in)
+        const to = x > 0 ? pillW.next : pillW.prev, lerp = (a, b, t) => a + (b - a) * Math.max(0, Math.min(1, t));
+        const at = (k) => { const m = Math.max(pillW.cur[k], to[k]); return `${(ax <= 0.2 ? lerp(pillW.cur[k], m, ax / 0.2) : lerp(m, to[k], (ax - 0.2) / 0.3)).toFixed(1)}px`; };
         $("place-btn").style.width = at("w"); $("place-name").style.width = at("n"); document.querySelector(".place-line").style.alignSelf = "stretch";
       }
     }

@@ -556,11 +556,13 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 @keyframes pg-col-calm { 0%, 25% { opacity: 0; } 50% { opacity: 1; } 75%, 100% { opacity: 0; } }
 @keyframes pg-sky-prev { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes pg-sky-next { 0%, 50% { opacity: 0; } 100% { opacity: 1; } }
-@keyframes pg-name { 0%, 33% { opacity: 0; } 50% { opacity: 1; } 67%, 100% { opacity: 0; } }
+@keyframes pg-name { 0%, 40% { opacity: 0; } 50% { opacity: 1; } 60%, 100% { opacity: 0; } }
 @keyframes pg-name-prev { 0% { opacity: 1; } 25%, 100% { opacity: 0; } }
 @keyframes pg-name-next { 0%, 75% { opacity: 0; } 100% { opacity: 1; } }
-@keyframes pill-w { 0% { width: var(--w-prev); } 50% { width: var(--w-cur); } 100% { width: var(--w-next); } }
-@keyframes name-w { 0% { width: var(--n-prev); } 50% { width: var(--n-cur); } 100% { width: var(--n-next); } }
+/* (so neither name is ever cut short in it: wider, at once, as this one's fading; narrower, only once it's gone; and the
+   next one's coming in only once it's as wide as that one: pg-name, pg-name-next) */
+@keyframes pill-w { 0%, 25% { width: var(--w-prev); } 40% { width: var(--w-prev-max); } 50% { width: var(--w-cur); } 60% { width: var(--w-next-max); } 75%, 100% { width: var(--w-next); } }
+@keyframes name-w { 0%, 25% { width: var(--n-prev); } 40% { width: var(--n-prev-max); } 50% { width: var(--n-cur); } 60% { width: var(--n-next-max); } 75%, 100% { width: var(--n-next); } }
 /* turning to a place chosen in Places or on the map: the page's picture carried off as the next one's comes in beside
    it (app.js turnPage) */
 ::view-transition-group(page) { animation: none; }
