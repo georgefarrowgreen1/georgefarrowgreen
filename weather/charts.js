@@ -53,7 +53,8 @@ export function timeChart(host, opts) {
     host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) draw(host); });
     host._ro.observe(host);
   }
-  draw(host, fresh);
+  // (drawn again with the same key: what's changed crossfades)
+  draw(host, fresh, !fresh);
 }
 // A chart's width before it's been laid out: as it was last time at this window's width (kept), else a guess from the
 // window's; not measured then and there, which would lay the whole page out mid-way through drawing it, once for each
@@ -80,38 +81,63 @@ function seen(host, w) {
 }
 
 // Drawing in: the line traced from the left, its range fading in behind, columns growing from the baseline
-// one after another, the labels last (styles.css, .c-enter). Started once the chart's on screen, so it's seen.
+// one after another, the labels last (styles.css, .c-enter; a range, .r-enter). Started once the chart's on screen, so
+// it's seen; till then it holds where it starts from (.c-wait), rather than being seen whole first and then put back
+// to draw in. (svg._k: which kind of chart it is, "c" or "r", for its classes)
 const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)");
 const waiting = new WeakMap();
 const watch = typeof IntersectionObserver === "function" && new IntersectionObserver((es) => {
   for (const e of es) {
     if (!e.isIntersecting) continue;
     watch.unobserve(e.target);
-    waiting.get(e.target)?.classList.add("c-enter");
+    const svg = waiting.get(e.target);
+    if (svg) { svg.classList.remove(`${svg._k}-wait`); svg.classList.add(`${svg._k}-enter`); }
     waiting.delete(e.target);
     e.target._enterAt = performance.now();
   }
 }, { threshold: 0.3 });
-function enter(host, svg) {
+function enter(host, svg, k = "c") {
   if (still?.matches) return;
+  svg._k = k;
   const r = host.getBoundingClientRect();
-  if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { svg.classList.add("c-enter"); host._enterAt = performance.now(); return; }
+  if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { svg.classList.add(`${k}-enter`); host._enterAt = performance.now(); return; }
+  svg.classList.add(`${k}-wait`);
   waiting.set(host, svg); watch.observe(host);
 }
 // drawn again (more of the forecast in, a new size) while it's still drawing in: it carries on from there
-function carryOn(host, svg) {
-  if (waiting.has(host)) { waiting.set(host, svg); return; }
+function carryOn(host, svg, k = "c") {
+  svg._k = k;
+  if (waiting.has(host)) { svg.classList.add(`${k}-wait`); waiting.set(host, svg); return; }
   const gone = performance.now() - (host._enterAt ?? -1e9);
-  if (gone < 1600) { svg.classList.add("c-enter"); svg.style.setProperty("--t0", `${-Math.round(gone)}ms`); }
+  if (gone < 1600) { svg.classList.add(`${k}-enter`); svg.style.setProperty("--t0", `${-Math.round(gone)}ms`); }
+}
+// The new picture put in the old one's place. A new chart (fresh: another place, another view) draws in, the old one
+// fading away over it quickly as it does; the same one drawn again with something new to show (fade: another hour,
+// other units, more of the forecast in) crossfades from the old. Not while it's still drawing in (it carries on from
+// there, with the new), nor while it's waiting to be seen, nor on the page behind a sheet, which holds still (app.js);
+// and drawn again only for a new width, or showing just what it did, it's just there. The old one stays where it was
+// meanwhile (styles.css .c-old), whatever it was doing, till it's faded. k: which kind of chart, as enter's
+function put(host, svg, fresh, fade, k = "c") {
+  const sig = svg.innerHTML, was = host._sig, old = host.querySelector(":scope > svg:not(.c-old)");
+  host._sig = sig;
+  const busy = waiting.has(host) || performance.now() - (host._enterAt ?? -1e9) < 1600;
+  const behind = document.body.classList.contains("sheet-up") && !host.closest("dialog");
+  const keep = !!old && was != null && !behind && (fresh || (fade && sig !== was && !busy));
+  for (const n of [...host.childNodes]) if (!(keep && n === old) && !n.classList?.contains("c-old")) n.remove();
+  host.append(svg);
+  if (fresh) enter(host, svg, k); else carryOn(host, svg, k);
+  if (!keep) return;
+  old.classList.add("c-old"); old.setAttribute("aria-hidden", "true");
+  old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: fresh || still?.matches ? 150 : 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" })
+    .finished.then(() => old.remove(), () => old.remove());
 }
 
-function draw(host, fresh = false) {
+function draw(host, fresh = false, fade = false) {
   const o = host._chart; if (!o) return;
   const pts = o.points.filter((p) => p.v != null);
   const W = Math.max(260, (host._w ??= guessW(host)) || 340), Hh = o.height || 170;
-  host.replaceChildren();
   host.classList.add("chart");
-  if (!pts.length) { host.textContent = "No data"; return; }
+  if (!pts.length) { host._sig = null; host.textContent = "No data"; return; }
   // (inside: the labels in a margin of their own at the end, as wide as the longest, so no column runs under them)
   const gutter = o.y?.inside ? Math.max(...(o.y.ticks || []).map((v) => String(o.y.fmt ? o.y.fmt(v) : v).length)) * 6.4 + 12 : 0;
   // (columns with labels over them: a row more above them, so one over a full column can go over Now's too)
@@ -212,8 +238,7 @@ function draw(host, fresh = false) {
   svg.append(cross);
   const hit = el("rect", { x: L, y: 0, width: iw, height: Hh, fill: "transparent", class: "c-hit" });
   svg.append(hit);
-  host.append(svg);
-  if (fresh) enter(host, svg); else carryOn(host, svg);
+  put(host, svg, fresh, fade);
   const tip = document.createElement("div");
   tip.className = "c-tip"; tip.hidden = true; tip.setAttribute("aria-hidden", "true");
   host.append(tip);
@@ -277,12 +302,14 @@ function draw(host, fresh = false) {
  * Where a value sits in its usual range (a horizontal band): today's high against this time of year.
  * { p10, p25, p75, p90, mean, value, record: { v, year }, fmt(v), valueLabel }
  */
-export function rangeChart(host, o) {
-  host.replaceChildren();
+// (key: as timeChart's, what it shows: a new one draws in, the same one drawn again crossfades; again: drawn again only
+// for a new width)
+export function rangeChart(host, o, again = false) {
+  const fresh = !host._range || (o.key ?? null) !== (host._range.key ?? null);
   // (its width as timeChart's: kept, or guessed, and drawn again once it's known if that's another)
   host._range = o;
   if (!host._ro && typeof ResizeObserver !== "undefined") {
-    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; if (!w) return; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) rangeChart(host, host._range); });
+    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; if (!w) return; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) rangeChart(host, host._range, true); });
     host._ro.observe(host);
   }
   const W = Math.max(260, (host._w ??= guessW(host)) || 320), Hh = 74, L = 12, R = 12, iw = W - L - R, y0 = 30;
@@ -305,5 +332,5 @@ export function rangeChart(host, o) {
     svg.append(el("circle", { cx: x, cy: y0, r: 7, class: "r-value" }));
     svg.append(el("text", { x: Math.min(Math.max(x, 24), W - 24), y: y0 - 14, class: "r-vtext", "text-anchor": "middle" }, o.valueLabel || o.fmt(o.value)));
   }
-  host.append(svg);
+  put(host, svg, fresh, !again, "r");
 }

@@ -360,6 +360,20 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
   let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null, loads = 0;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // (what changes on the card changing where it is: new words rising in from faint, as the page's do (app.js swap); with
+  // Reduce Motion, a quick dissolve)
+  const GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)", EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
+  const rise = (x, from = 0.2) => x.animate(calm ? [{ opacity: from }, { opacity: 1 }] : [{ opacity: from, translate: "0 3px" }, { opacity: 1, translate: "0 0" }], { duration: calm ? 150 : 240, easing: calm ? EASE_OUT : GLIDE });
+  // a line of the card's (the next hours above the map, what's missing under it): its words put in, the line opening for
+  // them; put away, it folds shut with them still in it, and they're let go once it has (styles.css .off)
+  const line = (p, text) => {
+    const s = p?.firstElementChild; if (!s) return;
+    clearTimeout(p._off);
+    if (text) { s.textContent = text; p.classList.remove("off"); return; }
+    if (!s.textContent) return;
+    p.classList.add("off");
+    p._off = setTimeout(() => { s.textContent = ""; p.classList.remove("off"); }, 400);
+  };
   // the map light or dark as the phone is (as Apple's Weather map is), its controls to match (styles.css)
   const light = matchMedia("(prefers-color-scheme: light)").matches;
   card.classList.toggle("light-map", light);
@@ -435,8 +449,16 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // (the rain on show till the map's made and the one chosen is to hand: setKind)
   let kind = "rain", want = "rain";
   try { const k = localStorage.getItem("wx:maplayer"); if (KINDS[k]) want = k; } catch (_) {}
-  // (the card's title says which: "Rain radar", "Temperature", "Wind")
-  const retitle = () => { const t = card.querySelector(".card-title"); if (t?.lastChild?.nodeType === 3) t.lastChild.textContent = kind === "rain" ? "Rain radar" : KINDS[kind]; };
+  // (the card's title says which: "Rain radar", "Temperature", "Wind"; another chosen, its words rising in: moved, true)
+  const retitle = (moved = false) => {
+    const t = card.querySelector(".card-title"); if (!t) return;
+    let w = t.querySelector(".ct-words");
+    if (!w && t.lastChild?.nodeType === 3) { w = Object.assign(document.createElement("span"), { className: "ct-words", textContent: t.lastChild.textContent }); t.lastChild.replaceWith(w); }
+    const text = kind === "rain" ? "Rain radar" : KINDS[kind];
+    if (!w || w.textContent === text) return;
+    w.textContent = text;
+    if (moved) rise(w, 0);
+  };
   card.dataset.layer = kind;
   drawLegend(); retitle();
 
@@ -469,7 +491,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     // than the nearest frame as it is in the meantime: a different picture, there and gone again; but not for more than
     // a couple of seconds (one that doesn't come, say): then the frame as it is)
     else if (drew === "wait" && mixed && (!holding || performance.now() - holding < 2500)) holding ||= performance.now();
-    else if (layer !== layerAt(i)) { layer = layerAt(i); map.show(layer, SHOW); mixed = false; holding = 0; }
+    else if (layer !== layerAt(i)) { layer = layerAt(i); map.show(layer, SHOW, softIn); softIn = false; mixed = false; holding = 0; }
     slider.style.setProperty("--f", String(tEnd > t0 ? uOf(at) / uOf(tEnd) : 1));
     // (its words, to the minute)
     const m = Math.round((at - t0) / 60e3);
@@ -483,10 +505,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const when = `${day(tm)} ${time(tm)} · ${mins > 0 ? until(mins) : mins === 0 ? "now" : ago(-mins)}`.trim();
     slider.value = String(Math.round(uOf(tm)));
     // ("No rain nearby": of the next two hours; not of the models' hours after, if they've rain)
-    if (kind === "rain") dry.hidden = !dryNow || (tm > split && !dryLater);
-    const b = document.createElement("b"), rel = document.createElement("span");
-    b.className = "rt-k"; b.textContent = what; rel.textContent = when; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
-    label.replaceChildren(b, " ", rel);
+    dryShown = dryNow && !(tm > split && !dryLater); onMap();
+    // (what it is, kept: Radar to Forecast, its word rising in as it changes, rather than snapping; when, to the minute)
+    let b = label.querySelector(".rt-k"), rel = label.querySelector(".rt-rel");
+    if (!b || !rel) { b = document.createElement("b"); rel = document.createElement("span"); b.className = "rt-k"; label.replaceChildren(b, " ", rel); }
+    if (b.textContent !== what) { const had = b.textContent; b.textContent = what; if (had) rise(b); }
+    rel.textContent = when; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
     slider.setAttribute("aria-valuetext", `${what}, ${when}`);
     drawAreas(tm); sayReading();
     chipTo(ahead ? "model" : "radar");
@@ -570,10 +594,11 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // still arrows instead (arrows)
   const flowCv = document.createElement("canvas"); flowCv.className = "wind-flow"; flowCv.setAttribute("aria-hidden", "true"); flowCv.hidden = true;
   const fx2 = flowCv.getContext("2d");
-  let specks = [], flowRaf = 0, flowPrev = 0, inSight = true;
+  let specks = [], flowRaf = 0, flowPrev = 0, flowDue = 0, inSight = true;
   const sizeFlow = () => {
-    // (drawn into the vector map, a little less finely: it's sent to the graphics chip every picture)
-    const dpr = Math.min(map?.flow ? 1.5 : 2, devicePixelRatio || 1), w = el.clientWidth, h = el.clientHeight;
+    // (drawn into the vector map, at one pixel to the screen's point: it's sent to the graphics chip every picture, and
+    // its specks are soft anyway)
+    const dpr = map?.flow ? 1 : Math.min(2, devicePixelRatio || 1), w = el.clientWidth, h = el.clientHeight;
     if (flowCv.width !== Math.round(w * dpr) || flowCv.height !== Math.round(h * dpr)) { flowCv.width = Math.round(w * dpr); flowCv.height = Math.round(h * dpr); }
     fx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     return [w, h];
@@ -593,11 +618,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const [w, h] = sizeFlow();
     vw = viewNow();
     fx2.clearRect(0, 0, w, h);
-    const many = Math.min(1000, Math.round(((w + 2 * EDGE) * (h + 2 * EDGE)) / 450));
+    // (half as many on a phone: the flow's the costliest thing on the screen, and a phone's is small)
+    const many = Math.min(1000, Math.round(((w + 2 * EDGE) * (h + 2 * EDGE)) / (touch ? 900 : 450)));
     while (specks.length < many) specks.push(speck(w, h));
     specks.length = many;
     for (const p of specks) { speck(w, h, p); p.age = Math.random() * p.life; }
-    if (!flowRaf) { flowPrev = 0; flowRaf = requestAnimationFrame(flowStep); }
+    if (!flowRaf) { flowPrev = flowDue = 0; flowRaf = requestAnimationFrame(flowStep); }
   }
   // (as the map moves under them: the trails cleared, the specks carried on where they are)
   function flowMoved() {
@@ -607,16 +633,19 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (!vw || vw.w !== w || vw.h !== h) return flowRestart();
     vw = viewNow(); fx2.clearRect(0, 0, w, h); intoMap();
     for (const p of specks) p.n = 0;
-    if (!flowRaf) { flowPrev = 0; flowRaf = requestAnimationFrame(flowStep); }
+    if (!flowRaf) { flowPrev = flowDue = 0; flowRaf = requestAnimationFrame(flowStep); }
   }
   function flowStep(ts) {
     flowRaf = 0;
     if (!flowing() || calm || !inSight) return;
     flowRaf = requestAnimationFrame(flowStep);
     // (held under a sheet, as the radar is: unseen, and each picture would have the sheet's glass blurred afresh)
-    if (document.body.classList.contains("sheet-up")) { flowPrev = 0; return; }
-    if (flowPrev && ts - flowPrev < 30) return;        // (about 30 pictures a second)
-    const dt = flowPrev ? Math.min(0.1, (ts - flowPrev) / 1000) : 1 / 30; flowPrev = ts;
+    if (document.body.classList.contains("sheet-up")) { flowPrev = flowDue = 0; return; }
+    // (about 24 pictures a second, however fast the screen: each once its time's come, the next a 24th of a second after
+    // that one was due, so they keep to it on average)
+    if (flowDue && ts < flowDue - 6) return;
+    flowDue = flowDue && ts - flowDue < 100 ? flowDue + 1000 / 24 : ts + 1000 / 24;
+    const dt = flowPrev ? Math.min(0.1, (ts - flowPrev) / 1000) : 1 / 24; flowPrev = ts;
     const w = vw.w, h = vw.h;
     // (each speck on along the wind, its trail with it; one that's aged, or gone off the map or under the bubble, stops,
     // its trail drawn in after it, and then it starts again somewhere else)
@@ -750,16 +779,31 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   };
   // A reading where the map's tapped (full screen, or with a mouse): the layer's say there at the time on show, and any
   // warning it's in, in a label at the spot, said again as the time moves on; a tap on it puts it away
-  let reading = null, readMark = null;
-  const readEl = document.createElement("button"); readEl.type = "button"; readEl.className = "map-read";
-  readEl.innerHTML = '<span class="mr-b"><span class="mr-v"></span><span class="mr-w"></span></span><span class="mr-dot"></span>';
-  readEl.addEventListener("click", (e) => { e.stopPropagation(); unread(); });
+  // (another tap somewhere else: the one there fades away where it was as a new one comes in at the new spot; put away,
+  // it goes as it came, a little quicker, styles.css read-in)
+  let reading = null, readMark = null, readEl = null;
+  const newRead = () => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "map-read";
+    b.innerHTML = '<span class="mr-b"><span class="mr-v"></span><span class="mr-w"></span></span><span class="mr-dot"></span>';
+    b.addEventListener("click", (e) => { e.stopPropagation(); unread(); });
+    return b;
+  };
   function readAt(pt) {
-    reading = pt;
-    if (readMark) readMark.at(pt.lat, pt.lon); else readMark = map.marker(readEl, pt.lat, pt.lon);
+    unread();
+    reading = pt; readEl = newRead(); readMark = map.marker(readEl, pt.lat, pt.lon);
     sayReading();
   }
-  function unread() { reading = null; readMark?.remove(); readMark = null; }
+  function unread() {
+    reading = null;
+    const mk = readMark, b = readEl?.querySelector(".mr-b");
+    readMark = readEl = null;
+    if (!mk) return;
+    if (!b) { mk.remove(); return; }
+    b.closest(".map-read").inert = true;
+    b.getAnimations().forEach((a) => a.cancel());
+    b.animate(calm ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, translate: "0 0", scale: 1 }, { opacity: 0, translate: "0 4px", scale: 0.94 }], { duration: 150, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+      .finished.then(() => mk.remove(), () => mk.remove());
+  }
   // (the rain there: the radar's frames as they're drawn, read back to how hard it's falling, or the models' rates; how
   // hard and whether it's snow, in words, as the legend has them)
   function rainHere(lat, lon) {
@@ -793,7 +837,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // (over its spot, unless it would cover a bubble or a name there (the place's own, or another saved place's): then
   // beside it, on whichever side's clear, or under it; the first of those that covers none, and stays on the map)
   function placeReading() {
-    if (!reading || !map) return;
+    if (!reading || !map || !readEl) return;
     const v = viewNow(), at0 = (la, lo) => [((lo - v.w0) / (v.e0 - v.w0)) * v.w, ((v.yN - mercY(la)) / (v.yN - v.yS)) * v.h];
     const box = readEl.querySelector(".mr-b"), lw = box.offsetWidth || 150, lh = box.offsetHeight || 40, [rx, ry] = at0(reading.lat, reading.lon);
     // (what it mustn't cover: each bubble, and each name under its dot; [left, top, right, bottom])
@@ -821,7 +865,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     readEl.style.setProperty("--dx", `${Math.round(best.dx)}px`);
   }
   function sayReading() {
-    if (!reading) return;
+    if (!reading || !readEl) return;
     const { lat, lon } = reading;
     let v = "";
     if (kind === "temp" || kind === "aq" || kind === "uv") {
@@ -864,17 +908,19 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const fresh = fieldGrid(), stale = (x) => !x || x.id !== fresh.id || Date.now() - x.at > 2 * MODEL_TTL;
     const needs = k === "aq" ? stale(air) : k !== "rain" && (stale(field) || (k === "uv" && !field.uv));
     if (needs) {
-      status.textContent = `Getting the ${{ temp: "temperatures", wind: "wind", aq: "air quality", uv: "UV index" }[k]}…`;
+      // (said on the map meanwhile, in its pill, rather than in a line under it that would come and go, the card's foot
+      // moving with it; what can't be had, said under it)
+      getting = `Getting the ${{ temp: "temperatures", wind: "wind", aq: "air quality", uv: "UV index" }[k]}…`; onMap();
       try {
         if (k === "aq") air = { ...(await modelAir(fresh)), id: fresh.id };
         else field = { ...(await modelField(fresh)), id: fresh.id };
         fg = fresh;
       } catch (_) {
-        if (want === k) { status.textContent = `${k === "aq" ? "Air quality" : "Temperature and wind"} ${k === "aq" ? "isn't" : "aren't"} available right now: showing the rain.`; want = "rain"; menuSync?.(); }
+        if (want === k) { getting = ""; onMap(); line(status, `${k === "aq" ? "Air quality" : "Temperature and wind"} ${k === "aq" ? "isn't" : "aren't"} available right now: showing the rain.`); want = "rain"; menuSync?.(); }
         return;
       }
       if (want !== k) return;
-      status.textContent = "";
+      getting = ""; onMap(); line(status, "");
     }
     if (k === "temp") {
       const fgr = fineGrid();
@@ -882,21 +928,37 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     }
     const was = kind, again = playing, z = map.state().zoom;
     if (again) stop();
-    kind = k; card.dataset.layer = k; drawLegend(); retitle();
+    kind = k; card.dataset.layer = k; drawLegend(); retitle(was !== k);
+    // (its colours and words coming in where the last layer's were, rather than snapping)
+    if (was !== k) for (const x of legend.children) rise(x, 0);
     minute = null; fieldMin = null; winds = null;
-    if (k === "rain") { map.field?.(null); map.field?.(null, null, 0, "fine"); flowCv.hidden = true; layer = -1; mixed = false; }
-    else { map.blend(null); map.show(-1, 0); map.box(undefined, 0); layer = -1; mixed = false; holding = 0; }
-    // (a span of its own: from Now, as it opens; and the map out to the region for them, as Apple's has it, then back
-    // in again for the rain, unless it's been moved in or out meanwhile)
+    // (the one going fading away as the one coming fades in: the field put away, the rain eased back in, softIn; or the
+    // rain eased away under the field)
+    if (k === "rain") { map.field?.(null); map.field?.(null, null, 0, "fine"); flowCv.hidden = true; layer = -1; mixed = false; softIn = true; }
+    else { map.show(-1, 0, true); map.box(undefined, 0); layer = -1; mixed = false; holding = 0; }
+    // (a span of its own: from Now, as it opens, the timeline easing there and its marks fading in anew; and the map out
+    // to the region for them, as Apple's has it, then back in again for the rain, unless it's been moved in or out
+    // meanwhile)
     if ((was === "rain") !== (k === "rain")) {
-      span(); at = tNow;
+      jump(); span(); at = tNow;
+      if (!calm) scale.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: EASE_OUT });
       if (k !== "rain" && z > FIELD_ZOOM + 0.5) { zoomWas = z; map.zoomTo?.(FIELD_ZOOM); }
       else if (k === "rain" && zoomWas != null) { if (Math.abs(z - FIELD_ZOOM) < 0.3) map.zoomTo?.(zoomWas); zoomWas = null; }
     }
     show(at); drawPin(); sayOthers(); sayReading(); flowRestart();
     if (again) run();
   }
-  let menuSync = null, zoomWas = null;
+  let menuSync = null, zoomWas = null, softIn = false, getting = "", dryShown = false, jumpT = 0;
+  // What's said on the map, in its pill (styles.css .radar-dry): the layer chosen still being fetched, or, on the rain,
+  // that there's none about; faded in and out (.off), its words kept as it goes
+  function onMap() {
+    if (!dry) return;
+    const text = getting || (kind === "rain" && dryShown ? "No rain nearby" : "");
+    if (text) dry.textContent = text;
+    dry.classList.toggle("off", !text);
+  }
+  // (the timeline moved on all at once, not by a finger nor as it plays: its fill and Now eased there, styles.css .jump)
+  function jump() { if (calm) return; slider.classList.add("jump"); clearTimeout(jumpT); jumpT = setTimeout(() => slider.classList.remove("jump"), 420); }
 
   // The minutes between the frames (rainmap.js partsAt), on one picture over the tiles in sight: the radar's tiles,
   // each drawn once and kept (keptTile), moved and faded into each other; the models' rain painted blended. So a
@@ -1034,8 +1096,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       mx.globalAlpha = 1; mx.globalCompositeOperation = "source-over";
     }
     const [n, w] = cornerOf(v.x0, v.y0, v.Z), [s2, e] = cornerOf(v.x1 + 1, v.y1 + 1, v.Z);
-    map.blend(canvas, [[s2, w], [n, e]], SHOW, fade);
-    mixed = true;
+    map.blend(canvas, [[s2, w], [n, e]], SHOW, fade, softIn);
+    softIn = false; mixed = true;
     // once it's drawn and still: the rest of the radar's frames for this view worked out meanwhile, nearest in time
     // first (as many as are kept), so playing, or dragging along the timeline, doesn't wait on them; and the frame on
     // show a zoom out, so zooming out has its rain to hand rather than a bare edge
@@ -1057,17 +1119,9 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     }
     return true;
   }
-  // the chip over the map, Radar or Forecast: its width springing from the one word's to the other's (the words
-  // crossing, and its colour, are styles.css's)
-  let morph = null;
-  const chipTo = (kind) => {
-    if (chip.dataset.kind === kind) return;
-    const from = chip.getBoundingClientRect().width;
-    morph?.cancel();
-    chip.dataset.kind = kind;
-    const to = chip.getBoundingClientRect().width;
-    if (!calm && from && Math.abs(to - from) > 0.5) morph = chip.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 550, easing: "cubic-bezier(0.34, 1.32, 0.64, 1)" });
-  };
+  // the chip's state, Radar or Forecast (said in the dock now, where its word changes: show; the chip itself isn't
+  // shown, styles.css, so it isn't measured)
+  const chipTo = (k) => { if (chip.dataset.kind !== k) chip.dataset.kind = k; };
   // playing: from now through the next two hours, again and again, minute by minute (ten minutes to every STEP ms; a
   // moment at now, and at the end); the hours gone are a drag back, and played from there, it runs on through them too
   const SPEED = 600e3 / STEP;
@@ -1207,10 +1261,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     // (nothing on the radar about here, and nothing coming: said on the map, so an empty map isn't a puzzle; not over
     // the models' hours, if they've rain somewhere)
     dryNow = held; dryLater = !hours || hours.rain.every((r) => r.every((x) => x < 0.1));
-    dry.hidden = !held;
+    dryShown = held; onMap();
     credited([...map.credit, past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
-    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && !held ? "The next two hours aren't available right now: showing the radar." : "";
+    line(status, !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && !held ? "The next two hours aren't available right now: showing the radar." : "");
     lengthen();
     fetched = Date.now();
     drawScale();
@@ -1241,9 +1295,26 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     layerWrap.append(layersBtn, menu);
     menuSync = () => { for (const b of menu.children) b.setAttribute("aria-pressed", String(b.dataset.kind === want)); };
     menuSync();
-    const shut = () => { menu.hidden = true; layersBtn.setAttribute("aria-expanded", "false"); };
-    layersBtn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; layersBtn.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true }); });
-    document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) shut(); });
+    // (it closes the way it opened, a little quicker, from wherever it had got to, and is hidden once it has; opened again
+    // meanwhile, it comes back from there)
+    let closing = null;
+    const now = () => { const cs = getComputedStyle(menu); return { opacity: cs.opacity, transform: cs.transform }; };
+    const shut = () => {
+      layersBtn.setAttribute("aria-expanded", "false");
+      if (menu.hidden || closing) return;
+      const from = now();
+      menu.getAnimations().forEach((a) => a.cancel());
+      closing = menu.animate([from, { opacity: 0, transform: calm ? from.transform : "scale(0.94)" }], { duration: calm ? 120 : 160, easing: GLIDE, fill: "forwards" });
+      closing.finished.then(() => { menu.hidden = true; closing?.cancel(); closing = null; }, () => {});
+    };
+    const open = () => {
+      if (closing) { const from = now(); closing.cancel(); closing = null; menu.animate([from, { opacity: 1, transform: "none" }], { duration: 200, easing: GLIDE }); }
+      else menu.hidden = false;
+      layersBtn.setAttribute("aria-expanded", "true");
+      menu.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+    };
+    layersBtn.addEventListener("click", (e) => { e.stopPropagation(); if (menu.hidden || closing) open(); else shut(); });
+    document.addEventListener("click", (e) => { if (!menu.hidden && !closing && !menu.contains(e.target)) shut(); });
     menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); shut(); layersBtn.focus(); } });
     const ruler = document.createElement("div"); ruler.className = "map-scale"; ruler.setAttribute("aria-hidden", "true");
     credit = button("radar-credit", "Map data", '<span class="rc-c" aria-hidden="true">©</span><span class="rc-t" aria-hidden="true"></span>');
@@ -1252,7 +1323,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     zout.addEventListener("click", () => map.zoomBy(-1));
     back.addEventListener("click", () => map.view(here.lat, here.lon, true));
     credit.addEventListener("click", () => credits?.());
-    dry = document.createElement("span"); dry.className = "radar-dry"; dry.textContent = "No rain nearby"; dry.hidden = true;
+    dry = document.createElement("span"); dry.className = "radar-dry off";
     wrap.append(flowCv, top, ruler, credit, dry);
     const moved = () => {
       const s = map.state(), most = s.mpp * 90;
@@ -1299,7 +1370,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       await load();
       if (!calm) run();
     } catch (e) {
-      status.textContent = "The radar isn't available right now.";
+      line(status, "The radar isn't available right now.");
       if (!map) starting = null;
     }
   }
@@ -1340,7 +1411,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     e.preventDefault(); stop();
     const real = frames.filter((f) => f.kind === "radar" || f.kind === "hour" || src?.model).map((f) => f.t).concat(tNow, tEnd).sort((a, b) => a - b);
     const to = e.key === "PageUp" ? real.find((t) => t > at + 30e3) ?? tEnd : [...real].reverse().find((t) => t < at - 30e3) ?? t0;
-    show(Math.round((to - t0) / 60e3) * 60e3 + t0, true);
+    jump(); show(Math.round((to - t0) / 60e3) * 60e3 + t0, true);
   });
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
   // (Escape in a sheet opened from it, the credits say, closes the sheet, not this)
@@ -1368,10 +1439,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       // (the same place, its forecast refreshed: the map left where it's been moved to)
       if (lat2 === here.lat && lon2 === here.lon) return;
       const moved = Math.abs(lat2 - here.lat) > 0.05 || Math.abs(lon2 - here.lon) > 0.05;
+      const near = Math.abs(lat2 - here.lat) < 3 && Math.abs(lon2 - here.lon) < 5;
       here = { lat: lat2, lon: lon2 };
       if (!map) return;
       unread();
-      map.view(lat2, lon2); map.dot(lat2, lon2);
+      // (in sight and not far: the map glides over to it, rather than jumping; else it's just there)
+      map.view(lat2, lon2, inView && near); map.dot(lat2, lon2);
       if (moved) load().catch(() => {});        // (the forecast's grid goes with the place)
     },
     refresh() {
@@ -1388,7 +1461,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
         if (!playing) { minute = null; show(Math.abs(at - was) < 30e3 ? tNow : at); }
       }
     },
-    note(text) { q(".radar-note").textContent = text || ""; },
+    note(text) { line(q(".radar-note"), text || ""); },
     // the other saved places: [{ name, lat, lon, temp ("12°"), colour, go() }]
     others(list) { others = list || []; drawOthers(); },
     // official warnings with their areas: [{ id, title, colour (yellow, amber, orange, red), onset, expires, open, rings }]

@@ -244,6 +244,8 @@ ok((await p.locator('.day-row').count()) === 16 && !(await p.locator('#daily .da
   const n = await p.evaluate(() => { const b = document.getElementById('nudge'); return { shown: !b.hidden, text: b.textContent }; });
   ok(n.shown && /Get rain alerts/.test(n.text) && /Turn on/.test(n.text), 'a word about the rain alerts, with a way to them', n.text.slice(0, 90));
   await p.locator('#nudge .link').evaluate((e) => e.click());
+  // (it folds away first, the cards under it moving up, and then it's hidden)
+  await p.waitForFunction(() => document.getElementById('nudge').hidden, null, { timeout: 2000 }).catch(() => {});
   ok(await p.evaluate(() => document.getElementById('nudge').hidden && !!localStorage.getItem('wx:nudge')), 'and "Not now" puts it away (for a month)');
 }
 const nc = await p.textContent('#nowcast-text');
@@ -692,6 +694,8 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind,Air quality,UV index',
     'the layers button opens its menu: precipitation, temperature, wind, air quality, UV index');
   await p.keyboard.press('Escape');
+  // (it closes the way it opened, a little quicker, and is hidden once it has)
+  await p.waitForFunction(() => document.querySelector('#radar .layer-menu').hidden, null, { timeout: 2000 }).catch(() => {});
   ok(!(await p.isVisible('#radar .layer-menu')), 'and Escape closes it');
   const asked = tiles.field || 0;
   await pick('wind');
@@ -755,6 +759,8 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   ok(!placed.bubble && !placed.name && placed.inside && /side|below/.test(placed.cls), 'tapped just under the place, the reading keeps clear of its bubble and name', JSON.stringify(placed));
   ok(/^(No rain|Drizzle|(Light|Moderate|Heavy|Very heavy|Extreme) rain)Yellow rain warning$/.test(read), 'full screen, a tap reads the rain there, and the warning it\'s in (its area drawn)', read);
   await p.click('.map-read .mr-b');
+  // (it goes as it came, a little quicker, and then it's gone from the map)
+  await p.waitForFunction(() => !document.querySelector('.map-read'), null, { timeout: 2000 }).catch(() => {});
   ok(!(await p.locator('.map-read').count()), 'and a tap on it puts it away');
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).catch(() => {});
