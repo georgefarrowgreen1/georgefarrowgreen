@@ -519,10 +519,12 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .sky-alt > * { transition: none !important; }
 :root:not(.pg-drag) .sky-alt > * { display: none !important; }
 .place-name { position: relative; }
-.pg-name { position: absolute; left: 0; top: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; }
-/* (and the line under it: the next place's over this one's, in its place in the line; not once the bar's taken up the
-   temperature there) */
-.pg-sub { opacity: 0; pointer-events: none; }
+/* (each laid over this one's name, as wide as it is (to the arrow after it), and over the line under it: neither taking
+   any room of its own, so the pill's as wide as this place's words, not the widest of the three; as it's swiped, the
+   pill and the name in it go from this place's width to the next one's: pill-w, name-w, app.js pillWidths) */
+.pg-name { position: absolute; left: 0; right: 13px; top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; }
+.place-line { position: relative; }
+.place-line > .pg-sub { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .top.collapsed .pg-sub { visibility: hidden; }
 :root.pg-snap, :root.pg-snap :is(.sky, .sky > *, .sky-stars::after, .dots i) { transition: none !important; }
 @supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
@@ -542,6 +544,9 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
   :root.pg-drag .top:not(.collapsed) #place-sub { animation-name: pg-name; }
   :root.pg-drag .top:not(.collapsed) .pg-sub-prev { animation-name: pg-name-prev; }
   :root.pg-drag .top:not(.collapsed) .pg-sub-next { animation-name: pg-name-next; }
+  :root.pg-drag .top:not(.collapsed) .place { animation-name: pill-w; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  :root.pg-drag .top:not(.collapsed) #place-name { animation-name: pg-name, name-w; }
+  :root.pg-drag .top:not(.collapsed) .place-line { align-self: stretch; }
   @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } :root.pg-drag .pv { visibility: hidden; } }
 }
 @keyframes pg-col { 0% { translate: 100vw 0; } 50% { translate: 0 0; } 100% { translate: -100vw 0; } }
@@ -554,6 +559,8 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 @keyframes pg-name { 0%, 33% { opacity: 0; } 50% { opacity: 1; } 67%, 100% { opacity: 0; } }
 @keyframes pg-name-prev { 0% { opacity: 1; } 25%, 100% { opacity: 0; } }
 @keyframes pg-name-next { 0%, 75% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes pill-w { 0% { width: var(--w-prev); } 50% { width: var(--w-cur); } 100% { width: var(--w-next); } }
+@keyframes name-w { 0% { width: var(--n-prev); } 50% { width: var(--n-cur); } 100% { width: var(--n-next); } }
 /* turning to a place chosen in Places or on the map: the page's picture carried off as the next one's comes in beside
    it (app.js turnPage) */
 ::view-transition-group(page) { animation: none; }

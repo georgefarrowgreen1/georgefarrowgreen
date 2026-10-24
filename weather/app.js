@@ -598,9 +598,36 @@ function layoutPager(force = false, only = true) {
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
   document.querySelector(".pg-sub-prev").textContent = subOf(a);
   document.querySelector(".pg-sub-next").textContent = subOf(b);
+  pillWidths(a, b, va, vb);
   placePages(a, b, va, vb);
   keepNear(ready);
   if (force || el._shape !== shape) { el._shape = shape; centre(); }
+}
+// How wide the pill in the bar is for each place, and its name in it (the arrow after it), so as the page's swiped they
+// go from this place's to the next one's along with it, its name and the line under it crossfading in them (styles.css
+// pill-w, name-w): this place's as it's laid out, the places either side's from their words, measured in its type, as
+// it would lay them out (the line under the name its region, or what's said once the bar's taken up the temperature;
+// the pill no wider than it can be)
+let measure = null, pillSig = "", pillW = null;
+function pillWidths(a, b, va, vb) {
+  const pill = $("place-btn"), name = $("place-name"), top = document.querySelector(".top");
+  const sig = JSON.stringify([a?.name, subOf(a), va?.temp, va?.cond, b?.name, subOf(b), vb?.temp, vb?.cond, name.textContent, $("place-sub").textContent, $("place-now").textContent, innerWidth]);
+  if (sig === pillSig) return;
+  pillSig = sig;
+  measure ||= document.createElement("canvas").getContext("2d");
+  const w = (text, el) => { if (!text) return 0; const cs = getComputedStyle(el); measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; return measure.measureText(text).width; };
+  const cs = getComputedStyle(top), room = top.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - document.querySelector(".top-actions").offsetWidth - (parseFloat(cs.columnGap) || 10);
+  const most = Math.min(innerWidth * 0.72, room), edge = 36, arrow = 13;
+  // (as laid out, not as anything has it moved or scaled meanwhile)
+  const cur = { w: parseFloat(getComputedStyle(pill).width), n: parseFloat(getComputedStyle(name).width) };
+  const of = (q, v) => {
+    if (!q) return cur;
+    const sub = subOf(q), n = Math.min(w(q.name, name), most - edge - arrow), line = sub ? Math.max(w(sub, $("place-sub")), v ? w(`${v.temp} · ${v.cond}`, $("place-now")) : 0) : 0;
+    return { w: Math.min(most, Math.max(n + arrow, line) + edge), n };
+  };
+  const p = of(a, va), q = of(b, vb);
+  pillW = { prev: p, cur, next: q };
+  for (const [k, x] of [["prev", p], ["cur", cur], ["next", q]]) { pill.style.setProperty(`--w-${k}`, `${x.w.toFixed(1)}px`); pill.style.setProperty(`--n-${k}`, `${x.n.toFixed(1)}px`); }
 }
 // the scroller put back to the weather now
 function centre() {
@@ -616,7 +643,10 @@ function dragOff() {
   if (!dragging) return;
   dragging = false; document.documentElement.classList.remove("pg-drag");
   $("pager").classList.remove("pg-led");
-  if (!linked) for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
+  if (!linked) {
+    for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
+    $("place-btn").style.width = $("place-name").style.width = ""; document.querySelector(".place-line").style.alignSelf = "";
+  }
 }
 // (as styles.css has it: the cards along with it (and the next place's beside them; or, wide, fading), the next sky over
 // this one, the next name over this one)
@@ -632,10 +662,15 @@ function follow() {
     document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
     $("place-name").style.opacity = o(1 - 3 * ax);
     document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
-    // (and the line under it, the same, unless the bar's taken up the temperature in its place)
+    // (and the line under it, the same, and the pill and the name in it from this place's width to the next one's, unless
+    // the bar's taken up the temperature in its place)
     if (!document.querySelector(".top").classList.contains("collapsed")) {
       $("place-sub").style.opacity = o(1 - 3 * ax);
       document.querySelector(".pg-sub-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-sub-next").style.opacity = o(2 * x - 1);
+      if (pillW) {
+        const to = x > 0 ? pillW.next : pillW.prev, at = (k) => `${(pillW.cur[k] + (to[k] - pillW.cur[k]) * ax).toFixed(1)}px`;
+        $("place-btn").style.width = at("w"); $("place-name").style.width = at("n"); document.querySelector(".place-line").style.alignSelf = "stretch";
+      }
     }
   });
 }
