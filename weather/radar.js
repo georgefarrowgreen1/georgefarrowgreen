@@ -1071,8 +1071,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // playing: from now through the next two hours, again and again, minute by minute (ten minutes to every STEP ms; a
   // moment at now, and at the end); the hours gone are a drag back, and played from there, it runs on through them too
   const SPEED = 600e3 / STEP;
-  let raf = 0;
-  const stop = () => { playing = false; cancelAnimationFrame(raf); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
+  let raf = 0, resting = 0;
+  const stop = () => { playing = false; cancelAnimationFrame(raf); clearTimeout(resting); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
   const run = () => {
     playing = true; play.setAttribute("aria-label", "Pause"); play.dataset.on = "1";
     const from = at < tNow - 30e3 ? t0 : tNow, rest = (t) => (Math.abs(t - tNow) < 30e3 ? AT_NOW : 0);
@@ -1080,9 +1080,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     let prev = 0, wait = rest(at), end = false;
     const tick = (ts) => {
       if (!playing) return;
+      // (held where it is under a sheet: unseen there, and each picture would have the sheet's glass blurred afresh;
+      // looked at again a few times a second, not every frame, so the screen isn't kept busy for nothing)
+      if (document.body.classList.contains("sheet-up")) { prev = 0; raf = 0; resting = setTimeout(() => { if (playing) raf = requestAnimationFrame(tick); }, 300); return; }
       raf = requestAnimationFrame(tick);
-      // (held where it is under a sheet: unseen there, and each picture would have the sheet's glass blurred afresh)
-      if (document.body.classList.contains("sheet-up")) { prev = 0; return; }
       // (about 30 pictures a second, however fast the screen: as smooth to the eye, for less of the battery)
       if (prev && ts - prev < 30) return;
       const dt = prev ? Math.min(100, ts - prev) : 0; prev = ts;
@@ -1090,7 +1091,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       else if (end) { end = false; show(from, true); wait = rest(from); }
       else { show(at + dt * SPEED * (kind === "rain" && at < split ? 1 : 6)); if (at >= tEnd) { end = true; wait = HOLD; } }
     };
-    cancelAnimationFrame(raf);
+    cancelAnimationFrame(raf); clearTimeout(resting);
     show(at);
     raf = requestAnimationFrame(tick);
   };

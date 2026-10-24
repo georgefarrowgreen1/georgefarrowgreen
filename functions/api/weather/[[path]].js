@@ -99,7 +99,9 @@ const ROUTES = {
   "GET warnings": async ({ request, env }) => {
     const [lat, lon] = placeOf(request);
     await limit(env, `wxwarn:${clientIp(request)}`, 120, HOUR);
-    return json(await warningsAt(env, lat, lon));
+    // (the feeds are taken a few minutes at a time anyway: the phone keeps its answer as long, rather than asking again,
+    // and this server writing down each ask, as it opens and comes back to the app)
+    const r = json(await warningsAt(env, lat, lon)); r.headers.set("Cache-Control", "private, max-age=180"); return r;
   },
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
   "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },

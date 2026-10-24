@@ -63,7 +63,11 @@ async function browser(name, { push = false } = {}) {
   return { ctx, p, name };
 }
 const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await x.p.goto(`${WX}/${q ? `?${q}` : ''}`); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
-const settings = async (x) => { await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400); };
+// (open already, as it is just after signing out from it: brought back to its first page, not opened again behind itself)
+const settings = async (x) => {
+  if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
+  await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
+};
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
 // (signed out, Settings has a row for signing in, which opens a folder of its own: the passkey, email and password)
@@ -175,7 +179,8 @@ await closeSheet(L);
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
-  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row.action:text-is("Delete account")')), 'opened from Weather, the account\'s page leaves signing out to Weather');
+  // (deleting the account is under Your data now, with the rest of what's yours)
+  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
   ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
@@ -373,14 +378,18 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   await closeSheet(P);
 }
 
-// ---- 9. The account deleted (in InFlight): what Weather kept goes with it ----
+// ---- 9. The account deleted (on the account's page, a week's grace, then gone): what Weather kept goes with it ----
 {
   await L.p.goto(`${CHAT}/`); await L.p.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
-  const tk = await L.p.evaluate(() => new Promise((ok2) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => ok2(g.result?.token); }; }));
   // (deleting needs it shown it's you in the last ten minutes: as if the password had just been asked for)
   sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = (SELECT id FROM pg_users WHERE email = 'sam@example.com')`);
-  const del = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/me', method: 'DELETE', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${tk}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); r.end(); });
+  const ck = (await L.ctx.cookies(CHAT)).find((c) => c.name === 'account'), handle = rows("SELECT handle FROM pg_users WHERE email = 'sam@example.com'")[0]?.handle;
+  const post = (path, host, headers, data) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', headers: { Host: host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); if (data) r.write(data); r.end(); });
+  const del = await post('/api/account/delete', 'account.gfg.test:8788', { 'Content-Type': 'application/json', Origin: 'http://account.gfg.test:8788', Cookie: `account=${ck?.value}` }, JSON.stringify({ confirm: handle }));
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
+  // (the week's grace over: the next tick deletes it, and what Weather kept with it)
+  sql(`UPDATE pg_users SET delete_at = ${Date.now() - 1000} WHERE email = 'sam@example.com'`); sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'");
+  await post('/api/pigeon/notify-tick', 'chat.gfg.test:8788', { Authorization: 'Bearer tick-test-secret' });
   const left = rows("SELECT (SELECT COUNT(*) FROM wx_accts) AS a, (SELECT COUNT(*) FROM wx_devs WHERE user_id IS NOT NULL) AS d, (SELECT COUNT(*) FROM wx_subs WHERE dev LIKE '%') AS s")[0];
   ok(left.a === 0 && left.d === 0 && left.s === 1 + tSubs, 'and what Weather kept with it goes (only the devices not with it keep their own)', JSON.stringify(left));
 }

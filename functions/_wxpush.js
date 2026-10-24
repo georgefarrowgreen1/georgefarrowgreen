@@ -60,6 +60,17 @@ let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
   if (!ready) ready = (async () => {
+    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a dozen trips)
+    if ((await env.DB.prepare("SELECT v FROM wx_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+    await setup(env);
+    await env.DB.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
+  })().catch((e) => { ready = null; throw e; });
+  await ready;
+  return env.DB;
+}
+// The tables and their columns (each step safe to run again). SCHEMA_FP is its own text's fingerprint, so any change
+// here has every copy of the server run it once more.
+async function setup(env) {
     await env.DB.batch([
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS wx_subs (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
         lat REAL NOT NULL, lon REAL NOT NULL, name TEXT, rain INTEGER NOT NULL DEFAULT 0, brief INTEGER NOT NULL DEFAULT 0, brief_at TEXT,
@@ -94,10 +105,8 @@ export async function wxdb(env) {
     ]);
     // (each day's hours at the airport: temperature, dew point, wind and gusts, for tuning more than the highs and lows)
     await env.DB.prepare("ALTER TABLE wx_obs ADD COLUMN hours TEXT").run().catch(() => {});
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
-  return env.DB;
 }
+const SCHEMA_FP = (() => { let h = 2166136261; for (const c of setup.toString()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "w" + h.toString(36); })();
 const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const idOf = async (endpoint) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint))).slice(0, 32);
 const r2 = (v) => Math.round(v * 100) / 100;

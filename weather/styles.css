@@ -1074,6 +1074,7 @@ a.acct-btn { text-decoration: none; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
 .radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
 .radar-note:empty { display: none; }
+[data-layer]:not([data-layer="rain"]) .radar-note { display: none; }   /* (it speaks of rain: not said under the wind, say) */
 .radar-wrap { position: relative; margin-top: 12px; }
 /* (the wind's arrows over the map, under its controls: radar.js arrows) */
 /* the wind's flow over the map (radar.js): over the map, under its controls */

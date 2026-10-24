@@ -133,8 +133,15 @@ async function start() {
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
+  // (a place chosen, or found by the phone: the rough guess from the connection made on the first visit goes, as it was
+  // only ever a stand-in, and is often a city or two out)
+  if (!p.approx && S.places.some((x) => x.approx && !near(x))) {
+    const was = S.places[S.cur];
+    S.places = S.places.filter((x) => !x.approx || near(x));
+    S.cur = Math.max(0, S.places.indexOf(was));
+  }
   let i = p.gps ? S.places.findIndex((x) => x.gps) : S.places.findIndex((x) => !x.gps && near(x));
-  if (i >= 0) S.places[i] = { ...S.places[i], ...p };
+  if (i >= 0) { S.places[i] = { ...S.places[i], ...p }; if (!p.approx) delete S.places[i].approx; }
   else if (p.gps) { S.places.unshift(p); i = 0; if (!makeCurrent) S.cur++; }      // My Location first, as on iOS
   else { S.places.push(p); i = S.places.length - 1; }
   if (makeCurrent) S.cur = i;
@@ -173,7 +180,7 @@ async function go(force = false, fresh = null) {
     const loading = load(p, (wx, how) => {
       if (!how.partial) fresh?.();
       if (my !== seq || !wx) return;
-      if (how.error) S.error = how.error;
+      if (how.error) S.error = how.error; else if (!how.partial) S.tries = 0;
       if (runOut(wx)) { render(); return; }
       S.base = wx; S.stale = !!how.stale;      // (shaped as it's drawn: render)
       if (!how.stale && !how.partial) snapshotNow(wx);
@@ -184,7 +191,13 @@ async function go(force = false, fresh = null) {
     radarRain(p, my);
     await loading;
   } catch (e) {
-    if (my === seq) { S.error = e; render(); }
+    if (my === seq) {
+      S.error = e;
+      // (the forecast service busy, or not answering: asked again by itself in a while, half a minute then a minute)
+      clearTimeout(S.again);
+      if ((e.status === 429 || e.status >= 500) && (S.tries = (S.tries || 0) + 1) <= 4) S.again = setTimeout(() => { const q = place(); if (q && cell(q.lat, q.lon) === cell(p.lat, p.lon) && !S.wx) go(); }, S.tries > 1 ? 60e3 : 30e3);
+      render();
+    }
   } finally {
     fresh?.();
     if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
@@ -493,8 +506,9 @@ function render() {
   $("retry-btn").hidden = !!wx || !S.error;
   if (!wx) {
     $("now-temp").textContent = "–"; delete $("now-temp").dataset.shown; $("now-icon").replaceChildren(); $("place-now").textContent = $("place-temp").textContent = "";
-    $("now-cond").textContent = S.error ? "Couldn't get the forecast" : "Loading the forecast…";
-    $("now-hl").textContent = S.error ? "You may be offline, or the forecast service didn't answer." : "";
+    const busy = S.error && (S.error.status === 429 || S.error.status >= 500);
+    $("now-cond").textContent = S.error ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…";
+    $("now-hl").textContent = S.error ? (busy ? "Trying again in a moment…" : "You may be offline, or the forecast service didn’t answer.") : "";
     $("brief").textContent = "";
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("hourly-strip")._sig = null;
@@ -1708,6 +1722,10 @@ function nudge() {
   if (notifying(n) || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
+  // (nothing to be done about it from here, blocked or a browser without them: not said above the forecast, only in
+  // Settings; the Home Screen step, which can be done, is said below the ten days, not in front of them)
+  if (why && !/Home Screen/.test(why)) { box.hidden = true; return; }
+  if (why) $("daily")?.after(box);
   box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
     h("p", {}, why || "A heads-up here before rain starts, official warnings as they're issued, and a morning briefing if you'd like one."),
     h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify"); } }, "Turn on"),

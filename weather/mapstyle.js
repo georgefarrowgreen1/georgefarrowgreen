@@ -18,14 +18,14 @@ const NIGHT = {
   motorway: "#4a5160", road: "#363c48", border: "rgba(222, 230, 245, 0.32)", region: "rgba(222, 230, 245, 0.13)",
   label: "#f4f6fa", label2: "rgba(235, 238, 245, 0.78)", label3: "rgba(235, 238, 245, 0.56)", sea: "#5f7896",
   halo: "rgba(8, 11, 17, 0.75)", box: "#ffffff",
-  relief: { "raster-brightness-min": 0, "raster-brightness-max": 0.32, "raster-opacity": [2, 0.5, 6, 0.35, 9, 0.12] },
+  relief: { "raster-brightness-min": 0, "raster-brightness-max": 0.32, "raster-opacity": [2, 0.5, 5, 0.35, 7, 0] },
 };
 const DAY = {
   land: "#f5f4f1", water: "#dfe7ee", ice: "#ffffff", green: "#e3ecdc", town: "#edebe6",
   motorway: "#d2cfc8", road: "#e2dfd8", border: "rgba(60, 60, 67, 0.36)", region: "rgba(60, 60, 67, 0.16)",
   label: "#1c1c1e", label2: "rgba(28, 28, 30, 0.82)", label3: "rgba(60, 60, 67, 0.62)", sea: "#8d97a6",
   halo: "rgba(255, 255, 255, 0.9)", box: "#3c3c43",
-  relief: { "raster-brightness-min": 0.72, "raster-brightness-max": 1, "raster-opacity": [2, 0.35, 6, 0.22, 9, 0.08] },
+  relief: { "raster-brightness-min": 0.72, "raster-brightness-max": 1, "raster-opacity": [2, 0.35, 5, 0.22, 7, 0] },
 };
 let C = NIGHT;
 // the countries too small to name from afar (their capitals are named)
@@ -53,12 +53,12 @@ export function mapStyle(light = false) {
     glyphs: GLYPHS,
     sources: {
       map: { type: "vector", url: TILES },
-      relief: { type: "raster", tiles: [RELIEF], tileSize: 256, maxzoom: 6 },
+      relief: { type: "raster", tiles: [RELIEF], tileSize: 256, maxzoom: 5 },      // (faint, so coarse tiles do: each is a fifth of a megabyte at 6)
     },
     layers: [
       { id: "land", type: "background", paint: { "background-color": C.land } },
       // the lie of the land, faintly (Natural Earth's shaded relief, its colour taken out)
-      { id: "relief", type: "raster", source: "relief", maxzoom: 9,
+      { id: "relief", type: "raster", source: "relief", maxzoom: 7,       // (only zoomed well out: closer in, it can hardly be seen and costs the most)
         paint: { "raster-saturation": -1, "raster-contrast": 0.1, "raster-brightness-min": C.relief["raster-brightness-min"], "raster-brightness-max": C.relief["raster-brightness-max"], "raster-opacity": zoom(...C.relief["raster-opacity"]), "raster-fade-duration": 0 } },
       { id: "ice", type: "fill", source: "map", "source-layer": "landcover", filter: ["all", areas, ["match", ["get", "subclass"], ["glacier", "ice_shelf"], true, false]],
         paint: { "fill-color": C.ice, "fill-opacity": 0.8 } },

@@ -32,13 +32,15 @@ export function preload() {
   return ml;
 }
 
-// WebGL 2, without keeping the context it's asked for
+// WebGL 2, without keeping the context it's asked for (asked once: making a context is a long moment's work)
+let canGl;
 export function able() {
+  if (canGl !== undefined) return canGl;
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
     gl?.getExtension("WEBGL_lose_context")?.loseContext();
-    return !!gl;
-  } catch (_) { return false; }
+    return (canGl = !!gl);
+  } catch (_) { return (canGl = false); }
 }
 
 // The map in `el`, at the place (zoom: in 256-pixel tiles' zooms, as Leaflet counts them; MapLibre's are a zoom
