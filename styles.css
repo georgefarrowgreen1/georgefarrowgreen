@@ -11,11 +11,17 @@
   font-weight: 300 700;
   font-display: swap;
 }
+/* (until it arrives, a system face sized to take up the same room, so the hero's lines don't move when it does) */
+@font-face {
+  font-family: "Space Grotesk fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
+  size-adjust: 100.4%; ascent-override: 97.6%; descent-override: 28.9%; line-gap-override: 0%;
+}
 
 :root {
   --text: #fff;
   --text-2: rgba(235, 235, 245, 0.74);
-  --text-3: rgba(235, 235, 245, 0.46);
+  --text-3: rgba(235, 235, 245, 0.6);     /* (4.5:1 or better on the page, for the small words) */
   --line: rgba(255, 255, 255, 0.12);
   --glass: rgba(28, 30, 40, 0.44);
   --glass-strong: rgba(30, 32, 42, 0.78);
@@ -24,7 +30,7 @@
   --tint-text: #8dbbff;
   --rim: inset 0 1px 0.5px rgba(255, 255, 255, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-  --display: "Space Grotesk", var(--font);
+  --display: "Space Grotesk", "Space Grotesk fallback", var(--font);
   --ease: cubic-bezier(0.2, 0.9, 0.3, 1);
   /* a spring: quick, settling with the faintest overshoot (response 0.5 s, damping 0.86), as a phone's sheets move */
   --spring: linear(0, 0.0273, 0.0947, 0.1846, 0.2846, 0.3859, 0.4831, 0.5725, 0.6523, 0.7219, 0.7812, 0.8309, 0.8717, 0.9048, 0.9311, 0.9517, 0.9675, 0.9795, 0.9883, 0.9946, 0.9989, 1.0018, 1.0036, 1.0046, 1.005, 1.005, 1.0047, 1.0043, 1.0038, 1.0033, 1.0028, 1.0024, 1.0019, 1.0016, 1.0012, 1.001, 1.0007, 1.0006, 1.0004, 1.0003, 1);
@@ -37,6 +43,7 @@ body {
   min-height: 100vh;
   background: #07090d;
   color: var(--text);
+  touch-action: manipulation;     /* (pinching still zooms; a quick double tap on a button doesn't) */
   font: 17px/1.4 var(--font);
   letter-spacing: -0.2px;
   -webkit-font-smoothing: antialiased;
@@ -167,6 +174,7 @@ body.pulling .page, body.pulling .bar { transition: none; }
 .btn { height: 52px; padding: 0 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 17px; }
 .btn.wide { width: 100%; }
 .btn:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
+.btn.idle { opacity: 0.4; box-shadow: none; }   /* (nothing to send yet: tapped, it says what's missing) */
 .cta .round { width: 52px; height: 52px; }
 .btn, .pill, .round, .app, .row { transition: transform 0.15s, opacity 0.15s; }
 .btn:active, .pill:active, .round:active, .app:active { transform: scale(0.96); }
@@ -204,8 +212,8 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .row .tx { flex: 1; font-weight: 500; }
 .row .val { color: var(--text-2); font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .chev { color: var(--text-3); }
-.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 13px; color: var(--text-3); }
-.foot a { color: var(--text-2); }
+.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 13px; color: var(--text-2); }
+.foot a { color: var(--text-2); display: inline-block; padding: 13px 4px; margin: -13px -4px; }
 
 /* ---------------- editing, in place ---------------- */
 body.edit [data-edit] { outline: 1.5px dashed rgba(141, 187, 255, 0.85); outline-offset: 6px; border-radius: 6px; cursor: text; }
@@ -314,6 +322,12 @@ body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 .toast:not(:has(button:not([hidden]))) { padding-right: 20px; }
 .toast button { height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
+
+/* the small round controls keep their size, and are each a finger's width to tap (44 px) */
+.sheet-head .x, .fld.from .change, .editbar .add, .toast button { position: relative; }
+.sheet-head .x::after, .fld.from .change::after, .tile .where::after, .tile .rm::after, .editbar .add::after, .toast button::after {
+  content: ""; position: absolute; inset: -7px;
+}
 
 /* ---------------- larger screens ---------------- */
 @media (min-width: 601px) {

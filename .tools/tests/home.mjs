@@ -35,7 +35,7 @@ async function req(x, url, { method = 'GET', headers = {}, data } = {}) {
   return new Promise((ok, no) => {
     const r = http.request({ host: '127.0.0.1', port: u.port, path: u.pathname + u.search, method, agent: false, headers: { Host: u.host, ...(cookie ? { Cookie: cookie } : {}), ...headers } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c));
-      res.on('end', () => { const body = Buffer.concat(parts).toString(); let j = null; try { j = JSON.parse(body); } catch (_) {} ok({ status: res.statusCode, json: j, body, headers: res.headers }); });
+      res.on('end', () => { const raw = Buffer.concat(parts), body = raw.toString(); let j = null; try { j = JSON.parse(body); } catch (_) {} ok({ status: res.statusCode, json: j, body, raw, headers: res.headers }); });
     });
     r.on('error', no); if (data) r.write(data); r.end();
   });
@@ -77,11 +77,14 @@ await shot(V, 'visitor-nophotos');
 await V.p.click('.cta [data-contact]');
 await V.p.waitForSelector('#contact-sheet[open]'); await settle(V, 500);
 ok(await V.p.evaluate(() => document.body.classList.contains('sheet-up')), 'the page steps back behind the sheet');
-ok(await V.p.isDisabled('#contact-send'), 'Send is off while there’s nothing to send');
+ok(await V.p.evaluate(() => document.querySelector('#contact-send').classList.contains('idle')), 'Send looks off while there’s nothing to send');
+await V.p.click('#contact-send');
+ok(/add your name/.test(await text(V, '#contact-err')) && await V.p.evaluate(() => document.activeElement?.id === 'c-name' && document.activeElement.getAttribute('aria-invalid') === 'true'),
+  'tapped anyway: it says what’s missing, and takes you there', await text(V, '#contact-err'));
 ok(await V.p.evaluate(() => [...document.querySelectorAll('#contact-sheet label.fld > span')].map((e) => e.textContent).join() === 'Name,Email'), 'each field says what it’s for');
 await V.p.fill('#c-name', 'Sam Okoro'); await V.p.fill('#c-email', 'sam@example');
 await V.p.fill('#c-message', 'Loved the photos from the climb. Are you riding the sportive in May?');
-ok(!(await V.p.isDisabled('#contact-send')), 'and on once there is');
+ok(await V.p.evaluate(() => !document.querySelector('#contact-send').classList.contains('idle')), 'and ready once there is');
 await V.p.click('#contact-send');
 ok(/email doesn’t look right/.test(await text(V, '#contact-err')), 'an email that can’t be one is said', await text(V, '#contact-err'));
 await V.p.fill('#c-email', 'sam@example.com');
@@ -200,6 +203,13 @@ await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
 ok((await req(null, `${SITE}/api/background`)).json.images[1].device === 'desktop', 'then Computer');
 r = await req(null, `${SITE}/api/background?id=${list[0].id}`);
 ok(r.status === 200 && /immutable/.test(r.headers['cache-control']), 'a photo is kept by browsers for good', r.headers['cache-control']);
+{
+  const big = r.raw.length, sm = await req(null, `${SITE}/api/background?id=${list[0].id}&s=m`), smLen = sm.raw.length;
+  ok(list.every((p) => p.m === 1) && sm.status === 200 && smLen > 0 && smLen <= big, 'each with a phone-sized copy too, sent for ?s=m', `${big} / ${smLen}`);
+  const c1 = await req(null, `${SITE}/api/background?id=cover&d=desktop`), etag = c1.headers.etag;
+  const again = await req(null, `${SITE}/api/background?id=cover&d=desktop`, { headers: { 'If-None-Match': etag || '' } });
+  ok(!!etag && again.status === 304, 'asked again with the tag it has: “the same”, not sent again', `${etag} ${again.status}`);
+}
 r = await req(null, `${SITE}/api/background?id=cover&d=mobile`, { method: 'HEAD' });
 ok(r.status === 200 && /^image\//.test(r.headers['content-type']) && /max-age=600/.test(r.headers['cache-control']), 'the first one, for a link preview’s look', `${r.status} ${r.headers['content-type']}`);
 await shot(G, 'photos');

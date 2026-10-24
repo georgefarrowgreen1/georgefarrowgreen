@@ -3,7 +3,8 @@ import { requireOwner, failed, json } from "../_auth.js";
 // Background photos for the home page's slideshow (its owner changes them there: functions/_auth.js).
 //   Image bytes live in R2 (env.BIO_R2) when bound; otherwise KV. A photo never changes under its id, so it's kept
 //   for good by browsers; "cover" (the first one for a phone or a computer) changes with the list, so only briefly.
-//   Ordered list in KV: bg_list = JSON array of { id, focus } ("x% y%").
+//   Ordered list in KV: bg_list = JSON array of { id, focus ("x% y%"), device, m }. m: there's a phone-sized copy
+//   too (R2 only, at bg/<id>-m), sent for ?s=m and to phones asking for the cover.
 //   Legacy single image (KV key "background") migrated transparently.
 
 const LIST = "bg_list";
@@ -16,7 +17,7 @@ function normalize(list) {
   return (list || []).map((e) =>
     typeof e === "string"
       ? { id: e, focus: DEFAULT_FOCUS, device: "both" }
-      : { id: e.id, focus: e.focus || DEFAULT_FOCUS, device: e.device || "both" }
+      : { id: e.id, focus: e.focus || DEFAULT_FOCUS, device: e.device || "both", ...(e.m ? { m: 1 } : {}) }
   );
 }
 
@@ -49,11 +50,12 @@ function sanitizeFocus(f) {
   return `${x}% ${y}%`;
 }
 
-export async function onRequestGet({ request, env }) {
-  const url = new URL(request.url);
+export async function onRequestGet(ctx) {
+  const { request, env } = ctx, url = new URL(request.url);
   let id = url.searchParams.get("id");
   if (!id) return json({ images: await getList(env) }, 200, { "Cache-Control": "no-store" });
   const cover = id === "cover", cache = cover ? "public, max-age=600" : "public, max-age=31536000, immutable";
+  let small = url.searchParams.get("s") === "m";
 
   // "cover" resolves to the first image for the requested device — used for an
   // early <link rel=preload> so the first photo paints fast.
@@ -62,25 +64,36 @@ export async function onRequestGet({ request, env }) {
     const list = await getList(env);
     const pick = list.find((e) => (e.device || "both") === "both" || e.device === want) || list[0];
     if (!pick) return new Response(null, { status: 404 });
-    id = pick.id;
+    id = pick.id; small = want === "mobile" && !!pick.m;
   }
+  if (!/^[\w-]{1,40}$/.test(id)) return new Response(null, { status: 404 });
+  // A photo's bytes never change under its id, so its id is its tag: a browser asking again about the cover it has
+  // (once its 10 minutes are up) is told it's the same, not sent it again, unless the cover's become another photo.
+  const tag = `"bg-${id}${small ? "-m" : ""}"`;
+  if ((request.headers.get("If-None-Match") || "").split(/\s*,\s*/).includes(tag)) return new Response(null, { status: 304, headers: { ETag: tag, "Cache-Control": cache } });
+  // and kept at the edge by its id for a day, so it's read from storage once a day there, not for each visit (a day,
+  // not for good: a photo taken off the page is gone from every edge by the next day)
+  const edge = typeof caches !== "undefined" ? caches.default : null, key = new Request(`${url.origin}/api/background?id=${encodeURIComponent(id)}${small ? "&s=m" : ""}&edge=1`);
+  const hit = await edge?.match(key).catch(() => null);
+  if (hit) { const r = new Response(hit.body, hit); r.headers.set("Cache-Control", cache); r.headers.set("ETag", tag); return r; }
 
   if (env.BIO_R2) {
-    const obj = await env.BIO_R2.get(R2_KEY(id));
+    const obj = (small && (await env.BIO_R2.get(R2_KEY(id) + "-m"))) || (await env.BIO_R2.get(R2_KEY(id)));
     if (obj) {
-      return new Response(obj.body, {
-        headers: {
-          "Content-Type": (obj.httpMetadata && obj.httpMetadata.contentType) || "image/jpeg",
-          "Cache-Control": cache,
-        },
-      });
+      const type = (obj.httpMetadata && obj.httpMetadata.contentType) || "image/jpeg";
+      if (edge) {
+        const [a, b] = obj.body.tee();
+        ctx.waitUntil?.(edge.put(key, new Response(b, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400" } })).catch(() => {}));
+        return new Response(a, { headers: { "Content-Type": type, "Cache-Control": cache, ETag: tag } });
+      }
+      return new Response(obj.body, { headers: { "Content-Type": type, "Cache-Control": cache, ETag: tag } });
     }
   }
   if (env.BIO_KV) {
     const parsed = dataUrlToBytes(await env.BIO_KV.get(id === "legacy" ? LEGACY : KV_IMG(id)));
     if (parsed) {
       return new Response(parsed.bytes, {
-        headers: { "Content-Type": parsed.type, "Cache-Control": cache },
+        headers: { "Content-Type": parsed.type, "Cache-Control": cache, ETag: tag },
       });
     }
   }
@@ -102,14 +115,17 @@ export async function onRequestPut({ request, env }) {
     return json({ error: "Invalid or oversized image." }, 400);
   }
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  // (and a phone-sized copy, made by the page as it's added: phones are sent that, about a third of the size)
+  const sm = String(body.small || ""), withSmall = !!env.BIO_R2 && /^data:image\/(jpeg|jpg|webp);base64,/.test(sm) && sm.length <= 3000000;
   if (env.BIO_R2) {
     const p = dataUrlToBytes(a);
     await env.BIO_R2.put(R2_KEY(id), p.bytes, { httpMetadata: { contentType: p.type } });
+    if (withSmall) { const q = dataUrlToBytes(sm); await env.BIO_R2.put(R2_KEY(id) + "-m", q.bytes, { httpMetadata: { contentType: q.type } }); }
   } else {
     await env.BIO_KV.put(KV_IMG(id), a);
   }
   const list = await getList(env);
-  list.push({ id, focus: DEFAULT_FOCUS, device: "both" });
+  list.push({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) });
   await saveList(env, list);
   return json({ ok: true, id, images: list });
 }
@@ -140,7 +156,8 @@ export async function onRequestDelete({ request, env }) {
   const id = body.id;
   const list = (await getList(env)).filter((e) => e.id !== id);
   await saveList(env, list);
-  if (env.BIO_R2) await env.BIO_R2.delete(R2_KEY(id));
+  if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]);
+  if (typeof caches !== "undefined") for (const s of ["", "&s=m"]) await caches.default.delete(new Request(`${new URL(request.url).origin}/api/background?id=${encodeURIComponent(id)}${s}&edge=1`)).catch(() => {});
   await env.BIO_KV.delete(id === "legacy" ? LEGACY : KV_IMG(id));
   return json({ ok: true, images: list });
 }
