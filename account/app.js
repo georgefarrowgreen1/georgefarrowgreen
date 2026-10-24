@@ -651,8 +651,8 @@ async function savePhoto(btn, said) {
 function codeView() {
   const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
   import("./qr.js").then(({ qrSvg }) => {
-    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "#ffffff", title: `Add @${m.handle} in InFlight` });
-    // (drawn in on its white card, not just there)
+    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in InFlight` });   // (on its card, whichever its colour: styles.css --qr-card)
+    // (drawn in on its card, not just there)
     qr.firstElementChild?.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: tok("--ease-out") });
   })
     .catch(() => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here. Copy the link instead." })));

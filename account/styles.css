@@ -17,6 +17,7 @@
   --blur: blur(28px) saturate(180%);
   --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 46%);
   --dim: rgba(0, 0, 0, 0.5);
+  --qr-card: #dfe4f3; --qr-edge: 0 14px 34px -16px rgba(0, 0, 0, 0.55);   /* (Your code: softened, not a white panel, on the dark) */
   /* the motion every app on the site shares: out (settling in), glide (things put in place, and sheets), in (going),
      and a soft spring (about 2% past, for a press let go); how long a press, its release, a small change, a usual one,
      a sheet coming up, and going */
@@ -52,6 +53,7 @@
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
     --dim: rgba(10, 14, 30, 0.32);
+    --qr-card: #fff; --qr-edge: 0 0 0 0.5px var(--line), 0 14px 34px -18px rgba(40, 50, 100, 0.35);
     --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55);
     --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
@@ -72,6 +74,7 @@
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
     --dim: rgba(10, 14, 30, 0.32);
+    --qr-card: #fff; --qr-edge: 0 0 0 0.5px var(--line), 0 14px 34px -18px rgba(40, 50, 100, 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -556,12 +559,13 @@ dialog.sheet.dragging { transition: none; }
 .hero-acts .pill { margin: 0; }
 
 /* ---- your code ---- */
-.code-who { display: flex; align-items: center; gap: 12px; padding: 4px 6px; }
-.code-who .avatar { width: 48px; height: 48px; font-size: 20px; box-shadow: none; }
+.code-who { display: flex; align-items: center; gap: 12px; padding: 0 2px; }
+.code-who .avatar { width: 44px; height: 44px; font-size: 18px; box-shadow: none; }
 .code-who > div { display: grid; min-width: 0; }
-.code-who b { font-weight: 600; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-who b { font-weight: 600; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-who span { color: var(--text-2); font-size: 14.5px; }
-.code-big { justify-self: center; width: min(300px, 84%); padding: 20px; border-radius: 26px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
+/* (the card from edge to edge, as the row over it, the code itself kept smaller within it) */
+.code-big { padding: 34px; border-radius: 26px; background: var(--qr-card); box-shadow: var(--qr-edge); }
 .qr { width: 100%; aspect-ratio: 1; }
 .qr svg { display: block; width: 100%; height: 100%; }
 .qr-none { display: grid; place-items: center; height: 100%; padding: 12px; text-align: center; font-size: 14px; color: #3a405c; }
