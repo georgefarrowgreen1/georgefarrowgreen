@@ -30,6 +30,7 @@ const DEFAULTS = {
 let content = { ...DEFAULTS };
 let me = null;           // /api/me, once it's known
 let editing = false;
+let pinned = null;       // where the page was scrolled to, while it's held still behind a sheet
 
 // The server's answer, or an Error saying what went wrong
 // (20 seconds at most: a weak signal says so, rather than hanging; iOS 15 has no AbortSignal.timeout, so it's made here)
@@ -91,6 +92,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
     el.style.animationName = "";
   };
   const measure = () => {
+    if (pinned !== null) return;      // (again once it's let go)
     // (where each line is on the page as it's laid out, not where it looks mid-way through rising into place)
     const edge = bar.offsetHeight, tops = fades.map((el) => pageEl.offsetTop + el.offsetTop);
     // Each line fades from 78 px under the bar to 12 px into it, over 64 px of scroll at least, within the scroll there
@@ -115,6 +117,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
     } else draw();
   };
   addEventListener("scroll", () => {
+    if (pinned !== null) return;      // (held behind a sheet: it reads as the top, but it's still where it was)
     hold();
     if (!linked && !queued) { queued = true; requestAnimationFrame(draw); }
   }, { passive: true });
@@ -394,10 +397,36 @@ function openSheet(d) {
     if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: 500, easing: GLIDE });
   } else if (!d.open) d.classList.remove("shown");
   if (!d.open) d.showModal();
+  pin();
   // (the sheet itself takes the focus, not its first button, which a phone would ring as if it had been chosen)
   $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
   hold();
+}
+// The page held still behind a sheet, pinned where it's scrolled to (an iPhone draws the caret of a field in a sheet as
+// far out as the page behind is scrolled, once the keyboard's up); what moves with the scroll held as it looks, as
+// pinned there's no scroll for it to follow, and let go with it
+const STILL = ["opacity", "transform", "visibility", "animation-name"];
+let stills = [];
+function pin() {
+  if (pinned !== null) return;
+  pinned = scrollY;
+  stills = $$(".bar .mid, .barbg, #soft, .hero > *").map((el) => {
+    const cs = getComputedStyle(el), was = STILL.map((k) => el.style.getPropertyValue(k));
+    for (const k of STILL) el.style.setProperty(k, k === "animation-name" ? "none" : cs.getPropertyValue(k));
+    return [el, was];
+  });
+  Object.assign(body.style, { position: "fixed", top: `${-pinned}px`, left: "0", right: "0" });
+}
+function unpin() {
+  if (pinned === null) return;
+  const y = pinned;
+  Object.assign(body.style, { position: "", top: "", left: "", right: "" });
+  scrollTo({ top: y, behavior: "instant" });
+  pinned = null;
+  for (const [el, was] of stills) STILL.forEach((k, i) => (was[i] ? el.style.setProperty(k, was[i]) : el.style.removeProperty(k)));
+  stills = [];
+  window.redrawScroll?.();
 }
 function finishClose(d) {
   clearTimeout(d._done); d._throw = null;
@@ -408,6 +437,7 @@ function finishClose(d) {
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
   body.classList.remove("sheet-up", "pulling");
+  unpin();
   for (const el of behind) el.style.transform = "";
   hold();
   if (!thrown || motion.matches) {
@@ -444,7 +474,7 @@ for (const d of $$("dialog.sheet")) {
     else d.classList.add("shown");
   });
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
-  d.addEventListener("close", () => { body.classList.remove("sheet-up"); hold(); lastFocus?.focus?.({ preventScroll: true }); });
+  d.addEventListener("close", () => { body.classList.remove("sheet-up"); unpin(); hold(); lastFocus?.focus?.({ preventScroll: true }); });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
   // itself; and only a tap that began there, not a press that began in the sheet, choosing words, and let go outside it)
   let downOnDim = false;
@@ -498,9 +528,57 @@ for (const d of $$("dialog.sheet")) {
 // On a phone, the keyboard covers the foot of the screen, not the page's: a sheet's lifted above it (smoothly: styles.css)
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  const lift = () => root.style.setProperty("--kb", Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + "px");
+  // (#kb in the address: the measurements, shown in the open sheet (or over the page), to see what a phone does)
+  const probe = location.hash === "#kb" ? Object.assign(document.createElement("pre"), { style: "position:absolute;z-index:999;top:4px;left:12px;right:12px;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.8);color:#7f7;font:10px/1.3 ui-monospace,monospace;pointer-events:none;white-space:pre-wrap" }) : null;
+  window.kbSnap = (label) => {
+    if (!probe) return;
+    const d = $("dialog.sheet[open]"), box = d && $(".sheet-in", d), m = $("#c-message"), r = d?.getBoundingClientRect();
+    const line = `${label}: msg ${m.getBoundingClientRect().top.toFixed(0)} box ${box ? `${box.scrollTop}/${box.clientHeight}/${box.scrollHeight}` : "-"} sheet ${r ? `${r.top.toFixed(0)}-${r.bottom.toFixed(0)}` : "-"} vv ${vv.height.toFixed(0)}@${vv.offsetTop.toFixed(0)} kb ${kb} y ${scrollY}`;
+    (window.kbLog ||= []).push(line); if (kbLog.length > 8) kbLog.shift();
+  };
+  let kb = 0, moved = null;
+  const lift = () => {
+    const k = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+    if (k !== kb) {
+      kb = k; root.style.setProperty("--kb", k + "px");
+      // (the sheet moved under the field being typed in: its caret drawn again once it's settled, styles.css)
+      clearTimeout(moved); moved = setTimeout(recaret, 400);
+    }
+    if (!probe) return;
+    const d = $("dialog.sheet[open]") || body;
+    if (probe.parentNode !== d) d.append(probe);
+    probe.style.position = d === body ? "fixed" : "absolute";
+    window.kbSnap("now"); const now = kbLog.pop();
+    probe.textContent = `inner ${innerHeight} screen ${screen.height}\n${now}\n${(window.kbLog || []).join("\n")}`;
+  };
+  if (probe) { addEventListener("scroll", lift, { passive: true }); setInterval(lift, 250); }
   vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift);
+  // (and measured every frame while something in a sheet's being typed in: an iPhone doesn't always say when it moves
+  // its view of the page under the keyboard, and a sheet left where it was stands off the keyboard, or under it)
+  let watching = false;
+  const watch = () => {
+    if (!typingInSheet()) { watching = false; return; }
+    lift(); requestAnimationFrame(watch);
+  };
+  document.addEventListener("focusin", () => { if (!watching && typingInSheet()) { watching = true; watch(); } });
   window.relift = lift;
+}
+function typingInSheet() {
+  const el = document.activeElement;
+  return !!el?.matches?.("input, textarea") && !!el.closest("dialog.sheet[open]");
+}
+// An iPhone draws its caret where the field was until the selection changes, even when the field's moved (a sheet
+// lifted, or changed size): so the caret's moved for a frame and put back (moved and put back at once, it's no change
+// to the phone)
+function recaret() {
+  const el = document.activeElement;
+  if (!typingInSheet() || !el.setSelectionRange) return;
+  let a, b, dir;
+  try { a = el.selectionStart; b = el.selectionEnd; dir = el.selectionDirection; } catch (_) { return; }   // (an email field has none)
+  if (a == null) return;
+  const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
+  el.setSelectionRange(away, away);
+  requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
 }
 // (whether what's under a finger, inside a sheet, would scroll itself: a list longer than it is, or a field)
 function scrollsIn(el, top) {
@@ -586,22 +664,36 @@ const fold = () => {
   morphFrom(true);
 };
 $("#c-message").addEventListener("input", fold);
+$("#c-message").addEventListener("focus", () => setTimeout(() => window.kbSnap?.("focused"), 800));
 $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim()) fold(); });
-// (once the sheet's changed size under a field that's being typed in: an iPhone leaves its caret where the field was
-// until the selection changes, so it's moved for a frame and put back (moved and put back at once, it's no change to
-// the phone); and the keyboard's measured again for a moment, as the phone settles its view of the page, so the sheet
-// sits on it rather than short of it or under it)
-function steady() {
+// (once the sheet's changed size under a field that's being typed in: the caret drawn again where it is)
+function steady() { window.kbSnap?.("settled"); refocus(); window.relift?.(); setTimeout(() => window.kbSnap?.("1s on"), 1000); }
+// (an iPhone keeps a caret where it was in the sheet, even moved, when what's above it in the sheet changes size, and
+// even when the selection's moved: it only works it out afresh as the field takes the focus. So the focus goes for a
+// frame to a stand-in where the field is, and comes back, the caret where it was; with a field focused all the while,
+// the keyboard stays up)
+let standIn = null;
+function refocus() {
   const el = document.activeElement;
-  if (el?.setSelectionRange && contact.sheet.contains(el)) {
-    const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection;
-    const away = a !== b ? a : a > 0 ? a - 1 : a + 1;
-    el.setSelectionRange(away, away);
-    requestAnimationFrame(() => { if (document.activeElement === el) el.setSelectionRange(a, b, dir); });
+  if (!typingInSheet() || el.tagName !== "TEXTAREA") return recaret();
+  const a = el.selectionStart, b = el.selectionEnd, dir = el.selectionDirection, r = el.getBoundingClientRect();
+  if (!standIn) {
+    standIn = document.createElement("textarea");
+    standIn.tabIndex = -1; standIn.setAttribute("aria-hidden", "true");
+    Object.assign(standIn.style, { position: "fixed", width: "1px", height: "1px", padding: "0", border: "0", opacity: "0", pointerEvents: "none", fontSize: "17px", resize: "none" });
   }
-  let n = 0;
-  const tick = () => { window.relift?.(); if (++n < 20) requestAnimationFrame(tick); };
-  tick();
+  Object.assign(standIn.style, { top: `${r.top + 14}px`, left: `${r.left + 16}px` });
+  el.closest("dialog").append(standIn);
+  standIn.focus({ preventScroll: true });
+  requestAnimationFrame(() => {
+    if (document.activeElement === standIn) {
+      el.focus({ preventScroll: true }); el.setSelectionRange(a, b, dir);
+      // (anything typed in that frame, put where it was meant to go)
+      if (standIn.value) { el.setRangeText(standIn.value, a, b, "end"); el.dispatchEvent(new Event("input", { bubbles: true })); }
+    }
+    standIn.value = ""; standIn.remove();
+    window.kbSnap?.("refocused");
+  });
 }
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
@@ -612,6 +704,8 @@ function morphFrom(on) {
   // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
   const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
   const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
+  const y0 = $("#c-message").getBoundingClientRect().top, st = box.scrollTop;
+  window.kbSnap?.(on ? "fold before" : "unfold before");
   const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
   const ghosts = (on ? rows : [from]).map((el) => {
     const r = el.getBoundingClientRect(), g = el.cloneNode(true);
@@ -628,6 +722,17 @@ function morphFrom(on) {
   const T = 520, slide = { duration: T, easing: GLIDE };
   box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
   s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
+  box.scrollTop = st;       // (cut back, for the moment the rows were at their new size before that took over)
+  // (and the message, being typed in, kept where it is on the screen all the while: with the keyboard up the sheet's
+  // at its tallest and scrolled within, so as the rows close up above it the scroll's moved with them, and it's the
+  // top of the sheet that closes in; an iPhone wouldn't move its caret with it)
+  const msg = $("#c-message"), until = performance.now() + T + 60;
+  const keep = () => {
+    const dy = msg.getBoundingClientRect().top - y0;
+    if (Math.abs(dy) > 0.5 && box.scrollHeight > box.clientHeight) box.scrollTop += dy;
+    if (performance.now() < until) requestAnimationFrame(keep);
+  };
+  if (document.activeElement === msg) requestAnimationFrame(keep);
   words.forEach(([input, shown], i) => {
     const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
     el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
