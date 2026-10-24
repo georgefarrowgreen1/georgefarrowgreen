@@ -141,7 +141,13 @@ export async function onRequestPut({ request, env }) {
     await env.BIO_KV.put(KV_IMG(id), a);
   }
   let list;
-  try { list = await updateList(env, (l) => { l.push({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) }); }); } catch (_) { return unsaved(); }
+  try { list = await updateList(env, (l) => { l.push({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) }); }); }
+  catch (_) {
+    // (not in the list, so its files are taken away again: nothing would point to them, and nothing sweeps bg/)
+    if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]).catch(() => {});
+    else await env.BIO_KV.delete(KV_IMG(id)).catch(() => {});
+    return unsaved();
+  }
   return json({ ok: true, id, images: list });
 }
 

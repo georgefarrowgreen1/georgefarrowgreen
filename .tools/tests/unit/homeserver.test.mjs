@@ -1,7 +1,8 @@
 // The home page's server: Get in touch (functions/api/contact.js) taking no message from another site's page, holding a
-// network to 5 an hour, and past 60 a day keeping a message rather than refusing it (only 150 a day kept); Admin's count
-// of new messages being of the 200 it shows (functions/_messages.js); the words refused, not cut, when too long
-// (functions/_content.js); and the photos' list changed one change at a time (functions/api/background.js updateList).
+// network to 5 an hour and a wider one to 10 a day, and past 60 a day keeping a message rather than refusing it (only 150
+// a day kept); Admin's count of new messages being of the 200 it shows (functions/_messages.js); the words refused, not
+// cut, when too long (functions/_content.js); and the photos' list changed one change at a time
+// (functions/api/background.js updateList).
 // (The database is SQLite in memory, as D1 is SQLite: node:sqlite, so skipped where Node hasn't it.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,6 +53,16 @@ test('Get in touch: 5 an hour from a network, the 6th told it has sent a few', {
   assert.match(sixth.error, /sent a few already/);
 });
 
+test('Get in touch: 10 a day from a wider network (an IPv6 /48, each /64 in it its own), so one place can\'t fill the day', { skip: !sqlite }, async () => {
+  fresh();
+  for (let i = 0; i < 10; i++) assert.equal((await send(`2001:db8:5:${i + 1}::1`, undefined, i)).status, 200);
+  const more = await send('2001:db8:5:ff::1', undefined, 10);
+  assert.equal(more.status, 429);
+  assert.match(more.error, /sent a few already/);
+  assert.equal((await send('2001:db8:6:1::1', undefined, 11)).status, 200, 'another /48: its own');
+  assert.equal(count('SELECT COUNT(*) AS n FROM messages'), 11);
+});
+
 test('Get in touch: past 60 a day, kept (and said sent) but not emailed; past 150, refused, not blamed on the sender', { skip: !sqlite }, async () => {
   fresh(); mailed = 0;
   for (let i = 0; i < 150; i++) {
@@ -82,7 +93,7 @@ test('Admin\'s new messages are of the 200 it shows: seen, none new, with more k
   assert.equal((await messageCounts(env)).unread, 1, 'a new one is new');
 });
 
-test('the words: too long is refused, naming the line, not cut; an emoji is one character', () => {
+test('the words: too long is refused, naming the line, not cut; counted by code point (a bike is one, a flag two)', () => {
   const long = 'word '.repeat(100);
   const clean = sanitize({ name: 'George', role: 'Photos', bio: long });
   assert.equal(clean.bio, long.trim(), 'not cut');
@@ -90,6 +101,7 @@ test('the words: too long is refused, naming the line, not cut; an emoji is one 
   assert.equal(tooLong(sanitize({ name: 'G', role: 'x'.repeat(LIMITS.role + 1), bio: long })), 'role', 'the first line that is, as on the page');
   assert.equal(tooLong(sanitize({ name: '🚲'.repeat(LIMITS.name), role: '', bio: '' })), null, '80 bikes are 80 characters');
   assert.equal(tooLong(sanitize({ name: '🚲'.repeat(LIMITS.name + 1), role: '', bio: '' })), 'name');
+  assert.equal(tooLong(sanitize({ name: '🇬🇧'.repeat(LIMITS.name / 2 + 1), role: '', bio: '' })), 'name', '41 flags are 82');
   assert.deepEqual(sanitize({ name: ' A\n  B\u0000 ', role: null }), { name: 'A B', role: '', bio: '' }, 'one line of plain text still');
 });
 

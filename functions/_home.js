@@ -48,8 +48,8 @@ export async function homePage(ctx, url, res) {
   const out = new HTMLRewriter()
     .on("[data-c=role]", text("role")).on("[data-c=name]", text("name")).on("[data-c=bio]", text("bio"))
     .on("title", { element: (el) => { if (c) el.setInnerContent(c.name); } })
-    // (the Person block, as the page writes it too: put in as it is, being a script's, with each "<" written as < so
-    // nothing in the words can end the script early)
+    // (the Person block, as the page writes it too: put in as it is, being a script's, with each "<" written as \u003c
+    // so nothing in the words can end the script early)
     .on("#ld-person", { element: (el) => { if (c) el.setInnerContent(JSON.stringify({ "@context": "https://schema.org", "@type": "Person", name: c.name, description: c.bio,
       url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] }).replace(/</g, "\\u003c"), { html: true }); } })
     .on('meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]', attr("bio"))

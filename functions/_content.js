@@ -44,7 +44,7 @@ export function sanitize(body) {
   return { name: line(body.name), role: line(body.role), bio: line(body.bio) };
 }
 
-// The most each line can be, in characters as they're seen (an emoji is one). A longer one is refused, not cut (cut,
-// the page said Saved and the end of what was typed was lost).
+// The most each line can be, counted by code point (most emoji are one; a flag, or one with a skin tone, is two). A
+// longer one is refused, not cut (cut, the page said Saved and the end of what was typed was lost).
 export const LIMITS = { role: 120, name: 80, bio: 400 };
 export const tooLong = (clean) => Object.keys(LIMITS).find((k) => [...clean[k]].length > LIMITS[k]) || null;

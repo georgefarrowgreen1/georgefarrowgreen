@@ -1,5 +1,5 @@
 import { json } from "../_auth.js";
-import { HttpError, EMAIL_RE, clientIp, limit } from "../_pigeon.js";
+import { HttpError, EMAIL_RE, clientIp, clientNet, limit } from "../_pigeon.js";
 import { body as readBody } from "../_accountapi.js";
 import { saveMessage } from "../_messages.js";
 import { emailReady, emailBody, sendEmail, linkOrigin, ukTime } from "../_email.js";
@@ -7,10 +7,11 @@ import { emailReady, emailBody, sendEmail, linkOrigin, ukTime } from "../_email.
 // Contact form. Saves to D1 (if bound) and/or emails via a provider:
 //   WEB3FORMS_KEY   -> https://web3forms.com  (no domain verification needed)
 //   RESEND_API_KEY  -> https://resend.com     (needs a verified sender domain; in the site's email look, functions/_email.js)
-// Spam defenses: hidden honeypot field, 5 an hour from a network (an IPv6 /64 counts as one), 150 a day kept in all
-// and 60 a day emailed, counted in D1 in one step each (so a burst can't slip through), a body of 16 KB at most, and
-// none from another site's page. (Every message is an email from the site's sender, which the accounts' emails share:
-// a flood mustn't use that up. Past 60 a day a message is still kept, so a flood can't turn the form off for everyone.)
+// Spam defenses: hidden honeypot field, 5 an hour from a network (an IPv6 /64 counts as one) and 10 a day from a wider
+// one (an IPv6 /48), 150 a day kept in all and 60 a day emailed, counted in D1 in one step each (so a burst can't slip
+// through), a body of 16 KB at most, and none from another site's page. (Every message is an email from the site's
+// sender, which the accounts' emails share: a flood mustn't use that up. Past 60 a day a message is still kept; past
+// 150 the form says it's busy and keeps nothing more that day, which takes 15 networks or more to reach.)
 
 const MAX_PER_WINDOW = 5;
 const WINDOW_SECONDS = 60 * 60; // 1 hour
@@ -38,10 +39,10 @@ export async function onRequestPost({ request, env }) {
     return json({ error: "Please add your name, a valid email, and a message." }, 400);
   }
 
-  // Rate limit: by network, and what's kept for the whole site (under the 200 Admin shows, so a day's flood can't push
-  // the real ones out of sight there)
+  // Rate limit: by network (an hour's, and a day's from a wider one, so one place can't fill the day alone), and what's
+  // kept for the whole site (under the 200 Admin shows, so a day's flood can't push the real ones out of sight there)
   if (env.DB) {
-    try { await limit(env, "contact:" + clientIp(request), MAX_PER_WINDOW, WINDOW_SECONDS * 1000); }
+    try { await limit(env, "contact:" + clientIp(request), MAX_PER_WINDOW, WINDOW_SECONDS * 1000); await limit(env, "contact:day:" + clientNet(request), 10, 24 * 3600e3); }
     catch (e) { if (e instanceof HttpError && e.status === 429) return json({ error: "You’ve sent a few already. Please try again later." }, 429); throw e; }
     try { await limit(env, "contact:store", 150, 24 * 3600e3); }
     catch (e) { if (e instanceof HttpError && e.status === 429) return json({ error: BUSY }, 429); throw e; }
