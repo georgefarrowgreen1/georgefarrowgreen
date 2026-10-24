@@ -608,14 +608,22 @@ function layoutPager(force = false, only = true) {
 // pill-w, name-w): this place's as it's laid out, the places either side's from their words, measured in its type, as
 // it would lay them out (the line under the name its region, or what's said once the bar's taken up the temperature;
 // the pill no wider than it can be)
-let measure = null, pillSig = "", pillW = null;
+let probe = null, pillSig = "", pillW = null;
 function pillWidths(a, b, va, vb) {
   const pill = $("place-btn"), name = $("place-name"), top = document.querySelector(".top");
   const sig = JSON.stringify([a?.name, subOf(a), va?.temp, va?.cond, b?.name, subOf(b), vb?.temp, vb?.cond, name.textContent, $("place-sub").textContent, $("place-now").textContent, innerWidth]);
   if (sig === pillSig) return;
   pillSig = sig;
-  measure ||= document.createElement("canvas").getContext("2d");
-  const w = (text, el) => { if (!text) return 0; const cs = getComputedStyle(el); measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; return measure.measureText(text).width; };
+  // (words measured in the bar itself, unseen, in the type of the part they'd be in: a canvas can't be relied on to take
+  // the system's font as the page names it; and a pixel over, so nothing's cut short by a fraction)
+  if (!probe) { probe = h("span", { class: "pill-probe", "aria-hidden": "true" }); document.querySelector(".place-name").append(probe); }
+  const w = (text, el) => {
+    if (!text) return 0;
+    const cs = getComputedStyle(el);
+    Object.assign(probe.style, { fontStyle: cs.fontStyle, fontWeight: cs.fontWeight, fontSize: cs.fontSize, fontFamily: cs.fontFamily, letterSpacing: cs.letterSpacing });
+    probe.textContent = text;
+    return (parseFloat(getComputedStyle(probe).width) || 0) + 1;
+  };
   const cs = getComputedStyle(top), room = top.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - document.querySelector(".top-actions").offsetWidth - (parseFloat(cs.columnGap) || 10);
   const most = Math.min(innerWidth * 0.72, room), edge = 36, arrow = 13;
   // (as laid out, not as anything has it moved or scaled meanwhile)
@@ -711,8 +719,9 @@ function commit(dir) {
   snapping = true;
   S.cur = i; savePlaces();
   try { go(); } finally { snapping = false; }
-  layoutPager(true);
+  // (the swipe's own styles off first: what's now showing measured as it's laid out, pillWidths)
   dragOff();
+  layoutPager(true);
   // (its page wasn't beside it yet: its cards come up under it)
   if (!whole) { for (const c of document.querySelectorAll("main > .col")) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: EASE_OUT }); arrive(true); }
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("pg-snap")));
