@@ -28,6 +28,10 @@ const API = "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
+// the motion the stylesheet sets out (its :root: the curves and times every app on the site shares), read for what's
+// animated from here: tok("--ease-glide"), ms("--dur-base") (with none, a plain curve and a third of a second)
+const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
+const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
@@ -52,6 +56,8 @@ if (/^#confirm=edit$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
   try { sessionStorage.setItem("acct-from", "home"); sessionStorage.setItem("acct-confirm", "edit"); } catch (_) {}
 }
+// (whether it will: a sheet asking it's you, unless it's been shown already)
+function homeEdit() { try { return sessionStorage.getItem("acct-confirm") === "edit" && !S.me.fresh; } catch (_) { return false; } }
 function confirmForHome() {
   let want = null; try { want = sessionStorage.getItem("acct-confirm"); sessionStorage.removeItem("acct-confirm"); } catch (_) {}
   if (want !== "edit" || !S.me?.signedIn) return;
@@ -87,6 +93,8 @@ function h(spec, props, ...kids) {
   const [tag, ...cls] = spec.split(".");
   const el = document.createElement(tag || "div");
   if (cls.length) el.className = cls.join(" ");
+  // (a form says what's missing in its own words, not the browser's bubbles)
+  if (tag === "form") el.noValidate = true;
   for (const [k, v] of Object.entries(props || {})) {
     if (v == null || v === false) continue;
     if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
@@ -188,12 +196,19 @@ function when(t) {
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
-function theme(pref) {
-  const root = document.documentElement;
-  if (pref === "light" || pref === "dark") root.dataset.theme = pref; else delete root.dataset.theme;
-  try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
-  const top = isDark() ? "#0b1024" : "#eef1fb";
-  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top);
+// (fade: changed while you're looking, the page and any sheet on it cross-fade from one to the other, where the
+// browser can and motion's welcome; else, and as the page opens, at once)
+function theme(pref, fade) {
+  const go = () => {
+    const root = document.documentElement;
+    if (pref === "light" || pref === "dark") root.dataset.theme = pref; else delete root.dataset.theme;
+    try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
+    const top = isDark() ? "#0b1024" : "#eef1fb";
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top);
+  };
+  const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;
+  if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) document.startViewTransition(go);
+  else go();
 }
 const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
 try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (_) {}
@@ -223,10 +238,23 @@ async function load() {
   // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
   if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
   if (S.me?.signedIn) S.gate = null;
-  render();
+  // (a sheet coming straight up over it, from an app, Admin's link or the home page: the page behind it there already,
+  // not rising under it as it comes)
+  if (S.me?.signedIn && (HANDOFF?.open === "profile" || (S.me.admin && location.hash === "#admin") || homeEdit())) S.settled = true;
+  await anew(render);
   if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
   confirmForHome();
 }
+// The page drawn anew, signed in or out, or being deleted (or as it opens, from its skeleton): the old one fading as
+// the new one settles in, where the browser can and motion's welcome. Any sheet closes first, so it isn't caught in the
+// picture of the old one.
+async function anew(fn) {
+  if (sheetEl.open) await closeSheet();
+  if (!document.startViewTransition || still.matches || document.hidden) return fn();
+  await document.startViewTransition(fn).updateCallbackDone;
+}
+// once the page has settled in, less a moment (a sheet coming up as it rises made too much move at once)
+const afterRise = (fn, at = 0) => setTimeout(fn, Math.max(at, (S.riseUntil || 0) - 500 - Date.now()));
 // A way in from elsewhere: #join and #forgot (the apps link here for both), #invite= (an invite, kept for the visit) and
 // #reset= (a reset link from the email). Taken out of the address at once.
 function fromGate() {
@@ -253,20 +281,21 @@ async function fromLink() {
 // (and one opened in a tab where the page is already open)
 addEventListener("hashchange", async () => {
   Sheet.hist = 0;          // (a link arrived over an open sheet: its steps are behind this one now, and stay there)
-  if (fromGate()) { if (sheetEl.open) closeSheet(); S.settled = false; return render(); }
+  if (fromGate()) return anew(() => { S.settled = false; render(); });
   if (!/^#(confirm|email|keep)=/.test(location.hash)) return;
   await fromLink();
-  try { S.me = await call("me"); S.pulled = Date.now(); } catch (_) {}
-  if (sheetEl.open) closeSheet();
-  S.settled = false; render();
+  let m = S.me;
+  try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
+  anew(() => { S.me = m; S.settled = false; render(); });
 });
 function render() {
-  // (settling into place the first time each way round: signed in, out, or being deleted)
+  // (settling into place the first time each way round: signed in, out, or being deleted; after that, drawn again in
+  // place, from where everything was)
   const rise = !S.settled; S.settled = true;
-  let i = 0;
-  const r = (el) => { if (rise) { el.classList.add("rise"); el.style.setProperty("--i", i++); } return el; };
+  const was = rise ? null : where(), risers = [];
+  const r = (el) => { if (rise && el) risers.push(el); return el; };
   main.replaceChildren(...(S.reset ? resetPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)).filter(Boolean));
-  if (rise) S.riseUntil = Date.now() + i * 70 + 950;
+  if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
   whoBar();
@@ -275,9 +304,97 @@ function render() {
 }
 // the page drawn again with what's new, once it's settled into place (what changed behind the scenes)
 function patch() { clearTimeout(S.patchT); S.patchT = setTimeout(render, Math.max(0, (S.riseUntil || 0) - Date.now())); }
+// each part of the page rising into place in the order it's read: down the page, and across where two sit side by side
+function settle(els) {
+  const at = els.map((el) => { const b = el.getBoundingClientRect(); return { el, y: Math.round(b.top / 8), x: b.left }; }).sort((a, b) => a.y - b.y || a.x - b.x);
+  at.forEach(({ el }, i) => { el.style.setProperty("--i", i); el.classList.add("rise"); });
+  S.riseUntil = Date.now() + at.length * 70 + 950;
+}
+// Where each part of the page is (by its data-sec), what each row says (by its data-k), and what has the focus: taken
+// before it's drawn again, for moved()
+function where() {
+  const secs = new Map(), vals = new Map();
+  for (const el of main.querySelectorAll("[data-sec]")) {
+    const b = el.getBoundingClientRect(), near = (d) => { for (let x = el[d]; x; x = x[d]) if (x.dataset?.sec) return x.dataset.sec; return null; };
+    secs.set(el.dataset.sec, { el, x: b.left, y: b.top, next: near("nextElementSibling"), prev: near("previousElementSibling") });
+  }
+  for (const el of main.querySelectorAll("[data-k]")) vals.set(el.dataset.k, says(el));
+  for (const el of main.querySelectorAll(".rise")) el.classList.remove("rise");      // (risen once: not again as it's put back)
+  return { secs, vals, focus: main.contains(document.activeElement) ? keyOf(document.activeElement) : null };
+}
+const says = (row) => [row.querySelector(".val"), row.querySelector(".tx small")].map((x) => x?.textContent ?? null);
+// The page drawn again, from where everything was: a part that's moved slides from there to where it is now, a new one
+// fades in where it goes, one that's gone fades and folds away where it was; what a row says that's changed fades in;
+// and what had the focus has it again
+function moved(was) {
+  for (const [k, w] of was.secs) {
+    if (main.querySelector(`[data-sec="${k}"]`)) continue;
+    const next = w.next && main.querySelector(`[data-sec="${w.next}"]`), prev = !next && w.prev && main.querySelector(`[data-sec="${w.prev}"]`);
+    if (next) next.before(w.el); else if (prev) prev.after(w.el); else continue;
+    w.el.inert = true; fold(w.el, false).then(() => w.el.remove());
+  }
+  // (where the page is stepped back behind a sheet, how far it moved on the screen, in the page's own size)
+  const page = $("#page"), k = page.getBoundingClientRect().width / (page.offsetWidth || 1) || 1;
+  for (const el of main.querySelectorAll("[data-sec]")) {
+    const w = was.secs.get(el.dataset.sec);
+    if (el.inert) continue;
+    if (!w) { el.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(-8px) scale(0.98)" }, { opacity: 1, transform: "none" }], { duration: ms(still.matches ? "--dur-fast" : "--dur-base"), easing: tok("--ease-glide") }); continue; }
+    const b = el.getBoundingClientRect(), dx = (w.x - b.left) / k, dy = (w.y - b.top) / k;
+    if (!still.matches && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: ms("--dur-base"), easing: tok("--ease-glide") });
+  }
+  for (const el of main.querySelectorAll("[data-k]")) {
+    const w = was.vals.get(el.dataset.k), now = says(el), parts = [el.querySelector(".val"), el.querySelector(".tx small")];
+    if (w) now.forEach((t, i) => { if (t != null && t !== w[i]) parts[i].animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") }); });
+  }
+  if (was.focus && (!document.activeElement || document.activeElement === document.body)) refocus(main, was.focus);
+}
+// Something going, folded away: it fades (a row sliding off as it does), then the room it took closes up, the list, or
+// the sheet, closing round it. With Reduce Motion it just fades.
+async function fold(el, slide = true) {
+  if (!el?.isConnected) return;
+  const done = (a) => a.finished.catch(() => {});
+  if (still.matches) return done(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms("--dur-fast"), fill: "forwards" }));
+  const gone = slide ? "translateX(-24px)" : "scale(0.98)";
+  await done(el.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: gone }], { duration: ms("--dur-fast"), easing: tok("--ease-in"), fill: "forwards" }));
+  if (!el.isConnected) return;
+  const cs = getComputedStyle(el);
+  el.style.overflow = "hidden";
+  await done(el.animate([{ height: `${el.offsetHeight}px`, minHeight: least(cs), paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginTop: cs.marginTop, marginBottom: cs.marginBottom },
+    { height: "0px", minHeight: "0px", paddingTop: "0px", paddingBottom: "0px", marginTop: "0px", marginBottom: "0px" }], { duration: ms("--dur-base"), easing: tok("--ease-glide"), fill: "forwards" }));
+}
+// (as short as it's let be, as a length a height can be animated from or to)
+const least = (cs) => (cs.minHeight === "auto" ? "0px" : cs.minHeight);
+// What has the focus, in a word, to find it again once it's drawn anew: the sheet's title; a row by what it's for; a
+// field by its name; else what it's called or says
+function keyOf(el) {
+  if (!el || el === document.body || !el.closest) return null;
+  if (el.id === "sheet-title") return "#title";
+  return el.closest("[data-k]")?.dataset.k || el.getAttribute("aria-label") || (el.tagName === "INPUT" && (el.name || el.closest("label")?.textContent)) || el.textContent.trim().slice(0, 80) || null;
+}
+function refocus(root, key, sel) {
+  const el = key === "#title" ? $("#sheet-title", sheetEl) : [...root.querySelectorAll("button, a[href], input, [tabindex]")].find((x) => !x.closest(".going, [inert]") && keyOf(x) === key);
+  el?.focus({ preventScroll: true });
+  if (el && sel) try { el.setSelectionRange(...sel); } catch (_) {}
+}
+// A picture (a photo, an app's mark): faded in the first time it's shown, once it's ready to be (not as it's put in the
+// page, with nothing yet to show), and from then on, each time the page is drawn, just there. With Reduce Motion, a
+// quick fade and no more.
+const SHOWN = new Set();
+function photo(src, props = {}, spec = "img") {
+  const known = SHOWN.has(src), img = h(spec, { src, alt: "", decoding: known ? "sync" : "async", ...props });
+  if (known) return img;
+  img.style.opacity = "0";
+  const show = () => {
+    SHOWN.add(src); img.style.opacity = "";
+    img.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: "1.06" }, { opacity: 1, scale: "1" }],
+      { duration: still.matches ? ms("--dur-fast") : 600, easing: tok("--ease-out") });
+  };
+  img.decode().then(show, () => { img.style.opacity = ""; });
+  return img;
+}
 function avatar(m, small) {
   const el = h(small ? "div.avatar.small" : "div.avatar", { "aria-hidden": "true" }, [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?");
-  if (m.photoAt) el.append(h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "", decoding: "async" }));
+  if (m.photoAt) el.append(photo(`${API}/me/photo?v=${m.photoAt}`));
   return el;
 }
 function section(title, group, foot) {
@@ -307,38 +424,40 @@ function signedIn(r) {
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
     h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6)));
   const f = ap.inflight || {}, w = ap.weather || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  const apps = r(section("Your apps", h("div.apps", {},
+  // (each part named, so it's found again when the page is drawn anew: render, moved)
+  const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
+  const apps = r(sec("apps", section("Your apps", h("div.apps", {},
     app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
       f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
-      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"))));
+      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts")))));
   const top = [
-    titled(r, "Account"),
-    r(posterCard(m)),
-    (!m.emailOk || m.emailNew) && r(banner(m)),
-    pw.leaked && r(leakBanner()),
+    sec("title", titled(r, "Account")),
+    r(sec("card", posterCard(m))),
+    (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
+    pw.leaked && r(sec("leak", leakBanner())),
     // (the site's admin, for the linked account only, under your card; #admin, from the old dashboard or its email,
-    // opens it)
-    m.admin && r(adminRow(m)),
+    // opens it, once the page has settled)
+    m.admin && r(sec("admin", adminRow(m))),
   ];
   if (m.admin && location.hash === "#admin") {
     history.replaceState(null, "", location.pathname + location.search);
-    setTimeout(() => openSheet(m.admin.ready ? adminView : passkeysView), 450);
+    afterRise(() => openSheet(m.admin.ready ? adminView : passkeysView));
   }
   // the account: sign-in and security (how it stands, by the check-up), and your data (deleting the account at its
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
-  const account = r(section("Account", h("div.group.glass", {},
+  const account = r(sec("account", section("Account", h("div.group.glass", {},
     row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(securityView) }),
-    row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) }))));
-  const prefs = r(section("Preferences", h("div.group.glass", {},
+    row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) })))));
+  const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
-    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) }))));
+    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })))));
   // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
   // of its own, so from there it's here)
   const ending = [
-    (!fromApp() || fromApp() === "home") && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
+    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
@@ -348,15 +467,20 @@ function signedIn(r) {
 const posterSrc = (m) => (m.poster?.at ? `${API}/me/poster?v=${m.poster.at}` : `${API}/me/photo?v=${m.photoAt}`);
 const focusOf = (m) => (m.poster?.focus || "50 50").split(" ").map(Number);
 const placed = (img, f) => { img.style.objectPosition = `${f[0]}% ${f[1]}%`; return img; };
+// (the card as it was last drawn, and what it showed: the same one put back while none of that's changed, so its photo
+// isn't put in anew each time the page is drawn)
+let card = null;
 function posterCard(m) {
-  const photo = !!m.photoAt, file = photoInput();
-  return h("section.hero.poster-card.glass" + (photo ? "" : ".none"), { "aria-label": "Your profile" },
-    h("div.pc-blur", { "aria-hidden": "true" }, photo && h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "", decoding: "async" })),
+  const key = [m.photoAt, m.poster?.at, m.poster?.focus, m.name, m.handle].join("|");
+  if (card?.key === key) return card.el;
+  const pic = !!m.photoAt, file = photoInput();
+  const el = h("section.hero.poster-card.glass" + (pic ? "" : ".none"), { "aria-label": "Your profile" },
+    h("div.pc-blur", { "aria-hidden": "true" }, pic && photo(`${API}/me/photo?v=${m.photoAt}`)),
     h("div.pc-top", {},
-      h("div.pc-photo", { "aria-hidden": "true" }, photo ? placed(h("img", { src: posterSrc(m), alt: "", decoding: "async" }), focusOf(m))
+      h("div.pc-photo", { "aria-hidden": "true" }, pic ? placed(photo(posterSrc(m)), focusOf(m))
         : h("span.pc-initial", { text: [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?" })),
       h("div.pc-shade", { "aria-hidden": "true" }),
-      photo ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
+      pic ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
         : h("button.pc-add", { type: "button", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
       h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }), h("div.who", { text: `@${m.handle}` }))),
     h("div.pc-body", {},
@@ -364,6 +488,8 @@ function posterCard(m) {
         h("button.pill.primary", { type: "button", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
         h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),
     file);
+  card = { key, el };
+  return el;
 }
 // (a photo picked: into Your photo, to choose what shows before it's saved)
 function photoInput() {
@@ -383,7 +509,8 @@ const PV = { file: null, url: null, focus: [50, 50], shown: null };
 function photoView() {
   const m = S.me, fresh = !!PV.url, src = fresh ? PV.url : posterSrc(m), said = h("p.said", { role: "alert" }), file = photoInput();
   if (!fresh && PV.shown !== m.photoAt) { PV.focus = focusOf(m); PV.shown = m.photoAt; }
-  const big = h("img", { src, alt: "", draggable: "false" }), small = h("img", { src, alt: "" });
+  // (another photo chosen: it fades in, once it's ready)
+  const big = photo(src, { draggable: "false" }), small = photo(src);
   const place = () => { placed(big, PV.focus); placed(small, PV.focus); };
   place();
   const frame = h("div.pv-frame", { tabindex: "0", role: "group", "aria-label": "Your photo: drag it, or use the arrow keys, to choose what shows" },
@@ -449,7 +576,11 @@ async function savePhoto(btn, said) {
 // Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
 function codeView() {
   const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
-  import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "#ffffff", title: `Add @${m.handle} in InFlight` }); })
+  import("./qr.js").then(({ qrSvg }) => {
+    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "#ffffff", title: `Add @${m.handle} in InFlight` });
+    // (drawn in on its white card, not just there)
+    qr.firstElementChild?.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: tok("--ease-out") });
+  })
     .catch(() => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here. Copy the link instead." })));
   return { title: "Your code", body: [
     h("div.code-card", {}, avatar(m, true), h("b", { text: m.name }), h("span", { text: `@${m.handle}` }), qr),
@@ -539,14 +670,18 @@ function securityView() {
 // (brief: all done, just that it is, not the list)
 function checkupView(brief = false) {
   const items = checks(S.me), todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
+  // (the ring fills, from where it stood, and a check that's just been done pops, only when how it stands has changed:
+  // the first time it's shown in a sheet, and after a fix; not again each time it's drawn, on coming back to it)
+  const was = Sheet.ck; Sheet.ck = { frac, ok: items.map((x) => x.ok) };
   const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ring.setAttribute("viewBox", "0 0 64 64"); ring.setAttribute("aria-hidden", "true"); ring.classList.add("ring");
+  if (was?.frac !== frac) { ring.classList.add("grow"); ring.style.setProperty("--from", ((was?.frac || 0) * 100).toFixed(1)); }
   ring.innerHTML = `<circle class="trk" cx="32" cy="32" r="27"/><circle class="arc" cx="32" cy="32" r="27" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/>`;
   return { title: "Security check-up", body: [h(`div.checkup${todo ? ".todo" : ".ok"}`, {},
     h("div.ck-top", {}, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
       h("span.tx", {}, h("b", { text: todo ? `${todo} thing${todo > 1 ? "s" : ""} to do` : "Well protected" }),
         h("small", { text: todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on." }))),
-    !(brief && !todo) && h("div.group.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
+    !(brief && !todo) && h("div.group.ck-list", {}, items.map((x, i) => h("div.ck-row" + (x.ok ? ".ok" : "") + (x.ok && !was?.ok[i] ? ".pop" : ""), {},
       h("span.ck-dot", { "aria-hidden": "true" }, x.ok && icon("check", 13, 3)), h("span.ck-t", { text: x.label }),
       !x.ok && h("button.mini.go", { type: "button", onclick: (e) => x.act(e.currentTarget) }, x.go)))))] };
 }
@@ -559,7 +694,7 @@ function deleting(r) {
     r(h("p", { text: `On ${new Date(m.deleteAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, @${m.handle} and everything kept with it, in every app on the site, will be deleted. Until then, you can keep it.` })),
     r(h("div.signin.glass", {},
       h("button.btn", { type: "button", onclick: async (e) => {
-        try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }
+        try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); anew(() => { S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }); }
         catch (err) { toast(err.message, true); }
       } }, icon("undo", 20, 2.2), "Keep my account"),
       h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
@@ -573,7 +708,21 @@ const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$
 // the way between them: the form below changed in place, the rest of the page staying put
 // the account's own icon (icon.svg: a warm head, frosted glass shoulders, as Weather's sun and cloud)
 const logo = () => h("div.mark.logo", {}, h("img", { src: "/icon.svg?v=2", alt: "", width: 92, height: 92 }));
-function gate(to) { S.gate = to; S.settled = true; render(); $("main .signin input")?.focus(); }
+// (where the browser can, and motion's welcome, the card goes to its new size as the title and what's in it cross-fade:
+// the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
+let gating = 0;
+function gate(to) {
+  const go = () => { S.gate = to; S.settled = true; render(); }, ready = () => $("main .signin input")?.focus();
+  if (!document.startViewTransition || still.matches || document.hidden) {
+    go();
+    for (const k of $("main .welcome")?.children || []) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+    return ready();
+  }
+  gating++; main.classList.add("vt-gate");
+  const t = document.startViewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
+  t.updateCallbackDone.then(ready);
+  t.finished.then(done, done);
+}
 function signedOut(r) {
   if (S.handoff) return handoffPage(r);
   const mode = S.gate || "signin";
@@ -605,9 +754,8 @@ function handoffPage(r) {
   const go = h("button.btn", { type: "button", onclick: async () => {
     try {
       const m = await busy(go, "Signing in…", () => post("handoff", { code: HANDOFF.code }));
-      S.handoff = null; welcome(m);
-      if (HANDOFF.open === "profile") openSheet(profileView);
-    } catch (err) { S.handoff = null; S.settled = false; render(); toast(err.message, true, 4000); }
+      S.handoff = null; welcome(m, null, HANDOFF.open === "profile" && profileView);
+    } catch (err) { anew(() => { S.handoff = null; S.settled = false; render(); }); toast(err.message, true, 4000); }
   } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
   return [h("div.welcome", {},
     r(h("div", {}, logo())),
@@ -620,7 +768,19 @@ async function joinState() {
   S.join = { pending: true };
   try { S.join = await post("join", { invite: S.invite || undefined }); } catch (_) { S.join = { open: false, ok: !!S.invite }; }
   if (S.me?.signedIn || S.reset) return;
-  if (S.gate === "join") { S.settled = true; render(); } else $("#joinline")?.replaceWith(joinLine());
+  // (said in place, the rest of the page as it was: the card that was waiting, going to the form's size; or the line
+  // under the card, still rising with the rest if it is, else faded in)
+  const waiting = $("main .signin.joining"), line = $("#joinline");
+  if (S.gate === "join") { if (waiting) cardTo(waiting, joinCard()); else { S.settled = true; render(); } }
+  else if (line) {
+    const nu = joinLine(), rising = line.getAnimations().some((a) => a.animationName === "rise");
+    line.className = nu.className + (line.classList.contains("rise") ? " rise" : ""); line.replaceChildren(...nu.childNodes);
+    if (!rising) line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: tok("--ease-out") });
+  }
+}
+// a card on a signed-out page given what's new, in place: it goes to its new size as what's in it fades in
+function cardTo(old, nu) {
+  morph(old, () => { old.className = nu.className + (old.classList.contains("rise") ? " rise" : ""); old.replaceChildren(...nu.childNodes); });
 }
 function signinCard() {
   const said = h("p.said", { role: "alert" });
@@ -659,7 +819,7 @@ function warmUp() { import("./argon2.js").catch(() => {}); }
 const handleFrom = (name) => { const p = String(name).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/).filter(Boolean); return (p.length > 1 ? p[0] + "_" + p[p.length - 1][0] : p[0] || "").replace(/[^a-z0-9_]/g, "").slice(0, 20); };
 function joinCard() {
   const said = h("p.said", { role: "alert" });
-  if (S.join?.pending) return h("div.signin.glass", {}, h("div.empty", {}, h("span.spin")));
+  if (S.join?.pending) return h("div.signin.glass.joining", {}, h("div.empty", {}, h("span.spin")));
   if (!(S.join?.open || S.join?.ok)) return h("div.signin.glass", {}, h("p.hint.center", { text: S.invite ? S.join?.error || "That invite doesn’t work." : "New accounts are by invitation. If someone sent you an invite link, open it to start." }));
   const prep = {};
   const ready = () => { prep.keys ||= E2E.newIdentity(); };
@@ -667,17 +827,17 @@ function joinCard() {
   const handle = h("input", { type: "text", name: "handle", autocomplete: "off", autocapitalize: "none", spellcheck: "false", maxlength: "20", required: true });
   const email = h("input", { type: "email", name: "email", autocomplete: "username", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
   const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp });
-  const hstat = h("p.hint", { "aria-live": "polite", text: "Friends see your name, and find you by your handle." }), { meter, hint } = rated(pw);
+  const hstat = h("p.hint.handle", { "aria-live": "polite", text: "Friends see your name, and find you by your handle." }), { meter, hint } = rated(pw);
   const go = h("button.btn", { type: "submit" }, "Create account");
   let touched = false, hT = 0, pT = 0;
   const handleNow = () => handle.value.trim().replace(/^@/, "").toLowerCase();
   const check = async () => {
     const v = handleNow();
-    if (v.length < 3) { hstat.className = "hint"; hstat.textContent = "Friends see your name, and find you by your handle."; return; }
+    if (v.length < 3) { hstat.className = "hint handle"; hstat.textContent = "Friends see your name, and find you by your handle."; return; }
     try {
       const r = await call(`handle?h=${encodeURIComponent(v)}`);
       if (handleNow() !== v) return;
-      hstat.className = "hint " + (r.free ? "ok" : "bad");
+      hstat.className = "hint handle " + (r.free ? "ok" : "bad");
       hstat.replaceChildren(r.free ? `@${v} is yours.` : r.reason, ...(r.try?.length ? [" Try ", ...r.try.flatMap((t, i) => [i ? " or " : "",
         h("button.link", { type: "button", onclick: () => { handle.value = t; touched = true; check(); } }, `@${t}`)]), "."] : []));
     } catch (_) { /* checked again when it's made */ }
@@ -711,7 +871,7 @@ function joinCard() {
       welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
       checkQuietly(v.password, proof); maybeNudge(m);
     } catch (err) {
-      if (err.field === "invite") { S.join = { open: false, ok: false, error: err.message }; S.settled = true; return render(); }
+      if (err.field === "invite") { S.join = { open: false, ok: false, error: err.message }; return cardTo(form.closest(".signin"), joinCard()); }
       say(said, err.message, { name, handle, email, password: pw }[err.field] || null);
     }
   } }, field("Name", name), field("Handle", h("div.at", {}, "@", handle)), hstat, field("Email", email), field("Password", pw), meter, hint, go);
@@ -728,7 +888,8 @@ function forgotCard() {
     if (!EMAIL_OK.test(email.value.trim())) return say(said, "Enter the email your account uses.", email);
     try {
       const r = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
-      box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message })));
+      // (the card going to the size of what it says now, as that fades in)
+      morph(box, () => box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message }))));
     } catch (err) { say(said, err.message, email); }
   } }, field("Email", email), go),
   h("p.hint.center", { text: "With a passkey, a reset keeps your InFlight messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
@@ -737,18 +898,21 @@ function forgotCard() {
 // A reset link's own page: who it's for, and a new password. With a passkey that holds a copy of the key (one made in
 // InFlight, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
 // new key pair, and older messages stay sealed.
-async function resetCheck() {
-  S.reset.error = null; S.reset.away = false;
+// (again: asked again from Try again, the page drawn anew only if the answer's changed)
+async function resetCheck(again) {
+  const R = S.reset, was = R.error;
+  R.error = null; R.away = false;
   // (no signal, or the server not answering, isn't the link's fault: said so, with Try again, not "get a new one")
-  try { S.reset.info = await post("reset/check", { token: S.reset.token }); } catch (e) { S.reset.error = e.message; S.reset.away = !!e.offline || e.status >= 500; }
-  S.settled = false; render();
+  try { R.info = await post("reset/check", { token: R.token }); } catch (e) { R.error = e.message; R.away = !!e.offline || e.status >= 500; }
+  if (again && R.away && R.error === was) return;
+  anew(() => { S.settled = false; render(); });
 }
 function resetPage(r) {
   const R = S.reset, info = R.info;
   if (!info && !R.error) return [h("div.welcome", {}, r(h("div.empty", {}, h("span.spin"))))];
   if (R.error && R.away) return [h("div.welcome", {},
     r(h("div", {}, h("div.mark", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "Can’t check this link" })), r(h("p", { text: R.error })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { R.error = null; render(); resetCheck(); } }, "Try again"))))];
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: (e) => busy(e.currentTarget, "Checking…", () => resetCheck(true)) }, "Try again"))))];
   if (R.error) return [h("div.welcome", {},
     r(h("div", {}, h("div.mark.red", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "This link won’t work" })), r(h("p", { text: R.error })),
     r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
@@ -798,7 +962,7 @@ function resetPage(r) {
       h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
-      S.me?.signedIn && h("button.link", { type: "button", onclick: () => { S.reset = null; S.settled = false; render(); } }, "Cancel"),
+      S.me?.signedIn && h("button.link", { type: "button", onclick: () => anew(() => { S.reset = null; S.settled = false; render(); }) }, "Cancel"),
       said))),
   ];
 }
@@ -811,11 +975,16 @@ async function signInWithPasskey() {
   return post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
 }
-function welcome(m, word) {
-  S.me = m; S.settled = false; S.pulled = Date.now();
-  if (m.prefs) theme(m.prefs.appearance);
-  render(); scrollTo(0, 0);
-  toast(word || `Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`, false, word ? 4000 : 2800);
+// (next: a sheet to open straight away, over the page there already rather than rising under it)
+async function welcome(m, word, next) {
+  S.me = m; S.pulled = Date.now();
+  await anew(() => {
+    S.settled = !!next;
+    if (m.prefs) theme(m.prefs.appearance);
+    render(); scrollTo(0, 0);
+    if (next) openSheet(next);
+    toast(word || `Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`, false, word ? 4000 : 2800);
+  });
 }
 // Signed in with a password, no passkey yet, on a device that can make one (Face ID, Touch ID, Windows Hello…): a word
 // about one, once a month at most
@@ -825,7 +994,8 @@ async function maybeNudge(m) {
   let can = false;
   try { can = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (_) {}
   if (!can) return;
-  setTimeout(() => {
+  // (once the page has settled in after signing in, so it doesn't come up as everything else is moving)
+  afterRise(() => {
     if (sheetEl.open || !S.me?.signedIn || S.me.passkeys.length) return;
     try { localStorage.setItem("acct:nudged", String(Date.now())); } catch (_) {}
     openSheet(nudgeView);
@@ -835,7 +1005,7 @@ function nudgeView() {
   const add = h("button.btn", { type: "button", onclick: async () => {
     try {
       const made = await freshly(() => busy(add, "Waiting for your device…", addPasskey)); patch();
-      if (made?.secret) openSheet(() => keyCopyView(made.id, made.secret, "Passkey added."));
+      if (made?.secret) { await swapped(); openSheet(() => keyCopyView(made.id, made.secret, "Passkey added.")); }
       else { closeSheet(); toast("Passkey added."); }
     }
     catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
@@ -854,54 +1024,100 @@ async function checkQuietly(pw, proof) {
 async function signOut(btn) {
   try { await busy(btn, "Signing out…", () => post("signout")); }
   catch (e) { if (!e.offline) return toast(e.message, true); }
-  if (sheetEl.open) closeSheet();
-  S.me = { signedIn: false }; S.settled = false; render(); scrollTo(0, 0);
-  toast("Signed out.");
+  S.me = { signedIn: false };
+  anew(() => { S.settled = false; render(); scrollTo(0, 0); toast("Signed out."); });
 }
 
 // ---- small things ----
 function field(label, input) { return h("label.field", {}, h("span", { text: label }), input); }
+// (what went wrong fades in with a shake, or just fades with Reduce Motion; in a card on the page the card goes to its
+// new size as it's said or cleared, the line under it with it; a sheet does that by itself, fitting what's in it)
 function say(el, text, input) {
-  el.textContent = text; el.classList.toggle("bad", !!text);
-  if (text && !still.matches) el.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(5px)" }, { transform: "translateX(-3px)" }, { transform: "translateX(0)" }], { duration: 380, easing: "ease-out" });
+  if (!el) return;
+  const change = () => { el.textContent = text; el.classList.toggle("bad", !!text); }, box = text !== el.textContent && !el.closest("#sheet") && el.closest(".signin");
+  if (box) morph(box, change, false); else change();
+  if (text) el.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }]
+    : [{ opacity: 0, transform: "translateX(0)" }, { opacity: 1, transform: "translateX(-6px)" }, { transform: "translateX(5px)" }, { transform: "translateX(-3px)" }, { transform: "translateX(0)" }],
+    { duration: still.matches ? ms("--dur-fast") : 380, easing: tok("--ease-out") });
   if (input) input.focus();
 }
+// (a button busy: as wide as it was, so what's beside it stays put, and what it says now faded in; the focus back on
+// it after, if it had it, as being held loses it)
 async function busy(btn, label, fn) {
-  const kids = [...btn.childNodes], was = btn.disabled;
+  const kids = [...btn.childNodes], was = btn.disabled, wide = btn.style.minWidth, had = document.activeElement === btn;
+  btn.style.minWidth = `${btn.offsetWidth}px`;
   btn.disabled = true; btn.replaceChildren(h("span.spin"), h("span", { text: label }));
+  for (const k of btn.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
   try { return await fn(); }
-  finally { btn.disabled = was; btn.replaceChildren(...kids); }
+  finally {
+    btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
+    if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
+  }
 }
-let toastT = 0;
+// What's in a box changed, the box going smoothly from its size to its new one (what's under it moving with it) as
+// what's new fades in (fade: all of what's in it); from where it is, if it was already on its way. Just the fade with
+// Reduce Motion.
+function morph(box, change, fade = true) {
+  const run = box.getAnimations().find((a) => a.id === "morph"), from = box.offsetHeight;
+  run?.cancel();
+  change();
+  if (fade) for (const k of box.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(still.matches ? "--dur-fast" : "--dur-base"), easing: tok("--ease-out") });
+  const to = box.offsetHeight;
+  if (still.matches || !box.isConnected || Math.abs(to - from) < 2) return;
+  box.style.overflow = "hidden";
+  const a = box.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms("--dur-base"), easing: tok("--ease-glide") });
+  a.id = "morph"; a.onfinish = a.oncancel = () => { box.style.overflow = ""; };
+}
+let toastT = 0, toastAt = 0;
 function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong stays long enough to read)
-  const top = !!toastEl.showPopover;
+  const top = !!toastEl.showPopover, showing = toastEl.classList.contains("on");
   toastEl.replaceChildren(bad ? icon("x", 18, 2.4) : icon("check", 18, 2.4), h("span", { text }));
   toastEl.classList.toggle("bad", !!bad);
+  // (a new word over one still showing fades in, rather than taking its place in a frame)
+  if (showing) for (const k of toastEl.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: tok("--ease-out") });
+  // (clear of the way back to the app at the top of the page, where there's one in sight)
+  const back = $("main .titlebar .backapp")?.getBoundingClientRect();
+  if (back && back.bottom > 0 && back.top < 120) toastEl.style.setProperty("--below", `${Math.round(back.bottom + 8)}px`); else toastEl.style.removeProperty("--below");
   // (above an open sheet too: the top layer)
   if (top && !toastEl.matches(":popover-open")) { toastEl.showPopover(); void toastEl.offsetWidth; }
-  toastEl.classList.add("on");
+  toastEl.classList.add("on"); toastAt = Date.now();
   clearTimeout(toastT);
   toastT = setTimeout(() => { toastEl.classList.remove("on"); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, ms);
+}
+// (a sheet opened since: the word put back above it, dropping in again if it had only just started to)
+function toastOnTop() {
+  if (!toastEl.matches?.(":popover-open") || !toastEl.classList.contains("on")) return;
+  toastEl.hidePopover(); toastEl.showPopover();
+  if (Date.now() - toastAt > 400) return;
+  toastEl.style.transition = "none"; toastEl.classList.remove("on"); void toastEl.offsetWidth;
+  toastEl.style.transition = ""; toastEl.classList.add("on");
 }
 if (toastEl.showPopover) toastEl.popover = "manual";
 // a button that asks once more before it acts ("Remove" → "Remove?"), going back after a moment
 function twice(label, sure, act, spec = "button.mini") {
   let t = 0;
+  // (its colour eases over, and its width to the new word's, rather than both changing in a frame)
+  const word = (text, on) => {
+    const w = b.offsetWidth; b.classList.toggle("sure", on); b.textContent = text;
+    if (!still.matches && b.offsetWidth !== w) b.animate([{ width: `${w}px` }, { width: `${b.offsetWidth}px` }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+  };
   const b = h(spec, { type: "button", onclick: () => {
-    if (!b.classList.contains("sure")) { b.classList.add("sure"); b.textContent = sure; clearTimeout(t); t = setTimeout(() => { b.classList.remove("sure"); b.textContent = label; }, 3500); return; }
+    if (!b.classList.contains("sure")) { word(sure, true); clearTimeout(t); t = setTimeout(() => word(label, false), 3500); return; }
     clearTimeout(t); act(b);
   } }, label);
   return b;
 }
 // A row that slides left to show what it does (sign out, remove), as a list does on a phone; the button's there
-// for a keyboard too
+// for a keyboard too. One open at a time: another touched, or the sheet scrolled, and it shuts (slid).
+let slid = null;
+sheetEl.addEventListener("scroll", () => slid?.(), true);
 function swipeable(row, label, act) {
   const btn = h("button.swipe-act", { type: "button", tabindex: "-1", onclick: (e) => act(e.currentTarget) }, label);
   const box = h("div.swipe", {}, btn, row), W = 92;
   let down = false, x0 = 0, y0 = 0, dx = 0, open = false, way = null;
   const slide = (x, held) => { box.classList.toggle("dragging", held); box.style.setProperty("--dx", `${x}px`); };
-  const shut = () => { open = false; slide(0, false); box.classList.remove("open"); };
-  row.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") return; down = true; x0 = e.clientX; y0 = e.clientY; way = null; });
+  const shut = () => { open = false; slide(0, false); box.classList.remove("open"); if (slid === shut) slid = null; };
+  row.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") return; if (slid !== shut) slid?.(); down = true; x0 = e.clientX; y0 = e.clientY; way = null; });
   row.addEventListener("pointermove", (e) => {
     if (!down) return;
     const mx = e.clientX - x0, my = e.clientY - y0;
@@ -910,17 +1126,17 @@ function swipeable(row, label, act) {
     if (way !== "x") return;
     dx = Math.max(-W * 1.6, Math.min(0, (open ? -W : 0) + mx)); slide(dx, true);
   });
-  const up = () => { if (down && way === "x") { open = dx < -W / 2; slide(open ? -W : 0, false); box.classList.toggle("open", open); } down = false; way = null; };
+  const up = () => {
+    if (down && way === "x") { open = dx < -W / 2; slide(open ? -W : 0, false); box.classList.toggle("open", open); if (open) slid = shut; else if (slid === shut) slid = null; }
+    down = false; way = null;
+  };
   row.addEventListener("pointerup", up); row.addEventListener("pointercancel", up);
   // (a tap on a row that's open closes it, rather than doing what the row does)
   row.addEventListener("click", (e) => { if (open) { e.preventDefault(); e.stopImmediatePropagation(); shut(); } }, true);
   return box;
 }
-async function leave(el) {
-  if (!el?.isConnected || still.matches) return;
-  el.classList.add("leaving");
-  await new Promise((ok) => setTimeout(ok, 380));
-}
+// (a row going: signed out, removed)
+const leave = (el) => fold(el);
 
 // ---- sheets: one dialog, each view drawn into it; the page steps back while it's up ----
 // Each sheet, and each one gone on to inside it, is a step in the browser's history too, so the phone's back swipe (or
@@ -935,54 +1151,128 @@ addEventListener("popstate", () => {
   Sheet.hist--; stepBack();
 });
 function openSheet(view) {
-  const was = sheetEl.open;
-  Sheet.stack = [view]; draw(false);
+  if (sheetEl.classList.contains("closing")) Sheet.shut?.();      // (opened again as one goes: that one's gone at once)
+  // (one opened over another: on to it, as from one sheet to the next)
+  if (sheetEl.open) { Sheet.ask?.no(); Sheet.stack = [view]; draw("push"); histDrop(Sheet.hist - 1); return; }
+  Sheet.stack = [view]; draw();
   // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
   // nor a button, with a ring round it; the row it was opened from has it back when it closes)
-  if (!was) {
-    Sheet.from = document.activeElement?.closest?.("[data-k]")?.dataset.k || null;
-    sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); histPush();
-  } else histDrop(Sheet.hist - 1);
+  Sheet.from = document.activeElement?.closest?.("[data-k]")?.dataset.k || null; Sheet.at = performance.now();
+  $("#page").style.setProperty("--sy", `${scrollY}px`);       // (the page steps back where it's scrolled to)
+  sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); histPush();
+  toastOnTop();
 }
 sheetEl.tabIndex = -1;
-function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw(true); histPush(); }
+function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw("push"); histPush(); }
 function popSheet() { if (Sheet.hist > 1) histDrop(1); stepBack(); }
-function stepBack() { Sheet.ask?.no(); Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
-const redraw = () => sheetEl.open && Sheet.stack.length && draw(false);
-function draw(swap) {
+function stepBack() { Sheet.ask?.no(); Sheet.stack.pop(); if (Sheet.stack.length) draw("back"); else closeSheet(); }
+const redraw = () => sheetEl.open && Sheet.stack.length && !sheetEl.classList.contains("closing") && draw("same");
+// The view on top, drawn into the sheet. mode: "push" (on to it) or "back" (back to it), the one that was there sliding
+// away under it as it comes in from the side it's coming from; "same", the view that's there drawn again with what's
+// new, in place (where it was scrolled to, and what had the focus, kept, and its coming in carrying on); or none, a
+// sheet just opened. (What a view's drawn for, so it can tell: Sheet.mode, and Sheet.waited, after a spinner.) The
+// sheet fits its new height by itself: below.
+function draw(mode) {
+  const body0 = $(".sheet-body:not(.going)", sheetEl), head0 = $(".sheet-head:not(.going)", sheetEl);
+  Sheet.mode = mode; Sheet.waited = !!body0?.querySelector(".adm-wait, [aria-busy='true']");
   const v = Sheet.stack.at(-1)(), deep = Sheet.stack.length > 1;
   const left = v.left || (deep ? h("button.link.back", { type: "button", onclick: () => (v.onBack || popSheet)() }, h("span.vh", { text: "Back" }), icon("back", 22, 2.4)) : null);
   const right = v.right || h("button.x", { type: "button", "aria-label": "Close", onclick: closeSheet }, icon("x", 17, 2.6));
+  if (mode === "same" && body0 && head0) return again(v, left, right, body0, head0);
+  const head = h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title, tabindex: "-1" }), h("div.r", {}, right));
   const body = h("div.sheet-body", {}, ...v.body);
-  if (swap && !still.matches) body.classList.add("swap");
-  if (Sheet.ask) { body.classList.add("asking"); body.append(Sheet.ask.card); }
-  sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title, tabindex: "-1" }), h("div.r", {}, right)), body);
+  // (still waiting for what it shows: as tall as the one before meanwhile, so the sheet fits just once, to what comes)
+  if (body0 && body.querySelector(".adm-wait, [aria-busy='true']")) body.style.minHeight = `${body0.offsetHeight}px`;
+  body.classList.add("arriving"); setTimeout(() => body.classList.remove("arriving"), 250);
+  const swap = (mode === "push" || mode === "back") && body0 && head0;
+  if (!swap) sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), head, body);
+  else if (still.matches) { head.classList.add("swap"); body.classList.add("swap"); head0.replaceWith(head); body0.replaceWith(body); }
+  else {
+    const going = [head0, body0].map((el) => ({ el, y: el.offsetTop, h: el.offsetHeight, cs: getComputedStyle(el) })).map((g) => ({ ...g, o: g.cs.opacity, tf: g.cs.transform }));
+    head.classList.add("swap", mode); body.classList.add("swap", mode);
+    head0.before(head); body0.before(body);
+    for (const { el, y, h: ht, o, tf } of going) {
+      // (the one before, kept a moment where it was, sliding away from however far it had come in)
+      for (const [k, x] of [["--y", `${y}px`], ["--h", `${ht}px`], ["--o", o], ["--tf", tf]]) el.style.setProperty(k, x);
+      el.querySelector("#sheet-title")?.removeAttribute("id");
+      el.classList.remove("swap", "push", "back"); el.classList.add("going", mode); el.inert = true;
+      el.addEventListener("animationend", (e) => { if (e.target === el) el.remove(); });
+      setTimeout(() => el.remove(), 600);
+    }
+  }
   // (on to another sheet, or back: the new one's title has the focus, so it's read out, and you're not left nowhere)
   if (swap) $("#sheet-title", sheetEl)?.focus({ preventScroll: true });
 }
+// The view drawn again in place: its title, its buttons (each drawn afresh, for what they do now) and what's in it, in
+// the same sheet; where it was scrolled to and what had the focus kept; what's come in place of a spinner faded in, and
+// anything new in a list growing in where it goes
+function again(v, left, right, body, head) {
+  const active = sheetEl.contains(document.activeElement) ? document.activeElement : null, key = keyOf(active), top = body.scrollTop;
+  const sel = active?.selectionStart != null ? [active.selectionStart, active.selectionEnd] : null;
+  const had = new Set([...body.querySelectorAll("[data-id]")].map((x) => x.dataset.id));
+  $("#sheet-title", head).textContent = v.title;
+  $(".l", head).replaceChildren(...[left].filter(Boolean)); $(".r", head).replaceChildren(right);
+  body.replaceChildren(...v.body.flat(Infinity).filter((x) => x != null && x !== false && x !== ""));
+  if (Sheet.ask) { body.classList.add("asking"); askAt(body); }
+  body.style.minHeight = "";
+  body.scrollTop = top;
+  if (key && !sheetEl.contains(document.activeElement)) refocus(sheetEl, key, sel);
+  if (Sheet.waited) for (const k of body.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: tok("--ease-out") });
+  else for (const el of body.querySelectorAll("[data-id]")) if (!had.has(el.dataset.id)) grow(el);
+}
+// something new in a list: it opens up room for itself as it fades in (just fades, with Reduce Motion)
+function grow(el) {
+  if (still.matches) return el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast") });
+  const cs = getComputedStyle(el), full = { height: `${el.offsetHeight}px`, minHeight: least(cs), paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 };
+  el.style.overflow = "hidden";
+  el.animate([{ height: "0px", minHeight: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 }, full], { duration: ms("--dur-base"), easing: tok("--ease-glide") })
+    .finished.then(() => { el.style.overflow = ""; }, () => {});
+}
+// (once the sheet's done swapping, if it is, so one swap doesn't break into the next)
+const swapped = () => Promise.all(($(".sheet-body:not(.going)", sheetEl)?.getAnimations() || []).map((a) => a.finished.catch(() => {})));
+// (done once it's gone: Sheet.closed, for what waits on that)
 function closeSheet() {
-  if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
+  if (!sheetEl.open) return Promise.resolve();
+  if (sheetEl.classList.contains("closing")) return Sheet.closed;
   const cancel = Sheet.cancel, from = Sheet.from; Sheet.cancel = null; Sheet.from = null;
   histDrop(Sheet.hist);
+  // (going from wherever it is, still on its way up or where a finger let it go, the dim from as dark as it had got)
+  const cs = getComputedStyle(sheetEl);
+  let dim = 1; try { dim = parseFloat(getComputedStyle(sheetEl, "::backdrop").opacity); } catch (_) {}
+  sheetEl.style.setProperty("--from-tf", cs.transform); sheetEl.style.setProperty("--from-o", cs.opacity); sheetEl.style.setProperty("--dim-o", Number.isFinite(dim) ? dim : 1);
   document.body.classList.remove("sheet-up");
+  let gone;
+  Sheet.closed = new Promise((ok) => { gone = ok; });
   const done = () => {
-    sheetEl.classList.remove("closing"); sheetEl.style.removeProperty("--from"); sheetEl.close(); sheetEl.replaceChildren(); Sheet.stack = []; cancel?.();
+    clearTimeout(t); sheetEl.removeEventListener("animationend", end); Sheet.shut = null;
+    sheetEl.classList.remove("closing");
+    for (const p of ["--from-tf", "--from-o", "--dim-o", "transform", "opacity"]) sheetEl.style.removeProperty(p);
+    sheetEl.close(); sheetEl.replaceChildren(); Sheet.stack = []; Sheet.ck = null; cancel?.();
     // (the page may have been drawn again meanwhile: the row it was opened from, found again by what it says)
     const back = from && [...main.querySelectorAll("[data-k]")].find((el) => el.dataset.k === from);
     if (back && (document.activeElement === document.body || !document.activeElement)) back.focus({ preventScroll: true });
+    gone();
   };
-  if (still.matches) return done();
+  const end = (e) => { if (e.target === sheetEl && !e.pseudoElement) done(); };
+  // (in case it never says it's ended: no longer than it takes, or a quick fade with Reduce Motion)
+  const t = setTimeout(done, still.matches ? 300 : 700);
+  Sheet.shut = done;
   sheetEl.classList.add("closing");
-  const end = (e) => { if (e.target !== sheetEl) return; sheetEl.removeEventListener("animationend", end); clearTimeout(t); done(); };
-  const t = setTimeout(() => { sheetEl.removeEventListener("animationend", end); done(); }, 700);
   sheetEl.addEventListener("animationend", end);
+  return Sheet.closed;
 }
 sheetEl.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(); });
-sheetEl.addEventListener("click", (e) => {
-  if (e.target !== sheetEl) return;
-  const b = sheetEl.getBoundingClientRect();
-  if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) closeSheet();
-});
+// A tap on the dim closes it: only one that began there (a press on its title, carried off it, isn't one), and not the
+// second tap of a double tap that opened it
+{
+  let downOut = false;
+  const outside = (e) => { const b = sheetEl.getBoundingClientRect(); return e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom; };
+  sheetEl.addEventListener("pointerdown", (e) => { downOut = e.target === sheetEl && outside(e); }, true);
+  sheetEl.addEventListener("click", (e) => {
+    if (e.target !== sheetEl || !downOut || !outside(e) || performance.now() - (Sheet.at || 0) < 450) return;
+    closeSheet();
+  });
+}
 // the page behind holds still while it's up: a finger (or a wheel) on the dim, or on what in the sheet doesn't scroll,
 // moves nothing (done here, not by stopping the page scrolling, which has iOS Safari put the sheet in the wrong place)
 {
@@ -1003,55 +1293,97 @@ function scrollsIn(el, top) {
   }
   return false;
 }
-// swiping it down, by its top
+// swiping it down, by its top (caught still on its way up, it's held there, where it is, not sent back to start again)
 {
-  let y0 = null, dy = 0, t0 = 0;
+  let y0 = null, dy = 0, t0 = 0, at = "";
   sheetEl.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a")) return;
+    const rising = sheetEl.getAnimations().find((a) => a.animationName === "sheet-in");
+    at = "";
+    if (rising) { const cs = getComputedStyle(sheetEl); at = cs.transform === "none" ? "" : cs.transform; sheetEl.style.opacity = cs.opacity; rising.cancel(); sheetEl.style.transform = at; }
     y0 = e.clientY; t0 = e.timeStamp; dy = 0;
     sheetEl.setPointerCapture(e.pointerId); sheetEl.classList.add("dragging");
   });
   sheetEl.addEventListener("pointermove", (e) => {
     if (y0 == null) return;
     const d = e.clientY - y0; dy = d > 0 ? d : d / 6;
-    sheetEl.style.transform = `translateY(${dy}px)`;
+    sheetEl.style.transform = `translateY(${dy}px) ${at}`;
   });
   const up = (e) => {
     if (y0 == null) return;
     y0 = null; sheetEl.classList.remove("dragging");
     const fast = dy / Math.max(1, e.timeStamp - t0) > 0.55;
-    sheetEl.style.transform = "";
-    if (dy > 110 || (fast && dy > 30)) { sheetEl.style.setProperty("--from", `${dy}px`); closeSheet(); }
-    else if (dy) sheetEl.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 420, easing: "cubic-bezier(0.32, 0.72, 0, 1)" });
+    // (let go far enough, or flicked: it goes from there; else back up into place from there)
+    if (dy > 110 || (fast && dy > 30)) return closeSheet();
+    const from = getComputedStyle(sheetEl), tf = from.transform, o = from.opacity;
+    sheetEl.style.transform = ""; sheetEl.style.opacity = "";
+    if (tf !== "none" || o !== "1") sheetEl.animate([{ transform: tf, opacity: o }, { transform: "none", opacity: 1 }], { duration: ms("--dur-release"), easing: tok("--ease-glide") });
   };
   sheetEl.addEventListener("pointerup", up);
   sheetEl.addEventListener("pointercancel", up);
 }
+// A sheet fits what's in it as that changes (on to another view, back, something arriving or changing in it), going
+// smoothly from the height it's at, even partway to another, to its new one; in a frame with Reduce Motion. (Its
+// height, as layout, for that moment: cheap enough on the one sheet. What's in it doesn't scroll meanwhile.)
+{
+  let shown = 0;
+  new ResizeObserver(([e]) => { shown = e.borderBoxSize?.[0]?.blockSize ?? sheetEl.offsetHeight; }).observe(sheetEl);
+  const fit = (start, more = 1) => {
+    if (!sheetEl.open || !shown || sheetEl.matches(".closing, .dragging")) return;
+    const run = sheetEl.getAnimations().find((a) => a.id === "fit"), from = start ?? (run ? sheetEl.offsetHeight : shown);
+    run?.cancel();
+    const to = sheetEl.offsetHeight;
+    if (still.matches || Math.abs(to - from) < 2) return;
+    const body = $(".sheet-body:not(.going)", sheetEl);
+    if (body) body.style.overflowY = "hidden";
+    const a = sheetEl.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms("--dur-base"), easing: tok("--ease-glide") });
+    a.id = "fit";
+    a.oncancel = () => { if (body) body.style.overflowY = ""; };
+    // (and on from there, once, should what's in it have changed size meanwhile without anything new in it)
+    a.onfinish = () => { if (body) body.style.overflowY = ""; if (more) fit(to, 0); };
+  };
+  // (not its class, nor style, which change as it fits)
+  new MutationObserver(() => fit()).observe(sheetEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+}
 
 // ---- showing it's you: for what needs it, asked when it's needed, then on with what you were doing ----
-// (here: in the sheet you're in, a card under what you were doing, not a sheet of its own: Admin's changes)
-async function freshly(act, here = false) {
+// (here: in the sheet you're in, a card under what you were doing, not a sheet of its own: Admin's changes; the button
+// that asked, so the card goes just after what it's in, not at the foot of a long sheet)
+async function freshly(act, here) {
   try { return await act(); }
   catch (e) { if (e.status !== 403 || e.field !== "reauth") throw e; }
   await new Promise((ok, no) => {
     const quiet = () => no(Object.assign(new Error(""), { quiet: true }));
     if (here && sheetEl.open) {
       const done = (yes) => {
-        Sheet.cancel = null; Sheet.ask?.card.remove(); Sheet.ask = null;
-        sheetEl.querySelector(".sheet-body")?.classList.remove("asking");
+        const card = Sheet.ask?.card, b = card?.parentElement;
+        Sheet.cancel = null; Sheet.ask = null;
+        // (the card goes, and what was held back behind it comes back)
+        if (b) { b.classList.remove("asking"); for (const k of b.children) if (k !== card) k.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 250, easing: tok("--ease-out") }); }
+        if (card) { card.inert = true; card.animate(still.matches ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(6px) scale(0.98)" }],
+          { duration: 150, easing: tok("--ease-in"), fill: "forwards" }).finished.then(() => card.remove(), () => card.remove()); }
         (yes ? ok : quiet)();
       };
-      Sheet.ask = { card: confirmCard(() => done(true), () => done(false)), no: () => done(false) };
+      const b = $(".sheet-body:not(.going)", sheetEl);
+      let at = here instanceof Element ? here : null;
+      while (at && at.parentElement !== b) at = at.parentElement;
+      Sheet.ask = { card: confirmCard(() => done(true), () => done(false)), no: () => done(false), at: at ? [...b.children].indexOf(at) : -1 };
       Sheet.cancel = Sheet.ask.no;
-      const b = sheetEl.querySelector(".sheet-body");
-      b.classList.add("asking"); b.append(Sheet.ask.card);
+      b.classList.add("asking"); askAt(b);
+      // (lifted in once, here, so it isn't lifted in again each time the sheet's drawn anew under it)
+      Sheet.ask.card.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 400, easing: tok("--ease-out") });
       Sheet.ask.card.scrollIntoView({ block: "nearest", behavior: still.matches ? "auto" : "smooth" });
       return;
     }
     Sheet.cancel = quiet;
-    pushSheet(() => confirmView(() => { Sheet.cancel = null; Sheet.stack.pop(); draw(true); ok(); }, () => { Sheet.cancel = null; Sheet.stack.pop(); draw(true); quiet(); }));
+    pushSheet(() => confirmView(() => { Sheet.cancel = null; Sheet.stack.pop(); draw("back"); ok(); }, () => { Sheet.cancel = null; Sheet.stack.pop(); draw("back"); quiet(); }));
   });
   return act();
+}
+// (the card asking it's you, in the sheet: just after what asked for it, where that is in it)
+function askAt(b) {
+  const after = Sheet.ask.at >= 0 && b.children[Sheet.ask.at];
+  if (after && after !== Sheet.ask.card) after.after(Sheet.ask.card); else b.append(Sheet.ask.card);
 }
 // the ways to show it's you: a passkey, or your password (ok once it's done)
 function confirmWays(ok) {
@@ -1190,8 +1522,10 @@ function rated(nw) {
     const s = strength(nw.value), v = nw.value;
     bar.style.setProperty("--m", v ? (leaked ? 0.12 : [0.12, 0.4, 0.62, 0.84, 1][s]) : 0);
     bar.style.setProperty("--mc", leaked || s === 0 ? "var(--danger)" : s === 1 ? "var(--warn)" : "var(--good)");
-    hint.className = "hint" + (v && (leaked || !s) ? " bad" : v && s >= 2 ? " ok" : "");
-    hint.textContent = !v ? "At least 10 characters. A few unrelated words make a strong one." : leaked ? leakedSay(leaked) : ["Use at least 10 characters.", "Fair. Longer would be stronger.", "Good.", "Strong.", "Very strong."][s];
+    // (only when it's changed: its words are read out each time they're set)
+    const c = "hint" + (v && (leaked || !s) ? " bad" : v && s >= 2 ? " ok" : ""), t = !v ? "At least 10 characters. A few unrelated words make a strong one." : leaked ? leakedSay(leaked) : ["Use at least 10 characters.", "Fair. Longer would be stronger.", "Good.", "Strong.", "Very strong."][s];
+    if (hint.className !== c) hint.className = c;
+    if (hint.textContent !== t) hint.textContent = t;
   };
   nw.addEventListener("input", () => {
     leaked = 0; rate(); clearTimeout(leakT);
@@ -1238,14 +1572,15 @@ function passwordView({ then } = {}) {
 // ---- passkeys: each with its name (yours to change) and where it's saved ----
 function passkeysView() {
   const m = S.me, said = h("p.said", { role: "alert" }), can = !!(window.PublicKeyCredential && navigator.credentials?.create);
+  // (each by its id, data-id: found again to fold away once it's removed, even if showing it's you drew it anew)
   const list = m.passkeys.length
-    ? h("div.group", {}, m.passkeys.map((p) => swipeable(h("button.row", { type: "button", onclick: () => pushSheet(() => passkeyView(p.id)) },
+    ? h("div.group", {}, m.passkeys.map((p) => { const box = swipeable(h("button.row", { type: "button", onclick: () => pushSheet(() => passkeyView(p.id)) },
       h("span.ic.indigo", {}, icon("passkey", 19)),
       h("span.tx", {}, h("b", { text: p.label }), h("small", { text: [p.provider, `added ${day(p.createdAt)}`].filter(Boolean).join(" · ") })),
       h("span.chev", {}, icon("chev", 16, 2.4))), "Remove", async (b) => {
-        try { S.me = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id }))); await leave(b.parentNode); redraw(); patch(); toast("Passkey removed."); }
+        try { S.me = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id }))); await leave(sheetEl.querySelector(`.sheet-body:not(.going) [data-id="${CSS.escape(p.id)}"]`)); redraw(); patch(); toast("Passkey removed."); }
         catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
-      })))
+      }); box.dataset.id = p.id; return box; }))
     : h("div.group", {}, h("div.empty", { text: "No passkeys yet." }));
   return { title: "Passkeys", body: [
     list,
@@ -1253,7 +1588,7 @@ function passkeysView() {
       const b = e.currentTarget; say(said, "");
       try {
         const made = await freshly(() => busy(b, "Waiting for your device…", addPasskey)); redraw(); patch();
-        if (made?.secret) pushSheet(() => keyCopyView(made.id, made.secret, "Passkey added."));
+        if (made?.secret) { await swapped(); pushSheet(() => keyCopyView(made.id, made.secret, "Passkey added.")); }
         else toast("Passkey added.");
       }
       catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
@@ -1350,10 +1685,11 @@ function keyCopyView(id, secret, added = "") {
 // ---- signed-in devices: each with where and when; those unused for 3 months marked, to sign out in one go ----
 function devicesView() {
   const m = S.me, others = m.devices.filter((d) => !d.current), stale = others.filter((d) => d.stale);
-  const end = async (b, body, rows) => {
+  // (the rows it signs out, by their ids: found again to fold away, as showing it's you may have drawn them anew)
+  const end = async (b, body, ids) => {
     try {
       const next = await freshly(() => busy(b, "", () => post("devices/end", body)));
-      await Promise.all(rows.map(leave));
+      await Promise.all(ids.map((id) => leave(sheetEl.querySelector(`.sheet-body:not(.going) [data-id="${CSS.escape(id)}"]`))));
       S.me = next; redraw(); patch();
       toast(body.id ? "Signed out." : body.stale ? `${stale.length} unused device${stale.length > 1 ? "s were" : " was"} signed out.` : "Your other devices were signed out.");
     } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
@@ -1365,22 +1701,24 @@ function devicesView() {
   const rows = m.devices.map((d) => {
     const name = d.app ? { inflight: "InFlight", weather: "Weather", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
-      d.app ? h("span.ic.app-ic", {}, h("img", { src: APP_MARK[name], alt: "", width: 32, height: 32 }))
+      d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
       h("span.tx", {}, h("b", {}, name, d.current && h("span.tag", { text: thisOne(d) })),
         h(d.stale ? "small.warn" : "small", { text: [d.kind !== me?.kind && d.kind !== name && d.kind, where(d.place),
           d.current ? "Active now" : d.stale ? `Not used for ${monthsSince(d.seenAt)}` : ago(d.seenAt, true)].filter(Boolean).join(" · ") })),
-      !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, [el])));
-    el.dataset.stale = d.stale ? "1" : "";
-    return d.current ? el : swipeable(el, "Sign out", (b) => end(b, { id: d.id }, [b.parentNode]));
+      !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, [d.id])));
+    // (marked on what's in the list itself: the row, or the box it slides in)
+    const box = d.current ? el : swipeable(el, "Sign out", (b) => end(b, { id: d.id }, [d.id]));
+    box.dataset.id = d.id; box.dataset.stale = d.stale ? "1" : "";
+    return box;
   });
   return { title: "Signed-in devices", body: [
     h("p", { text: "Where your account’s signed in. On iPhone, each Home Screen app signs in on its own." }),
     h("div.group", {}, rows),
     (stale.length > 0 || others.length > 1) && h("div.group", {},
-      stale.length > 0 && h("button.row.action", { type: "button", onclick: (e) => end(e.currentTarget, { stale: true }, rows.filter((r) => r.dataset.stale)) },
+      stale.length > 0 && h("button.row.action", { type: "button", onclick: (e) => end(e.currentTarget, { stale: true }, rows.filter((r) => r.dataset.stale).map((r) => r.dataset.id)) },
         `Sign out ${stale.length} unused device${stale.length > 1 ? "s" : ""}`),
-      others.length > 1 && h("button.row.action.danger", { type: "button", onclick: (e) => end(e.currentTarget, { others: true }, rows.filter((r) => !r.classList.contains("current"))) }, "Sign out of all other devices")),
+      others.length > 1 && h("button.row.action.danger", { type: "button", onclick: (e) => end(e.currentTarget, { others: true }, rows.filter((r) => !r.classList.contains("current")).map((r) => r.dataset.id)) }, "Sign out of all other devices")),
     h("p.said", { role: "alert" })] };
 }
 const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) / (30.44 * 86400e3))); return n >= 24 ? `${Math.floor(n / 12)} years` : `${n} months`; };
@@ -1408,10 +1746,10 @@ function admSum() {
 // (after a change: the figures and the log asked again)
 function admChanged() { AD.asked = false; AD.data.log = null; AD.err.log = null; patch(); }
 // (a change: where it needs you to confirm it's you, that's asked there, in the sheet)
-const admPost = (b, label, path, body) => freshly(() => busy(b, label, () => post(`admin/${path}`, body)), true);
+const admPost = (b, label, path, body) => freshly(() => busy(b, label, () => post(`admin/${path}`, body)), b);
 const admWait = (key) => AD.err[key]
   ? h("div.group", {}, h("div.empty", { text: AD.err[key] }), h("button.row.action", { type: "button", onclick: () => { admAsk(key, true); redraw(); } }, "Try again"))
-  : h("div.group", {}, h("div.empty", {}, h("span.spin")));
+  : h("div.group.adm-wait", {}, h("div.empty", {}, h("span.spin")));
 const admInfo = (t, v, warn) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val" + (warn ? ".warn" : ""), { text: String(v) }));
 const num = (n) => Number(n || 0).toLocaleString("en-GB"), pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 const nOf = (n, one, many = one + "s") => `${num(n)} ${n === 1 ? one : many}`;
@@ -1427,7 +1765,7 @@ function seenAt(t) {
 function admAvatar(u, xl) {
   const hue = ([...String(u.handle || u.id)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
   const el = h(`span.adm-av.h${hue}${xl ? ".xl" : ""}`, { "aria-hidden": "true" }, [...String(u.name || u.handle).trim().split(/\s+/).map((w) => [...w][0] || "").join("")].slice(0, 2).join("").toUpperCase());
-  if (u.avatar_at) el.append(h("img", { src: `${API}/admin/avatar?id=${encodeURIComponent(u.id)}&v=${u.avatar_at}`, alt: "", decoding: "async", loading: "lazy" }));
+  if (u.avatar_at) el.append(photo(`${API}/admin/avatar?id=${encodeURIComponent(u.id)}&v=${u.avatar_at}`, { loading: "lazy" }));
   return el;
 }
 const onNow = (u) => isOn(u) && [" · ", h("span.adm-on", { text: "Online now" })];
@@ -1548,9 +1886,23 @@ function admMessagesView() {
     } }, icon("trash", 17), "Delete"));
   const head = (m, dot) => h("div.row.plain", {}, dot && h("span.adm-dot", { "aria-hidden": "true" }), h("span.tx", {}, h("b", { text: m.name }), h("small", { text: `${m.email} · ${seenAt(m.at)}` })));
   const fresh = x.messages.filter((m) => AD.fresh.has(m.id)), older = x.messages.filter((m) => !AD.fresh.has(m.id));
-  const line = (m) => AD.msgOpen === m.id ? h("div.adm-open", {}, head(m), h("p.adm-body", { text: m.body }), acts(m))
-    : h("button.row.adm-line", { type: "button", onclick: () => { AD.msgOpen = m.id; redraw(); } },
-      h("span.tx", {}, h("b", { text: m.name }), h("small", { text: m.body })), h("span.val", { text: seenAt(m.at) }));
+  const opened = (m) => h("div.adm-open", { tabindex: "-1", "data-msg": m.id }, head(m), h("p.adm-body", { text: m.body }), acts(m));
+  // (opened where it is, going from a line to its full size, the one open before going back to a line: the rest of
+  // the sheet stays as it is, scrolled where it was)
+  const into = (from, to) => {
+    const h0 = from.offsetHeight; from.replaceWith(to);
+    if (still.matches) return;
+    to.style.overflow = "hidden";
+    to.animate([{ height: `${h0}px` }, { height: `${to.offsetHeight}px` }], { duration: ms("--dur-base"), easing: tok("--ease-glide") }).finished.then(() => { to.style.overflow = ""; }, () => {});
+  };
+  const line = (m) => AD.msgOpen === m.id ? opened(m)
+    : h("button.row.adm-line", { type: "button", "data-msg": m.id, onclick: (e) => {
+      const was = sheetEl.querySelector(".adm-open"), o = opened(m);
+      AD.msgOpen = m.id;
+      if (was) into(was, line(x.messages.find((y) => y.id === was.dataset.msg)));
+      into(e.currentTarget, o); o.focus({ preventScroll: true });
+      o.querySelector(".adm-body").animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-base"), easing: tok("--ease-out") });
+    } }, h("span.tx", {}, h("b", { text: m.name }), h("small", { text: m.body })), h("span.val", { text: seenAt(m.at) }));
   return { title: "Messages", body: [
     fresh.length > 0 && h("h4.app-k", { text: "New" }),
     ...fresh.map((m) => h("div.group.adm-msg", {}, head(m, true), h("p.adm-body", { text: m.body }), acts(m))),
@@ -1599,7 +1951,10 @@ function admAccountView(id) {
         onclick: act("", "pigeons", { kind: k, add: 1 }, (r) => { u.pigeons = { ...u.pigeons, [k]: r.count }; toast(r.message); redraw(); }) }, "+1")))),
     h("div.group", {},
       AD.sum?.email !== false && h("button.row.action", { type: "button", onclick: act("Sending…", "reset", { mode: "email" }) }, "Email a reset link"),
-      h("button.row.action", { type: "button", onclick: act("Making it…", "reset", { mode: "link" }, (r) => { AD.link = { id: u.id, url: r.url }; redraw(); }) }, "Make a reset link"),
+      h("button.row.action", { type: "button", onclick: act("Making it…", "reset", { mode: "link" }, (r) => {
+        AD.link = { id: u.id, url: r.url }; redraw();
+        $(".sheet-body:not(.going) .adm-code", sheetEl)?.scrollIntoView({ block: "nearest", behavior: still.matches ? "auto" : "smooth" });      // (the link, brought into view)
+      }) }, "Make a reset link"),
       h("button.row.action", { type: "button", disabled: !u.sessions, onclick: act("Signing out…", "signout", {}, (r) => { u.sessions = 0; toast(r.message); redraw(); }) }, "Sign out everywhere")),
     link && admCopy(link, "Works once, for 24 hours. Send it to them privately."),
     said,
@@ -1617,7 +1972,7 @@ function admDeleteView(u) {
       try {
         const r = await admPost(go, "Deleting…", "delete", { id: u.id, confirm: sure.value });
         AD.data.users.users = AD.data.users.users.filter((x) => x.id !== u.id); admChanged();
-        Sheet.stack.length = Math.max(1, Sheet.stack.indexOf(admAccountsView) + 1); draw(true); toast(r.message);
+        Sheet.stack.length = Math.max(1, Sheet.stack.indexOf(admAccountsView) + 1); draw("back"); toast(r.message);
       } catch (err) { if (!err.quiet) say(said, err.message); }
     } }, field(`Type ${u.handle} to confirm`, h("div.at", {}, "@", sure)), go),
     said] };
@@ -1652,28 +2007,32 @@ function admInvitesView() {
 
 // Insights: how InFlight is used, in totals over everyone (functions/_insights.js), never who sent what to whom
 const KINDS = { standard: "Standard", swift: "Swift", turbo: "Turbo", rocket: "Rocket", dumb: "Dumb (the secret one)", lunar: "Lunar", laser: "Laser", orbital: "Orbital" };
-function admBars(title, vals) {
+// (grow: the first time its figures are shown, each column grows up into place, one after the next: styles.css)
+function admBars(title, vals, grow) {
   const top = Math.max(1, ...vals), total = vals.reduce((a, b) => a + b, 0);
-  return h("div.adm-chart", { role: "img", "aria-label": `${title}: ${num(total)} in the last ${vals.length} days` },
+  return h("div.adm-chart" + (grow ? ".grow" : ""), { role: "img", "aria-label": `${title}: ${num(total)} in the last ${vals.length} days` },
     h("div.adm-chead", {}, h("b", { text: title }), h("span", { text: `${num(total)} in ${vals.length} days` })),
-    h("div.adm-bars", { "aria-hidden": "true" }, vals.map((v) => { const i = h("i"); i.style.height = `${(v / top) * 100}%`; return i; })));
+    h("div.adm-bars", { "aria-hidden": "true" }, vals.map((v, j) => { const i = h("i"); i.style.height = `${(v / top) * 100}%`; i.style.setProperty("--j", j); return i; })));
 }
-function admMeter(label, n, of, val) {
-  const i = h("i"); i.style.width = `${of ? Math.max(n ? 2 : 0, (n / of) * 100) : 0}%`;
+function admMeter(label, n, of, val, j = 0) {
+  const i = h("i"); i.style.width = `${of ? Math.max(n ? 2 : 0, (n / of) * 100) : 0}%`; i.style.setProperty("--j", j);
   return h("div.adm-meter", {}, h("span.ml", { text: label }), h("span.mbar", { "aria-hidden": "true" }, i), h("span.mv", { text: val ?? `${num(n)} · ${pct(n, of)}%` }));
 }
 function admInsightsView() {
   const x = admAsk("insights");
   if (!x) return { title: "Insights", body: [admWait("insights")] };
   const P = x.people, R = x.retention, F = x.features, U = x.adoption, H = x.health, kindsN = x.kinds.reduce((a, k) => a + k.n, 0);
+  // (its charts grow in when it's first shown with them: gone on to, or once they've come; not when it's drawn again
+  // with them counted again, nor with Reduce Motion)
+  const grow = !still.matches && (Sheet.mode !== "same" || Sheet.waited), g = grow ? ".grow" : "";
   const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
-  const meters = (list, of) => h("div.group.adm-meters", {}, list.map(([l, n]) => admMeter(l, n, of)));
+  const meters = (list, of) => h("div.group.adm-meters" + g, {}, list.map(([l, n], j) => admMeter(l, n, of, null, j)));
   return { title: "Insights", body: [
     h("div.stats", {}, stat(num(P.today), "today"), stat(num(P.week), "this week"), stat(num(P.month), "this month"), stat(R.old ? `${pct(R.back, R.old)}%` : "–", "came back")),
-    admBars("Pigeons sent", x.days.sent), admBars("People active", x.days.active), admBars("New accounts", x.days.joined),
+    admBars("Pigeons sent", x.days.sent, grow), admBars("People active", x.days.active, grow), admBars("New accounts", x.days.joined, grow),
     h("h4.app-k", { text: "Coming back" }),
-    h("div.group.adm-meters", {}, R.weeks.length ? R.weeks.map((w) => { const n = w.secondWeek ?? w.back;
-      return admMeter(`Joined ${w.weeksAgo}–${w.weeksAgo + 1} weeks ago`, n, w.joined, `${num(n)} of ${num(w.joined)}`); })
+    h("div.group.adm-meters" + g, {}, R.weeks.length ? R.weeks.map((w, j) => { const n = w.secondWeek ?? w.back;
+      return admMeter(`Joined ${w.weeksAgo}–${w.weeksAgo + 1} weeks ago`, n, w.joined, `${num(n)} of ${num(w.joined)}`, j); })
       : h("div.empty", { text: "No one’s been here long enough yet." })),
     h("h4.app-k", { text: `Pigeons, last 30 days · ${num(F.total)}` }),
     x.kinds.length ? meters(x.kinds.map((k) => [KINDS[k.kind] || upper(k.kind), k.n]), kindsN) : h("div.group", {}, h("div.empty", { text: "None sent yet." })),
@@ -1758,10 +2117,15 @@ const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others",
 const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
+  // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
+  // filter changes, the sheet fitting it)
   const box = h("div.activity", { "aria-busy": "true" }, h("div.empty", {}, h("span.spin")));
+  box.style.minHeight = "300px";
+  const came = () => { box.style.minHeight = ""; box.closest(".sheet-body")?.style.removeProperty("min-height");
+    box.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: still.matches ? ms("--dur-fast") : 240, easing: tok("--ease-out") }); };
   const draw = () => {
     const list = events.filter((e) => show === "all" || (show === "signins") === SIGNINS.has(e.kind));
-    if (!list.length) return box.replaceChildren(h("div.group", {}, h("div.empty", { text: show === "all" ? "Nothing in the last 30 days." : "None of these in the last 30 days." })));
+    if (!list.length) { box.replaceChildren(h("div.group", {}, h("div.empty", { text: show === "all" ? "Nothing in the last 30 days." : "None of these in the last 30 days." }))); return came(); }
     const byDay = new Map();
     for (const e of list) { const k = dayWord(e.at); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
     box.replaceChildren(...[...byDay].map(([k, day]) => {
@@ -1770,14 +2134,15 @@ function activityView() {
       const place = [...n].sort((x, y) => y[1] - x[1])[0]?.[0] || null;
       return h("div.day", {}, h("h4", {}, k, place && h("small", { text: ` · ${place}` })),
         h("div.group", {}, day.map((e) => { const [ic, tint] = KIND_LOOK[e.kind] || ["clock", "grey"];
-          return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18), e.app && APP_MARK[e.app] && h("img.app-mark", { src: APP_MARK[e.app], alt: e.app })),
+          return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18), e.app && APP_MARK[e.app] && photo(APP_MARK[e.app], { alt: e.app }, "img.app-mark")),
             h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }), h("small", { text: [e.device, e.place !== place && e.place].filter(Boolean).join(" · ") || e.app || "" })),
             h("span.end", {}, h("span.t", { text: new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) }),
               elsewhere(e) && h("button.mini", { type: "button", onclick: () => pushSheet(() => notMeView(e)) }, "Not you?"))); })));
     }));
+    came();
   };
   call("activity").then((r) => { if (!box.isConnected) return; events = r.events; box.removeAttribute("aria-busy"); draw(); })
-    .catch((e) => { if (box.isConnected) box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); });
+    .catch((e) => { if (box.isConnected) { box.removeAttribute("aria-busy"); box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); came(); } });
   return { title: "Recent activity", body: [
     h("p", { text: "What’s happened to your account in the last 30 days, in every app on the site. Something you don’t recognise? Change your password." }),
     seg("Show", [["all", "All"], ["signins", "Sign-ins"], ["changes", "Changes"]], "all", (v) => { show = v; if (events) draw(); }),
@@ -1877,7 +2242,7 @@ async function setPrefs(changes) {
 function appearanceView() {
   const m = S.me;
   const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: () => {
-    m.prefs.appearance = k; theme(k);
+    m.prefs.appearance = k; theme(k, true);
     for (const b of sheetEl.querySelectorAll(".appear")) { const on = b === opts[APPEAR.findIndex(([x]) => x === k)]; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
     setPrefs({ appearance: k });
   } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
@@ -2007,7 +2372,8 @@ function deleteView() {
       const confirm = sure.value.trim();
       try {
         const r = await freshly(() => busy(go, "Deleting…", () => post("delete", { confirm })));
-        S.me = { signedIn: false }; S.settled = false; closeSheet(); render(); scrollTo(0, 0);
+        S.me = { signedIn: false };
+        anew(() => { S.settled = false; render(); scrollTo(0, 0); });
         toast(`Your account will be deleted on ${new Date(r.deleteAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.`, false, 6000);
       } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
     } }, field(`Type ${m.handle} to confirm`, h("div.at", {}, "@", sure)), go),
@@ -2022,14 +2388,14 @@ async function refresh() {
   try { m = await call("me"); } catch (_) { return; }
   const was = S.me, same = (x) => JSON.stringify({ ...x, fresh: 0, devices: x.devices?.map((d) => ({ ...d, seenAt: 0 })) });
   if (!!was.signedIn !== !!m.signedIn || !!was.deleting !== !!m.deleting) {
-    if (sheetEl.open) closeSheet();
-    S.me = m; S.settled = false; render();
+    S.me = m;
+    anew(() => { S.settled = false; render(); });
     if (was.signedIn && !m.signedIn) toast("You were signed out.", true);
     return;
   }
   if (m.signedIn && same(was) !== same(m)) {
     S.me = m;
-    if (m.prefs && m.prefs.appearance !== was.prefs?.appearance) theme(m.prefs.appearance);
+    if (m.prefs && m.prefs.appearance !== was.prefs?.appearance) theme(m.prefs.appearance, true);
     patch();
   }
 }
