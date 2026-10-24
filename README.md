@@ -858,11 +858,22 @@ enough, and let go, the page holds open a gap for it to turn in (long enough to
 be seen) until the forecast itself is in, the rest arriving behind it, then
 glides back up. It goes if the page is scrolled on meanwhile, and gives up after
 15 seconds whatever happens. With more than one place saved, swipe across the top
-of the page to go between them: the page follows your finger (giving at the
-first and last), and let go far enough, or flicked, it carries on out at the
-speed you let go at as the next place comes in from the other side (a view
-transition, where the browser has them); not far enough, it springs back. A
-day's details go to the day before or after the same way. Places lists them as
+of the page to go between them. The places either side are already drawn beside
+it, in a sideways scroller that stops at each, so the swipe is the browser's own
+scroll: it moves with your finger from the first touch and carries on at the
+speed you let go at (giving at the first and last), whatever else the page is
+doing. As you drag, you see the next place's temperature, sky and conditions
+coming in, its name takes over in the bar, its sky fades in over this one's,
+and the cards move along and fade (led by the scroll itself where the browser
+can, otherwise by the app as it scrolls). Once it lands, that place takes over
+the top of the page in the same frame, with nothing redrawn in front of you;
+its charts arrive already drawn and its cards come up underneath. What's drawn
+beside the page is each neighbour's forecast as kept, worked out the way the
+page works out its own, while the page is idle; the neighbours' forecasts and
+warnings are also refreshed quietly in the background, so what you swipe to is
+up to date. Choosing a place in Places or on the map still turns the page to it
+(the rest of that page is drawn after the turn, not during it). A day's details
+go to the day before or after by swiping too. Places lists them as
 cards, as iOS's Weather does: each in its own sky, its name, its clock and its
 weather, the temperature and the day's high and low; swipe one left and it
 narrows to make room for a Delete beside it (nothing on it cut off).
