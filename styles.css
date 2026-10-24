@@ -185,13 +185,14 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
   .bar .mid { animation: capsule linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
   .barbg, .soft { animation: veil linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
   .hero > * { animation: under linear both; animation-timeline: scroll(root); }
-  .hero > .cta { animation-name: under-gone; }
+  .hero > .cta { animation-name: under, gone; }
 }
 @keyframes capsule { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes veil { from { opacity: 0; visibility: hidden; } to { opacity: 1; visibility: visible; } }
 @keyframes under { from { opacity: 1; } to { opacity: 0; } }
-/* (the buttons, once faded, hidden too: not tapped through the bar's gaps, or tabbed to, unseen) */
-@keyframes under-gone { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+/* (the buttons, once faded, hidden too: not tapped through the bar's gaps, or tabbed to, unseen; in an animation by
+   itself, as the browser runs a fade off the page's thread only when nothing else is animated with it) */
+@keyframes gone { to { visibility: hidden; } }
 
 .hero {
   min-height: max(560px, 84svh);
@@ -490,7 +491,7 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 .lost .head { margin-top: 38px; }
 .lost .report { margin-top: 30px; text-align: center; font-size: 14px; color: var(--text-2); }
 .lost .report a { color: var(--tint-text); font-weight: 500; display: inline-block; padding: 13px 4px; margin: -13px -4px; }   /* (a finger's width to tap, as the footer's are) */
-.lost .foot { margin-top: 10px; }
+.lost .foot { margin-top: 26px; }     /* (clear of the report link's tap area above it) */
 .appic { flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
 .map { width: 210px; height: auto; margin: 0 0 22px -8px; overflow: visible; }
 .map .contours { stroke: rgba(255, 255, 255, 0.16); }
