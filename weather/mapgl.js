@@ -132,6 +132,17 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   return {
     kind: "gl",
     credit: ["OpenFreeMap", "OpenMapTiles", "OpenStreetMap"],
+    // a picture of the map as it's drawn now (a JPEG, as a data URL), or null: taken as a frame's drawn, the one time its
+    // canvas can be read; not while it's on its way somewhere (app.js: the place's page beside the next one's)
+    still() {
+      if (map.isMoving()) return Promise.resolve(null);
+      return new Promise((ok) => {
+        let done = false;
+        const take = () => { if (done) return; done = true; try { ok(map.getCanvas().toDataURL("image/jpeg", 0.72)); } catch (_) { ok(null); } };
+        map.once("render", take); map.triggerRepaint();
+        setTimeout(() => { if (!done) { done = true; map.off("render", take); ok(null); } }, 1000);
+      });
+    },
     // the frames: { draw(z, x, y, signal) } drawn tile by tile, or { canvas, bounds } a picture over the place
     frames(list) {
       for (const id of layers) { map.removeLayer(id); map.removeSource(id); drawers.delete(id.slice(1)); }

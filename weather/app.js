@@ -529,11 +529,13 @@ function drawPage(el, q, i, only) {
 const pages = new Map();
 const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 60e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
 const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
-// (the page's cards as they are, copied: without the placeholders, the map (one only), or anything about to move)
-function copyPage(blank = false) {
-  const col = $("main").querySelector(":scope > .col-a").cloneNode(true);
+// (the page's cards as they are, copied: without the placeholders, the map (there's one only: a picture of it as it was
+// last shown for that place, id, if it's been), or anything about to move)
+const stills = new Map();
+function copyPage(blank = false, id = "") {
+  const col = $("main").querySelector(":scope > .col-a").cloneNode(true), still = stills.get(id);
   for (const x of col.querySelectorAll(".skeleton")) x.remove();
-  for (const x of col.querySelectorAll(".radar-map")) x.replaceChildren();
+  for (const x of col.querySelectorAll(".radar-map")) x.replaceChildren(...(still ? [h("img", { class: "radar-still", src: still, alt: "" })] : []));
   const note = col.querySelector(".radar-note > span"); if (note) note.textContent = "";
   // (and, to be drawn afresh, what's drawn into what's there: the warnings, kept one by one as they're drawn again)
   if (blank) for (const c of col.querySelectorAll("#alerts, #hourly-chart, #nowcast-chart, #climate-body > .range")) c.replaceChildren();
@@ -545,7 +547,7 @@ function drawWhole(pv, q) {
   if (!key || !base || runOut(base)) return false;
   const rain = rainOf(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
   Object.assign(S, { base, rain, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
-  const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true), said = h("p", { id: "brief", hidden: true });
+  const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true, id), said = h("p", { id: "brief", hidden: true });
   said.dataset.said = heroView(wx, now)?.said || "";
   // (beside its own weather now, kept: placePages)
   const top = pv.querySelector(":scope > .pv-hero");
@@ -572,7 +574,7 @@ function placePages(a, b, va, vb) {
     pv.replaceChildren(...(id ? [h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })),
       ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
   }
-  keepNear(pages);
+  keepNear(pages); keepNear(stills);
 }
 // (what's kept of each saved place, its whole page and its weather now made ready, kept for all of them, not just the
 // two either side, so a place a swipe or two away has its page ready as it comes: a few at most, the nearest)
@@ -665,7 +667,7 @@ function commit(dir) {
   if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: Math.floor(Date.now() / 60e3), base: S.base, v: S.wx ? heroView(S.wx, nowWall(S.wx.place.offset)) : null, rain: rainOf(cell(was.lat, was.lon)) });
   // (and its page as it was, a copy, for beside the one landed on: unless something on it is open or folded out, which
   // it won't be when it's turned back to (go), when it's drawn again, when the page is idle)
-  if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage())] });
+  if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage(false, cell(was.lat, was.lon)))] });
   else if (was) pages.delete(cell(was.lat, was.lon));
   snapping = true;
   S.cur = i; savePlaces();
@@ -696,6 +698,10 @@ function readyNearby(soon = false) {
   nearbyNow = false;
   if (document.visibilityState !== "visible") return;
   if (pagerBusy()) { nearbySoon(soon); return; }
+  // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
+  // the map still on its way to it)
+  const here = place();
+  if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still().then((u) => { if (u && place() === here) stills.set(cell(here.lat, here.lon), u); }, () => {});
   const list = nearby().filter(Boolean);
   for (const q of list) prepare(q);
   layoutPager(false, true);

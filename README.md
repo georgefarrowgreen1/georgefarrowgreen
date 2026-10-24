@@ -913,7 +913,16 @@ code into copies of the page, from each neighbour's kept forecast, while the
 page is idle, and redrawn every few minutes; the page you've just left is kept
 as it was. The neighbours' forecasts are also refreshed quietly in the
 background (just the forecast and warnings when the phone is saving data), so
-what you swipe to is up to date and looks the same when you land on it. Choosing a place in Places or on the map still turns the page to it
+what you swipe to is up to date and looks the same when you land on it. To keep
+pages steady as you swipe: each page beside this one is laid out whole, its own
+weather now over its own cards, so nothing shifts as it lands; the places beside
+also have their radar reading, the models' track record there and their climate
+fetched ahead, so nothing changes a moment after landing; a drawn page is kept
+for every saved place (the nearest six) and the new neighbour is drawn straight
+after landing; pages beside are redrawn every minute, as the page's own minute
+wording is; the line under the name in the bar crossfades with the name; the
+next place's clouds, stars, rain or snow come in with its sky; and the radar
+card beside shows a still of that place's map from when it was last shown. Choosing a place in Places or on the map still turns the page to it
 (the rest of that page is drawn after the turn, not during it). A day's details
 go to the day before or after by swiping too. Places lists them as
 cards, as iOS's Weather does: each in its own sky, its name, its clock and its

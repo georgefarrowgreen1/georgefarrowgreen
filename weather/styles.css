@@ -1476,6 +1476,8 @@ body.no-scroll { overflow: hidden; }
 .radar .base-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.85) saturate(0.35); }
 /* the vector map fades in once the country's drawn, not land-coloured first with the sea filling in after */
 .radar-map .maplibregl-canvas { opacity: 0; transition: opacity 0.4s ease; }
+/* (a place's page beside this one: its map as it was last shown, a picture) */
+.radar-still { display: block; width: 100%; height: 100%; object-fit: cover; }
 .radar-map.drawn .maplibregl-canvas { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
 /* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
