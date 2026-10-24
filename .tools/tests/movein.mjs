@@ -55,7 +55,9 @@ ok(await p.waitForSelector('.welcome', { timeout: 10000 }).then(() => true, () =
 // a phone that never used the old address: straight to the welcome, and it doesn't ask again
 const N = await K.b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
 const q = await N.newPage(); const t1 = Date.now(); await q.goto(NEW + '/'); await q.waitForSelector('.welcome', { timeout: 15000 });
-ok(Date.now() - t1 < 6000 && !!(await q.evaluate(() => localStorage.getItem('inflight-movedin'))), 'new phone: welcome, handover asked once', `${Date.now() - t1} ms`);
+// (the welcome is up while the old address is asked, so its answer, and the mark that it was asked, follow a moment later)
+const shown = Date.now() - t1, asked = await q.waitForFunction(() => localStorage.getItem('inflight-movedin'), null, { timeout: 8000 }).then(() => true, () => false);
+ok(shown < 6000 && asked, 'new phone: welcome, handover asked once', `${shown} ms`);
 // a page elsewhere can't get the handover: framing it from the old address itself is refused
 const w = await N.newPage(); await w.goto(OLD + '/pigeon/');
 const leaked = await w.evaluate(() => new Promise((res) => { const f = document.createElement('iframe'); f.src = '/pigeon/handover'; addEventListener('message', (e) => res(true)); document.body.append(f); setTimeout(() => res(false), 3000); }));

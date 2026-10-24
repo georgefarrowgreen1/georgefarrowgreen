@@ -120,7 +120,10 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .screen.plain{background:var(--bg-plain)}
 .view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .view.tabs-pad{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
-.offline{flex:none;background:#b25400;color:#fff;font-size:13px;font-weight:600;text-align:center;padding:5px 10px}
+/* offline: a pill that floats in under the navigation bar (a banner above everything shoved the whole screen down) */
+.offline{position:absolute;z-index:9;left:50%;top:62px;padding:6px 14px;border-radius:999px;background:#b25400;color:#fff;font-size:13px;font-weight:600;text-align:center;white-space:nowrap;
+  box-shadow:0 6px 18px rgba(0,0,0,.18);transform:translate(-50%,-10px);opacity:0;pointer-events:none;transition:transform .35s var(--snappy),opacity .25s}
+.offline.on{transform:translate(-50%,0);opacity:1}
 .loading{flex:1;display:grid;place-items:center;color:var(--label-2);font-size:15px;min-height:60vh}
 
 /* ---------- navigation: floating glass buttons, soft scroll edge ---------- */
@@ -155,6 +158,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 
 /* ---------- search ---------- */
 .search{display:flex;align-items:center;gap:7px;margin:0 16px 12px;padding:0 14px;height:42px;border-radius:999px;background:var(--fill);color:var(--label-2)}
+.search.skp{animation:sheen 1.4s ease-in-out infinite}        /* (the placeholder's, while the list is still on its way) */
 .search svg{font-size:18px}
 .search input{flex:1;min-width:0;border:0;background:none;outline:none;color:var(--label);font-size:17px;padding:0}
 .search input::placeholder{color:var(--label-2)}
@@ -257,6 +261,8 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .b.gap-top{margin-top:10px}
 .b.pic{padding:0;background:none;overflow:hidden;border-radius:22px;width:68%}
 .b.pic img,.b.pic .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:22px;background:var(--fill);cursor:zoom-in}
+.b.pic img.arrive,.av img.arrive{animation:fade .3s ease both}
+.b.pic .ph.wait{animation:sheen 1.4s ease-in-out infinite}
 .b.pic .ptxt{display:block;margin-top:3px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in)}
 .b.pic.me .ptxt{background:var(--tint-fill);color:#fff}
 .ph{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--label-2);font-size:13px;padding:12px;text-align:center;cursor:default!important}
@@ -440,14 +446,16 @@ html.kbup .compose{padding-bottom:6px}
 .asheet .cancel{margin-top:8px;background:var(--glass-strong);color:var(--label);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
 
 /* ---------- banner ---------- */
-.toast{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top,0px));z-index:50;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-radius:30px;background:var(--glass-strong);font-size:15px;line-height:20px;animation:drop .4s cubic-bezier(.2,.9,.3,1.15)}
+/* (under the navigation bar, so Back and the bar's buttons stay in reach; in a sheet, under the sheet's own header) */
+.toast{position:absolute;left:10px;right:10px;top:64px;z-index:50;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-radius:30px;background:var(--glass-strong);font-size:15px;line-height:20px}
+.screen.sheeted .toast{top:76px}
 .toast .ticon{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:#fff;font-size:22px;background:linear-gradient(160deg,#5fb0ff,#0a5fe0)}
 .toast span{flex:1;min-width:0}
 .toast button{flex:none}
 
 @keyframes up{from{transform:translateY(100%)}}
 @keyframes fade{from{opacity:0}}
-@keyframes drop{from{transform:translateY(-130%)}}
+@keyframes drop{from{transform:translateY(-22px) scale(.97)}}
 
 /* ============================================================
    Motion, the iOS 26 way: springs, not fixed curves. Controls swell
@@ -458,6 +466,9 @@ html.kbup .compose{padding-bottom:6px}
 :root{
   --ease-out:cubic-bezier(.22,1,.36,1);
   --smooth:cubic-bezier(.25,1,.5,1); --snappy:cubic-bezier(.2,1.1,.4,1); --bouncy:cubic-bezier(.3,1.35,.45,1);
+  /* the names the site's other pages use for the same curves and times (home, account, Weather) */
+  --ease-glide:var(--nav); --ease-in:cubic-bezier(.4,0,1,1); --ease-spring:var(--snappy);
+  --dur-press:.1s; --dur-release:.45s; --dur-fast:.2s; --dur-base:.35s; --dur-sheet-in:.5s; --dur-sheet-out:.34s;
 }
 @supports (transition-timing-function:linear(0,1)){
   :root{
@@ -494,8 +505,12 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .tab{transition:transform .45s var(--snappy),color .25s}
 .tab:active{transform:scale(.9)}
 .tabbar.rise .tabs{animation:rise .5s var(--snappy)}
+.tabbar.back .tabs{animation:tabs-back .5s var(--nav)}
+@keyframes tabs-back{from{transform:translateX(-28vw);opacity:.7}}
 @keyframes rise{from{transform:translateY(130%)}}
-.tab .badge{animation:bump .5s var(--bouncy)}
+.tab .badge.new{animation:bump .5s var(--bouncy)}
+.tab .badge.out{animation:badge-out .2s ease-in forwards}
+@keyframes badge-out{to{transform:scale(.3);opacity:0}}
 @keyframes bump{from{transform:scale(.3);opacity:0}}
 
 /* ---- switches: the knob stretches while held, then springs across ---- */
@@ -517,7 +532,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes fade-out{to{opacity:0}}
 /* (the screen behind stays put while a sheet is up, and the scrim dims it: shrinking it, with a filter and rounded
    corners, cost a repaint of the whole chat on every frame, and a redraw of it as it stopped, so the sheet juddered) */
-.view,.tabbar,.compose{transition:transform .55s var(--snappy)}
+.tabbar{transition:transform .55s var(--snappy)}
+.compose{transition:transform .55s var(--snappy),padding-bottom .35s var(--snappy)}
 /* the sheet reaches a little further down than the screen, so nothing shows under it as it settles */
 .sheet::after{content:"";position:absolute;left:0;right:0;top:calc(100% - 1px);height:80px;background:inherit;pointer-events:none}
 .viewer{animation:fade .3s ease}
@@ -535,10 +551,14 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .asheet{animation:up .55s var(--snappy)}
 .asheet.closing{animation:down .28s cubic-bezier(.4,0,.8,.3) forwards}
 
-/* ---- banners drop in with a little bounce and lift away ---- */
-.toast{animation:drop .6s var(--bouncy)}
-.toast.out{animation:lift .35s cubic-bezier(.4,0,1,1) forwards}
-@keyframes lift{to{transform:translateY(-140%);opacity:0}}
+/* ---- banners drop in and lift away; a new one while one shows takes its place, its words rising in ---- */
+.toast{animation:drop .5s var(--snappy),fade .22s ease-out}
+.toast.swap{animation:toast-bump .35s var(--snappy)}
+.toast.swap>span:nth-child(2),.toast.swap>button{animation:toast-swap .3s var(--ease-out)}
+.toast.out{animation:toast-out .35s cubic-bezier(.4,0,1,1) forwards}
+@keyframes toast-bump{from{transform:scale(1.03)}}
+@keyframes toast-swap{from{opacity:0;transform:translateY(5px)}}
+@keyframes toast-out{to{transform:translateY(-22px) scale(.97);opacity:0}}
 
 /* ---- moving between screens ----
    On the curve iOS uses (quick, then a long settle, never past the end), and only moving and fading: a shadow or a
@@ -551,7 +571,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .view.nav-push,.compose.nav-push{animation:push .5s var(--nav)}
 .view.nav-push{box-shadow:-16px 0 36px rgba(0,0,0,.14)}
 .view.nav-pop{animation:pop-back .5s var(--nav)}
-.view.nav-fade{animation:none}
+.view.nav-fade{animation:tab-in .45s var(--nav)}
 .view.nav-tab-r{animation:tab-r .34s var(--nav)}
 .view.nav-tab-l{animation:tab-l .34s var(--nav)}
 .nav-ghost{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none;background:var(--bg)}
@@ -562,9 +582,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .nav-ghost-pop{z-index:7;animation:ghost-away .5s var(--nav) forwards;box-shadow:-16px 0 36px rgba(0,0,0,.14)}   /* over the tab bar, which waits underneath */
 .nav-ghost-tab{z-index:0;animation:fade-out .3s ease forwards}
 .nav-ghost.plain{background:var(--bg-plain)}
-.view.nav-push,.view.nav-pop,.view.nav-tab-r,.view.nav-tab-l{position:relative;z-index:1}
-.view.nav-push,.view.nav-tab-r,.view.nav-tab-l{background:var(--bg)}
-.screen.plain .view.nav-push,.screen.plain .view.nav-tab-r,.screen.plain .view.nav-tab-l{background:var(--bg-plain)}
+.view.nav-push,.view.nav-pop,.view.nav-tab-r,.view.nav-tab-l,.view.nav-fade{position:relative;z-index:1}
+.view.nav-push,.view.nav-tab-r,.view.nav-tab-l,.view.nav-fade{background:var(--bg)}
+.screen.plain .view.nav-push,.screen.plain .view.nav-tab-r,.screen.plain .view.nav-tab-l,.screen.plain .view.nav-fade{background:var(--bg-plain)}
 @keyframes ghost-under{to{transform:translateX(-28%)}}
 @keyframes ghost-dim{to{opacity:.14}}
 @keyframes ghost-away{to{transform:translateX(100%)}}
@@ -581,17 +601,44 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 /* ---- messages pop out of the composer, or in from the sky when they land ---- */
 .b.fresh,.fly.fresh{animation:bubble-in .6s var(--bouncy);transform-origin:bottom left}
-.b.me.fresh{transform-origin:bottom right}
+.b.me.fresh{transform-origin:bottom right;animation:bubble-send .42s var(--snappy)}
+@keyframes bubble-send{from{opacity:0;transform:translateY(18px) scale(.9)}}
 @keyframes bubble-in{from{opacity:0;transform:scale(.4) translateY(20px)}}
 .attach:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
 .send:not(:disabled){animation:send-in .45s var(--bouncy)}
 @keyframes send-in{from{transform:scale(.2);opacity:0}}
+/* scrolled up, a pigeon arrives below: a pill over the composer (centred with translate, so the pop-in's transform is free) */
+.newpill{position:absolute;left:50%;bottom:calc(100% + 8px);translate:-50% 0;z-index:2;height:34px;padding:0 15px;border:0;border-radius:999px;background:var(--glass-strong);color:var(--tint);
+  font:600 14px/34px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
+.newpill:active{transform:scale(.94);transition-duration:.1s}
+.newpill.out{animation:fade-out .2s ease forwards;pointer-events:none}
+/* a message held for its menu sinks, and springs back as the menu opens (not snaps) */
+.msgs .b[data-act]{transition:transform .3s var(--snappy)}
+/* the composer's bars come in as they open (the composer itself slides to its new height: app.js composeGlide) */
+.replybar:not([hidden]),.compose .note:not([hidden]),.wxplan:not([hidden]),.recbar:not([hidden]){animation:bar-in .26s var(--ease-out)}
+.compose .crow.back{animation:bar-in .22s var(--ease-out)}
+@keyframes bar-in{from{opacity:0;transform:translateY(6px) scale(.98)}}
+/* what a redraw took away, fading where it was as the list closes up (app.js: playKeyed) */
+.kgone{position:absolute;z-index:0;margin:0!important;padding-top:0!important;padding-bottom:0!important;pointer-events:none}
 
-/* ---- a wrong entry shakes, as on iPhone ---- */
+/* ---- a wrong entry shakes, as on iPhone; what's wrong opens in under it, easing what's below down ---- */
 .fcell.bad{animation:shake .45s var(--smooth)}
+.ferr:not([hidden]){animation:ferr-in .3s var(--smooth) backwards}
+@keyframes ferr-in{from{opacity:0;max-height:0;margin-top:0;margin-bottom:0;transform:translateY(-4px)}to{max-height:6em}}
 @keyframes shake{15%{transform:translateX(-9px)}35%{transform:translateX(7px)}55%{transform:translateX(-5px)}75%{transform:translateX(3px)}}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+/* (and yet nothing simply cuts: screens, banners, bars, new messages and the lock dissolve in and out instead of moving;
+   a spinner still turns, slowly) */
+@media (prefers-reduced-motion:reduce){
+  .view.nav-push,.view.nav-pop,.view.nav-tab-r,.view.nav-tab-l,.view.nav-fade,.compose.nav-push,.toast,.lockscreen,.newpill,.b.fresh,.fly.fresh,.tab .badge.new,
+  .replybar:not([hidden]),.attach:not([hidden]),.compose .note:not([hidden]),.wxplan:not([hidden]),.recbar:not([hidden]),.compose .crow.back,.ferr:not([hidden]){animation:rm-in .18s ease both!important}
+  .toast.out,.lockscreen.out,.newpill.out,.tab .badge.out{animation:rm-out .15s ease forwards!important}
+  .offline,.offline.on{transform:translate(-50%,0);transition:opacity .2s ease!important}
+  .send.busy::after{animation:spin 1.2s linear infinite!important}
+}
+@keyframes rm-in{from{opacity:0}}
+@keyframes rm-out{to{opacity:0}}
 
 /* ---------- pigeon kinds: green standard, red swift, black turbo, gold rocket ---------- */
 .pg{flex:none;display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;color:#fff;vertical-align:-.35em;
@@ -852,6 +899,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .gfoot.ok .ico,.gfoot.bad .ico{vertical-align:-2px;margin-right:4px}
 .linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--tint);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 .locfirst{margin-top:18px}
+.locfirst + .group{margin-top:14px}
+.btn.done{background:var(--green);animation:pop .4s var(--bouncy)}
+.btn.done .ico{margin-right:6px}
 .locfirst .btn .ico,.firstrun .btn .ico{margin-right:6px}
 .firstrun{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 24px 20px;gap:10px}
 .firstrun .appicon{width:72px;height:72px;font-size:40px}
@@ -902,6 +952,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* In the air: every pigeon flying to or from you, as cards at the top of Messages */
 .air{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .5s cubic-bezier(.2,.9,.3,1),opacity .35s}
 .air.has{grid-template-rows:1fr;opacity:1}
+.air.still{transition:none}
 .air.q{display:none}
 .airin{min-height:0;overflow:hidden}
 .airhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:2px 22px 6px}
@@ -1047,7 +1098,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .meta .fl.outq{border:0;background:none;font:inherit;color:var(--label-2);padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .meta .fl.outq .ico{font-size:13px}
 .meta .fl.outq.bad{color:var(--red);max-width:100%;text-align:right}
-.offline{transition:opacity .3s}
 @media (prefers-reduced-motion: reduce){.b.me.pending{animation:none}}
 /* voice pigeons: the microphone, the recording bar, and the message itself */
 .field-wrap .mic{position:absolute;right:4px;bottom:4px;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--label-2);display:grid;place-items:center;cursor:pointer;transition:transform .2s cubic-bezier(.3,1.5,.5,1),color .2s}
@@ -1083,6 +1133,8 @@ svg.fillico{fill:currentColor;stroke:none}
 .vwave i.on{opacity:1}
 /* the app lock */
 .lockscreen{position:absolute;inset:0;z-index:39;display:grid;place-items:center;padding:24px;background:var(--bg);animation:lockin .35s ease}
+.lockscreen.out{animation:lock-out .32s var(--ease-out) forwards;pointer-events:none}
+@keyframes lock-out{to{opacity:0;transform:scale(1.04)}}
 @keyframes lockin{from{opacity:0}}
 .lockin{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;max-width:300px}
 .lockin .appicon{margin-bottom:6px}
@@ -1270,6 +1322,15 @@ svg.fillico{fill:currentColor;stroke:none}
 .b.pic.up{box-shadow:none}
 .b.pic.up .ptxt{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint)}
 .b.voicem.up .vplay{background:var(--tint-fill);color:#fff}
+/* yours on its way to the server, a moment before it takes off (app.js: send) */
+.b.me.sending{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--k,var(--tint)) 45%,transparent);min-width:min(224px,76%)}
+.b.me.sending .ft{float:none;display:flex;justify-content:flex-end;margin:7px -4px -4px 0;color:var(--label-2)}
+.b.me.sending .quote{background:var(--fill);border-left-color:var(--tint)}
+.b.me.sending .quote b{color:var(--tint)}
+/* the send button, while what you sent goes up: a spinner where the arrow was */
+.field-wrap .send.busy,.field-wrap .send.busy:disabled{opacity:1}
+.send.busy svg{opacity:0}
+.send.busy::after{content:"";position:absolute;inset:9px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .8s linear infinite}
 /* theirs, sealed until it lands */
 .b.up.sealed{display:flex;flex-direction:column;gap:6px;width:auto;margin-top:2px;padding:9px 14px 10px;border:0;font:inherit;text-align:left;color:var(--label-2);box-shadow:inset 0 0 0 1.5px var(--label-3)}
 .b.up.sealed.gap-top{margin-top:10px}
@@ -1430,6 +1491,7 @@ svg.fillico{fill:currentColor;stroke:none}
 /* writing: the pigeon steps back to its badge, so the words have the room (still a tap to change it) */
 .compose .kind{transition:transform .3s var(--ease-out),background-color .2s,gap .25s var(--ease-out),padding .25s var(--ease-out)}
 .compose .kind .kl{max-width:9em;transition:max-width .25s var(--ease-out),opacity .2s}
+.compose .kind .kl{animation:fade .22s ease}         /* (a new pigeon's name fades in: the pill is redrawn when it changes) */
 .field-wrap:focus-within .kind{gap:1px;padding-right:5px}
 .field-wrap:focus-within .kind .kl{max-width:0;opacity:0}
 @media (prefers-reduced-motion:reduce){.compose .kind,.compose .kind .kl{transition:none}}
@@ -1574,6 +1636,8 @@ html.night .nightsky{display:block}
 .welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 2s ease 1.9s forwards}
 @keyframes wfade{to{opacity:1}}
 .welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 1.4s ease 2.6s forwards}
+.welcome .wcta.swap{opacity:1;animation:wcta-swap .45s var(--ease-out) both}
+@keyframes wcta-swap{from{opacity:0;transform:translateY(6px)}}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
 .welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
 .welcome .wglow{position:relative;background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
@@ -1613,9 +1677,9 @@ html.night .nightsky{display:block}
 
 .auth.night .hero .appicon{box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 0 40px rgba(70,140,255,.45)}
 html.night .view.nav-push,html.night .view.nav-pop{background:transparent;animation:ndawn .7s cubic-bezier(.2,.7,.2,1)}
-@keyframes ndawn{from{opacity:0;transform:translateY(12px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+@keyframes ndawn{from{opacity:0;transform:translateY(12px)}}
 html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s ease forwards}
-@keyframes ndusk{to{opacity:0;filter:blur(8px)}}
+@keyframes ndusk{to{opacity:0;transform:translateY(-6px)}}
 .nav-ghost .night{background:#03050c}          /* a night screen left for the day: it goes as it was */
 html.night .nav-ghost .night{background:none}
 /* back on the welcome: the logo and words are already there */

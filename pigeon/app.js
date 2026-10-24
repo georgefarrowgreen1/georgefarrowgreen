@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.0";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.1";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -216,12 +216,15 @@ const fmtBytes = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Ma
 const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const first = (n) => String(n).trim().split(/\s+/)[0];
 const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
+// A picture (a photo, a face) fades in as it arrives, and only then: when each blob was made, by its address
+const bornAt = new Map();
+const born = (url) => { const t = url && bornAt.get(url); return t && Date.now() - t < 600 ? t : 0; };
 // A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
 // dot: show a green dot when they're online now
 function avatar(person, size = "", dot = false, one = false) {
   const name = person?.name || person?.handle || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
-  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(one ? initials(name).slice(0, 1) : initials(name))}${dot ? onlineDot(person) : ""}</span>`;
+  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt=""${born(url) ? ` class="arrive" data-born="${born(url)}"` : ""}>` : esc(one ? initials(name).slice(0, 1) : initials(name))}${dot ? onlineDot(person) : ""}</span>`;
 }
 // The dot pops in when someone comes online while you watch, not every time
 // the list redraws (nor at all while the app is still opening).
@@ -257,7 +260,7 @@ function avatarUrl(p) {
   api(`avatar/${encodeURIComponent(p.id)}?v=${p.avatarAt}`, { raw: true })
     .then((r) => r.blob())
     .then((b) => {
-      S.avatars.set(key, URL.createObjectURL(b));
+      S.avatars.set(key, URL.createObjectURL(b)); bornAt.set(S.avatars.get(key), Date.now());
       clearTimeout(avatarRender); avatarRender = setTimeout(() => { render(); if (S.sheet && S.sheet.type !== "map") renderSheet(true); }, 60);
     })
     .catch(() => { setTimeout(() => S.avatars.delete(key), 30e3); });    // (tried again in a while: it may have been the signal)
@@ -2036,8 +2039,7 @@ async function applySync(d) {
     if (f.last) await decrypt(f.id, f.last);
     // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
     if (f.last && !f.last.flying && !f.last.lost && !S.seenLanded.has(f.last.id)) {
-      S.seenLanded.add(f.last.id);
-      if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
+      S.seenLanded.add(f.last.id);                 // (one landing in front of you comes down on screen: playKeyed)
       if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
         toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
     }
@@ -2051,7 +2053,6 @@ async function applySync(d) {
     const l = g.last;
     if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
       S.seenLanded.add(l.id);
-      if (S.started) S.fresh.set(l.id, Date.now());
       if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
         toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
     }
@@ -2389,6 +2390,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.1", at: Date.UTC(2026, 9, 24), title: "Smoother", items: [
+    ["bubble", "blue", "Messages that move", "A pigeon comes down as it lands in front of you, chats slide to the top as news arrives, and what’s new fades in instead of jumping."],
+    ["up", "green", "Sent at once", "What you send shows straight away as it takes off, and the box is ready for the next. Scrolled up, a pill says when a pigeon arrives below."],
+    ["bird", "orange", "Everything glides", "Screens, sheets, menus, banners and the map move smoothly in and out, and with Reduce Motion they fade instead of cutting."],
+  ] },
   { v: "1.3.0", at: Date.UTC(2026, 9, 23), title: "One way in", items: [
     ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on georgefarrowgreen.com: a passkey first, or your email and password."],
     ["person", "green", "New accounts on your account’s page", "Accounts are made at account.georgefarrowgreen.com, where a forgotten password is reset too. Invite links still work: they open it."],
@@ -2578,7 +2584,7 @@ async function loadPhoto(fid, m, p) {
   try {
     const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
     const plain = p.v ? await E2E.openPhoto(m.id, p.v, await r.arrayBuffer(), "voice") : await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
-    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
+    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); bornAt.set(S.photos.get(m.id), Date.now());
     trimPhotos(fid);
   } catch (e) {
     S.photos.delete(m.id);
@@ -2778,7 +2784,7 @@ function pullToRefresh() {
   let y0 = null, x0 = 0, down = false, pull = 0, ready = false, busy = false;
   const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy;
   const show = (px, anim) => {
-    for (const el of [v, ind]) el.classList.toggle("ptr-anim", !!anim);
+    for (const el of [v, ind]) { el.classList.toggle("ptr-anim", !!anim); el.style.transition = anim ? "" : "none"; }
     v.style.transform = px ? `translateY(${px}px)` : "";
     ind.style.transform = `translateY(${px / 2 - 19}px)`;                 // in the middle of the gap that opens
     ind.style.opacity = String(Math.min(1, px / 40));
@@ -2962,7 +2968,8 @@ function toastSwipe() {
   $toast.addEventListener("touchend", () => {
     if (!st) return; const s2 = st; st = null;
     if (s2.dy < -24 || s2.vy < -0.4) settle([[s2.t, "translateY(-160%)", "0"]], null, 200, () => s2.t.remove());
-    else { settle([[s2.t, "translateY(0)"]], null, 200, () => unstyle(s2.t)); toastTimer = setTimeout(hideToast, 3000); }
+    // (back where it was: its drop-in mustn't play again, so only the drag's own styles come off)
+    else { settle([[s2.t, "translateY(0)"]], null, 200, () => { s2.t.style.transition = s2.t.style.transform = ""; }); toastTimer = setTimeout(hideToast, 3000); }
   });
 }
 // close the sheet on top the way its ✕ would (so drafts, questions and Back all behave)
@@ -3074,7 +3081,7 @@ function mount() {
   lockPage();
   setTimeout(() => { pullToRefresh(); tabSwipe(); holdRows(); navGestures(); });
   root().innerHTML = `
-    <div class="offline" role="status" hidden>You’re offline. Pigeons will wait.</div>
+    <div class="offline" role="status" aria-hidden="true">You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
     <main class="view"></main>
     <form class="compose" hidden data-form="compose">
@@ -3106,12 +3113,15 @@ function mount() {
     <div class="toasts" role="status" aria-live="polite"></div>`;
   $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
   pressFeedback($compose); composeTouch();
+  // (once played, a badge's bounce and the highlight's squish are done: the bar coming back doesn't replay them)
+  $tabbar.addEventListener("animationend", (e) => { if (e.target.classList.contains("badge")) e.target.classList.remove("new"); if (e.animationName === "squish") e.target.classList.remove("moving"); });
   $view.addEventListener("scroll", () => {
     const y = $view.scrollTop;
     const root = !!$view.querySelector(".navbar.root");      // its title shares the bar's row
     $view.classList.toggle("scrolled", y > (root ? 20 : 4));
-    $view.classList.toggle("titled", y > (root ? 26 : 38));
+    $view.classList.toggle("titled", y > (root ? 34 : 38));
     S.stick = $view.scrollHeight - y - $view.clientHeight < 40;
+    if (S.stick) newPill(false);
   }, { passive: true });
   root().addEventListener("click", onClick);
   root().addEventListener("change", onChange);
@@ -3158,8 +3168,21 @@ function fitTa() {
   if (!$ta.offsetParent) { $ta.style.height = ""; return; }       // hidden (not in a chat): nothing to measure yet
   // empty: one line, however long the hint ("Lands tomorrow 01:15" mustn't make the box two lines tall)
   $ta.style.height = "auto"; $ta.style.height = $ta.value ? Math.min(120, $ta.scrollHeight) + "px" : "";
+  composeGlide();
 }
-function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
+// The composer grows or shrinks (a new line, a reply bar, a photo's card, the recording bar): it, and the chat above it
+// when you're at the newest message, slide to their new places instead of jumping (and from where they are, if they
+// were sliding already). In a redraw the chat's own glide covers its part (playKeyed), so only the composer moves then.
+let composeH = 0, inRender = false;
+function composeGlide() {
+  if (!$compose) return;
+  const h = $compose.hidden ? 0 : $compose.offsetHeight, was = composeH; composeH = h;
+  if (!h || !was || h === was || Math.abs(h - was) > 240 || STILL.matches || $compose.classList.contains("nav-push")) return;
+  const f = [{ transform: `translateY(${h - was}px)` }, { transform: "none" }], o = { duration: 280, easing: kEases().move };
+  kPlay($compose, f, o);
+  const m = !inRender && S.view === "chat" && S.stick && $(".msgs", $view); if (m) kPlay(m, f, o);
+}
+function renderOffline() { const o = $(".offline"); if (o) { o.classList.toggle("on", !!S.offline); o.setAttribute("aria-hidden", String(!S.offline)); } }
 
 function go(view, chat) {
   const same = view === S.view && chat === S.chat, kind = !same && $view ? navKind(S.view, view) : null;
@@ -3175,6 +3198,7 @@ function go(view, chat) {
   // what you'd typed stays with its chat, for when you come back
   if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
+  if (!same) newPill(false);
   S.chatWas = S.chat;
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (!same && TABS.some(([id]) => id === view) && S.token && Date.now() - (S.lastSync || 0) > 2000) setTimeout(sync, 0);   // a tab you switch to is up to date
@@ -3215,17 +3239,17 @@ const NAV_MS = 500;
 // For a push or pop, the old screen stays for a moment as a lifeless copy: it
 // slides aside under a new chat, or slides away to reveal the screen behind.
 function ghostView() {
-  const tab = S.nav === "tab-r" || S.nav === "tab-l";
-  if (S.nav !== "push" && S.nav !== "pop" && !tab) return;
+  const tab = S.nav === "tab-r" || S.nav === "tab-l", fade = S.nav === "fade";
+  if (S.nav !== "push" && S.nav !== "pop" && !tab && !fade) return;
   if (STILL.matches) return;                       // less motion: no copy left sliding (it would only sit there, frozen)
   $(".nav-ghost", root())?.remove();
   // the whole old screen: its list or chat, and the tab bar or composer that belongs to it (a tab: just its list,
   // under the new one as it fades in, the tab bar staying where it is)
   const g = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
-  g.className = `nav-ghost nav-ghost-${tab ? "tab" : S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+  g.className = `nav-ghost nav-ghost-${tab || fade ? "tab" : S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
   v.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); g.append(v);
   if (!tab && !$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; g.append(c); }
-  if (!tab && !$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise"); g.append(t); }
+  if (!tab && !$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise", "back"); g.append(t); }
   g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
   g.style.top = `${$view.offsetTop}px`;
   $view.before(g); v.scrollTop = top;
@@ -3236,19 +3260,126 @@ function animateNav() {
   const kind = S.nav; S.nav = null;
   if (!kind) return;
   const els = kind === "push" && S.view === "chat" ? [$view, $compose] : [$view];
-  if (kind === "push" || kind === "pop") navAt = performance.now();
+  navAt = performance.now();                       // (news waits for any change of screen to finish: calmRender)
   for (const el of els) {
     el.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); void el.offsetWidth;
     el.classList.add("nav-" + kind);
-    if (kind === "fade" || STILL.matches) continue;                 // (no animation runs, so nothing would ever end it)
+    if (STILL.matches) continue;                                     // (no animation runs, so nothing would ever end it)
     el.addEventListener("animationend", function done(e) { if (e.target === el) { el.classList.remove("nav-" + kind); el.removeEventListener("animationend", done); } });
   }
 }
+// A message picked out (a search result, a quote's original) flashes; a redraw mid-flash carries it on (playFresh)
+function flashMsg(el, id) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); S.flashMid = { id, at: Date.now() }; }
 // New bubbles pop in once; if the list redraws mid-animation, carry on from where it was.
 function playFresh() {
   const t = Date.now();
   for (const [id, at] of S.fresh) if (t - at > 700) S.fresh.delete(id);
   $view.querySelectorAll("[data-fresh]").forEach((el) => { const at = S.fresh.get(el.dataset.fresh); if (at) el.style.animationDelay = `${at - t}ms`; else el.classList.remove("fresh"); });
+  $view.querySelectorAll("img.arrive[data-born]").forEach((el) => { el.style.animationDelay = `${+el.dataset.born - t}ms`; });
+  const f = S.flashMid, el = f && t - f.at < 1100 && S.view === "chat" && $(`[data-mid="${CSS.escape(f.id)}"]`, $view);
+  if (el) { el.classList.add("flash"); el.style.animationDelay = `${f.at - t}ms`; }
+}
+/* ---------- a redraw that moves ----------
+   render() draws the screen anew, so on its own a row that moved up, a pigeon that landed or a count that went up
+   would just be there. What matters carries a key (data-key), what it says (data-sig) and how it arrives (data-in): just
+   before a redraw where each is on screen is noted, and after it what moved glides from where it was (from where it is
+   now, if it was still gliding), what's new fades in (dots and pills pop), what changed dissolves into its new self, a
+   pigeon that's landed comes down, and what went fades out where it was. A list that moved as one glides as one. */
+// (the key on a piece of markup's first element)
+const kTag = (html, k, sig) => html.replace(/^(\s*<[a-z]+)/, `$1 data-key="${k}"${sig != null ? ` data-sig="${sig}"` : ""}`);
+const kSig = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i); return (h >>> 0).toString(36); };
+let kEase = null;
+const kEases = () => kEase ||= { move: cssVar(document.documentElement, "--nav") || "cubic-bezier(.32,.72,0,1)", bounce: cssVar(document.documentElement, "--bouncy") || "cubic-bezier(.3,1.35,.45,1)", out: cssVar(document.documentElement, "--ease-out") || "ease-out" };
+const kView = () => `${S.view}|${S.chat || ""}`;
+const kOn = (r, vr) => (r.width || r.height) && r.bottom > vr.top && r.top < vr.bottom;
+function snapKeyed() {
+  if (!$view || S.nav || S.locked) return null;
+  const vr = $view.getBoundingClientRect(), h = vr.height, m = new Map();
+  for (const el of $view.querySelectorAll("[data-key]")) {
+    const r = el.getBoundingClientRect();
+    if (!(r.width || r.height) || r.bottom < vr.top - h || r.top > vr.bottom + h) continue;
+    const p = el.parentElement.closest("[data-key]"), box = el.parentElement.getBoundingClientRect();
+    m.set(el.dataset.key, { el, top: r.top, h: r.height, sig: el.dataset.sig || "", pk: p && $view.contains(p) ? p.dataset.key : null, box: [box.left, box.width], cls: el.parentElement === $view ? "" : el.parentElement.className });
+  }
+  return { at: kView(), m, n: $view.querySelectorAll("[data-key]").length };
+}
+// one animation for the look (opacity, which only replaces) and one for the movement (added to any already running)
+function kPlay(el, frames, o) {
+  try {
+    const op = frames.map((f) => ("opacity" in f ? { opacity: f.opacity } : null)), tf = frames.map((f) => ("transform" in f ? { transform: f.transform } : null));
+    if (op.every(Boolean)) el.animate(op, o);
+    if (tf.every(Boolean)) el.animate(tf, { ...o, composite: "add" });
+  } catch (_) {}
+}
+const KF = {
+  in: [{ opacity: 0, transform: "scale(.96)" }, { opacity: 1, transform: "none" }],
+  pop: [{ opacity: 0, transform: "scale(.3)" }, { opacity: 1, transform: "none" }],
+  land: [{ opacity: 0.55, transform: "translateY(-12px) scale(.96)" }, { opacity: 1, transform: "none" }],
+  landme: [{ opacity: 0.6, transform: "scale(.95)" }, { opacity: 1, transform: "none" }],
+  chg: [{ opacity: 0.35 }, { opacity: 1 }],
+  fade: [{ opacity: 0 }, { opacity: 1 }],
+};
+function playKeyed(was) {
+  if (!was || was.at !== kView() || S.nav || !$view) return;
+  const still = STILL.matches, E = kEases(), vr = $view.getBoundingClientRect(), all = [...$view.querySelectorAll("[data-key]")];
+  // the first of this screen's content (after "Opening…", or the placeholder rows): it fades in, a row at a time
+  if (!was.n) {
+    let i = 0;
+    for (const el of all) if (!el.parentElement.closest("[data-key]") && kOn(el.getBoundingClientRect(), vr) && !el.closest(".fresh"))
+      kPlay(el, still ? KF.fade : [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 320, delay: Math.min(i++, 8) * 28, easing: E.out, fill: "backwards" });
+    return;
+  }
+  const now = new Set(), boxes = new Map();
+  let landed = false;
+  for (const el of all) {
+    const k = el.dataset.key, r = el.getBoundingClientRect();
+    now.add(k);
+    if (!kOn(r, vr) || el.closest(".fresh")) continue;          // (off screen; or popping in by itself)
+    const o = was.m.get(k), p = el.parentElement.closest("[data-key]"), pk = p && $view.contains(p) ? p.dataset.key : null, how = el.dataset.in || "in";
+    if (!o) {
+      if (pk && !was.m.has(pk)) continue;                     // (it came with what it's in, which arrives as a whole)
+      kPlay(el, still ? KF.fade : how === "pop" ? KF.pop : KF.in, { duration: how === "pop" ? 420 : 320, delay: still ? 0 : 60, easing: how === "pop" && !still ? E.bounce : E.out, fill: "backwards" });
+      continue;
+    }
+    // moved: by itself, or (inside something that moved too) only by its own share of it
+    let dy = o.top - r.top;
+    const inner = !!pk && o.pk === pk;
+    if (inner) { const po = was.m.get(pk); if (po) dy -= po.top - p.getBoundingClientRect().top; }
+    const b = boxes.get(el.parentElement) || boxes.set(el.parentElement, { moved: [], stayed: 0, inner }).get(el.parentElement);
+    if (still || Math.abs(dy) < 1) b.stayed++; else b.moved.push([el, dy]);
+    const sig = el.dataset.sig || "";
+    if (o.sig !== sig) {
+      // a pigeon that was in the air and is here now comes down to land (on its sender's side); else it dissolves in
+      const land = !still && how === "land" && o.sig === "fly" && /^in/.test(sig), mine = el.classList.contains("me");
+      if (land) { el.style.transformOrigin = mine ? "100% 100%" : "0 100%"; if (!mine) landed = true; }
+      kPlay(el, still ? KF.chg : land ? (mine ? KF.landme : KF.land) : how === "pop" ? KF.pop : KF.chg,
+        { duration: land ? 560 : how === "pop" && !still ? 420 : 280, easing: land || (how === "pop" && !still) ? E.bounce : E.out });
+    }
+  }
+  // what moved: a list whose every item on screen moved the same way glides as one (with what's between them); else
+  // each from where it was
+  const dur = (d) => Math.min(560, 360 + Math.abs(d) * 0.2);
+  for (const [box, { moved, stayed, inner }] of boxes) {
+    if (!moved.length) continue;
+    const dy = moved[0][1];
+    if (box !== $view && !inner && !stayed && moved.length > 1 && moved.every(([, d]) => Math.abs(d - dy) < 1)) kPlay(box, [{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: dur(dy), easing: E.move });
+    else for (const [el, d] of moved) kPlay(el, [{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: dur(d), easing: E.move });
+  }
+  // what went: a lifeless copy of it fades out where it was, as the list closes up (whole items only, not their parts)
+  const rr = root().getBoundingClientRect();
+  for (const [k, o] of was.m) {
+    if (now.has(k) || o.pk || o.top + o.h < vr.top || o.top > vr.bottom) continue;
+    const g = document.createElement("div"), el = o.el;
+    for (const x of [el, ...el.querySelectorAll("[id],[data-act],[data-key]")]) { x.removeAttribute("id"); x.removeAttribute("data-act"); x.removeAttribute("data-key"); }
+    el.style.margin = "0"; el.style.animation = "none";
+    g.className = `kgone ${o.cls}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+    g.style.cssText = `top:${o.top - rr.top}px;left:${o.box[0] - rr.left}px;width:${o.box[1]}px`;
+    g.append(el); $view.after(g);
+    const end = () => g.remove();
+    try { g.animate([{ opacity: 1 }, { opacity: 0, transform: still ? "none" : "scale(.97)" }], { duration: 200, easing: "ease-in", fill: "forwards" }).finished.then(end, end); } catch (_) { end(); }
+    setTimeout(end, 500);
+  }
+  if (landed) haptic("tick");
 }
 // A redraw that news brings (not one you asked for): held while a finger's down or the list is still gliding, so a
 // scroll isn't stopped dead and a button isn't swapped out from under a tap; it follows as soon as that's over.
@@ -3259,7 +3390,7 @@ addEventListener("touchcancel", (e) => { touching = e.touches.length; }, { passi
 addEventListener("scroll", () => { glidedAt = performance.now(); }, { passive: true, capture: true });
 function calmRender() {
   if (calmWait) return;
-  const busy = () => touching > 0 || performance.now() - glidedAt < 180;
+  const busy = () => touching > 0 || performance.now() - glidedAt < 180 || performance.now() - navAt < NAV_MS + 40;
   if (!busy()) return render();
   const later = () => { if (busy()) { calmWait = setTimeout(later, 120); return; } calmWait = null; render(); };
   calmWait = setTimeout(later, 120);
@@ -3277,7 +3408,14 @@ function render() {
     if (document.documentElement.classList.contains("night") !== night) { document.documentElement.classList.toggle("night", night); applyTheme(); }
     if (night) nightSky(skyCanvas());
     const box = S.view === "welcome" && !S.nav && $(".welcome .wcta", $view);
-    if (box) { box.outerHTML = welcomeCta(); return; }   // already up: just the words change
+    if (box) {                                           // already up: just the words change
+      // (showing already: the new ones fade in where they are; still to come: they keep the welcome's own timing)
+      const a = box.getAnimations()[0], shown = +getComputedStyle(box).opacity > 0.05, left = a && !shown ? Math.max(0, (a.effect.getTiming().delay || 0) - (a.currentTime || 0)) : 0;
+      box.outerHTML = welcomeCta();
+      const nb = $(".welcome .wcta", $view);
+      if (nb && shown) nb.classList.add("swap"); else if (nb && a) nb.style.animationDelay = `${left}ms`;
+      return;
+    }
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     if (S.view === "welcome") S.welcomed = true;
     return;
@@ -3289,20 +3427,43 @@ function render() {
   $tabbar.hidden = chat;
   // the tab bar rises back in, unless a swipe has already shown it there (a class left
   // on from last time would replay the rise as the bar unhides, so it always comes off)
-  if (tabsBack) { $tabbar.classList.remove("rise"); if (!S.noRise) { void $tabbar.offsetWidth; $tabbar.classList.add("rise"); } }
+  if (tabsBack) { $tabbar.classList.remove("rise", "back"); if (!S.noRise) { void $tabbar.offsetWidth; $tabbar.classList.add(S.nav === "pop" ? "back" : "rise"); } }
   S.noRise = false;
-  const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view);
+  const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view), was = snapKeyed();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
-  if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else if (Math.abs($view.scrollTop - keepTop) > 1) $view.scrollTop = keepTop;     // (left be when it's there already: setting it stops a glide)
+  if (chat && S.stick) {
+    // down to the newest: gliding there when you've just sent from not far up, else straight there
+    const gap = $view.scrollHeight - $view.clientHeight - keepTop;
+    if (S.glideDown && gap > 2 && gap < 2 * $view.clientHeight && !STILL.matches) { $view.scrollTop = keepTop; $view.scrollTo({ top: $view.scrollHeight, behavior: "smooth" }); }
+    else $view.scrollTop = $view.scrollHeight;
+  } else if (Math.abs($view.scrollTop - keepTop) > 1) $view.scrollTop = keepTop;     // (left be when it's there already: setting it stops a glide)
+  S.glideDown = false;
+  if (chat) newPigeons();
   if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
-  if (!chat && S.view === "messages") airMount();
-  renderCompose(); renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh();
+  if (!chat && S.view === "messages") { airMount(); if (!S.listAt && $(".mlist:not(.skel)", $view)) S.listAt = performance.now(); }
+  inRender = true; renderCompose(); inRender = false;
+  renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh(); playKeyed(was);
 }
 
+// Scrolled up to read, and a pigeon arrives below: a pill over the composer says so, and takes you down to it (it goes
+// once you're down there, or leave)
+function newPigeons() {
+  const list = S.msgs.get(S.chat) || [], last = list.at(-1), was = S.lastSeen;
+  S.lastSeen = { chat: S.chat, id: last?.id || "" };
+  if (was?.chat === S.chat && last && was.id !== last.id && !S.stick && last.from !== S.me.id) newPill(true);
+}
+function newPill(on) {
+  let p = $compose && $(".newpill", $compose);
+  if (!on) { if (p && !p.classList.contains("out")) { p.classList.add("out"); setTimeout(() => p.remove(), 220); } return; }
+  if (p && !p.classList.contains("out")) return;
+  p?.remove();
+  p = document.createElement("button"); p.type = "button"; p.className = "newpill"; p.dataset.act = "tonew"; p.textContent = "New pigeon ↓";
+  $compose.append(p);
+}
 // In a chat, stay at the newest message while anything below grows (a photo
 // loading, a reply bar opening), unless you've scrolled up to read.
 let pinObs = null;
@@ -3393,7 +3554,7 @@ function seasonCard() {
   const s = seasonNow(); if (!s || !S.me) return "";
   try { if (localStorage.getItem("inflight-season") === s.key) return ""; } catch (_) { return ""; }
   // one slim row: what it is, until when, Try It (the looks, with how to keep it), and an × to put it away
-  return `<div class="seasoncard" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
+  return `<div class="seasoncard" data-key="season" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
     <span>The ${esc(s.look)} look, until ${esc(fmtDate(s.to - 1).replace(/ \d{4}$/, ""))}</span></span>
     <button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="sx" data-act="seasonhide" aria-label="Not now">${I.x}</button></div>`;
 }
@@ -3404,17 +3565,17 @@ function vMessages() {
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
-      ${f.unread ? `<span class="dot" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
+  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find=""${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+      ${f.unread ? `<span class="dot" data-key="d:${esc(f.id)}" data-in="pop" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
-      <span class="mtext">
+      <span class="mtext" data-key="t:${esc(f.id)}" data-sig="${kSig(`${at}|${html}|${S.drafts.get(f.id) || ""}`)}">
         <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span>${g ? "" : streakBadge(f)}<time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
       </span>
     </button>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
   if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
+    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1><div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -3426,10 +3587,10 @@ function vMessages() {
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
   return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1>
-    ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
+    ${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     ${seasonCard()}<div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
-    <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
+    <div class="mlist" data-list="m">${rows}</div>${rows ? "" : kTag(empty, "empty")}`;
 }
 
 /* ---------- friends' news: what their pigeons have been up to ---------- */
@@ -3454,8 +3615,9 @@ function newsRow(x) {
 }
 function newsHtml() {
   if (S.me?.shareNews === false || !S.news?.length) return "";
-  return `<div class="ghead">News${S.news.length > 3 ? ` <button type="button" class="link gmore" data-act="newsall">See All</button>` : ""}</div>
-    <div class="group news">${S.news.slice(0, 3).map(newsRow).join("")}</div>`;
+  const shown = S.news.slice(0, 3);
+  return `<div class="ghead" data-key="h:news">News${S.news.length > 3 ? ` <button type="button" class="link gmore" data-act="newsall">See All</button>` : ""}</div>
+    <div class="group news" data-key="g:news" data-sig="${kSig(shown.map((x) => `${x.kind}${x.at}${x.who.id}`).join())}">${shown.map(newsRow).join("")}</div>`;
 }
 
 /* ---------- Friends ---------- */
@@ -3470,23 +3632,23 @@ function vFriends() {
   if (S.me) loadNews();
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
-  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
+  const rows = fr.map((f) => `<button class="cell" data-key="f:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
       <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">${friendWhere(f)}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
-    ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
-    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
+    ${fr.length ? `<label class="search" data-key="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
+    ${inc || out ? `<div class="group" data-key="g:req" data-sig="${inc}|${out}|${esc(S.incoming[0]?.id || "")}">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
     ${newsHtml()}
-    ${fr.length ? `<div class="ghead">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-list="f">${rows}</div>
-      <div class="gfoot">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
-      : `<p class="empty"><b>No friends yet</b>Add someone by their handle, or share yours: @${esc(S.me.handle)}.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`}
+    ${fr.length ? `<div class="ghead" data-key="h:fr" data-sig="${fr.length}">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-key="g:fr" data-list="f">${rows}</div>
+      <div class="gfoot" data-key="ft:fr">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
+      : `<p class="empty" data-key="empty"><b>No friends yet</b>Add someone by their handle, or share yours: @${esc(S.me.handle)}.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`}
     <div class="gap"></div>`;
 }
 
 /* ---------- Account ---------- */
 const meStats = (L) => {
   const num = (x) => L ? Math.round(x).toLocaleString("en-GB") : "–";
-  return `<button type="button" class="cell mestats" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
+  return `<button type="button" class="cell mestats" data-key="mestats" data-sig="${L ? `${Math.round(L.mi)}|${L.sent}|${L.countries}` : ""}" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
         <span><b>${num(L?.mi)}</b><small>miles flown</small></span><span><b>${num(L?.sent)}</b><small>pigeons sent</small></span><span><b>${num(L?.countries)}</b><small>${L?.countries === 1 ? "country" : "countries"}</small></span></button>`;
 };
 // Account's line of figures (miles, pigeons sent, countries): the Flight Log's, fetched when Account shows
@@ -3496,7 +3658,7 @@ function logSummary() {
   if (!S.logSumBusy && (!L || now() - L.at > 10 * 60e3)) {
     S.logSumBusy = true;
     // (just the line redrawn, in place: the rest of Account stays as it is, under a finger)
-    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; const el = S.view === "account" && $(".mestats", $view); if (el) el.outerHTML = meStats(S.logSum); })
+    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; const el = S.view === "account" && $(".mestats", $view); if (el) { el.outerHTML = meStats(S.logSum); kPlay($(".mestats", $view), KF.chg, { duration: 300, easing: "ease-out" }); } })
       .catch(() => {}).finally(() => { S.logSumBusy = false; });
   }
   return L;
@@ -3653,16 +3815,18 @@ const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); re
 /* ---------- pigeons on their way to you, kept small ---------- */
 const flyTrack = (m) => `<span class="ctrack" aria-hidden="true" data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><i></i><b class="cb"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></b></span>`;
 const inbound = (m) => m.from !== S.me.id && m.flying && !m.lost && !m.stopover;
-// Several on their way at once (a group, or swifts one after another): one card, a row each
+// Several on their way at once (a group, or swifts one after another): one card, a row each (the card's key is its
+// place among the chat's cards, so it stays the same card as its pigeons land one by one)
+let runN = 0;
 function flyRun(run, g) {
   const next = Math.min(...run.map((m) => m.deliverAt)), kinds = [...new Set(run.map((m) => kindOf(m)))];
   const rows = run.map((m) => {
     const who = g ? member(g, m.from) || { id: m.from, name: "Former member" } : null;
     const name = g ? esc(first(who.name)) : kindOf(m) === "standard" ? "Standard" : KIND[kindOf(m)].name;
-    return `<button type="button" class="frr" data-act="map" data-id="${esc(m.id)}" aria-label="${name}${g ? "’s pigeon" : " pigeon"}, lands in ${esc(fmtDur(m.deliverAt - now()))}. Watch it on the map.">
+    return `<button type="button" class="frr" data-key="m:${esc(m.id)}" data-sig="fly" data-in="land" data-act="map" data-id="${esc(m.id)}" aria-label="${name}${g ? "’s pigeon" : " pigeon"}, lands in ${esc(fmtDur(m.deliverAt - now()))}. Watch it on the map.">
       ${g ? avatar(who, "xs") : ""}${pgm(m)}<span class="n one">${name}</span>${flyTrack(m)}<b><span data-eta="${esc(m.deliverAt)}"></span></b></button>`;
   }).join("");
-  return `<div class="flyrun" role="group" aria-label="${run.length} pigeons on their way">
+  return `<div class="flyrun" data-key="run:${runN++}" data-sig="${run.length}" role="group" aria-label="${run.length} pigeons on their way">
     <div class="frh"><span class="stack">${kinds.slice(0, 3).map((k) => pg(k)).join("")}</span><b>${run.length} on their way</b><small><span class="w">next in </span><span data-eta="${esc(next)}"></span></small></div>${rows}</div>`;
 }
 
@@ -3672,7 +3836,7 @@ const whoCls = (x) => "w-" + whoState(x);              // (prefixed: .fly is the
 const whoOrder = (m) => [...(m.flock || [])].sort((a, b) => a.deliverAt - b.deliverAt);
 function whoDots(m) {
   const fl = whoOrder(m), more = fl.length > 12 ? fl.length - 11 : 0;
-  return `<span class="whodots" aria-hidden="true">${(more ? fl.slice(0, 11) : fl).map((x) => `<i class="${whoCls(x)}"></i>`).join("")}${more ? `<b>+${more}</b>` : ""}</span>`;
+  return `<span class="whodots" aria-hidden="true">${(more ? fl.slice(0, 11) : fl).map((x) => `<i class="${whoCls(x)}" data-key="wd:${esc(m.id)}:${esc(x.to)}" data-sig="${whoState(x)}" data-in="pop"></i>`).join("")}${more ? `<b>+${more}</b>` : ""}</span>`;
 }
 function whoHasLabel(m) {
   const fl = m.flock || [], n = (s) => fl.filter((x) => whoState(x) === s).length;
@@ -3702,21 +3866,25 @@ let quietMeta = null;
 const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*\s*){1,3}$/u;
 // a header over each stretch of the chat, as in Messages: "Today 17:24", "Yesterday 10:19", "Mon 13 Oct 09:02"
 const TIME_GAP = HOUR;
-const stampHtml = (at) => `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`;
+// (keyed by its place in the chat: a stretch whose first pigeon lands keeps its header, which changes its time)
+let tsN = 0;
+const stampHtml = (at) => `<div class="stamp" data-key="ts:${tsN++}" data-sig="${at}"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`;
 // under your latest landed message (one to one): landed, or read, and when
 function statusLine(m) {
-  return `<div class="meta me rstat">${m.readAt ? `Read ${fmtShort(m.readAt)}` : `Landed ${fmtShort(m.deliverAt)}`}</div>`;
+  return `<div class="meta me rstat" data-key="st" data-sig="${m.readAt ? "read" : "landed"}">${m.readAt ? `Read ${fmtShort(m.readAt)}` : `Landed ${fmtShort(m.deliverAt)}`}</div>`;
 }
 function bubble(f, m, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id, k = kindOf(m);
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${esc(m.id)}` : "";
-  if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
-  if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
+  // (its key, for a redraw: what it is now, and that it comes down to land)
+  const st = m.recalled ? "back" : m.lost ? "lost" : m.flying ? "fly" : "in", kk = (sig = st, c = "") => ` data-key="m:${esc(m.id)}${c}" data-sig="${sig}" data-in="land"`;
+  if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}"${kk("back")}>${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
+  if (!mine && m.lost) return `<div class="lostnote${fresh}"${kk("lost")}>${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
     // sealed until it lands: when, and its pigeon on the way
     const via = m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : "";
-    return `<button type="button" class="b up sealed fly k-${k}${gapTop ? " gap-top" : ""}${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="${k === "standard" ? "A pigeon" : `A ${KIND[k].name.toLowerCase()} pigeon`} from ${esc(first(f.name))}${via}, sealed until it lands ${esc(atTime(m.deliverAt))}. Watch it on the map.">
+    return `<button type="button" class="b up sealed fly k-${k}${gapTop ? " gap-top" : ""}${fresh}"${kk("fly")} data-act="map" data-id="${esc(m.id)}" aria-label="${k === "standard" ? "A pigeon" : `A ${KIND[k].name.toLowerCase()} pigeon`} from ${esc(first(f.name))}${via}, sealed until it lands ${esc(atTime(m.deliverAt))}. Watch it on the map.">
       <span class="sl">${I.lock}<span>Sealed${via} · lands ${atTime(m.deliverAt)}</span></span>${airTrack(m)}</button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
@@ -3732,7 +3900,7 @@ function bubble(f, m, gapTop, g) {
   let html;
   if (p.v) {
     const gone = m.photo === 2 || S.photoGone.has(m.id);
-    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
+    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${kk(gone ? st + ":gone" : st)}${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
   } else if (onceP(p)) {
     // view once: a pill to tap (theirs), what became of it (yours), the words below
     const gone = picGone(m), seen = (m.flock || []).filter((x) => x.viewedAt).length;
@@ -3740,26 +3908,27 @@ function bubble(f, m, gapTop, g) {
     const label = mine ? (g && seen ? `Opened by ${seen}` : opened ? "Opened" : gone ? "Photo expired" : "Photo") : opened ? "Opened" : gone ? "Photo expired" : "View photo";
     const can = !mine && !opened && !gone && !m.flying && !m.lost;
     const words = p.t || quote;
-    html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}" data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
-      : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
-    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
+    html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)} data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
+      : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)}${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${quote}${text}${tail}</div>`;
   } else if (p.p && picGone(m)) {
     // gone: a quiet outline of where it was, the time beside it; its words (if any) in their own bubble below
     const words = p.t || quote;
-    html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${tapAct}><span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
-    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
+    html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${kk(st + ":gone")}${tapAct}><span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${quote}${text}${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
     const ar = p.p.w > 0 && p.p.h > 0 ? ` data-ar="${Math.max(0.4, Math.min(2.5, p.p.w / p.p.h)).toFixed(4)}"` : "";
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}" role="button" tabindex="0">`;
-    else photo = `<div class="ph"${ar}>Opening photo…</div>`;
+    else if (S.photos.get(m.id)) { const b = born(S.photos.get(m.id)), c = [p.p.m === "image/gif" ? "gif" : "", b ? "arrive" : ""].filter(Boolean).join(" ");
+      photo = `<img${c ? ` class="${c}"` : ""}${b ? ` data-born="${b}"` : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}" role="button" tabindex="0">`; }
+    else photo = `<div class="ph wait"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
-    html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
-  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
+    html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
+  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
-  if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
+  if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote" data-key="vn:${esc(m.id)}"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
   html += postmarkHtml(m, mine);
   const meta = [];
@@ -3776,19 +3945,20 @@ function bubble(f, m, gapTop, g) {
   // once everyone who could open it has, there's nothing left to disappear
   const allSeen = onceP(p) && (g ? (m.flock || []).length > 0 && m.flock.every((x) => x.viewedAt) : !!m.viewedAt);
   if (p.p && m.photo === 1 && !m.flying && !picGone(m) && !(onceDone && !mine) && !(mine && allSeen)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
-  return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
+  return html + (meta.length ? `<div class="meta${mine ? " me" : ""}" data-key="mt:${esc(m.id)}" data-sig="${kSig(meta.join(""))}">${meta.join("")}</div>` : "");
 }
 // A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
 function stopCard(f, m) {
   const to = friend(m.finalTo), toName = esc(first(to?.name || "a friend")), p = S.plain.get(m.id), fresh = S.fresh.has(m.id) ? " fresh" : "";
-  if (m.recalled) return `<div class="lostnote homing${fresh}">${I.homing}<span>${esc(first(f.name))} called back their pigeon to ${toName}.</span></div>`;
-  if (m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon to ${toName} was lost on the way.</span></div>`;
+  const kk = (sig) => ` data-key="m:${esc(m.id)}" data-sig="${sig}"`;
+  if (m.recalled) return `<div class="lostnote homing${fresh}"${kk("back")}>${I.homing}<span>${esc(first(f.name))} called back their pigeon to ${toName}.</span></div>`;
+  if (m.lost) return `<div class="lostnote${fresh}"${kk("lost")}>${I.skull}<span>${esc(first(f.name))}’s pigeon to ${toName} was lost on the way.</span></div>`;
   const t = now(), state = t < m.viaAt ? `Stopping with you on its way to ${toName} · here in <span data-eta="${esc(m.viaAt)}"></span>`
     : t < m.viaOff ? `Resting with you on its way to ${toName} · flies on in <span data-eta="${esc(m.viaOff)}"></span>` : `Stopped with you, then flew on to ${toName}`;
   const text = p && !p.bad ? `<p class="stext">${esc(p.t).replace(/\n/g, "<br>")}${p.ph ? `<span class="hid">${I.photo} A photo only ${toName} can see</span>` : ""}</p>` : p?.bad ? `<p class="stext bad-scroll">This message couldn’t be opened on this phone.</p>` : "";
   const line = S.notes.get(m.id);
   const add = line != null ? `<p class="smine"><b>You added</b>${esc(line)}</p>` : m.resting && to ? `<button type="button" class="btn small" data-act="vianote" data-id="${esc(m.id)}">${I.compose}Add a Line for ${toName}</button>` : "";
-  return `<div class="stopcard${fresh}" data-mid="${esc(m.id)}"><span class="st1">${pgm(m)}<span>${state}</span></span>${text}${add}</div>`;
+  return `<div class="stopcard${fresh}" data-mid="${esc(m.id)}"${kk(`${t < m.viaAt ? "a" : t < m.viaOff ? "r" : "d"}${line != null ? "+" : ""}`)}><span class="st1">${pgm(m)}<span>${state}</span></span>${text}${add}</div>`;
 }
 /* ---------- share a flight ----------
    A landed pigeon as a picture to post: an airmail postcard (4:5) or a dark
@@ -4164,7 +4334,7 @@ const pmSeal = (pm) => `<span class="pmseal pm-${esc(pm.kind)}" aria-hidden="tru
 // under a letter that flew past somewhere famous
 function postmarkHtml(m, mine) {
   if (!m.postmarks?.length || m.flying || m.lost) return "";
-  return `<div class="pmarks${mine ? " me" : ""}">${m.postmarks.map((pm) => `<button type="button" class="pmark pm-${esc(pm.kind)}" data-act="pmarkinfo" data-id="${esc(m.id)}:${esc(pm.id)}"
+  return `<div class="pmarks${mine ? " me" : ""}" data-key="pm:${esc(m.id)}">${m.postmarks.map((pm) => `<button type="button" class="pmark pm-${esc(pm.kind)}" data-act="pmarkinfo" data-id="${esc(m.id)}:${esc(pm.id)}"
       aria-label="Postmark: flew past ${esc(pm.name)}">${pmSeal(pm)}<span class="pmt"><b>${esc(pmName(pm.name))}</b><small>${pmDay(pm.at)}</small></span></button>`).join("")}</div>`;
 }
 // the Flight Log's collection
@@ -4408,7 +4578,7 @@ function reactsHtml(m, mine) {
   if (!list.length) return "";
   const by = new Map();
   for (const r of list) { const e = S.plain.get(r.id).r, x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
-  return `<div class="reacts${mine ? " me" : ""}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
+  return `<div class="reacts${mine ? " me" : ""}" data-key="rx:${esc(m.id)}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" data-key="rp:${esc(m.id)}:${esc(e)}" data-sig="${x.n}${x.flying ? "f" : ""}" data-in="pop" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
 }
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
@@ -4483,12 +4653,12 @@ function momentText(m, n, chatId) {
 function stampLines(msgs) {
   const and = (a) => (a.length > 3 ? `${a.slice(0, 2).join(", ")} and ${a.length - 2} more` : a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
   return (msgs || []).filter((m) => m.from === S.me.id && m.stamps?.length && !m.flying).map((m) => ({ at: m.deliverAt + 1,
-    html: `<button type="button" class="sysline stamps" data-act="passport" data-id="${esc(m.id)}">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
+    html: `<button type="button" class="sysline stamps" data-key="ps:${esc(m.id)}" data-act="passport" data-id="${esc(m.id)}">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
 }
 // this chat's moments, each once (both pigeons may be here), in time order.
 // Pigeons sent together meet the same one at the same minute: that reads as
 // one line with a count.
-const momLine = (x) => `<button type="button" class="sysline moment" data-act="map" data-id="${esc(x.id)}">${x.kind === "flock" ? I.people : I.pass}<span>${esc(x.text)}<span class="t"> · ${fmtTime(x.at)}</span>${x.n > 1 ? `<span class="momx">×${x.n}</span>` : ""}</span></button>`;
+const momLine = (x) => `<button type="button" class="sysline moment" data-key="s:${esc(x.key)}" data-sig="${x.n}" data-act="map" data-id="${esc(x.id)}">${x.kind === "flock" ? I.people : I.pass}<span>${esc(x.text)}<span class="t"> · ${fmtTime(x.at)}</span>${x.n > 1 ? `<span class="momx">×${x.n}</span>` : ""}</span></button>`;
 function chatMoments(msgs, chatId) {
   const seen = new Set(), same = new Map(), out = [];
   for (const m of msgs || []) for (const n of m.near || []) {
@@ -4501,7 +4671,7 @@ function chatMoments(msgs, chatId) {
   for (const x of out) x.html = momLine(x.mom);
   out.push(...stampLines(msgs));
   for (const m of msgs || []) if (m.from === S.me.id && m.bird?.up && !m.flying && !m.lost)
-    out.push({ at: m.deliverAt, html: `<button type="button" class="sysline rankup" data-act="bird" data-id="${esc(m.bird.id)}">${I.bird}<span>${esc(m.bird.name)} became ${aRank(esc(m.bird.up))} on this flight</span></button>` });
+    out.push({ at: m.deliverAt, html: `<button type="button" class="sysline rankup" data-key="rk:${esc(m.id)}" data-act="bird" data-id="${esc(m.bird.id)}">${I.bird}<span>${esc(m.bird.name)} became ${aRank(esc(m.bird.up))} on this flight</span></button>` });
   return out.sort((a, b) => a.at - b.at);
 }
 // Three or more mid-air moments in a row fold into one line ("5 near misses
@@ -4517,7 +4687,7 @@ function momRun(items) {
     const where = places.length > 3 ? ` over ${places.slice(0, 2).join(", ")} and ${places.length - 2} more` : places.length ? ` over ${places.length > 1 ? `${places.slice(0, -1).join(", ")} and ${places.at(-1)}` : places[0]}` : "";
     const what = ms.every((x) => x.kind === "flock") ? "flights together" : ms.some((x) => x.kind === "flock") ? "mid-air moments" : "near misses";
     const t0 = fmtTime(ms[0].at), t1 = fmtTime(ms.at(-1).at), when = t0 === t1 ? t0 : `${t0}–${t1}`;
-    out.push(`<div class="momrun${open ? " open" : ""}"><button type="button" class="sysline moment momsum" data-act="momrun" data-id="${esc(key)}" aria-expanded="${open}">${ms.every((x) => x.kind === "flock") ? I.people : I.pass}<span>${n} ${what}${esc(where)}<span class="t"> · ${when}</span></span>${chevSm}</button><div class="momlist"${open ? "" : " hidden"}>${run.map((x) => x.html).join("")}</div></div>`);
+    out.push(`<div class="momrun${open ? " open" : ""}" data-key="sr:${esc(key)}"><button type="button" class="sysline moment momsum" data-act="momrun" data-id="${esc(key)}" aria-expanded="${open}">${ms.every((x) => x.kind === "flock") ? I.people : I.pass}<span>${n} ${what}${esc(where)}<span class="t"> · ${when}</span></span>${chevSm}</button><div class="momlist"${open ? "" : " hidden"}>${run.map((x) => x.html).join("")}</div></div>`);
     run = [];
   };
   for (const x of items) { if (x.mom) { run.push(x); continue; } flush(); out.push(x.html); }
@@ -4533,7 +4703,7 @@ function flyLines(f) {
     const name = esc(first(f.name)), can = !x.mine && !x.waved && now() - x.at < WAVE_FOR;
     const text = x.mine ? (x.waved ? `${name} waved at your pigeon${x.place ? ` over ${esc(x.place)}` : ""}` : `Your pigeon flew over ${name}${x.place ? ` in ${esc(x.place)}` : ""}`)
       : `${name}’s pigeon flew over you${x.waved ? " · you waved" : ""}`;
-    return { at: x.at, html: `<div class="sysline fly${wavedNow === x.id ? " just" : ""}">${I.wave}<span>${text}<span class="t"> · ${fmtTime(x.mine && x.waved ? x.waved : x.at)}</span></span>${can ? `<button type="button" class="wavebtn" data-act="wave" data-id="${esc(x.id)}">Wave</button>` : ""}</div>` };
+    return { at: x.at, html: `<div class="sysline fly${wavedNow === x.id ? " just" : ""}" data-key="fl:${esc(x.id)}" data-sig="${x.waved ? 1 : 0}">${I.wave}<span>${text}<span class="t"> · ${fmtTime(x.mine && x.waved ? x.waved : x.at)}</span></span>${can ? `<button type="button" class="wavebtn" data-act="wave" data-id="${esc(x.id)}">Wave</button>` : ""}</div>` };
   });
 }
 // Your pigeon in the air, in a line: who carries it, when it lands, and what's happened on the way
@@ -4584,7 +4754,7 @@ function birdLine(m) {
   return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 // at the top of a chat whose messages disappear
-const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
+const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -4602,7 +4772,7 @@ function geventLines(list) {
     else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
     else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read` : `${by} turned off disappearing messages`;
     else continue;
-    out += `<div class="sysline" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
+    out += `<div class="sysline" data-key="ge:${e.at}:${esc(e.kind)}" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
   }
   return out;
 }
@@ -4615,14 +4785,14 @@ function vGroupChat(g) {
   const ghosts = told ? (g.unseen || []).filter((id) => !added.has(id)) : [];
   if (told && g.unseen?.length) { S.pins["g:" + g.id] = [...new Set([...(S.pins["g:" + g.id] || []), ...g.members.map((p) => p.id)])]; g.unseen = []; savePins(); }
   if (ghosts.length) g.ghosts = [...new Set([...(g.ghosts || []), ...ghosts])];
-  let body = "", lastAt = 0, prevFrom = null, ev = 0;
+  let body = "", lastAt = 0, prevFrom = null, ev = 0; runN = tsN = 0;
   const stl = stampLines(msgs).sort((a, b) => a.at - b.at); let si = 0;
   const stampsTo = (at) => { let h = ""; while (si < stl.length && stl[si].at <= at) h += stl[si++].html; return h; };
   // the group's changes up to a moment, as lines
   const evsTo = (at) => { const k = ev; while (ev < evs.length && evs[ev].at <= at) ev++; return ev > k ? geventLines(evs.slice(k, ev)) : ""; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
-  else if (!msgs.length && S.outbox.some((o) => o.to === g.id)) body = "";
-  else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
+  else if (!msgs.length && (S.outbox.some((o) => o.to === g.id) || S.pending?.to === g.id)) body = "";
+  else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
   const landed = (msgs || []).filter((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled);
   quietMeta = new Set(landed.slice(0, -1).map((m) => m.id));
   if (msgs?.length) for (let i = 0; i < msgs.length; i++) {
@@ -4634,7 +4804,7 @@ function vGroupChat(g) {
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
     const who = member(g, m.from) || { id: m.from, name: "Former member" };
-    if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
+    if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who" data-key="wh:${esc(m.id)}">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
     body += bubble(who, m, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
     prevFrom = m.from;
   }
@@ -4642,8 +4812,8 @@ function vGroupChat(g) {
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
   const changed = others(g).filter((p) => p.keyChanged);
   const gh = (g.ghosts || []).map((id) => member(g, id)).filter(Boolean);
-  const ghostWarn = gh.length ? `<div class="warn"><span>${gh.map((p) => esc(first(p.name))).join(" and ")} ${gh.length > 1 ? "are" : "is"} now in this group, but no one was seen adding them. If that’s unexpected, don’t send anything private and check with the group.</span></div>` : "";
-  const warn = ghostWarn + (changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "");
+  const ghostWarn = gh.length ? `<div class="warn" data-key="warn:g"><span>${gh.map((p) => esc(first(p.name))).join(" and ")} ${gh.length > 1 ? "are" : "is"} now in this group, but no one was seen adding them. If that’s unexpected, don’t send anything private and check with the group.</span></div>` : "";
+  const warn = ghostWarn + (changed.length ? `<div class="warn" data-key="warn:k"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "");
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
@@ -4656,13 +4826,13 @@ function vChat() {
   const f = friend(S.chat);
   if (!f) return `${navbar("", { left: backBtn("tab", S.backTo || "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
-  let body = "", lastAt = 0, prevFrom = null;
+  let body = "", lastAt = 0, prevFrom = null; runN = tsN = 0;
   const lastLanded = [...(msgs || [])].reverse().find((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled)?.id;
   const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
   const momsTo = (at) => { const h = []; while (mo < moms.length && moms[mo].at <= at) h.push(moms[mo++]); return momRun(h); };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
-  else if (!msgs.length && S.outbox.some((o) => o.to === f.id)) body = "";
-  else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
+  else if (!msgs.length && (S.outbox.some((o) => o.to === f.id) || S.pending?.to === f.id)) body = "";
+  else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
@@ -4677,7 +4847,7 @@ function vChat() {
   if (msgs?.length) body += momsTo(Infinity);
   // a pigeon in the air either way: the map button sits beside the menu
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
-  const warn = f.keyChanged ? `<div class="warn${wasVerified(f) ? " strong" : ""}"><span>${wasVerified(f) ? `You verified ${esc(first(f.name))} in person, and their security key has changed since. Verify again, together, before you send anything.` : `${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.`}</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
+  const warn = f.keyChanged ? `<div class="warn${wasVerified(f) ? " strong" : ""}" data-key="warn:k"><span>${wasVerified(f) ? `You verified ${esc(first(f.name))} in person, and their security key has changed since. Verify again, together, before you send anything.` : `${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.`}</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
@@ -4860,7 +5030,7 @@ function landHint(c, k) {
 let planSoon = 0, planFor = "";
 function renderCompose() {
   const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || group(S.chat)) && !!S.me;
-  $compose.hidden = !show; if (!show) return;
+  $compose.hidden = !show; if (!show) { composeH = 0; return; }
   const c = composeState(), { g, f, dumb, sched, via, kind } = c;
   const note = $(".note", $compose), btn = $(".send", $compose), pill = $(".kind", $compose);
   const has = (dumb ?? $ta.value).trim() || S.attach;
@@ -4904,9 +5074,10 @@ function renderCompose() {
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
   btn.disabled = blocked || !has || S.busy;
+  btn.classList.toggle("busy", !!S.busy);               // (a spinner in it, while what you sent goes up)
   // nothing typed: the send button becomes a microphone (voice pigeons)
   const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
-  mic.hidden = !showMic; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
+  mic.hidden = !showMic || !!S.busy; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
   // you can always delete a /dumb that can't fly; and the box you're typing in is never switched off under you
   // (iOS puts the keyboard away the moment a focused field is disabled; Send stays off instead)
   const off = blocked && !S.err && dumb == null;
@@ -4928,6 +5099,7 @@ function renderCompose() {
     a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
+  composeGlide();
 }
 const TABS = [["messages", "Messages", "bubble"], ["friends", "Friends", "people"], ["account", "Account", "person"]];
 // Built once and then updated, so the highlight can slide between tabs.
@@ -4943,9 +5115,11 @@ function renderTabs() {
   for (const btn of tabs.querySelectorAll(".tab")) {
     const id = btn.dataset.id, n = badges[id] || 0;
     btn.setAttribute("aria-current", String(cur === id));
-    if (String(n) !== (btn.dataset.badge || "0")) {          // a new badge bounces in
-      btn.querySelector(".badge")?.remove();
-      if (n) btn.insertAdjacentHTML("afterbegin", `<span class="badge">${n}</span>`);
+    if (String(n) !== (btn.dataset.badge || "0")) {          // a new badge bounces in, a changed one bumps, a cleared one shrinks away
+      const b = btn.querySelector(".badge:not(.out)");
+      if (n && b) { b.textContent = n; b.classList.remove("new"); void b.offsetWidth; b.classList.add("new"); }
+      else if (n) btn.insertAdjacentHTML("afterbegin", `<span class="badge new">${n}</span>`);
+      else if (b) { b.classList.add("out"); setTimeout(() => b.remove(), 220); }
       btn.dataset.badge = String(n);
     }
   }
@@ -6389,7 +6563,7 @@ function fcFades(tl) {
    cards keep their place, their scroll and their animations. Cards spring in,
    the pigeon on each track flaps along it, and on landing it hops onto a tick
    and the card folds away. */
-let airEl = null, airQuiet = false;
+let airEl = null, airQuiet = false, airSoon = 0;
 const airKey = (r) => String(r.id);
 // 4:29 under an hour (it ticks), then 1h 04m, then 2d 3h
 function airTime(ms) {
@@ -6484,9 +6658,11 @@ function airSync() {
   if (!airEl || S.view !== "messages") return;
   const rail = $(".rail", airEl), list = airModels();
   const want = new Map(list.map((m) => [m.k, m])), have = new Map([...rail.children].map((c) => [c.dataset.k, c]));
-  // gone from the sky without landing (called back, or lost): it drops away
+  // gone from the sky: landed (early too, cheered on or with the wind behind it), or called back or lost, when it drops
+  // away; which, its message says (the time only when it isn't on this phone)
   for (const [k, c] of have) if (!want.has(k) && !c.classList.contains("landed") && !c.classList.contains("out")) {
-    if (c._pts ? c._pts.every((p) => p.lost || p.at <= now()) && c._pts.some((p) => !p.lost) : +c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
+    const x = friend(c.dataset.id) || group(c.dataset.id), m = x?.last?.id === c.dataset.m ? x.last : (S.msgs.get(c.dataset.id) || []).find((y) => y.id === c.dataset.m);
+    if (c._pts ? c._pts.every((p) => p.lost || p.at <= now()) && c._pts.some((p) => !p.lost) : m ? !m.lost && !m.recalled : +c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
   }
   const atStart = rail.scrollLeft < 8;
   let i = 0;
@@ -6585,6 +6761,7 @@ function airTick() {
   }
   airOrder($(".rail", airEl));
   const next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
+  clearTimeout(airSoon); if (next && next - t < 1500) airSoon = setTimeout(airTick, next - t + 20);    // (it lands on the dot, not up to a second after "0:00")
   airEl.classList.toggle("has", cards.length > 0);
   $(".airn", airEl).textContent = n ? ` · ${n}` : "";
   $(".airnext", airEl).textContent = next ? (cards.length > 1 ? `Next lands in ${airTime(next - t)}` : "") : cards.length ? "Landed" : "";
@@ -6594,7 +6771,12 @@ function airTick() {
 let skiesLoading = null;
 function loadSkies() { return (skiesLoading ||= loadSkies1().finally(() => { skiesLoading = null; })); }
 async function loadSkies1() {
-  try { S.skies = await api("skies"); S.skiesAt = Date.now(); if (S.sheet?.id === "skies") tickMap(); airSync(); }
+  try {
+    const first = !S.skiesAt; S.skies = await api("skies"); S.skiesAt = Date.now(); if (S.sheet?.id === "skies") tickMap();
+    // (the first, just after the list first showed: the strip is simply there, open, its cards still)
+    if (first && airEl && performance.now() - (S.listAt || 0) < 800) { airQuiet = true; airEl.classList.add("still"); airSync(); void airEl.offsetWidth; airEl.classList.remove("still"); airQuiet = false; }
+    else airSync();
+  }
   catch (err) { if (!S.skies && !err.offline) toast(esc(err.message)); S.skiesAt = Date.now(); }        // (tried: not again at once, and no banner on every redraw)
 }
 function skyRoutes(all) {
@@ -6998,14 +7180,18 @@ function closePop() {
 let toastTimer = 0;
 function toast(html, btn, fn) {
   if (!$toast || S.locked) return;                 // nothing shows over the lock
-  $toast.innerHTML = `<div class="toast"><span class="ticon" aria-hidden="true">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
+  const inner = `<span class="ticon" aria-hidden="true">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}`;
+  // one already showing takes the new words where it is (they rise into place); else a new one drops in
+  const cur = $(".toast:not(.out)", $toast);
+  if (cur) { cur.innerHTML = inner; cur.classList.remove("swap"); void cur.offsetWidth; cur.classList.add("swap"); }
+  else $toast.insertAdjacentHTML("beforeend", `<div class="toast">${inner}</div>`);
   S.toastFn = fn;
-  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 5000);
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, btn ? 5000 : 3500);
 }
 function hideToast() {
-  const t = $(".toast", $toast); if (!t) return;
-  clearTimeout(toastTimer); t.classList.add("out");
-  setTimeout(() => { if (t.isConnected) t.remove(); }, 360);
+  const t = $(".toast:not(.out)", $toast); if (!t) return;
+  clearTimeout(toastTimer); t.style.animation = ""; t.classList.add("out");     // (a swipe that let it go back left its own)
+  setTimeout(() => { if (t.isConnected) t.remove(); }, STILL.matches ? 220 : 380);
 }
 
 /* ============================================================
@@ -7021,7 +7207,7 @@ function showErr(msg, field) {
 async function busyBtn(btn, label, fn) {
   const old = btn?.innerHTML;
   if (btn) { btn.disabled = true; btn.textContent = label; }
-  try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
+  try { return await fn(); } finally { if (btn && btn.isConnected && !btn.classList.contains("done")) { btn.disabled = false; btn.innerHTML = old; } }
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
@@ -7246,16 +7432,17 @@ async function onClick1(e, t) {
       try { await navigator.clipboard.writeText(t); haptic("tick"); toast("Copied."); } catch (_) { toast("Couldn’t copy that here."); }
       return;
     }
+    case "tonew": $view.scrollTo({ top: $view.scrollHeight, behavior: STILL.matches ? "auto" : "smooth" }); return newPill(false);
     case "searchopen": {
       const mid = t.dataset.m; S.q = ""; go("chat", id);
-      const jump = () => { const el = $(`[data-mid="${CSS.escape(mid)}"]`, $view); if (!el) return false; S.stick = false; el.scrollIntoView({ block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return true; };
+      const jump = () => { const el = $(`[data-mid="${CSS.escape(mid)}"]`, $view); if (!el) return false; S.stick = false; el.scrollIntoView({ block: "center" }); flashMsg(el, mid); return true; };
       if (!jump()) { let n = 0; const iv = setInterval(() => { if (jump() || ++n > 30) clearInterval(iv); }, 150); }
       return;
     }
     case "jumpto": {
       const el = $(`[data-mid="${CSS.escape(id)}"]`, $view); if (!el) return;
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
-      el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
+      flashMsg(el, id); return;
     }
     case "applock": {
       if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); return renderSheet(); }
@@ -7541,6 +7728,7 @@ async function onClick1(e, t) {
       return;
     case "emailtoggle": return setEmailNotify(!S.me.notifyEmail);
     case "signoutgo":
+      if (!STILL.matches) await new Promise((r) => setTimeout(r, 280));    // (the action card goes first; then the app fades to the welcome)
       await pushDisable(true);
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
@@ -7634,8 +7822,13 @@ async function openAccount(open) {
 }
 const refreshProfile = () => { if (S.sheet?.type === "profile") renderSheet(true); };
 async function savePlace(lat, lon, place) {
-  try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); refreshProfile(); }
-  catch (err) { showErr(err.message); }
+  try {
+    const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me;
+    // signing up, it moves straight on: the button says where you are, rather than the screen re-laying itself out
+    const b = S.view === "locpick" && S.me.place && $("[data-act=locate]", $view);
+    if (b) { b.classList.add("done"); b.disabled = true; b.innerHTML = `${I.check}${esc(S.me.place)}`; } else render();
+    refreshProfile();
+  } catch (err) { showErr(err.message); }
 }
 function locate(btn) {
   if (!navigator.geolocation) return showErr("This browser can’t share your location. Choose a city instead.");
@@ -7926,7 +8119,9 @@ async function lockCheck() {
 }
 function drawLock() {
   let el = $(".lockscreen", root());
-  if (!S.locked) { el?.remove(); return; }
+  // unlocked: it fades away over the app, which render() has drawn underneath already
+  if (!S.locked) { if (el && !el.classList.contains("out")) { el.classList.add("out"); el.inert = true; setTimeout(() => { if (el.classList.contains("out")) el.remove(); }, STILL.matches ? 220 : 360); } return; }
+  if (el?.classList.contains("out")) { el.classList.remove("out"); el.inert = false; }     // (locked again as it went)
   if (!el) {
     el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "InFlight is locked");
     el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with Face ID, Touch ID or your passkey.</p>
@@ -8011,7 +8206,7 @@ async function recStart() {
   mr.ondataavailable = (e) => { if (e.data?.size) rec?.chunks.push(e.data); };
   mr.start(250);
   haptic("tick");
-  $(".crow", $compose).hidden = true; $(".recbar", $compose).hidden = false; $(".recwave", $compose).innerHTML = "";
+  $(".crow", $compose).hidden = true; $(".recbar", $compose).hidden = false; $(".recwave", $compose).innerHTML = ""; composeGlide();
   requestAnimationFrame(recFrame);
 }
 function recFrame() {
@@ -8038,7 +8233,7 @@ async function recStop(keep) {
   const ms = Math.min(VOICE_MAX, performance.now() - r.t0);
   await new Promise((res) => { r.mr.onstop = res; try { r.mr.state !== "inactive" ? r.mr.stop() : res(); } catch (_) { res(); } });
   r.stream.getTracks().forEach((t) => t.stop()); r.ac?.close().catch(() => {});
-  $(".recbar", $compose).hidden = true; $(".crow", $compose).hidden = false;
+  { const row = $(".crow", $compose); $(".recbar", $compose).hidden = true; row.hidden = false; row.classList.remove("back"); void row.offsetWidth; row.classList.add("back"); composeGlide(); }
   if (keep && (S.view !== "chat" || S.chat !== r.chat)) keep = false;      // its chat isn't open any more: it goes nowhere
   if (!keep) { haptic("tick"); return renderCompose(); }
   if (ms < 800 || !r.chunks.length) { toast("Hold on a little longer to record."); return renderCompose(); }
@@ -8103,8 +8298,7 @@ async function outboxFlush(force) {
         if (!e.status || e.status >= 500 || e.status === 408 || e.status === 429) break;
         if (e.status !== 409 || !/already sent/.test(e.message)) { o.err = e.message; await outboxSave(); continue; }
       }
-      S.outbox = S.outbox.filter((x) => x.id !== o.id); await outboxSave();
-      S.fresh.set(o.id, Date.now());
+      S.outbox = S.outbox.filter((x) => x.id !== o.id); await outboxSave();   // (on screen, it turns from waiting to flying)
     }
     if (sent) { haptic("success"); toast(sent === 1 ? "Your pigeon took off." : `${sent} pigeons took off.`); }
     if (sent || S.outbox.some((o) => o.err)) { for (const id of new Set([S.chat])) if (id && S.view === "chat") await loadChat(id).catch(() => {}); render(); }
@@ -8113,32 +8307,40 @@ async function outboxFlush(force) {
 }
 window.addEventListener("online", () => { S.offline = false; renderOffline(); outboxFlush(); sync(); });
 window.addEventListener("offline", () => { S.offline = true; renderOffline(); });
+// yours on its way to the server: an outline at the foot of the chat, "Sending…", until it takes off (send)
+const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${esc(p.t).replace(/\n/g, "<br>")}<span class="ft">Sending…</span></div>`;
 // a waiting pigeon in its chat: your message, with a badge
 function outboxBubbles(chat) {
   return S.outbox.filter((o) => o.to === chat).map((o) => {
     const p = S.plain.get(o.id) || { t: "" }, ph = S.photos.get(o.id);
     const pic = p.v ? voiceHtml(o.id, p.v, true) : p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
-    return `<div class="b me pending${o.err ? " failed" : ""}" data-mid="${esc(o.id)}">${pic}${esc(p.t || "").replace(/\n/g, "<br>")}</div>
-      <div class="meta me"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
-  }).join("");
+    return `<div class="b me pending${o.err ? " failed" : ""}" data-key="m:${esc(o.id)}" data-sig="wait${o.err ? "!" : ""}" data-mid="${esc(o.id)}">${pic}${esc(p.t || "").replace(/\n/g, "<br>")}</div>
+      <div class="meta me" data-key="mt:${esc(o.id)}" data-sig="${o.err ? "!" : ""}"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
+  }).join("") + (S.pending?.to === chat ? pendingBubble(S.pending) : "");
 }
 
 async function send() {
-  const text = (dumbText() ?? $ta.value).trim();
+  const raw = $ta.value, text = (dumbText() ?? raw).trim();
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
   S.busy = true; S.err = ""; renderCompose();
   // what's being sent belongs to this chat, even if you leave it before it's gone
   const to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
   S.sendingTo = to; S.sending = att;
+  // words alone show straight away, waiting at the foot of the chat as they go up, and the box is clear for the next
+  // (a photo or a voice pigeon shows its own progress, in its card)
+  const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
+  if (!att) {
+    S.pending = { id, to, t: text, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
+    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; S.glideDown = true; render();
+  }
   const tidy = () => {
     if (att) { if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null; }
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
   };
   try {
-    const mc = !group(to) && moonChat(friend(to)), id = uuid(), sc = !mc && schedFor(to), vi = !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now)
+    const mc = !group(to) && moonChat(friend(to)), sc = !mc && schedFor(to), vi = !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now)
     const payload = { t: text };
-    const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
     let blob = null;
     if (att?.voice) {
@@ -8153,7 +8355,7 @@ async function send() {
       blob = sealed.data;
     }
     const once = !!blob && !att?.voice && !att?.gif;            // photos are view-once; GIFs and voice pigeons aren't
-    const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
+    const g = group(to), bd = kind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
     let meta;
     const route = routeStyle() === "fastest" ? {} : { route: routeStyle() };   // the way it goes
     if (g) {
@@ -8161,15 +8363,16 @@ async function send() {
       const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
-      meta = { id, group: g.id, body, keys, pigeon: S.sendKind, ...carry, ...route };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
-      ...(!vi && !sc && noShipOn() && S.sendKind === "standard" ? { noShip: true } : {}),
+      meta = { id, group: g.id, body, keys, pigeon: kind, ...carry, ...route };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: kind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
+      ...(!vi && !sc && noShipOn() && kind === "standard" ? { noShip: true } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
     // no signal: it waits on the perch (sealed already) and takes off once there is
     const queue = async () => {
-      await outboxAdd({ id, to, path, meta, blob, kind: S.sendKind, at: Date.now() });
+      await outboxAdd({ id, to, path, meta, blob, kind, at: Date.now() });
+      S.pending = null;                // (the same pigeon, waiting on the perch now)
       S.plain.set(id, payload);
       if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }
       tidy();
@@ -8208,9 +8411,9 @@ async function send() {
     if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
     S.plain.set(id, payload);
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
-    tidy(); S.stick = true;
+    tidy(); S.stick = true; S.pending = null;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
-    S.fresh.set(r.message.id, Date.now());
+    if (att) S.fresh.set(r.message.id, Date.now());        // (words were up already: they just take off)
     loadSkies();                      // it's in the air now: ready for the strip on Messages
     render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
@@ -8219,6 +8422,13 @@ async function send() {
     // (the browser's own errors, a key it can't use, can come with no words: never a silent nothing)
     const say = err.message || "Couldn’t seal this pigeon. Try again, or check their safety number.";
     if (here()) S.err = say; else toast(esc(say)); showUpload(null);
+    // words that were up already come back down into the box (or its draft), with what they replied to
+    if (!att && S.pending?.id === id) {
+      S.pending = null;
+      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); } else if (!S.drafts.get(to)?.trim()) S.drafts.set(to, raw);
+      if (rt && !S.replyTo) S.replyTo = rt;
+      if (here()) render();
+    }
   }
   if (att?.preview && S.attach !== att) URL.revokeObjectURL(att.preview);     // (left behind when you left its chat, and not kept)
   S.busy = false; S.sendingTo = null; S.sending = null; renderCompose();
