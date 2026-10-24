@@ -326,6 +326,14 @@ function showMe() {
   body.classList.add("known");
   // (from Admin on the account page: #edit, straight into changing the words)
   if (location.hash === "#edit") { history.replaceState(null, "", location.pathname + location.search); if (me.owner) startEdit(); }
+  // (from the page for an address that isn't one, 404.html: #contact=<that address>, a message about it to send)
+  if (location.hash.startsWith("#contact")) {
+    let about = "", from = "";
+    try { [about, from = ""] = location.hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
+    history.replaceState(null, "", location.pathname + location.search);
+    if (about && !$("#c-message").value) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
+    $(".cta [data-contact]").click();
+  }
   const face = $("#face");
   face.textContent = "";
   if (me.signedIn && me.photoAt) {
