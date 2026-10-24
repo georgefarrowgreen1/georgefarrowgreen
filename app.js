@@ -408,8 +408,10 @@ function handOff(el, url) {
   try {
     body.append(g);
     sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motion.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
-    if (!motion.matches) {
-      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
+    // (only a button becomes the card: a link just goes with the rest)
+    const cs0 = getComputedStyle(el), clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
+    if (!motion.matches && (cs0.backgroundImage !== "none" || !clear(cs0.backgroundColor) || (parseFloat(cs0.borderTopWidth) > 0 && !clear(cs0.borderTopColor)))) {
+      const r = el.getBoundingClientRect(), cs = cs0, rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
       to = `${url}&from=${[r.left, r.top, r.width, r.height, rad].map(Math.round).join(",")}`;
       // (its own look over the glass, to begin with, and its words, laid over where they were)
       const look = document.createElement("i");

@@ -2042,8 +2042,10 @@ function handOff(el) {
   try {
     document.body.append(g); g.showPopover();
     sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: calm.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
-    if (!calm.matches && el?.isConnected) {
-      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
+    // (only a button becomes the card: a link just goes with the rest)
+    const cs0 = el?.isConnected ? getComputedStyle(el) : null, clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
+    if (!calm.matches && cs0 && (cs0.backgroundImage !== "none" || !clear(cs0.backgroundColor) || (parseFloat(cs0.borderTopWidth) > 0 && !clear(cs0.borderTopColor)))) {
+      const r = el.getBoundingClientRect(), cs = cs0, rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
       out.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
       // (its own look over the glass, to begin with, and its words, laid over where they were)
       const look = h("i", { class: "handoff-look" });

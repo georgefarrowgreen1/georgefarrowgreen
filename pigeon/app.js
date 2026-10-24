@@ -1991,7 +1991,8 @@ function handOff(from) {
     document.body.append(el);
     const sky = play($(".hsky", el), [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 150 : 480, easing: "ease", fill: "forwards" });
     anims.push(sky);
-    if (!still && from?.isConnected) {
+    // (only a button becomes the card: a link, as Create your account is, just goes with the rest)
+    if (!still && from?.isConnected && looksLikeButton(from)) {
       const r = from.getBoundingClientRect(), cs = getComputedStyle(from), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.height / 2);
       handing.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
       const pill = document.createElement("div");
@@ -2013,6 +2014,11 @@ function handOff(from) {
     }
     return played(sky, 700);
   } catch (_) { return Promise.resolve(); }
+}
+// (something with a look of its own, a fill or a frame, rather than words on the page)
+function looksLikeButton(el) {
+  const cs = getComputedStyle(el), clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
+  return cs.backgroundImage !== "none" || !clear(cs.backgroundColor) || (parseFloat(cs.borderTopWidth) > 0 && !clear(cs.borderTopColor));
 }
 // The sky taken away again: the trip didn't start, or InFlight came back from the browser's back-forward cache as it was
 // when you left it
