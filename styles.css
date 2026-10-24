@@ -403,10 +403,104 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .toast button { height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 
+/* ---------------- signing in, on the account's page: the way there, and back ---------------- */
+/* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
+   along its foot, and your photo in a circle a third of the way down. Going there, that sky comes in over everything
+   (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
+   page opens on the picture it ended on (index.html, from the first frame: .back-in:target); your photo comes into it
+   where the page had it, and as the picture fades, Sign in draws in to the circle your photo goes in and
+   the photo comes down into it (app.js arrive). None of it takes a tap: a tap goes to what's under it */
+/* (the account page's sky exactly, and its dawn) */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
+  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
+  --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
+.handoff { position: fixed; inset: 0; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
+.handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
+.back-in {
+  display: none; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  background: var(--acct-dawn), var(--acct-heaven);
+}
+.back-in:target, .back-in.held, html.back-on .back-in { display: block; }
+/* (should the script never take it on, it goes by itself after a few seconds; taken on, .held, the script sees it goes) */
+.back-in:target:not(.held), html.back-on .back-in:not(.held) { animation: back-in-off var(--dur-base) var(--ease-out) 6s forwards; }
+/* (you in it, as the account's page left you, from the first frame: signedin.js; app.js's own copy takes over, .back-in-av) */
+html.back-face .back-in::before { content: var(--back-i, ""); position: absolute; left: calc(50% - 39px); top: calc(30% - 39px); width: 78px; height: 78px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; font-size: 30px; font-weight: 600; line-height: 1;
+  background: var(--back-p, none) center / cover no-repeat, linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); box-shadow: 0 12px 30px -12px rgba(49, 87, 216, 0.7); }
+@keyframes back-in-off { to { opacity: 0; visibility: hidden; } }
+/* your photo, or your initial, as the account's page shows it; it becomes the bar's as it flies (.back-in-face fading in) */
+.back-in-av {
+  position: fixed; z-index: 61; left: calc(50% - 39px); top: calc(30% - 39px); width: 78px; height: 78px; border-radius: 50%;
+  isolation: isolate; overflow: hidden; display: grid; place-items: center; pointer-events: none;
+  color: #fff; font-size: 30px; font-weight: 600; line-height: 1;
+  background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); box-shadow: 0 12px 30px -12px rgba(49, 87, 216, 0.7);
+}
+.back-in-face { position: absolute; inset: 0; z-index: -1; border-radius: inherit; opacity: 0; background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.back-in-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.back-in-av img.loaded { opacity: 1; }
+/* (your photo's place in the bar, and Edit beside it, held back till the photo's landed there; then each comes in with
+   its little spring, pop-in, above) */
+#me.held, #edit.held { visibility: hidden; animation: none !important; }
+/* (Sign in, as it was when you went, drawing in to the circle your photo goes in) */
+.pill-ghost { position: fixed; z-index: 21; margin: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
+
 /* the small round controls keep their size, and are each a finger's width to tap (44 px) */
 .sheet-head .x, .fld.from .change, .editbar .add, .toast button { position: relative; }
 .sheet-head .x::after, .fld.from .change::after, .tile .where::after, .tile .rm::after, .editbar .add::after, .toast button::after {
   content: ""; position: absolute; inset: -7px;
+}
+
+/* ---------------- an address that isn't a page (404.html) ---------------- */
+/* the cover photo, darker, and fading in as it comes; the name in the bar from the start, a way home; the words in the
+   middle of the screen, over a map whose route runs out at a question */
+.lost .slide { opacity: 0; transition: opacity 1.2s ease; }
+.lost .slide.loaded { opacity: 1; }
+.lost .bg::after { z-index: 2; background: linear-gradient(180deg, rgba(5, 7, 12, 0.6) 0%, rgba(5, 7, 12, 0.72) 45%, rgba(5, 7, 12, 0.92) 100%); }
+.lost .bar .mid { opacity: 1; transform: none; animation: none; }
+.lost-page { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 84px); }
+.lost-page > * { animation: arrive 0.6s var(--ease-out) backwards; }
+.lost-page > :nth-child(2) { animation-delay: 0.04s; }
+.lost-page > :nth-child(3) { animation-delay: 0.08s; }
+.lost-page > :nth-child(4) { animation-delay: 0.12s; }
+.lost-page > :nth-child(5) { animation-delay: 0.16s; }
+.lost-page > :nth-child(n + 6) { animation-delay: 0.22s; }
+.lost-page h1 { font: 700 50px/0.98 var(--display); letter-spacing: -0.035em; text-wrap: balance; }
+.lost .where {
+  align-self: flex-start; max-width: 100%; margin-top: 16px; padding: 7px 13px 7px 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 500; color: var(--text);
+  background: var(--ctl); box-shadow: var(--rim);
+}
+.lost .where svg { color: var(--text-2); }
+.lost .where span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lost .lede { margin-top: 14px; max-width: 34ch; }
+.lost .cta { flex-wrap: wrap; }
+.lost .head { margin-top: 38px; }
+.lost .report { margin-top: 30px; text-align: center; font-size: 14px; color: var(--text-2); }
+.lost .report a { color: var(--tint-text); font-weight: 500; }
+.lost .foot { margin-top: 10px; }
+.appic { flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
+.map { width: 210px; height: auto; margin: 0 0 22px -8px; overflow: visible; }
+.map .contours { stroke: rgba(255, 255, 255, 0.16); }
+.map .route { stroke: var(--tint-text); animation: march 1.6s linear infinite; }
+.map .start { fill: #fff; transform-box: fill-box; transform-origin: center; animation: pop 0.4s var(--ease-spring) 0.2s backwards; }
+.map .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.9s var(--ease-glide) 0.35s forwards; }
+.map .pin { transform: translate(186px, 56px); }
+.map .drop { transform-box: fill-box; transform-origin: 50% 100%; animation: drop 0.7s var(--ease-out) 1.9s backwards, bob 2.8s var(--ease-out) 2.6s infinite alternate; }
+.map .drop path { fill: #ff6b5e; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
+.map .drop text { fill: #fff; font: 700 20px var(--display); }
+@keyframes march { to { stroke-dashoffset: -20; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes drop { from { opacity: 0; transform: scale(0.94); } }
+@keyframes bob { to { transform: translateY(-6px); } }
+@media (min-width: 601px) {
+  .page.lost-page { max-width: 600px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 96px) 20px 48px; }
+  .lost-page h1 { font-size: 72px; }
+  .map { width: 250px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lost-page > *, .map .route, .map .drop, .map .start { animation: none; }
+  .map .draw { animation: none; stroke-dashoffset: 0; }
 }
 
 /* ---------------- larger screens ---------------- */

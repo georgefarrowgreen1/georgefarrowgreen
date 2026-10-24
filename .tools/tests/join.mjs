@@ -4,6 +4,7 @@
 //   joinInFlight(page, inflightUrl, { name, handle, email, password, city, passkey })
 //   makeAccount(page, accountUrl, { name, handle, email, password }), signInInFlight(page, inflightUrl, { email, password })
 //   onAccountPage(page, { email, password }): on the account's page, sent there by an app to sign in; then back in it
+//   fillJoin(page, { name, handle, email, password }, { send }): the account's page's join card, a step at a time
 import http from 'http';
 export const PASSWORD = 'a long test password';
 // the account's page beside InFlight: account.<site> beside chat.<site>; account.localhost beside InFlight run locally
@@ -20,26 +21,46 @@ async function open(page, url) {
 }
 export async function makeAccount(page, acct, { name, handle, email, password = PASSWORD }) {
   await open(page, `${acct}#join`);
-  await page.waitForSelector('main .signin input[name=name]', { timeout: 30000 });
-  await page.fill('main input[name=name]', name);
-  await page.fill('main input[name=handle]', handle);
-  await page.fill('main input[name=email]', email);
-  await page.fill('main input[name=password]', password);
-  await page.click('main .signin form .btn');
+  await fillJoin(page, { name, handle, email, password });
   await page.waitForSelector('main .hero', { timeout: 60000 });
+}
+// The account's page's join card, a step at a time (Next after each): name, handle, email, then the password, and
+// Create account (unless not sent)
+export async function fillJoin(page, { name, handle, email, password = PASSWORD }, { send = true } = {}) {
+  const step = async (f, v, last) => {
+    await page.waitForSelector(`main .signin input[name=${f}]`, { state: 'visible', timeout: 30000 });
+    await page.fill(`main .signin input[name=${f}]`, v);
+    if (!last || send) await page.click('main .signin form .btn');
+  };
+  await step('name', name); await step('handle', handle); await step('email', email); await step('password', password, true);
 }
 // On the account's page, sent there by an app to sign in: its sign-in (email and password), or, signed in there
 // already, the password to carry on as yourself; then back in the app. → the page's address, if it signed in just now
 // (rather than carrying on as who it had signed in already)
 export async function onAccountPage(page, { email, password = PASSWORD }) {
   await page.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 30000 });
-  await page.waitForSelector('main .signin input[name=password]', { timeout: 30000 });
-  const acct = new URL(page.url()).origin + '/', fresh = !!(await page.$('main .signin input[name=email]'));
-  if (fresh) await page.fill('main .signin input[name=email]', email);
+  await page.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 30000 });
+  const acct = new URL(page.url()).origin + '/';
+  // (signed in there before as someone else, who it remembers: Not you?)
+  const known = await page.$eval('main .signin.remembered input[type=email]', (i) => i.value).catch(() => null);
+  if (known && known !== email) { await page.click('main .notyou'); await page.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); }
+  const typed = !!(await page.$('main .signin input[name=email]')), fresh = typed || known === email;
+  if (typed) await page.fill('main .signin input[name=email]', email);
+  // (last time with a passkey: the password a tap away)
+  if (!(await page.isVisible('main .signin input[name=password]')) && await page.$('main .signin .usepw')) await page.click('main .signin .usepw');
   await page.fill('main .signin input[name=password]', password);
   await page.click('main .signin form .btn');
-  await page.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 60000 });
+  await pastOffer(page);
   return fresh ? acct : null;
+}
+// Back in the app: past a passkey offered on the way, if there's one (Not now). → whether there was
+export async function pastOffer(page) {
+  const gone = (u) => !u.hostname.startsWith('account.');
+  const offer = await Promise.race([page.waitForURL(gone, { timeout: 60000 }).then(() => false),
+    page.waitForSelector('main .signin.offer .link', { timeout: 60000 }).then(() => true)]).catch(() => false);
+  if (offer && !gone(new URL(page.url()))) await page.click('main .signin.offer .link');
+  await page.waitForURL(gone, { timeout: 60000 });
+  return offer;
 }
 // Where the account's page and the app don't share the site's sign-in (as locally, apart from the tests' gfg.test), the
 // page's own, made just to hand InFlight its sign-in, signed out again once InFlight has it: so the account has just
@@ -72,12 +93,8 @@ export async function joinInFlight(page, inflight, { name, handle, email, passwo
   await page.waitForSelector('.welcome [data-act=acctjoin]', { state: 'visible', timeout: 30000 });
   await page.click('.welcome [data-act=acctjoin]');
   await page.waitForSelector('main .signin input[name=name]', { timeout: 30000 });
-  await page.fill('main input[name=name]', name);
-  await page.fill('main input[name=handle]', handle);
-  await page.fill('main input[name=email]', email);
-  await page.fill('main input[name=password]', password);
   const acct = new URL(page.url()).origin + '/';
-  await page.click('main .signin form .btn');
+  await fillJoin(page, { name, handle, email, password });
   await page.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 60000 });
   await page.waitForSelector('#city', { state: 'attached', timeout: 40000 });
   await pageOut(page, inflight, acct);

@@ -39,5 +39,6 @@ acctpage
 acctlink
 acctmore
 acctjoin
+acctsignin
 sitepaths
 acctpkmsg

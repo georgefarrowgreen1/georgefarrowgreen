@@ -98,8 +98,11 @@ const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur",
 /* ---------- start ---------- */
 async function start() {
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
   if (signedIn) history.replaceState(null, "", location.pathname + location.search);
+  // (and the picture the account's page ended on, there since the first frame, taken on: early.js, arriveFrom; with no
+  // code that could be one, done with at once)
+  if (signedIn) arrival = arriveFrom(); else $("back-in")?.remove();
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
   const cur = store.get("wx:cur");
@@ -1742,21 +1745,26 @@ function stopSpin(btn) {
   if (a && !calm.matches && at > 0.02) g.animate([{ transform: `rotate(${at * 360}deg)` }, { transform: "rotate(360deg)" }], { duration: Math.max(240, (1 - at) * 1400), easing: EASE_OUT });
 }
 // A word under the bar, about something just asked for that couldn't be done (styles.css .toast): in, four seconds, out;
-// read out as it comes
+// read out as it comes. Over an open sheet too, where the browser has a top layer (wire: shown again each time, to be
+// over whatever was shown since)
 let toastT = 0;
 function toast(text) {
   const el = $("toast"), still = calm.matches;
   clearTimeout(toastT);
   el.getAnimations().forEach((a) => a.cancel());
   el.textContent = text;
+  if (el.popover) { if (el.matches(":popover-open")) el.hidePopover(); el.showPopover(); }
   el.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(-8px) scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: still ? 150 : 350, easing: GLIDE });
   toastT = setTimeout(() => el.animate([{ opacity: 1 }, { opacity: 0, transform: still ? "none" : "translateY(-6px)" }], { duration: 250, easing: EASE_IN, fill: "forwards" })
-    .finished.then(() => { el.textContent = ""; el.getAnimations().forEach((a) => a.cancel()); }, () => {}), 4000);
+    .finished.then(() => { el.textContent = ""; el.getAnimations().forEach((a) => a.cancel()); if (el.popover && el.matches(":popover-open")) el.hidePopover(); }, () => {}), 4000);
 }
 // the saved places as cards, as iOS's Weather lists them: each in its own sky, its name, its clock and its weather, the
 // temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
 // what the page says of a place now, in peek()'s (data.js) form
 const onPage = (wx) => { const now = nowWall(wx.place.offset), c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now); return c && { temp: c.temp, code: c.code, isDay: c.isDay, offset: wx.place.offset, hi: d?.tmax ?? null, lo: d?.tmin ?? null }; };
+// (a saved place at a glance as Places has it: the place on show as the page has it, its sky and its high and low the
+// same as there; the rest as last kept)
+const glanceOn = (p, i = S.places.indexOf(p)) => (i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : glance(p));
 // My Location on its own at the top (it's this device's, not one kept), then the places saved, under their header only
 // when there are some
 function drawSaved() {
@@ -1764,8 +1772,7 @@ function drawSaved() {
   const f = S.f, all = () => [...$("here").children, ...$("saved").children];
   const had = document.activeElement?.closest?.("#places .pc-li"), at = had ? all().indexOf(had) : -1;
   const items = S.places.map((p, i) => {
-    // (the place on show as the page has it, its sky and its high and low the same as there; the rest as last kept)
-    const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : glance(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
+    const k = glanceOn(p, i), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
       "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}${k.hi != null ? `, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}` : ""}${i === S.cur ? ", showing" : ""}`,
       // (chosen: the sheet goes, then the page turns to it)
@@ -2093,28 +2100,214 @@ function signedOutElsewhere() {
 }
 // Signing in is on the account's own page (account.<site>, beside weather.<site>), where every app on the site signs
 // in: there with a word for the sign-in (kept on this device for half an hour, or until it's used), and back with a code
-// for it (signedBack)
-async function toAccountSignIn() {
-  const page = accountPage(); if (!page) return;
+// for it (signedBack). That page's sky comes in as the word's made (handOff), and it's off there once that's done
+async function toAccountSignIn(e) {
+  const page = accountPage(); if (!page || leaving) return;
+  const away = handOff();
   try {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
-    location.assign(`${page}#${new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` })}`);
-  } catch (_) { toast("This browser can’t sign in here. Try Safari or Chrome."); }
+    await away.done;
+    const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` });
+    location.assign(`${page}#${q}`);
+    // (still here a good while later, and in sight: the page as it was, should the account's page never come)
+    setTimeout(() => { if (document.visibilityState === "visible") away.undo(); }, 10e3);
+  } catch (_) { away.undo(); toast("This browser can’t sign in here. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the
 // sign-in (the site's: Weather keeps none of its own), and this device's places meant for the account, as signing in
-// was asked for here. A code from anywhere else, or one that's run out, is used up and goes no further.
+// was asked for here (and meanwhile, the picture that page ended on: welcome). A code from anywhere else, or one that's
+// run out, is used up and goes no further.
 async function signedBack(code) {
   let k = null;
   try { k = JSON.parse(localStorage.getItem("wx:signin") || "null"); localStorage.removeItem("wx:signin"); } catch (_) {}
   if (!k || Date.now() - k.at > 30 * 60e3) {
+    arriveEnd(arrival, true);
     A.handback(code, "").catch(() => {}); pull();
     return toast("That sign-in was started somewhere else. Sign in again here.");
   }
   pulledAt = Date.now();
-  try { const r = await A.handback(code, k.word); await adopt(r, true); toast(`Signed in as ${String(r.name).trim().split(/\s+/)[0]}.`); }
-  catch (e) { toast(e.message); pull(); }
+  try {
+    const r = await A.handback(code, k.word);
+    // (who's known as soon as it's adopted, so Settings comes up with the account's card; said once the photo's landed in it)
+    const adopted = adopt(r, true), landed = arrival ? welcome(arrival, r) : null;
+    await Promise.all([adopted, landed]);
+    toast(`Signed in as ${String(r.name).trim().split(/\s+/)[0]}.`);
+  } catch (e) { arriveEnd(arrival, true); toast(e.message); pull(); }
+}
+
+/* ---------- signing in on the account's page: the way there, and back ---------- */
+// The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
+// that sky comes in over everything, so that page opens on what was already in sight (handOff); back
+// from it (#signin=…), the page opens on the picture it ended on (early.js), and your photo goes from there into the
+// account's card in Settings, where you signed in from (arriveFrom, welcome). With Reduce Motion, dissolves. Neither is
+// ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
+// (the account page's own curve, for one screen growing into another; and its sky)
+const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
+const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
+// (the top layer: over an open sheet, in the order things are shown there)
+const topLayer = "showPopover" in HTMLElement.prototype;
+const springEase = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";
+let leaving = null;
+// The account page's sky, coming in over everything (Settings too). Opacity only. → { done: kept once the sky's in, or
+// after 700 ms whatever happens; undo: put back as it was }. With no top layer, straight on
+function handOff() {
+  const none = { done: Promise.resolve(), undo() {} };
+  if (!topLayer) return none;
+  const g = h("div", { class: "handoff", "aria-hidden": "true", popover: "manual" }, h("i", { class: "handoff-sky" }));
+  const out = { done: null, undo: () => { g.remove(); if (leaving === out) leaving = null; } };
+  let sky;
+  try {
+    document.body.append(g); g.showPopover();
+    sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: calm.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
+  } catch (_) { out.undo(); return none; }
+  leaving = out;
+  out.done = Promise.race([sky.catch(() => {}), new Promise((ok) => setTimeout(ok, 700))]);
+  return out;
+}
+// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went)
+addEventListener("pageshow", (e) => { if (e.persisted) leaving?.undo(); });
+
+// Back from the account's page: its picture (early.js) taken on, with what's to happen to it, or null where the page
+// wasn't opened from there. Gone within a few seconds whatever happens: sooner if the sign-in's slow to be swapped (the
+// page as ever meanwhile, signedBack carrying on behind it), and at once if Settings is closed as it plays (closeSheet)
+let arrival = null;
+function arriveFrom() {
+  const el = $("back-in"); if (!el) return null;
+  settingsJs().catch(() => {});            // (Settings, where the photo lands, fetched now, so it's there when it's wanted)
+  el.classList.add("held");
+  const a = { el, av: null, card: null, timers: new Set(), gone: false, land: null };
+  a.slow = arriveLater(a, () => arriveEnd(a, true), 3000);
+  arriveLater(a, () => arriveEnd(a, true), 6000);
+  return a;
+}
+// (something to happen in a while, unless the picture's done with by then)
+function arriveLater(a, fn, ms) { const t = setTimeout(() => { a.timers.delete(t); if (!a.gone) fn(); }, ms); a.timers.add(t); return t; }
+// The picture done with, at once or fading: what's still to come stopped, and the card's own photo shown if it was
+// waiting for the one flying to it
+function arriveEnd(a, fade = false) {
+  if (!a || a.gone) return;
+  a.gone = true;
+  for (const t of a.timers) clearTimeout(t);
+  if (arrival === a) arrival = null;
+  if (a.card) a.card.style.visibility = "";
+  a.land?.();
+  for (const x of [a.el, a.av]) {
+    if (!x?.isConnected) continue;
+    if (!fade) { x.remove(); continue; }
+    x.animate([{ opacity: getComputedStyle(x).opacity }, { opacity: 0 }], { duration: 250, easing: EASE_OUT, fill: "forwards" }).finished.then(() => x.remove(), () => x.remove());
+    setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
+  }
+}
+// The sign-in swapped (r: who): your photo (or your initial) comes into the picture, then Settings comes up as the picture
+// fades, and the photo flies down into the account's card there. → a promise, kept once it's landed (or once there's
+// nothing for it to land on)
+function welcome(a, r) {
+  clearTimeout(a.slow); a.timers.delete(a.slow);
+  const still = calm.matches, landed = new Promise((ok) => { a.land = ok; });
+  // (there since the first frame, as the account's page left you: early.js. Taken into the top layer, over Settings, and on)
+  const pre = $("back-in-av");
+  if (pre) {
+    a.av = pre; pre.removeAttribute("id");
+    if (!pre.querySelector("img") && r.photoAt) { const img = h("img", { src: A.photoUrl(r.photoAt), alt: "", decoding: "async" }); img.addEventListener("load", () => img.classList.add("loaded"), { once: true }); pre.append(img); }
+    if (topLayer) { pre.popover = "manual"; document.body.append(pre); pre.showPopover(); }
+    arriveLater(a, () => toSettings(a), still ? 120 : 160);
+    return landed;
+  }
+  const av = a.av = h("span", { class: "back-in-av", "aria-hidden": "true", popover: topLayer ? "manual" : null }, h("span", { class: "back-in-card" }), (String(r.name || "").trim()[0] || "?").toUpperCase());
+  const img = r.photoAt ? h("img", { src: A.photoUrl(r.photoAt), alt: "", decoding: "async" }) : null;
+  if (img) av.append(img);
+  // (the photo in before it's shown, if it's there in a moment; if not, the initial, the photo fading in over it as it comes)
+  const ready = img ? Promise.race([img.decode().catch(() => {}), new Promise((ok) => setTimeout(ok, 500))]) : Promise.resolve();
+  ready.then(() => {
+    if (a.gone) return;
+    if (img) { const on = () => img.classList.add("loaded"); if (img.complete && img.naturalWidth) on(); else img.addEventListener("load", on, { once: true }); }
+    (topLayer ? document.body : a.el).append(av);
+    if (topLayer) av.showPopover();
+    av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : springEase() });
+    arriveLater(a, () => toSettings(a), still ? 250 : 420);
+  });
+  return landed;
+}
+// Settings, where you signed in from, comes up on its list (unless it's been opened meanwhile) as the picture fades;
+// the photo kept over it all
+async function toSettings(a) {
+  const d = $("settings"), still = calm.matches, el = a.el;
+  if (!d.open) await openSettings();
+  if (a.gone) return;
+  el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: still ? 200 : 400, easing: EASE_OUT, fill: "forwards" }).finished.then(() => el.remove(), () => el.remove());
+  if (topLayer && a.av?.isConnected) { a.av.hidePopover(); a.av.showPopover(); }
+  arriveLater(a, () => fly(a), still ? 200 : 180);
+}
+// Where something in a sheet will be once the sheet's done coming up: where it is now, less the sheet's slide (and its
+// scale, about its middle) so far
+function settledIn(d, el) {
+  const r = el.getBoundingClientRect(), tf = getComputedStyle(d).transform;
+  if (!tf || tf === "none") return r;
+  const m = new DOMMatrixReadOnly(tf), s = m.a || 1, dr = d.getBoundingClientRect(), mx = dr.left + dr.width / 2, my = dr.top + dr.height / 2;
+  return { left: mx - m.e + (r.left - mx) / s, top: my - m.f + (r.top - my) / s, width: r.width / s, height: r.height / s };
+}
+// The photo, down into the account's card on a gentle curve (bowed up a little, as if tossed into it rather than slid
+// across), becoming the card's own as it goes and landing with a little spring; then your places, going with it
+// (moved). With Reduce Motion, or with the card out of sight, it fades where it is as the card's comes
+function fly(a) {
+  const d = $("settings"), av = a.av, card = $("acct")?.querySelector(".acct-av"), still = calm.matches;
+  const shows = !!card && d.open && !d.classList.contains("closing") && !card.closest(".set-page")?.hidden;
+  if (!topLayer || still || !shows || !av?.isConnected) {
+    if (av?.isConnected) av.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
+    if (shows && still) card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: EASE_OUT });
+    arriveLater(a, () => { arriveEnd(a); if (shows) moved(); }, 220);
+    return;
+  }
+  const to = settledIn(d, card), from = av.getBoundingClientRect(), s1 = (to.width / from.width) * 0.94;
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  const len = Math.hypot(dx, dy) || 1, bow = Math.min(80, len * 0.25);
+  let nx = -dy / len, ny = dx / len;
+  if (ny > 0) { nx = -nx; ny = -ny; }
+  const cx = dx / 2 + nx * bow, cy = dy / 2 + ny * bow, N = 12;
+  const path = Array.from({ length: N + 1 }, (_, i) => {
+    const u = i / N, v = 1 - u;
+    return { offset: u, transform: `translate(${(2 * v * u * cx + u * u * dx).toFixed(2)}px, ${(2 * v * u * cy + u * u * dy).toFixed(2)}px) scale(${(1 + (s1 - 1) * u).toFixed(4)})` };
+  });
+  a.card = card; card.style.visibility = "hidden";
+  const t = { duration: 620, easing: ACCT_EASE, fill: "forwards" };
+  const flight = av.animate(path, t);
+  av.querySelector(".back-in-card")?.animate([{ opacity: 0 }, { opacity: 1 }], t);
+  av.animate([{ boxShadow: getComputedStyle(av).boxShadow }, { boxShadow: getComputedStyle(card).boxShadow }], t);
+  flight.finished.then(() => {
+    if (a.gone) return;
+    // landed: the card's own photo, giving a little as it takes the weight
+    card.style.visibility = ""; a.card = null;
+    card.animate([{ scale: 0.94 }, { scale: 1.06, offset: 0.4 }, { scale: 1 }], { duration: 450, easing: EASE_OUT });
+    arriveEnd(a);
+    moved();
+  }, () => {});
+}
+// Your places, the account's now too: said under its card as the photo lands, each in its own sky (as in Places),
+// ticked off one after another; there till Settings closes. With Reduce Motion, faded in together
+function moved() {
+  const d = $("settings"), box = $("acct"), card = box?.querySelector(".acct-card");
+  if (!S.acct || !card || !d.open || d.classList.contains("closing") || box.querySelector(".acct-moved")) return;
+  const list = S.places.filter((p) => !p.gps), few = list.slice(0, 4);
+  const tick = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9" pathLength="1"/></svg>';
+  const chips = few.map((p) => { const k = glanceOn(p); return h("span", { class: "acct-chip", "data-sky": k ? skyOf(k.code, k.isDay) : "cloudy-day" }, h("span", { class: "acct-tick", svg: tick }), h("span", {}, p.name)); });
+  if (list.length > few.length) chips.push(h("span", { class: "acct-chip more" }, `+${list.length - few.length} more`));
+  const row = h("div", { class: "acct-moved" },
+    h("p", {}, list.length > 1 ? "Your places go with your account now." : list.length ? "Your place goes with your account now." : "Your settings go with your account now."),
+    chips.length ? h("div", { class: "acct-chips" }, chips) : null);
+  card.after(row);
+  d.addEventListener("close", () => row.remove(), { once: true });
+  if (calm.matches) { row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: EASE_OUT }); return; }
+  // (opening up under the card, what's under it moving down with it, then each place in turn, and its tick)
+  const ht = row.offsetHeight, spring = springEase();
+  row.style.overflow = "clip";
+  row.animate([{ height: "0px", marginTop: "-10px", opacity: 0 }, { height: `${ht}px`, marginTop: "0px", opacity: 1 }], { duration: 420, easing: GLIDE }).finished.catch(() => {}).finally(() => { row.style.overflow = ""; });
+  chips.forEach((c, i) => {
+    const at = 160 + i * 90;
+    c.animate([{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: 450, delay: at, easing: spring, fill: "backwards" });
+    c.querySelector(".acct-tick")?.animate([{ scale: 0.4 }, { scale: 1 }], { duration: 450, delay: at + 120, easing: spring, fill: "backwards" });
+    c.querySelector("path")?.animate([{ strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDasharray: 1, strokeDashoffset: 0 }], { duration: 260, delay: at + 180, easing: EASE_OUT, fill: "backwards" });
+  });
 }
 // (said only when there's something to say: in step, nothing; as a note under the saved places, and short on the account's card)
 const STATES = { saving: ["Syncing…", "Syncing…"], waiting: ["Offline. Your places will sync when you’re back online.", "Offline, will sync later"],
@@ -2378,6 +2571,8 @@ function openSheet(d) {
 function closeSheet(d) {
   if (!d.open) return Promise.resolve();
   if (d.classList.contains("closing")) return d._gone;
+  // (Settings closed as you're coming back signed in: the picture, and the photo on its way, done with: arriveEnd)
+  if (d.id === "settings") arriveEnd(arrival, true);
   flushWaiting();
   const cs = getComputedStyle(d);
   d.style.setProperty("--from-t", cs.transform); d.style.setProperty("--from-o", cs.opacity); d.style.setProperty("--dim-o", getComputedStyle(d, "::backdrop").opacity);
@@ -2471,6 +2666,8 @@ function wire() {
   $("set-back").innerHTML = glyph("chevron", 18);
   // each sheet: closing by Escape or a tap outside, and swiping down
   for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
+  // (a word under the bar, over an open sheet too: toast)
+  if (topLayer) $("toast").popover = "manual";
   // a swipe across a day to the next or the one before, and across a tile's sheet to the next tile or the one before
   // (either sheet open, detail.js has come)
   sideSwipe($("day"), $("day-body"), (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); }, (n, quiet) => DE()?.stepDay(n, quiet));

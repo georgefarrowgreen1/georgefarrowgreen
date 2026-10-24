@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.2";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.3";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1908,12 +1908,15 @@ function welcomeCta() {
 const SIGNIN_KEY = "inflight-signin";
 async function toAccountSignIn(e, mode) {
   e?.preventDefault?.();
+  const covered = handOff();      // (the page's sky comes in while the trip's got ready)
   try {
     const t = await E2E.handbackPair();
     localStorage.setItem(SIGNIN_KEY, JSON.stringify({ word: t.word, pub: t.pub, priv: t.priv, at: now(), link: S.pendingLink || null }));
     const back = location.origin + (location.pathname.startsWith("/pigeon/") ? "/pigeon/" : "/");
-    location.assign(toAccount(`#${new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back })}`));
-  } catch (_) { toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
+    await covered;
+    const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
+    location.assign(toAccount(`#${q}`));
+  } catch (_) { handBack(); toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
 // InFlight's own sign-in, and the key unlocked with what the page sealed to this phone (the password's first half, or the
@@ -1925,11 +1928,20 @@ async function signInBack(code) {
   if (!k || now() - k.at > 30 * MIN) {
     api("handback", { method: "POST", body: { code, verifier: "" } }).catch(() => {});
     resumeCheck();
+    arrival?.away();                       // (the account's page's sky clears to the welcome, which says why)
     return toast("That sign-in was started somewhere else. Sign in again here.");
   }
   S.signingIn = true; render();
   try {
-    const r = await api("handback", { method: "POST", body: { code, verifier: k.word } });
+    // (the code swapped already, if theme.js could start it on the first frame: its answer taken up here)
+    const early = window.arvSwap?.code === code ? window.arvSwap.answer : null;
+    window.arvSwap = null;
+    const r = early ? await early.then((x) => {
+      if (x.ok && x.json) return x.d;
+      throw Object.assign(new Error(x.d?.error || `Something went wrong (error ${x.status}). Try again.`), { status: x.status, field: x.d?.field });
+    }, () => { throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); })
+      : await api("handback", { method: "POST", body: { code, verifier: k.word } });
+    arrival?.me(r.me);                     // (who it is: their picture comes in)
     let ecdh;
     try {
       const got = await E2E.unseal(k.priv, k.pub, r.box);
@@ -1939,97 +1951,310 @@ async function signInBack(code) {
     if (k.link && !S.pendingLink) S.pendingLink = k.link;
     S.signingIn = false;
     await afterSignIn();
+    arrival?.in();                         // (in: the sky clears to InFlight, signed in)
   } catch (err) {
     S.signingIn = false; render(); resumeCheck();
+    arrival?.away();
     toast(esc(err.message));
   }
 }
 
+/* ---------- signing in and out, in motion ----------
+   Signing in is on the account's page, so going there and coming back are one movement. Going, what you tapped grows
+   into that page's sky (handOff). Coming back, InFlight starts from the page's last picture: its sky and a dawn along
+   the bottom, waiting while the sign-in is taken up (arriving). Your picture comes into it, where the page had it; the
+   sky clears to InFlight with a padlock opening in the middle; your picture flies down into Account; and
+   your chats come in, a row at a time. Signing out goes the other way (dusk). With Reduce Motion each part fades where
+   it is instead, and none of it ever catches a tap or stays over the screen. */
+const acctSky = () => cssVar(document.documentElement, "--acct-sky") || (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
+// (an animation that can't go wrong: none at all where this browser won't play it)
+const play = (el, frames, o) => { try { return el?.animate(frames, o) || null; } catch (_) { return null; } };
+// (once it has played, or ms have gone by, whichever is first)
+const played = (a, ms) => new Promise((done) => { const t = setTimeout(done, ms); a?.finished.then(() => { clearTimeout(t); done(); }, () => { clearTimeout(t); done(); }); });
+// The account page's sky, coming in over everything, so the page opens on what was last in sight. Opacity only, so a
+// busy phone doesn't stutter it.
+// → a promise for when the sky is all there is (at most ~700 ms, whatever becomes of the animation)
+let handing = null;
+function handOff() {
+  handBack();
+  const still = STILL.matches, el = document.createElement("div"), anims = [];
+  el.className = "handoff"; el.setAttribute("aria-hidden", "true");
+  el.innerHTML = `<i class="hsky"></i>`;
+  handing = { el, anims };
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", acctSky());     // (the browser's bar too)
+  // (and if the page never goes, as a page sometimes doesn't, the sky doesn't stay)
+  setTimeout(() => { if (handing?.el === el && document.visibilityState === "visible") handBack(); }, 15000);
+  try {
+    document.body.append(el);
+    const sky = play($(".hsky", el), [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 150 : 480, easing: "ease", fill: "forwards" });
+    anims.push(sky);
+    return played(sky, 700);
+  } catch (_) { return Promise.resolve(); }
+}
+// The sky taken away again: the trip didn't start, or InFlight came back from the browser's back-forward cache as it was
+// when you left it
+function handBack() {
+  const h = handing; handing = null; if (!h) return;
+  h.el.remove(); for (const a of h.anims) a?.cancel();
+  applyTheme();
+}
+addEventListener("pageshow", (e) => { if (e.persisted) handBack(); });
+
+// A padlock on a disc in the middle of the screen (in `into`), shut or open, with a line under it if there's one to say.
+// Open, its shackle is up and swung out on its right leg, which stays in the lock.
+const LOCK_OPEN = "translateY(-2.6px) rotate(24deg)";
+function padlock(into, open, words) {
+  const el = document.createElement("div");
+  el.className = "padlock";
+  el.innerHTML = `<span class="plring" aria-hidden="true"></span><span class="pldisc" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="plshackle" d="M8.2 11V7.8a3.8 3.8 0 0 1 7.6 0v5.7"/>`
+    + `<rect class="plbody" x="5.2" y="10.4" width="13.6" height="10.2" rx="2.8"/><circle class="plhole" cx="12" cy="15.4" r="1.4"/></svg></span>${words ? `<p class="plcap" role="status">${esc(words)}</p>` : ""}`;
+  if (open) $(".plshackle", el).style.transform = LOCK_OPEN;
+  into.append(el);
+  return el;
+}
+// The shackle opening (or shutting): lifting, then swinging out on the spring (or back, and down with a click). Reduce
+// Motion: it fades from one to the other where it is. → a promise for when it's done
+function shackle(el, open) {
+  const sh = $(".plshackle", el), E = kEases(), to = open ? LOCK_OPEN : "";
+  if (STILL.matches) {
+    const out = play(sh, [{ opacity: 1 }, { opacity: 0 }], { duration: 100, fill: "forwards" });
+    return played(out, 160).then(() => { sh.style.transform = to; out?.cancel(); return played(play(sh, KF.fade, { duration: 160, easing: "ease" }), 260); });
+  }
+  sh.style.transform = to;
+  return played(play(sh, open ? [{ transform: "none", easing: "cubic-bezier(.3,0,.2,1)" }, { transform: "translateY(-2.6px)", offset: 0.32, easing: E.spring }, { transform: LOCK_OPEN }]
+    : [{ transform: LOCK_OPEN, easing: "cubic-bezier(.4,0,.2,1)" }, { transform: "translateY(-2.6px)", offset: 0.6, easing: E.easeIn }, { transform: "none" }], { duration: open ? 560 : 420 }), 700);
+}
+// A gentle curve from where `el` is onto the middle of `to`, shrinking to its size as it goes: out past that side
+// first, then down onto it, on the spring (--ease-spring), so it lands with a little give. → the animation
+function flyTo(el, to, ms) {
+  const a = el.getBoundingClientRect(), b = to.getBoundingClientRect();
+  const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2, x1 = b.left + b.width / 2, y1 = b.top + b.height / 2;
+  const cx = x1 + Math.sign(x1 - x0 || 1) * Math.max(36, Math.abs(x1 - x0) * 0.5), cy = y0 + (y1 - y0) * 0.2, s1 = Math.max(0.15, b.width / a.width);
+  const frames = [];
+  for (let i = 0; i <= 24; i++) {
+    const u = i / 24, m = 1 - u, x = m * m * x0 + 2 * m * u * cx + u * u * x1, y = m * m * y0 + 2 * m * u * cy + u * u * y1;
+    frames.push({ transform: `translate(${(x - x0).toFixed(1)}px,${(y - y0).toFixed(1)}px) scale(${(1 + (s1 - 1) * u).toFixed(3)})` });
+  }
+  return play(el, frames, { duration: ms, easing: kEases().spring, fill: "forwards" });
+}
+// Messages' rows under its title, those on screen, in order (its list a row at a time)
+function rowsOnScreen() {
+  const vr = $view.getBoundingClientRect();
+  return [...$view.querySelectorAll(":scope > .brandh ~ *")].flatMap((el) => (el.matches(".mlist") ? [...el.children] : [el]))
+    .filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > vr.top && r.top < vr.bottom; });
+}
+
+/* coming back from the account's page, signed in there: its last picture over InFlight until InFlight is in. (A
+   sign-in that goes wrong, or is slow, clears it to the welcome; it never stays.) */
+let arrival = null;
+// (you: the initial the account's page sent; with it, you're there from the first frame, as the page left you, your
+// photo too if it sent one: theme.js arvPhoto)
+function arriving(you) {
+  const still = STILL.matches, E = kEases(), box = document.createElement("div"), timers = [];
+  // (not "arrive": that's a photo just come, fading in)
+  box.className = "arrival"; box.setAttribute("aria-hidden", "true"); box.inert = true;
+  box.innerHTML = `<div class="arv-sky"></div>`;
+  let over = false, face = null, faceAt = 0, lock = null, held = false;
+  if (you && [...you].length === 1) {
+    face = document.createElement("div"); face.className = "arv-me"; face.textContent = you; held = true;
+    if (window.arvPhoto) { const img = new Image(); img.alt = ""; img.src = window.arvPhoto; face.append(img); }
+    box.append(face);
+  }
+  root().append(box);
+  document.documentElement.classList.remove("arriving", "arv-face");
+  const at = (ms, fn) => timers.push(setTimeout(() => { if (!over) try { fn(); } catch (_) {} }, ms));
+  const end = () => {
+    over = true; timers.forEach(clearTimeout); clearTimeout(late);
+    root().classList.remove("unlocking"); box.remove(); lock?.remove();
+    if (arrival === a) arrival = null;
+  };
+  // (a sign-in that's slow to come back: the welcome, which says it's signing in, rather than the sky for ever)
+  const late = setTimeout(() => a.away(), 12000);
+  const gone = (el, ms, to = "none") => play(el, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: still ? "none" : to }], { duration: still ? 200 : ms, easing: E.out, fill: "forwards" });
+  const a = {
+    // who it is, once the account's page's sign-in is InFlight's: their picture comes into the sky (their initial,
+    // and their photo once InFlight, signed in, has fetched it)
+    me(p) {
+      try {
+        if (over || !p || (face && (!held || face.querySelector("img")))) return;
+        if (!face) {
+          face = document.createElement("div"); face.className = "arv-me"; faceAt = performance.now();
+          face.textContent = initials(p.name || p.handle || "?").slice(0, 1);
+          box.append(face);
+          play(face, still ? KF.fade : [{ opacity: 0, transform: "scale(.82)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 460, easing: still ? "ease" : E.spring, fill: "backwards" });
+        }
+        const t0 = performance.now(), look = () => {
+          if (over || performance.now() - t0 > 5000) return;
+          const u = S.token && S.me?.id === p.id ? avatarUrl(S.me) : "";
+          if (!u) { setTimeout(look, 90); return; }
+          const img = new Image(); img.alt = "";
+          img.onload = () => { if (!over && face?.isConnected) { face.append(img); play(img, KF.fade, { duration: 240, easing: "ease" }); } };
+          img.src = u;
+        };
+        if (p.avatarAt) look();
+      } catch (_) {}
+    },
+    // in: the sky clears to InFlight (drawn under it already, the chats held back), a padlock opens in the middle, your
+    // picture flies down into Account (which says welcome back), and your chats come in a row at a time. A new account
+    // goes on to choose where it is: the sky just clears to that, your picture rising away with it.
+    in() {
+      try {
+        if (over) return;
+        clearTimeout(late);
+        // (signed in at once: your picture, if it's only just come, still has a moment there first)
+        const dwell = face && !held ? faceAt + (still ? 250 : 380) - performance.now() : 0;
+        if (dwell > 20) { timers.push(setTimeout(() => a.in(), dwell)); return; }
+        const list = S.view === "messages", onboarding = AUTH_VIEWS.has(S.view);
+        // (the screen it came in on was drawn under the sky: no copy of the welcome left fading under it, and no slide)
+        root().querySelectorAll(".nav-ghost").forEach((g) => g.remove());
+        for (const el of [$view, $compose]) el.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l");
+        if (list) root().classList.add("unlocking");
+        applyTheme();
+        for (const el of box.querySelectorAll(".arv-sky")) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 420, easing: "ease", fill: "forwards" });
+        setTimeout(end, 4000);                                       // (whatever happens below, it's all gone by then)
+        if (onboarding) {
+          at(still ? 100 : 260, () => face && gone(face, 420, "translateY(-10px) scale(.92)"));
+          at(still ? 450 : 800, end);
+          return;
+        }
+        if (list) {
+          lock = padlock(root(), false, "Unlocking your messages");
+          play(lock, still ? KF.fade : [{ opacity: 0, transform: "scale(.9)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 300, delay: still ? 0 : 60, easing: E.out, fill: "backwards" });
+          at(still ? 350 : 300, () => {
+            shackle(lock, true); haptic("tick");
+            play($(".plring", lock), still ? [{ opacity: 0 }, { opacity: 0.6, offset: 0.3 }, { opacity: 0 }] : [{ opacity: 0.85, transform: "scale(1)" }, { opacity: 0, transform: "scale(2.2)" }], { duration: still ? 600 : 760, easing: E.out });
+          });
+          at(still ? 450 : 420, () => {
+            const cap = $(".plcap", lock); cap.textContent = "Messages unlocked";
+            play(cap, still ? KF.fade : [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: E.out });
+          });
+          at(still ? 950 : 860, () => gone(lock, 240, "scale(.96)"));
+          // the chats, a row at a time, top first (or all at once if you've already gone elsewhere), as the padlock goes
+          at(still ? 1000 : 900, () => {
+            const rows = S.view === "messages" ? rowsOnScreen() : [];
+            root().classList.remove("unlocking");
+            rows.forEach((el, i) => kPlay(el, still ? KF.fade : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: Math.min(i, 10) * 45, easing: E.out, fill: "backwards" }));
+          });
+        }
+        // your picture: down into Account, where InFlight shows you, landing with a spring (or, where Account isn't in
+        // sight, or with Reduce Motion, it fades where it is, and Account answers)
+        at(still ? 600 : 240, () => {
+          if (!face) return;
+          const tab = !$tabbar.hidden && !S.sheet && !$pop.firstElementChild && $('.tab[data-id="account"] svg', $tabbar);
+          if (!tab || still) { gone(face, 300, "scale(.9)"); if (tab) play(tab, KF.chg, { duration: 400, delay: 150, easing: E.out }); return; }
+          if (!flyTo(face, tab, 720)) { gone(face, 300, "scale(.9)"); return; }
+          // (as it lands, before the spring has quite settled: into Account, which springs too)
+          at(440, () => {
+            play(face, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease", fill: "forwards" });
+            play(tab, [{ transform: "scale(1.3)" }, { transform: "none" }], { duration: 520, easing: E.bounce });
+          });
+        });
+        at(still ? 1500 : list ? 1500 : 1250, end);
+      } catch (_) { end(); }
+    },
+    // not in after all (a sign-in from elsewhere, or one that's run out, or went wrong): it clears to what's under it
+    away() {
+      try {
+        if (over) return;
+        over = true; timers.forEach(clearTimeout); clearTimeout(late);
+        root().classList.remove("unlocking");
+        for (const el of [box, lock]) if (el) play(el, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 150 : 300, easing: "ease", fill: "forwards" });
+        applyTheme();
+        setTimeout(end, still ? 170 : 320);
+      } catch (_) { end(); }
+    },
+  };
+  return a;
+}
+
+/* going: signing out, the other way. The screen's rows fall away (the last first), a padlock shuts in the middle, and
+   night comes in over it all; under the night the welcome is drawn, and the night clears to it. → { dark: a promise
+   for when it's dark (what's under it can change then), done(): the welcome is there, so the night can go } */
+function dusk() {
+  const still = STILL.matches, E = kEases(), box = document.createElement("div"), timers = [];
+  box.className = "dusk"; box.setAttribute("aria-hidden", "true"); box.inert = true;
+  const at = (ms, fn) => timers.push(setTimeout(() => { try { fn(); } catch (_) {} }, ms));
+  let rows = [], lock = null;
+  try {
+    root().append(box);
+    if (!S.locked) {
+      // (a lifeless copy of the screen as it is, as under a swipe back: its rows can go without the app redrawing them)
+      const c = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
+      c.className = `dusk-copy${root().classList.contains("plain") ? " plain" : ""}`; c.style.top = `${$view.offsetTop}px`;
+      v.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); c.append(v);
+      const tb = !$tabbar.hidden && $tabbar.cloneNode(true);
+      if (tb) { tb.classList.remove("rise", "back"); c.append(tb); }
+      c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+      box.append(c); v.scrollTop = top;
+      const vr = v.getBoundingClientRect();
+      rows = [...v.children].filter((el) => !el.matches(".navbar, .gap")).flatMap((el) => (el.matches(".mlist") ? [...el.children] : [el]))
+        .filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > vr.top && r.top < vr.bottom; }).reverse();
+      if (tb) rows.unshift($(".tabs", tb));
+      lock = padlock(box, true);
+    }
+  } catch (_) {}
+  const night = document.createElement("div"); night.className = "dusk-night"; box.append(night);
+  rows.forEach((el, i) => el && kPlay(el, still ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(12px)" }],
+    { duration: still ? 200 : 260, delay: still ? 0 : Math.min(i, 10) * 35, easing: still ? "ease" : E.easeIn, fill: "forwards" }));
+  if (lock) {
+    play(lock, still ? KF.fade : [{ opacity: 0, transform: "scale(.9)" }, { opacity: 1, transform: "none" }], { duration: still ? 200 : 300, delay: still ? 0 : 120, easing: E.out, fill: "backwards" });
+    at(still ? 300 : 400, () => shackle(lock, false).then(() => {
+      if (still) return;
+      haptic("tick");
+      play($(".pldisc", lock), [{ transform: "scale(.93)" }, { transform: "none" }], { duration: 420, easing: E.bounce });
+    }));
+  }
+  const dark = new Promise((res) => {
+    at(still ? (lock ? 450 : 150) : lock ? 720 : 300, () => played(play(night, [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 250 : 380, easing: "ease", fill: "forwards" }), 700).then(res));
+    setTimeout(res, 2500);
+  });
+  return {
+    dark,
+    done() {
+      try {
+        timers.forEach(clearTimeout);
+        drawLock();                                                   // (a lock screen signed out from goes with the rest)
+        box.querySelectorAll(".dusk-copy, .padlock").forEach((e) => e.remove());
+        played(play(box, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 480, easing: "ease", fill: "forwards" }), 800).then(() => box.remove());
+      } catch (_) { box.remove(); }
+    },
+  };
+}
+
 /* ---------- the welcome sky ----------
-   Night: stars that breathe, now and then a shooting star, a planet's rim of
-   light far below, and one pigeon crossing in its own glow, leaving a dashed
-   trail that fades behind it. (Still, for anyone who asks for less motion.) */
+   Night: a quiet field of stars, breathing slowly. (Still, for anyone who asks for less motion.) */
 let skyLoop = 0, skyOn = null;
 function nightSky(cv) {
-  if (!cv || skyOn === cv) return;            // already flying: it carries on
+  if (!cv || skyOn === cv) return;            // already shining: it carries on
   cancelAnimationFrame(skyLoop); skyOn = cv;
   const g = cv.getContext("2d"), still = STILL.matches, t0 = performance.now();
-  const bird = new Path2D(BIRD);
-  let W = 0, H = 0, dpr = 1, stars = [], shoot = null, nextShoot = t0 + 2500, ground = null, last = 0;
+  let W = 0, H = 0, dpr = 1, stars = [], last = 0;
   const seed = (n) => { let x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); };
   const size = () => {
     const w = cv.clientWidth, h = cv.clientHeight; if (w === W && h === H) return;
     W = w; H = h; dpr = Math.min(2, devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr;
-    stars = Array.from({ length: Math.round((W * H) / 2600) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H * 0.92, r: 0.35 + seed(i + 900) ** 3 * 1.5,
-      p: seed(i + 1300) * 6.28, s: 0.4 + seed(i + 1700) * 1.4, b: 0.35 + seed(i + 2100) * 0.65 }));
-    // the planet's edge, far below: the same every frame, so drawn once for this size
-    ground = Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
-    const k = ground.getContext("2d"); k.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const R = W * 2.2, py = H + R - H * 0.13;
-    const rim = k.createRadialGradient(W / 2, py, R * 0.985, W / 2, py, R * 1.06);
-    rim.addColorStop(0, "rgba(70,120,255,0)"); rim.addColorStop(0.24, "rgba(90,150,255,.42)"); rim.addColorStop(0.32, "rgba(60,90,220,.14)"); rim.addColorStop(1, "rgba(20,30,90,0)");
-    k.fillStyle = rim; k.beginPath(); k.arc(W / 2, py, R * 1.06, 0, 6.29); k.fill();
-    k.fillStyle = "#020309"; k.beginPath(); k.arc(W / 2, py, R, 0, 6.29); k.fill();
+    stars = Array.from({ length: Math.round((W * H) / 3400) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H, r: 0.35 + seed(i + 900) ** 3 * 1.3,
+      p: seed(i + 1300) * 6.28, s: 0.3 + seed(i + 1700) * 0.9, b: 0.3 + seed(i + 2100) * 0.6 }));
   };
-  // the flight: a long arc, left to right, then a rest, then again
-  const FLY = 11000, REST = 2600;
-  const at = (u) => { const ax = -0.06 * W, ay = H * 0.86, cx = W * 0.5, cy = H * 0.26, bx = W * 1.08, by = H * 0.62;     // up off the horizon, across the open sky
-    const a = (1 - u) ** 2, b = 2 * (1 - u) * u, c = u * u; return [a * ax + b * cx + c * bx, a * ay + b * cy + c * by]; };
   const frame = (now) => {
     if (!cv.isConnected || !document.documentElement.classList.contains("night")) { skyOn = null; return; }
-    // 30 frames a second is plenty for a slow sky; while you type (the keyboard up), fewer still
+    // 20 frames a second is plenty for stars breathing; while you type (the keyboard up), fewer still
     const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
-    if (!still && now - last < (typing ? 120 : 31)) { skyLoop = requestAnimationFrame(frame); return; }
+    if (!still && now - last < (typing ? 120 : 48)) { skyLoop = requestAnimationFrame(frame); return; }
     last = now;
     size();
     const t = now - t0;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    // stars, breathing, drifting very slowly (drawn in a dozen or so batches, by brightness, not one by one)
+    // drawn in a dozen or so batches, by brightness, not one by one
     const lit = new Map();
     for (const s of stars) {
-      const tw = still ? s.b : s.b * (0.55 + 0.45 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
-      const x = (s.x + t * 0.003 * s.r) % W;
+      const tw = still ? s.b : s.b * (0.6 + 0.4 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
       let path = lit.get(a); if (!path) lit.set(a, (path = new Path2D()));
-      path.moveTo(x + s.r, s.y); path.arc(x, s.y, s.r, 0, 6.29);
+      path.moveTo(s.x + s.r, s.y); path.arc(s.x, s.y, s.r, 0, 6.29);
     }
     g.fillStyle = "#dfe8ff";
     for (const [a, path] of lit) { g.globalAlpha = a; g.fill(path); }
-    g.globalAlpha = 1;
-    // the planet's edge, far below
-    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(ground, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!still) {
-      // a shooting star, now and then
-      if (!shoot && now > nextShoot) shoot = { x: W * (0.2 + Math.random() * 0.7), y: H * (0.05 + Math.random() * 0.3), at: now, a: 2.5 + Math.random() * 0.5 };
-      if (shoot) {
-        const k = (now - shoot.at) / 900;
-        if (k >= 1) { shoot = null; nextShoot = now + 5000 + Math.random() * 7000; }
-        else {
-          const len = 120 * Math.sin(k * Math.PI), hx = shoot.x - Math.cos(shoot.a) * k * 260, hy = shoot.y + Math.sin(shoot.a) * k * 260 * -1 + k * 120;
-          const gr = g.createLinearGradient(hx, hy, hx + Math.cos(shoot.a) * len, hy - Math.sin(shoot.a) * len);
-          gr.addColorStop(0, "rgba(255,255,255,.95)"); gr.addColorStop(1, "rgba(255,255,255,0)");
-          g.strokeStyle = gr; g.lineWidth = 1.4; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + Math.cos(shoot.a) * len, hy - Math.sin(shoot.a) * len); g.stroke();
-        }
-      }
-    }
-    // the pigeon and its trail
-    const cyc = t % (FLY + REST), u = still ? 0.62 : Math.min(1, cyc / FLY), fade = still ? 1 : cyc > FLY ? Math.max(0, 1 - (cyc - FLY) / REST) : Math.min(1, cyc / 900);
-    const ease = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
-    g.setLineDash([3, 7]); g.lineWidth = 1.3; g.lineCap = "round";
-    const N = 90, upto = Math.max(1, Math.round(N * ease));
-    for (let i = 1; i <= upto; i++) {
-      const [x0, y0] = at((i - 1) / N), [x1, y1] = at(i / N);
-      g.strokeStyle = `rgba(160,190,255,${(0.05 + 0.5 * (i / upto) ** 2) * fade})`;
-      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-    }
-    g.setLineDash([]);
-    const [bx, by] = at(ease), [nx, ny] = at(Math.min(1, ease + 0.01)), ang = Math.atan2(ny - by, nx - bx);
-    const glow = g.createRadialGradient(bx, by, 0, bx, by, 46);
-    glow.addColorStop(0, `rgba(120,170,255,${0.45 * fade})`); glow.addColorStop(1, "rgba(120,170,255,0)");
-    g.fillStyle = glow; g.beginPath(); g.arc(bx, by, 46, 0, 6.29); g.fill();
-    const flap = still ? 1 : 0.78 + 0.22 * Math.sin(t / 95);
-    g.save(); g.translate(bx, by); g.rotate(ang * 0.6); g.scale(1.6, 1.6 * flap); g.translate(-12, -12);
-    g.shadowColor = "rgba(150,190,255,.9)"; g.shadowBlur = 14; g.globalAlpha = fade; g.fillStyle = "#fff"; g.fill(bird); g.restore();
     g.globalAlpha = 1;
     if (!still) skyLoop = requestAnimationFrame(frame);
   };
@@ -2476,6 +2701,10 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.3", at: Date.UTC(2026, 9, 24), title: "Coming and going", items: [
+    ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in InFlight, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
+    ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
+  ] },
   { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
     ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.georgefarrowgreen.com, where you sign in for every app on the site, and brings you straight back."],
     ["person", "green", "Your messages open as you come back", "The password or passkey you sign in with there unlocks them here too, so you only show it’s you once."],
@@ -3405,7 +3634,9 @@ function playFresh() {
 const kTag = (html, k, sig) => html.replace(/^(\s*<[a-z]+)/, `$1 data-key="${k}"${sig != null ? ` data-sig="${sig}"` : ""}`);
 const kSig = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i); return (h >>> 0).toString(36); };
 let kEase = null;
-const kEases = () => kEase ||= { move: cssVar(document.documentElement, "--nav") || "cubic-bezier(.32,.72,0,1)", bounce: cssVar(document.documentElement, "--bouncy") || "cubic-bezier(.3,1.35,.45,1)", out: cssVar(document.documentElement, "--ease-out") || "ease-out" };
+const kEases = () => kEase ||= { move: cssVar(document.documentElement, "--nav") || "cubic-bezier(.32,.72,0,1)", bounce: cssVar(document.documentElement, "--bouncy") || "cubic-bezier(.3,1.35,.45,1)", out: cssVar(document.documentElement, "--ease-out") || "ease-out",
+  // (and by the names the site's other pages use: signing in and out, which goes between them)
+  glide: cssVar(document.documentElement, "--ease-glide") || "cubic-bezier(.32,.72,0,1)", spring: cssVar(document.documentElement, "--ease-spring") || "cubic-bezier(.2,1.1,.4,1)", easeIn: cssVar(document.documentElement, "--ease-in") || "ease-in" };
 const kView = () => `${S.view}|${S.chat || ""}`;
 const kOn = (r, vr) => (r.width || r.height) && r.bottom > vr.top && r.top < vr.bottom;
 function snapKeyed() {
@@ -4988,7 +5219,7 @@ function vAuth() {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
     case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
         <div class="wtop">
-          <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+          <h1 class="wlogo" aria-label="InFlight"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
@@ -8056,11 +8287,17 @@ async function onClick1(e, t) {
       catch (err) { toast(esc(err.message)); }
       return;
     case "emailtoggle": return setEmailNotify(!S.me.notifyEmail);
-    case "signoutgo":
-      if (!STILL.matches) await new Promise((r) => setTimeout(r, 280));    // (the action card goes first; then the app fades to the welcome)
-      await pushDisable(true);
-      api("logout", { method: "POST" }).catch(() => {});
-      await forget(); return go("welcome");
+    case "signoutgo": {
+      if (!STILL.matches) await new Promise((r) => setTimeout(r, 280));    // (the action card goes first; then dusk, to the welcome)
+      const night = dusk();
+      try {
+        await pushDisable(true);
+        api("logout", { method: "POST" }).catch(() => {});
+        await night.dark;                                                  // (dark now: what's under it can go)
+        await forget(); S.navQuiet = true; go("welcome");                  // (under the night: no change of screen of its own)
+      } finally { night.done(); }
+      return;
+    }
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
   }
@@ -9014,8 +9251,11 @@ async function start() {
   mount();
   textSize(); window.addEventListener("focus", textSize);
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const signedBack = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  const signedBack = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  const you = signedBack ? new URLSearchParams(location.hash.slice(1)).get("f") : null;
   if (signedBack) history.replaceState(null, "", location.pathname);
+  // (it comes in under the account's page's last picture, which theme.js has drawn already: app.js's own copy now)
+  if (signedBack) arrival = arriving(you); else document.documentElement.classList.remove("arriving");
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
@@ -9027,7 +9267,7 @@ async function start() {
   // an invite, or a reset link (from before they were the account's page's): passed on to it
   const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (away) return location.replace(toAccount(`#${away[1]}=${away[2]}`));
-  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
+  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); arrival?.away(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
   // the old address asked for what it kept: signed in here already, that's only clearing it, done alongside; signed out,
   // the welcome is up while it's asked (what it hands over, a sign-in, is taken up below)
   if ((await idb.get("session"))?.token) moveIn().catch(() => {});
@@ -9048,12 +9288,19 @@ async function start() {
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
-    if (signedBack) { try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {} api("handback", { method: "POST", body: { code: signedBack, verifier: "" } }).catch(() => {}); }
+    if (signedBack) {
+      try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {}
+      // (swapped already on the first frame: the sign-in it made, not wanted here, signed out again; else used up)
+      if (window.arvSwap?.code === signedBack) window.arvSwap.answer.then((x) => { if (x.ok && x.d?.token) fetch("/api/pigeon/logout", { method: "POST", headers: { Authorization: "Bearer " + x.d.token } }).catch(() => {}); }, () => {});
+      else api("handback", { method: "POST", body: { code: signedBack, verifier: "" } }).catch(() => {});
+      window.arvSwap = null;
+    }
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
     await outboxLoad();
     render();
+    arrival?.away();                               // (and the account's page's sky it came in under clears to it)
     // (the app is up by now: anything below going wrong mustn't stop the polling and the rest)
     try {
       // back from an update: the chat you were in (if it was moments ago)
@@ -9135,6 +9382,7 @@ function flightCheck() {
 // if starting goes wrong, say so and offer a way out, rather than "Opening InFlight…" for ever
 function bootFail(err) {
   console.error("start", err);
+  document.documentElement.classList.remove("arriving"); arrival?.away();      // (never the account's page's sky over what went wrong)
   if (S.view !== "loading" && $view?.firstElementChild && !$(".loading", root())) return;
   try { if (S.me?.id) idb.del("cache:" + S.me.id); } catch (_) {}
   const scr = root(); if (!scr) return;

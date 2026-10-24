@@ -94,13 +94,29 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
    again. Measured against the blurred ones, a difference of about 1 in 255.) */
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; opacity: 0.9; will-change: transform; }
 .a1 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-1) 73%, transparent), color-mix(in srgb, var(--aura-1) 66%, transparent) 20%, color-mix(in srgb, var(--aura-1) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 .a2 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-2) 73%, transparent), color-mix(in srgb, var(--aura-2) 66%, transparent) 20%, color-mix(in srgb, var(--aura-2) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 .a3 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-3) 73%, transparent), color-mix(in srgb, var(--aura-3) 66%, transparent) 20%, color-mix(in srgb, var(--aura-3) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate; }
+  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
 /* (held where they are while a sheet's up over the page) */
 body.sheet-up .aura { animation-play-state: paused; }
+/* dawn, as you're signed in (app.js dawnBreak): a warm light at the foot, the sky's own lights brighter */
+.sky .dawn { position: absolute; inset: 0; opacity: 0; background: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, rgba(255, 160, 200, 0) 72%),
+  radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), rgba(160, 200, 255, 0) 62%); }
+.sky.lit .aura { filter: brightness(1.3) saturate(1.2); transition: filter 1.2s var(--ease-out); }
+/* and dusk, as you sign out (app.js duskFall): the sky drawn down from the top, its lights dimmer, and back */
+.sky .dusk { position: absolute; inset: 0; opacity: 0; background: linear-gradient(180deg, rgba(20, 16, 58, 0.5), rgba(60, 36, 96, 0.22) 55%, rgba(255, 150, 120, 0.12)); }
+.sky.dim .aura { filter: brightness(0.75) saturate(0.85); transition: filter 1.2s var(--ease-out); }
+/* you, leaving for the app: from the tick, to where the app takes over (app.js leaving) */
+.leave { position: fixed; z-index: 40; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; display: grid; place-items: center; color: #fff; pointer-events: none;
+  background: linear-gradient(180deg, #5fe39a, #1fa75a); box-shadow: 0 12px 28px -10px rgba(31, 167, 90, 0.8); }
+.leave > * { grid-area: 1 / 1; }
+.leave .face { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; overflow: hidden; font: 600 22px/1 var(--font-d);
+  background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); opacity: 0; }
+.leave .face img { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; }
+/* (the lights coming up as the page opens, as they go when it leaves for an app: never there all at once) */
+@keyframes aura-in { from { opacity: 0; } }
 @keyframes drift1 { to { transform: translate(14vmax, 10vmax) scale(1.12); } }
 @keyframes drift2 { to { transform: translate(-16vmax, 8vmax) scale(0.9); } }
 @keyframes drift3 { to { transform: translate(10vmax, -12vmax) scale(1.08); } }
@@ -211,11 +227,19 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
   color: #fff; background: linear-gradient(180deg, #5aa2ff, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
-  transition: transform var(--dur-release) var(--spring), opacity var(--dur-fast), filter var(--dur-fast); }
+  transition: transform var(--dur-release) var(--spring), opacity var(--dur-fast), filter var(--dur-fast), width var(--dur-base) var(--glide); }
 .btn:active { transform: scale(0.97); transition-duration: var(--dur-press); }
 .btn.quiet { color: var(--text); background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line); }
 .btn.danger { background: linear-gradient(180deg, #ff7b70, var(--danger)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--danger); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+/* (a sign-in's button at work: a circle, turning; then a tick drawn in it, in green: app.js working) */
+.btn.working { width: 52px !important; padding: 0; justify-self: center; }
+.btn.working:disabled { opacity: 1; }
+.btn.working .spin { width: 22px; height: 22px; border-width: 2.5px; }
+.btn.done { color: #fff; background: linear-gradient(180deg, #5fe39a, #1fa75a); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 12px 28px -12px #1fa75a; }
+.btn.done .tick path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 0.42s var(--ease-out) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .btn { transition-property: transform, opacity, filter; } .btn.done .tick path { animation: none; stroke-dashoffset: 0; } }
 .btn .spin, .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .link { border: 0; background: none; padding: 8px; border-radius: 12px; color: var(--tint-text); font-weight: 500; font-size: 16px; transition: opacity var(--dur-fast); }
@@ -242,6 +266,55 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   transition: box-shadow 0.2s; }
 .field input:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--tint); }
 .field input[readonly] { color: var(--text-2); }
+/* no account without an invite (app.js inviteCard): what it takes, three steps along a faint line, then the link */
+.invite-steps { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.invite-steps li { position: relative; display: grid; justify-items: center; align-content: start; gap: 9px; font-size: 13px; font-weight: 500; line-height: 1.25; color: var(--text-2);
+  animation: rise 0.8s var(--glide) backwards; }
+.invite-steps li:nth-child(1) { animation-delay: 0.22s; } .invite-steps li:nth-child(2) { animation-delay: 0.32s; } .invite-steps li:nth-child(3) { animation-delay: 0.42s; }
+.invite-steps li + li::before { content: ""; position: absolute; top: 23px; left: calc(16px - 50%); width: calc(100% - 38px); height: 1.5px; border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--line) 25%, var(--line) 75%, transparent); }
+.step-ic { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; overflow: hidden; color: var(--tint-text); background: var(--glass-ctl); box-shadow: var(--edge); }
+.step-ic img { display: block; width: 100%; height: 100%; }
+.signin.invite .form { margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .invite-steps li { animation: fade-in var(--dur-fast) linear backwards; animation-delay: 0s !important; } }
+/* joining, a step at a time (app.js joinCard): Back, where you are, how many */
+.jhead { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 28px; margin: -4px -2px 0; }
+.jhead .back { justify-self: start; display: inline-flex; align-items: center; gap: 2px; padding: 4px 6px; font-size: 15px; transition: opacity var(--dur-fast) var(--ease-out); }
+.jhead .back[disabled] { opacity: 0; pointer-events: none; }
+.jhead .d { display: flex; gap: 6px; align-items: center; }
+.jhead .d i { width: 6px; height: 6px; border-radius: 3px; background: var(--text-3); opacity: 0.45;
+  transition: width var(--dur-base) var(--ease-spring), opacity var(--dur-fast), background-color var(--dur-fast); }
+.jhead .d i.on { width: 20px; background: var(--tint); opacity: 1; }
+.jhead .d i.done { background: var(--good); opacity: 0.9; }
+.jhead .of { justify-self: end; padding-right: 4px; font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.jstep { display: grid; gap: 10px; }
+.jstep[hidden] { display: none; }
+.jstep > .hint:not(.handle) { margin-top: -2px; }
+@media (prefers-reduced-motion: reduce) { .jhead .d i { transition: none; } }
+/* you, remembered here: how you signed in last time; and, after a password, a passkey offered (app.js) */
+.last { justify-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--tint-text);
+  background: color-mix(in srgb, var(--tint) 15%, transparent); }
+.pwbox[hidden] { display: none; }
+.signin .link.usepw { justify-self: center; }
+.offer { justify-items: center; text-align: center; }
+.offer-art { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; color: #fff; margin: 4px 0 2px;
+  background: linear-gradient(160deg, #5aa2ff, var(--tint-deep)); box-shadow: 0 16px 34px -14px var(--tint-deep); animation: offerIn 0.7s var(--ease-spring) backwards; }
+@keyframes offerIn { from { transform: scale(0.6) rotate(-12deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .offer-art { animation: none; } }
+.offer h2 { margin: 0; font: 700 21px/1.2 var(--font-d); }
+.offer p { margin: 0 0 4px; color: var(--text-2); font-size: 15px; line-height: 1.45; max-width: 34ch; }
+/* a password field: its eye (struck through while what's typed shows), and Caps Lock said under it */
+.pwf { display: grid; gap: 6px; }
+.pw { position: relative; }
+.pw input { padding-right: 52px; }
+.eye { position: absolute; right: 5px; top: 50%; width: 42px; height: 42px; margin-top: -21px; border: 0; border-radius: 12px; background: none; color: var(--text-2);
+  display: grid; place-items: center; transition: transform var(--dur-release) var(--spring); }
+.eye:active { transform: scale(0.88); transition-duration: var(--dur-press); }
+.eye .slash { stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset var(--dur-base) var(--ease-out); }
+.eye.on .slash { stroke-dashoffset: 0; }
+.caps[hidden] { display: none; }
+.caps { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 600; color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .eye .slash { transition: none; } }
 .field input:-webkit-autofill { box-shadow: inset 0 0 0 0.5px var(--line), inset 0 0 0 100px var(--field); }
 .field input:-webkit-autofill:focus { box-shadow: inset 0 0 0 1.5px var(--tint), inset 0 0 0 100px var(--field); }
 .at { display: flex; align-items: center; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); padding-left: 16px; color: var(--text-2); }
@@ -342,7 +415,9 @@ dialog.sheet.dragging { transition: none; }
 
 /* ---- waiting for the account ---- */
 /* (the shimmer a band of light moved across each, by its transform, rather than its background repainted every frame) */
-.skeleton { display: grid; gap: 18px; }
+/* (only once it's taking a while: a quick start goes straight to the page, without this in between) */
+.skeleton { display: grid; gap: 18px; animation: sk-late 0.3s var(--ease-out) 0.5s backwards; }
+@keyframes sk-late { from { opacity: 0; } }
 .sk { position: relative; overflow: hidden; border-radius: var(--r-group); background: var(--glass); }
 .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 8%, transparent) 50%, transparent 70%);
   transform: translateX(-100%); animation: shimmer 1.6s linear infinite; }

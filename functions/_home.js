@@ -5,7 +5,7 @@
 import { getContent } from "./_content.js";
 
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
-const STAMPED = ["styles.css", "app.js"];
+const STAMPED = ["styles.css", "app.js", "404.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 // (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)
 let memo = { at: 0, v: null };
@@ -28,6 +28,16 @@ export async function homePage(ctx, url, res) {
     const want = url.searchParams.get("v"), v = want ? (await stamps(ctx, url))[f] : null;
     const out = new Response(res.body, res);
     out.headers.set("Cache-Control", want && want === v ? "public, max-age=31536000, immutable" : "no-cache");
+    return out;
+  }
+  // the page for an address that isn't one (404.html), with its styles and script stamped the same way: asked for
+  // plain, they can be kept for hours on the way, and the page then drawn with an older copy of either
+  if (res.status === 404 && ctx.request.method === "GET" && (res.headers.get("content-type") || "").includes("text/html")) {
+    const v = await stamps(ctx, url);
+    const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0].replace(/^\//, ""); if (v[f]) el.setAttribute(name, `/${f}?v=${v[f]}`); } });
+    const out = new HTMLRewriter().on('link[rel="stylesheet"][href^="/styles.css"]', stamp("href")).on('script[src^="/404.js"]', stamp("src")).transform(res);
+    out.headers.delete("content-length"); out.headers.delete("etag");
+    out.headers.set("Cache-Control", "no-cache");
     return out;
   }
   if (!isPage(url) || ctx.request.method !== "GET" || res.status !== 200 || !(res.headers.get("content-type") || "").includes("text/html")) return res;

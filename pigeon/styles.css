@@ -1699,18 +1699,14 @@ html.night .nightsky{display:block}
 .welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
 .welcome .wquiet:active{color:#fff}
 @media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper,.welcome .wcta{animation:none;opacity:1;filter:none;transform:none}.welcome .wglow{animation:none}}
-/* the welcome's logo: out of the dark, with a slow orbit around it */
-.welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:200px;height:200px}
+/* the welcome's logo: out of the dark, in a soft glow */
+.welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:160px;height:160px}
 .welcome .wlogo .appicon{position:relative;width:96px;height:96px;border-radius:26px;font-size:58px;opacity:0;filter:blur(14px);transform:scale(.86);will-change:auto;
   box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 10px 30px rgba(10,40,120,.45);animation:wlogo 1.8s cubic-bezier(.2,.7,.2,1) .3s forwards}
 @keyframes wlogo{80%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
-.welcome .wlogo::before{content:"";position:absolute;inset:-10px;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.55),rgba(70,140,255,.18) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards,wbreathe 5s ease-in-out 2.8s infinite}
-@keyframes wbreathe{50%{transform:scale(1.12);filter:brightness(1.25)}}
-.welcome .wring{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(160,190,255,.32);opacity:0;animation:wfade 2s ease 1.4s forwards,wspin 60s linear infinite}
-.welcome .wring::after{content:"";position:absolute;top:-3px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#cfe0ff;box-shadow:0 0 10px 2px rgba(150,190,255,.8)}
-@keyframes wspin{to{transform:rotate(360deg)}}
+.welcome .wlogo::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.4),rgba(70,140,255,.12) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards}
 .welcome .wtop{margin-top:max(16vh,80px)}
-@media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wring{animation:none;opacity:1;filter:none;transform:none}}
+@media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wlogo::before{animation:none;opacity:1;filter:none;transform:none}}
 /* "You've been invited" in the same quiet capitals as "By invitation only" */
 .welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
 /* every screen before you're in, under the same night: the sky carries on behind,
@@ -1737,10 +1733,52 @@ html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s
 html.night .nav-ghost .night{background:none}
 /* back on the welcome: the logo and words are already there */
 .welcome.again .wlogo .appicon{animation:none;opacity:1;filter:none;transform:none}
-.welcome.again .wring{animation:wspin 60s linear infinite;opacity:1}
-.welcome.again .wlogo::before{animation:wbreathe 5s ease-in-out infinite;opacity:1}
+.welcome.again .wlogo::before{animation:none;opacity:1}
 .welcome.again .wcta{animation:wfade .5s ease forwards}
 @media (prefers-reduced-motion:reduce){html.night .view.nav-push,html.night .view.nav-pop,html.night .nav-ghost{animation:none}html.night .nav-ghost{display:none}}
+
+/* ---------- signing in and out, in motion (app.js: handOff, arriving, dusk) ----------
+   The account's page, where you sign in, has a sky of its own: pale lavender, or deep blue when the phone is dark (the
+   phone's, not InFlight's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
+/* (the account page's sky exactly: its gradient, and its dawn, warm along the foot with a cool light at the top) */
+:root{--acct-sky:#f3f0fb;--acct-sky-a:#e9eefc;--acct-sky-c:#f7f8fc;
+  --acct-heaven:radial-gradient(120% 80% at 50% -10%,var(--acct-sky-a),var(--acct-sky) 52%,var(--acct-sky-c));
+  --dawn:radial-gradient(120% 50% at 50% 112%,rgba(255,190,150,.55),rgba(255,160,200,.22) 45%,transparent 72%),radial-gradient(110% 60% at 50% -12%,rgba(160,200,255,.22),transparent 62%)}
+@media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26;--acct-sky-a:#121a3c;--acct-sky-c:#05060e}}
+/* going: that sky, over everything */
+.handoff{position:fixed;inset:0;z-index:100;overflow:hidden;pointer-events:none}
+.handoff .hsky{position:absolute;inset:0;background:var(--acct-heaven);opacity:0}
+/* coming back: the page's last picture (its sky, the dawn and you), from the very first frame (theme.js marks the
+   page before it's drawn), then app.js's own copy of it, the same; and if app.js never comes, it clears by itself */
+html.arriving body::after,.arrival .arv-sky{background:var(--dawn),var(--acct-heaven)}
+html.arriving body::after{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;animation:fade-out .4s ease 12s forwards}
+html.arriving.arv-face body::before,.arrival .arv-me{position:fixed;left:50%;top:30%;width:78px;height:78px;margin:-39px 0 0 -39px;border-radius:50%}
+html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-events:none;display:grid;place-items:center;color:#fff;font:600 32px/1 var(--font);
+  background:var(--arv-p,none) center/cover no-repeat,linear-gradient(160deg,#78b6ff,#3157d8 70%,#6a3fd8);box-shadow:0 12px 30px -12px rgba(40,50,150,.5);animation:fade-out .4s ease 12s forwards}
+.arrival{position:fixed;inset:0;z-index:45;pointer-events:none}
+.arrival .arv-sky{position:absolute;inset:0}
+.arrival .arv-me{display:grid;place-items:center;overflow:hidden;color:#fff;font:600 32px/1 var(--font);letter-spacing:0;
+  background:linear-gradient(160deg,#78b6ff,#3157d8 70%,#6a3fd8);box-shadow:0 12px 30px -12px rgba(40,50,150,.5)}
+.arrival .arv-me img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}   /* (over the initial, which stays under it as it fades in) */
+@media (prefers-reduced-motion:reduce){html.arriving body::after,html.arriving.arv-face body::before{animation:fade-out .2s ease 12s forwards!important}}
+/* until they come in, a row at a time: Messages' list, under its title */
+.screen.unlocking .view > .brandh ~ *{opacity:0}
+/* the padlock in the middle: opening as you come in, closing as you go (its shackle swings on its right leg) */
+.padlock{position:absolute;left:50%;top:50%;translate:-50% -50%;z-index:46;display:flex;flex-direction:column;align-items:center;gap:14px;pointer-events:none}
+.padlock .pldisc{position:relative;width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:var(--cell);color:var(--tint);box-shadow:var(--glass-shadow),inset 0 0 0 .5px var(--glass-edge)}
+.padlock .plring{position:absolute;top:0;left:50%;width:76px;height:76px;margin-left:-38px;border-radius:50%;opacity:0;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--tint) 70%,transparent),0 0 26px 8px color-mix(in srgb,var(--tint) 32%,transparent)}
+.padlock svg{width:38px;height:38px;overflow:visible}
+.padlock .plshackle{fill:none;stroke:currentColor;stroke-width:2.3;stroke-linecap:round;transform-box:view-box;transform-origin:15.8px 10.4px}
+.padlock .plbody{fill:currentColor}
+.padlock .plhole{fill:var(--cell)}
+.padlock .plcap{margin:0;font-size:15px;font-weight:500;color:var(--label-2);white-space:nowrap}
+/* going: a lifeless copy of the screen (whose rows fall away without the app redrawing them), then night over it */
+.dusk{position:absolute;inset:0;z-index:45;overflow:hidden;pointer-events:none}
+.dusk-copy{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.dusk-copy.plain{background:var(--bg-plain)}
+.dusk-copy > .view{flex:1;min-height:0;overflow:hidden}
+.dusk-night{position:absolute;inset:0;z-index:47;opacity:0;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
 /* a friend's loft */
 .lofthead .sub{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;text-align:center}
 .lofthead .sub .pg{font-size:13px}

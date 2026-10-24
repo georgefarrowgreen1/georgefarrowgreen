@@ -47,6 +47,26 @@ const ARGON = { m: 65536, t: 3 };                // 64 MiB, 3 passes, one lane
 // (hash-wasm's Argon2id, loaded only when a password is stretched)
 let argon = null;
 const loadArgon = () => (argon ||= import("./argon2.js").then((m) => m?.argon2id || m?.default?.argon2id || globalThis.hashwasm.argon2id).catch((e) => { argon = null; throw e; }));
+// ...and worked out in the background where it can be (argon2w.js), so the page doesn't stop while it is: a spinner keeps
+// turning, and what's tapped is answered. Where a worker can't be made, or can't run it, it's worked out on the page.
+let worker = null, noWorker = typeof Worker === "undefined", seq = 0;
+const asked = new Map();
+function inBackground(opts) {
+  if (noWorker) return null;
+  try {
+    if (!worker) {
+      worker = new Worker(new URL("./argon2w.js", import.meta.url), { type: "module" });
+      worker.onmessage = (e) => { const w = asked.get(e.data?.id); if (!w) return; asked.delete(e.data.id); if (e.data.err) w.no(new Error(e.data.err)); else w.ok(e.data.out); };
+      worker.onerror = () => { noWorker = true; worker = null; for (const w of asked.values()) w.no(new Error("no worker")); asked.clear(); };
+    }
+    return new Promise((ok, no) => { const id = ++seq; asked.set(id, { ok, no }); worker.postMessage({ id, opts }); });
+  } catch (_) { noWorker = true; return null; }
+}
+async function argon2(opts) {
+  const away = inBackground(opts);
+  if (away) { try { return await away; } catch (_) { noWorker = true; } }
+  return (await loadArgon())(opts);
+}
 const ECDH = { name: "ECDH", namedCurve: "P-256" };
 const aesKey = (raw, uses) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, uses);
 // (a hand-back's key: from the two halves of the trip's key pairs, both public halves bound in)
@@ -74,8 +94,7 @@ export const E2E = {
     const pw = te.encode(String(password).normalize("NFKC"));
     let bits;
     if (E2E.isCurrent(salt)) {
-      const argon2id = await loadArgon();
-      bits = await argon2id({ password: pw, salt: fromB64url(salt.slice(3)), parallelism: 1, iterations: ARGON.t, memorySize: ARGON.m, hashLength: 64, outputType: "binary" });
+      bits = await argon2({ password: pw, salt: fromB64url(salt.slice(3)), parallelism: 1, iterations: ARGON.t, memorySize: ARGON.m, hashLength: 64, outputType: "binary" });
     } else {
       const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
       bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: typeof salt === "string" ? fromB64url(salt) : salt, iterations: PBKDF2_ITER }, base, 512));

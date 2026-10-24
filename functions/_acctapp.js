@@ -22,7 +22,7 @@ export const ACCT_SECURITY = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // what it shares with the rest of the site: its address here → where it's kept
-const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
+const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
 // The page's script and styles, and every module the script brings in, stamped with what's in them as sent (?v=: a
 // module's own imports stamped in turn), as InFlight's are (functions/_app.js): so the page always runs the files it
@@ -66,6 +66,8 @@ export async function accountHost(ctx, url) {
   const type = res.headers.get("content-type") || "";
   // (anything else that comes back as a page is the site's home page, served as a fallback)
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
+  // (and one that isn't anything: the site's own page for that is the site's, not the account's)
+  if (res.status === 404) return notFound();
   const head = ctx.request.method === "HEAD", name = url.pathname.slice(1);
   const page = res.status === 200 && PAGE.test(path), script = res.status === 200 && /^[\w.-]+\.(js|css)$/.test(name);
   const body = head ? null : page ? await stamped(ctx, url, await res.text()) : script ? await asSent(ctx, url, name, await res.text()) : res.body;

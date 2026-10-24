@@ -40,6 +40,8 @@ export function serveWeather(res, path) {
   const type = res.headers.get("content-type") || "";
   // anything else that comes back as a page is the site's home page, served as a fallback
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
+  // (and one that isn't anything: the site's own page for that is the site's, not Weather's)
+  if (res.status === 404) return notFound();
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(WX_SECURITY)) out.headers.set(k, v);
   // small files, always checked for a newer copy (the browser keeps its copy until one appears); private, so

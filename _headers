@@ -21,6 +21,9 @@
 /app.js
   Cache-Control: no-cache
 
+/404.js
+  Cache-Control: no-cache
+
 # the home page's typeface (index.html asks for it first)
 /fonts/*
   Cache-Control: public, max-age=2592000

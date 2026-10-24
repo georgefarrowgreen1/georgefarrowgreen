@@ -39,9 +39,15 @@
   <link rel="icon" href="/favicon-32.png?v=3" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
   <link rel="preload" href="/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- (the account's page, where Sign in goes: ready to open the moment it's tapped) -->
+  <link rel="preconnect" href="https://account.georgefarrowgreen.com" />
+  <script src="signedin.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- back from signing in on the account's page (#signedin): the picture that page ended on, there from the first frame
+       (styles.css .back-in:target), till app.js takes it on (arriveFrom) -->
+  <div class="back-in" id="signedin" aria-hidden="true"></div>
   <div class="bg" id="bg" aria-hidden="true"></div>
   <div class="soft" id="soft" aria-hidden="true"></div>
   <div class="barbg" aria-hidden="true"></div>

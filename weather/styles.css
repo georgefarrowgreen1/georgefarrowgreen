@@ -1101,11 +1101,11 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
   .pc-li:hover .pc-r { opacity: 0; }
   .place-card:hover { filter: brightness(1.08); }
 }
-.place-card[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } .place-card[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
-.place-card[data-sky="cloudy-day"] { --pa: #6a7d93; --pb: #43566c; } .place-card[data-sky="rain-day"] { --pa: #4f6176; --pb: #303f52; }
-.place-card[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } .place-card[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } .place-card[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
-.place-card[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } .place-card[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
-.place-card[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } .place-card[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } .place-card[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
+:is(.place-card, .acct-chip)[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } :is(.place-card, .acct-chip)[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
+:is(.place-card, .acct-chip)[data-sky="cloudy-day"] { --pa: #6a7d93; --pb: #43566c; } :is(.place-card, .acct-chip)[data-sky="rain-day"] { --pa: #4f6176; --pb: #303f52; }
+:is(.place-card, .acct-chip)[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } :is(.place-card, .acct-chip)[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } :is(.place-card, .acct-chip)[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
+:is(.place-card, .acct-chip)[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } :is(.place-card, .acct-chip)[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
+:is(.place-card, .acct-chip)[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } :is(.place-card, .acct-chip)[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } :is(.place-card, .acct-chip)[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
 @media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: opacity var(--dur-fast), filter var(--dur-fast); } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
 /* searching, the results take the list's place (as iOS's search does): the list fading out of their way, and back in
@@ -1722,6 +1722,8 @@ select option { color: #fff; background: #1c2434; }
   background-color: rgba(26, 34, 52, 0.82); -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 12px 30px -10px rgba(0, 0, 0, 0.5); }
 .toast:empty { display: none; }
+/* (over an open sheet too, where the browser has a top layer: app.js toast; there, only where the rule above puts it) */
+.toast[popover] { right: auto; bottom: auto; margin: 0; border: 0; overflow: visible; }
 
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
@@ -1754,6 +1756,43 @@ select option { color: #fff; background: #1c2434; }
 .acct-new { margin: 0; text-align: center; font-size: 14px; color: var(--text-2, rgba(255, 255, 255, 0.7)); }
 .acct-new a { color: #9cc6ff; font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }
 
+/* ---------- signing in on the account's page: the way there, and back ---------- */
+/* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
+   along its foot, and your photo in a circle a third of the way down. Going there, that sky comes in over everything
+   (app.js handOff: in the top layer, over Settings), so that page opens on what was already in sight. Back from it (#signin=…), the page opens on the picture it ended on (early.js): your photo comes into it where
+   the page had it, the picture fades as Settings comes up, and the photo flies down into the
+   account's card, your places ticked off under it as they go with the account (app.js arriveFrom). None of it takes a tap:
+   a tap goes to what's under it */
+/* (the account page's sky exactly, and its dawn) */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
+  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
+  --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
+.handoff { position: fixed; inset: 0; width: auto; height: auto; margin: 0; padding: 0; border: 0; overflow: hidden; background: none; color: var(--text); pointer-events: none; }
+.handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
+.back-in { position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  background: var(--acct-dawn), var(--acct-heaven);
+  /* (should the script never take it on, it goes by itself after a few seconds; taken on, .held, the script sees it goes) */
+  animation: back-in-off var(--dur-base) var(--ease) 6s forwards; }
+.back-in.held { animation: none; }
+@keyframes back-in-off { to { opacity: 0; visibility: hidden; } }
+/* your photo, or your initial, as the account's page shows it; it becomes the card's as it flies (.back-in-card fading in) */
+.back-in-av { position: fixed; inset: auto; left: calc(50% - 39px); top: calc(30% - 39px); width: 78px; height: 78px; margin: 0; padding: 0; border: 0;
+  z-index: 51; isolation: isolate; overflow: hidden; display: grid; place-items: center; border-radius: 50%; pointer-events: none;
+  color: #fff; font-size: 34px; font-weight: 700; line-height: 1;
+  background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); box-shadow: 0 12px 30px -12px rgba(49, 87, 216, 0.7); }
+.back-in-card { position: absolute; inset: 0; z-index: -1; border-radius: inherit; opacity: 0; background: linear-gradient(160deg, #6fb0ff, #2b62d6); }
+.back-in-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.back-in-av img.loaded { opacity: 1; }
+/* your places, going with your account as you sign in: each in its own sky, as in Places, ticked off one after another */
+.acct-moved { display: grid; gap: 8px; margin: 0 4px; }
+.acct-moved p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.acct-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.acct-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 30px; padding: 0 12px 0 6px; border-radius: 999px; font-size: 13.5px; font-weight: 650; color: #fff;
+  background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); }
+.acct-chip > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-chip.more { padding: 0 12px; background: rgba(255, 255, 255, 0.1); }
+.acct-tick { flex: none; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--good); box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.4); }
 /* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
    iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
    too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */

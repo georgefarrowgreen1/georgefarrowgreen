@@ -319,6 +319,11 @@ async function loadMe() {
   showMe();
 }
 function showMe() {
+  // (back from signing in, and signed in: your photo comes into its place from the picture the account's page ended on,
+  // and your photo's place and Edit wait for it: arrive; Sign in, as it was, measured first, as it's about to go)
+  const back = arrival && !arrival.gone && !arrival.av ? arrival : null, welcome = back && me.signedIn;
+  const pill = welcome && !motion.matches ? $("#sign-in").getBoundingClientRect() : null;
+  if (welcome) { for (const el of [$("#me"), $("#edit")]) el.classList.add("held"); back.lines = true; }
   // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
   if (me.account) for (const a of $$("[data-account]")) a.href = me.account + (a.id === "sign-in" ? "/#signin=home" : "/#from=home");
   body.classList.toggle("signed", !!me.signedIn);
@@ -326,6 +331,14 @@ function showMe() {
   body.classList.add("known");
   // (from Admin on the account page: #edit, straight into changing the words)
   if (location.hash === "#edit") { history.replaceState(null, "", location.pathname + location.search); if (me.owner) startEdit(); }
+  // (from the page for an address that isn't one, 404.html: #contact=<that address>, a message about it to send)
+  if (location.hash.startsWith("#contact")) {
+    let about = "", from = "";
+    try { [about, from = ""] = location.hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
+    history.replaceState(null, "", location.pathname + location.search);
+    if (about && !$("#c-message").value) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
+    $(".cta [data-contact]").click();
+  }
   const face = $("#face");
   face.textContent = "";
   if (me.signedIn && me.photoAt) {
@@ -337,17 +350,8 @@ function showMe() {
     face.textContent = (me.name || "?").trim().charAt(0).toUpperCase();
   }
   $("#me").setAttribute("aria-label", me.signedIn ? `Your account (${me.name})` : "Your account");
-  // each app's line: theirs when they use it, what it is otherwise
-  const a = me.signedIn ? me.apps || {} : {};
-  const line = {
-    inflight: a.inflight && `${plural(a.inflight.friends, "friend")} · ${a.inflight.sent.toLocaleString("en-GB")} sent`,
-    weather: a.weather && `${plural(a.weather.places, "place")} · Alerts ${a.weather.alerts ? "on" : "off"}`,
-  };
-  for (const key of ["inflight", "weather"]) {
-    const small = $(`#app-${key} small`);
-    fadeText(small, line[key] || small.dataset.about);
-    small.classList.toggle("mine", !!line[key]);
-  }
+  // (each app's line, theirs: once their photo's landed, if it's on its way)
+  if (!welcome) showLines();
   // a message from them is from them: their name and email filled in, shown as one From row
   if (me.signedIn && me.name && me.email) {
     if (!$("#c-name").value) $("#c-name").value = me.name;
@@ -358,6 +362,171 @@ function showMe() {
     if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
     $("#from").hidden = false; $("#sender").classList.add("known");
   }
+  // (back, signed in: the photo on its way; back, but not signed in after all: the picture fades, the page as ever)
+  if (welcome) arrive(back, pill); else if (back) arriveEnd(back, true);
+}
+// each app's line: theirs when they use it, what it is otherwise
+function showLines() {
+  const a = me.signedIn ? me.apps || {} : {};
+  const line = {
+    inflight: a.inflight && `${plural(a.inflight.friends, "friend")} · ${a.inflight.sent.toLocaleString("en-GB")} sent`,
+    weather: a.weather && `${plural(a.weather.places, "place")} · Alerts ${a.weather.alerts ? "on" : "off"}`,
+  };
+  for (const key of ["inflight", "weather"]) {
+    const small = $(`#app-${key} small`);
+    fadeText(small, line[key] || small.dataset.about);
+    small.classList.toggle("mine", !!line[key]);
+  }
+}
+
+/* ---------------- signing in, on the account's page: the way there, and back ---------------- */
+// The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
+// that sky comes in over everything, so that page opens on what was already in sight (handOff); back from it
+// signed in (#signedin, taken out of the address at once), the page opens on the picture it ended on (index.html, from
+// the first frame), and your photo goes from there into its place in the bar (arrive). With Reduce Motion, dissolves.
+// Neither is ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
+// (the account page's own curve, for one screen growing into another; and its sky)
+const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
+const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
+let handing = null;
+// The account page's sky, coming in over everything; and off to url once it's in, or after 700 ms whatever happens.
+// Opacity only
+function handOff(url) {
+  if (handing) return;
+  const g = document.createElement("div");
+  g.className = "handoff"; g.setAttribute("aria-hidden", "true"); g.innerHTML = `<i class="handoff-sky"></i>`;
+  const undo = () => { g.remove(); if (handing?.g === g) handing = null; };
+  let went = false;
+  const go = () => {
+    if (went) return;
+    went = true; location.assign(url);
+    // (still here a good while later, and in sight: the page as it was, should the account's page never come)
+    setTimeout(() => { if (document.visibilityState === "visible") undo(); }, 10e3);
+  };
+  let sky;
+  try {
+    body.append(g);
+    sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motion.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
+  } catch (_) { undo(); location.assign(url); return; }
+  handing = { g, undo };
+  sky.then(go, go);
+  setTimeout(go, 700);
+}
+// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went)
+addEventListener("pageshow", (e) => { if (e.persisted) handing?.undo(); });
+
+// Back from the account's page signed in: its picture (index.html #signedin) taken on, with what's to happen to it.
+// Gone within a few seconds whatever happens: sooner if who's signed in is slow to come (the page as ever meanwhile,
+// showMe carrying on when it does)
+let arrival = null;
+if (/^#signedin(?![\w-])/.test(location.hash)) {
+  arrival = arriveFrom();
+  history.replaceState(null, "", location.pathname + location.search);
+}
+function arriveFrom() {
+  const el = $("#signedin"); if (!el) return null;
+  el.classList.add("held");
+  const a = { el, av: null, ghost: null, end: null, lines: false, timers: new Set(), gone: false };
+  a.slow = later(a, () => arriveEnd(a, true), 4000);
+  later(a, () => arriveEnd(a, true), 6000);
+  return a;
+}
+// (something to happen in a while, unless the picture's done with by then)
+function later(a, fn, ms) { const t = setTimeout(() => { a.timers.delete(t); if (!a.gone) fn(); }, ms); a.timers.add(t); return t; }
+// The picture done with, at once or fading: what's still to come stopped, and what was waiting for the photo (its place
+// in the bar, Edit, each app's line) shown
+function arriveEnd(a, fade = false) {
+  if (!a || a.gone) return;
+  a.gone = true;
+  for (const t of a.timers) clearTimeout(t);
+  if (arrival === a) arrival = null;
+  for (const el of [$("#me"), $("#edit")]) el.classList.remove("held");
+  if (a.lines) showLines();
+  a.ghost?.remove();
+  for (const x of [a.el, a.av]) {
+    if (!x?.isConnected) continue;
+    if (!fade) { x.remove(); continue; }
+    x.animate([{ opacity: getComputedStyle(x).opacity }, { opacity: 0 }], { duration: 250, easing: EASE_OUT, fill: "forwards" }).finished.then(() => x.remove(), () => x.remove());
+    setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
+  }
+}
+// Signed in: your photo (or your initial) comes into the picture (pill: where Sign in was, to draw in from)
+function arrive(a, pill) {
+  clearTimeout(a.slow); a.timers.delete(a.slow);
+  const still = motion.matches, av = a.av = document.createElement("span"), tint = document.createElement("span");
+  av.className = "back-in-av"; av.setAttribute("aria-hidden", "true"); tint.className = "back-in-face";
+  av.append(tint, (me.name || "?").trim().charAt(0).toUpperCase());
+  // (there since the first frame, as the account's page left you: signedin.js; taken on where it is, not brought in again)
+  const there = document.documentElement.classList.contains("back-face");
+  const img = window.backPhoto ? Object.assign(document.createElement("img"), { src: window.backPhoto, alt: "", className: "loaded" })
+    : me.photoAt ? Object.assign(document.createElement("img"), { src: `/api/me/photo?v=${me.photoAt}`, alt: "" }) : null;
+  if (img) av.append(img);
+  // (the photo in before it's shown, if it's there in a moment; if not, the initial, the photo fading in over it as it comes)
+  const ready = img && !there ? Promise.race([img.decode().catch(() => {}), new Promise((ok) => setTimeout(ok, 500))]) : Promise.resolve();
+  ready.then(() => {
+    if (a.gone) return;
+    if (img && !img.classList.contains("loaded")) fadeOnLoad(img);
+    body.append(av);
+    if (there) document.documentElement.classList.remove("back-face");
+    else av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : spring() });
+    later(a, () => reveal(a, pill), there ? 120 : still ? 250 : 420);
+  });
+}
+// The picture fades, the page under it; Sign in, as it was, draws in to the circle your photo goes in, and the photo
+// comes down into it on a gentle curve (bowed up a little, as if tossed there rather than slid), becoming the bar's as it
+// goes. With Reduce Motion, the photo fades with the picture, and the bar's comes in where it is
+function reveal(a, pill) {
+  const still = motion.matches, el = a.el, av = a.av, to = $("#me").getBoundingClientRect();
+  el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: still ? 200 : 400, easing: EASE_OUT, fill: "forwards" }).finished.then(() => el.remove(), () => el.remove());
+  if (still || !pill || !to.width || !av?.isConnected) {
+    av?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
+    later(a, () => land(a), 200);
+    return;
+  }
+  // Sign in, drawing in to the circle (what it says going first)
+  const ghost = a.ghost = $("#sign-in").cloneNode(true);
+  for (const k of ["id", "href", "data-account"]) ghost.removeAttribute(k);
+  ghost.classList.replace("only-visitor", "pill-ghost"); ghost.setAttribute("aria-hidden", "true"); ghost.inert = true;
+  Object.assign(ghost.style, { left: `${pill.left}px`, top: `${pill.top}px`, width: `${pill.width}px`, height: `${pill.height}px` });
+  body.append(ghost);
+  ghost.animate([{ left: `${pill.left}px`, top: `${pill.top}px`, width: `${pill.width}px`, height: `${pill.height}px` }, { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px` }],
+    { duration: 350, delay: 150, easing: GLIDE, fill: "both" });
+  ghost.animate([{ color: getComputedStyle(ghost).color }, { color: "transparent" }], { duration: 150, delay: 120, easing: EASE_OUT, fill: "both" });
+  // the photo, down into it, ending a touch small for the spring it lands with (pop-in, from 0.9)
+  const from = av.getBoundingClientRect(), s1 = (to.width / from.width) * 0.9;
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  const len = Math.hypot(dx, dy) || 1, bow = Math.min(80, len * 0.25);
+  let nx = -dy / len, ny = dx / len;
+  if (ny > 0) { nx = -nx; ny = -ny; }
+  const cx = dx / 2 + nx * bow, cy = dy / 2 + ny * bow, N = 12;
+  const path = Array.from({ length: N + 1 }, (_, i) => {
+    const u = i / N, v = 1 - u;
+    return { offset: u, transform: `translate(${(2 * v * u * cx + u * u * dx).toFixed(2)}px, ${(2 * v * u * cy + u * u * dy).toFixed(2)}px) scale(${(1 + (s1 - 1) * u).toFixed(4)})` };
+  });
+  a.end = { dx, dy, s1, s: to.width / from.width };
+  const t = { duration: 620, easing: ACCT_EASE, fill: "forwards" };
+  const flight = av.animate(path, t);
+  $(".back-in-face", av)?.animate([{ opacity: 0 }, { opacity: 1 }], t);
+  av.animate([{ boxShadow: getComputedStyle(av).boxShadow }, { boxShadow: getComputedStyle($("#face")).boxShadow }], t);
+  flight.finished.then(() => land(a), () => {});
+}
+// Landed: your photo's place in the bar comes in with its little spring (styles.css pop-in) under the one that flew
+// there, which keeps pace with it and then goes; then Edit beside it, for the owner, and each app's line, yours now.
+// With Reduce Motion, each fades in where it is
+function land(a) {
+  if (a.gone) return;
+  const still = motion.matches, av = a.av, e = a.end;
+  a.ghost?.remove(); a.ghost = null;
+  $("#me").classList.remove("held");
+  if (still) $("#me").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT });
+  if (av && e) {
+    a.av = null;
+    const at = (s) => `translate(${e.dx.toFixed(2)}px, ${e.dy.toFixed(2)}px) scale(${s.toFixed(4)})`;
+    av.animate([{ transform: at(e.s1) }, { transform: at(e.s) }], { duration: 350, easing: spring(), fill: "forwards" }).finished.then(() => av.remove(), () => av.remove());
+    setTimeout(() => av.remove(), 600);
+  }
+  later(a, () => { $("#edit").classList.remove("held"); if (still) $("#edit").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT }); }, still ? 0 : 120);
+  later(a, () => arriveEnd(a), still ? 0 : 240);
 }
 // the apps' own addresses, from this one (the site's, or a test's or a preview's)
 {
@@ -367,6 +536,12 @@ function showMe() {
     $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather");
   }
 }
+// Sign in: off to the account's page, its sky coming in as it goes (handOff)
+$("#sign-in").addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  handOff(e.currentTarget.href);
+});
 // Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
 // steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
 for (const a of $$("#app-inflight, #app-weather, [data-account]")) a.addEventListener("click", (e) => {

@@ -16,6 +16,11 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
+  **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
+  preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
+  account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
+  in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
+  app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
@@ -222,7 +227,34 @@ Motion, solid with Reduce Transparency.
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
-  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours".
+  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours". Opened to
+  make one without an invite (an app's Create your account), it says "You'll need an invite": the three steps (open
+  your invite, make your account, back in the app) and a place to paste the link, if it was sent somewhere it can't
+  be opened from (taken as if it had been opened, the way back to the app kept); a used or wrong invite says so there.
+- **Signing in, as seamless as it can be** (October 2026). The email field offers your passkeys in the keyboard as you
+  tap it (passkey autofill: a quiet `mediation: "conditional"` ask as each sign-in card is drawn, put away before any
+  other passkey's asked for: `passkeyAsk`, `passkeyMake`; so `signin/options` allows 150 asks in 15 minutes from one
+  address). Signed in here before, the page remembers who (`acct:last`, in this browser only: name, handle, email and
+  whether it was a passkey): "Welcome back, George", your photo or initial, and just your password, or **Continue with
+  your passkey** (that one asked for) if that's how you did, with the password a tap away; **Not you? Use another
+  account** forgets it, as deleting the account does. Signed in with a password for an app, on a device that can make a passkey and with none yet,
+  "Next time, just a glance" offers one before going back (once a month at most, sharing the nudge's month); for
+  InFlight it gets its own copy of the key there and then, the password being here to open it. Password fields have an
+  eye to show what's typed and say when Caps Lock's on; what's wrong shakes. Buttons turn into a spinner while they
+  work and a tick when done; leaving for an app, the tick lifts to where the app takes over, becoming your photo on the
+  way, as dawn breaks and the sky's drifting lights go (one movement, nothing held); the app carries on from just that
+  picture. For InFlight, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
+  server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
+  there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
+  placeholder only shows if it's slow to start. Signing out, dusk passes over it. The way there is one movement too:
+  each app fades this page's sky in over everything as it goes (opacity only), so the page opens on what was already in
+  sight. Your initial and photo go back to every app
+  (InFlight `theme.js`, Weather `early.js`, the home page `signedin.js`), and InFlight swaps the code on its first frame
+  (`theme.js` arvSwap), not once the app has come. While you sign in, the page opens the connection back to the app,
+  and a password's stretched in a worker (`pigeon/argon2w.js`), so the page never stops while it is (on the page, as
+  before, where a worker can't be made). Joining is a step at a
+  time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
+  that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
 - **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
   and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
   `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
@@ -730,7 +762,12 @@ so there's nothing to set up beyond the address.
   signed in on the site anywhere in this browser, Weather is too; or its Sign in row takes you to the account's page
   (account.<site>, where every app on the site signs in), which sends you back signed in, the sign-in handed back with
   a code only this tab can use (`functions/_handback.js`), and this device's places then go to the account without
-  asking, with "Signed in as Sam." Signed in, it's just **one card for the account** (your
+  asking, with "Signed in as Sam." Sign in fades the account page's sky in over everything as it goes
+  (`handOff`, in the top layer over Settings); back, the page opens on the picture the account's page ended on
+  (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
+  into the account's card, your places ticked off under it as they go with the account ("Your places go with your
+  account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
+  within six seconds whatever happens (the offline copy, `wx-88`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -986,6 +1023,15 @@ service, with made-up forecasts for the time it runs).
 ## InFlight (chat.georgefarrowgreen.com) — 1.3.2
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
+there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
+ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
+your initial and photo from the address's `#`): the sky clears to Messages as a padlock opens in the middle ("Messages
+unlocked"), your picture flies down into Account, and your chats come in a row at a time (`arriving`), all overlapping,
+in about a second and a half. Someone new goes straight on to choosing where they
+are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
+welcome (`dusk`). With Reduce Motion each part fades where it is; none of it ever takes a tap or stays on screen.
 
 **1.3.2** (one sign-in): InFlight signs in on the account's page, the one place every app on the site signs in. Its
 welcome's **Sign in** (or **Continue as …**, signed in elsewhere on the site already) and **Create your account** go
