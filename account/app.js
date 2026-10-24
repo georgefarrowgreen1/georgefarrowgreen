@@ -807,7 +807,7 @@ function signedOut(r) {
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
-      : ["You’ll need an invite", `Accounts on georgefarrowgreen.com are by invitation. Once you have one, it takes a minute${to ? `, and you’re straight back in ${to}` : ""}.`]) : ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
