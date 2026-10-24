@@ -556,15 +556,18 @@ dialog.sheet.dragging { transition: none; }
 .hero-acts .pill { margin: 0; }
 
 /* ---- your code ---- */
-.code-card { display: grid; justify-items: center; gap: 2px; padding: 22px 18px 20px; border-radius: var(--r-group); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); text-align: center; }
-.code-card .avatar { margin-bottom: 8px; }
-.code-card b { font: 700 20px/1.2 var(--font-d); }
-.code-card span { color: var(--text-2); font-size: 15px; }
-.qr { width: min(220px, 62vw); aspect-ratio: 1; margin-top: 16px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
+.code-who { display: flex; align-items: center; gap: 12px; padding: 4px 6px; }
+.code-who .avatar { width: 48px; height: 48px; font-size: 20px; box-shadow: none; }
+.code-who > div { display: grid; min-width: 0; }
+.code-who b { font-weight: 600; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-who span { color: var(--text-2); font-size: 14.5px; }
+.code-big { padding: 22px; border-radius: 28px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
+.qr { width: 100%; aspect-ratio: 1; }
 .qr svg { display: block; width: 100%; height: 100%; }
 .qr-none { display: grid; place-items: center; height: 100%; padding: 12px; text-align: center; font-size: 14px; color: #3a405c; }
 .hint.center { text-align: center; margin-top: -2px; }
 .code-acts { display: grid; gap: 10px; }
+.code-acts.two { grid-template-columns: 1fr 1fr; }
 
 /* ---- an app's sheet ---- */
 button.app { border: 0; font: inherit; text-align: left; cursor: pointer; }
