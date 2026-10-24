@@ -117,7 +117,7 @@ await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=i
 await shot(A.p, '06-inflight-after');
 
 // (the browser's word for the try from InFlight's address, refused: that's step 4's point, not an error)
-const real = errs.filter((e) => !/Refused to connect to '.*\/api\/account\/inflight'.*connect-src/.test(e));
+const real = errs.filter((e) => !(/\/api\/account\/inflight/.test(e) && /Content Security Policy/.test(e)));
 ok(real.length === 0, 'no errors on any page', real.slice(0, 4).join(' | '));
 console.log(`FAILS ${fails}`);
 await b.close();

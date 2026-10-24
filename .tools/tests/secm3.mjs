@@ -95,8 +95,9 @@ ok(r.reg === 400 && r.status === 410 && (r.flags & 1) && !(r.flags & 4), 'a pass
 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: bare });
 
 // changing the password is on the account's page too (which locks the messages' key with the new one), not in InFlight
-await G.click('.sheet .nbtn.l'); await G.waitForSelector('.sheet [data-act=encryptionsheet]');
-ok(!(await G.$('.sheet [data-act=changepw]')) && !(await G.$('.sheet [data-act=passkeys]')), 'no Change Password or Passkeys in InFlight’s Privacy & Security');
+await G.click('.sheet header [data-act=close]'); await G.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 });
+ok(!(await G.$('#screen > main.view [data-act=changepw]')) && !(await G.$('#screen > main.view [data-act=passkeys]')) && !(await G.$('#screen > main.view [data-act=securitysheet]')),
+  'no Change Password, Passkeys or Privacy & Security in InFlight: they’re on the account’s page');
 
 // deleting the account is on its own page, not in InFlight
 if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }
