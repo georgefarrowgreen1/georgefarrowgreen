@@ -16,6 +16,12 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
+  **Sign in** grows to fill the screen in the account page's sky as it goes there (`handOff`: 560 ms, the account
+  page's curve; with Reduce Motion, a fade), so that page opens on what was already in sight, and the page is
+  preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
+  account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
+  in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
+  app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
@@ -734,7 +740,12 @@ so there's nothing to set up beyond the address.
   signed in on the site anywhere in this browser, Weather is too; or its Sign in row takes you to the account's page
   (account.<site>, where every app on the site signs in), which sends you back signed in, the sign-in handed back with
   a code only this tab can use (`functions/_handback.js`), and this device's places then go to the account without
-  asking, with "Signed in as Sam." Signed in, it's just **one card for the account** (your
+  asking, with "Signed in as Sam." The Sign in row grows to fill the screen in the account page's sky as it goes
+  (`handOff`, in the top layer over Settings); back, the page opens on the picture the account's page ended on
+  (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
+  into the account's card, your places ticked off under it as they go with the account ("Your places go with your
+  account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
+  within six seconds whatever happens (the offline copy, `wx-82`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
