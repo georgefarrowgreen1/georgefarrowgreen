@@ -2367,3 +2367,9 @@ details.learn[open] p{animation:fc-in .3s var(--snappy)}
 .welcome.again .winvite{animation:none;opacity:1}
 .orline{display:flex;align-items:center;gap:12px;margin:16px 20px 2px;color:var(--label-2);font-size:14px}
 .orline::before,.orline::after{content:"";flex:1;height:.5px;background:var(--sep)}
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--label); caret-color: var(--label);
+  transition: background-color 0s 600000s, color 0s 600000s;
+}

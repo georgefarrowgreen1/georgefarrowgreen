@@ -778,3 +778,9 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
     .pc-cam:hover, .pc-add:hover { background: rgba(20, 22, 40, 0.88); }
   }
 }
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+}

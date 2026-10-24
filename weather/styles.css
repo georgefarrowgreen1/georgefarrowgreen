@@ -1664,3 +1664,9 @@ select option { color: #fff; background: #1c2434; }
    a new account on the account's own page */
 .acct-new { margin: 0; text-align: center; font-size: 14px; color: var(--text-2, rgba(255, 255, 255, 0.7)); }
 .acct-new a { color: #9cc6ff; font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+}

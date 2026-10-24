@@ -869,6 +869,11 @@
     .run .st{font-size:15px;text-align:right}
     .run .lb{grid-column:1/-1;margin:0}
   }
+  /* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+  input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+    -webkit-text-fill-color: var(--lab); caret-color: var(--lab);
+    transition: background-color 0s 600000s, color 0s 600000s;
+  }
 </style>
 </head>
 <body>

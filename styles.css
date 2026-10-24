@@ -454,3 +454,9 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .sheet, .fields textarea, .tile .dot, .tile img { transition: none; }
   .btn:active, .pill:active, .round:active, .app:active, .sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: none; }
 }
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+}
