@@ -986,7 +986,7 @@ function rememberedCard(l) {
     h("input.vh", { type: "email", autocomplete: "username", value: l.email, tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
   const pwBox = h("div.pwbox", { hidden: byKey }, form);
   const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
-    icon("face", 21, 1.9), byKey ? "Continue with your passkey" : "Use a passkey");
+    icon("face", 21, 1.9), byKey ? "Continue with your passkey" : "Sign in with a passkey");
   if (can) startAutofill(pw, (o, a) => withPasskey(key, said, () => passkeySignedIn(o, a)));
   const card = h("div.signin.glass.remembered", {},
     byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
