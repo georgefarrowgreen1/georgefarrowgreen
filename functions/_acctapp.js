@@ -66,6 +66,8 @@ export async function accountHost(ctx, url) {
   const type = res.headers.get("content-type") || "";
   // (anything else that comes back as a page is the site's home page, served as a fallback)
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
+  // (and one that isn't anything: the site's own page for that is the site's, not the account's)
+  if (res.status === 404) return notFound();
   const head = ctx.request.method === "HEAD", name = url.pathname.slice(1);
   const page = res.status === 200 && PAGE.test(path), script = res.status === 200 && /^[\w.-]+\.(js|css)$/.test(name);
   const body = head ? null : page ? await stamped(ctx, url, await res.text()) : script ? await asSent(ctx, url, name, await res.text()) : res.body;

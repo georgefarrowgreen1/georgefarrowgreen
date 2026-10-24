@@ -409,6 +409,44 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   content: ""; position: absolute; inset: -7px;
 }
 
+/* ---------------- an address that isn't a page (404.html) ---------------- */
+/* the cover photo, darker, and fading in as it comes; the name in the bar from the start, a way home; the words in the
+   middle of the screen, over a map whose route runs out at a question */
+.lost .slide { opacity: 0; transition: opacity 1.2s ease; }
+.lost .slide.loaded { opacity: 1; }
+.lost .bg::after { z-index: 2; background: linear-gradient(180deg, rgba(5, 7, 12, 0.6) 0%, rgba(5, 7, 12, 0.72) 45%, rgba(5, 7, 12, 0.92) 100%); }
+.lost .bar .mid { opacity: 1; transform: none; animation: none; }
+.lost-page { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 84px); }
+.lost-page > * { animation: arrive 0.6s var(--ease-out) backwards; }
+.lost-page > :nth-child(2) { animation-delay: 0.04s; }
+.lost-page > :nth-child(3) { animation-delay: 0.08s; }
+.lost-page > :nth-child(4) { animation-delay: 0.12s; }
+.lost-page > :nth-child(5) { animation-delay: 0.16s; }
+.lost-page > :nth-child(n + 6) { animation-delay: 0.22s; }
+.lost-page h1 { font: 700 50px/0.98 var(--display); letter-spacing: -0.035em; text-wrap: balance; }
+.lost .lede { max-width: 34ch; }
+.lost .where { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.lost .head { margin-top: 38px; }
+.lost .foot { margin-top: 30px; }
+.appic { flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
+.map { width: 210px; height: auto; margin: 0 0 22px -8px; overflow: visible; }
+.map .contours { stroke: rgba(255, 255, 255, 0.16); }
+.map .route { stroke: var(--tint-text); animation: march 1.6s linear infinite; }
+.map .start { fill: #fff; }
+.map .pin { transform: translate(186px, 56px); animation: bob 2.8s var(--ease-out) infinite alternate; }
+.map .pin path { fill: #ff6b5e; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
+.map .pin text { fill: #fff; font: 700 20px var(--display); }
+@keyframes march { to { stroke-dashoffset: -20; } }
+@keyframes bob { to { transform: translate(186px, 50px); } }
+@media (min-width: 601px) {
+  .page.lost-page { max-width: 600px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 96px) 20px 48px; }
+  .lost-page h1 { font-size: 72px; }
+  .map { width: 250px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lost-page > *, .map .route, .map .pin { animation: none; }
+}
+
 /* ---------------- larger screens ---------------- */
 @media (min-width: 601px) {
   .page { max-width: 720px; margin: 0 auto; }

@@ -61,6 +61,8 @@ async function stampImports(ctx, path, js, chat) {
 // The response for one of the app's files: `res` is the file as stored (at `path`, under /pigeon/)
 export async function serveApp(ctx, res, path, chat) {
   const url = new URL(ctx.request.url);
+  // (one that isn't anything: the site's own page for that is the site's, not InFlight's)
+  if (res.status === 404) return notFound();
   if (res.status !== 200 || !["GET", "HEAD"].includes(ctx.request.method)) return withSecurity(res);
   const type = res.headers.get("content-type") || "", head = ctx.request.method === "HEAD";
 
