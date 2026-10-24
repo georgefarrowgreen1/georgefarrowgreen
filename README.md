@@ -370,6 +370,14 @@ Motion, solid with Reduce Transparency.
   `PUT /api/account/prefs`); Weather's warnings and morning briefing by email, a switch each, kept with Weather's own
   choices (`functions/_wxacct.js` setMail), for the places and time chosen in its Notifications (said under each). The
   row says "All on", "Security only", or which apps email.
+- **InFlight's settings** that are the account's rather than a phone's: on InFlight's card under Your apps, a round
+  button beside **Open**, and what InFlight's own **InFlight Settings** opens (with `open=inflight` in the code it hands
+  over, and **‹ InFlight** to go back). Which notifications (the eleven of Notify me when), names on the lock screen,
+  quiet hours (in the phone's time zone), email; who sees what (online, read receipts, news, approximate location, the
+  live tracker); and who's blocked, to unblock (Unblock, then Unblock? to be sure). `GET`/`PATCH /api/account/inflight`
+  and `DELETE /api/account/inflight/block`, from this page's address only, changing them by InFlight's own rules
+  (`functions/_notify.js` cleanPrefs, `functions/api/pigeon` setPrivacy, shared with its `PATCH me`); InFlight takes a
+  change up as it next syncs (`.tools/tests/acctinflight.mjs`).
 - **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
   activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
   them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,
@@ -1044,6 +1052,13 @@ service, with made-up forecasts for the time it runs).
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
+**Settings on your account** (after 1.3.3): InFlight's Settings has one row, **InFlight Settings**, which opens the
+account's page at InFlight's settings (notifications, lock screen names, quiet hours, email, who sees what, who's
+blocked) and says in a line what's set ("10 of 11 notifications on · quiet 22:00–07:00 · 1 blocked"). **Location**
+stays, and **This Phone** has what's each phone's own: Push Notifications (and a test), Lock InFlight, Haptics, and
+Encryption & Safety Numbers (a friend's changed key said on its row). Appearance is the account's page's, as it already
+was. With no account page beside it, InFlight keeps its own Notifications and Privacy & Security, as before.
+
 **1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
 there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
 ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
@@ -1192,8 +1207,9 @@ apart on the server, so this is decided on the device).
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
-**Notifications.** Account → Notifications has Push (Web Push, works on
-Android, and on iPhone and iPad once InFlight is added to the Home Screen) and Email (via Resend). Push is per phone; the rest is per account:
+**Notifications.** Push (Web Push, works on Android, and on iPhone and iPad once InFlight is added to the Home Screen)
+is switched on per phone, in Account → This Phone (with **Send a Test Notification**); the rest, and Email (via
+Resend), are the account's, on the account's page (Account → **InFlight Settings**, which says in a line what's set):
 which events notify (a pigeon lands, takes off, friend requests, accepted
 requests), whether names show on the lock screen, and quiet hours in the
 phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
@@ -1632,7 +1648,7 @@ and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
   under 300 km never show;
 - in a shuffled order with no ids, so a dot now can't be linked to a dot later;
 - a pigeon shows only if both its sender and the person it's flying to leave
-  **Privacy & Security → Live Tracker** on (it's on unless switched off);
+  **Live tracker** on, in InFlight Settings on the account's page (it's on unless switched off);
 - one answer a minute for everyone, kept at the edge: no sign-in, no cookies,
   nothing about who looked is stored, and asking more often learns nothing.
 
@@ -1686,7 +1702,7 @@ the ones kept from before), ignoring case and accents, newest first, with the
 word highlighted. Tap one to open the chat at that message. It all happens on
 the phone; what you search for is never sent anywhere.
 
-**App lock.** Privacy & Security → Lock InFlight (per phone; needs a
+**App lock.** Account → This Phone → Lock InFlight (per phone; needs a
 passkey). InFlight then locks when you leave it, straight away or after 1, 15
 or 60 minutes, and opens with Face ID, Touch ID or the passkey: a
 user-verified passkey check made on the phone itself, so it works offline.
@@ -1906,7 +1922,7 @@ same whichever app it's tried in. A web app added to an iPhone's Home Screen kee
 signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
 page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
-(Privacy & Security → Your Account).
+(InFlight's account card at the top of Account), and InFlight's settings that are the account's (InFlight Settings).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
@@ -1917,8 +1933,7 @@ they restore messages without the password. A forgotten password can be reset
 by email (below); because the password is what locks the key, only a passkey
 can carry the old key across a reset.
 
-**Passwords and resets.** People can change their password in Account → My
-Profile → Privacy & Security, or tap
+**Passwords and resets.** People can change their password on the account's page (Sign-in and security), or tap
 "Forgot password?" (which opens the account's page) to get a one-hour, single-use reset link by email. The
 password locks the encryption key, so a reset keeps someone's scrolls only if
 they unlock their key with a passkey; otherwise the phone makes a new key,
@@ -2173,7 +2188,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   itself, so neither server ever sees the password or its hash.
 - **New sign-ins are announced:** a push to your other phones and an email
   (device, country, how), saying how to sign it out.
-- **Approximate Location** (Privacy & Security) keeps your spot to a 10 km
+- **Approximate Location** (InFlight Settings, on the account's page) keeps your spot to a 10 km
   grid instead of a 1-mile one.
 - **A copy of the database alone is no use:** each password's proof hash and
   the private key it locks are locked again with `PIGEON_PEPPER`, a secret set
@@ -2203,7 +2218,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   once, and adding a passkey emails the account. Only a sign-in that has ended
   signs a phone out; a wrong password never does.
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
-  days; Privacy & Security can send another). Until then the address gets
+  days; the account's page can send another). Until then the address gets
   nothing but that link and password resets, so no one can sign up with
   someone else's address and have notifications sent to it. Accounts from
   before this count as confirmed; an emailed reset link confirms too.
@@ -2211,7 +2226,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   so no one can step into one and receive requests meant for its owner. Place
   names are plain words (no web addresses or hidden direction characters),
   email addresses ordinary ones, and request bodies are capped at 512 KB.
-- **Signed-In Phones** (Privacy & Security) lists every sign-in, as "iPhone ·
+- **Signed-in devices** (the account's page, Sign-in and security) lists every sign-in, as "iPhone ·
   Safari" with when it was last used, to sign out one or all the others.
 - **One address.** InFlight's pages on Cloudflare's preview addresses
   (`*.pages.dev`) redirect to georgefarrowgreen.com, so there's never a second
@@ -2227,8 +2242,8 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   request just keeps looking like it's waiting, and asking again reaches no one
   for 30 days. **Blocking** (from a request, a chat's menu or contact info)
   ends the friendship and stops their requests, pigeons, and access to your
-  picture and place; they aren't told, and Privacy & Security → Blocked lists
-  them to unblock.
+  picture and place; they aren't told, and InFlight Settings (on the account's page) lists them under Blocked, to
+  unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
   only friends see it. A month after a pigeon lands, its route's ends are
   rounded to half a degree (about 50 km) and the points where it changed course

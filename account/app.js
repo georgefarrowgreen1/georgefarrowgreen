@@ -2829,16 +2829,16 @@ function inflightView() {
     catch (e) { if (input.type === "checkbox") input.checked = !input.checked; say(said, e.message); }
     finally { input.disabled = false; }
   };
-  const sw = (title, sub, on, patch, { after, disabled } = {}) => {
-    const input = h("input.switch", { type: "checkbox", role: "switch", checked: !!on, disabled: !!disabled });
+  const sw = (key, title, sub, on, patch, { after, disabled } = {}) => {
+    const input = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });
     input.onchange = () => change(input, patch(input.checked), after);
     return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
   };
   const n = IF.notify, notify = (k) => (v) => ({ notify: { [k]: v } });
   const hour = (k, title) => {
-    const sel = h("select", { "aria-label": title }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: n[k] === i, text: hh(i) })));
+    const sel = h("select", { "aria-label": title, id: `if-${k}`, name: k }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: n[k] === i, text: hh(i) })));
     const val = h("span.val", { text: hh(n[k]) });
-    sel.onchange = () => { val.textContent = hh(Number(sel.value)); change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }); };
+    sel.onchange = () => { val.textContent = hh(Number(sel.value)); change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }, redraw); };
     return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
   };
   const blocked = IF.blocked.length ? IF.blocked.map((b) => h("div.row.plain", { "data-id": b.id },
@@ -2851,18 +2851,18 @@ function inflightView() {
   return { title: "InFlight", left: back, body: [
     h("p", { text: "For InFlight on every phone you use it on." }),
     h("h4.app-k", { text: "Notify me when" }),
-    h("div.group", {}, IF_NOTIFY.map(([k, t, sub]) => sw(t, sub, n[k], notify(k)))),
+    h("div.group", {}, IF_NOTIFY.map(([k, t, sub]) => sw(k, t, sub, n[k], notify(k)))),
     h("h4.app-k", { text: "Lock screen" }),
-    h("div.group", {}, sw("Show names", n.names ? "Notifications say who sent a pigeon" : "Just “A pigeon has landed”, not who sent it", n.names, notify("names"), { after: redraw })),
+    h("div.group", {}, sw("names", "Show names", n.names ? "Notifications say who sent a pigeon" : "Just “A pigeon has landed”, not who sent it", n.names, notify("names"), { after: redraw })),
     h("p.hint", { text: "Never what a message says: only your phone can read that." }),
     h("h4.app-k", { text: "Quiet hours" }),
-    h("div.group", {}, sw("Quiet hours", null, n.quiet, (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
+    h("div.group", {}, sw("quiet", "Quiet hours", null, n.quiet, (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
       n.quiet && hour("quietFrom", "From"), n.quiet && hour("quietTo", "To")),
     h("p.hint", { text: n.quiet ? `Nothing arrives between ${hh(n.quietFrom)} and ${hh(n.quietTo)} (${n.tz} time). Pigeons that land meanwhile are announced when quiet hours end.` : "Hold notifications overnight, or whenever suits." }),
     h("h4.app-k", { text: "Email" }),
-    h("div.group", {}, sw("Email me", IF.emailOk ? "Only when a pigeon has waited 10 minutes unread, at most every half hour" : "Confirm your email first", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk })),
+    h("div.group", {}, sw("email", "Email me", IF.emailOk ? "Only when a pigeon has waited 10 minutes unread, at most every half hour" : "Confirm your email first", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk })),
     h("h4.app-k", { text: "Who sees what" }),
-    h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => sw(t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
+    h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => sw(k, t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
     h("p.hint", { text: "Online, read receipts and news work both ways: turn one off and you won’t see other people’s either." }),
     h("h4.app-k", { text: "Blocked" }),
     h("div.group", {}, blocked),

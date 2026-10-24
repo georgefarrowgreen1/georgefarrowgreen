@@ -4063,6 +4063,14 @@ function ifSummary(u) {
     n.quiet && `quiet ${String(n.quietFrom).padStart(2, "0")}:00–${String(n.quietTo).padStart(2, "0")}:00`,
     u.receipts === false && "read receipts off", S.blocked.length && `${S.blocked.length} blocked`].filter(Boolean).join(" · ");
 }
+// Encryption & Safety Numbers, as a row (This Phone, and Privacy & Security where that's in the app): a friend's key
+// that's changed first, else how many are verified and who's next (with its bar, in the sheet: its width set as it's drawn)
+function encCell(bar) {
+  const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
+  const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
+  return `<button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
+            ${bar && S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>`;
+}
 // What's this phone's own, under Settings: pushes on or off here, InFlight's lock, haptics, and the key (only ever on
 // your phones); the rest of InFlight's settings are the account's, on its page (InFlight Settings)
 function thisPhone() {
@@ -4074,11 +4082,12 @@ function thisPhone() {
   return `<div class="ghead">This Phone</div>
     <div class="group">
       ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
+      ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
       ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
       ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
         <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
       ${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", on: hapticsOn() })}
-      ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption &amp; Safety Numbers", chev: true })}
+      ${encCell(false)}
     </div>
     <div class="gfoot">${pushFoot ? `${pushFoot} ` : ""}Only on this phone.</div>`;
 }
@@ -5615,6 +5624,9 @@ function onInput(e) {
 
 /* ---------- sheets ---------- */
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
+// (Back to Privacy & Security, from Encryption and Passkeys: only where it's in the app, with no account page to have
+// its settings: thisPhone)
+const toSecurity = () => (accountPage() ? null : { label: "Back", act: "securitysheet" });
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain, name } = {}) {
   const b = (x, cls) => !x ? ""
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
@@ -5987,8 +5999,6 @@ function drawSheet(refresh) {
     case "security": {
       // The settings, grouped (a password and passkeys are the account's: Your Account opens its page)
       const u = S.me, lock = !!lockPrefs();
-      const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
-      const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
       const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
       $layer.innerHTML = sheetHtml("Privacy & Security", `
         <div class="ghead">Account</div>
@@ -5998,8 +6008,7 @@ function drawSheet(refresh) {
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
-          <button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
-            ${S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>
+          ${encCell(true)}
         </div>
         <div class="ghead">This Phone</div>
         <div class="group">
@@ -6043,7 +6052,7 @@ function drawSheet(refresh) {
         ${fr.length ? `<div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
           <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>
           <div class="gfoot">Verify a friend together, in person or on a video call: tap them, then scan their code or compare the digits.</div>`
-        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
+        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: toSecurity() });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     }
@@ -6535,7 +6544,7 @@ function drawSheet(refresh) {
           <div class="wnlist">${[["lock", "green", "Safer than a password", "Nothing to guess, reuse or type into the wrong site."],
             ["key", "indigo", "Keeps your messages", "On newer phones it also unlocks them, so a password reset doesn’t lose them."],
             ["face", "teal", "Lets InFlight lock", "Lock InFlight when you leave it, and open it with a glance."]].map(([ic, tile, t, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${t}</b><small>${sub}</small></span></div>`).join("")}</div>
-          <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: { label: "Back", act: "securitysheet" } });
+          <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: toSecurity() });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     case "reauth":

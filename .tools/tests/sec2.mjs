@@ -1,6 +1,6 @@
 // Security batch: leaked passwords refused, new sign-in alerts, approximate location.
 import { kit } from './lib.mjs';
-import { accountUrl, signInInFlight, fillJoin } from './join.mjs';
+import { accountUrl, signInInFlight, fillJoin, inflightSettings } from './join.mjs';
 import { readFileSync, existsSync } from 'fs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -58,10 +58,11 @@ ok(Math.abs(moved.lat / step - Math.round(moved.lat / step)) < 1e-3, 'and update
 await patch({ approxLocation: false }); await patch({ lat: 52.6311, lon: 1.3001, place: 'Norwich' });
 const back = where();
 ok(back.loc_approx === 0 && Math.abs(back.lat / step - Math.round(back.lat / step)) > 1e-3, 'turned off: precise to a mile again from the next update', JSON.stringify(back));
-// the switch in the app
-await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(500);
-await G.p.click('#screen > main.view [data-act=securitysheet]'); await G.p.waitForSelector('.sheet [data-id=approxLocation]');
-await G.p.click('.sheet [data-id=approxLocation]'); await G.p.waitForSelector('.sheet [data-id=approxLocation][aria-checked=true]', { timeout: 8000 });
-ok(where().loc_approx === 1, 'Privacy & Security → Approximate Location turns it on');
-await G.p.locator('.sheet [data-id=approxLocation]').scrollIntoViewIfNeeded(); await G.p.waitForTimeout(400); await G.p.screenshot({ path: `${out}/approx.png` });
+// the switch: InFlight Settings, on the account's page
+await G.p.reload(); await G.p.waitForSelector('.tabs');
+const W = await inflightSettings(G.p);
+await W.locator('#if-approxLocation').scrollIntoViewIfNeeded(); await W.click('#if-approxLocation');
+await W.waitForFunction(() => !document.getElementById('if-approxLocation').disabled && document.getElementById('if-approxLocation').checked, null, { timeout: 8000 });
+ok(where().loc_approx === 1, 'InFlight Settings → Approximate Location turns it on');
+await W.waitForTimeout(400); await W.screenshot({ path: `${out}/approx.png` }); await W.close();
 console.log(`FAILS ${K.fails()}`); process.exit(0);
