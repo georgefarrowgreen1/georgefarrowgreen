@@ -361,9 +361,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
    cards here led by the finger across them too (app.js cardSwipe), their own sideways scrolling as ever */
 .pv { display: none; }
 @media (max-width: 979px) {
-  main > .pager { grid-row: 1; }
-  main > .col-a { grid-row: 2; }
-  main > .col-b { grid-row: 3; }
+  /* (each in the one column, said so: the places either side's pages are put there, over the first two rows, and
+     anything left to find its own column would be put in a second one beside them, a gap in from the side) */
+  main > .pager { grid-row: 1; grid-column: 1; }
+  main > .col-a { grid-row: 2; grid-column: 1; }
+  main > .col-b { grid-row: 3; grid-column: 1; }
   /* (each from the top of the weather now, its own over its cards, a gap between as the page has; the scroller's own
      pages either side left empty here) */
   .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
