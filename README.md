@@ -1848,8 +1848,11 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   whenever they're asked for, one at a time. GitHub's schedule (`.github/workflows`) asks every 5 and 10 minutes but
   in practice runs hours late, so: the apps' own traffic asks too, when the last run was over 5 minutes ago
   (`maybeTick`, `maybeWxTick`, from InFlight's and Weather's APIs), and `workers/ticker` is a small Cloudflare Worker
-  that asks every 5 minutes on Cloudflare's own schedule. Deploy it once: `cd workers/ticker && npx wrangler deploy`,
-  then `npx wrangler secret put INFLIGHT_TICK_SECRET` (the site's `PIGEON_TICK_SECRET`). A job sends to each person's
+  that asks every 5 minutes on Cloudflare's own schedule. It's deployed on each push to main by
+  `.github/workflows/ticker-deploy.yml`, with the repository's `INFLIGHT_TICK_SECRET` (and `WEATHER_TICK_SECRET`, if set),
+  once the repository has a `CLOUDFLARE_API_TOKEN` secret (a token from the "Edit Cloudflare Workers" template; add
+  `CLOUDFLARE_ACCOUNT_ID` too if it can see more than one account). By hand instead: `cd workers/ticker && npx wrangler
+  deploy`, then `npx wrangler secret put INFLIGHT_TICK_SECRET` (the site's `PIGEON_TICK_SECRET`). A job sends to each person's
   devices at once, and once it has used 20 seconds leaves the extras (live weather, moments, streaks…) for the next
   run, so landings, losses and emails always go; a landing email that fails is tried again next time.
 - **What goes wrong is kept for the admin.** Server errors (an API's, or any step of a job's) go in `pg_errors` (20 a
