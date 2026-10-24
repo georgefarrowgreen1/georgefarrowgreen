@@ -45,7 +45,8 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
     },
     "POST signin/options": async ({ request, env }) => {
       sameOrigin(request);
-      await limit(env, "pkopt:" + clientIp(request), 60, 15 * 60e3);
+      // (asked for as each sign-in card's drawn, for a passkey offered in the keyboard, as well as by the passkey button)
+      await limit(env, "pkopt:" + clientIp(request), 150, 15 * 60e3);
       return json({ challenge: await newChallenge(env, "login"), rpId: rpIdFor(request, env) });
     },
     "POST signin/passkey": async ({ request, env, waitUntil }) => {

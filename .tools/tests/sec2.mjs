@@ -1,6 +1,6 @@
 // Security batch: leaked passwords refused, new sign-in alerts, approximate location.
 import { kit } from './lib.mjs';
-import { accountUrl, signInInFlight } from './join.mjs';
+import { accountUrl, signInInFlight, fillJoin } from './join.mjs';
 import { readFileSync, existsSync } from 'fs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -12,7 +12,7 @@ const mails = () => readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n'
 const gKeys = await K.makeKeys();
 const G = await K.phone('george', gKeys);
 await G.p.goto(`${accountUrl(K.URL)}#join`); await G.p.waitForSelector('main input[name=name]', { timeout: 20000 });
-await G.p.fill('main input[name=name]', 'George Farrow-Green'); await G.p.fill('main input[name=handle]', 'geo'); await G.p.fill('main input[name=email]', 'george@example.com'); await G.p.fill('main input[name=password]', 'password1234');
+await fillJoin(G.p, { name: 'George Farrow-Green', handle: 'geo', email: 'george@example.com', password: 'password1234' }, { send: false });
 await G.p.waitForTimeout(1200);           // (what it says as it's typed, asked and answered, before what's sent)
 const before = plog().length;
 await G.p.click('main .signin form .btn');

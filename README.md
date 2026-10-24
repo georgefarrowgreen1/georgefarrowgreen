@@ -223,6 +223,20 @@ Motion, solid with Reduce Transparency.
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
   server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours".
+- **Signing in, as seamless as it can be** (October 2026). The email field offers your passkeys in the keyboard as you
+  tap it (passkey autofill: a quiet `mediation: "conditional"` ask as each sign-in card is drawn, put away before any
+  other passkey's asked for: `passkeyAsk`, `passkeyMake`; so `signin/options` allows 150 asks in 15 minutes from one
+  address). Signed in here before, the page remembers who (`acct:last`, in this browser only: name, handle, email and
+  whether it was a passkey): "Welcome back, George", your photo or initial, and just your password, or **Continue with
+  your passkey** (that one asked for) if that's how you did, with the password a tap away; **Not you? Use another
+  account** forgets it, as deleting the account does. Signed in with a password for an app, on a device that can make a passkey and with none yet,
+  "Next time, just a glance" offers one before going back (once a month at most, sharing the nudge's month); for
+  InFlight it gets its own copy of the key there and then, the password being here to open it. Password fields have an
+  eye to show what's typed and say when Caps Lock's on; what's wrong shakes. Buttons turn into a spinner while they
+  work and a tick when done; leaving for an app, the tick lifts to where the app takes over and becomes your photo, as
+  dawn breaks over the sky (the app carries on from there); signing out, dusk passes over it. Joining is a step at a
+  time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
+  that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
 - **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
   and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
   `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and

@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
-import { onAccountPage } from './join.mjs';
+import { onAccountPage, fillJoin as joinSteps } from './join.mjs';
 import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
@@ -49,10 +49,7 @@ const invite = () => { const t = Buffer.from(Array.from({ length: 32 }, () => Ma
   sql(`INSERT INTO pg_invites (hash, id, note, created_at) VALUES ('${hash}', '${hash.slice(0, 16)}', 'test', ${Date.now()})`); return t; };
 // the account's page's join form, filled in and sent
 async function fillJoin(x, { name, handle, email, password = PW }) {
-  await x.p.waitForSelector('main .signin input[name=name]', { timeout: 20000 });
-  await x.p.fill('main input[name=name]', name); await x.p.fill('main input[name=handle]', handle);
-  await x.p.fill('main input[name=email]', email); await x.p.fill('main input[name=password]', password);
-  await x.p.click('main .signin form .btn');
+  await joinSteps(x.p, { name, handle, email, password });
 }
 
 // ---- 1. Without an invite: no way to make one, on the page or past it ----
@@ -74,9 +71,12 @@ await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/#invite=${T1}`);
 await V.p.waitForURL(`${ACCT}/`, { timeout: 20000 }).catch(() => {});
 await V.p.waitForSelector('main .signin input[name=name]', { timeout: 20000 }).catch(() => {});
 ok(V.p.url() === `${ACCT}/` && /You’ve been invited\./.test(await text(V)) && /Create your account/.test(await text(V)), 'InFlight\'s invite link: on to the account\'s page (the invite out of the address), the form there', V.p.url());
-await V.p.fill('main input[name=name]', 'Ivy Lane'); await settle(V, 900);
-ok(await V.p.inputValue('main input[name=handle]') === 'ivy_l' && /@ivy_l is yours/.test(await text(V)), 'a handle suggested from the name, and checked as it\'s typed', await V.p.inputValue('main input[name=handle]'));
+await V.p.fill('main input[name=name]', 'Ivy Lane'); await V.p.click('main .signin form .btn'); await settle(V, 900);
+ok(await V.p.inputValue('main input[name=handle]') === 'ivy_l' && /@ivy_l is yours/.test(await text(V)) && /2 of 4/.test(await text(V, 'main .signin')),
+  'joining a step at a time: a handle suggested from the name, and checked as it\'s typed', await V.p.inputValue('main input[name=handle]'));
 await shot(V, '02-join');
+await V.p.click('main .signin .jhead .back'); await V.p.waitForSelector('main .signin input[name=name]', { state: 'visible' });
+ok(await V.p.inputValue('main input[name=name]') === 'Ivy Lane' && /1 of 4/.test(await text(V, 'main .signin')), 'and Back, to the name, still there');
 await fillJoin(V, { name: 'Ivy Lane', handle: 'ivy', email: 'ivy@example.com' });
 await V.p.waitForSelector('main .hero', { timeout: 60000 }).catch(() => {});
 ok(/Ivy Lane/.test(await text(V)) && /Welcome, Ivy\. Your account is ready\./.test(await text(V, '#toast')), 'made, and signed in: the account\'s own page', await text(V, '#toast'));

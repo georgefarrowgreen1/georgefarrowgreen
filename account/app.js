@@ -149,6 +149,8 @@ const ICONS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.6"/><path d="m3.8 7 8.2 6 8.2-6"/>',
   camera: '<path d="M4 8h3l1.8-2.6h6.4L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.2" r="3.4"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/><path class="slash" d="M4.5 4.5l15 15"/>',
+  caps: '<path d="M12 4 5 11h4v4h6v-4h4z"/><path d="M9 19h6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   x: '<path d="M7 7l10 10M17 7 7 17"/>',
   open: '<path d="M8 16 16 8M9.5 8H16v6.5"/>',
@@ -201,6 +203,30 @@ async function call(path, { method = "GET", body, type } = {}) {
 }
 const post = (path, body = {}) => call(path, { method: "POST", body });
 const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials?.get);
+// (one passkey asked for at a time: one offered in the keyboard put away first)
+const passkeyAsk = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.get(o); };
+const passkeyMake = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.create(o); };
+// A passkey offered in the keyboard (passkey autofill): asked for, quietly, as soon as a sign-in card with an email field
+// is there; one picked from the field's suggestions signs in as the passkey button does (picked). Asked for again if
+// that didn't sign in, while the field's still there.
+let autofill = null;
+function stopAutofill() { autofill?.abort(); autofill = null; }
+async function startAutofill(field, picked) {
+  stopAutofill();
+  if (!passkeysWork()) return;
+  try { if (!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return; } catch (_) { return; }
+  const ac = new AbortController(); autofill = ac;
+  try {
+    const o = await post("signin/options");
+    if (ac.signal.aborted || !field.isConnected) return;
+    const a = await navigator.credentials.get({ mediation: "conditional", signal: ac.signal, publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required",
+      extensions: S.signFor?.app === "inflight" ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } });
+    if (!a || ac.signal.aborted) return;
+    autofill = null;
+    await picked(o, a);
+    if (field.isConnected && !S.me?.signedIn) startAutofill(field, picked);
+  } catch (_) { if (autofill === ac) autofill = null; }
+}
 
 // the rest of the site, from here (account.<site> → chat.<site>, weather.<site>, <site>)
 function siteUrl(sub) {
@@ -771,24 +797,26 @@ function gate(to) {
 }
 function signedOut(r) {
   if (S.handoff) return handoffPage(r);
-  const mode = S.gate || "signin";
+  const mode = S.gate || "signin", last = mode === "signin" ? lastHere() : null;
   if (!S.join) joinState();
+  if (mode !== "signin") stopAutofill();
   const to = S.signFor && S.signFor.app !== "home" ? APPS[S.signFor.app].name : null;
-  const head = { signin: ["Your account"],
+  const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
     // (the mark floats; it rises in inside something else, as one animation can't do both)
-    r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : logo())),
+    r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : last ? avatar(last) : logo())),
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
     // (sent here by an app: which, as that's where you'll be once you're in)
     mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
+      : last ? h("p.lead", { text: `@${last.handle}` })
       : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
         " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
-    r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : signinCard()),
-    r(mode === "signin" ? joinLine() : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
+    r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard()),
+    r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else by invitation,
@@ -837,7 +865,7 @@ function unlockCard(m, said) {
     e.preventDefault(); say(said, "");
     if (!pw.value) return say(said, "Enter your password.", pw);
     try {
-      const k = await busy(go, "Checking…", async () => {
+      const k = await working(go, "Checking", async () => {
         const k = await E2E.fromPassword(pw.value, m.salt);
         await post("reauth", { proof: k.proof });
         const nk = !E2E.isCurrent(m.salt) && await restretch(pw.value, k);
@@ -846,14 +874,14 @@ function unlockCard(m, said) {
       });
       handBack(m, { lock: k.lock }, go);
     } catch (err) { say(said, err.message, pw); }
-  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
   const key = byKey && h("button.btn", { type: "button", onclick: async (e) => {
     const b = e.currentTarget; say(said, "");
     try {
-      const way = await busy(b, "Waiting for your passkey…", async () => {
+      const way = await working(b, "Waiting for your passkey", async () => {
         const o = await post("signin/options");
         let a;
-        try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+        try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
           allowCredentials: pks.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
         catch (_) { throw new Error("No passkey was used."); }
         await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
@@ -877,16 +905,18 @@ function unlockCard(m, said) {
 // with (a passkey that can't), the password's asked for first; with anything else wrong, it's said, to try again.
 async function handBack(m, way, btn) {
   const a = S.signFor;
-  S.me = m; S.pulled = Date.now();
-  if (a.app === "home") return leaveFor(a.back);
+  S.me = m; S.pulled = Date.now(); stopAutofill();
+  // (the home page: back, saying it's from signing in, so it greets you)
+  if (a.app === "home") { await leaving(btn, m); return leaveFor(`${a.back}#signedin`); }
   const go = async () => {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
     const { code } = await post("handback", { app: a.app, ask: a.ask, ...key });
+    await leaving(btn, m);
     leaveFor(`${a.back}#signin=${code}`);
-    await new Promise(() => {});             // (going: the button says so until the app's there)
+    await new Promise(() => {});             // (going: you, there, until the app's there)
   };
-  try { await (btn?.isConnected ? busy(btn, `Opening ${APPS[a.app].name}…`, go) : go()); }
+  try { await (!btn?.isConnected ? go() : btn.classList.contains("working") ? go() : working(btn, `Opening ${APPS[a.app].name}`, go)); }
   catch (e) {
     S.need = e.more ? "password" : S.need; S.said = e.more ? null : { text: e.message, bad: true };
     anew(() => { S.settled = false; render(); scrollTo(0, 0); });
@@ -940,37 +970,38 @@ function signinCard() {
   const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
   const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
   const go = h("button.btn" + (passkeysWork() ? ".quiet" : ""), { type: "submit" }, "Sign in");
-  const form = h("form.form", { onsubmit: async (e) => {
-    e.preventDefault(); say(said, "");
-    if (!email.value.trim()) return say(said, "Enter your email.", email);
-    if (!pw.value) return say(said, "Enter your password.", pw);
-    try {
-      let k;
-      const m = await busy(go, "Signing in…", async () => {
-        const { salt } = await post("signin/salt", { email: email.value.trim() });
-        k = await E2E.fromPassword(pw.value, salt);
-        const m = await post("signin/password", { email: email.value.trim(), proof: k.proof, app: S.signFor?.app });
-        // (an account from before Argon2id: stretched the new way, now the password's here)
-        const nk = !m.deleting && !E2E.isCurrent(salt) && await restretch(pw.value, k);
-        if (nk) { k = nk; m.salt = nk.salt; }
-        return m;
-      });
-      if (S.signFor && !m.deleting) return handBack(m, { lock: k.lock }, go);
-      welcome(m);
-      if (!m.deleting) { checkQuietly(pw.value, k.proof); maybeNudge(m); }
-    } catch (err) { say(said, err.message, err.field === "email" ? email : pw); }
-  } }, field("Email", email), field("Password", pw), go);
-  const pk = passkeysWork() && h("button.btn", { type: "button", onclick: async (e) => {
-    const b = e.currentTarget; say(said, "");
-    try {
-      const { m, prf, id } = await busy(b, "Waiting for your passkey…", signInWithPasskey);
-      if (S.signFor && !m.deleting) return handBack(m, { prf, id }, b);
-      welcome(m);
-    }
-    catch (err) { say(said, err.message); }
-  } }, icon("face", 21, 1.9), "Sign in with a passkey");
+  const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), go);
+  const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon("face", 21, 1.9), "Sign in with a passkey");
+  startAutofill(email, (o, a) => withPasskey(pk || go, said, () => passkeySignedIn(o, a)));
   return h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form,
     h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
+}
+// You, signed in here before: your passkey first, if that's how you did (the password a tap away), or your password, your
+// email known (a passkey offered in its keyboard too, and a button for one)
+function rememberedCard(l) {
+  const said = h("p.said", { role: "alert" }), can = passkeysWork(), byKey = can && l.way === "passkey";
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password webauthn", required: true, onfocus: warmUp });
+  const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Sign in");
+  const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(l.email, null, pw, go, said); } },
+    h("input.vh", { type: "email", autocomplete: "username", value: l.email, tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
+  const pwBox = h("div.pwbox", { hidden: byKey }, form);
+  const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
+    icon("face", 21, 1.9), byKey ? "Continue with your passkey" : "Use a passkey");
+  if (can) startAutofill(pw, (o, a) => withPasskey(key, said, () => passkeySignedIn(o, a)));
+  const card = h("div.signin.glass.remembered", {},
+    byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
+    byKey ? [key, pwBox] : [pwBox, key],
+    byKey && h("button.link.usepw", { type: "button", onclick: (e) => {
+      const open = pwBox.hidden, b = e.currentTarget;
+      morph(card, () => { pwBox.hidden = !open; b.textContent = open ? "Use your passkey instead" : "Use your password instead"; key.classList.toggle("quiet", open); go.classList.toggle("quiet", !open); });
+      if (open) pw.focus();
+    } }, "Use your password instead"),
+    h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
+  return card;
+}
+// (not you: that account forgotten here, and the usual sign-in)
+function notYouLine() {
+  return h("p.foot.new", {}, "Not you? ", h("button.link.notyou", { type: "button", onclick: () => { forget(); stopAutofill(); anew(() => { S.settled = false; render(); }); } }, "Use another account"));
 }
 // (the password's stretching needs its WebAssembly: fetched as soon as a password field's used, not when it's sent)
 function warmUp() { import("./argon2.js").catch(() => {}); }
@@ -989,20 +1020,23 @@ function joinCard() {
   const handle = h("input", { type: "text", name: "handle", autocomplete: "off", autocapitalize: "none", spellcheck: "false", maxlength: "20", required: true });
   const email = h("input", { type: "email", name: "email", autocomplete: "username", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
   const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp });
-  const hstat = h("p.hint.handle", { "aria-live": "polite", text: "Friends see your name, and find you by your handle." }), { meter, hint } = rated(pw);
-  const go = h("button.btn", { type: "submit" }, "Create account");
-  let touched = false, hT = 0, pT = 0;
+  const hstat = h("p.hint.handle", { "aria-live": "polite", text: "Friends find you by your handle." }), { meter, hint } = rated(pw);
+  const go = h("button.btn", { type: "submit" }, "Next");
+  let touched = false, hT = 0, pT = 0, known = { v: "", r: null };
   const handleNow = () => handle.value.trim().replace(/^@/, "").toLowerCase();
+  // (→ what's said of the handle there now: free, or taken and why; null if it couldn't be asked)
   const check = async () => {
     const v = handleNow();
-    if (v.length < 3) { hstat.className = "hint handle"; hstat.textContent = "Friends see your name, and find you by your handle."; return; }
+    if (v.length < 3) { hstat.className = "hint handle"; hstat.textContent = "Friends find you by your handle."; return null; }
     try {
-      const r = await call(`handle?h=${encodeURIComponent(v)}`);
-      if (handleNow() !== v) return;
+      const r = known.v === v ? known.r : await call(`handle?h=${encodeURIComponent(v)}`);
+      known = { v, r };
+      if (handleNow() !== v) return r;
       hstat.className = "hint handle " + (r.free ? "ok" : "bad");
       hstat.replaceChildren(r.free ? `@${v} is yours.` : r.reason, ...(r.try?.length ? [" Try ", ...r.try.flatMap((t, i) => [i ? " or " : "",
-        h("button.link", { type: "button", onclick: () => { handle.value = t; touched = true; check(); } }, `@${t}`)]), "."] : []));
-    } catch (_) { /* checked again when it's made */ }
+        h("button.link", { type: "button", onclick: () => { handle.value = t; touched = true; check(); handle.focus(); } }, `@${t}`)]), "."] : []));
+      return r;
+    } catch (_) { return null; }    // (checked again when it's made)
   };
   name.addEventListener("input", () => { ready(); if (!touched) { handle.value = handleFrom(name.value); clearTimeout(hT); hT = setTimeout(check, 350); } });
   handle.addEventListener("input", () => { ready(); touched = true; clearTimeout(hT); hT = setTimeout(check, 350); });
@@ -1010,16 +1044,49 @@ function joinCard() {
     ready(); clearTimeout(pT);
     if (pw.value.length >= 10) { const v = pw.value; pT = setTimeout(() => { const salt = E2E.newSalt(); prep.pw = { pw: v, salt, p: E2E.fromPassword(v, salt) }; prep.pw.p.catch(() => {}); }, 700); }
   });
+  // One thing at a time: your name, a handle, your email, then a password, each its own step, the card growing or
+  // shrinking to each as it slides in. (Back keeps what's typed.)
+  const steps = [
+    h("div.jstep", {}, field("Your name", name), h("p.hint", { text: "As your friends will see it." })),
+    h("div.jstep", { hidden: true }, field("Choose a handle", h("div.at", {}, "@", handle)), hstat),
+    h("div.jstep", { hidden: true }, field("Email", email), h("p.hint", { text: "For sign-in alerts and a forgotten password. Never shown to anyone." })),
+    h("div.jstep", { hidden: true }, pwField("Choose a password", pw), meter, hint,
+      h("p.hint", { text: "It also locks your InFlight encryption key, here on this device: the key is never sent anywhere unlocked." })),
+  ];
+  let at = 0;
+  const back = h("button.link.back", { type: "button", disabled: true, onclick: () => { say(said, ""); toStep(at - 1); } }, icon("back", 16, 2.4), "Back");
+  const dots = h("span.d", { "aria-hidden": "true" }, steps.map((_, i) => h(i ? "i" : "i.on")));
+  const of = h("span.of", { "aria-live": "polite", text: `1 of ${steps.length}` });
+  const toStep = (n, focus = true) => {
+    if (n === at || !steps[n]) return;
+    const dir = n > at ? 1 : -1, now = steps[n], box = form.closest(".signin") || form;
+    morph(box, () => {
+      steps[at].hidden = true; now.hidden = false; at = n;
+      [...dots.children].forEach((d, i) => { d.classList.toggle("on", i === n); d.classList.toggle("done", i < n); });
+      of.textContent = `${n + 1} of ${steps.length}`; back.disabled = n === 0;
+      go.textContent = n === steps.length - 1 ? "Create account" : "Next";
+    }, false);
+    if (!still.matches) now.animate([{ opacity: 0, transform: `translateX(${36 * dir}px)` }, { opacity: 1, transform: "none" }], { duration: ms("--dur-base"), easing: tok("--ease-out") });
+    if (focus) now.querySelector("input")?.focus({ preventScroll: true });
+  };
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
+    if (go.disabled) return;
     const v = { name: name.value.trim(), handle: handleNow(), email: email.value.trim(), password: pw.value };
-    if (!v.name) return say(said, "Enter your name.", name);
-    if (!HANDLE_OK.test(v.handle)) return say(said, "Handles use 3 to 20 letters, numbers or underscores.", handle);
-    if (!EMAIL_OK.test(v.email)) return say(said, "That doesn’t look like an email address.", email);
+    if (at === 0) return v.name ? toStep(1) : say(said, "Enter your name.", name);
+    if (at === 1) {
+      if (!HANDLE_OK.test(v.handle)) return say(said, "Handles use 3 to 20 letters, numbers or underscores.", handle);
+      clearTimeout(hT); go.disabled = true;
+      const r = await check().finally(() => { go.disabled = false; });
+      // (taken: said where the handle is, with some free ones to tap)
+      if (r && !r.free) { shake(hstat); return handle.focus(); }
+      return toStep(2);
+    }
+    if (at === 2) return EMAIL_OK.test(v.email) ? toStep(3) : say(said, "That doesn’t look like an email address.", email);
     if (v.password.length < 10) return say(said, "Use at least 10 characters for your password.", pw);
     try {
       let proof, lock;
-      const m = await busy(go, "Creating your account…", async () => {
+      const m = await working(go, "Creating your account", async () => {
         const n = await leakedCount(v.password);
         if (n) throw Object.assign(new Error(leakedSay(n)), { field: "password" });
         ready();
@@ -1030,17 +1097,22 @@ function joinCard() {
         return post("signup", { name: v.name, handle: v.handle, email: v.email, salt, proof, vault: await E2E.lock(k.lockKey, { ecdh: privJwk }), pub, invite: S.invite || undefined });
       });
       S.invite = null; S.gate = null; try { sessionStorage.removeItem("acct:invite"); } catch (_) {}
+      remember(m, "password");
       // (made for an app: straight back to it, the password already checked against data breaches, above)
       if (S.signFor) { post("password/checked", { proof, leaked: false }).catch(() => {}); return handBack(m, { lock }, go); }
+      dawnBreak(true); await ticked(go);
       welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
       checkQuietly(v.password, proof); maybeNudge(m);
     } catch (err) {
       if (err.field === "invite") { S.join = { open: false, ok: false, error: err.message }; return cardTo(form.closest(".signin"), joinCard()); }
-      say(said, err.message, { name, handle, email, password: pw }[err.field] || null);
+      // (something about an earlier step, found as it's made: back to it, to say so there)
+      const i = ["name", "handle", "email", "password"].indexOf(err.field);
+      if (i >= 0) toStep(i, false);
+      say(said, err.message, [name, handle, email, pw][i] || null);
     }
-  } }, field("Name", name), field("Handle", h("div.at", {}, "@", handle)), hstat, field("Email", email), field("Password", pw), meter, hint, go);
-  return h("div.signin.glass", {}, S.invite && !S.join.open && h("p.invited", { text: "You’ve been invited." }), form,
-    h("p.hint.center", { text: "Your password also locks your InFlight encryption key, here on this device: the key is never sent anywhere unlocked." }), said);
+  } }, ...steps, go);
+  return h("div.signin.glass.joinsteps", {}, S.invite && !S.join.open && h("p.invited", { text: "You’ve been invited." }),
+    h("div.jhead", {}, back, dots, of), form, said);
 }
 // A forgotten password: a link to the email (said the same whether there's an account for it or not)
 function forgotCard() {
@@ -1095,7 +1167,7 @@ function resetPage(r) {
         let ecdh, pub;
         if (mode === "keep") {
           let a;
-          try { a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: info.rpId, userVerification: "required", timeout: 120000,
+          try { a = await passkeyAsk({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: info.rpId, userVerification: "required", timeout: 120000,
             allowCredentials: info.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
           catch (_) { throw new Error("No passkey was used. You can start fresh instead."); }
           const res = a?.getClientExtensionResults?.().prf?.results?.first, pk = a && info.passkeys.find((p) => p.id === a.id);
@@ -1122,7 +1194,7 @@ function resetPage(r) {
       other && h("p.hint.bad", { text: `You’re signed in here as @${S.me.handle}. This link is for a different account: only carry on if it’s yours.` }),
       h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
         h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
-        field("New password", pw), meter, hint),
+        pwField("New password", pw), meter, hint),
       h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
@@ -1131,21 +1203,98 @@ function resetPage(r) {
   ];
 }
 // → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for InFlight (where it sent you here: what
-// opens the passkey's own copy of its key, if it has one) }
-async function signInWithPasskey() {
+// opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
+async function signInWithPasskey(only) {
   const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
   let a;
-  try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+  try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+    allowCredentials: only ? [{ type: "public-key", id: fromB64url(only) }] : undefined,
     extensions: inflight ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } }); }
   catch (e) { throw new Error(e?.name === "NotAllowedError" ? "No passkey was used." : "Your passkey couldn’t be used here."); }
   if (!a) throw new Error("No passkey was used.");
+  return passkeySignedIn(o, a);
+}
+async function passkeySignedIn(o, a) {
   const m = await post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature), app: S.signFor?.app });
-  return { m, prf: inflight ? prfOf(a) : null, id: a.id };
+  return { m, prf: S.signFor?.app === "inflight" ? prfOf(a) : null, id: a.id };
+}
+// Signed in, with a passkey (get: asked for, or picked from the keyboard) or a password: who it was kept here, then back to
+// the app that sent you, or this page as yours
+async function withPasskey(btn, said, get) {
+  try {
+    const { m, prf, id } = await working(btn, "Waiting for your passkey", get);
+    remember(m, "passkey", id);
+    if (S.signFor && !m.deleting) return handBack(m, { prf, id }, btn);
+    if (!m.deleting) { dawnBreak(true); await ticked(btn); }
+    welcome(m);
+  } catch (err) { say(said, err.message); }
+}
+async function withPassword(email, emailIn, pw, go, said) {
+  say(said, "");
+  if (!email) return say(said, "Enter your email.", emailIn);
+  if (!pw.value) return say(said, "Enter your password.", pw);
+  try {
+    let k;
+    const m = await working(go, "Signing in", async () => {
+      const { salt } = await post("signin/salt", { email });
+      k = await E2E.fromPassword(pw.value, salt);
+      const m = await post("signin/password", { email, proof: k.proof, app: S.signFor?.app });
+      // (an account from before Argon2id: stretched the new way, now the password's here)
+      const nk = !m.deleting && !E2E.isCurrent(salt) && await restretch(pw.value, k);
+      if (nk) { k = nk; m.salt = nk.salt; }
+      return m;
+    });
+    remember(m, "password");
+    if (S.signFor && !m.deleting) return (await offerFits(m)) ? offerThen(m, k, go.closest(".signin")) : handBack(m, { lock: k.lock }, go);
+    if (!m.deleting) { dawnBreak(true); await ticked(go); }
+    welcome(m);
+    if (!m.deleting) { checkQuietly(pw.value, k.proof); maybeNudge(m); }
+  } catch (err) { say(said, err.message, err.field === "email" ? emailIn : pw); }
+}
+// Who signed in here last (in this browser only): their name, handle and email, and how (with a passkey: which), so that
+// coming back is a tap. Forgotten with Not you?
+const LAST = "acct:last";
+function lastHere() { try { const l = JSON.parse(localStorage.getItem(LAST) || "null"); return l?.email && l.name ? l : null; } catch (_) { return null; } }
+function remember(m, way, id) {
+  try { localStorage.setItem(LAST, JSON.stringify({ name: m.name, handle: m.handle, email: m.email, way, id: way === "passkey" ? id : undefined })); } catch (_) {}
+}
+function forget() { try { localStorage.removeItem(LAST); } catch (_) {} }
+// Signed in with a password, for an app, on a device that can make a passkey, with none yet: one offered before going
+// back, once a month at most (with a nudge here, the same month); for InFlight with its own copy of the key, made now
+// the password's here to open it
+async function offerFits(m) {
+  if (!passkeysWork() || m.passkeys?.length || m.deleting) return false;
+  try { if (Date.now() - Number(localStorage.getItem("acct:nudged") || 0) < 30 * 86400e3) return false; } catch (_) {}
+  try { return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (_) { return false; }
+}
+function offerThen(m, k, card) {
+  try { localStorage.setItem("acct:nudged", String(Date.now())); } catch (_) {}
+  const said = h("p.said", { role: "alert" }), inflight = S.signFor?.app === "inflight";
+  const yes = h("button.btn", { type: "button", onclick: async () => {
+    try {
+      let made;
+      await working(yes, "Waiting for your device", async () => {
+        made = await addPasskey();
+        if (made.secret) {
+          const { vault } = await post("password/vault", { proof: k.proof });
+          S.me = await post("passkeys/vault", { id: made.id, vault: await E2E.lock(await E2E.fromSecret(made.secret), await E2E.unlock(k.lockKey, vault)) });
+        }
+      });
+      remember(S.me?.signedIn ? S.me : m, "passkey", made.id);
+      handBack(S.me?.signedIn ? S.me : m, { lock: k.lock }, yes);
+    } catch (e) { say(said, e.message); }
+  } }, icon("face", 21, 1.9), "Add a passkey");
+  const no = h("button.link", { type: "button", onclick: () => handBack(m, { lock: k.lock }, yes) }, "Not now");
+  cardTo(card, h("div.signin.glass.offer", {},
+    h("div.offer-art", { "aria-hidden": "true" }, icon("face", 40, 1.6)),
+    h("h2", { text: "Next time, just a glance" }),
+    h("p", { text: `A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site${inflight ? ", and opens your InFlight messages too" : ""}.` }),
+    yes, no, said));
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
 async function welcome(m, word, next) {
-  S.me = m; S.pulled = Date.now();
+  S.me = m; S.pulled = Date.now(); stopAutofill();
   await anew(() => {
     S.settled = !!next;
     if (m.prefs) theme(m.prefs.appearance);
@@ -1193,21 +1342,47 @@ async function signOut(btn) {
   try { await busy(btn, "Signing out…", () => post("signout")); }
   catch (e) { if (!e.offline) return toast(e.message, true); }
   S.me = { signedIn: false };
+  duskFall();
   anew(() => { S.settled = false; render(); scrollTo(0, 0); toast("Signed out."); });
 }
 
 // ---- small things ----
 function field(label, input) { return h("label.field", {}, h("span", { text: label }), input); }
+// A password field: an eye, to see what's been typed (struck through while it shows), and a word under it while Caps
+// Lock is on, before a password typed in capitals is found to be wrong
+function pwField(label, input) {
+  const eye = h("button.eye", { type: "button", "aria-label": "Show password", "aria-pressed": "false",
+    onpointerdown: (e) => e.preventDefault(),        // (the field keeps the focus, and the keyboard stays up)
+    onclick: () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password"; eye.classList.toggle("on", show);
+      eye.setAttribute("aria-label", show ? "Hide password" : "Show password"); eye.setAttribute("aria-pressed", String(show));
+    } }, icon("eye", 22, 1.9));
+  const caps = h("p.caps", { role: "status", hidden: true }, icon("caps", 16, 2), "Caps Lock is on");
+  const shown = (on) => {
+    if (caps.hidden === !on) return;
+    const change = () => { caps.hidden = !on; }, box = !caps.closest("#sheet") && caps.closest(".signin");
+    if (box) morph(box, change, false); else change();
+    if (on) caps.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+  };
+  const sense = (e) => { if (e.getModifierState) shown(e.getModifierState("CapsLock")); };
+  input.addEventListener("keydown", sense); input.addEventListener("keyup", sense);
+  input.addEventListener("blur", () => shown(false));
+  return h("div.pwf", {}, h("label.field", {}, h("span", { text: label }), h("div.pw", {}, input, eye)), caps);
+}
 // (what went wrong fades in with a shake, or just fades with Reduce Motion; in a card on the page the card goes to its
 // new size as it's said or cleared, the line under it with it; a sheet does that by itself, fitting what's in it)
 function say(el, text, input) {
   if (!el) return;
   const change = () => { el.textContent = text; el.classList.toggle("bad", !!text); }, box = text !== el.textContent && !el.closest("#sheet") && el.closest(".signin");
   if (box) morph(box, change, false); else change();
-  if (text) el.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }]
+  if (text) shake(el);
+  if (input) input.focus();
+}
+function shake(el) {
+  el.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }]
     : [{ opacity: 0, transform: "translateX(0)" }, { opacity: 1, transform: "translateX(-6px)" }, { transform: "translateX(5px)" }, { transform: "translateX(-3px)" }, { transform: "translateX(0)" }],
     { duration: still.matches ? ms("--dur-fast") : 380, easing: tok("--ease-out") });
-  if (input) input.focus();
 }
 // (a button busy: as wide as it was, so what's beside it stays put, and what it says now faded in; the focus back on
 // it after, if it had it, as being held loses it)
@@ -1222,6 +1397,79 @@ async function busy(btn, label, fn) {
     if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
   }
 }
+// A sign-in's button while it works: drawn in to a circle, turning (what it's doing said to a screen reader); and, once
+// it's done (ticked), a tick drawn in it, in green. As it was, if it fails. (No drawing in, with Reduce Motion: the circle.)
+async function working(btn, label, fn) {
+  const kids = [...btn.childNodes];
+  btn.style.width = `${btn.offsetWidth}px`; void btn.offsetWidth;
+  btn.disabled = true; btn.classList.add("working"); btn.setAttribute("aria-busy", "true"); btn.setAttribute("aria-label", label);
+  btn.replaceChildren(h("span.spin"));
+  btn.firstChild.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+  try { return await fn(); }
+  catch (e) { if (btn.isConnected) unwork(btn, kids); throw e; }
+}
+function unwork(btn, kids) {
+  btn.classList.remove("working", "done"); btn.removeAttribute("aria-busy"); btn.removeAttribute("aria-label");
+  btn.replaceChildren(...kids); btn.disabled = false;
+  const clear = () => { btn.style.width = ""; };
+  if (still.matches) clear(); else { btn.addEventListener("transitionend", clear, { once: true }); setTimeout(clear, ms("--dur-base") + 120); }
+}
+const pause = (t) => new Promise((r) => setTimeout(r, t));
+async function ticked(btn) {
+  const t = icon("check", 26, 2.8); t.classList.add("tick");
+  btn.classList.add("done"); btn.replaceChildren(t);
+  if (!still.matches) btn.animate([{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }], { duration: 460, easing: tok("--ease-spring") });
+  await pause(still.matches ? 160 : 420);
+}
+// Dawn over the sky, as you're signed in: in, as the page hands you on; or in and away again (passing), staying here
+function dawnBreak(passing) {
+  const d = $(".sky .dawn"); if (!d) return;
+  $(".sky").classList.add("lit");
+  d.getAnimations().forEach((a) => a.cancel());
+  d.animate(passing ? [{ opacity: 0 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1 }],
+    { duration: still.matches ? 400 : passing ? 2600 : 1100, easing: tok("--ease-out"), fill: passing ? "none" : "forwards" })
+    .finished.then(() => { if (passing) $(".sky").classList.remove("lit"); }).catch(() => {});
+}
+function duskFall() {
+  const d = $(".sky .dusk"); if (!d) return;
+  $(".sky").classList.add("dim");
+  d.getAnimations().forEach((a) => a.cancel());
+  d.animate([{ opacity: 0 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], { duration: still.matches ? 400 : 2400, easing: tok("--ease-out") })
+    .finished.then(() => $(".sky").classList.remove("dim")).catch(() => {});
+}
+// Leaving for the app, signed in: the tick lifts out of the page as the page lets go, to where the app takes over (the
+// middle, a third of the way down), and turns into you (your photo, or your initial), as dawn breaks over the sky. The
+// app starts from just this. (With Reduce Motion: there, without the journey.)
+async function leaving(btn, m) {
+  dawnBreak();
+  if (btn?.isConnected && btn.classList.contains("working")) await ticked(btn);
+  const r = btn?.isConnected ? btn.getBoundingClientRect() : { left: innerWidth / 2 - 26, top: innerHeight / 2 - 26, width: 52, height: 52 };
+  const face = h("span.face", {}, [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?");
+  if (m.photoAt) face.append(h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "" }));
+  const me = h("div.leave", { "aria-hidden": "true" }, icon("check", 26, 2.8), face);
+  const x = r.left + r.width / 2, y = r.top + r.height / 2, tx = innerWidth / 2 - x, ty = innerHeight * 0.3 - y;
+  me.style.left = `${x}px`; me.style.top = `${y}px`;
+  document.body.append(me);
+  if (btn?.isConnected) btn.style.visibility = "hidden";
+  const page = $("main"), ease = tok("--ease-out"), glide = tok("--ease-glide");
+  if (still.matches) {
+    me.style.transform = `translate(${tx}px, ${ty}px) scale(1.5)`; face.style.opacity = "1"; me.firstChild.style.opacity = "0";
+    await page.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: ease, fill: "forwards" }).finished.catch(() => {});
+    return;
+  }
+  page.animate([{ opacity: 1, transform: "none", filter: "blur(0)" }, { opacity: 0, transform: "scale(.96)", filter: "blur(6px)" }], { duration: 380, easing: ease, fill: "forwards" });
+  await me.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(1.5)` }], { duration: 560, easing: glide, fill: "forwards" }).finished.catch(() => {});
+  me.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, easing: ease, fill: "forwards" });
+  await face.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: 320, easing: tok("--ease-spring"), fill: "forwards" }).finished.catch(() => {});
+  await pause(180);
+}
+// (back on this page from the app, as the browser keeps a page: as it was before it left)
+addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  document.querySelectorAll(".leave").forEach((el) => el.remove());
+  $("main")?.getAnimations().forEach((a) => a.cancel());
+  $(".sky .dawn")?.getAnimations().forEach((a) => a.cancel()); $(".sky")?.classList.remove("lit");
+});
 // What's in a box changed, the box going smoothly from its size to its new one (what's under it moving with it) as
 // what's new fades in (fade: all of what's in it); from where it is, if it was already on its way. Just the fade with
 // Reduce Motion.
@@ -1564,7 +1812,7 @@ function confirmWays(ok) {
       await busy(e.currentTarget, "Waiting for your passkey…", async () => {
         const o = await post("signin/options");
         let a;
-        try { a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+        try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
           allowCredentials: m.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } }); }
         catch (_) { throw new Error("No passkey was used."); }
         await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
@@ -1582,7 +1830,7 @@ function confirmWays(ok) {
       ok(); checkQuietly(pw.value, proof);
     }
     catch (err) { say(said, err.message, pw); }
-  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
   return { pk, key, form, pw, said };
 }
 function confirmView(ok, back) {
@@ -1795,7 +2043,7 @@ async function addPasskey() {
   const o = await post("passkeys/options");
   let cred;
   try {
-    cred = await navigator.credentials.create({ publicKey: {
+    cred = await passkeyMake({ publicKey: {
       challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "georgefarrowgreen.com" },
       user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
@@ -1821,7 +2069,7 @@ async function addPasskey() {
 const prfOf = (cred) => { const r = cred?.getClientExtensionResults?.().prf; return r?.results?.first ? new Uint8Array(r.results.first) : null; };
 async function prfByUse(id, rpId) {
   try {
-    const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId, userVerification: "required", timeout: 120000,
+    const a = await passkeyAsk({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId, userVerification: "required", timeout: 120000,
       allowCredentials: [{ type: "public-key", id: fromB64url(id) }], extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
     return prfOf(a);
   } catch (_) { return null; }
@@ -1842,7 +2090,7 @@ function keyCopyView(id, secret, added = "") {
       });
       patch(); popSheet(); toast("This passkey opens your InFlight messages too.");
     } catch (err) { say(said, err.message, pw); }
-  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
   return { title: added ? "Passkey added" : "InFlight messages", body: [
     h("p.hint", { text: "Your InFlight messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
     form,
@@ -2540,7 +2788,7 @@ function deleteView() {
       const confirm = sure.value.trim();
       try {
         const r = await freshly(() => busy(go, "Deleting…", () => post("delete", { confirm })));
-        S.me = { signedIn: false };
+        S.me = { signedIn: false }; forget();
         anew(() => { S.settled = false; render(); scrollTo(0, 0); });
         toast(`Your account will be deleted on ${new Date(r.deleteAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.`, false, 6000);
       } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
