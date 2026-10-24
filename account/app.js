@@ -918,6 +918,9 @@ function unlockCard(m, said) {
 async function handBack(m, way, btn) {
   const a = S.signFor;
   S.me = m; S.pulled = Date.now(); stopAutofill();
+  // (a sign-in an app handed over to this browser, signed in to nothing, is this page's alone: it goes on to an app once
+  // you've shown it's you here, as InFlight's way on always asks anyway)
+  if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; }
   // (the home page: back, saying it's from signing in, so it greets you)
   if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(`${a.back}#signedin${faceHint(m, face)}`); }
   const go = async () => {
@@ -934,6 +937,11 @@ async function handBack(m, way, btn) {
     anew(() => { S.settled = false; render(); scrollTo(0, 0); });
   }
 }
+// (showing it's you, in a sheet of its own, from the page itself: → whether it was)
+const shownHere = () => new Promise((ok) => {
+  Sheet.cancel = () => ok(false);
+  openSheet(() => confirmView(() => { Sheet.cancel = null; closeSheet(); ok(true); }, closeSheet));
+});
 // what opens InFlight's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
 // used, if it has its own copy of the key; else nothing (the password's needed)
 async function keyFor(m, way) {
@@ -2570,7 +2578,7 @@ function admLogView() {
 // ---- recent activity: the last 30 days, newest first, by day ----
 const DID = {
   signin: (e) => (e.detail === "Passkey" ? "Signed in with a passkey" : e.detail === "Password" ? "Signed in with your password" : "Signed in"),
-  signup: () => "Account made", password: () => "Password changed", reset: () => "Password reset by email",
+  signup: () => "Account made", password: () => "Password changed", reset: () => "Password reset by email", upgrade: () => "Password protection strengthened",
   "passkey-add": (e) => `Passkey added${e.detail ? `: ${e.detail}` : ""}`, "passkey-remove": (e) => `Passkey removed${e.detail ? `: ${e.detail}` : ""}`,
   "signout-device": (e) => `Signed out ${e.detail || "a device"}`, "signout-others": () => "Signed out of all other devices",
   "signout-stale": (e) => `Signed out ${e.detail || "some"} unused device${e.detail === "1" ? "" : "s"}`,
@@ -2579,7 +2587,7 @@ const DID = {
   "delete-asked": () => "Deletion asked for", "delete-cancelled": () => "Deletion called off",
   admin: (e) => `Admin: ${e.detail ? e.detail[0].toLowerCase() + e.detail.slice(1) : "a change"}`,
 };
-const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], password: ["key", "blue"], reset: ["key", "amber"], "passkey-add": ["passkey", "indigo"],
+const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], password: ["key", "blue"], reset: ["key", "amber"], upgrade: ["key", "blue"], "passkey-add": ["passkey", "indigo"],
   "passkey-remove": ["passkey", "grey"], "signout-device": ["signout", "grey"], "signout-others": ["signout", "grey"], "signout-stale": ["signout", "grey"],
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };

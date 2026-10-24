@@ -120,7 +120,7 @@ export async function checkReset(env, request, token) {
   const { reset, user: u } = await findReset(env, token);
   const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
   for (const r of results) r.vault = await openVault(env, u.id, r.vault);
-  return { name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset.hash) : null };
+  return { name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset) : null };
 }
 // The new password: { token, salt, proof, vault, and pub (a new key pair) or keyProof (the old key kept) } → the
 // account's row now, and whether it kept its key

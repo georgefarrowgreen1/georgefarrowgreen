@@ -1,0 +1,91 @@
+// The account's sign-in and getting back in, run as they are against a database of their own (Node's own SQLite in
+// memory, standing in for D1, with the site's schema): a reset link's server key stays the same however often the link's
+// opened; a sign-in an app handed over to a browser signed in to nothing is the account page's alone until it's shown
+// it's you; and guessing a password from many networks at once holds the account back, but not on a device that's
+// signed in to it before.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession } from '../../../functions/_pigeon.js';
+import { passwordUser, cookieUser, withKnown } from '../../../functions/_account.js';
+import { E2E } from '../../../pigeon/crypto.js';
+
+// D1, as much of it as the server uses: prepare, bind, first, all, run, and batch (all or nothing)
+function d1() {
+  const s = new DatabaseSync(':memory:');
+  const st = (sql, args = []) => ({
+    bind: (...a) => st(sql, a),
+    first: async () => s.prepare(sql).get(...args) ?? null,
+    all: async () => ({ results: s.prepare(sql).all(...args) }),
+    run: async () => ({ meta: { changes: Number(s.prepare(sql).run(...args).changes) } }),
+    now: () => (/^\s*SELECT|\bRETURNING\b/i.test(sql) ? s.prepare(sql).all(...args) : s.prepare(sql).run(...args)),
+  });
+  return { prepare: (sql) => st(sql), async batch(list) { s.exec('BEGIN'); try { const r = list.map((x) => x.now()); s.exec('COMMIT'); return r; } catch (e) { s.exec('ROLLBACK'); throw e; } } };
+}
+const env = { DB: d1() };
+const D = await db(env);
+const proofOf = (pw) => b64url(new Uint8Array(32).fill(pw.length)).slice(0, 43);
+async function account(handle, pw) {
+  const id = crypto.randomUUID(), t = Date.now(), { pub } = await E2E.newIdentity();
+  await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 3, ?, ?)`)
+    .bind(id, handle, handle, `${handle}@example.com`, JSON.stringify(pub), E2E.newSalt(), hex(await sha256(new Uint8Array(32).fill(pw.length))), 'v'.repeat(40), t, t).run();
+  return D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(id).first();
+}
+const ACCT = 'http://account.localhost:8788', req = (path, { cookie, ip = '198.51.100.1' } = {}, host = ACCT) =>
+  new Request(host + path, { headers: { Origin: host, 'CF-Connecting-IP': ip, ...(cookie ? { Cookie: cookie } : {}) } });
+
+test('a reset link keeps one server key for its life: opened again elsewhere, the first tab still keeps the key', async () => {
+  const u = await account('kim', 'a long test password'), id = await E2E.newIdentity();
+  await D.prepare('UPDATE pg_users SET pub = ? WHERE id = ?').bind(JSON.stringify(id.pub), u.id).run();
+  const token = await createReset(env, u.id, 'user', 3600e3);
+  const first = await resetKx(env, (await findReset(env, token)).reset);
+  const again = await resetKx(env, (await findReset(env, token)).reset);
+  assert.deepEqual(again, first, 'the same key, however often the link is checked');
+  assert.deepEqual(Object.keys(first).sort(), ['crv', 'kty', 'x', 'y'], 'and only its public half');
+  // the first tab's proof, made with the key it was given, still checks out
+  const { reset } = await findReset(env, token);
+  const proof = await E2E.keyProof(await E2E.importPriv(id.privJwk), first, 'reset|' + reset.hash);
+  assert.equal(await keyProofOk(reset, JSON.stringify(id.pub), proof), true);
+  // (a new link has a key of its own)
+  const other = await resetKx(env, (await findReset(env, await createReset(env, u.id, 'user', 3600e3))).reset);
+  assert.notDeepEqual(other, first);
+});
+
+test('a sign-in handed over to a browser signed in to nothing: the account page’s alone until it’s shown it’s you', async () => {
+  const u = await account('lou', 'a long test password');
+  const from = hex(await sha256(await issueSession(env, u.id, req('/api/weather/me'))));
+  const hash = hex(await sha256(await issueSession(env, u.id, req('/api/account/handoff')))), site = 'h'.repeat(43);
+  await D.prepare('UPDATE pg_sessions SET auth_at = 0, parent = ?, handed = 1, site_hash = ? WHERE hash = ?').bind(from, hex(await sha256(site)), hash).run();
+  const cookie = `account=${site}`;
+  const here = await cookieUser(req('/api/account/me', { cookie }), env);
+  assert.equal(here?.id, u.id, 'on the account’s page: signed in');
+  assert.equal(here.handed, true);
+  for (const path of ['/api/weather/me', '/api/pigeon/resume', '/api/me', '/api/me/photo'])
+    assert.equal(await cookieUser(req(path, { cookie }), env), null, `${path}: signed out`);
+  assert.equal((await D.prepare('SELECT parent FROM pg_sessions WHERE hash = ?').bind(hash).first()).parent, from, 'and still part of the app’s sign-in it came from');
+  // shown it's you (functions/api/account reauth): the browser's own from then on
+  await D.prepare('UPDATE pg_sessions SET auth_at = ?, handed = NULL WHERE hash = ?').bind(Date.now(), hash).run();
+  assert.equal((await cookieUser(req('/api/weather/me', { cookie }), env))?.id, u.id);
+});
+
+test('guessing from many networks holds the account back, but not on a device that’s signed in to it before', async () => {
+  const u = await account('max', 'a long test password'), right = { email: u.email, proof: proofOf('a long test password') };
+  // a device signs in, and keeps the word that it has
+  const res = await withKnown(new Response('{}'), req('/api/account/signin/password'), env, u);
+  const word = res.headers.get('Set-Cookie');
+  assert.match(word, /^known=[0-9a-f]{32}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+$/);
+  const known = word.split(';')[0];
+  // 300 wrong passwords, ten from each of 30 networks
+  for (let n = 1; n <= 30; n++) for (let i = 0; i < 10; i++)
+    await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: `203.0.113.${n}` }), { email: u.email, proof: 'x'.repeat(43) }), { status: 401 });
+  await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '198.51.100.7' }), right), { status: 429, message: /for this account.*passkey/ },
+    'a new device, even with the right password: held back');
+  assert.equal((await passwordUser(env, req('/api/account/signin/password', { ip: '198.51.100.8', cookie: known }), right)).id, u.id, 'the device that knows it: in');
+  // (its own wrong tries count against it alone, ten an hour, not the account)
+  for (let i = 0; i < 10; i++) await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: `192.0.2.${i}`, cookie: known }), { email: u.email, proof: 'y'.repeat(43) }), { status: 401 });
+  await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '192.0.2.99', cookie: known }), right), { status: 429, message: /^Too many tries\. Wait/ });
+  // a word that isn't the server's, or is another account's, counts for nothing
+  const other = await account('ned', 'another test password'), theirs = (await withKnown(new Response('{}'), req('/'), env, other)).headers.get('Set-Cookie').split(';')[0];
+  const forged = known.replace(/\.[^.]+$/, '.' + 'A'.repeat(32));
+  for (const cookie of [forged, theirs]) await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '198.51.100.9', cookie }), right), { status: 429, message: /for this account/ });
+});

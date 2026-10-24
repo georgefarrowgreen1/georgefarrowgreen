@@ -273,7 +273,9 @@ Motion, solid with Reduce Transparency.
   InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
   a passkey that opens the messages (a code for InFlight is made only for a sign-in that's just shown it's you), or one
   tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
-  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself.
+  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself; as
+  the server can't tell it's the same password, that's in Recent activity ("Password protection strengthened") and
+  emailed.
   The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
   `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
   has none.
@@ -291,11 +293,14 @@ Motion, solid with Reduce Transparency.
   password. With a passkey that holds a copy of the InFlight key (one made in InFlight, which can), **Keep messages
   with passkey** unlocks the key here and locks it anew; otherwise, or by choice, **Start fresh**: a new key, friends
   kept, older messages sealed. Either way every sign-in and passkey ends, a pending email change is called off, and
-  this browser's signed in.
+  this browser's signed in. (The server key the passkey's proof is checked against is the link's own, made as it's
+  first opened, so opening it again, in another tab or on another device, doesn't spoil the first.)
 - **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
-  server too, 409).
+  server too, 409). A browser that wasn't signed in is signed in on this page alone (`pg_sessions.handed`), as a name
+  is anyone's to give their own account: the rest of the site and every app treat it as signed out, and none is handed
+  it, until you've shown it's you here (**Continue to Weather** asks first, with a passkey or your password).
 - **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
   the buttons, with your name and handle on it in large type (your email's in Edit profile, and Sign-in and security);
   **Edit profile** (your name and handle) and **Your code** under it. Its camera opens **Your photo** (the one place to change it): drag the photo (or use the arrow keys) to choose what shows, with the circle every
@@ -329,8 +334,10 @@ Motion, solid with Reduce Transparency.
   Weather: its saved places (the first few by name), its notifications (how many places, and the morning brief) and
   units.
 - **Email.** Not confirmed: a banner up top sends a confirm link (the same one InFlight sends, said as the account's).
-  A new email: a link to it (good for 2 days) and a word to the old one (the new one half hidden); nothing changes until
-  the link's opened, then the old one's told. The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
+  A new email: a link to it (good for 2 days) and a word to the old one, confirmed or not (the new one half hidden; if it
+  wasn't you, change your password, which calls it off and signs every other device out); nothing changes until the
+  link's opened, then the old one's told (if it wasn't you, ask the site's admin for a reset link, as sign-ins and resets
+  go by the new address now). The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
   what counts, so they work signed in or not, in whichever browser the email opens them in.
 - **Password.** A new one: the old one's proof gets the key it locks, which the page unlocks and locks anew with the new
   one, so nothing locked changes hands; a password from a data breach is said as it's typed (Pwned Passwords, only the
@@ -350,11 +357,12 @@ Motion, solid with Reduce Transparency.
   noted as it's used (`pg_sessions.apps`). The account's page is named **Account** only when it's on the Home Screen
   (it says so with each ask, `X-Home-Screen`, noted as `pg_sessions.home`); in Safari it's Safari. The account's page opened from an app (its hand-off) isn't a device of its
   own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
-  opened and ending with it (one used by an app as well is the browser's own sign-in from then on; one from before, only
-  ever used on the account's page, is taken in when the app opens it again). The country's left
+  opened and ending with it (one used by an app as well, once it's shown it's you here, is the browser's own sign-in from
+  then on; one from before, only ever used on the account's page, is taken in when the app opens it again). The country's left
   out where it's this device's, and the device where it's the same kind. On a touch screen a device's row slides left to show
   **Sign out**, and a passkey's to show **Remove**, as lists do on a phone (the buttons stay, for a keyboard).
-- **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
+- **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset (or an older one's protection
+  strengthened), passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
   with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
   security too), each on one line with its time on the right and the app it happened in on its icon, where most of a
@@ -413,14 +421,17 @@ Motion, solid with Reduce Transparency.
   `.tools/tests/acctmore.mjs` (66 checks: the photo from its badge, your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
-  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
+  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (41 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
   Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
   password only here; a reset link by email,
-  passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
-  refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
-  over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
-  wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
+  passed on from InFlight's older address, keeping the key with a passkey (the link opened in another tab first), then
+  starting fresh, the old password refused; a new email's words to the old address), `.tools/tests/acctlink.mjs` (24
+  checks: the hand-off code: said yes to first, once, for a minute, only here, and never over another account's sign-in;
+  a browser it signs in is this page's alone until it's shown it's you), `unit/pdf.test.mjs` (the PDF writer: Windows
+  Latin 1, Helvetica's widths, wrapping, every object where the cross-reference table says), `unit/activity.test.mjs`
+  (passkey providers) and `unit/acctsec.test.mjs` (a reset link's key kept for its life, a handed-over sign-in kept to
+  this page, and the password sign-in hold, against Node's own SQLite standing in for D1).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.
@@ -2216,10 +2227,14 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   10 minutes, so a stolen sign-in alone isn't enough. Passkeys must verify the
   person (Face ID, fingerprint or passcode), each passkey request can be used
   once, and adding a passkey emails the account. Only a sign-in that has ended
-  signs a phone out; a wrong password never does.
+  signs a phone out; a wrong password never does. Wrong passwords hold back the
+  address they come from (30 an hour), and only guessing from many at once (300
+  an hour) the account itself, and then not on a device that's signed in to it
+  before: that keeps a word saying so (a cookie of the account page's own, a MAC
+  of the email's hash) and counts its own wrong tries instead (10 an hour).
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
   days; the account's page can send another). Until then the address gets
-  nothing but that link and password resets, so no one can sign up with
+  nothing but that link, password resets and word of the email being changed, so no one can sign up with
   someone else's address and have notifications sent to it. Accounts from
   before this count as confirmed; an emailed reset link confirms too.
 - **Handles** given up (changed, or the account deleted) are held for 30 days,
@@ -2235,7 +2250,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it
-  holds that key (an HMAC under the secret it shares with a one-off server key),
+  holds that key (an HMAC under the secret it shares with a server key of the link's own),
   so a stolen link can't quietly swap in a key without friends being warned.
 - **Friend requests** show the person you asked nothing of them (name or
   picture) until they say yes. Declining isn't told to the asker: their

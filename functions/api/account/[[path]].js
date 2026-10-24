@@ -31,7 +31,7 @@
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
@@ -107,6 +107,8 @@ async function view(env, u) {
     poster: u.avatar_at ? { at: u.poster_at || null, focus: u.poster_focus || "50 50" } : null,
     emailNew: u.email_new && t - (u.email_new_at || 0) < CHANGE_TTL ? u.email_new : null,
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
+    // (a sign-in an app handed over to this browser, signed in to nothing: this page's alone until it's shown it's you)
+    handed: !!u.handed,
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     // (messages: it has its own locked copy of the key to InFlight's messages, so it opens them on a new phone by itself)
@@ -170,7 +172,9 @@ const ROUTES = {
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
   // (a code a page elsewhere sent this browser here with can't sign it in unasked: who it's for is shown first, and it's
-  // used only once that's said yes to; nor does it ever take the place of a different account's sign-in here)
+  // used only once that's said yes to; nor does it ever take the place of a different account's sign-in here. And one
+  // that signs in a browser signed in to nothing is this page's alone (handed): the rest of the site, and every app,
+  // treat the browser as signed out until it's shown it's you here, as the name said yes to is whatever its owner chose)
   "POST handoff/who": async ({ request, env }) => {
     sameOrigin(request);
     await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
@@ -203,16 +207,19 @@ const ROUTES = {
     }
     // (part of the app's sign-in it came from: listed with it and ending with it, and the last one it opened replaced)
     const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
-    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ? WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
+    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ?, handed = 1 WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
       D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, hash)]);
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
-    return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0 })), request, env, hash);
+    return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0, handed: true })), request, env, hash);
   },
   // an app that sent you here to sign in, handed the sign-in back (functions/_handback.js): { code }, for the address
   // the page goes back to it with
   "POST handback": async ({ request, env }) => {
     sameOrigin(request);
-    return json(await makeHandback(env, await signedIn(request, env), await body(request, 8192)));
+    const u = await signedIn(request, env);
+    // (one handed over from an app goes on to none until it's shown it's you here)
+    if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth");
+    return json(await makeHandback(env, u, await body(request, 8192)));
   },
   // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
   // (the invite in the body, never the address: an address ends up in logs)
@@ -242,7 +249,7 @@ const ROUTES = {
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
       rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"], ["Passkeys", "Removed: add one again in Sign-in and security"]] }, linkOrigin(request)));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    return withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash);
+    return withKnown(await withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash), request, env, u);
   },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env, false, { deleting: true });
@@ -262,7 +269,8 @@ const ROUTES = {
       ok = !!cred && await verifyAssertion(cred, request, b, env);
     }
     if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
-    await D.prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
+    // (and one handed over from an app, shown to be yours, is the browser's own from now on)
+    await D.prepare("UPDATE pg_sessions SET auth_at = ?, handed = NULL WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
     return json({ ok: true });
   },
   // the password-locked key, for the password itself (its proof is the check): the page unlocks it, to lock it anew
@@ -276,8 +284,9 @@ const ROUTES = {
   },
   // An account from before Argon2id, signed in to here with its password: stretched again the new way (the same
   // password and key, a new salt, and the key locked anew with what it gives), as InFlight did when it signed in itself.
-  // Nothing else changes, so nothing's said.
-  "POST password/upgrade": async ({ request, env }) => {
+  // Nothing else changes; but as the server can't tell it's the same password, it's noted in Recent activity and
+  // emailed, so it's never a quiet way to change one (at most once an account).
+  "POST password/upgrade": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
     await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
@@ -285,8 +294,13 @@ const ROUTES = {
     if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
     const vault = checkNewSecret(b);
     if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
-    await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
+    const r = await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
       .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
+    if (r.meta?.changes) {
+      waitUntil(logEvent(env, u.id, "upgrade", request));
+      waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
+        line: "your account’s password is now kept with a stronger kind of protection.", after: "If you didn’t just sign in, change your password straight away, at account.georgefarrowgreen.com." }, linkOrigin(request)));
+    }
     return json({ ok: true, salt: b.salt });
   },
   // a new password: the old one's proof, the new one's salt and proof, and the key locked with it. Every other sign-in
@@ -455,8 +469,9 @@ const ROUTES = {
     const origin = linkOrigin(request);
     await tell(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
       after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
+    // (to the address as it is, confirmed or not, with how to call it off)
     waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
-      pill: ["mail", hide(email)] }, origin));
+      after: "If this wasn’t you, sign in now and change your password. That calls the change off and signs out every other device.", to: u.email, pill: ["mail", hide(email)] }, origin));
     waitUntil(logEvent(env, u.id, "email-change-asked", request, hide(email)));
     return json(await view(env, { ...u, email_new: email, email_new_at: t }));
   },
@@ -476,7 +491,9 @@ const ROUTES = {
       ]);
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
+    // (and what to do if it wasn't them: password sign-ins and resets go by the new address now, so the site's admin)
     waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
+      after: "If this wasn’t you, you can no longer sign in or reset your password with this address. Ask the person who runs the site for a reset link, and you can put your email back.",
       to: u.email, pill: ["mail", hide(u.email_new)] }, linkOrigin(request)));
     return json({ ok: true, email: u.email_new });
   },
