@@ -24,16 +24,36 @@ export const ACCT_SECURITY = {
 // what it shares with the rest of the site: its address here → where it's kept
 const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
-// The page's own script and styles, stamped with what's in them (?v=), so the page always runs the files it was made
-// with: the page itself never kept (and opened afresh if the browser brings back one it kept: account/app.js), the
-// stamped files kept for good. (What the script brings in itself is checked each time, as before.)
-const STAMPED = ["app.js", "styles.css"], FOREVER = "public, max-age=31536000, immutable";
-const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+// The page's script and styles, and every module the script brings in, stamped with what's in them as sent (?v=: a
+// module's own imports stamped in turn), as InFlight's are (functions/_app.js): so the page always runs the files it
+// was made with, whatever a browser kept from before, and the stamped files are kept for good. (The page itself is
+// never kept, and opened afresh if the browser brings back one it kept: account/app.js; a script asked for unstamped
+// isn't kept at all.)
+const FOREVER = "public, max-age=31536000, immutable";
+const IMPORT_RE = /\b(from\s+|import\()"\.\/([\w.-]+\.js)"/g;
+const where = (name) => SHARED["/" + name] || "/account/" + name;
+const stampOf = async (text) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+// (worked out again each minute: just after a deploy the files can briefly be last version's)
+const memo = new Map();
+async function fingerprint(ctx, url, name) {
+  const hit = memo.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  const r = await ctx.env.ASSETS.fetch(new Request(new URL(where(name), url)));
+  if (!r.ok) return "";
+  const v = await stampOf(await asSent(ctx, url, name, await r.text()));
+  memo.set(name, { v, at: Date.now() });
+  return v;
+}
+// a file as sent: a module with its imports stamped (each by its address here: crypto.js's argon2.js is this page's)
+async function asSent(ctx, url, name, text) {
+  if (!name.endsWith(".js")) return text;
+  const seen = new Map();
+  for (const [, , dep] of text.matchAll(IMPORT_RE)) if (!seen.has(dep)) seen.set(dep, await fingerprint(ctx, url, dep));
+  return text.replace(IMPORT_RE, (m, how, dep) => (seen.get(dep) ? `${how}"./${dep}?v=${seen.get(dep)}"` : m));
+}
 async function stamped(ctx, url, html) {
-  for (const f of STAMPED) {
-    const r = await ctx.env.ASSETS.fetch(new Request(new URL(`/account/${f}`, url)));
-    if (r.ok) html = html.replace(`"${f}"`, `"${f}?v=${await stampOf(await r.arrayBuffer())}"`);
-  }
+  const refs = [...new Set([...html.matchAll(/(?:src|href)="([\w.-]+\.(?:js|css))"/g)].map((m) => m[1]))];
+  for (const f of refs) { const v = await fingerprint(ctx, url, f); if (v) html = html.replaceAll(`"${f}"`, `"${f}?v=${v}"`); }
   return html;
 }
 
@@ -46,13 +66,17 @@ export async function accountHost(ctx, url) {
   const type = res.headers.get("content-type") || "";
   // (anything else that comes back as a page is the site's home page, served as a fallback)
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
-  const page = res.status === 200 && PAGE.test(path), stamp = res.status === 200 && STAMPED.includes(path.slice(9)) && url.searchParams.get("v");
-  const body = page && ctx.request.method === "GET" ? await stamped(ctx, url, await res.text()) : stamp ? await res.arrayBuffer() : res.body;
-  const out = new Response(ctx.request.method === "HEAD" ? null : body, res);
+  const head = ctx.request.method === "HEAD", name = url.pathname.slice(1);
+  const page = res.status === 200 && PAGE.test(path), script = res.status === 200 && /^[\w.-]+\.(js|css)$/.test(name);
+  const body = head ? null : page ? await stamped(ctx, url, await res.text()) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
+  const out = new Response(body, res);
   for (const [k, v] of Object.entries(ACCT_SECURITY)) out.headers.set(k, v);
-  if (page || stamp) { out.headers.delete("content-length"); out.headers.delete("etag"); }
+  if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }
+  // (Pages' own preload hints name the files unstamped: each would be fetched again, and could be a copy kept from before)
+  if (page) out.headers.delete("Link");
   // (a stamped file kept only when it's what was asked for: just after a deploy the old one can come under the new stamp)
-  if (res.status === 200) out.headers.set("Cache-Control", page ? "no-store" : stamp ? (await stampOf(body)) === stamp ? FOREVER : "no-store"
+  const want = script && url.searchParams.get("v"), v = want && (head ? await fingerprint(ctx, url, name) : await stampOf(body));
+  if (res.status === 200) out.headers.set("Cache-Control", page ? "no-store" : script ? (want && want === v ? FOREVER : "no-store")
     : /\.(png|svg)$/.test(path) ? "public, max-age=86400" : "private, no-cache");
   return out;
 }

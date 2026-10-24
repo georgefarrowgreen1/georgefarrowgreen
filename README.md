@@ -206,8 +206,9 @@ or `p=reject` with `pct=100`, which georgefarrowgreen.com has).
 One page for the georgefarrowgreen.com account every app on the site signs in with (`account/`, served at the
 address's root by `functions/_acctapp.js`; its API is `/api/account/`, `functions/api/account/[[path]].js`, answered
 only there). Always the latest, however it's opened (an app's in-app browser included): the page is never kept
-(no-store), its script and styles are stamped with what's in them (`app.js?v=…`, kept for good only when they match),
-and a page the browser brings back from its back-forward cache is opened afresh. In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
+(no-store), its script and styles, and every module the script brings in (`crypto.js` and the rest, each one's own
+imports too), are stamped with what's in them (`app.js?v=…`, kept for good only when they match; unstamped, not kept
+at all), so a new script never runs with a module kept from before, and a page the browser brings back from its back-forward cache is opened afresh. In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
 over anything) over a night-sky gradient with slow light drifting over it (a dawn sky in light mode); grouped
 lists as Settings has them; a large title that scrolls with the page (glass behind the status bar once it's under it); sheets that come up from below
 (swipe one down by its top, or Esc) while the page steps back and holds still (a finger on it doesn't scroll it); and everything rising into place. Still with Reduce
