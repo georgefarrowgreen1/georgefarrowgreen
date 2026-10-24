@@ -657,9 +657,11 @@ function codeView() {
   })
     .catch(() => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here. Copy the link instead." })));
   return { title: "Your code", body: [
-    h("div.code-card", {}, avatar(m, true), h("b", { text: m.name }), h("span", { text: `@${m.handle}` }), qr),
-    h("p.hint.center", { text: "A friend points their phone’s camera at it to add you in InFlight." }),
-    h("div.code-acts", {},
+    // (who it adds, as a contact is shown; then the code itself, as large as the sheet allows, on its white card)
+    h("div.code-who", {}, avatar(m, true), h("div", {}, h("b", { text: m.name }), h("span", { text: `@${m.handle} · InFlight` }))),
+    h("div.code-big", {}, qr),
+    h("p.hint.center", { text: "Point a phone’s camera at it to add you." }),
+    h("div.code-acts" + (navigator.share ? ".two" : ""), {},
       navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on InFlight`, text: `Add me on InFlight: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
       h("button.btn" + (navigator.share ? ".quiet" : ""), { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied."); } catch (_) { toast(link); } } }, "Copy link")),
   ] };
