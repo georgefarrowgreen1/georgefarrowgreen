@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { oneRain } from "../../../weather/agree.js";
 import { rainChance, dayParts, nowcast } from "../../../weather/insights.js";
-import { isWetCode } from "../../../weather/codes.js";
+import { isWetCode, wetAt, heaviness } from "../../../weather/codes.js";
 import { shapeEnsemble } from "../../../weather/data.js";
 import { blend } from "../../../weather/rainmap.js";
 import { keyOf, makeFormat } from "../../../weather/format.js";
@@ -57,7 +57,7 @@ test("the first hours are the next four hours': their rain, and where the radar 
   let told = oneRain(wx, NOW);
   // (11:00's rain is the hour up to it, 10:00 to 11:00: the quarters from 10:00; dry in the next four hours)
   assert.deepEqual([at(told, 11).precip, at(told, 11).code, at(told, 11).pop], [0, 63, 70], "no radar: the quarters' rain, the ensembles' chance");
-  assert.deepEqual([at(told, 13).precip, at(told, 13).code], [1.2, 61], "12:00 to 13:00 wet in the quarters: light rain");
+  assert.deepEqual([at(told, 13).precip, at(told, 13).code], [1.2, 63], "12:00 to 13:00 wet in the quarters: rain, 1.2 mm in the hour (moderate), not the quarters' light");
   assert.equal(at(told, 11).led, undefined);
   // the radar seeing it dry for the next hour and a half, then light rain: it leads, and says so
   const steps = Array.from({ length: 25 }, (_, k) => ({ lead: k * 5, mmh: k * 5 >= 100 ? 1 : 0, snow: false, seen: 1 }));
@@ -79,6 +79,12 @@ test("without the ensembles or the next four hours: the forecast as it was", () 
   assert.equal(rainChance(told, NOW, NOW + 3 * H), null);
 });
 
+test("how heavy rain is, by its rate: one scale (light under 0.6 mm an hour, moderate to 4, heavy beyond), its kind kept", () => {
+  assert.deepEqual([0.3, 0.6, 1.2, 3.9, 4, 12].map(heaviness), [1, 2, 2, 2, 3, 3]);
+  // rain, showers, drizzle while it's light, snow by its water; a thunderstorm and freezing rain as they are
+  assert.deepEqual([wetAt(61, 1.2), wetAt(63, 0.3), wetAt(61, 6), wetAt(80, 1.2), wetAt(82, 0.2), wetAt(51, 0.3), wetAt(51, 1.2)], [63, 61, 65, 81, 80, 51, 63]);
+  assert.deepEqual([wetAt(71, 0.5), wetAt(71, 2), wetAt(85, 2), wetAt(3, 2, true), wetAt(3, 2), wetAt(95, 0.2), wetAt(66, 6)], [71, 73, 86, 73, 63, 95, 66]);
+});
 test("now: raining as the next four hours say (the radar's, where it leads), so the top of the page agrees with them", () => {
   // 15:50; the forecast's own now overcast, but the radar's quarters wet from 15:45 to 16:15, then dry
   const at = DAY0 + 15 * H + 50 * 60e3, f = makeFormat({});
@@ -87,7 +93,7 @@ test("now: raining as the next four hours say (the radar's, where it leads), so 
   wx.minutely = Array.from({ length: 17 }, (_, k) => ({ t: DAY0 + 15 * H + 45 * 60e3 + k * Q, precip: k < 2 ? 0.3 : 0, code: k < 2 ? 61 : 3, radar: k < 12 ? 1 : 0 }));
   let told = oneRain(wx, at);
   assert.equal(nowcast(told, at, f).now, true);
-  assert.equal(told.current.code, 61, "raining now, as the card under it says: not overcast");
+  assert.equal(told.current.code, 63, "raining now, and as heavily as the card under it says (1.2 mm an hour: moderate), not overcast");
   // (the hour now's in, 15:00 to 16:00, partly gone: what's left of it wet, so a wet hour)
   assert.ok(isWetCode(at16(told).code) && at16(told).precip >= 0.3, JSON.stringify(at16(told)));
   // the other way: the forecast has rain now, the radar sees none here for the next hour

@@ -302,6 +302,8 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .caps[hidden] { display: none; }
 .caps { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 600; color: var(--warn); }
 @media (prefers-reduced-motion: reduce) { .eye .slash { transition: none; } }
+.field input:-webkit-autofill { box-shadow: inset 0 0 0 0.5px var(--line), inset 0 0 0 100px var(--field); }
+.field input:-webkit-autofill:focus { box-shadow: inset 0 0 0 1.5px var(--tint), inset 0 0 0 100px var(--field); }
 .at { display: flex; align-items: center; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); padding-left: 16px; color: var(--text-2); }
 .at:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
 .at input { background: none; box-shadow: none !important; padding-left: 2px; color: var(--text); }
@@ -837,4 +839,13 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
     .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--glass-strong), var(--text) 6%); }
     .pc-cam:hover, .pc-add:hover { background: rgba(20, 22, 40, 0.88); }
   }
+}
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
+   iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
+   too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+  -webkit-background-clip: text; background-clip: text;
 }

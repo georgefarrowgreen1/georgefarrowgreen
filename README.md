@@ -421,7 +421,11 @@ so there's nothing to set up beyond the address.
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
   long it lasts and how heavy, charted as light, moderate or heavy (those words in a margin of their own at
   the chart's end, so no column runs under them; the amounts are in the readout
-  as you touch it). Where there's radar (RainViewer's
+  as you touch it). One scale for how heavy, near enough the Met Office's: light
+  under 0.6 mm an hour, moderate to 4, heavy beyond (`codes.js` heaviness), so the
+  weather now at the top says the same as the chart ("Rain", not "Light Rain",
+  over 1.2 mm an hour), in the kind the forecast has it (rain, showers, drizzle
+  while it's light, snow). Where there's radar (RainViewer's
   coverage), the radar leads: the rain on it carried along its own track and
   read over a circle about the place that widens the further ahead (about 2 km
   across now, 20 km two hours on), the radar's alone for the first half hour,
@@ -435,8 +439,11 @@ so there's nothing to set up beyond the address.
   their warnings' areas (Norway, Sweden, Switzerland, Slovenia, Estonia,
   Iceland, Israel, Ukraine, Latvia, now and then the Netherlands), through
   MeteoAlarm (EUMETNET's feeds, CC BY 4.0); the National Weather Service's in
-  the US. Each a card in its colour (yellow, amber or orange, red) saying who
-  issued it and when, with the whole of it a tap away (what to expect, the
+  the US. Straight under the temperature, each a card in its colour (yellow,
+  amber or orange, red) saying who issued it and when (two or more, with the
+  app's own, fold into one banner saying what they are, the most severe first:
+  "3 warnings: Amber thunderstorm, Yellow rain, Gales", that opens to them
+  all), with the whole of it a tap away (what to expect, the
   details, what to do, the issuer's own page), and in the morning briefing
   ("Met Office: yellow wind warning until 18:00."). Only warnings yellow and
   up, in force or to come, and not since replaced. Elsewhere none: the other
@@ -461,8 +468,10 @@ so there's nothing to set up beyond the address.
   20°, −5°, 25 mm) that are hard on anyone; and frost isn't a warning where
   nearly every night freezes at the time of year (`climate.js` extremes).
 - The app's own insights (warnings aside, which have cards of their own) are in
-  one card, **Highlights**, near the top (under the next four hours, as iOS
-  27's Weather has its own): the first three as rows, each its title and a short line of its own
+  one card, **Highlights**, after the radar, and only what the rest of the page
+  doesn't say already (not UV, air, pressure or wind, which their tiles say;
+  not rain today, when the briefing says it; not today against what's normal,
+  which This time of year says): the first three as rows, each its title and a short line of its own
   that fits beside its icon on a phone ("Rain this afternoon (82%)", "18°:
   warmer than 99% of days"), rather than the start of all it says cut off; a
   tap opens a row to the whole of it, and closes it again, with a way on to its
@@ -674,8 +683,9 @@ so there's nothing to set up beyond the address.
   for each saved place, a Rain and a Warnings button on each place's row, and the
   briefing for the place you choose; signed in, the account's choices, sent to
   every device signed in to it that has notifications on; until
-  they're on, a word about them on the page, once, put away for a month with
-  "Not now"): a
+  they're on, a word about them on the page, after the next 48 hours, put away
+  for good with "Not now", after which it's a row at the top of Settings,
+  "Get rain alerts", until they're on): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
   not between 22:00 and 07:00, not twice in three hours; where there's radar,
   timed by it just as the app's next hours are: the server reads RainViewer's
@@ -782,7 +792,7 @@ so there's nothing to set up beyond the address.
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
   last looked** ("Saturday looks drier: rain chance 70% → 20%").
-- **Right now**, straight after the 16 days: feels like (and why) on a
+- **Right now**, after the next 48 hours: feels like (and why) on a
   thermometer marked with the actual temperature, wind with a compass and
   Beaufort name, humidity on a bar and dew-point comfort, rain in the last and
   next 24 hours (the next as little bars, an hour each), pressure on a dial with which way it's going, visibility on a
@@ -811,6 +821,17 @@ so there's nothing to set up beyond the address.
   when it was updated, Open-Meteo's credit, and "Learn more about weather data
   and map data", as the Weather app has it) or from the map's ©.
 
+**The page**, in order: the temperature, any warnings, the next 4 hours (when
+rain's on its way), the next 48 hours, Right now, the 16 days, the rain radar,
+then Highlights, Best times, the forecast's accuracy here and This time of year.
+**Settings → Arrange your page** puts the cards in your own order and switches
+off any you don't want (each a row with a switch, and a handle to drag it by,
+or the arrow keys on it; "Put back as it was" undoes it all; the warnings
+always first). It's kept with your settings, so signed in it's the same on all
+your devices. On a wide screen the cards are shared out between two columns,
+each in turn to whichever is shorter so far, so they stay about level and read
+across and down in your order.
+
 Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
 mm/in, hPa/inHg/mmHg, 12/24-hour; to start with °C, mph, mm, hPa and 24-hour,
 whatever the phone's language) stay on the device. A first visit opens on
@@ -823,7 +844,18 @@ across versions), shows what it last fetched (each file is checked against its
 fingerprint as it's kept, and the page against its version, so a phone never
 keeps a mix of two versions, as a server can hand out for a moment mid-release:
 after changing any of them, `node .tools/wxshell.mjs`, which the tests check), can be added to the Home Screen,
-and is **fresh whenever it's opened**: started, brought back to the front,
+and puts up the weather as it was last shown (its sky, the temperature, what
+it's doing, the day's high and low) the moment the page opens, before the app
+itself has loaded (`weather/boot.js`, from what the app kept the last time it
+drew them, if that was this place in the last three hours), drawn afresh a
+moment later. It loads only what the page needs to open: a tile or a day in
+full (`weather/detail.js`) and Settings (`weather/settings.js`) are fetched the
+first time they're opened (from the offline copy, so offline too), the map's
+library only once the page is scrolled towards the radar, and the figures from
+a place's thirty years of climate (what's normal on each day shown, its
+records, what's unusual here) are worked out once a day and kept, so the
+thirty years themselves aren't read each time. And it
+is **fresh whenever it's opened**: started, brought back to the front,
 restored by the browser, its window focused or the phone back online, it asks
 again for whatever's due (the forecast after 10 minutes, warnings after 5, the
 models, ensembles, air and sea hourly; only those, so a quick look back costs
@@ -866,7 +898,7 @@ year each go to whichever side does it, worked out as a place's forecast comes
 in and as the window's resized (never as the page is used, so nothing moves
 under a finger). **Settings** is a short list, as the iPhone's own is: your
 account at the top (signed out, a row that opens the sign-in), then
-Notifications, Commute and Best times, then Units, Appearance and Forecast, each
+Notifications, Commute and Best times, then Units, Appearance, Arrange your page and Forecast, each
 with what's in it said beside it ("On", "08:00, 17:30", "Run, Walk, Ride", "°C,
 mph, mm") and opening over the list, the sheet's title its name and a way back
 beside it; an activity's limits are a page of their own in Best times, kept as
@@ -890,8 +922,8 @@ directly, so a branch can be tried before it's merged.
 
 | Part | Where |
 | --- | --- |
-| Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout, as iOS 27 has it (translucent panels blurred enough to read over anything, with a light-catching rim and a darker hairline round it, over a sky that follows the weather and the time of day; where the page scrolls under the top bar, a bar of glass the width of the screen with a hairline under it; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (a finger or wheel on it doesn't scroll it; its glass unblurred, nothing on it, the radar included, or in the sky moving, so the sheet's own glass isn't blurred afresh every frame; its panes of glass and the hero's icon named one by one, and how far back it steps the page's alone, so a sheet comes and goes, and follows a finger down, without every part of the page being restyled); with a mouse, a soft light follows the pointer across the pane it's over; the sky holds still too once the page has scrolled on past the top (and behind the radar full screen; its slow drifts, clouds and stars, move in small steps a few times a second, so the glass over them isn't blurred afresh every frame, and the clouds not at all where there are none to see); a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go; on a phone a place is first drawn from the top (what's on the screen), the cards under it a moment later, once that's shown; something new near the top while the page is there (a warning come in, say) has what's under it glide to its new place rather than jump; and the bar takes up the temperature with a crossfade of its own once the big one's mostly scrolled away. Nothing is measured mid-way through drawing the page (which would lay it all out again, once for each chart): a chart's width is as it was last time at the window's width, or worked out from it, and put right by its ResizeObserver before it's shown if that's another; and the glide's "from" is where each part was as last shown. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
-| Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
+| Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout, as iOS 27 has it (translucent panels, with a light-catching rim and a darker hairline round it, over a sky that follows the weather and the time of day: the cards' glass tinted for each sky to look as blurred glass does over it, without every card being blurred afresh at each frame of a scroll, which cost a phone most of its frames (behind a card there's only ever the sky, a soft gradient a blur hardly changes); the top bar and the sheets, over the page's own busy content, blurred; where the page scrolls under the top bar, a bar of glass the width of the screen with a hairline under it; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it; once each, then left be); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (a finger or wheel on it doesn't scroll it; its glass unblurred, nothing on it, the radar included, or in the sky moving, so the sheet's own glass isn't blurred afresh every frame; its panes of glass and the hero's icon named one by one, and how far back it steps the page's alone, so a sheet comes and goes, and follows a finger down, without every part of the page being restyled); with a mouse, a soft light follows the pointer across the pane it's over; the sky holds still too once the page has scrolled on past the top (and behind the radar full screen; its slow drifts, clouds and stars, move in small steps a few times a second, so the glass over them isn't blurred afresh every frame, and the clouds not at all where there are none to see); a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go; on a phone a place is first drawn from the top (what's on the screen), the cards under it a moment later, once that's shown; something new near the top while the page is there (a warning come in, say) has what's under it glide to its new place rather than jump; and the bar takes up the temperature with a crossfade of its own once the big one's mostly scrolled away. Nothing is measured mid-way through drawing the page (which would lay it all out again, once for each chart): a chart's width is as it was last time at the window's width, or worked out from it, and put right by its ResizeObserver before it's shown if that's another; and the glide's "from" is where each part was as last shown. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
+| Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js`; fetched when first wanted, `weather/detail.js` (a tile or a day in full) and `weather/settings.js` (Settings, and arranging the page); `weather/boot.js` (the weather as last shown, put up as the page opens) |
 | Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the sea (temperature, waves, tide), the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
 | Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline, the minutes between: pure), `weather/radarwork.js` (the smoothing, off the page's thread), `weather/radarmix.js` (the minutes between blended as rain on the graphics chip: WebGL 1), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |

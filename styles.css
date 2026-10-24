@@ -287,7 +287,7 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 /* up from the foot (as every app's sheets come, quick then soft), and back down from wherever it's got to: closed while
    still coming up, or reopened while going, it carries on from there rather than jumping (app.js sets --from) */
 .sheet {
-  position: fixed; inset: auto 8px calc(env(safe-area-inset-bottom) + 8px + var(--kb, 0px)); margin: 0;
+  position: fixed; inset: auto 8px calc(8px + max(env(safe-area-inset-bottom), var(--kb, 0px))); margin: 0;   /* (the keyboard covers the home bar's room: one or the other) */
   width: auto; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - 40px - var(--kb, 0px));
   border: 0; border-radius: 34px; padding: 0; color: var(--text);
   background: var(--glass-strong);
@@ -330,7 +330,8 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .fld.from .who b { font-weight: 600; font-size: 17px; }
 .fld.from .who small { color: var(--text-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fld.from .change { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(61, 139, 255, 0.18); color: var(--tint-text); }
-#sender.known .fld:not(.from) { display: none; }
+#sender { position: relative; }
+#sender.known .fld:not(.from, .ghost) { display: none; }
 .fields input, .fields textarea {
   display: block; width: 100%; min-width: 0; border: 0; background: none; color: var(--text);
   font: 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
@@ -497,4 +498,13 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   body.sheet-up .page, body.sheet-up .bar, body.leaving .page, body.leaving .bar { transform: none; }
   .sheet, .fields textarea, .tile .dot, .tile img { transition: none; }
   .btn:active, .pill:active, .round:active, .app:active, .sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: none; }
+}
+
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
+   iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
+   too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+  -webkit-background-clip: text; background-clip: text;
 }

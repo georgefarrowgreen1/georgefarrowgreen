@@ -16,7 +16,7 @@
 // Open-Meteo.com (CC BY 4.0).
 
 import { parseWall, keyOf, HOUR } from "./format.js";
-import { compactClimate, climateSpan } from "./climate.js";
+import { compactClimate, climateSpan, figures } from "./climate.js";
 import { MODELS, shapePrevious, skillFrom, localSkill, MIN_DAYS } from "./skill.js";
 export { MODELS };
 
@@ -326,7 +326,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
     wx.marine = raw.marine ? shapeMarine(raw.marine.j, place) : null;
     if (wx.marine) { const sea = new Map(wx.marine.hourly.map((x) => [x.t, x])); wx.hourly = wx.hourly.map((x) => { const m = sea.get(x.t); return m ? { ...x, sst: m.sst, wave: m.wave, waveDir: m.waveDir, tide: m.tide } : x; }); }
     wx.official = Array.isArray(raw.warnings?.j?.warnings) ? raw.warnings.j.warnings : null;
-    wx.climate = climateFor(place);
+    wx.climate = climateFigures(place, wx.daily);
     wx.skill = skillKept(place);
     return wx;
   };
@@ -369,11 +369,12 @@ export async function load(place, onUpdate, { force = false } = {}) {
   if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); }).catch((e) => console.error(e));
   return build();
 }
-// keep only the newest few places' forecasts when the phone's storage fills
+// keep only the newest few places' forecasts when the phone's storage fills (only forecasts: not your places, your
+// settings or anything else kept under wx:)
 function pruneCache(except) {
   try {
     const ks = Object.keys(localStorage).filter((k) => k.startsWith("wx:") && k !== except);
-    const aged = ks.map((k) => ({ k, at: store.get(k)?.forecast?.at || 0 })).sort((a, b) => a.at - b.at);
+    const aged = ks.map((k) => ({ k, at: store.get(k)?.forecast?.at || 0 })).filter((x) => x.at).sort((a, b) => a.at - b.at);
     for (const { k } of aged.slice(0, Math.max(1, aged.length - 4))) store.del(k);
   } catch (_) {}
 }
@@ -385,8 +386,27 @@ export function climateFor(place) {
   const id = cell(place.lat, place.lon);
   if (climateMemo.has(id)) return climateMemo.get(id);
   const c = store.get(`clim2:${id}`);
-  if (c?.data) { climateMemo.set(id, c.data); return c.data; }
+  if (c?.data) { climateMemo.set(id, c.data); climateWhen.set(id, c.at); return c.data; }
   return null;
+}
+// What the page asks of a place's climate for the days it shows (climate.js figures), worked out once a day and kept:
+// the thirty years themselves (a few hundred kilobytes to read, and to go through for each day) only read again the
+// next day, or for a day the figures haven't (raw)
+const climateWhen = new Map(), figuresMemo = new Map();
+function climateFigures(place, days) {
+  const id = cell(place.lat, place.lon), k = `climf:${id}`, keys = days.map((d) => keyOf(d.date));
+  const good = (f) => f?.on && Date.now() - f.at < 864e5 && keys.every((x) => x in f.on);
+  let f = figuresMemo.get(id);
+  if (!good(f)) f = store.get(k);
+  if (!good(f)) {
+    const c = climateFor(place);
+    if (!c) return null;
+    f = { ...figures(c, days.map((d) => d.date)), at: Date.now(), of: climateWhen.get(id) || 0 };
+    // (no room: other places' figures dropped, worked out again when they're next shown)
+    if (!store.set(k, f)) try { for (const o of Object.keys(localStorage).filter((x) => x.startsWith("climf:") && x !== k)) store.del(o); store.set(k, f); } catch (_) {}
+  }
+  figuresMemo.set(id, f);
+  return Object.assign(f, { raw: () => climateFor(place) });
 }
 // The climate's a big ask (thirty years: Open-Meteo counts it as about 235 of the 600 requests a minute it allows
 // each phone), so it's asked for once a place has been on screen a few seconds, and only one in any 70 seconds
@@ -394,7 +414,10 @@ export function climateFor(place) {
 let climateAt = 0, climateWait = null;
 function climateSoon(place, then) {
   clearTimeout(climateWait);
-  const kept = store.get(`clim2:${cell(place.lat, place.lon)}`);
+  // (asked of the figures, if they're kept, which say when the climate they came from was had: not by reading the climate)
+  const id = cell(place.lat, place.lon), of = (figuresMemo.get(id) || store.get(`climf:${id}`))?.of;
+  if (of && Date.now() - of < 365 * 864e5) return;
+  const kept = store.get(`clim2:${id}`);
   if (kept?.data && Date.now() - kept.at < 365 * 864e5) return;
   climateWait = setTimeout(() => { climateAt = Date.now(); loadClimate(place).then(then); }, Math.max(3000, climateAt + 70e3 - Date.now()));
 }
@@ -405,7 +428,9 @@ async function loadClimate(place) {
   try {
     const data = compactClimate(await fetchClimate(place.lat, place.lon, Date.now()));
     if (!data) throw new Error("empty");
-    climateMemo.set(id, data);
+    climateMemo.set(id, data); climateWhen.set(id, Date.now());
+    // (and the figures from it worked out afresh)
+    figuresMemo.delete(id); store.del(`climf:${id}`);
     if (!store.set(k, { at: Date.now(), data })) {
       // no room: make some by dropping other places' climates
       for (const o of Object.keys(localStorage).filter((x) => x.startsWith("clim2:") && x !== k)) store.del(o);

@@ -48,13 +48,28 @@
 }
 /* (where linear() isn't understood: a curve with the same little overshoot) */
 @supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
-/* pale skies want a little more tint for the words to stand out; dark ones, less; and the glass as clear or as tinted as
-   Settings has it (as iOS 27's Liquid Glass slider: from clear to tinted) */
-body { --tint-a: 0.36; --glass-k: 1; --tint: rgba(14, 22, 38, calc(var(--tint-a) * var(--glass-k))); }
-body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint-a: 0.48; }
-body[data-sky$="-night"], body[data-sky="storm"] { --tint-a: 0.3; }
-body[data-glass="clear"] { --glass-k: 0.55; --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
-body[data-glass="tinted"] { --glass-k: 1.9; --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
+/* the page's panels: tinted glass that isn't blurred afresh as the page scrolls (blurring every card at every frame cost
+   a phone most of its frames), its tint for each sky worked out to look as the blurred glass did over it. What's behind
+   a card is only ever the sky, a soft gradient blurring hardly changes: what it did change, the blur's richer, lighter
+   colour, the tint gives instead (--pane: as Settings has the glass, as iOS 27's Liquid Glass slider, clear (--pane-c),
+   between, or tinted (--pane-t)). The top bar and the sheets, over the page's own busy content, are still blurred */
+body { --pane: 14 22 38 / 0.36; --pane-c: 14 22 38 / 0.2; --pane-t: 12 21 40 / 0.68; --pane-now: var(--pane); --tint: rgb(var(--pane-now)); }
+body[data-sky="clear-day"] { --pane: 0 63 113 / 0.61; --pane-c: 0 99 181 / 0.44; --pane-t: 12 20 36 / 0.88; }
+body[data-sky="partly-day"] { --pane: 0 25 87 / 0.43; --pane-c: 0 27 187 / 0.19; --pane-t: 13 22 39 / 0.90; }
+body[data-sky="cloudy-day"] { --pane: 0 17 77 / 0.29; --pane-c: 0 13 156 / 0.12; --pane-t: 10 21 40 / 0.66; }
+body[data-sky="rain-day"] { --pane: 0 15 77 / 0.28; --pane-c: 0 6 170 / 0.10; --pane-t: 11 22 41 / 0.67; }
+body[data-sky="storm"] { --pane: 11 32 92 / 0.33; --pane-c: 12 44 147 / 0.19; --pane-t: 16 26 48 / 0.61; }
+body[data-sky="snow-day"] { --pane: 0 21 63 / 0.43; --pane-c: 0 21 115 / 0.20; --pane-t: 13 21 38 / 0.89; }
+body[data-sky="fog"] { --pane: 0 16 45 / 0.41; --pane-c: 0 4 66 / 0.17; --pane-t: 13 21 38 / 0.89; }
+body[data-sky="clear-night"] { --pane: 0 0 255 / 0.05; --pane-c: 0 0 205 / 0.05; --pane-t: 9 21 46 / 0.50; }
+body[data-sky="partly-night"] { --pane: 0 15 136 / 0.15; --pane-c: 0 0 255 / 0.05; --pane-t: 10 22 46 / 0.53; }
+body[data-sky="cloudy-night"] { --pane: 0 0 94 / 0.13; --pane-c: 0 0 163 / 0.05; --pane-t: 10 21 42 / 0.53; }
+body[data-sky="rain-night"] { --pane: 0 26 81 / 0.24; --pane-c: 0 41 159 / 0.11; --pane-t: 14 25 45 / 0.60; }
+body[data-sky="snow-night"] { --pane: 0 2 101 / 0.15; --pane-c: 0 0 232 / 0.05; --pane-t: 9 21 43 / 0.53; }
+body[data-sky="dusk"] { --pane: 5 0 20 / 0.31; --pane-c: 0 0 0 / 0.05; --pane-t: 14 21 38 / 0.89; }
+body[data-sky="dawn"] { --pane: 0 0 9 / 0.31; --pane-c: 0 0 0 / 0.05; --pane-t: 12 20 37 / 0.88; }
+body[data-glass="clear"] { --pane-now: var(--pane-c); --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
+body[data-glass="tinted"] { --pane-now: var(--pane-t); --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; -webkit-tap-highlight-color: transparent; }
@@ -87,11 +102,11 @@ a { color: inherit; }
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint);
   background-image: var(--sheen), var(--body);
-  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   box-shadow: var(--edge), var(--lift);
   /* (its tint eased, as the sky's changes it or Settings' Glass does, rather than snapped) */
   transition: background-color var(--dur-base) var(--ease), --la 0.3s var(--ease);
 }
+dialog.sheet { -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
 /* (where there's a pointer, the light it casts across the glass, on the pane it's over (app.js lit): where it is, --lx
    and --ly, the pane's own and not passed on to what's in it, so the pointer moving restyles that pane alone; and only
    that pane repainted as the page scrolls, its light fixed to the screen; a phone's panels are spared it. It comes up
@@ -115,8 +130,10 @@ a { color: inherit; }
   -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 0.5px rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
 }
-/* (badges on a card: the card's already blurred what's behind; theirs would cost a layer for nothing) */
-.win-rate, .best { -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* (on a card, over the card: badges, and the card's own buttons; blurred, they'd each cost a layer for nothing. Over the
+   radar's map, full screen, its buttons are) */
+.win-rate, .best, main .card :is(.seg, .pill-btn, .icon-btn) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+main .radar.radar-big .icon-btn { -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
 .icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, :is(.radar-centre, .map-layers)::before, .radar-credit::before, .win-rate::before, .best::before {
@@ -405,12 +422,12 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .retry:not([hidden]) { animation: rise 0.4s var(--glide) backwards; }
 main[data-empty] ~ .foot .foot-refresh { display: none; }
 /* (and the footer comes with the forecast, not before: under placeholders it would only be pushed away as it came) */
-main[data-empty="loading"] ~ .foot { display: none; }
+main:is([data-empty="loading"], [data-empty="kept"]) ~ .foot { display: none; }
 
 /* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
    the cards that would be empty wait out of sight */
 .skeleton { display: none; }
-main[data-empty="loading"] .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
+main:is([data-empty="loading"], [data-empty="kept"]) .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
 main[data-empty] .col > :not(.hero):not(.skeleton) { display: none !important; }
 main[data-empty="error"] .hero-row { display: none; }
 /* (in one column, the second's placeholders would sit under the first's, only to be pushed away as the forecast came) */
@@ -421,6 +438,9 @@ main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height
 main[data-empty="loading"] :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
 main[data-empty="loading"] .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
 main[data-empty="loading"] .brief { width: 88%; height: 49px; }
+/* (the weather as it was last shown, put up as the page opens (boot.js): the temperature and its lines as they were,
+   placeholders for the rest) */
+main[data-empty="kept"] .brief { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
 .sk { display: flex; flex-direction: column; gap: 12px; }
 /* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
 .sk i, main[data-empty="loading"] .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
@@ -440,7 +460,8 @@ main[data-empty="loading"] .brief { width: 88%; height: 49px; }
    only what's on screen: an animation on a card still off it can leave it unpainted; backwards fill, so nothing's left
    behind) */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
-main:not([data-empty]) .hero { animation: rise 0.55s var(--glide) backwards; }
+/* (and as the page opens, for the weather last shown: the same rise carried on, not started again, as the forecast comes) */
+main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s var(--glide) backwards; }
 .ins.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
 /* swiping between places (app.js placeSwipe): the page follows the finger, then turns to the next place, its picture
    carried off as the next one's comes in beside it (each moved by the swipe's own speed: none of the browser's own
@@ -459,7 +480,7 @@ main.paging > .col { will-change: translate; }
 .dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
-@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, .ins.rise, .retry:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
+@media (prefers-reduced-motion: reduce) { main:is(:not([data-empty]), [data-empty="kept"]) .hero, .ins.rise, .retry:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
 @media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -611,6 +632,8 @@ main.paging > .col { will-change: translate; }
     main .card:not(.radar-big), main .ins, main .tile {
       animation: settle cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-timeline: view(); animation-range: entry 0% entry 160px;
     }
+    /* (once only: settled, as it's come all the way in (app.js settle), it's left where it is) */
+    main :is(.card, .ins, .tile).settled:not(.rise) { animation: none; }
   }
 }
 @keyframes settle { from { opacity: 0.2; transform: translateY(28px) scale(0.965); } }
@@ -726,9 +749,9 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins h3 { margin: 0; font-size: 15.5px; font-weight: 650; line-height: 1.3; }
 .ins p { margin: 0; font-size: 14.5px; color: var(--text-2); line-height: 1.42; }
 /* warnings: glass tinted by what they're about */
-.ins[data-level="alert"] { --tint: rgba(130, 24, 18, 0.58); --rim: linear-gradient(135deg, rgba(255, 150, 140, 0.85), rgba(255, 90, 79, 0.25) 35%, rgba(255, 90, 79, 0.1) 65%, rgba(255, 150, 140, 0.6)); }
+.ins[data-level="alert"] { --tint: rgba(129, 19, 26, 0.51); --rim: linear-gradient(135deg, rgba(255, 150, 140, 0.85), rgba(255, 90, 79, 0.25) 35%, rgba(255, 90, 79, 0.1) 65%, rgba(255, 150, 140, 0.6)); }
 .ins[data-level="alert"] .ins-icon { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
-.ins[data-level="warn"] { --tint: rgba(104, 66, 4, 0.56); --rim: linear-gradient(135deg, rgba(255, 214, 138, 0.85), rgba(255, 176, 32, 0.25) 35%, rgba(255, 176, 32, 0.1) 65%, rgba(255, 214, 138, 0.6)); }
+.ins[data-level="warn"] { --tint: rgba(101, 68, 14, 0.49); --rim: linear-gradient(135deg, rgba(255, 214, 138, 0.85), rgba(255, 176, 32, 0.25) 35%, rgba(255, 176, 32, 0.1) 65%, rgba(255, 214, 138, 0.6)); }
 .ins[data-level="warn"] .ins-icon { background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
 .ins[data-level="good"] .ins-icon, .ins-row[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
 .ins[data-level="tip"] .ins-icon, .ins-row[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
@@ -741,9 +764,15 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
 .ins.official { transition: transform var(--dur-release) var(--spring), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 .ins.official:active { transform: scale(0.985); transition-duration: var(--dur-press); }
-.ins.official[data-colour="yellow"] { --tint: rgba(132, 102, 0, 0.66); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
+.ins.official[data-colour="yellow"] { --tint: rgba(133, 106, 6, 0.6); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
 .ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
 .ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
+/* several at once: one banner saying what they are, that opens to all of them (app.js cards) */
+.warn-sum { grid-template-columns: 32px 1fr 18px; }
+.warn-sum > p { grid-column: 2; }
+.warn-sum .ws-chev { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--text-2); transition: transform 0.4s var(--glide); }
+.warn-sum.open .ws-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .warn-sum .ws-chev { transition: none; } }
 
 /* ---------- best times ---------- */
 .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -1597,6 +1626,23 @@ body.no-scroll { overflow: hidden; }
 .f-ic[data-c="blue"] { --c1: #5cb2ff; --c2: #1f72e6; }
 .f-ic[data-c="purple"] { --c1: #b590ff; --c2: #7a4fe0; }
 .f-k { flex: none; }
+.f-k small { display: block; margin-top: 1px; font-size: 13px; color: var(--text-3); }
+#alerts-row .folder { min-height: 62px; }
+#alerts-row .f-v { color: var(--tint-blue); font-weight: 600; }
+/* Arrange your page: each card a row, a switch to show it, and a handle to drag it by (settings.js drawArrange) */
+.arrange li { position: relative; display: flex; align-items: center; }
+.grp.arrange > li > label.switch { padding-right: 6px; }
+.arrange li.dragging { z-index: 2; background: rgba(60, 72, 96, 0.96); border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4); transition: none !important; }
+.arrange li.shifting { transition: transform 0.25s var(--glide); }
+.arrange .switch { flex: 1; min-width: 0; }
+.arr-grip { flex: none; width: 44px; height: 48px; margin-left: 2px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: grab; touch-action: none; }
+.arr-grip:active { cursor: grabbing; color: var(--text); }
+.arr-grip:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 12px; }
+.arr-hint { display: inline-grid; vertical-align: -3px; }
+.arrange li.is-off .switch { color: var(--text-3); }
+/* a card switched off there, left off the page */
+main [data-off] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .arrange li.shifting { transition: none; } }
 .f-v { flex: 1; min-width: 0; text-align: right; color: var(--text-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* signing in, a folder of its own */
 .pill-btn { border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -1620,6 +1666,8 @@ fieldset.opt label.fld { align-items: stretch; }
 .fld-in { display: flex; align-items: center; gap: 6px; }
 .fld input, .fld select { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 12px; padding: 9px 11px; color: #fff; font-size: 15px; width: 100%; min-width: 0; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22); }
 .fld input:focus, .fld select:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.fld input:-webkit-autofill { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), inset 0 0 0 100px rgba(118, 118, 128, 0.26); }
+.fld input:-webkit-autofill:focus { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 0 0 100px rgba(118, 118, 128, 0.26), 0 0 0 3px rgba(159, 208, 255, 0.45); }
 .fld small { color: var(--text-3); }
 .act-btns { grid-column: span 2; display: flex; gap: 16px; align-items: center; }
 .link.danger { color: #ffb3ad; }
@@ -1710,3 +1758,11 @@ select option { color: #fff; background: #1c2434; }
 .acct-chip.more { padding: 0 12px; background: rgba(255, 255, 255, 0.1); }
 .acct-tick { flex: none; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--good); box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.4); }
 @media (prefers-reduced-motion: reduce) { .back-in-ring { animation: none; } }
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
+   iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
+   too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  transition: background-color 0s 600000s, color 0s 600000s;
+  -webkit-background-clip: text; background-clip: text;
+}
