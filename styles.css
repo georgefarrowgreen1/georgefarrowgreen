@@ -402,6 +402,50 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .toast button { height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 
+/* ---------------- signing in, on the account's page: the way there, and back ---------------- */
+/* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
+   along its foot, and your photo in a circle a third of the way down. Going there, Sign in grows to fill the screen in
+   that sky (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
+   page opens on the picture it ended on (index.html, from the first frame: .back-in:target), a soft ring where your
+   photo goes; your photo comes into it, and as the picture fades, Sign in draws in to the circle your photo goes in and
+   the photo comes down into it (app.js arrive). None of it takes a tap: a tap goes to what's under it */
+:root { --acct-sky: #f3f0fb; --acct-ring: rgba(76, 64, 160, 0.22); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-ring: rgba(255, 255, 255, 0.22); } }
+.handoff { position: fixed; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
+/* (what it says, laid over where it was, without its own look: that's the growing pane's) */
+.handoff > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transform: none !important; transition: none !important; }
+.handoff.whole { inset: 0; background-color: var(--acct-sky); }
+.back-in {
+  display: none; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  background: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), var(--acct-sky);
+}
+.back-in:target, .back-in.held { display: block; }
+/* (should the script never take it on, it goes by itself after a few seconds; taken on, .held, the script sees it goes) */
+.back-in:target:not(.held) { animation: back-in-off var(--dur-base) var(--ease-out) 6s forwards; }
+@keyframes back-in-off { to { opacity: 0; visibility: hidden; } }
+/* (the ring, breathing while who's signed in is asked) */
+.back-in-ring {
+  position: absolute; left: 50%; top: 30%; width: 78px; height: 78px; margin: -39px 0 0 -39px; border-radius: 50%;
+  background: radial-gradient(closest-side, transparent 64%, var(--acct-ring)); box-shadow: inset 0 0 0 1.5px var(--acct-ring);
+  animation: ring-wait 1.1s var(--ease-out) infinite alternate;
+}
+@keyframes ring-wait { from { opacity: 0.45; scale: 0.96; } }
+/* your photo, or your initial, as the account's page shows it; it becomes the bar's as it flies (.back-in-face fading in) */
+.back-in-av {
+  position: fixed; z-index: 61; left: calc(50% - 39px); top: calc(30% - 39px); width: 78px; height: 78px; border-radius: 50%;
+  isolation: isolate; overflow: hidden; display: grid; place-items: center; pointer-events: none;
+  color: #fff; font-size: 30px; font-weight: 600; line-height: 1;
+  background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); box-shadow: 0 12px 30px -12px rgba(49, 87, 216, 0.7);
+}
+.back-in-face { position: absolute; inset: 0; z-index: -1; border-radius: inherit; opacity: 0; background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.back-in-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.back-in-av img.loaded { opacity: 1; }
+/* (your photo's place in the bar, and Edit beside it, held back till the photo's landed there; then each comes in with
+   its little spring, pop-in, above) */
+#me.held, #edit.held { visibility: hidden; animation: none !important; }
+/* (Sign in, as it was when you went, drawing in to the circle your photo goes in) */
+.pill-ghost { position: fixed; z-index: 21; margin: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
+
 /* the small round controls keep their size, and are each a finger's width to tap (44 px) */
 .sheet-head .x, .fld.from .change, .editbar .add, .toast button { position: relative; }
 .sheet-head .x::after, .fld.from .change::after, .tile .where::after, .tile .rm::after, .editbar .add::after, .toast button::after {
@@ -448,7 +492,7 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .segs { display: none; }
   .sheet[open], .editbar, .toast, .sheet::backdrop { animation: fade var(--dur-fast) linear; }
   .sheet.closing, .toast.out, body.edit-out .editbar.only-edit, .sheet.closing::backdrop, .tile.leaving { animation: fade-out var(--dur-fast) linear forwards; }
-  .sent .tick, .hero, .grid, .foot, .tile.fresh, .editbar .thumbs i, body.edit #done, body.known:not(.edit) #edit, body.known:not(.edit) #me, .tile.pending::after { animation: none; }
+  .sent .tick, .hero, .grid, .foot, .tile.fresh, .editbar .thumbs i, body.edit #done, body.known:not(.edit) #edit, body.known:not(.edit) #me, .tile.pending::after, .back-in-ring { animation: none; }
   .page, .bar { transition: opacity var(--dur-fast) linear; }
   body.sheet-up .page, body.sheet-up .bar, body.leaving .page, body.leaving .bar { transform: none; }
   .sheet, .fields textarea, .tile .dot, .tile img { transition: none; }

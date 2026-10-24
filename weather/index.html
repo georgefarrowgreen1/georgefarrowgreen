@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-81" />
+  <meta name="app-version" content="wx-82" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -28,6 +28,8 @@
   <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
   <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+  <!-- (the account's page, where Sign in goes: ready to open the moment it's tapped) -->
+  <link rel="preconnect" href="https://account.georgefarrowgreen.com" />
 </head>
 <body data-sky="cloudy-day">
   <!-- (the sky the page opens on, set before it's first drawn: early.js) -->
