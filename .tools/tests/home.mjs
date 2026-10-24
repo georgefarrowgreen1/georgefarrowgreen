@@ -260,7 +260,8 @@ ok(/1 new message/.test(folder) && /Messages Sam Okoro · Today \d\d:\d\d 1 new/
   'its folder: 1 new message at the top, and on Messages, with who sent it; the home page, its words changed today', folder);
 await settle(G, 600); await shot(G, 'admin-folder');
 await G.p.click('#sheet .row:has(b:text-is("Messages"))');
-await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+// (once the sheet has gone on to it: the view it left slides away for a moment, still in the page, with Sam's name in it)
+await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || '') && !document.querySelector('#sheet .going'), null, { timeout: 15000 }).catch(() => {});
 const sheet = await text(G, '#sheet');
 ok(/^Back Messages New Sam Okoro/i.test(sheet) && /sam@example\.com/.test(sheet) && /Are you riding the sportive in May\?/.test(sheet) && await G.p.$('#sheet .adm-dot'), 'the message, as new: who, their email and what they wrote', sheet.slice(0, 160));
 ok(await G.p.getAttribute('#sheet a.pill', 'href') === 'mailto:sam@example.com?subject=Re%3A%20your%20message', 'Reply writes back to them');
