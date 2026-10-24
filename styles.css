@@ -444,12 +444,12 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 .map .start { fill: #fff; transform-box: fill-box; transform-origin: center; animation: pop 0.4s var(--ease-spring) 0.2s backwards; }
 .map .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.2s var(--ease-glide) 0.35s forwards; }
 .map .pin { transform: translate(186px, 56px); }
-.map .drop { animation: drop 0.6s var(--ease-spring) 1.35s backwards, bob 2.8s var(--ease-out) 1.95s infinite alternate; }
+.map .drop { transform-box: fill-box; transform-origin: 50% 100%; animation: drop 0.7s var(--ease-out) 1.3s backwards, bob 2.8s var(--ease-out) 2s infinite alternate; }
 .map .drop path { fill: #ff6b5e; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
 .map .drop text { fill: #fff; font: 700 20px var(--display); }
 @keyframes march { to { stroke-dashoffset: -20; } }
 @keyframes draw { to { stroke-dashoffset: 0; } }
-@keyframes drop { from { opacity: 0; transform: translateY(-46px); } }
+@keyframes drop { from { opacity: 0; transform: scale(0.94); } }
 @keyframes bob { to { transform: translateY(-6px); } }
 @media (min-width: 601px) {
   .page.lost-page { max-width: 600px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 96px) 20px 48px; }
