@@ -522,7 +522,7 @@ function signedIn(r) {
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
   const account = r(sec("account", section("Account", h("div.group.glass", {},
-    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(securityView) }),
+    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
     row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) })))));
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
@@ -531,7 +531,7 @@ function signedIn(r) {
   // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
   // of its own, so from there it's here)
   const ending = [
-    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
+    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
