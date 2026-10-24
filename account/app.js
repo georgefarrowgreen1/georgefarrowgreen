@@ -147,6 +147,8 @@ function icon(name, size = 20, width = 2) {
 // ---- asking the account ----
 // (on the Home Screen, not in the browser: said with each ask, so Signed-in devices calls this sign-in "Account")
 const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+// (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
+if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function call(path, { method = "GET", body, type } = {}) {
   let r;
   const headers = { ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
@@ -1424,7 +1426,23 @@ function admAlerts(s) {
   if (!s.email) out.push({ title: "Email is off", text: "Password resets and notifications can’t be emailed.", open: admEmailView });
   else if (s.mailFail) out.push({ title: "Email isn’t sending", text: `The last ${s.mailFail.n} failed · since ${seenAt(s.mailFail.since).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}`, open: admEmailView });
   if (s.late) out.push({ title: `${nOf(s.late, "landing")} not told yet`, text: "Notifications are running late.", open: admInsightsView });
+  // (the scheduled jobs that send notifications: one that's run before but not in the last 20 minutes, said; and the server's errors today)
+  const stale = [["InFlight", s.ticks?.inflight], ["Weather", s.ticks?.weather]].filter(([, k]) => k && Date.now() - k.at > 20 * 60e3);
+  if (s.ticks && stale.length) out.push({ title: `${stale.map(([n]) => n).join(" and ")} notifications aren’t running`,
+    text: stale.map(([n, k]) => (k ? `${n}: last ran ${seenAt(k.at)}` : `${n}: hasn’t run yet`)).join(" · "), open: admServerView });
+  if (s.errors?.length) out.push({ title: `${nOf(s.errors.length, "server error")} today`, text: `Latest: ${s.errors[0].src} · ${seenAt(s.errors[0].at)}`, open: admServerView });
   return out;
+}
+// The server: when the scheduled jobs last ran, and its errors today (newest first: where, what, when)
+function admServerView() {
+  const s = AD.sum || {}, k = s.ticks || {}, errs = s.errors || [];
+  const info = (t, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val", { text: v }));
+  const ran = (x) => (x ? `${seenAt(x.at)} · ${(x.ms / 1000).toFixed(1)} s` : "Not yet");
+  return { title: "Server", body: [
+    h("div.group", {}, info("InFlight’s notifications", ran(k.inflight)), info("Weather’s notifications", ran(k.weather))),
+    h("p.hint", { text: "Each runs every few minutes (on a schedule, and whenever the apps are used). Over 20 minutes since the last run means notifications are late." }),
+    errs.length ? h("div.group", {}, errs.map((e) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: e.src }), h("small", { text: `${e.msg} · ${seenAt(e.at)}` })))))
+      : h("div.group", {}, h("div.empty", { text: "No errors today." }))] };
 }
 function adminView() {
   admSum();
@@ -1452,6 +1470,8 @@ function adminView() {
       row({ icon: "db", tint: "grey", title: "Storage", value: s.storage == null ? null : bytes(s.storage), onclick: () => pushSheet(admStorageView) }),
       row({ icon: "mail", tint: "red", title: "Email", value: !s.email ? "Off" : s.mailFail ? "Not sending" : h("span.adm-ok", {}, icon("check", 15, 3), "Working"),
         warn: !s.email || !!s.mailFail, onclick: () => pushSheet(admEmailView) }),
+      ((late) => row({ icon: "info", tint: "blue", title: "Server", value: late ? "Late" : s.errors?.length ? nOf(s.errors.length, "error") : h("span.adm-ok", {}, icon("check", 15, 3), "Running"),
+        warn: late || !!s.errors?.length, onclick: () => pushSheet(admServerView) }))(!!s.ticks && [s.ticks.inflight, s.ticks.weather].some((k) => !k || Date.now() - k.at > 20 * 60e3)),
       row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
     h("h4.app-k", { text: "Home page" }),
     h("div.group", {},

@@ -1842,6 +1842,25 @@ The look works offline, but the API calls need Cloudflare's runtime. To run Func
 Wrangler and run `wrangler pages dev .`. To edit the page locally, sign in on the site's account page with the account
 whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/home.mjs`).
 
+## Running reliably
+
+- **The notification jobs** (InFlight's landings and moments, Weather's rain alerts, warnings and morning briefing) run
+  whenever they're asked for, one at a time. GitHub's schedule (`.github/workflows`) asks every 5 and 10 minutes but
+  in practice runs hours late, so: the apps' own traffic asks too, when the last run was over 5 minutes ago
+  (`maybeTick`, `maybeWxTick`, from InFlight's and Weather's APIs), and `workers/ticker` is a small Cloudflare Worker
+  that asks every 5 minutes on Cloudflare's own schedule. Deploy it once: `cd workers/ticker && npx wrangler deploy`,
+  then `npx wrangler secret put INFLIGHT_TICK_SECRET` (the site's `PIGEON_TICK_SECRET`). A job sends to each person's
+  devices at once, and once it has used 20 seconds leaves the extras (live weather, moments, streaks…) for the next
+  run, so landings, losses and emails always go; a landing email that fails is tried again next time.
+- **What goes wrong is kept for the admin.** Server errors (an API's, or any step of a job's) go in `pg_errors` (20 a
+  minute at most from one copy of the server, kept 14 days), and each job notes when it last ran and how long it took
+  (`tick_last`). Admin shows a Server row (Running, Late, or N errors), and says so up top when either job hasn't run
+  for 20 minutes or anything has gone wrong today; the Server sheet lists the day's errors.
+- Fixed: the account page on iOS 15 (no `AbortSignal.timeout`) said every request was offline; marking 100 or more
+  contact messages read went over D1's 100 values to a statement; a group asked for with too many friends hit the same
+  limit before saying it was too big; the home page's requests had no timeout, and a save that didn't go threw away
+  what the owner had typed (it's kept now, even through showing it's you).
+
 ## Security notes
 
 - **Across the site (audit, October 2026):** each app is served only at its own address, under its own rules: an

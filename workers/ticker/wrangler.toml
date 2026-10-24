@@ -1,0 +1,10 @@
+# The site's scheduler (workers/ticker/index.js): a Worker of its own, as Pages has no schedules.
+#   cd workers/ticker && npx wrangler deploy
+#   npx wrangler secret put INFLIGHT_TICK_SECRET     (the same as the site's PIGEON_TICK_SECRET)
+#   npx wrangler secret put WEATHER_TICK_SECRET      (only if the site's WEATHER_TICK_SECRET is different)
+name = "georgefarrowgreen-ticker"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+[triggers]
+crons = ["*/5 * * * *"]

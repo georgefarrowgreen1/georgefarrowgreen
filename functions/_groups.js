@@ -249,10 +249,10 @@ async function cleanMembers(D, u, ids, current) {
   const friends = await friendIds(D, u.id);
   if (out.some((id) => !friends.has(id))) throw new HttpError(403, "You can only add your own friends.");
   // never into a group with someone who has blocked them, or whom they've blocked (nor two new members who have)
+  if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, `Groups can have up to ${GROUP_MAX} people.`);
   const all = [...new Set([...have, ...out])], ph = (a) => a.map(() => "?").join(",");
   if (all.length > 1 && await D.prepare(`SELECT 1 FROM pg_links WHERE status = 'blocked' AND a IN (${ph(all)}) AND b IN (${ph(all)}) AND (a IN (${ph(out)}) OR b IN (${ph(out)})) LIMIT 1`)
     .bind(...all, ...all, ...out, ...out).first()) throw new HttpError(403, "Someone you chose can’t be added to this group.");
-  if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, `Groups can have up to ${GROUP_MAX} people.`);
   if (await D.prepare(`SELECT 1 FROM pg_group_members WHERE user_id IN (${ph(out)}) GROUP BY user_id HAVING COUNT(*) >= ${GROUPS_EACH} LIMIT 1`).bind(...out).first())
     throw new HttpError(409, `Someone you chose is already in ${GROUPS_EACH} groups, the most anyone can be in.`);
   return out;

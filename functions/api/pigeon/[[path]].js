@@ -1,5 +1,5 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
@@ -23,6 +23,7 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
+import { maybeWxTick } from "../../_wxpush.js";
 import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn, accountMail } from "../../_account.js";
 import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
@@ -611,10 +612,13 @@ const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
+let sweptAt = 0;
 async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
+  // photos past their time are deleted promptly (two indexed look-ups): at most once a minute from this copy of the
+  // server, not on every open app's every sync (the scheduled tick sweeps every few minutes as well)
+  if (t - sweptAt > 60e3) { sweptAt = t; waitUntil(sweepPhotos(env).catch(() => {})); }
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their
@@ -1187,13 +1191,18 @@ async function adminSummary({ request, env, waitUntil }) {
   else if (t - files.at > FILES_STALE) waitUntil(storageReport(env, D, t).catch(() => {}));
   const dbBytes = main.meta?.size_after ?? null;
   const [msgs, photos, edits] = await Promise.all([messageCounts(env).catch(() => null), homePhotos(env).catch(() => []), getHistory(env).catch(() => [])]);
+  // (the scheduled jobs: when each last ran; and what's gone wrong on the server today, the latest few)
+  const meta1 = async (q) => { try { const r = await D.prepare(q).first(); return r?.v ? JSON.parse(r.v) : null; } catch (_) { return null; } };
+  const [pTick, wTick, errs] = await Promise.all([meta1("SELECT v FROM pg_meta WHERE k = 'tick_last'"), meta1("SELECT v FROM wx_meta WHERE k = 'tick_last'"),
+    D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => [])]);
   const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
   return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
     messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
     storage: dbBytes == null ? null : dbBytes + (files.bytes || 0),
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
-    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null });
+    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
+    ticks: { inflight: pTick, weather: wTick }, errors: errs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1463,7 +1472,10 @@ export async function onRequest(ctx) {
   if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
-  if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));
+  if (ctx.env.DB && parts[0] !== "notify-tick") {
+    ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => logError(ctx.env, "pigeon tick (traffic)", e)));
+    ctx.waitUntil(maybeWxTick(ctx.env, linkOrigin(ctx.request)).catch((e) => logError(ctx.env, "weather tick (traffic)", e)));
+  }
   try {
     if (!handler) throw new HttpError(404, "Not found.");
     const trips0 = TRIPS.n, res = await handler(ctx, parts[1]);
@@ -1478,7 +1490,7 @@ export async function onRequest(ctx) {
     return res;
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
-    console.error("pigeon", e && e.stack || e);
+    await logError(ctx.env, "pigeon api", e);
     return json({ error: "Something went wrong on our side. Try again in a moment." }, 500);
   }
 }

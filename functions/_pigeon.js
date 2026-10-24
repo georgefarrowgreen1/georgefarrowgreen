@@ -286,6 +286,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN vanish INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN gone_at INTEGER",
   "ALTER TABLE pg_groups ADD COLUMN vanish INTEGER", "ALTER TABLE pg_groups ADD COLUMN vanish_by TEXT",
   "CREATE TABLE IF NOT EXISTS pg_vanish (a TEXT NOT NULL, b TEXT NOT NULL, ms INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b))",
+  "CREATE INDEX IF NOT EXISTS pg_vanish_b ON pg_vanish(b)",      // (looked up from either side: a = ? OR b = ?)
   "CREATE INDEX IF NOT EXISTS pg_msgs_vanish ON pg_msgs(read_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_gmsgs_vanish ON pg_gmsgs(sent_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",   // keep my pigeons off the public live tracker (functions/_tracker.js)
   "ALTER TABLE pg_users ADD COLUMN pins TEXT",
@@ -331,6 +332,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
   // a sign-in handed from InFlight to the account's page (functions/api/pigeon account-link, functions/api/account
   // handoff): a code good once, for a minute
+  // what went wrong on the server, for the admin (Admin's alerts): when, where and what, kept 14 days (functions/_notify.js tick)
+  "CREATE TABLE IF NOT EXISTS pg_errors (at INTEGER NOT NULL, src TEXT NOT NULL, msg TEXT NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS pg_errors_at ON pg_errors(at)",
   "CREATE TABLE IF NOT EXISTS pg_handoff (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, expires INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS pg_sessions_site ON pg_sessions(site_hash)",
   // the account's own page (functions/api/account): what's happened to the account lately (functions/_activity.js), kept
@@ -533,6 +537,16 @@ export async function requireUser(request, env) {
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
 // browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
 // used, a day of it noted for its Insights; request: the app it's used in noted, as it's first used there)
+// Something gone wrong, noted for the admin (pg_errors): never throws, and no more than 20 a minute from one copy of the
+// server, so a loop of failures can't fill the database. (Also to the console, as before.)
+let errWindow = 0, errCount = 0;
+export async function logError(env, src, e) {
+  console.error(src, e && (e.stack || e.message || e));
+  const t = Date.now();
+  if (t - errWindow > MIN) { errWindow = t; errCount = 0; }
+  if (++errCount > 20 || !env?.DB) return;
+  try { await (await db(env)).prepare("INSERT INTO pg_errors (at, src, msg) VALUES (?, ?, ?)").bind(t, String(src).slice(0, 40), String(e && (e.message || e)).slice(0, 300)).run(); } catch (_) {}
+}
 export async function sessionUser(env, token, inflight = true, site = false, request = null) {
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as

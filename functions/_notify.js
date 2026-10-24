@@ -18,7 +18,7 @@ import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
-import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
+import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { sendEmail, emailReady, emailBody } from "./_email.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -124,14 +124,14 @@ export async function pushTo(env, userId, note) {
   // a subscription lives only as long as the sign-in that made it
   const { results } = await D.prepare(`SELECT p.endpoint, p.p256dh, p.auth, s.hash IS NULL AS dead FROM pg_push p
     LEFT JOIN pg_sessions s ON s.hash = p.session WHERE p.user_id = ?`).bind(userId).all();
-  let sent = 0;
-  for (const sub of results) {
-    if (sub.dead) { await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run(); continue; }
+  // (all of them at once: each can take up to 8 seconds, and a tick has many to send)
+  const out = await Promise.all(results.map(async (sub) => {
+    if (sub.dead) { await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run(); return 0; }
     const r = await pushToSub(env, sub, note);
     if (r === "gone") await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run();   // device gone
-    else if (r === "sent") sent++;
-  }
-  return sent;
+    return r === "sent" ? 1 : 0;
+  }));
+  return out.reduce((a, b) => a + b, 0);
 }
 // One notification to one subscription ({ endpoint, p256dh, auth }): "sent", "gone" (the device has
 // unsubscribed: forget it) or "error". Weather's notifications go this way too (functions/_wxpush.js).
@@ -600,19 +600,20 @@ async function blurOld(D, t) {
 export async function tick(env, origin) {
   const D = await db(env), t = Date.now();
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
-  await lockOldSecrets(D, env).catch((e) => console.error("at rest", e.message));
-  await vanishSweep(env).catch((e) => console.error("vanish", e.message));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
+  await lockOldSecrets(D, env).catch((e) => logError(env, "pigeon at rest", e));
+  await vanishSweep(env).catch((e) => logError(env, "pigeon vanish", e));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
   // old rate-limit windows and ended sessions (an account page opened from an app ends with the app's sign-in)
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
     D.prepare("DELETE FROM pg_sessions WHERE parent IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = pg_sessions.parent)"),
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
     D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR),
-    D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t)]).catch(() => {});
+    D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t),
+    D.prepare("DELETE FROM pg_errors WHERE at < ?").bind(t - 14 * DAY)]).catch(() => {});
   // messages over a month old (their pigeons' lines kept), stray files, accounts unused for a year (functions/_retention.js):
   // before the blur below, which would otherwise clear a month-old flight's way before its line could note what it did
-  await housekeeping(env, D, t, origin).catch((e) => console.error("pigeon housekeeping", e && e.message));
-  await blurOld(D, t).catch((e) => console.error("pigeon blur", e && e.message));
+  await housekeeping(env, D, t, origin).catch((e) => logError(env, "pigeon housekeeping", e));
+  await blurOld(D, t).catch((e) => logError(env, "pigeon blur", e));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await allRows(D, `SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
@@ -677,20 +678,22 @@ export async function tick(env, origin) {
       body: p.names ? `It’s resting with you on its way to ${firstName(m.rname)}. Add a line before it flies on.` : "It’s resting with you for an hour. Add a line before it flies on.",
       tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const live = await liveTick(env, D, t).catch((e) => { console.error("pigeon live", e && e.message); return { turns: [] }; });   // the weather ahead of pigeons in the air
-  pushes += await turnNotes(env, D, t, live.turns).catch((e) => { console.error("pigeon live notes", e && e.message); return 0; });
-  pushes += await wxTick(env, D, t, since).catch((e) => { console.error("pigeon wx", e && e.message); return 0; });
-  pushes += await nearTick(env, D, t, since).catch((e) => { console.error("pigeon near", e && e.message); return 0; });
-  pushes += await flyTick(env, D, t, since).catch((e) => { console.error("pigeon fly", e && e.message); return 0; });
-  pushes += await shipTick(env, D, t, since).catch((e) => { console.error("pigeon ships", e && e.message); return 0; });
-  pushes += await spaceTick(env, D, t).catch((e) => { console.error("pigeon space", e && e.message); return 0; });
-  pushes += await streakTick(env, D, t).catch((e) => { console.error("pigeon streaks", e && e.message); return 0; });
-  await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
-  await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over
-  const gt = await groupTick(env, D, t, since).catch((e) => { console.error("pigeon groups", e && e.message); return { pushes: 0, landed: 0, held: 0 }; });
+  // (the extras, once the tick has used 20 seconds, wait for the next: what matters most has gone already)
+  const spare = () => Date.now() - t < 20e3;
+  const live = !spare() ? { turns: [] } : await liveTick(env, D, t).catch((e) => { logError(env, "pigeon live", e); return { turns: [] }; });   // the weather ahead of pigeons in the air
+  if (spare()) pushes += await turnNotes(env, D, t, live.turns).catch((e) => { logError(env, "pigeon live notes", e); return 0; });
+  if (spare()) pushes += await wxTick(env, D, t, since).catch((e) => { logError(env, "pigeon wx", e); return 0; });
+  if (spare()) pushes += await nearTick(env, D, t, since).catch((e) => { logError(env, "pigeon near", e); return 0; });
+  if (spare()) pushes += await flyTick(env, D, t, since).catch((e) => { logError(env, "pigeon fly", e); return 0; });
+  if (spare()) pushes += await shipTick(env, D, t, since).catch((e) => { logError(env, "pigeon ships", e); return 0; });
+  if (spare()) pushes += await spaceTick(env, D, t).catch((e) => { logError(env, "pigeon space", e); return 0; });
+  if (spare()) pushes += await streakTick(env, D, t).catch((e) => { logError(env, "pigeon streaks", e); return 0; });
+  if (spare()) await settleBirds(D, t).catch((e) => logError(env, "pigeon birds", e));      // named pigeons' careers, as their flights end
+  if (spare()) await stampPassports(D, t).catch((e) => logError(env, "pigeon passport", e));  // the places flights that landed flew over
+  const gt = await groupTick(env, D, t, since).catch((e) => { logError(env, "pigeon groups", e); return { pushes: 0, landed: 0, held: 0 }; });
   pushes += gt.pushes;
-  pushes += await reactTick(env, D, t, since).catch((e) => { console.error("pigeon reacts", e && e.message); return 0; });
-  const wk = await weeklyTick(env, D, t, origin).catch((e) => { console.error("pigeon weekly", e && e.message); return { pushes: 0, emails: 0, sent: 0 }; });
+  if (spare()) pushes += await reactTick(env, D, t, since).catch((e) => { logError(env, "pigeon reacts", e); return 0; });
+  const wk = await weeklyTick(env, D, t, origin).catch((e) => { logError(env, "pigeon weekly", e); return { pushes: 0, emails: 0, sent: 0 }; });
   pushes += wk.pushes;
   if (emailReady(env)) {
     // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
@@ -702,7 +705,7 @@ export async function tick(env, origin) {
         SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
           JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0
           AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = d.user_id AND k.b = g.sender) OR (k.a = g.sender AND k.b = d.user_id))))
-      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
+      SELECT u.id, u.email, u.notify_prefs, u.email_at, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
       FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND u.email_ok IS NOT NULL AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
@@ -725,10 +728,17 @@ export async function tick(env, origin) {
           button: { label: u.n > 1 ? "Read them" : "Read it", url: appLink(origin, String(u.senders || "").includes(",") || !u.senders ? "" : `#open=${u.senders}`) },
         });
         emails++;
-      } catch (e) { console.error("pigeon notify email", e && e.message); }
+      } catch (e) {
+        // (not sent: the claim given back, so the next tick tries these landings again rather than only later ones)
+        await D.prepare("UPDATE pg_users SET email_at = ? WHERE id = ? AND email_at = ?").bind(u.email_at ?? null, u.id, t).run().catch(() => {});
+        logError(env, "pigeon notify email", e);
+      }
     }
   }
-  return { landed: landed.length + gt.landed, held: due.length - ready.length + gt.held, pushes, emails: emails + wk.emails, weekly: wk.sent };
+  const res = { landed: landed.length + gt.landed, held: due.length - ready.length + gt.held, pushes, emails: emails + wk.emails, weekly: wk.sent };
+  // (when it last ran and how long it took: Admin warns when it hasn't run lately)
+  await D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('tick_last', ?)").bind(JSON.stringify({ at: t, ms: Date.now() - t, pushes, emails: res.emails })).run().catch(() => {});
+  return res;
 }
 
 /* ---------- your week in flight: Sunday evening, wherever you are ---------- */

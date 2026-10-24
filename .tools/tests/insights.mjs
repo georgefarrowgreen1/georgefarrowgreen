@@ -84,6 +84,13 @@ await ad.screenshot({ path: `${out}/insights-3.png` });
 await ad.emulateMedia({ colorScheme: 'dark' });
 await ad.evaluate(() => document.querySelector('#sheet .sheet-body').scrollTo({ top: 0 })); await ad.waitForTimeout(500);
 await ad.screenshot({ path: `${out}/insights-dark.png` });
+// the scheduled jobs and the server's errors, for the admin: each job notes when it ran, and an error is kept to be seen
+await K.tick();
+await fetch(K.BASE + '/api/weather/tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });
+one(`INSERT INTO pg_errors (at, src, msg) VALUES (${Date.now()}, 'pigeon api', 'D1_ERROR: something broke')`);
+const sum = (await AD.ask('summary')).json;
+ok(sum.ticks?.inflight?.at > Date.now() - 120e3 && sum.ticks?.weather?.at > Date.now() - 120e3 && sum.errors?.[0]?.msg === 'D1_ERROR: something broke',
+  'Admin’s summary: when each notifications job last ran, and the server’s errors today', JSON.stringify({ ticks: sum.ticks, errors: sum.errors }));
 // the admin's only; InFlight's old admin API is gone
 const r = await fetch(K.BASE + '/api/pigeon/admin-insights', { headers: { Authorization: 'Bearer ' + as.token } });
 ok(r.status === 404, 'InFlight’s old admin API: gone', String(r.status));
