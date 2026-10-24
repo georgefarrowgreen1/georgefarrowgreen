@@ -2058,7 +2058,8 @@ function rowsOnScreen() {
 let arrival = null;
 function arriving() {
   const still = STILL.matches, E = kEases(), box = document.createElement("div"), timers = [];
-  box.className = "arrive"; box.setAttribute("aria-hidden", "true"); box.inert = true;
+  // (not "arrive": that's a photo just come, fading in)
+  box.className = "arrival"; box.setAttribute("aria-hidden", "true"); box.inert = true;
   box.innerHTML = `<div class="arv-sky"></div><div class="arv-ring"></div>`;
   root().append(box);
   $(".arv-ring", box).style.animationDelay = `${-Math.round(performance.now())}ms`;       // (breathing in step with the first frame's ring)
