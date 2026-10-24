@@ -188,8 +188,9 @@ await G.p.click('#change-photos'); await G.p.waitForSelector('#photos-sheet[open
 ok(/No photos yet/.test(await text(G, '#tiles')), 'no photos yet');
 const APP = process.env.APP_ROOT;
 await G.p.setInputFiles('#photo-input', [`${APP}/og.png`, `${APP}/apple-touch-icon.png`]);
-await G.p.waitForFunction(() => document.querySelectorAll('#tiles .tile').length === 2, null, { timeout: 20000 }).catch(() => {});
-ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length === 2 && document.querySelectorAll('#thumbs i').length === 2 && document.querySelectorAll('#bg .slide').length === 2),
+ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length === 2 && !document.querySelector('#tiles .none')), 'both shown in the sheet at once, as they go up');
+await G.p.waitForFunction(() => document.querySelectorAll('#tiles .tile:not(.pending):not(.leaving)').length === 2 && document.querySelectorAll('#thumbs i').length === 2, null, { timeout: 20000 }).catch(() => {});
+ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile:not(.pending)').length === 2 && document.querySelectorAll('#thumbs i').length === 2 && document.querySelectorAll('#bg .slide').length === 2),
   'two photos added: in the sheet, the bar and the slideshow');
 let list = (await req(null, `${SITE}/api/background`)).json.images;
 const box = await G.p.locator('#tiles .tile img').first().boundingBox();
@@ -213,8 +214,9 @@ ok(r.status === 200 && /immutable/.test(r.headers['cache-control']), 'a photo is
 r = await req(null, `${SITE}/api/background?id=cover&d=mobile`, { method: 'HEAD' });
 ok(r.status === 200 && /^image\//.test(r.headers['content-type']) && /max-age=600/.test(r.headers['cache-control']), 'the first one, for a link preview’s look', `${r.status} ${r.headers['content-type']}`);
 await shot(G, 'photos');
-G.p.once('dialog', (d) => d.accept());
-await G.p.locator('#tiles .tile .rm').nth(1).click(); await settle(G, 900);
+await G.p.locator('#tiles .tile .rm').nth(1).click(); await settle(G, 300);
+ok(await G.p.isVisible('#tiles .tile .ask .yes'), 'removing one is asked on the photo itself');
+await G.p.click('#tiles .tile .ask .yes'); await settle(G, 900);
 ok((await req(null, `${SITE}/api/background`)).json.images.length === 1 && await G.p.evaluate(() => document.querySelectorAll('#tiles .tile').length) === 1, 'one removed');
 r = await req(P, `${SITE}/api/background`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', Origin: SITE }, data: JSON.stringify({ id: list[0].id }) });
 ok(r.status === 403 && (await req(null, `${SITE}/api/background`)).json.images.length === 1, 'someone else can’t remove one', String(r.status));
@@ -231,7 +233,7 @@ ok(await V.p.evaluate(() => document.querySelectorAll('#bg .slide').length === 2
   'the slideshow: one photo at a time, a segment for each');
 await V.p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await settle(V, 800);
 ok(await V.p.evaluate(() => Number(getComputedStyle(document.querySelector('.bar .mid')).opacity) > 0.5 && Number(getComputedStyle(document.querySelector('.hero h1')).opacity) < 0.2
-  && getComputedStyle(document.querySelector('#soft')).visibility === 'visible' && /url\("data:image\/png/.test(document.querySelector('#soft').style.backgroundImage)),
+  && getComputedStyle(document.querySelector('#soft')).visibility === 'visible' && /url\("data:image\/png/.test(document.querySelector('#soft').style.getPropertyValue('--soft-img'))),
   'scrolled: the name comes into the bar, the hero fades under it, the photo softens (a softened copy of it)');
 ok(await V.p.evaluate(() => document.body.classList.contains('paused') && document.querySelector('#bg .slide.on').getAnimations().every((a) => a.playState === 'paused')),
   'and the photo holds still while it’s scrolled');
