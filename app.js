@@ -668,6 +668,7 @@ function morphFrom(on) {
   // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
   const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
   const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
+  const y0 = $("#c-message").getBoundingClientRect().top, st = box.scrollTop;
   const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
   const ghosts = (on ? rows : [from]).map((el) => {
     const r = el.getBoundingClientRect(), g = el.cloneNode(true);
@@ -684,6 +685,17 @@ function morphFrom(on) {
   const T = 520, slide = { duration: T, easing: GLIDE };
   box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
   s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
+  box.scrollTop = st;       // (cut back, for the moment the rows were at their new size before that took over)
+  // (and the message, being typed in, kept where it is on the screen all the while: with the keyboard up the sheet's
+  // at its tallest and scrolled within, so as the rows close up above it the scroll's moved with them, and it's the
+  // top of the sheet that closes in; an iPhone wouldn't move its caret with it)
+  const msg = $("#c-message"), until = performance.now() + T + 60;
+  const keep = () => {
+    const dy = msg.getBoundingClientRect().top - y0;
+    if (Math.abs(dy) > 0.5 && box.scrollHeight > box.clientHeight) box.scrollTop += dy;
+    if (performance.now() < until) requestAnimationFrame(keep);
+  };
+  if (document.activeElement === msg) requestAnimationFrame(keep);
   words.forEach(([input, shown], i) => {
     const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
     el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
