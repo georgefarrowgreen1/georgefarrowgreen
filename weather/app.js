@@ -1,5 +1,5 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
+import { load, due, extrasDue, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
@@ -194,7 +194,7 @@ async function go(force = false, fresh = null) {
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   // (the radar's say on its next hours, if it's had it lately: so it's drawn as it was, and as its page beside this one was)
-  if (moved) { const r = rains.get(cell(p.lat, p.lon)); S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = r && Date.now() - r.asked < 5 * 60e3 ? r : null; S.openIns.clear(); }
+  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = rainOf(cell(p.lat, p.lon)); S.openIns.clear(); }
   // (a place with nothing kept: its first picture waits, a second at most from the forecast's coming, for the warnings
   // and the radar's say, which would otherwise come in over the top of it and push it down as it's read: paint)
   clearTimeout(S.hold?.timer);
@@ -204,6 +204,11 @@ async function go(force = false, fresh = null) {
   // (meanwhile, a sky for the time of day, by this phone's clock: not a day's sky that turns to night as the forecast
   // comes, nor the last place's)
   if (S.hold) { const hr = new Date().getHours(); document.body.dataset.sky = hr >= 7 && hr < 19 ? "cloudy-day" : "cloudy-night"; }
+  // (the same place asked for again, refreshed by hand or by itself: drawn once, when all of it's in, or after a few
+  // seconds whatever's come, rather than part by part as each comes, the page changing under the eye each time; and
+  // what asked for it (a pull to refresh) told once it's drawn, not before: paint)
+  const again = !moved && !!S.wx;
+  if (again) S.hold = { again: true, until: Date.now() + 2500, timer: 0 };
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     temp: (c) => S.f.temp(c), tempUnit: () => (S.f.units.temp === "f" ? "°F" : "°C"), windNum: (k) => Math.round(S.f.windNum(k)), windUnit: () => S.f.windUnit,
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
@@ -211,7 +216,7 @@ async function go(force = false, fresh = null) {
   else S.radar.place(p.lat, p.lon);
   try {
     const loading = load(p, (wx, how) => {
-      if (!how.partial) fresh?.();
+      if (!how.partial && !again) fresh?.();
       if (my !== seq || !wx) return;
       if (how.error) S.error = how.error; else if (!how.partial) S.tries = 0;
       if (runOut(wx)) { render(); return; }
@@ -232,8 +237,14 @@ async function go(force = false, fresh = null) {
       render();
     }
   } finally {
+    if (my === seq) {
+      S.loading = false;
+      if (S.hold?.again) { S.hold.done = true; paint(); }
+      $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status();
+      // (and now the places beside it)
+      nearbySoon();
+    }
     fresh?.();
-    if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
   }
 }
 
@@ -291,15 +302,17 @@ function keepSaid(wx) {
 }
 // and its next couple of hours' rain led by the radar, where it sees (rainmap.js blend), while its frame is recent; and
 // its rain one story throughout (agree.js)
-const shaped = (wx) => {
-  const t = tuned(wx), r = S.rain;
+const shaped = (wx, r = S.rain) => {
+  const t = tuned(wx);
   if (!t) return t;
   const led = r && r.id === cell(t.place.lat, t.place.lon) && Date.now() - r.at <= 40 * 60e3 ? { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) } : t;
   return oneRain(led, nowWall(led.place.offset));
 };
 // The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
 // again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
+// (each place's, as last had: a place beside the one shown asked too, so it's drawn there as it will be: readyNearby)
 const rains = new Map();
+const rainOf = (id) => { const r = rains.get(id); return r && Date.now() - r.asked < 5 * 60e3 ? r : null; };
 async function radarRain(p, my) {
   const r = await rainAt(p.lat, p.lon).catch(() => null);
   if (my !== seq) return;
@@ -315,11 +328,12 @@ async function radarRain(p, my) {
 function paint() {
   const h = S.hold;
   if (h) {
-    const ready = S.base?.official != null && S.rain?.id === h.id;
+    const ready = h.again ? h.done : S.base?.official != null && S.rain?.id === h.id;
     h.until ||= Date.now() + 1000;
     clearTimeout(h.timer);
     if (!ready && Date.now() < h.until) { h.timer = setTimeout(paint, h.until - Date.now()); return; }
-    S.hold = null;
+    // (held: drawn now, not waiting its turn)
+    S.hold = null; S.painted = 0;
   }
   // (not while the places are being swiped through, under the finger: once it's still; landed on one, at once)
   clearTimeout(S.paintT);
@@ -346,12 +360,14 @@ function baseline(wx, now) {
 }
 
 /* ---------- drawing ---------- */
+// (the line under a place's name in the bar)
+const subOf = (p) => (p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "");
 function showPlace() {
   const p = place(), btn = $("place-btn"), named = btn.classList.contains("named");
   // (its name faded in once it's known, as the app starts; found later (My Location's, say), the new one rising in)
   swap($("place-name"), p ? p.name : "Weather", named && !snapping);
   $("sr-place").textContent = p ? p.name : "your place";
-  const sub = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
+  const sub = subOf(p);
   swap($("place-sub"), sub, named && !snapping && !document.querySelector(".top").classList.contains("collapsed"));
   btn.classList.toggle("no-sub", !sub);
   if (p) btn.classList.add("named");
@@ -477,50 +493,61 @@ function heroView(wx, now) {
 }
 // (what's made ready of each, kept while it's the same forecast in the same units: its forecast as kept read once)
 const ready = new Map();
+// (only: what's ready, as it is, if anything, for drawing at once; otherwise made again if what it's from has changed:
+// its forecast, how the models have done there or its climate (stale), its radar say, the units, the minute)
 function prepare(q, only = false) {
-  const id = cell(q.lat, q.lon), k = peek(q), had = ready.get(id), min = Math.floor(Date.now() / 60e3);
+  const id = cell(q.lat, q.lon), k = peek(q), had = ready.get(id), min = Math.floor(Date.now() / 60e3), rain = rainOf(id);
   if (!k) return null;
-  const same = had && had.at === k.at && had.f === S.f;
-  if (same && (only || had.min === min)) return had.v;
-  if (only) return null;
-  const base = same || had?.at === k.at ? had.base : keptWx(q);
+  if (only) return had && had.f === S.f ? had.v : null;
+  const kept = had && had.at === k.at && !had.stale;
+  if (kept && had.f === S.f && had.rain === rain && had.min === min) return had.v;
+  const base = kept ? had.base : keptWx(q);
   if (!base || runOut(base)) return null;
-  const wx = shaped(base), v = heroView(wx, nowWall(wx.place.offset));
-  ready.set(id, { at: k.at, f: S.f, min, base, v });
+  const wx = shaped(base, rain), v = heroView(wx, nowWall(wx.place.offset));
+  ready.set(id, { at: k.at, f: S.f, min, base, v, rain });
   return v;
 }
+// (something new for a place beside the one shown: what's ready of it, and its whole page, made again when it's idle)
+const news = new Map();
+const renewed = (id) => { news.set(id, Date.now()); const r = ready.get(id); if (r) r.stale = true; };
 // (one with nothing kept: its weather now as the list of places has it)
 function glanceView(q) {
   const k = glance(q), f = S.f;
   return k ? { temp: f.temp(k.temp), icon: iconOf(k.code, k.isDay), cond: label(k.code, k.isDay), lead: "", rest: "", sky: skyOf(k.code, k.isDay),
     hl: k.hi != null && k.lo != null ? `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}` : "" } : null;
 }
+// a place's weather now as the hero draws it (v: its heroView, or at a glance), the place i of the saved ones
+const heroBits = (v, i) => [
+  h("div", { class: "dots" }, S.places.map((p, j) => h("i", { class: [p.gps ? "gps" : "", j === i ? "on" : ""].join(" ").trim() || null, svg: p.gps ? glyph("here", 9) : null }))),
+  h("div", { class: "hero-row" }, h("div", { class: "hero-temp" }, v?.temp || "–"), h("div", { class: "pg-icon", svg: v ? weatherIcon(v.icon, 76) : null })),
+  h("div", { class: "hero-cond" }, v?.cond || ""),
+  h("div", { class: "hero-hl" }, v?.hl || ""),
+  h("p", { class: "brief" }, v?.lead ? h("b", {}, v.lead) : null, v?.rest ? ` ${v.rest}` : null)];
+const heroSig = (v, i) => JSON.stringify([i, S.places.map((p) => (p.gps ? "g" : ".")).join(""), v]);
 // a place either side, drawn as the hero would draw it (only: from what's made ready already, not made now)
 function drawPage(el, q, i, only) {
-  const v = prepare(q, only) || glanceView(q), sig = JSON.stringify([i, S.places.map((p) => (p.gps ? "g" : ".")).join(""), v]);
+  const v = prepare(q, only) || glanceView(q), sig = heroSig(v, i);
   if (el._sig === sig) return v;
   el._sig = sig;
-  el.replaceChildren(
-    h("div", { class: "dots" }, S.places.map((p, j) => h("i", { class: [p.gps ? "gps" : "", j === i ? "on" : ""].join(" ").trim() || null, svg: p.gps ? glyph("here", 9) : null }))),
-    h("div", { class: "hero-row" }, h("div", { class: "hero-temp" }, v?.temp || "–"), h("div", { class: "pg-icon", svg: v ? weatherIcon(v.icon, 76) : null })),
-    h("div", { class: "hero-cond" }, v?.cond || ""),
-    h("div", { class: "hero-hl" }, v?.hl || ""),
-    h("p", { class: "brief" }, v?.lead ? h("b", {}, v.lead) : null, v?.rest ? ` ${v.rest}` : null));
+  el.replaceChildren(...heroBits(v, i));
   return v;
 }
 // A place's whole page as it'll be drawn once it's turned to, for beside this one (index.html .pv): a copy of the page's
 // cards drawn by the page's own drawing, each part as it draws itself but aimed at the copy (R, which $ looks in), with
 // the place's forecast as kept and as a place is first shown (go: nothing open or folded out, the view it calls for),
 // nothing moving and no chart drawing in; its ids then put by (data-pid), so the page's own are still the page's. Kept
-// for each place while it's the same forecast, the same few minutes, the same page (pages)
+// for each place while it's the same forecast, the same minute, the same page (pages): drawn again each minute, as the
+// page's own "in 20 minutes" and its charts' Now are (the minute's tick), so it says what it will when it's landed on
 const pages = new Map();
-const pageKey = (q) => { const k = peek(q); return k && JSON.stringify([k.at, Math.floor(Date.now() / 180e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
+const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 60e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
 const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
-// (the page's cards as they are, copied: without the placeholders, the map (one only), or anything about to move)
-function copyPage(blank = false) {
-  const col = $("main").querySelector(":scope > .col-a").cloneNode(true);
+// (the page's cards as they are, copied: without the placeholders, the map (there's one only: a picture of it as it was
+// last shown for that place, id, if it's been), or anything about to move)
+const stills = new Map();
+function copyPage(blank = false, id = "") {
+  const col = $("main").querySelector(":scope > .col-a").cloneNode(true), still = stills.get(id);
   for (const x of col.querySelectorAll(".skeleton")) x.remove();
-  for (const x of col.querySelectorAll(".radar-map")) x.replaceChildren();
+  for (const x of col.querySelectorAll(".radar-map")) x.replaceChildren(...(still ? [h("img", { class: "radar-still", src: still, alt: "" })] : []));
   const note = col.querySelector(".radar-note > span"); if (note) note.textContent = "";
   // (and, to be drawn afresh, what's drawn into what's there: the warnings, kept one by one as they're drawn again)
   if (blank) for (const c of col.querySelectorAll("#alerts, #hourly-chart, #nowcast-chart, #climate-body > .range")) c.replaceChildren();
@@ -530,11 +557,13 @@ const stillCopy = (col) => { putIds(col); for (const x of col.querySelectorAll("
 function drawWhole(pv, q) {
   const id = cell(q.lat, q.lon), key = pageKey(q), base = ready.get(id)?.base || keptWx(q);
   if (!key || !base || runOut(base)) return false;
-  const rain = rains.get(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
-  Object.assign(S, { base, rain: rain && Date.now() - rain.asked < 5 * 60e3 ? rain : null, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
-  const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true), said = h("p", { id: "brief", hidden: true });
+  const rain = rainOf(id), keep = { wx: S.wx, base: S.base, radar: S.radar, say: S.say, more: S.more, mode: S.mode, rain: S.rain, allInsights: S.allInsights, allWins: S.allWins, allDays: S.allDays, openIns: S.openIns }, w0 = insWidth;
+  Object.assign(S, { base, rain, radar: null, allInsights: false, allWins: false, allDays: false, openIns: new Set() });
+  const wx = (S.wx = shaped(base)), now = nowWall(wx.place.offset), col = copyPage(true, id), said = h("p", { id: "brief", hidden: true });
   said.dataset.said = heroView(wx, now)?.said || "";
-  pv.replaceChildren(col, said);
+  // (beside its own weather now, kept: placePages)
+  const top = pv.querySelector(":scope > .pv-hero");
+  pv.replaceChildren(...(top ? [top] : []), col, said);
   R = pv; hush(true);
   try {
     showMode(S.modeChosen ? keep.mode : viewFor(wx, now));
@@ -545,15 +574,26 @@ function drawWhole(pv, q) {
   pages.set(id, { key, nodes: [stillCopy(col)] });
   return true;
 }
-// the places either side's whole pages put beside this one, where they're drawn (or placeholders, till they are)
-function placePages(a, b) {
-  for (const [pv, q] of [[document.querySelector(".pv-prev"), a], [document.querySelector(".pv-next"), b]]) {
-    const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id;
-    if (pv._for === want) continue;
-    pv._for = want; pv._id = id; pv.dataset.whole = e ? "1" : "";
-    pv.replaceChildren(...(e ? e.nodes : id ? [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))] : []));
+// The places either side's whole pages put beside this one: each its own weather now, as the hero would draw it, over
+// its cards, where they're drawn (placeholders till they are); so each card is where it'll be when that place is the one
+// showing, under its own weather now (a longer briefing, say, a line further down), not under this one's
+function placePages(a, b, va, vb) {
+  for (const [pv, q, v, i] of [[document.querySelector(".pv-prev"), a, va, S.cur - 1], [document.querySelector(".pv-next"), b, vb, S.cur + 1]]) {
+    const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id, top = id ? heroSig(v, i) : "";
+    if (pv._for === want && pv._top === top) continue;
+    pv._for = want; pv._id = id; pv._top = top; pv.dataset.whole = e ? "1" : "";
+    // (with the hero's line under its briefing, as tall as it is, said or not)
+    pv.replaceChildren(...(id ? [h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })),
+      ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
   }
-  for (const id of pages.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) pages.delete(id);
+  keepNear(pages); keepNear(stills);
+}
+// (what's kept of each saved place, its whole page and its weather now made ready, kept for all of them, not just the
+// two either side, so a place a swipe or two away has its page ready as it comes: a few at most, the nearest)
+function keepNear(m) {
+  const at = new Map(S.places.map((q, i) => [cell(q.lat, q.lon), Math.abs(i - S.cur)]));
+  for (const id of m.keys()) if (!at.has(id)) m.delete(id);
+  if (m.size > 6) for (const id of [...m.keys()].sort((x, y) => at.get(y) - at.get(x)).slice(0, m.size - 6)) m.delete(id);
 }
 // The places either side laid out beside the weather now (as the page is drawn: from what's ready; force, as a place
 // is landed on); not while it's being swiped, when it's done once it's still
@@ -568,10 +608,49 @@ function layoutPager(force = false, only = true) {
   document.querySelector(".sky-next").dataset.sky = vb?.sky || "";
   document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
-  placePages(a, b);
-  // (what's made ready of places no longer either side let go)
-  for (const id of ready.keys()) if (![a, b].some((q) => q && cell(q.lat, q.lon) === id)) ready.delete(id);
+  document.querySelector(".pg-sub-prev").textContent = subOf(a);
+  document.querySelector(".pg-sub-next").textContent = subOf(b);
+  pillWidths(a, b, va, vb);
+  placePages(a, b, va, vb);
+  keepNear(ready);
   if (force || el._shape !== shape) { el._shape = shape; centre(); }
+}
+// How wide the pill in the bar is for each place, and its name in it (the arrow after it), so as the page's swiped they
+// go from this place's to the next one's along with it, its name and the line under it crossfading in them (styles.css
+// pill-w, name-w): this place's as it's laid out, the places either side's from their words, measured in its type, as
+// it would lay them out (the line under the name its region, or what's said once the bar's taken up the temperature;
+// the pill no wider than it can be)
+let probe = null, pillSig = "", pillW = null;
+function pillWidths(a, b, va, vb) {
+  const pill = $("place-btn"), name = $("place-name"), top = document.querySelector(".top");
+  const sig = JSON.stringify([a?.name, subOf(a), va?.temp, va?.cond, b?.name, subOf(b), vb?.temp, vb?.cond, name.textContent, $("place-sub").textContent, $("place-now").textContent, innerWidth]);
+  if (sig === pillSig) return;
+  pillSig = sig;
+  // (words measured in the bar itself, unseen, in the type of the part they'd be in: a canvas can't be relied on to take
+  // the system's font as the page names it; and a pixel over, so nothing's cut short by a fraction)
+  if (!probe) { probe = h("span", { class: "pill-probe", "aria-hidden": "true" }); document.querySelector(".place-name").append(probe); }
+  const w = (text, el) => {
+    if (!text) return 0;
+    const cs = getComputedStyle(el);
+    Object.assign(probe.style, { fontStyle: cs.fontStyle, fontWeight: cs.fontWeight, fontSize: cs.fontSize, fontFamily: cs.fontFamily, letterSpacing: cs.letterSpacing });
+    probe.textContent = text;
+    return (parseFloat(getComputedStyle(probe).width) || 0) + 1;
+  };
+  const cs = getComputedStyle(top), room = top.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - document.querySelector(".top-actions").offsetWidth - (parseFloat(cs.columnGap) || 10);
+  const most = Math.min(innerWidth * 0.72, room), edge = 36, arrow = 13;
+  // (as laid out, not as anything has it moved or scaled meanwhile)
+  const cur = { w: parseFloat(getComputedStyle(pill).width), n: parseFloat(getComputedStyle(name).width) };
+  const of = (q, v) => {
+    if (!q) return cur;
+    // (the line under the name as it is till the bar takes up the temperature: only then what's said there takes room)
+    const sub = subOf(q), n = Math.min(w(q.name, name), most - edge - arrow), line = sub ? w(sub, $("place-sub")) : 0;
+    return { w: Math.min(most, Math.max(n + arrow, line) + edge), n };
+  };
+  const p = of(a, va), q = of(b, vb);
+  pillW = { prev: p, cur, next: q };
+  // (and, as this one's fading, as wide as the wider of it and the next: styles.css pill-w)
+  const most2 = (x) => ({ w: Math.max(cur.w, x.w), n: Math.max(cur.n, x.n) });
+  for (const [k, x] of [["prev", p], ["cur", cur], ["next", q], ["prev-max", most2(p)], ["next-max", most2(q)]]) { pill.style.setProperty(`--w-${k}`, `${x.w.toFixed(1)}px`); pill.style.setProperty(`--n-${k}`, `${x.n.toFixed(1)}px`); }
 }
 // the scroller put back to the weather now
 function centre() {
@@ -581,13 +660,16 @@ function centre() {
 }
 function dragOn() {
   if (dragging || (!S.places[S.cur - 1] && !S.places[S.cur + 1])) return;
-  dragging = true; document.documentElement.classList.add("pg-drag");
+  dragging = true; document.querySelector(".top").classList.add("swiping"); document.querySelector(".sky").classList.add("swiping");
 }
 function dragOff() {
   if (!dragging) return;
-  dragging = false; document.documentElement.classList.remove("pg-drag");
+  dragging = false; document.querySelector(".top").classList.remove("swiping"); document.querySelector(".sky").classList.remove("swiping");
   $("pager").classList.remove("pg-led");
-  if (!linked) for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name")) { x.style.translate = ""; x.style.opacity = ""; }
+  if (!linked) {
+    for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
+    $("place-btn").style.width = $("place-name").style.width = ""; document.querySelector(".place-line").style.alignSelf = "";
+  }
 }
 // (as styles.css has it: the cards along with it (and the next place's beside them; or, wide, fading), the next sky over
 // this one, the next name over this one)
@@ -601,8 +683,20 @@ function follow() {
     for (const c of document.querySelectorAll("main > .col")) { c.style.translate = calm.matches ? "" : vw(-x * 100); c.style.opacity = whole ? "" : o(1 - 2 * ax); }
     if (whole) { document.querySelector(".pv-prev").style.translate = vw(-100 - x * 100); document.querySelector(".pv-next").style.translate = vw(100 - x * 100); }
     document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
-    $("place-name").style.opacity = o(1 - 3 * ax);
+    $("place-name").style.opacity = o(1 - 5 * ax);
     document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
+    // (and the line under it, the same, and the pill and the name in it from this place's width to the next one's, unless
+    // the bar's taken up the temperature in its place)
+    if (!document.querySelector(".top").classList.contains("collapsed")) {
+      $("place-sub").style.opacity = o(1 - 5 * ax);
+      document.querySelector(".pg-sub-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-sub-next").style.opacity = o(2 * x - 1);
+      if (pillW) {
+        // (as styles.css pill-w: towards the wider of the two as this one fades, then to the next one's before it comes in)
+        const to = x > 0 ? pillW.next : pillW.prev, lerp = (a, b, t) => a + (b - a) * Math.max(0, Math.min(1, t));
+        const at = (k) => { const m = Math.max(pillW.cur[k], to[k]); return `${(ax <= 0.2 ? lerp(pillW.cur[k], m, ax / 0.2) : lerp(m, to[k], (ax - 0.2) / 0.3)).toFixed(1)}px`; };
+        $("place-btn").style.width = at("w"); $("place-name").style.width = at("n"); document.querySelector(".place-line").style.alignSelf = "stretch";
+      }
+    }
   });
 }
 const settleSoon = () => { clearTimeout(settleT); settleT = setTimeout(landed, 180); };
@@ -629,54 +723,77 @@ function commit(dir) {
   root.classList.add("pg-snap"); hush(true);
   // (the place left, now beside it: its forecast as read already, made ready from that when it's idle)
   const was = place(), k = was && peek(was), whole = onePage() && document.querySelector(dir > 0 ? ".pv-next" : ".pv-prev").dataset.whole === "1";
-  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: -1, base: S.base, v: null });
+  // (its weather now as the hero had it, for beside the one landed on)
+  if (k && S.base?.fetchedAt === k.at) ready.set(cell(was.lat, was.lon), { at: k.at, f: S.f, min: Math.floor(Date.now() / 60e3), base: S.base, v: S.wx ? heroView(S.wx, nowWall(S.wx.place.offset)) : null, rain: rainOf(cell(was.lat, was.lon)) });
   // (and its page as it was, a copy, for beside the one landed on: unless something on it is open or folded out, which
   // it won't be when it's turned back to (go), when it's drawn again, when the page is idle)
-  if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage())] });
+  if (was && onePage() && S.wx && !S.allInsights && !S.allWins && !S.allDays && !S.openIns.size) pages.set(cell(was.lat, was.lon), { key: pageKey(was), nodes: [stillCopy(copyPage(false, cell(was.lat, was.lon)))] });
   else if (was) pages.delete(cell(was.lat, was.lon));
   snapping = true;
   S.cur = i; savePlaces();
   try { go(); } finally { snapping = false; }
-  layoutPager(true);
+  // (the swipe's own styles off first: what's now showing measured as it's laid out, pillWidths)
   dragOff();
+  layoutPager(true);
   // (its page wasn't beside it yet: its cards come up under it)
   if (!whole) { for (const c of document.querySelectorAll("main > .col")) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: EASE_OUT }); arrive(true); }
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("pg-snap")));
   setTimeout(() => hush(false), 400);
-  nearbySoon();
+  nearbySoon(true);
 }
 // the places either side made ready, and kept fresh (the forecast and the warnings, as the page asks for them: data.js
 // due), when the page is idle a moment after it's drawn; then drawn beside it again, once it's still
 let nearbyT = 0;
-const fetchedAt = new Map();
-function nearbySoon() {
-  clearTimeout(nearbyT);
-  nearbyT = setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(readyNearby, { timeout: 2000 }), 600);
+const fetchedAt = new Map(), asking = new Set();
+let nearbyLoading = false;
+// (soon: as a place is landed on, or the page first drawn: the places now beside it drawn straight after, both, not
+// waiting till the page is idle, so there's no placeholder to swipe to; one a swipe away may be swiped to in a moment)
+let nearbyFirst = true, nearbyNow = false;
+function nearbySoon(soon = false) {
+  if (nearbyFirst && S.wx) { nearbyFirst = false; soon = true; }
+  // (not put off by the page drawn again meanwhile)
+  if (nearbyNow && !soon) return;
+  clearTimeout(nearbyT); nearbyNow = soon;
+  nearbyT = soon ? setTimeout(() => readyNearby(true), 250) : setTimeout(() => (globalThis.requestIdleCallback || ((f) => setTimeout(f, 0)))(() => readyNearby(), { timeout: 2000 }), 600);
 }
-function readyNearby() {
+function readyNearby(soon = false) {
+  nearbyNow = false;
   if (document.visibilityState !== "visible") return;
-  if (pagerBusy()) { nearbySoon(); return; }
+  // (not while the page's own forecast is coming in, or it's being swiped: the page's own first)
+  if (pagerBusy() || S.loading) { nearbySoon(soon); return; }
+  // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
+  // the map still on its way to it)
+  const here = place();
+  if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still().then((u) => { if (u && place() === here) stills.set(cell(here.lat, here.lon), u); }, () => {});
   const list = nearby().filter(Boolean);
   for (const q of list) prepare(q);
   layoutPager(false, true);
-  // (a whole page, one at a time, each when the page is idle)
+  // (a whole page, one at a time, each when the page is idle; or straight after a place is landed on, both)
   if (onePage()) for (const pv of document.querySelectorAll(".pv")) {
     const q = list.find((x) => cell(x.lat, x.lon) === pv._id);
     if (!q || pages.get(pv._id)?.key === pageKey(q)) continue;
-    if (drawWhole(pv, q)) { pv._for = pages.get(pv._id); pv.dataset.whole = "1"; nearbySoon(); break; }
+    if (drawWhole(pv, q)) { pv._for = pages.get(pv._id); pv.dataset.whole = "1"; if (!soon) { nearbySoon(); break; } }
   }
   for (const q of list) {
     const id = cell(q.lat, q.lon);
-    if (!due(q) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
-    fetchedAt.set(id, Date.now());
-    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); nearbySoon(); }, () => {});
+    // (the radar's say on its next hours, as the page asks for its own: radarRain; not with the phone saving data)
+    if (!rainOf(id) && !navigator.connection?.saveData && !asking.has(id)) {
+      asking.add(id);
+      rainAt(q.lat, q.lon).catch(() => null).then((r) => { asking.delete(id); rains.set(id, { ...r, id, asked: Date.now(), said: r ? JSON.stringify([r.at, r.steps]) : "" }); renewed(id); nearbySoon(); });
+    }
+    // (its forecast and the rest, how the models have done there and its climate: data.js load's quiet)
+    // (one place at a time)
+    if (nearbyLoading || !(due(q) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
+    fetchedAt.set(id, Date.now()); nearbyLoading = true;
+    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); renewed(id); }, () => {}).finally(() => { nearbyLoading = false; nearbySoon(); });
   }
 }
 function pager() {
   const el = $("pager");
   const up = () => { held = false; settleSoon(); };
   el.addEventListener("touchstart", (e) => {
-    held = true; heldAt = performance.now(); dragOn();
+    // (not swiping yet, though: a pull to refresh starts here too; only once it scrolls sideways: below)
+    held = true; heldAt = performance.now();
     // (its lifting heard where it started, too: what was touched may be drawn again meanwhile, a forecast come in, and
     // gone from the page, from where it would never reach the scroller)
     for (const t of ["touchend", "touchcancel"]) e.target.addEventListener(t, up, { once: true, passive: true });
@@ -1027,7 +1144,7 @@ function hero(wx, now, fresh = false) {
 let heroKept = "", heroAt = 0;
 function keepHero(wx) {
   const c = $("now-temp"), v = JSON.stringify({ lat: wx.place.lat, lon: wx.place.lon, sky: document.body.dataset.sky, top: SKY_TOP[document.body.dataset.sky] || "#2b5d96",
-    temp: c.textContent, v: Number(c.dataset.v), cond: $("now-cond").textContent, hl: $("now-hl").textContent });
+    temp: c.textContent, v: Number(c.dataset.v), cond: $("now-cond").textContent, hl: $("now-hl").textContent, brief: $("brief").dataset.said || "" });
   if (v === heroKept && Date.now() - heroAt < 10 * 60e3) return;
   heroKept = v; heroAt = Date.now();
   store.set("wx:hero", { ...JSON.parse(v), at: heroAt });
@@ -2846,14 +2963,22 @@ function wire() {
     });
   }
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
-  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), pagerEl = $("pager"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), mainEl = $("main"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
   let ticking = 0;
   const onScroll = () => {
     ticking = 0;
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
     // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
     const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
-    pagerEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
+    mainEl.style.setProperty("--c", c.toFixed(3));
+    // (the bar taking up the temperature, or giving it back: the pill easing from the one's width to the other's, rather
+    // than jumping, as only what's showing in it takes room)
+    if ((c >= 0.72) !== top.classList.contains("collapsed")) {
+      const pill = $("place-btn"), w0 = pill.offsetWidth;
+      top.classList.toggle("collapsed", c >= 0.72);
+      const w1 = pill.offsetWidth;
+      if (Math.abs(w1 - w0) > 1 && moving()) pill.animate([{ width: `${w0}px` }, { width: `${w1}px` }], { duration: 320, easing: GLIDE });
+    }
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);
@@ -2894,6 +3019,8 @@ function wire() {
     }
     tickHour = hr;
     check();
+    // (and the places beside it, their weather now and their whole pages, drawn again for the minute when it's idle)
+    nearbySoon();
   }, 60e3);
 }
 

@@ -1464,6 +1464,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       }
     },
     note(text) { line(q(".radar-note"), text || ""); },
+    // a picture of the map as it is (a data URL), where its map can give one; else null
+    still() { return map?.still ? map.still() : Promise.resolve(null); },
     // the other saved places: [{ name, lat, lon, temp ("12°"), colour, go() }]
     others(list) { others = list || []; drawOthers(); },
     // official warnings with their areas: [{ id, title, colour (yellow, amber, orange, red), onset, expires, open, rings }]

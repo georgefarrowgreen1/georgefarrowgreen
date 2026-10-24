@@ -130,7 +130,7 @@ const drawn = await P.p.evaluate(async (l) => {
   return { same: svg.querySelector('path')?.getAttribute('d') === want, label: svg.getAttribute('aria-label') };
 }, link);
 ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in InFlight', JSON.stringify(drawn));
-ok(/Rowan Hale/.test(await sheetText(P)) && /@rowan/.test(await sheetText(P)) && /add you in InFlight/.test(await sheetText(P)), 'with who it adds, and what it does');
+ok(/Rowan Hale/.test(await sheetText(P)) && /@rowan/.test(await sheetText(P)), 'with who it adds');
 await P.p.click('#sheet .btn:has-text("Copy link")'); await settle(P, 400);
 const copied = await P.p.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
 ok(copied === link && /Link copied/.test(await text(P, '#toast')), 'the link, copied', copied);

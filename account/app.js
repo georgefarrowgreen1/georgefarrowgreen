@@ -516,9 +516,6 @@ function signedIn(r) {
     r(sec("card", posterCard(m))),
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
     pw.leaked && r(sec("leak", leakBanner())),
-    // (the site's admin, for the linked account only, under your card; #admin, from the old dashboard or its email,
-    // opens it, once the page has settled)
-    m.admin && r(sec("admin", adminRow(m))),
   ];
   if (m.admin && location.hash === "#admin") {
     history.replaceState(null, "", location.pathname + location.search);
@@ -528,7 +525,7 @@ function signedIn(r) {
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
   const account = r(sec("account", section("Account", h("div.group.glass", {},
-    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(securityView) }),
+    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
     row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) })))));
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
@@ -537,7 +534,10 @@ function signedIn(r) {
   // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
   // of its own, so from there it's here)
   const ending = [
-    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
+    // (the site's admin, for the linked account only, at the foot, over Sign out: the top's about you and your apps;
+    // #admin, from the old dashboard or its email, opens it, once the page has settled)
+    m.admin && r(sec("admin", adminRow(m))),
+    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
@@ -657,15 +657,16 @@ async function savePhoto(btn, said) {
 function codeView() {
   const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
   import("./qr.js").then(({ qrSvg }) => {
-    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "#ffffff", title: `Add @${m.handle} in InFlight` });
-    // (drawn in on its white card, not just there)
+    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in InFlight` });   // (on its card, whichever its colour: styles.css --qr-card)
+    // (drawn in on its card, not just there)
     qr.firstElementChild?.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: tok("--ease-out") });
   })
     .catch(() => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here. Copy the link instead." })));
   return { title: "Your code", body: [
-    h("div.code-card", {}, avatar(m, true), h("b", { text: m.name }), h("span", { text: `@${m.handle}` }), qr),
-    h("p.hint.center", { text: "A friend points their phone’s camera at it to add you in InFlight." }),
-    h("div.code-acts", {},
+    // (who it adds, as a contact is shown; then the code itself, as large as the sheet allows, on its white card)
+    h("div.code-who", {}, avatar(m, true), h("div", {}, h("b", { text: m.name }), h("span", { text: `@${m.handle}` }))),
+    h("div.code-big", {}, qr),
+    h("div.code-acts" + (navigator.share ? ".two" : ""), {},
       navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on InFlight`, text: `Add me on InFlight: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
       h("button.btn" + (navigator.share ? ".quiet" : ""), { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied."); } catch (_) { toast(link); } } }, "Copy link")),
   ] };
