@@ -1673,10 +1673,12 @@ svg.fillico{fill:currentColor;stroke:none}
 @keyframes ofadeout{from{opacity:1}to{opacity:0}}
 /* invite only */
 .welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
-/* the welcome: the icon on a plain dark ground, and the two ways in */
+/* the welcome: night, a pigeon crossing, very few words */
 html.night,html.night body{background:#03050c}
-html.night #screen{isolation:isolate;background:#03050c}
+html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
 html.night .view{background:transparent}
+.nightsky{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
+html.night .nightsky{display:block}
 .welcome.night{position:relative;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:#e9eeff;overflow:hidden}
 .welcome .wtop{margin-top:max(22vh,120px);display:flex;flex-direction:column;align-items:center;gap:14px}
 .welcome .wtitle{margin:0;display:flex;gap:0;font-size:40px;line-height:1;font-weight:200;letter-spacing:.16em;padding-left:.16em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.45)}
@@ -1686,19 +1688,25 @@ html.night .view{background:transparent}
 @keyframes wletter{to{opacity:1;filter:blur(0);transform:none}}
 .welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 2s ease 1.9s forwards}
 @keyframes wfade{to{opacity:1}}
-.welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center}
+.welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 1.4s ease 2.6s forwards}
 .welcome .wcta.swap{opacity:1;animation:wcta-swap .45s var(--ease-out) both}
 @keyframes wcta-swap{from{opacity:0;transform:translateY(6px)}}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
 .welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
-.auth.night.welcome .btn.wglow{background:#fff;color:#03050c;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;letter-spacing:0;font-weight:600}
+.welcome .wglow{position:relative;background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);letter-spacing:.12em;font-weight:500;animation:wpulse 3.2s ease-in-out infinite}
+@keyframes wpulse{50%{box-shadow:0 0 38px rgba(110,160,255,.6),inset 0 0 22px rgba(130,170,255,.28)}}
 .welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
 .welcome .wquiet:active{color:#fff}
-@media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper{animation:none;opacity:1;filter:none;transform:none}}
-/* the welcome's logo */
-.welcome .wlogo{margin:0;display:grid;place-items:center}
-.welcome .wlogo .appicon{width:96px;height:96px;border-radius:26px;font-size:58px;box-shadow:0 0 0 1px rgba(255,255,255,.14) inset}
+@media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper,.welcome .wcta{animation:none;opacity:1;filter:none;transform:none}.welcome .wglow{animation:none}}
+/* the welcome's logo: out of the dark, in a soft glow */
+.welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:160px;height:160px}
+.welcome .wlogo .appicon{position:relative;width:96px;height:96px;border-radius:26px;font-size:58px;opacity:0;filter:blur(14px);transform:scale(.86);will-change:auto;
+  box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 10px 30px rgba(10,40,120,.45);animation:wlogo 1.8s cubic-bezier(.2,.7,.2,1) .3s forwards}
+@keyframes wlogo{80%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
+.welcome .wlogo::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.4),rgba(70,140,255,.12) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards}
 .welcome .wtop{margin-top:max(16vh,80px)}
+@media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wlogo::before{animation:none;opacity:1;filter:none;transform:none}}
 /* "You've been invited" in the same quiet capitals as "By invitation only" */
 .welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
 /* every screen before you're in, under the same night: the sky carries on behind,
@@ -1724,6 +1732,9 @@ html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s
 .nav-ghost .night{background:#03050c}          /* a night screen left for the day: it goes as it was */
 html.night .nav-ghost .night{background:none}
 /* back on the welcome: the logo and words are already there */
+.welcome.again .wlogo .appicon{animation:none;opacity:1;filter:none;transform:none}
+.welcome.again .wlogo::before{animation:none;opacity:1}
+.welcome.again .wcta{animation:wfade .5s ease forwards}
 @media (prefers-reduced-motion:reduce){html.night .view.nav-push,html.night .view.nav-pop,html.night .nav-ghost{animation:none}html.night .nav-ghost{display:none}}
 
 /* ---------- signing in and out, in motion (app.js: handOff, arriving, dusk) ----------
@@ -2389,7 +2400,9 @@ details.learn[open] p{animation:fc-in .3s var(--snappy)}
 .wnew a{color:var(--tint);text-decoration:none;font-weight:600;display:inline-block;padding:12px 6px;margin:-12px -6px}
 .welcome .wnew{margin-top:10px;color:rgba(214,224,255,.7)}
 .auth.night .wnew a,.welcome .wnew a{color:#cfe0ff}
-.welcome .winvite{margin:6px 32px 0;max-width:320px;text-align:center;font-size:15px;line-height:1.4;color:rgba(214,224,255,.82)}
+.welcome .winvite{margin:6px 32px 0;max-width:320px;text-align:center;font-size:15px;line-height:1.4;color:rgba(214,224,255,.82);opacity:0;animation:wfade 1.2s ease 1.4s forwards}
+@media (prefers-reduced-motion:reduce){.welcome .winvite{animation:none;opacity:1}}
+.welcome.again .winvite{animation:none;opacity:1}
 .orline{display:flex;align-items:center;gap:12px;margin:16px 20px 2px;color:var(--label-2);font-size:14px}
 .orline::before,.orline::after{content:"";flex:1;height:.5px;background:var(--sep)}
 
