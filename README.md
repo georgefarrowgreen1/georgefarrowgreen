@@ -918,9 +918,24 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.0
+## InFlight (chat.georgefarrowgreen.com) — 1.3.1
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.1** (smoother, from the motion audit below): a redraw moves rather than jumps. What matters on a screen carries
+a key (`data-key`, with `data-sig` for what it says and `data-in` for how it arrives), so after `render()` rows and
+bubbles glide from where they were (a list that moved as one glides as one), new things fade in (dots and reaction
+pills pop), changed words dissolve in and what went fades out where it was (`snapKeyed`/`playKeyed`). A pigeon landing
+in an open chat comes down on its sender's side. What you send shows at once ("Sending…", `S.pending`) and becomes the
+pigeon when the server has it; it comes back into the box if sending fails. The composer slides to its new height
+(`composeGlide`), toasts sit under the navigation bar and take a new message in place, signing in or out cross-fades,
+the lock screen fades away, the offline banner is a floating pill, and a pill says when a pigeon arrives below while
+you're scrolled up. Sheets: going on or back inside one slides the old contents away under the new (a copy in a
+closed shadow root), closing or reopening one mid-slide carries on from where it is, content that comes and goes
+inside a sheet glides (a FLIP of same-sheet redraws), and What's New doesn't replay on a sync. Maps draw only the
+pigeons each frame and the whole map at most twice a second, fold and unfold from the cached picture, open without
+waiting for the first draw, and morph when a pigeon lands. The tracker reads its colours once, glides its zoom and
+keeps + and − still. Reduce Motion fades instead of moving, rather than cutting.
 
 **1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
@@ -1525,7 +1540,7 @@ below), every icon button has a spoken name, sheets are labelled dialogs with th
 chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the
 iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
-every animation.
+every movement: screens, sheets, banners and new messages dissolve in and out instead.
 
 **Search.** The search field on Messages finds chats by name, as before, and
 now messages too: every message the phone can open (chats you've opened, and
@@ -1896,6 +1911,49 @@ A pass over every app for UI and UX, motion, speed, stability and how the apps w
 Left for the Cloudflare dashboard (not in the repo): Caching → Browser Cache TTL → **Respect Existing Headers** (it
 currently overrides the site's own `immutable` and `no-cache`); Security → Bots → turn off **JavaScript Detections**,
 and Web Analytics' automatic injection, on every host (both scripts are blocked by the site's CSP and log errors).
+
+## Motion audit (October 2026)
+
+Every app was measured frame by frame (Chromium on a phone-sized screen with touch, with the CPU slowed to a mid-range
+phone's), looking for anything that cuts, jumps or stutters. The rule now, everywhere: nothing appears, disappears or
+moves in a single frame; an animation that's interrupted carries on from where it is; only transform and opacity move
+where possible; and with Reduce Motion things dissolve (150–200 ms) rather than move, instead of cutting.
+
+**One set of curves and times** (the same names in every app's CSS):
+
+| Token | Value | For |
+| --- | --- | --- |
+| `--ease-glide` | `cubic-bezier(.32, .72, 0, 1)` | sheets, screens, anything that slides (iOS's sheet curve: quick, then a long settle, never past the end) |
+| `--ease-out` | `cubic-bezier(.22, 1, .36, 1)` | fades and small arrivals |
+| `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | things leaving |
+| `--ease-spring` | a sampled spring, about 2% overshoot (`linear()`, with a cubic-bezier fallback) | a press springing back, a pill or badge popping in |
+| `--dur-press` / `--dur-release` | .1 s / .45 s | press in, spring back |
+| `--dur-fast` / `--dur-base` | .2 s / .35 s | fades / most moves |
+| `--dur-sheet-in` / `--dur-sheet-out` | .5 s / .34 s | sheets |
+
+Each app keeps its own older names as aliases (InFlight's `--nav` and `--snappy`, Weather's and the account page's
+`--glide`, `--spring` and `--ease`).
+
+- **Home page:** the slideshow crossfades over the slide before it, with the blurred backdrop following; sheets open
+  and close from wherever they are and ease to new heights; Send shows a spinner, errors ease in and go as you type;
+  edits show at once, with Undo; photo tiles appear as they upload, removing one is asked on the photo itself, and
+  images are shrunk off the main thread (`OffscreenCanvas`); leaving for an app, the page steps back.
+- **InFlight:** see 1.3.1 under InFlight above.
+- **Account page:** the sheet eases to each new height (pushes, Back, data arriving, errors) and redraws in place,
+  keeping its scroll and focus; going on or back slides the old view away; tapping the title no longer closes it, and
+  a double tap doesn't either; closing mid-opening turns back from where it is; rows that go fade and fold; the theme
+  and the sign-in, join and forgot cards change with view transitions; the poster isn't replaced on every redraw; the
+  sky's lights are eased gradients instead of a 70 px blur (16 → 60 fps at rest in Chromium).
+- **Weather:** the sky's colours are registered properties, so a new sky crossfades over a second (stars, rain and snow
+  fade as their own layers, and a night launch opens on a night sky); a sheet closes only when its own slide ends; the
+  temperature rolls without a blur; on arrival the hero leads and the cards rise in after it; choosing a place closes
+  the sheet and turns the page; warnings and highlights are diffed, so only what changed moves; Settings' folders push
+  and pop; the radar card's note and status fold instead of jumping the map, and the wind flow is lighter on phones.
+  The offline copy is `wx-80`.
+
+Tests can run against another local copy of the site (`TEST_BASE`, see `.tools/tests/README.md`). Still to update,
+from before this work: `acctpage.mjs` and `acctmore.mjs` wait for a "Security check-up" row the account page no longer
+has, so they stop partway (their other checks, run past that point, pass as before).
 
 ## Security notes
 

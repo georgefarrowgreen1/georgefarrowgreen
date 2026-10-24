@@ -19,6 +19,10 @@ and the tests check what lands, what's drawn and what's pushed.
     ./run.sh                                 # every test in suite.txt (about 1½ hours)
     ./run.sh followtest lowsev               # just these
 
+To aim the kit at another local copy of the site (another worktree on another port, say), set `TEST_BASE`
+(`TEST_BASE=http://localhost:8790 node --import ./mapopen.mjs func.mjs <state> <out>`); tests that name port 8788
+themselves need it changed in a copy.
+
 Each test prints `PASS`/`FAIL` lines and ends with `FAILS n`; `run.sh` sums them up in
 `.state/results.log`, with each test's output in `.state/<test>.log` and its screenshots in
 `.state/out/<test>/`. `uitour4.mjs` (not in the suite) is the screen-by-screen UI walk: every
