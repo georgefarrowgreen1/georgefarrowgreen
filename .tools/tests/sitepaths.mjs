@@ -27,6 +27,11 @@ for (const path of ['/%ZZ/README.md', '/%2/x', '/README.md', '/wrangler.toml', '
 }
 const home = await get('/');
 ok(home.status === 200 && /includeSubDomains/.test(home.headers['strict-transport-security'] || '') && home.headers['cross-origin-opener-policy'] === 'same-origin', 'the home page: HSTS for every subdomain, and its own window', JSON.stringify([home.headers['strict-transport-security'], home.headers['cross-origin-opener-policy']]));
+// (the script in its head, which the page waits for before it draws: stamped too, so a visit back doesn't ask after it)
+const sv = (home.body.match(/signedin\.js\?v=([0-9a-f]{12})"/) || [])[1];
+const [js, oldJs] = await Promise.all([get(`/signedin.js?v=${sv}`), get('/signedin.js?v=old')]);
+ok(sv && js.status === 200 && /immutable/.test(js.headers['cache-control'] || '') && oldJs.headers['cache-control'] === 'no-cache',
+  'the home page’s signedin.js: stamped, kept for good by its stamp, checked each time by any other', JSON.stringify([sv, js.headers['cache-control'], oldJs.headers['cache-control']]));
 
 // 2. the contact form: 5 an hour from one network, the 6th held back; a name with a line break in it, one line
 const msg = (name, i) => JSON.stringify({ name, email: `writer${i}@example.com`, message: `Hello number ${i}` });

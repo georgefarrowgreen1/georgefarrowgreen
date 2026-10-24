@@ -70,7 +70,7 @@ svg { display: block; flex: none; }
 /* ---------------- the photos, fixed behind everything ---------------- */
 .bg { position: fixed; inset: 0; overflow: hidden; background: #0b0d12; }
 .bg::after {
-  content: ""; position: absolute; inset: 0;
+  content: ""; position: absolute; inset: 0; z-index: 2;     /* (over the photos: the one showing is z-index 1) */
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
 }
 /* each photo fades in once it's decoded, over the one before, which stays as it is underneath until it's covered (two
@@ -185,10 +185,13 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
   .bar .mid { animation: capsule linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
   .barbg, .soft { animation: veil linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
   .hero > * { animation: under linear both; animation-timeline: scroll(root); }
+  .hero > .cta { animation-name: under-gone; }
 }
 @keyframes capsule { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes veil { from { opacity: 0; visibility: hidden; } to { opacity: 1; visibility: visible; } }
 @keyframes under { from { opacity: 1; } to { opacity: 0; } }
+/* (the buttons, once faded, hidden too: not tapped through the bar's gaps, or tabbed to, unseen) */
+@keyframes under-gone { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
 
 .hero {
   min-height: max(560px, 84svh);
@@ -198,6 +201,9 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
 .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-2); margin-bottom: 10px; }
 .hero h1 { font: 700 50px/0.98 var(--display); letter-spacing: -0.035em; max-width: 8em; text-wrap: balance; }
 .lede { margin-top: 14px; font-size: 18px; line-height: 1.42; color: var(--text-2); max-width: 31ch; text-wrap: pretty; }
+/* (the hero's words read over a light photo too: a soft shadow under them, and the smaller lines brighter) */
+.hero .eyebrow, .hero h1, .hero .lede { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.45); }
+.hero .eyebrow, .hero .lede { color: rgba(235, 235, 245, 0.88); }
 .cta { display: flex; gap: 10px; margin-top: 24px; align-items: center; }
 .btn { height: 52px; padding: 0 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 17px; }
 .btn.wide { width: 100%; }
@@ -249,6 +255,11 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .group { border-radius: 26px; overflow: hidden; }
 .row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; text-align: left; }
 .row + .row::before { content: ""; position: absolute; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }
+/* (a row's focus ring, inside its group, whose rounded corners clip what's outside it; each corner set by itself, so a
+   group of one row keeps all four) */
+.group .row:focus-visible { outline-offset: -3px; }
+.group .row:first-child { border-top-left-radius: 26px; border-top-right-radius: 26px; }
+.group .row:last-child { border-bottom-left-radius: 26px; border-bottom-right-radius: 26px; }
 .ic { flex: none; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
 .ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
 .ic.pink { background: linear-gradient(160deg, #ff8fb1, #c43df0); }
@@ -265,6 +276,7 @@ body.edit [data-edit] { outline-color: rgba(141, 187, 255, 0.85); cursor: text; 
 body.edit [data-edit]:focus { outline-style: solid; }
 /* (every line in sight while editing, once the page is back at the top: not snapped into sight while it's still scrolling there) */
 body.edit.lines-on .hero > * { opacity: 1 !important; }
+body.edit.lines-on .hero > .cta { visibility: visible !important; }
 body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
 [contenteditable] { -webkit-user-select: text; user-select: text; caret-color: var(--tint-text); }
 .editbar {
@@ -477,16 +489,16 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 .lost .cta { flex-wrap: wrap; }
 .lost .head { margin-top: 38px; }
 .lost .report { margin-top: 30px; text-align: center; font-size: 14px; color: var(--text-2); }
-.lost .report a { color: var(--tint-text); font-weight: 500; }
+.lost .report a { color: var(--tint-text); font-weight: 500; display: inline-block; padding: 13px 4px; margin: -13px -4px; }   /* (a finger's width to tap, as the footer's are) */
 .lost .foot { margin-top: 10px; }
 .appic { flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
 .map { width: 210px; height: auto; margin: 0 0 22px -8px; overflow: visible; }
 .map .contours { stroke: rgba(255, 255, 255, 0.16); }
-.map .route { stroke: var(--tint-text); animation: march 1.6s linear infinite; }
+.map .route { stroke: var(--tint-text); animation: march 1.6s linear 4; }
 .map .start { fill: #fff; transform-box: fill-box; transform-origin: center; animation: pop 0.4s var(--ease-spring) 0.2s backwards; }
 .map .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.9s var(--ease-glide) 0.35s forwards; }
 .map .pin { transform: translate(186px, 56px); }
-.map .drop { transform-box: fill-box; transform-origin: 50% 100%; animation: drop 0.7s var(--ease-out) 1.9s backwards, bob 2.8s var(--ease-out) 2.6s infinite alternate; }
+.map .drop { transform-box: fill-box; transform-origin: 50% 100%; animation: drop 0.7s var(--ease-out) 1.9s backwards, bob 2.8s var(--ease-out) 2.6s 4 alternate; }
 .map .drop path { fill: #ff6b5e; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
 .map .drop text { fill: #fff; font: 700 20px var(--display); }
 @keyframes march { to { stroke-dashoffset: -20; } }
