@@ -308,7 +308,7 @@ const resting = (id, k, now = Date.now()) => k !== "forecast" && now - (failed.g
 
 // Whether a place's kept forecast, or anything else kept with it, is past its time: what load() would ask for again
 // (what failed to come isn't counted: it's asked for again with the next forecast)
-// (only: just these kinds, for a place looked at only beside the one shown: load's quiet)
+// (only: just these kinds)
 export function due(place, now = Date.now(), only = null) {
   const id = cell(place.lat, place.lon), kept = keptRaw(id);
   if (!kept?.forecast || now - kept.forecast.at >= TTL.forecast) return true;
@@ -338,7 +338,8 @@ function buildWx(raw, place) {
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can. quiet: a place beside the one
-// shown, readied to swipe to (app.js pager): just its forecast and warnings, and nothing asked for in the background
+// shown, readied to swipe to (app.js pager): all of it but its climate and how the models have done there (only its
+// forecast and warnings with the phone saving data)
 export async function load(place, onUpdate, { force = false, quiet = false } = {}) {
   const id = cell(place.lat, place.lon), key = `wx:${id}`, kept = keptRaw(id) || {};
   const raw = { ...kept };
@@ -365,7 +366,9 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
     store.set(key, raw);
   };
   const get = async (k, fn) => {
-    if (wait(k) || (quiet && k !== "forecast" && k !== "warnings")) return;
+    // (beside the one shown, all of it as it'd be asked for if it were shown, so it's drawn there as it will be; but with
+    // the phone saving data, just the forecast and the warnings)
+    if (wait(k) || (quiet && globalThis.navigator?.connection?.saveData && k !== "forecast" && k !== "warnings")) return;
     try {
       const j = await fn(place.lat, place.lon);
       // the ensembles are big (143 runs): only their summary is kept

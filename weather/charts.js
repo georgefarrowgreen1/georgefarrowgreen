@@ -106,10 +106,11 @@ const toEnter = new Set();
 let entering = 0;
 // (and not while the page is turning to another place: its charts come with it, drawn, rather than all drawing in at once
 // as it moves: app.js turnPage, pager)
-let hushed = false;
-export const hush = (on) => { hushed = on; };
+// (asked for by more than one at once, a page turning and a page drawn beside it, say: hushed till each has done)
+let hushes = 0;
+export const hush = (on) => { hushes = Math.max(0, hushes + (on ? 1 : -1)); };
 function enter(host, svg, k = "c") {
-  if (still?.matches || hushed) return;
+  if (still?.matches || hushes) return;
   svg._k = k;
   svg.classList.add(`${k}-wait`);
   waiting.set(host, svg); toEnter.add(host);

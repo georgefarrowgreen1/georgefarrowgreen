@@ -337,7 +337,9 @@ body:is(.sheet-up, .no-scroll) .top::before { background-color: rgba(12, 18, 30,
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- the layout ---------- */
-main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: grid; gap: 16px; }
+/* (nothing past its sides counted as the page's: the places either side's pages out there, and the cards as they're
+   swiped, would have a phone take the page for twice as wide, and show it smaller) */
+main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: grid; gap: 16px; overflow-x: clip; }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 /* the weather now, the saved places either side of it beside it, in a scroller that stops at each (app.js pager): the
    one either side drawn to its height, not adding to it (contain), and on a phone reaching the screen's edges, so a
@@ -352,6 +354,22 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   .pager { margin-inline: calc(-1 * var(--pad)); }
   .pager > :is(.hero, .pg-page) { padding-inline: calc(var(--pad) + 4px); }
 }
+/* the places either side's whole pages (app.js drawWhole), on a phone upright: each where this one's cards are, but a
+   screen to either side, out of sight but for while it's swiped; as tall as this one's (contain), cut off there. The
+   cards here led by the finger across them too (app.js cardSwipe), their own sideways scrolling as ever */
+.pv { display: none; }
+@media (max-width: 979px) {
+  main > .pager { grid-row: 1; }
+  main > .col-a, .pv { grid-row: 2; grid-column: 1; }
+  main > .col-b { grid-row: 3; }
+  .pv { display: block; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
+  .pv-prev { translate: -100vw 0; }
+  .pv-next { translate: 100vw 0; }
+  .pv .skeleton { display: grid; gap: 14px; }
+  :root.pg-drag .pv { visibility: visible; }
+  main > .col { touch-action: pan-y pinch-zoom; }
+}
+.pager.pg-led { scroll-snap-type: none; }
 @media (min-width: 980px) {
   /* (the second column alongside the weather now, as it always was, the first's cards under it) */
   main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: start; gap: 22px; }
@@ -366,6 +384,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   main { grid-template-columns: minmax(0, 0.36fr) minmax(0, 0.64fr); grid-template-rows: none; align-items: start; gap: 12px 18px; }
   .col { display: contents; }
   main > .col > * { grid-column: 2; grid-row: auto; }
+  .pv { display: none; }
+  main > .col { touch-action: auto; }
   main > .pager { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; margin-inline: 0; }
   .pager > :is(.hero, .pg-page) { padding-inline: 4px; }
   .hero-temp { font-size: 76px; }
@@ -443,8 +463,8 @@ main:is([data-empty="loading"], [data-empty="kept"]) ~ .foot { display: none; }
 /* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
    the cards that would be empty wait out of sight */
 .skeleton { display: none; }
-main:is([data-empty="loading"], [data-empty="kept"]) .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
-main[data-empty] .col > :not(.hero):not(.skeleton) { display: none !important; }
+main:is([data-empty="loading"], [data-empty="kept"]) > .col > .skeleton { display: grid; gap: 14px; animation: c-fade 0.3s var(--ease) backwards; }
+main[data-empty] > .col > :not(.hero):not(.skeleton) { display: none !important; }
 main[data-empty="error"] .hero .hero-row { display: none; }
 /* (in one column, the second's placeholders would sit under the first's, only to be pushed away as the forecast came) */
 @media (max-width: 979px) { main[data-empty] .col-b { display: none; } }
@@ -491,16 +511,22 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 @supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
   body { timeline-scope: --cur; }
   .hero { view-timeline: --cur x; }
-  :root.pg-drag :is(main > .col, .sky-alt, .pg-name), :root.pg-drag #place-name { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  :root.pg-drag :is(main > .col, .pv, .sky-alt, .pg-name), :root.pg-drag #place-name { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
   :root.pg-drag main > .col { animation-name: pg-col; }
+  :root.pg-drag .pv-prev { animation-name: pv-prev; }
+  :root.pg-drag .pv-next { animation-name: pv-next; }
+  @media (min-width: 980px) { :root.pg-drag main > .col { animation-name: pg-col-fade; } }
   :root.pg-drag .sky-prev { animation-name: pg-sky-prev; }
   :root.pg-drag .sky-next { animation-name: pg-sky-next; }
   :root.pg-drag #place-name { animation-name: pg-name; }
   :root.pg-drag .pg-name-prev { animation-name: pg-name-prev; }
   :root.pg-drag .pg-name-next { animation-name: pg-name-next; }
-  @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } }
+  @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } :root.pg-drag .pv { visibility: hidden; } }
 }
-@keyframes pg-col { 0% { translate: 100vw 0; opacity: 0; } 25% { opacity: 0; } 50% { translate: 0 0; opacity: 1; } 75% { opacity: 0; } 100% { translate: -100vw 0; opacity: 0; } }
+@keyframes pg-col { 0% { translate: 100vw 0; } 50% { translate: 0 0; } 100% { translate: -100vw 0; } }
+@keyframes pv-prev { 0% { translate: 0 0; } 50% { translate: -100vw 0; } 100% { translate: -200vw 0; } }
+@keyframes pv-next { 0% { translate: 200vw 0; } 50% { translate: 100vw 0; } 100% { translate: 0 0; } }
+@keyframes pg-col-fade { 0% { translate: 100vw 0; opacity: 0; } 25% { opacity: 0; } 50% { translate: 0 0; opacity: 1; } 75% { opacity: 0; } 100% { translate: -100vw 0; opacity: 0; } }
 @keyframes pg-col-calm { 0%, 25% { opacity: 0; } 50% { opacity: 1; } 75%, 100% { opacity: 0; } }
 @keyframes pg-sky-prev { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes pg-sky-next { 0%, 50% { opacity: 0; } 100% { opacity: 1; } }

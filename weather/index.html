@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-90" />
+  <meta name="app-version" content="wx-91" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -183,6 +183,9 @@
         <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
       </div>
     </div>
+    <!-- the places either side's whole pages, beside this one as it's swiped (app.js drawWhole) -->
+    <div class="pv pv-prev" aria-hidden="true" inert></div>
+    <div class="pv pv-next" aria-hidden="true" inert></div>
   </main>
 
   <footer class="foot">

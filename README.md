@@ -899,16 +899,21 @@ of the page to go between them. The places either side are already drawn beside
 it, in a sideways scroller that stops at each, so the swipe is the browser's own
 scroll: it moves with your finger from the first touch and carries on at the
 speed you let go at (giving at the first and last), whatever else the page is
-doing. As you drag, you see the next place's temperature, sky and conditions
-coming in, its name takes over in the bar, its sky fades in over this one's,
-and the cards move along and fade (led by the scroll itself where the browser
-can, otherwise by the app as it scrolls). Once it lands, that place takes over
-the top of the page in the same frame, with nothing redrawn in front of you;
-its charts arrive already drawn and its cards come up underneath. What's drawn
-beside the page is each neighbour's forecast as kept, worked out the way the
-page works out its own, while the page is idle; the neighbours' forecasts and
-warnings are also refreshed quietly in the background, so what you swipe to is
-up to date. Choosing a place in Places or on the map still turns the page to it
+doing. On a phone held upright it works as iOS does: the whole page moves
+with your finger, cards and all, and the next place's whole page comes in
+beside it, with its own temperature, warnings, charts and cards. You can swipe
+on the cards as well as on the temperature; the hours, the days, the map and the
+charts keep their own sideways dragging. Meanwhile the next place's name takes
+over in the bar and its sky fades in over this one's (led by the scroll itself
+where the browser can, otherwise by the app as it scrolls). On a wide screen, or
+a phone on its side, the top of the page slides and the cards fade instead.
+Once it lands, that place takes over in the same frame, with nothing redrawn in
+front of you. The pages beside this one are drawn by the page's own drawing
+code into copies of the page, from each neighbour's kept forecast, while the
+page is idle, and redrawn every few minutes; the page you've just left is kept
+as it was. The neighbours' forecasts are also refreshed quietly in the
+background (just the forecast and warnings when the phone is saving data), so
+what you swipe to is up to date and looks the same when you land on it. Choosing a place in Places or on the map still turns the page to it
 (the rest of that page is drawn after the turn, not during it). A day's details
 go to the day before or after by swiping too. Places lists them as
 cards, as iOS's Weather does: each in its own sky, its name, its clock and its
