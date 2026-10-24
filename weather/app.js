@@ -204,6 +204,11 @@ async function go(force = false, fresh = null) {
   // (meanwhile, a sky for the time of day, by this phone's clock: not a day's sky that turns to night as the forecast
   // comes, nor the last place's)
   if (S.hold) { const hr = new Date().getHours(); document.body.dataset.sky = hr >= 7 && hr < 19 ? "cloudy-day" : "cloudy-night"; }
+  // (the same place asked for again, refreshed by hand or by itself: drawn once, when all of it's in, or after a few
+  // seconds whatever's come, rather than part by part as each comes, the page changing under the eye each time; and
+  // what asked for it (a pull to refresh) told once it's drawn, not before: paint)
+  const again = !moved && !!S.wx;
+  if (again) S.hold = { again: true, until: Date.now() + 2500, timer: 0 };
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     temp: (c) => S.f.temp(c), tempUnit: () => (S.f.units.temp === "f" ? "°F" : "°C"), windNum: (k) => Math.round(S.f.windNum(k)), windUnit: () => S.f.windUnit,
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
@@ -211,7 +216,7 @@ async function go(force = false, fresh = null) {
   else S.radar.place(p.lat, p.lon);
   try {
     const loading = load(p, (wx, how) => {
-      if (!how.partial) fresh?.();
+      if (!how.partial && !again) fresh?.();
       if (my !== seq || !wx) return;
       if (how.error) S.error = how.error; else if (!how.partial) S.tries = 0;
       if (runOut(wx)) { render(); return; }
@@ -232,8 +237,14 @@ async function go(force = false, fresh = null) {
       render();
     }
   } finally {
+    if (my === seq) {
+      S.loading = false;
+      if (S.hold?.again) { S.hold.done = true; paint(); }
+      $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status();
+      // (and now the places beside it)
+      nearbySoon();
+    }
     fresh?.();
-    if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
   }
 }
 
@@ -317,11 +328,12 @@ async function radarRain(p, my) {
 function paint() {
   const h = S.hold;
   if (h) {
-    const ready = S.base?.official != null && S.rain?.id === h.id;
+    const ready = h.again ? h.done : S.base?.official != null && S.rain?.id === h.id;
     h.until ||= Date.now() + 1000;
     clearTimeout(h.timer);
     if (!ready && Date.now() < h.until) { h.timer = setTimeout(paint, h.until - Date.now()); return; }
-    S.hold = null;
+    // (held: drawn now, not waiting its turn)
+    S.hold = null; S.painted = 0;
   }
   // (not while the places are being swiped through, under the finger: once it's still; landed on one, at once)
   clearTimeout(S.paintT);
@@ -647,11 +659,11 @@ function centre() {
 }
 function dragOn() {
   if (dragging || (!S.places[S.cur - 1] && !S.places[S.cur + 1])) return;
-  dragging = true; document.documentElement.classList.add("pg-drag");
+  dragging = true; document.querySelector(".top").classList.add("swiping"); document.querySelector(".sky").classList.add("swiping");
 }
 function dragOff() {
   if (!dragging) return;
-  dragging = false; document.documentElement.classList.remove("pg-drag");
+  dragging = false; document.querySelector(".top").classList.remove("swiping"); document.querySelector(".sky").classList.remove("swiping");
   $("pager").classList.remove("pg-led");
   if (!linked) {
     for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
@@ -732,6 +744,7 @@ function commit(dir) {
 // due), when the page is idle a moment after it's drawn; then drawn beside it again, once it's still
 let nearbyT = 0;
 const fetchedAt = new Map(), asking = new Set();
+let nearbyLoading = false;
 // (soon: as a place is landed on, or the page first drawn: the places now beside it drawn straight after, both, not
 // waiting till the page is idle, so there's no placeholder to swipe to; one a swipe away may be swiped to in a moment)
 let nearbyFirst = true, nearbyNow = false;
@@ -745,7 +758,8 @@ function nearbySoon(soon = false) {
 function readyNearby(soon = false) {
   nearbyNow = false;
   if (document.visibilityState !== "visible") return;
-  if (pagerBusy()) { nearbySoon(soon); return; }
+  // (not while the page's own forecast is coming in, or it's being swiped: the page's own first)
+  if (pagerBusy() || S.loading) { nearbySoon(soon); return; }
   // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
   // the map still on its way to it)
   const here = place();
@@ -767,16 +781,18 @@ function readyNearby(soon = false) {
       rainAt(q.lat, q.lon).catch(() => null).then((r) => { asking.delete(id); rains.set(id, { ...r, id, asked: Date.now(), said: r ? JSON.stringify([r.at, r.steps]) : "" }); renewed(id); nearbySoon(); });
     }
     // (its forecast and the rest, how the models have done there and its climate: data.js load's quiet)
-    if (!(due(q) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
-    fetchedAt.set(id, Date.now());
-    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); renewed(id); nearbySoon(); }, () => {});
+    // (one place at a time)
+    if (nearbyLoading || !(due(q) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
+    fetchedAt.set(id, Date.now()); nearbyLoading = true;
+    load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); renewed(id); }, () => {}).finally(() => { nearbyLoading = false; nearbySoon(); });
   }
 }
 function pager() {
   const el = $("pager");
   const up = () => { held = false; settleSoon(); };
   el.addEventListener("touchstart", (e) => {
-    held = true; heldAt = performance.now(); dragOn();
+    // (not swiping yet, though: a pull to refresh starts here too; only once it scrolls sideways: below)
+    held = true; heldAt = performance.now();
     // (its lifting heard where it started, too: what was touched may be drawn again meanwhile, a forecast come in, and
     // gone from the page, from where it would never reach the scroller)
     for (const t of ["touchend", "touchcancel"]) e.target.addEventListener(t, up, { once: true, passive: true });
@@ -1127,7 +1143,7 @@ function hero(wx, now, fresh = false) {
 let heroKept = "", heroAt = 0;
 function keepHero(wx) {
   const c = $("now-temp"), v = JSON.stringify({ lat: wx.place.lat, lon: wx.place.lon, sky: document.body.dataset.sky, top: SKY_TOP[document.body.dataset.sky] || "#2b5d96",
-    temp: c.textContent, v: Number(c.dataset.v), cond: $("now-cond").textContent, hl: $("now-hl").textContent });
+    temp: c.textContent, v: Number(c.dataset.v), cond: $("now-cond").textContent, hl: $("now-hl").textContent, brief: $("brief").dataset.said || "" });
   if (v === heroKept && Date.now() - heroAt < 10 * 60e3) return;
   heroKept = v; heroAt = Date.now();
   store.set("wx:hero", { ...JSON.parse(v), at: heroAt });

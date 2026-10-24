@@ -368,13 +368,12 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   main > .col-b { grid-row: 3; grid-column: 1; }
   /* (each from the top of the weather now, its own over its cards, a gap between as the page has; the scroller's own
      pages either side left empty here) */
-  .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; visibility: hidden; pointer-events: none; }
+  .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; pointer-events: none; }
   .pv-hero { flex: none; transform-origin: calc(-1 * var(--pad)) 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
   .pager > .pg-page { visibility: hidden; }
   .pv-prev { translate: -100vw 0; }
   .pv-next { translate: 100vw 0; }
   .pv .skeleton { display: grid; gap: 14px; }
-  :root.pg-drag .pv { visibility: visible; }
   main > .col { touch-action: pan-y pinch-zoom; }
 }
 .pager.pg-led { scroll-snap-type: none; }
@@ -460,7 +459,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .hero-hl, .brief, .status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 0 12px rgba(0, 0, 0, 0.22); }
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
 .brief b { font-weight: 650; color: #fff; }
-.status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1em; }
+.status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1.4em; }
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */
@@ -485,7 +484,7 @@ main[data-empty="loading"] .hero .hero-hl { width: 42%; height: 14px; margin-top
 main[data-empty="loading"] .hero .brief { width: 88%; height: 49px; }
 /* (the weather as it was last shown, put up as the page opens (boot.js): the temperature and its lines as they were,
    placeholders for the rest) */
-main[data-empty="kept"] .hero .brief { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="kept"] .hero .brief:empty { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
 .sk { display: flex; flex-direction: column; gap: 12px; }
 /* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
 .sk i, main[data-empty="loading"] .hero .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
@@ -509,15 +508,17 @@ main[data-empty="kept"] .hero .brief { display: block; width: 88%; height: 49px;
 main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s var(--glide) backwards; }
 .ins.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
 /* swiping between places (app.js pager): the scroller under the finger moves by itself, the browser's own, as quick and
-   as smooth as any; and while it's being swiped (:root.pg-drag), the cards under it carried along with it, fading, the
-   place coming in's sky coming in over this one's and its name over this one's in the bar, each by how far across it's
-   got (where the weather now is in the scroller, a timeline: --cur). Where that can't be had, app.js does the same as
-   it scrolls. Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
+   as smooth as any; the cards under it carried along with it (and the next place's beside them), the place coming in's
+   sky coming in over this one's and, while it's swiped (.top.swiping), its name over this one's in the bar, each by how
+   far across it's got (where the weather now is in the scroller, a timeline: --cur). Always on, but for the bar's and the
+   sky's few parts: they do nothing till the page moves, and switching them on as a finger lands (on a pull to refresh,
+   say) would have the whole page restyled just then. Where that can't be had, app.js does the same as it scrolls.
+   Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
 .sky-alt { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
 /* (its clouds, stars, rain or snow with it, over this sky's own, as it comes in; there only while it's swiped: nothing of
    them kept moving out of sight) */
 .sky-alt > * { transition: none !important; }
-:root:not(.pg-drag) .sky-alt > * { display: none !important; }
+.sky:not(.swiping) > .sky-alt > * { display: none !important; }
 .place-name { position: relative; }
 /* (each laid over this one's name, as wide as it is (to the arrow after it), and over the line under it: neither taking
    any room of its own, so the pill's as wide as this place's words, not the widest of the three; as it's swiped, the
@@ -531,24 +532,27 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 @supports (timeline-scope: --a) and (animation-range: cover 0% cover 100%) {
   body { timeline-scope: --cur; }
   .hero { view-timeline: --cur x; }
-  :root.pg-drag :is(main > .col, .pv, .sky-alt, .pg-name), :root.pg-drag #place-name { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
-  :root.pg-drag main > .col { animation-name: pg-col; }
-  :root.pg-drag .pv-prev { animation-name: pv-prev; }
-  :root.pg-drag .pv-next { animation-name: pv-next; }
-  @media (min-width: 980px) { :root.pg-drag main > .col { animation-name: pg-col-fade; } }
-  :root.pg-drag .sky-prev { animation-name: pg-sky-prev; }
-  :root.pg-drag .sky-next { animation-name: pg-sky-next; }
-  :root.pg-drag #place-name { animation-name: pg-name; }
-  :root.pg-drag .pg-name-prev { animation-name: pg-name-prev; }
-  :root.pg-drag .pg-name-next { animation-name: pg-name-next; }
-  :root.pg-drag .top:not(.collapsed) :is(#place-sub, .pg-sub) { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
-  :root.pg-drag .top:not(.collapsed) #place-sub { animation-name: pg-name; }
-  :root.pg-drag .top:not(.collapsed) .pg-sub-prev { animation-name: pg-name-prev; }
-  :root.pg-drag .top:not(.collapsed) .pg-sub-next { animation-name: pg-name-next; }
-  :root.pg-drag .top:not(.collapsed) .place { animation-name: pill-w; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
-  :root.pg-drag .top:not(.collapsed) #place-name { animation-name: pg-name, name-w; }
-  :root.pg-drag .top:not(.collapsed) .place-line { align-self: stretch; }
-  @media (prefers-reduced-motion: reduce) { :root.pg-drag main > .col { animation-name: pg-col-calm; } :root.pg-drag .pv { visibility: hidden; } }
+  main > .col, .pv, .sky-alt, .top.swiping :is(#place-name, .pg-name) { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  main > .col { animation-name: pg-col; }
+  .pv-prev { animation-name: pv-prev; }
+  .pv-next { animation-name: pv-next; }
+  @media (min-width: 980px) { main > .col { animation-name: pg-col-fade; } }
+  /* (not with the radar full screen in a column: a column moved, even by nothing, would hold it in the column rather
+     than the screen) */
+  main:has(.radar-big) > .col { animation: none; }
+  .sky-prev { animation-name: pg-sky-prev; }
+  .sky-next { animation-name: pg-sky-next; }
+  .top.swiping #place-name { animation-name: pg-name; }
+  .top.swiping .pg-name-prev { animation-name: pg-name-prev; }
+  .top.swiping .pg-name-next { animation-name: pg-name-next; }
+  .top.swiping:not(.collapsed) :is(#place-sub, .pg-sub) { animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  .top.swiping:not(.collapsed) #place-sub { animation-name: pg-name; }
+  .top.swiping:not(.collapsed) .pg-sub-prev { animation-name: pg-name-prev; }
+  .top.swiping:not(.collapsed) .pg-sub-next { animation-name: pg-name-next; }
+  .top.swiping:not(.collapsed) .place { animation-name: pill-w; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: --cur; animation-range: cover 0% cover 100%; }
+  .top.swiping:not(.collapsed) #place-name { animation-name: pg-name, name-w; }
+  .top.swiping:not(.collapsed) .place-line { align-self: stretch; }
+  @media (prefers-reduced-motion: reduce) { main > .col { animation-name: pg-col-calm; } .pv { visibility: hidden; } }
 }
 @keyframes pg-col { 0% { translate: 100vw 0; } 50% { translate: 0 0; } 100% { translate: -100vw 0; } }
 @keyframes pv-prev { 0% { translate: 0 0; } 50% { translate: -100vw 0; } 100% { translate: -200vw 0; } }

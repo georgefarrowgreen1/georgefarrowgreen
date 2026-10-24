@@ -892,8 +892,14 @@ it then ("Updating…" under the temperature: the forecast and warnings asked fo
 again, the rest as they're due). As on iPhone, the
 spinner's spokes appear one by one as you pull, it pops when you've pulled far
 enough, and let go, the page holds open a gap for it to turn in (long enough to
-be seen) until the forecast itself is in, the rest arriving behind it, then
-glides back up. It goes if the page is scrolled on meanwhile, and gives up after
+be seen) until the refreshed forecast is drawn, then glides back up. A refresh,
+by hand or by itself, is drawn once, when every part of it has come in (or
+after a couple of seconds, whatever has), rather than part by part with the
+page changing under the eye each time; the line that says "Updating…" keeps its
+height either way, and the places beside the page wait until the page's own
+forecast is in. The page also opens on the top of the page as it was last
+shown, its briefing, dots and the line under the name included, so nothing
+moves as the app takes over. It goes if the page is scrolled on meanwhile, and gives up after
 15 seconds whatever happens. With more than one place saved, swipe across the top
 of the page to go between them. The places either side are already drawn beside
 it, in a sideways scroller that stops at each, so the swipe is the browser's own
