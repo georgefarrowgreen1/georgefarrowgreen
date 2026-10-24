@@ -1906,15 +1906,13 @@ function welcomeCta() {
 const SIGNIN_KEY = "inflight-signin";
 async function toAccountSignIn(e, mode) {
   e?.preventDefault?.();
-  const covered = handOff(e?.target?.closest?.("[data-act]"));      // (it grows into the page's sky while the trip's got ready)
+  const covered = handOff();      // (the page's sky comes in while the trip's got ready)
   try {
     const t = await E2E.handbackPair();
     localStorage.setItem(SIGNIN_KEY, JSON.stringify({ word: t.word, pub: t.pub, priv: t.priv, at: now(), link: S.pendingLink || null }));
     const back = location.origin + (location.pathname.startsWith("/pigeon/") ? "/pigeon/" : "/");
     await covered;
-    // (and where the button was, for the account page to grow its card from)
     const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
-    if (handing?.from) q.set("from", handing.from);
     location.assign(toAccount(`#${q}`));
   } catch (_) { handBack(); toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
 }
@@ -1971,17 +1969,16 @@ const acctSky = () => cssVar(document.documentElement, "--acct-sky") || (matchMe
 const play = (el, frames, o) => { try { return el?.animate(frames, o) || null; } catch (_) { return null; } };
 // (once it has played, or ms have gone by, whichever is first)
 const played = (a, ms) => new Promise((done) => { const t = setTimeout(done, ms); a?.finished.then(() => { clearTimeout(t); done(); }, () => { clearTimeout(t); done(); }); });
-// What you tapped, held where it is as the account page's sky comes in round it and the welcome steps back, its look
-// turning to that page's glass and its words going: the account page opens on just that, and grows it into its card
-// (the button's place, given it as from). Opacity and transforms only, so a busy phone doesn't stutter it.
+// The account page's sky, coming in over everything, so the page opens on what was last in sight. Opacity only, so a
+// busy phone doesn't stutter it.
 // → a promise for when the sky is all there is (at most ~700 ms, whatever becomes of the animation)
 let handing = null;
-function handOff(from) {
+function handOff() {
   handBack();
   const still = STILL.matches, el = document.createElement("div"), anims = [];
   el.className = "handoff"; el.setAttribute("aria-hidden", "true");
   el.innerHTML = `<i class="hsky"></i>`;
-  handing = { el, anims, from: null };
+  handing = { el, anims };
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", acctSky());     // (the browser's bar too)
   // (and if the page never goes, as a page sometimes doesn't, the sky doesn't stay)
   setTimeout(() => { if (handing?.el === el && document.visibilityState === "visible") handBack(); }, 15000);
@@ -1989,33 +1986,8 @@ function handOff(from) {
     document.body.append(el);
     const sky = play($(".hsky", el), [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 150 : 480, easing: "ease", fill: "forwards" });
     anims.push(sky);
-    // (only a button becomes the card: a link, as Create your account is, just goes with the rest)
-    if (!still && from?.isConnected && looksLikeButton(from)) {
-      const r = from.getBoundingClientRect(), cs = getComputedStyle(from), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.height / 2);
-      handing.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
-      const pill = document.createElement("div");
-      pill.className = "hpill";
-      pill.innerHTML = `<i class="hlook"></i><span class="hlabel"></span>`;
-      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
-      // (its own look over the glass, to begin with: its colour, edge and glow, and its words)
-      Object.assign($(".hlook", pill).style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
-      Object.assign($(".hlabel", pill).style, { color: cs.color, font: cs.font, letterSpacing: cs.letterSpacing });
-      $(".hlabel", pill).textContent = from.textContent.trim();
-      el.append(pill);
-      const t = { duration: 520, easing: "cubic-bezier(0.55,0,0.1,1)", fill: "forwards" };
-      anims.push(
-        play($(".hlook", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: "ease", fill: "forwards" }),
-        play($(".hlabel", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: "ease-out", fill: "forwards" }),
-        play(pill, [{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" }),
-        play($view, [{ transform: "none", opacity: 1 }, { transform: "scale(.94)", opacity: 0 }], t));
-    }
     return played(sky, 700);
   } catch (_) { return Promise.resolve(); }
-}
-// (something with a look of its own, a fill or a frame, rather than words on the page)
-function looksLikeButton(el) {
-  const cs = getComputedStyle(el), clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
-  return cs.backgroundImage !== "none" || !clear(cs.backgroundColor) || (parseFloat(cs.borderTopWidth) > 0 && !clear(cs.borderTopColor));
 }
 // The sky taken away again: the trip didn't start, or InFlight came back from the browser's back-forward cache as it was
 // when you left it

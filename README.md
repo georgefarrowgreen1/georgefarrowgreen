@@ -16,8 +16,7 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
-  **Sign in** grows to fill the screen in the account page's sky as it goes there (`handOff`: 560 ms, the account
-  page's curve; with Reduce Motion, a fade), so that page opens on what was already in sight, and the page is
+  **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
   preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
   account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
   in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
@@ -248,9 +247,8 @@ Motion, solid with Reduce Transparency.
   server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
   there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
   placeholder only shows if it's slow to start. Signing out, dusk passes over it. The way there is one movement too:
-  each app's Sign in stays where it is as the account page's sky comes in round it, turning to this page's glass
-  (opacity and transforms only), and says where it was (`from` in the `#`); this page draws it there from its first
-  frame (`early.js`) and grows it into the sign-in card (`fromButton`). Your initial and photo go back to every app
+  each app fades this page's sky in over everything as it goes (opacity only), so the page opens on what was already in
+  sight. Your initial and photo go back to every app
   (InFlight `theme.js`, Weather `early.js`, the home page `signedin.js`), and InFlight swaps the code on its first frame
   (`theme.js` arvSwap), not once the app has come. While you sign in, the page opens the connection back to the app,
   and a password's stretched in a worker (`pigeon/argon2w.js`), so the page never stops while it is (on the page, as
@@ -764,12 +762,12 @@ so there's nothing to set up beyond the address.
   signed in on the site anywhere in this browser, Weather is too; or its Sign in row takes you to the account's page
   (account.<site>, where every app on the site signs in), which sends you back signed in, the sign-in handed back with
   a code only this tab can use (`functions/_handback.js`), and this device's places then go to the account without
-  asking, with "Signed in as Sam." The Sign in row grows to fill the screen in the account page's sky as it goes
+  asking, with "Signed in as Sam." Sign in fades the account page's sky in over everything as it goes
   (`handOff`, in the top layer over Settings); back, the page opens on the picture the account's page ended on
   (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
   into the account's card, your places ticked off under it as they go with the account ("Your places go with your
   account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
-  within six seconds whatever happens (the offline copy, `wx-87`). Signed in, it's just **one card for the account** (your
+  within six seconds whatever happens (the offline copy, `wx-88`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -1015,8 +1013,8 @@ service, with made-up forecasts for the time it runs).
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
-**1.3.3** (coming and going): signing in is one movement. **Sign in** grows to fill the screen in the account page's
-sky as it goes there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
+**1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
+there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
 ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
 your initial and photo from the address's `#`): the sky clears to Messages as a padlock opens in the middle ("Messages
 unlocked"), your picture flies down into Account, and your chats come in a row at a time (`arriving`), all overlapping,

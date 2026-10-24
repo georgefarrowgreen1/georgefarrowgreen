@@ -304,7 +304,6 @@ async function load() {
   try { if (!S.me?.signedIn) S.me = await call("me"); S.pulled = Date.now(); }
   catch (e) {
     main.removeAttribute("aria-busy");
-    fromButton();
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
       h("p", { text: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message }),
       h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
@@ -316,37 +315,9 @@ async function load() {
   // (a sheet coming straight up over it, from an app, Admin's link or the home page: the page behind it there already,
   // not rising under it as it comes)
   if (S.me?.signedIn && (HANDOFF?.open === "profile" || (S.me.admin && location.hash === "#admin") || homeEdit())) S.settled = true;
-  if (document.documentElement.classList.contains("from-app")) { render(); fromButton(); } else await anew(render);
+  await anew(render);
   if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
   confirmForHome();
-}
-// From an app's Sign in: its button, there as glass since the first frame (early.js), grows into the sign-in card, the
-// card's own words coming in as it lands (the rest of the page rising round it as ever). Transforms only, its corners
-// kept round as it stretches; with Reduce Motion, or no card, it just fades.
-function fromButton() {
-  const root = document.documentElement;
-  if (!root.classList.contains("from-app")) return;
-  const cs = getComputedStyle(root), px = (k) => parseFloat(cs.getPropertyValue(`--from-${k}`)) || 0;
-  const r0 = { x: px("x"), y: px("y"), w: Math.max(1, px("w")), h: Math.max(1, px("h")), r: px("r") };
-  const card = $("main .signin"), pane = h("div.from-pane.glass", { "aria-hidden": "true" });
-  card?.classList.remove("rise");
-  const r1 = card?.getBoundingClientRect();
-  const to = r1?.width ? { x: r1.left, y: r1.top, w: r1.width, h: r1.height, r: parseFloat(getComputedStyle(card).borderTopLeftRadius) || 0 } : r0;
-  Object.assign(pane.style, { left: `${to.x}px`, top: `${to.y}px`, width: `${to.w}px`, height: `${to.h}px`, borderRadius: `${to.r}px` });
-  document.body.append(pane);
-  root.classList.remove("from-app");
-  const gone = () => pane.remove();
-  if (still.matches || !card || to === r0) {
-    pane.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms("--dur-fast"), easing: tok("--ease-out"), fill: "forwards" }).finished.then(gone, gone);
-    return;
-  }
-  const sx = r0.w / to.w, sy = r0.h / to.h, dur = 560, glide = tok("--ease-glide");
-  pane.animate([
-    { transform: `translate(${r0.x - to.x}px, ${r0.y - to.y}px) scale(${sx}, ${sy})`, borderRadius: `${r0.r / sx}px / ${r0.r / sy}px` },
-    { transform: "none", borderRadius: `${to.r}px` },
-  ], { duration: dur, easing: glide, fill: "forwards" });
-  card.animate([{ opacity: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1 }], { duration: dur + 120, easing: tok("--ease-out") });
-  pane.animate([{ opacity: 1 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: dur + 160, easing: "linear", fill: "forwards" }).finished.then(gone, gone);
 }
 // The page drawn anew, signed in or out, or being deleted (or as it opens, from its skeleton): the old one fading as
 // the new one settles in, where the browser can and motion's welcome. Any sheet closes first, so it isn't caught in the

@@ -381,7 +381,7 @@ function showLines() {
 
 /* ---------------- signing in, on the account's page: the way there, and back ---------------- */
 // The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
-// Sign in grows to fill the screen in that sky, so that page opens on what was already in sight (handOff); back from it
+// that sky comes in over everything, so that page opens on what was already in sight (handOff); back from it
 // signed in (#signedin, taken out of the address at once), the page opens on the picture it ended on (index.html, from
 // the first frame), and your photo goes from there into its place in the bar (arrive). With Reduce Motion, dissolves.
 // Neither is ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
@@ -389,18 +389,17 @@ function showLines() {
 const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
 const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
 let handing = null;
-// Sign in (el), held where it is as the account page's sky comes in round it, its look turning to that page's glass and
-// its words going; and off to url once the sky's in, or after 700 ms whatever happens, saying where it was (from), for
-// that page to grow its card from. Opacity and transforms only. With Reduce Motion, the sky fades in alone
-function handOff(el, url) {
+// The account page's sky, coming in over everything; and off to url once it's in, or after 700 ms whatever happens.
+// Opacity only
+function handOff(url) {
   if (handing) return;
   const g = document.createElement("div");
   g.className = "handoff"; g.setAttribute("aria-hidden", "true"); g.innerHTML = `<i class="handoff-sky"></i>`;
-  const undo = () => { g.remove(); el.style.visibility = ""; if (handing?.g === g) handing = null; };
-  let went = false, to = url;
+  const undo = () => { g.remove(); if (handing?.g === g) handing = null; };
+  let went = false;
   const go = () => {
     if (went) return;
-    went = true; location.assign(to);
+    went = true; location.assign(url);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") undo(); }, 10e3);
   };
@@ -408,28 +407,6 @@ function handOff(el, url) {
   try {
     body.append(g);
     sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motion.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
-    // (only a button becomes the card: a link just goes with the rest)
-    const cs0 = getComputedStyle(el), clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
-    if (!motion.matches && (cs0.backgroundImage !== "none" || !clear(cs0.backgroundColor) || (parseFloat(cs0.borderTopWidth) > 0 && !clear(cs0.borderTopColor)))) {
-      const r = el.getBoundingClientRect(), cs = cs0, rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
-      to = `${url}&from=${[r.left, r.top, r.width, r.height, rad].map(Math.round).join(",")}`;
-      // (its own look over the glass, to begin with, and its words, laid over where they were)
-      const look = document.createElement("i");
-      look.className = "handoff-look";
-      Object.assign(look.style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
-      const words = el.cloneNode(true);
-      for (const k of ["id", "href", "data-account"]) words.removeAttribute(k);
-      words.classList.add("handoff-in"); words.inert = true;
-      Object.assign(words.style, { left: `${(r.width - el.offsetWidth) / 2}px`, top: `${(r.height - el.offsetHeight) / 2}px`, width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` });
-      const pill = document.createElement("div");
-      pill.className = "handoff-pill"; pill.append(look, words);
-      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
-      g.append(pill);
-      el.style.visibility = "hidden";
-      look.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: EASE_OUT, fill: "forwards" });
-      words.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
-      pill.animate([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" });
-    }
   } catch (_) { undo(); location.assign(url); return; }
   handing = { g, undo };
   sky.then(go, go);
@@ -559,11 +536,11 @@ function land(a) {
     $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather");
   }
 }
-// Sign in: off to the account's page, Sign in growing to fill the screen in that page's sky as it goes (handOff)
+// Sign in: off to the account's page, its sky coming in as it goes (handOff)
 $("#sign-in").addEventListener("click", (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
-  handOff(e.currentTarget, e.currentTarget.href);
+  handOff(e.currentTarget.href);
 });
 // Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
 // steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads

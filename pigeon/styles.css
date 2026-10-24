@@ -1731,23 +1731,12 @@ html.night .nav-ghost .night{background:none}
    phone's, not InFlight's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
 /* (the account page's sky exactly: its gradient, and its dawn, warm along the foot with a cool light at the top) */
 :root{--acct-sky:#f3f0fb;--acct-sky-a:#e9eefc;--acct-sky-c:#f7f8fc;
-  --acct-glass:rgba(255,255,255,.58);--acct-sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.7),rgba(255,255,255,0) 46%);
-  --acct-edge:inset 0 1px .5px rgba(255,255,255,.95),inset 0 -1px .5px rgba(255,255,255,.4),inset 0 0 22px rgba(255,255,255,.3);
-  --acct-lift:0 0 0 .5px rgba(20,30,60,.08),0 22px 44px -20px rgba(40,50,100,.28),0 2px 6px rgba(40,50,100,.06);
   --acct-heaven:radial-gradient(120% 80% at 50% -10%,var(--acct-sky-a),var(--acct-sky) 52%,var(--acct-sky-c));
   --dawn:radial-gradient(120% 50% at 50% 112%,rgba(255,190,150,.55),rgba(255,160,200,.22) 45%,transparent 72%),radial-gradient(110% 60% at 50% -12%,rgba(160,200,255,.22),transparent 62%)}
-@media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26;--acct-sky-a:#121a3c;--acct-sky-c:#05060e;--acct-glass:rgba(34,40,66,.5);
-  --acct-sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 46%);
-  --acct-edge:inset 0 1px .5px rgba(255,255,255,.42),inset 0 -1px .5px rgba(255,255,255,.08),inset 0 0 22px rgba(255,255,255,.03);
-  --acct-lift:0 0 0 .5px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16)}}
-/* going: what you tapped grows into that sky (a copy of it, over everything: its own look, then the sky over it) */
+@media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26;--acct-sky-a:#121a3c;--acct-sky-c:#05060e}}
+/* going: that sky, over everything */
 .handoff{position:fixed;inset:0;z-index:100;overflow:hidden;pointer-events:none}
 .handoff .hsky{position:absolute;inset:0;background:var(--acct-heaven);opacity:0}
-/* (the button, as the account page's glass, where it was: that page grows its card from it) */
-.handoff .hpill{position:fixed;display:grid;place-items:center;overflow:hidden;background:var(--acct-sheen),var(--acct-glass);box-shadow:var(--acct-edge),var(--acct-lift);
-  -webkit-backdrop-filter:blur(28px) saturate(180%);backdrop-filter:blur(28px) saturate(180%)}
-.handoff .hlook{position:absolute;inset:0}
-.handoff .hlabel{position:relative;white-space:nowrap}
 /* coming back: the page's last picture (its sky, the dawn and you), from the very first frame (theme.js marks the
    page before it's drawn), then app.js's own copy of it, the same; and if app.js never comes, it clears by itself */
 html.arriving body::after,.arrival .arv-sky{background:var(--dawn),var(--acct-heaven)}

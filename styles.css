@@ -405,30 +405,18 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 
 /* ---------------- signing in, on the account's page: the way there, and back ---------------- */
 /* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
-   along its foot, and your photo in a circle a third of the way down. Going there, Sign in grows to fill the screen in
-   that sky (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
+   along its foot, and your photo in a circle a third of the way down. Going there, that sky comes in over everything
+   (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
    page opens on the picture it ended on (index.html, from the first frame: .back-in:target); your photo comes into it
    where the page had it, and as the picture fades, Sign in draws in to the circle your photo goes in and
    the photo comes down into it (app.js arrive). None of it takes a tap: a tap goes to what's under it */
-/* (the account page's sky exactly, its dawn, and its glass) */
-:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc; --acct-glass: rgba(255, 255, 255, 0.58);
-  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
-  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
-  --acct-lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
+/* (the account page's sky exactly, and its dawn) */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
   --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
   --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
-@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; --acct-glass: rgba(34, 40, 66, 0.5);
-  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 46%);
-  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.08), inset 0 0 22px rgba(255, 255, 255, 0.03);
-  --acct-lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16); } }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
 .handoff { position: fixed; inset: 0; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
 .handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
-/* (Sign in, as the account page's glass, where it was: that page grows its card from it) */
-.handoff-pill { position: fixed; overflow: hidden; background: var(--acct-sheen), var(--acct-glass); box-shadow: var(--acct-edge), var(--acct-lift);
-  -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%); }
-.handoff-look { position: absolute; inset: 0; }
-/* (what it says, laid over where it was, without its own look: that's the growing pane's) */
-.handoff-pill > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transform: none !important; transition: none !important; }
 .back-in {
   display: none; position: fixed; inset: 0; z-index: 60; pointer-events: none;
   background: var(--acct-dawn), var(--acct-heaven);

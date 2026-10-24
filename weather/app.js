@@ -1976,18 +1976,15 @@ function signedOutElsewhere() {
 }
 // Signing in is on the account's own page (account.<site>, beside weather.<site>), where every app on the site signs
 // in: there with a word for the sign-in (kept on this device for half an hour, or until it's used), and back with a code
-// for it (signedBack). The row tapped grows to fill the screen in that page's sky as the word's made (handOff), and it's
-// off there once that's done
+// for it (signedBack). That page's sky comes in as the word's made (handOff), and it's off there once that's done
 async function toAccountSignIn(e) {
   const page = accountPage(); if (!page || leaving) return;
-  const away = handOff(e?.currentTarget);
+  const away = handOff();
   try {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
     await away.done;
-    // (and where the row was, for the account page to grow its card from)
     const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` });
-    if (away.from) q.set("from", away.from);
     location.assign(`${page}#${q}`);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") away.undo(); }, 10e3);
@@ -2017,7 +2014,7 @@ async function signedBack(code) {
 
 /* ---------- signing in on the account's page: the way there, and back ---------- */
 // The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
-// what was tapped grows to fill the screen in that sky, so that page opens on what was already in sight (handOff); back
+// that sky comes in over everything, so that page opens on what was already in sight (handOff); back
 // from it (#signin=…), the page opens on the picture it ended on (early.js), and your photo goes from there into the
 // account's card in Settings, where you signed in from (arriveFrom, welcome). With Reduce Motion, dissolves. Neither is
 // ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
@@ -2028,40 +2025,17 @@ const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a
 const topLayer = "showPopover" in HTMLElement.prototype;
 const springEase = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";
 let leaving = null;
-// What was tapped (el), held where it is over Settings as the account page's sky comes in round it, its look turning to
-// that page's glass and its words going: the account page opens on just that, and grows it into its card (where it
-// was, given it as from). Opacity and transforms only. → { done: kept once the sky's in, or after 700 ms whatever
-// happens; undo: put back as it was; from: where it was }. With Reduce Motion, the sky fades in alone; with no top
-// layer, straight on
-function handOff(el) {
-  const none = { done: Promise.resolve(), undo() {}, from: null };
+// The account page's sky, coming in over everything (Settings too). Opacity only. → { done: kept once the sky's in, or
+// after 700 ms whatever happens; undo: put back as it was }. With no top layer, straight on
+function handOff() {
+  const none = { done: Promise.resolve(), undo() {} };
   if (!topLayer) return none;
   const g = h("div", { class: "handoff", "aria-hidden": "true", popover: "manual" }, h("i", { class: "handoff-sky" }));
-  const out = { done: null, from: null, undo: () => { g.remove(); if (el) el.style.visibility = ""; if (leaving === out) leaving = null; } };
+  const out = { done: null, undo: () => { g.remove(); if (leaving === out) leaving = null; } };
   let sky;
   try {
     document.body.append(g); g.showPopover();
     sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: calm.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
-    // (only a button becomes the card: a link just goes with the rest)
-    const cs0 = el?.isConnected ? getComputedStyle(el) : null, clear = (c) => !c || c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
-    if (!calm.matches && cs0 && (cs0.backgroundImage !== "none" || !clear(cs0.backgroundColor) || (parseFloat(cs0.borderTopWidth) > 0 && !clear(cs0.borderTopColor)))) {
-      const r = el.getBoundingClientRect(), cs = cs0, rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
-      out.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
-      // (its own look over the glass, to begin with, and its words, laid over where they were)
-      const look = h("i", { class: "handoff-look" });
-      Object.assign(look.style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
-      const words = el.cloneNode(true);
-      words.removeAttribute("id"); for (const x of words.querySelectorAll("[id]")) x.removeAttribute("id");
-      words.classList.add("handoff-in"); words.inert = true;
-      Object.assign(words.style, { left: `${(r.width - el.offsetWidth) / 2}px`, top: `${(r.height - el.offsetHeight) / 2}px`, width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` });
-      const pill = h("div", { class: "handoff-pill" }, look, words);
-      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
-      g.append(pill);
-      el.style.visibility = "hidden";
-      look.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: EASE_OUT, fill: "forwards" });
-      words.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
-      pill.animate([{ transform: "scale(1)" }, { transform: "scale(1.03)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" });
-    }
   } catch (_) { out.undo(); return none; }
   leaving = out;
   out.done = Promise.race([sky.catch(() => {}), new Promise((ok) => setTimeout(ok, 700))]);
