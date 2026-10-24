@@ -522,9 +522,10 @@ function drawPage(el, q, i, only) {
 // cards drawn by the page's own drawing, each part as it draws itself but aimed at the copy (R, which $ looks in), with
 // the place's forecast as kept and as a place is first shown (go: nothing open or folded out, the view it calls for),
 // nothing moving and no chart drawing in; its ids then put by (data-pid), so the page's own are still the page's. Kept
-// for each place while it's the same forecast, the same few minutes, the same page (pages)
+// for each place while it's the same forecast, the same minute, the same page (pages): drawn again each minute, as the
+// page's own "in 20 minutes" and its charts' Now are (the minute's tick), so it says what it will when it's landed on
 const pages = new Map();
-const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 180e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
+const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 60e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
 const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
 // (the page's cards as they are, copied: without the placeholders, the map (one only), or anything about to move)
 function copyPage(blank = false) {
@@ -2930,6 +2931,8 @@ function wire() {
     }
     tickHour = hr;
     check();
+    // (and the places beside it, their weather now and their whole pages, drawn again for the minute when it's idle)
+    nearbySoon();
   }, 60e3);
 }
 
