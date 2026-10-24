@@ -560,7 +560,7 @@ for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   if (me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email) { $("#from").hidden = false; $("#sender").classList.add("known"); }
   ready();
   openSheet(contact.sheet);
-  grow();
+  grow(); fit();
   const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
   // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
   if (!phone.matches) (empty || $("#c-message")).focus();
@@ -589,7 +589,7 @@ $("#c-message").addEventListener("focus", () => { if ($("#c-message").value.trim
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
-  const swap = () => { from.hidden = !on; s.classList.toggle("known", on); };
+  const swap = () => { from.hidden = !on; s.classList.toggle("known", on); if (!on) fit(); };
   for (const el of [box, s, ...$$("*", s)]) for (const a of el.getAnimations()) a.cancel();
   if (motion.matches || !d.open) return swap();
   // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
@@ -631,13 +631,24 @@ const grow = () => {
   t.style.height = `${h0}px`; void t.offsetHeight;
   t.style.height = `${h1}px`;
 };
+// (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
+// smaller and an iPhone zooms the page in on the field when it's tapped)
+const fit = () => {
+  for (const el of [$("#c-name"), $("#c-email")]) {
+    el.style.fontSize = "";
+    if (!el.clientWidth || el.scrollWidth <= el.clientWidth) continue;
+    const px = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = `${Math.max(16, Math.floor((px * el.clientWidth) / el.scrollWidth * 10) / 10)}px`;
+  }
+};
 const say = (t) => settle(contact.sheet, () => { contact.err.textContent = t; contact.err.hidden = !t; }, t ? contact.err : null);
 contact.form.addEventListener("input", (e) => {
   e.target.removeAttribute?.("aria-invalid");
   if (!contact.err.hidden) say("");
   ready();
-  if (e.target.id === "c-message") grow();
+  if (e.target.id === "c-message") grow(); else fit();
 });
+contact.form.addEventListener("change", fit);      // (filled in by the browser, where that's not an input)
 contact.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (contact.send.classList.contains("busy")) return;
