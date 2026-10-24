@@ -282,6 +282,9 @@ export const cell = (lat, lon) => `${(Math.round(lat * 10) / 10).toFixed(1)},${(
 // What's kept for a place (wx:<cell>), read from storage once a session and kept as it is in memory after that, as load
 // writes it: so turning back and forth between places doesn't read and unpack each one's whole forecast every time
 const keptMemo = new Map();
+// (forgotten when what's kept changes other than by load: another tab of Weather saving a place's forecast)
+export const forgetKept = (id) => (id ? keptMemo.delete(id) : keptMemo.clear());
+if (typeof addEventListener === "function") addEventListener("storage", (e) => { if (!e.key) forgetKept(); else if (e.key.startsWith("wx:")) forgetKept(e.key.slice(3)); });
 function keptRaw(id) {
   if (keptMemo.has(id)) return keptMemo.get(id);
   const v = store.get(`wx:${id}`), raw = v && typeof v === "object" ? v : null;
