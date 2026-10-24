@@ -32,5 +32,14 @@
         root.style.setProperty("--arv-p", 'url("' + window.arvPhoto + '")'); root.style.setProperty("--arv-i", '""'); root.classList.add("arv-face");
       }
     } catch (e) { /* no picture of you: the sky alone */ }
+    // and the code it brought swapped for InFlight's sign-in straight away, with the word kept for it, rather than once
+    // the app itself has come (app.js signInBack takes up the answer: arvSwap)
+    try {
+      var code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash), k = JSON.parse(localStorage.getItem("inflight-signin") || "null");
+      if (code && k && k.word && Date.now() - k.at < 30 * 60000 && window.fetch) {
+        window.arvSwap = { code: code[1], answer: fetch("/api/pigeon/handback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code[1], verifier: k.word }) })
+          .then(function (r) { var json = /json/.test(r.headers.get("Content-Type") || ""); return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, json: json, d: d }; }); }) };
+      }
+    } catch (e) { /* the app asks itself, as before */ }
   }
 })();

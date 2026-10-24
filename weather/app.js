@@ -90,7 +90,7 @@ const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur",
 /* ---------- start ---------- */
 async function start() {
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})$/.exec(location.hash)?.[1];
+  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
   if (signedIn) history.replaceState(null, "", location.pathname + location.search);
   // (and the picture the account's page ended on, there since the first frame, taken on: early.js, arriveFrom; with no
   // code that could be one, done with at once)
@@ -1985,7 +1985,10 @@ async function toAccountSignIn(e) {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
     await away.done;
-    location.assign(`${page}#${new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` })}`);
+    // (and where the row was, for the account page to grow its card from)
+    const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` });
+    if (away.from) q.set("from", away.from);
+    location.assign(`${page}#${q}`);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") away.undo(); }, 10e3);
   } catch (_) { away.undo(); toast("This browser can’t sign in here. Try Safari or Chrome."); }
@@ -2025,40 +2028,41 @@ const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a
 const topLayer = "showPopover" in HTMLElement.prototype;
 const springEase = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";
 let leaving = null;
-// What was tapped (el), growing from where it is to fill the screen over Settings, its look turning to the account
-// page's sky and its words fading as it starts. → { done: kept once it's grown, or after 700 ms whatever happens; undo:
-// put back as it was }. With Reduce Motion, the screen fades to that sky instead; with no top layer, straight on
+// What was tapped (el), held where it is over Settings as the account page's sky comes in round it, its look turning to
+// that page's glass and its words going: the account page opens on just that, and grows it into its card (where it
+// was, given it as from). Opacity and transforms only. → { done: kept once the sky's in, or after 700 ms whatever
+// happens; undo: put back as it was; from: where it was }. With Reduce Motion, the sky fades in alone; with no top
+// layer, straight on
 function handOff(el) {
-  const none = { done: Promise.resolve(), undo() {} };
-  if (!topLayer || !el?.isConnected) return none;
-  const g = h("div", { class: "handoff", "aria-hidden": "true", popover: "manual" }), out = { done: null, undo: () => { g.remove(); el.style.visibility = ""; if (leaving === out) leaving = null; } };
-  let grown;
+  const none = { done: Promise.resolve(), undo() {}, from: null };
+  if (!topLayer) return none;
+  const g = h("div", { class: "handoff", "aria-hidden": "true", popover: "manual" }, h("i", { class: "handoff-sky" }));
+  const out = { done: null, from: null, undo: () => { g.remove(); if (el) el.style.visibility = ""; if (leaving === out) leaving = null; } };
+  let sky;
   try {
-    if (calm.matches) {
-      g.classList.add("whole");
-      document.body.append(g); g.showPopover();
-      grown = g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT, fill: "forwards" }).finished;
-    } else {
-      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), w = el.offsetWidth, ht = el.offsetHeight;
-      const at = { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2)}px` };
-      // (its words, laid over where they were and held there as the pane grows round them)
+    document.body.append(g); g.showPopover();
+    sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: calm.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
+    if (!calm.matches && el?.isConnected) {
+      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
+      out.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
+      // (its own look over the glass, to begin with, and its words, laid over where they were)
+      const look = h("i", { class: "handoff-look" });
+      Object.assign(look.style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
       const words = el.cloneNode(true);
       words.removeAttribute("id"); for (const x of words.querySelectorAll("[id]")) x.removeAttribute("id");
       words.classList.add("handoff-in"); words.inert = true;
-      Object.assign(words.style, { left: `${(r.width - w) / 2}px`, top: `${(r.height - ht) / 2}px`, width: `${w}px`, height: `${ht}px` });
-      Object.assign(g.style, at, { backgroundColor: cs.backgroundColor, boxShadow: cs.boxShadow });
-      g.append(words);
-      document.body.append(g); g.showPopover();
+      Object.assign(words.style, { left: `${(r.width - el.offsetWidth) / 2}px`, top: `${(r.height - el.offsetHeight) / 2}px`, width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` });
+      const pill = h("div", { class: "handoff-pill" }, look, words);
+      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
+      g.append(pill);
       el.style.visibility = "hidden";
-      const t = { duration: 560, easing: ACCT_EASE, fill: "forwards" };
-      grown = g.animate([at, { left: "0px", top: "0px", width: "100%", height: "100%", borderRadius: "0px" }], t).finished;
-      words.animate([{ translate: "0 0" }, { translate: `${r.left}px ${r.top}px` }], t);
+      look.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: EASE_OUT, fill: "forwards" });
       words.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
-      g.animate([{ backgroundColor: cs.backgroundColor, boxShadow: cs.boxShadow }, { backgroundColor: acctSky(), boxShadow: "none" }], { duration: 360, easing: EASE_OUT, fill: "forwards" });
+      pill.animate([{ transform: "scale(1)" }, { transform: "scale(1.03)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" });
     }
   } catch (_) { out.undo(); return none; }
   leaving = out;
-  out.done = Promise.race([grown.catch(() => {}), new Promise((ok) => setTimeout(ok, 700))]);
+  out.done = Promise.race([sky.catch(() => {}), new Promise((ok) => setTimeout(ok, 700))]);
   return out;
 }
 // (back from the account's page by the browser's Back, the page as it was kept: as it was before it went)
@@ -2101,6 +2105,15 @@ function arriveEnd(a, fade = false) {
 function welcome(a, r) {
   clearTimeout(a.slow); a.timers.delete(a.slow);
   const still = calm.matches, landed = new Promise((ok) => { a.land = ok; });
+  // (there since the first frame, as the account's page left you: early.js. Taken into the top layer, over Settings, and on)
+  const pre = $("back-in-av");
+  if (pre) {
+    a.av = pre; pre.removeAttribute("id");
+    if (!pre.querySelector("img") && r.photoAt) { const img = h("img", { src: A.photoUrl(r.photoAt), alt: "", decoding: "async" }); img.addEventListener("load", () => img.classList.add("loaded"), { once: true }); pre.append(img); }
+    if (topLayer) { pre.popover = "manual"; document.body.append(pre); pre.showPopover(); }
+    arriveLater(a, () => toSettings(a), still ? 120 : 160);
+    return landed;
+  }
   const av = a.av = h("span", { class: "back-in-av", "aria-hidden": "true", popover: topLayer ? "manual" : null }, h("span", { class: "back-in-card" }), (String(r.name || "").trim()[0] || "?").toUpperCase());
   const img = r.photoAt ? h("img", { src: A.photoUrl(r.photoAt), alt: "", decoding: "async" }) : null;
   if (img) av.append(img);

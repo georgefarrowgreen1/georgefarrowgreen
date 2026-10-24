@@ -1723,14 +1723,27 @@ select option { color: #fff; background: #1c2434; }
    the page had it, the picture fades as Settings comes up, and the photo flies down into the
    account's card, your places ticked off under it as they go with the account (app.js arriveFrom). None of it takes a tap:
    a tap goes to what's under it */
-:root { --acct-sky: #f3f0fb; }
-@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; } }
-.handoff { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; overflow: hidden; color: var(--text); pointer-events: none; }
-/* (what the row says, laid over where it was, without the row's own look: that's the growing pane's) */
-.handoff > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; transform: none !important; transition: none !important; }
-.handoff.whole { inset: 0; width: auto; height: auto; background-color: var(--acct-sky); }
+/* (the account page's sky exactly, its dawn, and its glass) */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc; --acct-glass: rgba(255, 255, 255, 0.58);
+  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
+  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
+  --acct-lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
+  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
+  --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; --acct-glass: rgba(34, 40, 66, 0.5);
+  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 46%);
+  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.08), inset 0 0 22px rgba(255, 255, 255, 0.03);
+  --acct-lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16); } }
+.handoff { position: fixed; inset: 0; width: auto; height: auto; margin: 0; padding: 0; border: 0; overflow: hidden; background: none; color: var(--text); pointer-events: none; }
+.handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
+/* (the row, as the account page's glass, where it was: that page grows its card from it) */
+.handoff-pill { position: fixed; overflow: hidden; background: var(--acct-sheen), var(--acct-glass); box-shadow: var(--acct-edge), var(--acct-lift);
+  -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%); }
+.handoff-look { position: absolute; inset: 0; }
+/* (what the row says, laid over where it was, without the row's own look) */
+.handoff-pill > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; transform: none !important; transition: none !important; }
 .back-in { position: fixed; inset: 0; z-index: 50; pointer-events: none;
-  background: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), var(--acct-sky);
+  background: var(--acct-dawn), var(--acct-heaven);
   /* (should the script never take it on, it goes by itself after a few seconds; taken on, .held, the script sees it goes) */
   animation: back-in-off var(--dur-base) var(--ease) 6s forwards; }
 .back-in.held { animation: none; }

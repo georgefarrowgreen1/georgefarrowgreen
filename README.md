@@ -244,7 +244,14 @@ Motion, solid with Reduce Transparency.
   picture. For InFlight, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
   server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
   there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
-  placeholder only shows if it's slow to start. Signing out, dusk passes over it. Joining is a step at a
+  placeholder only shows if it's slow to start. Signing out, dusk passes over it. The way there is one movement too:
+  each app's Sign in stays where it is as the account page's sky comes in round it, turning to this page's glass
+  (opacity and transforms only), and says where it was (`from` in the `#`); this page draws it there from its first
+  frame (`early.js`) and grows it into the sign-in card (`fromButton`). Your initial and photo go back to every app
+  (InFlight `theme.js`, Weather `early.js`, the home page `signedin.js`), and InFlight swaps the code on its first frame
+  (`theme.js` arvSwap), not once the app has come. While you sign in, the page opens the connection back to the app,
+  and a password's stretched in a worker (`pigeon/argon2w.js`), so the page never stops while it is (on the page, as
+  before, where a worker can't be made). Joining is a step at a
   time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
   that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
 - **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
@@ -759,7 +766,7 @@ so there's nothing to set up beyond the address.
   (`early.js`, from the first frame), your photo comes into it, Settings comes up as it fades, and the photo flies down
   into the account's card, your places ticked off under it as they go with the account ("Your places go with your
   account now."; `arriveFrom`, `welcome`, `fly`, `moved`). With Reduce Motion, fades; never in the way of a tap, and gone
-  within six seconds whatever happens (the offline copy, `wx-85`). Signed in, it's just **one card for the account** (your
+  within six seconds whatever happens (the offline copy, `wx-86`). Signed in, it's just **one card for the account** (your
   photo, name and @handle, and a word on your places and settings only when
   there's something to say: "Saving…", "Will go up when you're online",
   "Couldn't save just now") that opens the account's own page
@@ -1009,8 +1016,8 @@ service, with made-up forecasts for the time it runs).
 sky as it goes there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
 ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
 your initial and photo from the address's `#`): the sky clears to Messages as a padlock opens in the middle ("Messages
-unlocked"), your picture flies down into Account, your chats come in a row at a time, and "Welcome back" (`arriving`),
-all overlapping, in about a second and a half. Someone new goes straight on to choosing where they
+unlocked"), your picture flies down into Account, and your chats come in a row at a time (`arriving`), all overlapping,
+in about a second and a half. Someone new goes straight on to choosing where they
 are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
 welcome (`dusk`). With Reduce Motion each part fades where it is; none of it ever takes a tap or stays on screen.
 

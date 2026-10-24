@@ -410,19 +410,36 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
    page opens on the picture it ended on (index.html, from the first frame: .back-in:target); your photo comes into it
    where the page had it, and as the picture fades, Sign in draws in to the circle your photo goes in and
    the photo comes down into it (app.js arrive). None of it takes a tap: a tap goes to what's under it */
-:root { --acct-sky: #f3f0fb; }
-@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; } }
-.handoff { position: fixed; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
+/* (the account page's sky exactly, its dawn, and its glass) */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc; --acct-glass: rgba(255, 255, 255, 0.58);
+  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
+  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
+  --acct-lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
+  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
+  --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; --acct-glass: rgba(34, 40, 66, 0.5);
+  --acct-sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 46%);
+  --acct-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.08), inset 0 0 22px rgba(255, 255, 255, 0.03);
+  --acct-lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16); } }
+.handoff { position: fixed; inset: 0; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
+.handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
+/* (Sign in, as the account page's glass, where it was: that page grows its card from it) */
+.handoff-pill { position: fixed; overflow: hidden; background: var(--acct-sheen), var(--acct-glass); box-shadow: var(--acct-edge), var(--acct-lift);
+  -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%); }
+.handoff-look { position: absolute; inset: 0; }
 /* (what it says, laid over where it was, without its own look: that's the growing pane's) */
-.handoff > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transform: none !important; transition: none !important; }
-.handoff.whole { inset: 0; background-color: var(--acct-sky); }
+.handoff-pill > .handoff-in { position: absolute; margin: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transform: none !important; transition: none !important; }
 .back-in {
   display: none; position: fixed; inset: 0; z-index: 60; pointer-events: none;
-  background: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), var(--acct-sky);
+  background: var(--acct-dawn), var(--acct-heaven);
 }
-.back-in:target, .back-in.held { display: block; }
+.back-in:target, .back-in.held, html.back-on .back-in { display: block; }
 /* (should the script never take it on, it goes by itself after a few seconds; taken on, .held, the script sees it goes) */
-.back-in:target:not(.held) { animation: back-in-off var(--dur-base) var(--ease-out) 6s forwards; }
+.back-in:target:not(.held), html.back-on .back-in:not(.held) { animation: back-in-off var(--dur-base) var(--ease-out) 6s forwards; }
+/* (you in it, as the account's page left you, from the first frame: signedin.js; app.js's own copy takes over, .back-in-av) */
+html.back-face .back-in::before { content: var(--back-i, ""); position: absolute; left: calc(50% - 39px); top: calc(30% - 39px); width: 78px; height: 78px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; font-size: 30px; font-weight: 600; line-height: 1;
+  background: var(--back-p, none) center / cover no-repeat, linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8); box-shadow: 0 12px 30px -12px rgba(49, 87, 216, 0.7); }
 @keyframes back-in-off { to { opacity: 0; visibility: hidden; } }
 /* your photo, or your initial, as the account's page shows it; it becomes the bar's as it flies (.back-in-face fading in) */
 .back-in-av {

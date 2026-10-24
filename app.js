@@ -389,49 +389,48 @@ function showLines() {
 const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
 const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
 let handing = null;
-// Sign in (el) growing from where it is to fill the screen, its look turning to the account page's sky and its words
-// fading as it starts; and off to url once it has, or after 700 ms whatever happens. With Reduce Motion, the screen
-// fades to that sky instead
+// Sign in (el), held where it is as the account page's sky comes in round it, its look turning to that page's glass and
+// its words going; and off to url once the sky's in, or after 700 ms whatever happens, saying where it was (from), for
+// that page to grow its card from. Opacity and transforms only. With Reduce Motion, the sky fades in alone
 function handOff(el, url) {
   if (handing) return;
   const g = document.createElement("div");
-  g.className = "handoff"; g.setAttribute("aria-hidden", "true");
+  g.className = "handoff"; g.setAttribute("aria-hidden", "true"); g.innerHTML = `<i class="handoff-sky"></i>`;
   const undo = () => { g.remove(); el.style.visibility = ""; if (handing?.g === g) handing = null; };
-  let went = false;
+  let went = false, to = url;
   const go = () => {
     if (went) return;
-    went = true; location.assign(url);
+    went = true; location.assign(to);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") undo(); }, 10e3);
   };
-  let grown;
+  let sky;
   try {
-    if (motion.matches) {
-      g.classList.add("whole"); body.append(g);
-      grown = g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT, fill: "forwards" }).finished;
-    } else {
-      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), w = el.offsetWidth, ht = el.offsetHeight;
-      const at = { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2)}px` };
-      // (its words, laid over where they were and held there as the pane grows round them)
+    body.append(g);
+    sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motion.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
+    if (!motion.matches) {
+      const r = el.getBoundingClientRect(), cs = getComputedStyle(el), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
+      to = `${url}&from=${[r.left, r.top, r.width, r.height, rad].map(Math.round).join(",")}`;
+      // (its own look over the glass, to begin with, and its words, laid over where they were)
+      const look = document.createElement("i");
+      look.className = "handoff-look";
+      Object.assign(look.style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
       const words = el.cloneNode(true);
       for (const k of ["id", "href", "data-account"]) words.removeAttribute(k);
       words.classList.add("handoff-in"); words.inert = true;
-      Object.assign(words.style, { left: `${(r.width - w) / 2}px`, top: `${(r.height - ht) / 2}px`, width: `${w}px`, height: `${ht}px` });
-      // (frosted as it was, till it's all sky, when nothing shows through it any more)
-      const frost = cs.backdropFilter || cs.webkitBackdropFilter || "none";
-      Object.assign(g.style, at, { backgroundColor: cs.backgroundColor, boxShadow: cs.boxShadow, backdropFilter: frost, webkitBackdropFilter: frost });
-      g.append(words); body.append(g);
+      Object.assign(words.style, { left: `${(r.width - el.offsetWidth) / 2}px`, top: `${(r.height - el.offsetHeight) / 2}px`, width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` });
+      const pill = document.createElement("div");
+      pill.className = "handoff-pill"; pill.append(look, words);
+      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
+      g.append(pill);
       el.style.visibility = "hidden";
-      const t = { duration: 560, easing: ACCT_EASE, fill: "forwards" };
-      grown = g.animate([at, { left: "0px", top: "0px", width: "100%", height: "100%", borderRadius: "0px" }], t).finished;
-      words.animate([{ translate: "0 0" }, { translate: `${r.left}px ${r.top}px` }], t);
+      look.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: EASE_OUT, fill: "forwards" });
       words.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
-      g.animate([{ backgroundColor: cs.backgroundColor, boxShadow: cs.boxShadow }, { backgroundColor: acctSky(), boxShadow: "none" }], { duration: 360, easing: EASE_OUT, fill: "forwards" })
-        .finished.then(() => { g.style.backdropFilter = g.style.webkitBackdropFilter = "none"; }, () => {});
+      pill.animate([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" });
     }
   } catch (_) { undo(); location.assign(url); return; }
   handing = { g, undo };
-  grown.then(go, go);
+  sky.then(go, go);
   setTimeout(go, 700);
 }
 // (back from the account's page by the browser's Back, the page as it was kept: as it was before it went)
@@ -478,16 +477,20 @@ function arrive(a, pill) {
   const still = motion.matches, av = a.av = document.createElement("span"), tint = document.createElement("span");
   av.className = "back-in-av"; av.setAttribute("aria-hidden", "true"); tint.className = "back-in-face";
   av.append(tint, (me.name || "?").trim().charAt(0).toUpperCase());
-  const img = me.photoAt ? Object.assign(document.createElement("img"), { src: `/api/me/photo?v=${me.photoAt}`, alt: "" }) : null;
+  // (there since the first frame, as the account's page left you: signedin.js; taken on where it is, not brought in again)
+  const there = document.documentElement.classList.contains("back-face");
+  const img = window.backPhoto ? Object.assign(document.createElement("img"), { src: window.backPhoto, alt: "", className: "loaded" })
+    : me.photoAt ? Object.assign(document.createElement("img"), { src: `/api/me/photo?v=${me.photoAt}`, alt: "" }) : null;
   if (img) av.append(img);
   // (the photo in before it's shown, if it's there in a moment; if not, the initial, the photo fading in over it as it comes)
-  const ready = img ? Promise.race([img.decode().catch(() => {}), new Promise((ok) => setTimeout(ok, 500))]) : Promise.resolve();
+  const ready = img && !there ? Promise.race([img.decode().catch(() => {}), new Promise((ok) => setTimeout(ok, 500))]) : Promise.resolve();
   ready.then(() => {
     if (a.gone) return;
-    if (img) fadeOnLoad(img);
+    if (img && !img.classList.contains("loaded")) fadeOnLoad(img);
     body.append(av);
-    av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : spring() });
-    later(a, () => reveal(a, pill), still ? 250 : 420);
+    if (there) document.documentElement.classList.remove("back-face");
+    else av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : spring() });
+    later(a, () => reveal(a, pill), there ? 120 : still ? 250 : 420);
   });
 }
 // The picture fades, the page under it; Sign in, as it was, draws in to the circle your photo goes in, and the photo

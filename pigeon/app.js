@@ -1914,7 +1914,10 @@ async function toAccountSignIn(e, mode) {
     localStorage.setItem(SIGNIN_KEY, JSON.stringify({ word: t.word, pub: t.pub, priv: t.priv, at: now(), link: S.pendingLink || null }));
     const back = location.origin + (location.pathname.startsWith("/pigeon/") ? "/pigeon/" : "/");
     await covered;
-    location.assign(toAccount(`#${new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back })}`));
+    // (and where the button was, for the account page to grow its card from)
+    const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
+    if (handing?.from) q.set("from", handing.from);
+    location.assign(toAccount(`#${q}`));
   } catch (_) { handBack(); toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
@@ -1932,7 +1935,14 @@ async function signInBack(code) {
   }
   S.signingIn = true; render();
   try {
-    const r = await api("handback", { method: "POST", body: { code, verifier: k.word } });
+    // (the code swapped already, if theme.js could start it on the first frame: its answer taken up here)
+    const early = window.arvSwap?.code === code ? window.arvSwap.answer : null;
+    window.arvSwap = null;
+    const r = early ? await early.then((x) => {
+      if (x.ok && x.json) return x.d;
+      throw Object.assign(new Error(x.d?.error || `Something went wrong (error ${x.status}). Try again.`), { status: x.status, field: x.d?.field });
+    }, () => { throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); })
+      : await api("handback", { method: "POST", body: { code, verifier: k.word } });
     arrival?.me(r.me);                     // (who it is: their picture comes in)
     let ecdh;
     try {
@@ -1963,41 +1973,45 @@ const acctSky = () => cssVar(document.documentElement, "--acct-sky") || (matchMe
 const play = (el, frames, o) => { try { return el?.animate(frames, o) || null; } catch (_) { return null; } };
 // (once it has played, or ms have gone by, whichever is first)
 const played = (a, ms) => new Promise((done) => { const t = setTimeout(done, ms); a?.finished.then(() => { clearTimeout(t); done(); }, () => { clearTimeout(t); done(); }); });
-// what you tapped, growing to fill the screen as its look gives way to the sky, the welcome stepping back behind it
+// What you tapped, held where it is as the account page's sky comes in round it and the welcome steps back, its look
+// turning to that page's glass and its words going: the account page opens on just that, and grows it into its card
+// (the button's place, given it as from). Opacity and transforms only, so a busy phone doesn't stutter it.
 // → a promise for when the sky is all there is (at most ~700 ms, whatever becomes of the animation)
 let handing = null;
 function handOff(from) {
   handBack();
   const still = STILL.matches, el = document.createElement("div"), anims = [];
   el.className = "handoff"; el.setAttribute("aria-hidden", "true");
-  el.innerHTML = `<i class="hsky"></i><span class="hlabel"></span>`;
-  handing = { el, anims };
+  el.innerHTML = `<i class="hsky"></i>`;
+  handing = { el, anims, from: null };
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", acctSky());     // (the browser's bar too)
   // (and if the page never goes, as a page sometimes doesn't, the sky doesn't stay)
   setTimeout(() => { if (handing?.el === el && document.visibilityState === "visible") handBack(); }, 15000);
   try {
-    if (still || !from?.isConnected) {
-      // Reduce Motion: the sky fades in over the screen
-      Object.assign(el.style, { left: "0px", top: "0px", width: `${innerWidth}px`, height: `${innerHeight}px` });
-      document.body.append(el);
-      anims.push(play($(".hsky", el), [{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "ease", fill: "forwards" }));
-      return played(anims[0], 700);
-    }
-    const r = from.getBoundingClientRect(), cs = getComputedStyle(from), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.height / 2);
-    // its own look (the colour, edge and glow it has, and its words), then the sky over it
-    Object.assign(el.style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, borderStyle: cs.borderTopStyle, borderColor: cs.borderTopColor,
-      boxShadow: cs.boxShadow, color: cs.color, font: cs.font, letterSpacing: cs.letterSpacing });
-    $(".hlabel", el).textContent = from.textContent.trim();
     document.body.append(el);
-    const t = { duration: 560, easing: "cubic-bezier(0.55,0,0.1,1)", fill: "forwards" };
-    const grow = play(el, [{ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px`, borderWidth: cs.borderTopWidth },
-      { left: "0px", top: "0px", width: `${innerWidth}px`, height: `${innerHeight}px`, borderRadius: "0px", borderWidth: "0px", boxShadow: "none" }], t);
-    anims.push(grow,
-      play($(".hsky", el), [{ opacity: 0 }, { opacity: 1, offset: 0.75 }, { opacity: 1 }], { ...t, easing: "ease-in-out" }),
-      play($(".hlabel", el), [{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: "ease-out", fill: "forwards" }),
-      play($view, [{ transform: "none", opacity: 1 }, { transform: "scale(.94)", opacity: 0.5 }], t),
-      play($(".nightsky", root()), [{ opacity: 1 }, { opacity: 0.6 }], t));
-    return played(grow, 700);
+    const sky = play($(".hsky", el), [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 150 : 480, easing: "ease", fill: "forwards" });
+    anims.push(sky);
+    if (!still && from?.isConnected) {
+      const r = from.getBoundingClientRect(), cs = getComputedStyle(from), rad = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, r.height / 2);
+      handing.from = [r.left, r.top, r.width, r.height, rad].map(Math.round).join(",");
+      const pill = document.createElement("div");
+      pill.className = "hpill";
+      pill.innerHTML = `<i class="hlook"></i><span class="hlabel"></span>`;
+      Object.assign(pill.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: `${rad}px` });
+      // (its own look over the glass, to begin with: its colour, edge and glow, and its words)
+      Object.assign($(".hlook", pill).style, { backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage, boxShadow: cs.boxShadow, borderRadius: `${rad}px` });
+      Object.assign($(".hlabel", pill).style, { color: cs.color, font: cs.font, letterSpacing: cs.letterSpacing });
+      $(".hlabel", pill).textContent = from.textContent.trim();
+      el.append(pill);
+      const t = { duration: 520, easing: "cubic-bezier(0.55,0,0.1,1)", fill: "forwards" };
+      anims.push(
+        play($(".hlook", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: "ease", fill: "forwards" }),
+        play($(".hlabel", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: "ease-out", fill: "forwards" }),
+        play(pill, [{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" }),
+        play($view, [{ transform: "none", opacity: 1 }, { transform: "scale(.94)", opacity: 0 }], t),
+        play($(".nightsky", root()), [{ opacity: 1 }, { opacity: 0.6 }], t));
+    }
+    return played(sky, 700);
   } catch (_) { return Promise.resolve(); }
 }
 // The sky taken away again: the trip didn't start, or InFlight came back from the browser's back-forward cache as it was
@@ -2104,7 +2118,7 @@ function arriving(you) {
       } catch (_) {}
     },
     // in: the sky clears to InFlight (drawn under it already, the chats held back), a padlock opens in the middle, your
-    // picture flies down into Account, your chats come in a row at a time, and then a word of welcome. A new account
+    // picture flies down into Account (which says welcome back), and your chats come in a row at a time. A new account
     // goes on to choose where it is: the sky just clears to that, your picture rising away with it.
     in() {
       try {
@@ -2157,9 +2171,6 @@ function arriving(you) {
             play(face, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease", fill: "forwards" });
             play(tab, [{ transform: "scale(1.3)" }, { transform: "none" }], { duration: 520, easing: E.bounce });
           });
-        });
-        at(still ? 1400 : list ? 1350 : 1100, () => {
-          if (S.me && !AUTH_VIEWS.has(S.view) && !S.sheet && !$pop.firstElementChild && !S.locked) toast(`Welcome back, ${esc(first(S.me.name || S.me.handle))}`);
         });
         at(still ? 1500 : list ? 1500 : 1250, end);
       } catch (_) { end(); }
@@ -9351,7 +9362,13 @@ async function start() {
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
-    if (signedBack) { try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {} api("handback", { method: "POST", body: { code: signedBack, verifier: "" } }).catch(() => {}); }
+    if (signedBack) {
+      try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {}
+      // (swapped already on the first frame: the sign-in it made, not wanted here, signed out again; else used up)
+      if (window.arvSwap?.code === signedBack) window.arvSwap.answer.then((x) => { if (x.ok && x.d?.token) fetch("/api/pigeon/logout", { method: "POST", headers: { Authorization: "Bearer " + x.d.token } }).catch(() => {}); }, () => {});
+      else api("handback", { method: "POST", body: { code: signedBack, verifier: "" } }).catch(() => {});
+      window.arvSwap = null;
+    }
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once

@@ -404,6 +404,13 @@ dialog.sheet.dragging { transition: none; }
 
 /* ---- waiting for the account ---- */
 /* (the shimmer a band of light moved across each, by its transform, rather than its background repainted every frame) */
+/* From an app's Sign in: its button, as this page's glass, where it was (early.js), from the first frame; then grown
+   into the sign-in card (app.js fromButton, .from-pane). Nothing waits on it: the page under it is as ever. */
+html.from-app body::before { content: ""; position: fixed; z-index: 30; left: var(--from-x); top: var(--from-y); width: var(--from-w); height: var(--from-h);
+  border-radius: var(--from-r); background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift);
+  pointer-events: none; animation: fade-out 0.3s ease 8s forwards; }
+html.from-app .skeleton { display: none; }
+.from-pane { position: fixed; z-index: 30; margin: 0; pointer-events: none; transform-origin: 0 0; }
 /* (only once it's taking a while: a quick start goes straight to the page, without this in between) */
 .skeleton { display: grid; gap: 18px; animation: sk-late 0.3s var(--ease-out) 0.5s backwards; }
 @keyframes sk-late { from { opacity: 0; } }
