@@ -5,7 +5,9 @@ import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
 import http from 'http';
 import { joinInFlight } from './join.mjs';
-export async function kit(S, out, BASE = 'http://localhost:8788') {
+// (TEST_BASE: another local copy of the site, on another port)
+export async function kit(S, out, BASE = process.env.TEST_BASE || 'http://localhost:8788') {
+const PORT = BASE.match(/:(\d+)\/?$/)?.[1] || '80';
 const URL = process.env.APPURL || BASE + '/pigeon/';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -84,13 +86,13 @@ async function admin(userId) {
   one(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', '${userId}')`);
   one(`INSERT OR IGNORE INTO pg_passkeys (id, user_id, public_key, alg, created_at) VALUES ('admin-test-key', '${userId}', 'x', -7, ${t})`);
   const ask = (path) => new Promise((ok, no) => {
-    const r = http.request({ host: '127.0.0.1', port: 8788, path: `/api/account/admin/${path}`, agent: false, headers: { Host: 'account.localhost:8788', Cookie: `account=${site}` } }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, path: `/api/account/admin/${path}`, agent: false, headers: { Host: `account.localhost:${PORT}`, Cookie: `account=${site}` } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c));
       res.on('end', () => { let json = null; try { json = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {} ok({ status: res.statusCode, json }); });
     });
     r.on('error', no); r.end();
   });
-  return { ask, page: 'http://account.localhost:8788', cookie: { name: 'account', value: site, domain: 'account.localhost', path: '/' } };
+  return { ask, page: `http://account.localhost:${PORT}`, cookie: { name: 'account', value: site, domain: 'account.localhost', path: '/' } };
 }
 const openChat = async (ph, id) => {
   for (let k = 0; k < 4; k++) {

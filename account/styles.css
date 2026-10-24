@@ -16,8 +16,17 @@
   --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16);
   --blur: blur(28px) saturate(180%);
   --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 46%);
-  --dim: rgba(0, 0, 0, 0.44);
-  --glide: cubic-bezier(0.32, 0.72, 0, 1); --spring: cubic-bezier(0.34, 1.4, 0.64, 1); --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dim: rgba(0, 0, 0, 0.5);
+  /* the motion every app on the site shares: out (settling in), glide (things put in place, and sheets), in (going),
+     and a soft spring (about 2% past, for a press let go); how long a press, its release, a small change, a usual one,
+     a sheet coming up, and going */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: linear(0, 0.019, 0.067, 0.135, 0.214, 0.3, 0.388, 0.473, 0.553, 0.628, 0.695, 0.755, 0.807, 0.852, 0.89, 0.921, 0.947, 0.968, 0.984, 0.996, 1.005, 1.012, 1.016, 1.018, 1.02, 1.02, 1.019, 1.018, 1.017, 1.015, 1.013, 1.012, 1.01, 1.008, 1.007, 1.006, 1.005, 1.004, 1.003, 1);
+  --dur-press: 0.1s; --dur-release: 0.45s; --dur-fast: 0.2s; --dur-base: 0.35s; --dur-sheet-in: 0.5s; --dur-sheet-out: 0.34s;
+  /* (this page's own names for them) */
+  --ease: var(--ease-out); --glide: var(--ease-glide); --spring: var(--ease-spring);
   --r-group: 26px; --r-hero: 34px; --r-sheet: 36px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-d: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
@@ -27,6 +36,8 @@
   --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.45) 62%, rgba(8, 10, 30, 0)); --pc-shade-below: 90px;
   --top: env(safe-area-inset-top, 0px);
 }
+/* (no linear() easing yet: a spring near enough) */
+@supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
 /* light: by the device's setting (Automatic), or chosen for the account (data-theme, set by app.js) */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -40,7 +51,7 @@
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
-    --dim: rgba(10, 14, 30, 0.26);
+    --dim: rgba(10, 14, 30, 0.32);
     --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55);
     --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
@@ -60,7 +71,7 @@
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
-    --dim: rgba(10, 14, 30, 0.26);
+    --dim: rgba(10, 14, 30, 0.32);
 }
 
 * { box-sizing: border-box; }
@@ -78,10 +89,18 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 
 /* ---- the sky: three slow lights drifting over the gradient ---- */
 .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)); }
-.aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(70px); opacity: 0.9; will-change: transform; }
-.a1 { background: radial-gradient(circle, var(--aura-1), transparent 62%); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate; }
-.a2 { background: radial-gradient(circle, var(--aura-2), transparent 62%); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate; }
-.a3 { background: radial-gradient(circle, var(--aura-3), transparent 62%); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate; }
+/* (each light soft at its edge by its own gradient, eased as a blur would ease it, not by blurring it: a blur of 70px
+   redone every frame, as they drift, was the most work anything on the page did, and every pane of glass blurred it
+   again. Measured against the blurred ones, a difference of about 1 in 255.) */
+.aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; opacity: 0.9; will-change: transform; }
+.a1 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-1) 73%, transparent), color-mix(in srgb, var(--aura-1) 66%, transparent) 20%, color-mix(in srgb, var(--aura-1) 49%, transparent) 40%,
+  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate; }
+.a2 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-2) 73%, transparent), color-mix(in srgb, var(--aura-2) 66%, transparent) 20%, color-mix(in srgb, var(--aura-2) 49%, transparent) 40%,
+  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate; }
+.a3 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-3) 73%, transparent), color-mix(in srgb, var(--aura-3) 66%, transparent) 20%, color-mix(in srgb, var(--aura-3) 49%, transparent) 40%,
+  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate; }
+/* (held where they are while a sheet's up over the page) */
+body.sheet-up .aura { animation-play-state: paused; }
 @keyframes drift1 { to { transform: translate(14vmax, 10vmax) scale(1.12); } }
 @keyframes drift2 { to { transform: translate(-16vmax, 8vmax) scale(0.9); } }
 @keyframes drift3 { to { transform: translate(10vmax, -12vmax) scale(1.08); } }
@@ -89,8 +108,10 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 /* ---- behind the status bar (where the page runs under it): glass, once the page has scrolled under it ---- */
 .status { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: var(--top); pointer-events: none; opacity: var(--bar, 0);
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); transition: opacity 0.2s linear; }
-.page { transform-origin: 50% 0; transition: transform 0.5s var(--glide), filter 0.5s var(--glide), border-radius 0.5s var(--glide); }
-body.sheet-up .page { transform: scale(0.94) translateY(calc(var(--top) + 10px)); border-radius: 28px; filter: brightness(0.86); }
+/* (the page steps back where it's scrolled to, not from its very top: --sy, set by app.js as a sheet opens; by its
+   transform alone, which is cheap to move, the dim behind the sheet darkening it; back as quickly as the sheet goes) */
+.page { transform-origin: 50% var(--sy, 0px); transition: transform var(--dur-sheet-out) var(--glide); }
+body.sheet-up .page { transform: scale(0.94) translateY(calc(var(--top) + 10px)); transition-duration: var(--dur-sheet-in); }
 main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16px, env(safe-area-inset-right, 0px)) calc(48px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 @media (min-width: 760px) { main { padding-top: calc(var(--top) + 72px); } }
 
@@ -100,11 +121,13 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 
 /* ---- glass: the hero, the groups, the sheet ---- */
 .glass { position: relative; background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
-@media (prefers-reduced-transparency: reduce) { .glass, .status, .whobar, dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); } }
+/* (solid with Reduce Transparency: at the end of this file, so nothing after it puts the glass back) */
 
-/* ---- settling in: each part of the page rising into place, one after another ---- */
-.rise { opacity: 0; transform: translateY(18px) scale(0.985); animation: rise 0.8s var(--glide) forwards; animation-delay: calc(var(--i, 0) * 70ms + 40ms); }
-@keyframes rise { to { opacity: 1; transform: none; } }
+/* ---- settling in: each part of the page rising into place, one after another (in the order it's read: --i, from
+   app.js), and nothing of it left on once it's there (held before it starts, not after: a rise held at its end kept the
+   glass inside from seeing the sky) ---- */
+.rise { animation: rise 0.8s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 70ms + 40ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(18px) scale(0.985); } }
 
 /* ---- the profile ---- */
 .hero { border-radius: var(--r-hero); padding: 26px 22px 22px; display: grid; justify-items: center; text-align: center; gap: 4px; margin-bottom: 26px; overflow: hidden; }
@@ -113,8 +136,9 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 .avatar { position: relative; width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 12px; flex: none;
   font: 600 42px/1 var(--font-d); color: #fff; background: linear-gradient(160deg, #78b6ff, #3157d8 70%, #6a3fd8);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--tint) 30%, transparent), 0 16px 40px -12px color-mix(in srgb, var(--tint) 75%, transparent); }
-.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; animation: photo-in 0.6s var(--ease); }
-@keyframes photo-in { from { opacity: 0; transform: scale(1.06); } }
+/* (a photo fades in once, the first time it's shown, when it's ready: app.js photo(); not again each time the page is
+   drawn) */
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .avatar::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--tint) 45%, transparent); opacity: 0.6;
   animation: halo 4.5s ease-in-out infinite; }
 @keyframes halo { 50% { transform: scale(1.05); opacity: 0.15; } }
@@ -126,8 +150,9 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 .hero .mail svg { flex: none; }
 .pill { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 18px; margin-top: 14px; border: 0; border-radius: 999px;
   background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25), 0 0 0 0.5px var(--line); font-size: 15px; font-weight: 600; color: var(--text);
-  transition: transform 0.25s var(--spring), background-color 0.2s; }
-.pill:active { transform: scale(0.95); }
+  transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast), filter var(--dur-fast); }
+/* (pressed in at once, let go on the spring) */
+.pill:active { transform: scale(0.95); transition-duration: var(--dur-press); }
 
 /* ---- a section: its heading, then a group of rows ---- */
 .section { margin: 0 0 26px; }
@@ -169,9 +194,9 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .app-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .app img { width: 54px; height: 54px; border-radius: 13px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app .about { position: relative; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.18); cursor: pointer; transition: transform 0.25s var(--spring); }
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.18); cursor: pointer; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .app .about::after { content: ""; position: absolute; inset: -6px; }
-.app .about:active { transform: scale(0.9); }
+.app .about:active { transform: scale(0.9); transition-duration: var(--dur-press); }
 .app .about:focus-visible, .app .open-app:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
 .app b { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .app .use { font-size: 14.5px; line-height: 1.35; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
@@ -179,21 +204,23 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 /* (Open at the foot of each card, so two side by side line up however long what's above it) */
 .app > :not(.open-app):nth-last-child(2) { margin-bottom: 14px; }
 .app .open-app { margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 999px; font-size: 15px; font-weight: 600;
-  color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform 0.25s var(--spring), background-color 0.2s; }
-.app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); }
+  color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
+.app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); transition-duration: var(--dur-press); }
 @media (hover: hover) { .app .open-app:hover { background: color-mix(in srgb, var(--tint) 22%, transparent); } }
 
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
   color: #fff; background: linear-gradient(180deg, #5aa2ff, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
-  transition: transform 0.25s var(--spring), opacity 0.2s, filter 0.2s; }
-.btn:active { transform: scale(0.97); }
+  transition: transform var(--dur-release) var(--spring), opacity var(--dur-fast), filter var(--dur-fast); }
+.btn:active { transform: scale(0.97); transition-duration: var(--dur-press); }
 .btn.quiet { color: var(--text); background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line); }
 .btn.danger { background: linear-gradient(180deg, #ff7b70, var(--danger)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--danger); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn .spin, .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.link { border: 0; background: none; padding: 8px; border-radius: 12px; color: var(--tint-text); font-weight: 500; font-size: 16px; }
+.link { border: 0; background: none; padding: 8px; border-radius: 12px; color: var(--tint-text); font-weight: 500; font-size: 16px; transition: opacity var(--dur-fast); }
+/* (a word to tap dims as it's pressed, as iOS's do) */
+.link:active { opacity: 0.45; transition-duration: var(--dur-press); }
 
 /* ---- signed out ---- */
 .welcome { display: grid; justify-items: center; text-align: center; gap: 10px; padding-top: 4vh; }
@@ -234,21 +261,23 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 dialog.sheet { position: fixed; padding: 0; border: 0; color: var(--text); width: calc(100% - 16px); max-width: 560px; max-height: calc(100vh - var(--top) - 24px); max-height: calc(100svh - var(--top) - 24px);
   margin: auto 8px 8px; margin-inline: auto; border-radius: var(--r-sheet); overflow: hidden; background: var(--sheen), var(--glass-strong);
   -webkit-backdrop-filter: blur(36px) saturate(190%); backdrop-filter: blur(36px) saturate(190%); box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.5); }
-dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in 0.55s var(--glide); }
+dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in var(--dur-sheet-in) var(--glide); }
 dialog.sheet::backdrop { background: var(--dim); }
-dialog.sheet[open]::backdrop { animation: dim-in 0.5s var(--glide); }
+dialog.sheet[open]::backdrop { animation: dim-in var(--dur-sheet-in) var(--glide); }
 @keyframes sheet-in { from { transform: translateY(calc(100% + 16px)); } }
 @keyframes dim-in { from { opacity: 0; } }
-dialog.sheet.closing { animation: sheet-out 0.38s var(--glide) forwards; pointer-events: none; }
-dialog.sheet.closing::backdrop { animation: dim-out 0.38s var(--glide) forwards; }
-dialog.sheet.dragging { animation: none; transition: none; }
-@keyframes sheet-out { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(calc(100% + 16px)); } }
-@keyframes dim-out { to { opacity: 0; } }
+/* (going from wherever it is: still on its way up, or where a finger let it go; --from-tf and --from-o, as it was,
+   and the dim from as dark as it had got, --dim-o, set by app.js as it closes) */
+dialog.sheet.closing { animation: sheet-out var(--dur-sheet-out) var(--glide) forwards; pointer-events: none; }
+dialog.sheet.closing::backdrop { animation: dim-out var(--dur-sheet-out) var(--glide) forwards; }
+dialog.sheet.dragging { transition: none; }
+@keyframes sheet-out { from { transform: var(--from-tf, none); opacity: var(--from-o, 1); } to { transform: translateY(calc(100% + 16px)); } }
+@keyframes dim-out { from { opacity: var(--dim-o, 1); } to { opacity: 0; } }
 @media (min-width: 700px) {
   dialog.sheet { margin: auto; }
   @keyframes sheet-in { from { transform: translateY(26px) scale(0.97); opacity: 0; } }
-  @keyframes sheet-out { to { transform: translateY(26px) scale(0.97); opacity: 0; } }
-  body.sheet-up .page { transform: scale(0.97); filter: brightness(0.8); }
+  @keyframes sheet-out { from { transform: var(--from-tf, none); opacity: var(--from-o, 1); } to { transform: translateY(26px) scale(0.97); opacity: 0; } }
+  body.sheet-up .page { transform: scale(0.97); }
 }
 .grab { flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--text-3); opacity: 0.6; margin: 8px auto 0; }
 .sheet-head { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 14px 6px; }
@@ -257,45 +286,69 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-head .r { justify-self: end; grid-column: 3; }
 .sheet-head .link { font-size: 17px; }
 .sheet-head .link.done { font-weight: 600; }
-.x { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl); }
+.x { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl);
+  transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
+.x:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .sheet-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px calc(22px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 16px; align-content: start;
   grid-auto-rows: max-content; }   /* (a group as tall as its rows, however long the sheet: not squashed to fit) */
 .sheet-body > p { margin: 0 6px; color: var(--text-2); font-size: 15px; line-height: 1.45; }
 .sheet-body .group { background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-.swap { animation: swap 0.42s var(--ease); }
-@keyframes swap { from { opacity: 0; transform: translateX(14px); } }
+/* On to another sheet, and back: the new one slides in from the side it's coming from as the one before slides away
+   the other way (.going: kept a moment over it, where it was, by app.js draw); the title and buttons at the top
+   cross-fade. The one before fades out first, quickly, and the new one fades in just after, so the two aren't both
+   half there at once. (The sheet fits its new height meanwhile: app.js) */
+.sheet-body.swap { animation: swap var(--dur-base) var(--ease) backwards; }
+.sheet-body.swap.back { animation-name: swap-back; }
+@keyframes swap { from { opacity: 0; transform: translateX(24px); } 12% { opacity: 0; } }
+@keyframes swap-back { from { opacity: 0; transform: translateX(-24px); } 12% { opacity: 0; } }
+.sheet-head.swap > * { animation: head-in var(--dur-base) var(--ease) backwards; }
+@keyframes head-in { from, 12% { opacity: 0; } }
+@keyframes fade-in { from { opacity: 0; } }
+.going { position: absolute; left: 0; right: 0; top: var(--y); height: var(--h); margin: 0; pointer-events: none; }
+.sheet-body.going { animation: swap-out var(--dur-fast) var(--ease) forwards; }
+.sheet-body.going.back { animation-name: swap-out-back; }
+.sheet-head.going { animation: fade-out var(--dur-fast) var(--ease) forwards; }
+/* (each from as it was: --o, --tf, should it go before it had finished coming) */
+@keyframes swap-out { from { opacity: var(--o, 1); transform: var(--tf, none); } 40% { opacity: 0; } to { opacity: 0; transform: translateX(-24px); } }
+@keyframes swap-out-back { from { opacity: var(--o, 1); transform: var(--tf, none); } 40% { opacity: 0; } to { opacity: 0; transform: translateX(24px); } }
+@keyframes fade-out { from { opacity: var(--o, 1); } 40%, to { opacity: 0; } }
+/* (a moment before what's just come can be tapped: the second tap of a double tap isn't taken by it) */
+.sheet-body.arriving { pointer-events: none; }
 .meter { height: 6px; border-radius: 3px; background: var(--field); overflow: hidden; margin: 0 4px; }
 .meter i { display: block; height: 100%; width: calc(var(--m, 0) * 100%); border-radius: inherit; background: var(--mc, var(--danger)); transition: width 0.45s var(--ease), background-color 0.3s; }
 .hint { margin: -4px 6px 0; font-size: 13px; color: var(--text-3); }
 .hint.bad { color: var(--danger); }
 .hint.ok { color: var(--good); }
 .empty { padding: 26px 18px; text-align: center; color: var(--text-2); font-size: 15px; }
-.row.leaving { animation: leave 0.4s var(--glide) forwards; }
-@keyframes leave { to { opacity: 0; transform: translateX(-20px); min-height: 0; height: 0; padding-top: 0; padding-bottom: 0; } }
 .tag { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); margin-left: 6px; vertical-align: 1px; }
-.mini { flex: none; border: 0; border-radius: 999px; min-height: 32px; padding: 0 13px; font-size: 14px; font-weight: 600; color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent);
-  transition: transform 0.25s var(--spring); }
-.mini:active { transform: scale(0.94); }
+/* (one asking once more, "Sign out?", turns red as it asks, not in a frame; app.js eases its width) */
+.mini { flex: none; border: 0; border-radius: 999px; min-height: 32px; padding: 0 13px; font-size: 14px; font-weight: 600; white-space: nowrap; color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent);
+  transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast), color var(--dur-fast); }
+.mini:active { transform: scale(0.94); transition-duration: var(--dur-press); }
 .list-note { margin: 0 6px; font-size: 13px; line-height: 1.45; color: var(--text-3); }
 .gone li { margin: 6px 0; }
 .gone { margin: 0 6px; padding-left: 20px; color: var(--text-2); font-size: 15px; line-height: 1.4; }
 
 /* ---- a word at the top, then gone ---- */
-.toast { position: fixed; z-index: 60; top: calc(var(--top) + 10px); left: 50%; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 999px;
+/* (as wide as its words, up to the screen less a margin, not half of it; below the way back to an app, where there's one:
+   --below, from app.js; dropping in on the spring, and going quicker, eased away) */
+.toast { position: fixed; z-index: 60; top: var(--below, calc(var(--top) + 10px)); left: 50%; width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 22px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); font-size: 15px; font-weight: 500;
-  transform: translate(-50%, -140%); opacity: 0; transition: transform 0.55s var(--spring), opacity 0.3s; pointer-events: none; }
-.toast.on { transform: translate(-50%, 0); opacity: 1; }
+  transform: translate(-50%, -140%); opacity: 0; transition: transform var(--dur-fast) var(--ease-in), opacity var(--dur-fast) var(--ease-in); pointer-events: none; }
+.toast.on { transform: translate(-50%, 0); opacity: 1; transition: transform 0.55s var(--spring), opacity 0.3s var(--ease); }
 .toast svg { flex: none; color: var(--good); }
 
 /* ---- waiting for the account ---- */
+/* (the shimmer a band of light moved across each, by its transform, rather than its background repainted every frame) */
 .skeleton { display: grid; gap: 18px; }
-.sk { border-radius: var(--r-group); background: linear-gradient(100deg, var(--glass) 40%, color-mix(in srgb, var(--glass) 60%, white 8%) 50%, var(--glass) 60%); background-size: 300% 100%;
-  animation: shimmer 1.6s linear infinite; }
+.sk { position: relative; overflow: hidden; border-radius: var(--r-group); background: var(--glass); }
+.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 8%, transparent) 50%, transparent 70%);
+  transform: translateX(-100%); animation: shimmer 1.6s linear infinite; }
 .sk-title { height: 40px; width: 46%; border-radius: 12px; }
 .sk-hero { height: 250px; border-radius: var(--r-hero); }
 .sk-row { height: 120px; }
 .sk-group { height: 180px; }
-@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+@keyframes shimmer { to { transform: translateX(100%); } }
 
 
 
@@ -325,13 +378,17 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring circle { fill: none; stroke-width: 5; }
 .ring .trk { stroke: var(--line); }
-.ring .arc { stroke: currentColor; stroke-linecap: round; animation: arc 1.1s var(--glide) 0.3s backwards; }
-@keyframes arc { from { stroke-dasharray: 0 100; } }
+/* (filling only when how it stands has changed, from where it stood: .grow and --from, from app.js; not again each time
+   it's drawn) */
+.ring .arc { stroke: currentColor; stroke-linecap: round; }
+.ring.grow .arc { animation: arc 1.1s var(--glide) 0.3s backwards; }
+@keyframes arc { from { stroke-dasharray: var(--from, 0) 100; } }
 .ck-list { padding: 0 14px; }
 .ck-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 0; }
 .ck-row + .ck-row { border-top: 0.5px solid var(--line); }
 .ck-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #fff; box-shadow: inset 0 0 0 1.5px var(--text-3); }
-.ck-row.ok .ck-dot { background: var(--good); box-shadow: none; animation: pop 0.5s var(--spring) backwards; }
+.ck-row.ok .ck-dot { background: var(--good); box-shadow: none; }
+.ck-row.ok.pop .ck-dot { animation: pop 0.5s var(--spring) backwards; }
 @keyframes pop { from { transform: scale(0.4); opacity: 0; } }
 .ck-t { flex: 1; min-width: 0; font-size: 15.5px; }
 .ck-row.ok .ck-t { color: var(--text-2); }
@@ -344,8 +401,8 @@ dialog.sheet.dragging { animation: none; transition: none; }
 
 .appears { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .appear { display: grid; justify-items: center; gap: 8px; padding: 12px 6px 10px; border: 0; border-radius: 20px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line);
-  font-size: 14.5px; font-weight: 500; transition: transform 0.3s var(--spring), box-shadow 0.25s; }
-.appear:active { transform: scale(0.96); }
+  font-size: 14.5px; font-weight: 500; transition: transform var(--dur-release) var(--spring), box-shadow 0.25s, background-color var(--dur-fast); }
+.appear:active { transform: scale(0.96); transition-duration: var(--dur-press); }
 .appear.on { box-shadow: inset 0 0 0 2px var(--tint); }
 .appear .tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #fff; box-shadow: inset 0 0 0 1.5px var(--text-3); transition: background-color 0.2s; }
 .appear.on .tick { background: var(--tint); box-shadow: none; }
@@ -368,12 +425,15 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border-radius: 14px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
 .seg .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 2)); border-radius: 11px; background: var(--glass-ctl);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 3px 10px -3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--line); transform: translateX(calc(var(--k, 0) * 100%));
-  transition: transform 0.42s var(--spring); }
+  transition: transform var(--dur-base) var(--glide); }   /* (put in place, not sprung past it) */
 :root[data-theme="light"] .seg .thumb { background: #fff; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .seg .thumb { background: #fff; } }
-.seg button { position: relative; z-index: 1; min-height: 40px; border: 0; background: none; font-size: 14.5px; font-weight: 500; color: var(--text-2); border-radius: 11px; transition: color 0.2s; }
-.seg button[aria-checked="true"] { color: var(--text); font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .seg .thumb, .ring .arc, .ck-row.ok .ck-dot { transition: none; animation: none; } }
+/* (what's chosen said by its colour, the thumb under it: the same weight either way, so its word doesn't shift) */
+.seg button { position: relative; z-index: 1; min-height: 40px; border: 0; background: none; font-size: 14.5px; font-weight: 600; color: var(--text-2); border-radius: 11px;
+  transition: color var(--dur-fast), opacity var(--dur-fast); }
+.seg button[aria-checked="true"] { color: var(--text); }
+.seg button:active { opacity: 0.6; transition-duration: var(--dur-press); }
+@media (prefers-reduced-motion: reduce) { .seg .thumb, .ring.grow .arc, .ck-row.ok.pop .ck-dot { transition: none; animation: none; } }
 
 /* ---- a few more ---- */
 .toast { right: auto; bottom: auto; margin: 0; border: 0; color: var(--text); overflow: visible; }
@@ -387,13 +447,19 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .mini:has(.spin) { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; }
 .row.current { background: color-mix(in srgb, var(--tint) 7%, transparent); }
 
+/* Reduce Motion: nothing slides, rises or grows; what comes and goes dissolves instead, quickly (and the sheet that
+   swaps in, the page drawn anew, the word at the top) */
 @media (prefers-reduced-motion: reduce) {
-  .aura, .mark, .avatar::before, .sk { animation: none !important; }
-  .rise { animation: fade 0.3s linear forwards; animation-delay: 0s; transform: none; }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  dialog.sheet[open], dialog.sheet.closing, dialog.sheet[open]::backdrop, dialog.sheet.closing::backdrop { animation-duration: 0.01s; }
-  .page, .toast, .meter i { transition: none; }
+  .aura, .mark, .avatar::before, .sk::after { animation: none !important; }
+  .rise { animation: fade-in var(--dur-fast) linear backwards; animation-delay: 0s; }
+  dialog.sheet[open], dialog.sheet[open]::backdrop { animation: fade-in var(--dur-fast) linear; }
+  dialog.sheet.closing { animation: sheet-fade var(--dur-fast) linear forwards; }
+  dialog.sheet.closing::backdrop { animation: dim-out var(--dur-fast) linear forwards; }
+  @keyframes sheet-fade { from { opacity: var(--from-o, 1); } to { opacity: 0; } }
+  .sheet-body.swap, .sheet-head.swap > * { animation: fade-in 0.15s linear backwards; }
+  .page, .meter i { transition: none; }
   body.sheet-up .page { transform: none; }
+  .toast, .toast.on { transform: translate(-50%, 0); transition: opacity var(--dur-fast) linear; }
 }
 
 /* back to InFlight, when it sent you here to edit your profile */
@@ -404,8 +470,8 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .titlebar h1 { margin: 0; font: 600 17px/1.2 var(--font); letter-spacing: 0; }
 
 /* ---- your photo, tapped to change it (the camera badge says so) ---- */
-.avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform 0.3s var(--spring); }
-.avatar-btn:active { transform: scale(0.95); }
+.avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform var(--dur-release) var(--spring); }
+.avatar-btn:active { transform: scale(0.95); transition-duration: var(--dur-press); }
 .avatar-btn .avatar { margin: 0; }
 .avatar-btn .cam { position: absolute; right: -2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff;
   background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: 0 0 0 3px var(--glass-strong), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
@@ -458,15 +524,16 @@ a.btn { text-decoration: none; }
 .swipe { position: relative; overflow: hidden; --dx: 0px; }
 .swipe + .swipe::before, .swipe + .row::before, .row + .swipe::before { content: ""; position: absolute; z-index: 2; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }
 /* (the row slides off over nothing; what it does fills exactly the room it leaves, so the row needs no background) */
-.swipe > .row { touch-action: pan-y; transform: translateX(var(--dx)); transition: transform 0.4s var(--spring); }
+/* (let go, it settles open or shut on the glide, as a control does, not sprung past) */
+.swipe > .row { touch-action: pan-y; transform: translateX(var(--dx)); transition: transform var(--dur-base) var(--glide); }
 .swipe.dragging > .row { transition: none; }
 .swipe.open .row .mini, .swipe.dragging .row .mini { opacity: 0; transition: opacity 0.2s; }
 .swipe-act { position: absolute; inset: 0 0 0 auto; width: calc(-1 * var(--dx)); overflow: hidden; border: 0; display: grid; place-items: center; padding: 0;
-  color: #fff; background: var(--danger); font: 600 15px/1 var(--font); white-space: nowrap; transition: width 0.4s var(--spring); }
+  color: #fff; background: var(--danger); font: 600 15px/1 var(--font); white-space: nowrap; transition: width var(--dur-base) var(--glide), opacity var(--dur-fast); }
+.swipe-act:active { opacity: 0.75; transition-duration: var(--dur-press); }
 .swipe.dragging .swipe-act { transition: none; }
 .swipe-act .spin { width: 16px; height: 16px; }
-.swipe.leaving { animation: leave 0.4s var(--glide) forwards; }
-@media (prefers-reduced-motion: reduce) { .swipe > .row, .swipe-act { transition: none; } .swipe.leaving { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .swipe > .row, .swipe-act { transition: none; } }
 
 /* ---- two even columns on a wide screen: who you are, your apps and your data; and the settings (app.js signedIn) ---- */
 @media (min-width: 1000px) {
@@ -483,27 +550,30 @@ a.btn { text-decoration: none; }
 /* ---- whose account, kept in sight at the top once the profile's scrolled away (app.js whoBar) ---- */
 .whobar { position: fixed; z-index: 21; top: 0; left: 0; right: 0; height: calc(var(--top) + 52px); padding-top: var(--top); display: flex; align-items: center; justify-content: center; gap: 9px;
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 0.5px 0 var(--line);
-  opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 0.25s var(--ease), transform 0.35s var(--ease); cursor: pointer; }
+  opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 0.25s var(--ease), transform var(--dur-base) var(--ease); cursor: pointer; }
 .whobar.on { opacity: 1; transform: none; pointer-events: auto; }
+.whobar.on:active { opacity: 0.7; transition-duration: var(--dur-press); }
 .whobar .avatar.small { width: 28px; height: 28px; font-size: 13px; margin: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 18%, transparent); }
 .whobar b { font: 600 16px/1 var(--font-d); letter-spacing: 0.1px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.sheet-up .whobar { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .whobar { transition: none; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .whobar { transition: opacity var(--dur-fast) linear; transform: none; } }
 
 /* ---- emails: each app's, headed by its icon; a switch where there's a choice ---- */
 .app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
 .app-k img { width: 18px; height: 18px; border-radius: 5px; }
 .app-k.apart { margin-top: 40px; }
 .switch { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 51px; height: 31px; margin: 0; border-radius: 999px; cursor: pointer;
-  background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color 0.3s; }
+  background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color 0.3s, opacity var(--dur-fast); }
 .switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12); transition: transform 0.4s var(--spring); }
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12); transition: transform var(--dur-release) var(--spring); }
 .switch:checked { background: var(--good); }
 .switch:checked::before { transform: translateX(20px); }
-.switch:disabled { opacity: 0.45; cursor: default; }
+/* (held while it's saved: dimmed only if that takes a moment, so a quick save doesn't flash; back at once) */
+.switch:disabled { opacity: 0.45; cursor: default; transition: background-color 0.3s, opacity var(--dur-fast) 0.25s; }
 .switch:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
 label.row { cursor: pointer; }
-@media (prefers-reduced-motion: reduce) { .switch, .switch::before { transition: none; } }
+label.row:active { background-color: var(--press); }
+@media (prefers-reduced-motion: reduce) { .switch::before { transition: none; } }
 
 /* ---- recent activity: a filter; each row its time on the right, and the app it happened in on its icon ---- */
 .sheet-body .seg + .activity { margin-top: 14px; }
@@ -552,6 +622,12 @@ label.row { cursor: pointer; }
 .adm-chead span { font-size: 13px; color: var(--text-2); }
 .adm-bars { display: flex; align-items: flex-end; gap: 2px; height: 72px; }
 .adm-bars i { flex: 1; min-height: 2px; border-radius: 2px; background: linear-gradient(180deg, #7ab8ff, #2a6ae6); }
+/* (the first time its figures come: each column grows up from the foot, one after another; each bar below, from its
+   left; not again when they're counted again: .grow, from app.js) */
+.adm-chart.grow .adm-bars i { transform-origin: 50% 100%; animation: bar-in var(--dur-sheet-in) var(--glide) backwards; animation-delay: calc(var(--j, 0) * 12ms); }
+@keyframes bar-in { from { transform: scaleY(0); } }
+.adm-meters.grow .mbar i { transform-origin: 0 50%; animation: meter-in var(--dur-sheet-in) var(--glide) backwards; animation-delay: calc(var(--j, 0) * 30ms + 100ms); }
+@keyframes meter-in { from { transform: scaleX(0); } }
 .adm-meter { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 10px; min-height: 46px; padding: 6px 16px; font-size: 15px; }
 .adm-meter + .adm-meter::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--line); }
 .adm-meter .mbar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
@@ -566,7 +642,8 @@ label.row { cursor: pointer; }
 .adm-tile.new { background: color-mix(in srgb, var(--tint) 16%, transparent); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--tint) 40%, transparent); }
 .adm-tile.new b, .adm-tile.new span { color: var(--tint-text); }
 .adm-alert { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; border: 0; border-radius: 18px; text-align: left; color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--warn) 35%, transparent); }
-button.adm-alert:active { transform: scale(0.98); }
+button.adm-alert { transition: transform var(--dur-release) var(--spring), filter var(--dur-fast); }
+button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur-press); }
 .adm-alert .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .adm-alert b { font-size: 16px; font-weight: 600; }
 .adm-alert small { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
@@ -577,8 +654,9 @@ button.adm-alert:active { transform: scale(0.98); }
 .row-plus > .row { padding-right: 62px; }
 .row-plus > .row .chev { display: none; }
 .group > .row-plus + .row::before, .group > .row + .row-plus > .row::before { content: ""; position: absolute; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }
-.row-plus .plus { position: absolute; right: 14px; top: 50%; translate: 0 -50%; width: 34px; height: 34px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); }
-.row-plus .plus:active { transform: scale(0.92); }
+.row-plus .plus { position: absolute; right: 14px; top: 50%; translate: 0 -50%; width: 34px; height: 34px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent);
+  transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
+.row-plus .plus:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .row-plus .plus .spin { width: 16px; height: 16px; }
 .row-plus .plus span:not(.spin) { display: none; }
 .adm-ready { display: grid; justify-items: center; gap: 6px; text-align: center; padding: 6px 8px 2px; }
@@ -592,16 +670,15 @@ button.adm-alert:active { transform: scale(0.98); }
 .adm-open { position: relative; }
 .group > .adm-open + .row::before, .group > .row + .adm-open::before, .group > .adm-open + .adm-open::before { content: ""; position: absolute; top: 0; left: 18px; right: 0; height: 0.5px; background: var(--line); }
 /* Confirm it's you, in the sheet you're in: what you were doing held back behind it */
+/* (the card lifts in once, from app.js freshly, so it isn't lifted in again each time the sheet's drawn anew under it) */
 .sheet-body.asking > :not(.confirm-card) { opacity: 0.4; pointer-events: none; transition: opacity 0.25s; }
-.confirm-card { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 22px 18px 14px; border-radius: var(--r-group); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); animation: card-in 0.4s var(--ease) both; }
-@keyframes card-in { from { opacity: 0; transform: translateY(10px); } }
+.confirm-card { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 22px 18px 14px; border-radius: var(--r-group); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
 .confirm-card .face { color: var(--tint-text); margin-bottom: 8px; }
 .confirm-card > b { font-size: 18px; font-weight: 700; }
 .confirm-card > span { font-size: 14.5px; color: var(--text-2); margin-bottom: 12px; }
 .confirm-card .btn, .confirm-card .form { width: 100%; }
 .confirm-card .link { margin-top: 4px; font-size: 15px; }
 .confirm-card .said:empty { display: none; }
-@media (prefers-reduced-motion: reduce) { .confirm-card { animation: none; } }
 
 /* ---- your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind what's under
    it; your name and handle on it. No photo: your colours and initial. (The photo drifts a little as the page scrolls,
@@ -616,16 +693,16 @@ button.adm-alert:active { transform: scale(0.98); }
 /* (drifting down, it grows from its foot just enough that its top stays covered: at rest it's exactly as Your photo
    placed it) */
 .pc-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: 50% 100%;
-  transform: translateY(calc(var(--drift, 0) * 1px)) scale(calc(var(--pull, 1) + var(--drift, 0) / 280)); animation: photo-in 0.6s var(--ease); }
+  transform: translateY(calc(var(--drift, 0) * 1px)) scale(calc(var(--pull, 1) + var(--drift, 0) / 280)); }
 .poster-card.none .pc-photo { background: radial-gradient(120% 90% at 20% 10%, #7ab8ff 0%, #3157d8 45%, #5a3fd8 80%, #2a1f6e 100%); }
 .pc-initial { position: absolute; left: 0; right: 0; top: 30px; text-align: center; font: 800 150px/1 var(--font-d); color: rgba(255, 255, 255, 0.22); }
 .pc-shade { position: absolute; left: 0; right: 0; top: 40%; bottom: calc(-1 * var(--pc-shade-below)); background: var(--pc-shade); pointer-events: none; }
 .pc-cam, .pc-add { position: absolute; z-index: 1; right: 14px; top: 14px; height: 40px; border: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   color: #fff; background: rgba(20, 22, 40, 0.3); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.15); transition: transform 0.3s var(--spring); }
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.15); transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .pc-cam { width: 40px; }
 .pc-add { padding: 0 15px 0 12px; font-size: 15px; font-weight: 600; background: rgba(255, 255, 255, 0.2); }
-.pc-cam:active, .pc-add:active { transform: scale(0.92); }
+.pc-cam:active, .pc-add:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .pc-id { position: absolute; left: 20px; right: 20px; bottom: 14px; }
 .pc-id h2 { margin: 0; font: 800 40px/1.04 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
 .pc-id h2.long { font-size: 32px; }
@@ -636,7 +713,7 @@ button.adm-alert:active { transform: scale(0.98); }
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.1); }
 .poster-card .hero-acts .pill.primary { color: var(--pc-go-text); background: var(--pc-go); }
 @media (min-width: 1000px) { .pc-top { height: 320px; } }
-@media (prefers-reduced-motion: reduce) { .pc-photo img { animation: none; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pc-photo img { transform: none; } }
 /* Your photo: what shows of it, dragged into place; the circle every app shows, beside */
 .pv-frame { position: relative; aspect-ratio: 358 / 290; border-radius: 22px; overflow: hidden; touch-action: none; cursor: grab; background: #000; box-shadow: inset 0 0 0 0.5px var(--line); }
 .pv-frame.dragging { cursor: grabbing; }
@@ -654,3 +731,50 @@ button.adm-alert:active { transform: scale(0.98); }
 .x, .mini, .sheet-head .link.back { position: relative; }
 .x::after, .mini::after, .sheet-head .link.back::after { content: ""; position: absolute; inset: -6px; }
 .sheet-head h2:focus { outline: none; }
+
+/* (what the handle checks says: room for two lines, so the fields under it don't move as it changes) */
+.hint.handle { min-height: 2.8em; }
+/* (Admin waiting on what it shows: the spinner only once it's been a moment, so a quick answer just appears) */
+.adm-wait .spin { opacity: 0; animation: spin 0.8s linear infinite, wait-in var(--dur-fast) 0.25s forwards; }
+@keyframes wait-in { to { opacity: 1; } }
+
+/* ---- one look to another, where the browser can (app.js: the theme changed, signed in or out, and signing in to and
+   from making an account or a forgotten password): the page cross-fades; signed out, the card goes to its new size,
+   the mark, title and the line under it each cross-fade where they go (.vt-gate, only while it's happening) ---- */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-base); animation-timing-function: var(--ease); }
+.vt-gate .welcome > :first-child { view-transition-name: gate-mark; }
+.vt-gate .welcome h1 { view-transition-name: gate-title; }
+.vt-gate .signin { view-transition-name: gate-card; }
+.vt-gate .foot.new { view-transition-name: gate-foot; }
+::view-transition-group(gate-mark), ::view-transition-group(gate-title), ::view-transition-group(gate-card), ::view-transition-group(gate-foot) { animation-duration: var(--dur-base); animation-timing-function: var(--glide); }
+::view-transition-old(gate-card), ::view-transition-new(gate-card) { height: 100%; object-fit: none; object-position: top; }
+::view-transition-old(gate-title), ::view-transition-new(gate-title), ::view-transition-old(gate-foot), ::view-transition-new(gate-foot) { height: 100%; object-fit: none; object-position: center; }
+
+/* ---- a row's focus ring, inside its group (whose rounded corners clip what's outside it) ---- */
+.group .row:focus-visible { outline-offset: -4px; border-radius: calc(var(--r-group) - 4px); }
+
+/* ---- under a pointer that can hover (a mouse, a trackpad): what can be tapped lifts a little ---- */
+@media (hover: hover) {
+  .pill:hover, .x:hover, .app .about:hover, .appear:hover { background-color: color-mix(in srgb, var(--glass-ctl), var(--text) 6%); }
+  .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--pc-pill), white 12%); }
+  .poster-card .hero-acts .pill.primary:hover, .btn:not(:disabled):hover, button.adm-alert:hover { filter: brightness(1.06); }
+  button.mini:not(.sure):hover, .row-plus .plus:hover { background-color: color-mix(in srgb, currentColor 22%, transparent); }
+  .pc-cam:hover { background-color: rgba(20, 22, 40, 0.45); }
+  .pc-add:hover { background-color: rgba(255, 255, 255, 0.3); }
+  .link:not(:active):hover { opacity: 0.75; }
+  .seg button[aria-checked="false"]:hover { color: var(--text); }
+}
+
+/* ---- Reduce Transparency: every pane of glass solid (last in the file, so nothing after puts its blur back) ---- */
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .status, .whobar, .toast, dialog.sheet, .pc-cam, .pc-add, .poster-card .hero-acts .pill, .pv-tip { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass, .status, .whobar, .toast, dialog.sheet { background: var(--glass-strong); }
+  .poster-card .hero-acts .pill:not(.primary) { background: var(--glass-strong); color: var(--text); }
+  .pc-cam, .pc-add { background: rgba(20, 22, 40, 0.78); }
+  .pv-tip { background: rgba(0, 0, 0, 0.75); }
+  /* (and as solid under a pointer, lifting as the others do) */
+  @media (hover: hover) {
+    .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--glass-strong), var(--text) 6%); }
+    .pc-cam:hover, .pc-add:hover { background: rgba(20, 22, 40, 0.88); }
+  }
+}
