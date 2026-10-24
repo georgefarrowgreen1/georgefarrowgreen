@@ -641,12 +641,23 @@ function morphFrom(on) {
 // Send looks ready once there's something to send (tapped before, it says what's missing, and takes you there); the
 // message grows as it's written, a line at a time, smoothly (styles.css)
 const ready = () => { contact.send.classList.toggle("idle", !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim())); };
+// (measured on a hidden copy, not the box being typed in: changing that one's height, even for a moment, moves it in
+// the sheet, and an iPhone leaves its caret behind where it was, a line out; so it's only ever set when it changes)
+let gauge = null;
 const grow = () => {
-  const t = $("#c-message"), h0 = t.offsetHeight;
-  t.style.height = "auto";
-  const h1 = t.scrollHeight + 2;
-  t.style.height = `${h0}px`; void t.offsetHeight;
+  const t = $("#c-message");
+  if (!gauge) {
+    gauge = t.cloneNode(false);
+    gauge.removeAttribute("id"); gauge.removeAttribute("name"); gauge.removeAttribute("aria-describedby");
+    gauge.tabIndex = -1; gauge.setAttribute("aria-hidden", "true");
+    Object.assign(gauge.style, { position: "absolute", left: "0", top: "0", visibility: "hidden", pointerEvents: "none", height: "0", minHeight: "0", transition: "none" });
+    t.after(gauge);
+  }
+  gauge.style.width = `${t.offsetWidth}px`; gauge.value = t.value;
+  const cs = getComputedStyle(t), h1 = Math.min(Math.max(gauge.scrollHeight + 2, parseFloat(cs.minHeight) || 0), parseFloat(cs.maxHeight) || Infinity);
+  if (!t.offsetHeight || Math.abs(h1 - t.offsetHeight) < 1) return;
   t.style.height = `${h1}px`;
+  if (document.activeElement === t) setTimeout(steady, 260);      // (once it's grown: styles.css)
 };
 // (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
 // smaller and an iPhone zooms the page in on the field when it's tapped)
