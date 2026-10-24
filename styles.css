@@ -456,8 +456,11 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .btn:active, .pill:active, .round:active, .app:active, .sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: none; }
 }
 
-/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour) */
+/* (autofill keeps the field as designed: the browser's yellow fill is held off for good, and the words keep their colour;
+   iPhones show the yellow before the transition can hold it off, as a suggestion's offered, so it's clipped to the words
+   too, under their own colour, and a field with a background of its own paints it back with an inset shadow) */
 input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, textarea:-webkit-autofill, select:-webkit-autofill {
   -webkit-text-fill-color: var(--text); caret-color: var(--text);
   transition: background-color 0s 600000s, color 0s 600000s;
+  -webkit-background-clip: text; background-clip: text;
 }
