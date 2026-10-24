@@ -1886,8 +1886,6 @@ function keptAdd() {
 }
 const toAccount = (hash = "") => (accountPage() || "https://account.georgefarrowgreen.com/") + hash;
 const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
-// the sky: one canvas behind the screen, under every screen before you're in
-const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 // Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as (on the
 // account's page, showing it's you, as that's what unlocks the key here)
 async function resumeCheck() {
@@ -2009,8 +2007,7 @@ function handOff(from) {
         play($(".hlook", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: "ease", fill: "forwards" }),
         play($(".hlabel", pill), [{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: "ease-out", fill: "forwards" }),
         play(pill, [{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 520, easing: "ease-in-out" }),
-        play($view, [{ transform: "none", opacity: 1 }, { transform: "scale(.94)", opacity: 0 }], t),
-        play($(".nightsky", root()), [{ opacity: 1 }, { opacity: 0.6 }], t));
+        play($view, [{ transform: "none", opacity: 1 }, { transform: "scale(.94)", opacity: 0 }], t));
     }
     return played(sky, 700);
   } catch (_) { return Promise.resolve(); }
@@ -2250,45 +2247,6 @@ function dusk() {
   };
 }
 
-/* ---------- the welcome sky ----------
-   Night: a quiet field of stars, breathing slowly. (Still, for anyone who asks for less motion.) */
-let skyLoop = 0, skyOn = null;
-function nightSky(cv) {
-  if (!cv || skyOn === cv) return;            // already shining: it carries on
-  cancelAnimationFrame(skyLoop); skyOn = cv;
-  const g = cv.getContext("2d"), still = STILL.matches, t0 = performance.now();
-  let W = 0, H = 0, dpr = 1, stars = [], last = 0;
-  const seed = (n) => { let x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); };
-  const size = () => {
-    const w = cv.clientWidth, h = cv.clientHeight; if (w === W && h === H) return;
-    W = w; H = h; dpr = Math.min(2, devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr;
-    stars = Array.from({ length: Math.round((W * H) / 3400) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H, r: 0.35 + seed(i + 900) ** 3 * 1.3,
-      p: seed(i + 1300) * 6.28, s: 0.3 + seed(i + 1700) * 0.9, b: 0.3 + seed(i + 2100) * 0.6 }));
-  };
-  const frame = (now) => {
-    if (!cv.isConnected || !document.documentElement.classList.contains("night")) { skyOn = null; return; }
-    // 20 frames a second is plenty for stars breathing; while you type (the keyboard up), fewer still
-    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
-    if (!still && now - last < (typing ? 120 : 48)) { skyLoop = requestAnimationFrame(frame); return; }
-    last = now;
-    size();
-    const t = now - t0;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, W, H);
-    // drawn in a dozen or so batches, by brightness, not one by one
-    const lit = new Map();
-    for (const s of stars) {
-      const tw = still ? s.b : s.b * (0.6 + 0.4 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
-      let path = lit.get(a); if (!path) lit.set(a, (path = new Path2D()));
-      path.moveTo(s.x + s.r, s.y); path.arc(s.x, s.y, s.r, 0, 6.29);
-    }
-    g.fillStyle = "#dfe8ff";
-    for (const [a, path] of lit) { g.globalAlpha = a; g.fill(path); }
-    g.globalAlpha = 1;
-    if (!still) skyLoop = requestAnimationFrame(frame);
-  };
-  skyLoop = requestAnimationFrame(frame);
-}
 // The password-locked key, fetched with the password itself (its proof is the check)
 async function vaultWith(password) {
   const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
@@ -3782,7 +3740,6 @@ function render() {
   if (auth) {
     const night = NIGHT_VIEWS.has(S.view);
     if (document.documentElement.classList.contains("night") !== night) { document.documentElement.classList.toggle("night", night); applyTheme(); }
-    if (night) nightSky(skyCanvas());
     const box = S.view === "welcome" && !S.nav && $(".welcome .wcta", $view);
     if (box) {                                           // already up: just the words change
       // (showing already: the new ones fade in where they are; still to come: they keep the welcome's own timing)
