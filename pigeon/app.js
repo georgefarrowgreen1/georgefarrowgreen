@@ -294,6 +294,8 @@ const I = {
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   sun: ico(`<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
+  sliders: ico(`<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>`),
+  away: ico(`<path d="M8 16 16 8M9.5 8H16v6.5"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
   mic: ico(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>`),
@@ -4042,14 +4044,43 @@ function vAccount() {
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Settings</div>
     <div class="group">
-      ${notifyCell(u)}
-      ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
-      ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+      ${accountPage() ? `<button type="button" class="cell has-icon" data-act="ifsettings"><span class="tile indigo">${I.sliders}</span><span class="ctext"><span>InFlight Settings</span><span class="csub">${ifSummary(u)}</span></span>${I.away.replace('class="ico"', 'class="ico chev away"')}</button>`
+        : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
+    ${accountPage() ? `<div class="gfoot">Saved to your account, so they’re the same on every phone. Appearance is there too.</div>` : ""}
+    ${thisPhone()}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
+}
+// InFlight Settings, in a line: how many notifications are on, quiet hours, and who's blocked (as the account's page
+// has them: taken up as the app next syncs, so a change made there shows here on the way back)
+const IF_KEYS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
+function ifSummary(u) {
+  const n = u.notify || {}, on = IF_KEYS.filter((k) => n[k]).length;
+  return [on === IF_KEYS.length ? "All notifications on" : on ? `${on} of ${IF_KEYS.length} notifications on` : "Notifications off",
+    n.quiet && `quiet ${String(n.quietFrom).padStart(2, "0")}:00–${String(n.quietTo).padStart(2, "0")}:00`,
+    u.receipts === false && "read receipts off", S.blocked.length && `${S.blocked.length} blocked`].filter(Boolean).join(" · ");
+}
+// What's this phone's own, under Settings: pushes on or off here, InFlight's lock, haptics, and the key (only ever on
+// your phones); the rest of InFlight's settings are the account's, on its page (InFlight Settings)
+function thisPhone() {
+  if (!accountPage()) return "";
+  const ps = pushState(), lock = !!lockPrefs();
+  const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
+  const pushFoot = { homescreen: "On iPhone, notifications need InFlight on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings.",
+    unsupported: "This browser can’t show notifications." }[ps];
+  return `<div class="ghead">This Phone</div>
+    <div class="group">
+      ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
+      ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
+      ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
+        <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
+      ${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", on: hapticsOn() })}
+      ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption &amp; Safety Numbers", chev: true })}
+    </div>
+    <div class="gfoot">${pushFoot ? `${pushFoot} ` : ""}Only on this phone.</div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
@@ -8004,10 +8035,10 @@ async function onClick1(e, t) {
       flashMsg(el, id); return;
     }
     case "applock": {
-      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); return renderSheet(); }
+      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); render(); return renderSheet(); }
       if (!S.passkeys?.length) { toast("Add a passkey first: it’s what unlocks InFlight."); S.sheet = { type: "passkeys" }; return renderSheet(); }
       try { await lockCheck(); } catch (_) { return toast("Couldn’t check it’s you, so InFlight won’t lock yet."); }
-      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); return renderSheet();
+      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); render(); return renderSheet();
     }
     case "unlock": return unlock();
     case "lockout": return openActions({ message: "Sign out of InFlight on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
@@ -8240,7 +8271,7 @@ async function onClick1(e, t) {
       }
       return renderSheet();
     }
-    case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
+    case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); render(); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
     case "via": S.sheet = { type: "via", chat: S.chat, ids: null }; renderSheet();
@@ -8300,6 +8331,7 @@ async function onClick1(e, t) {
     }
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
+    case "ifsettings": return openAccount("inflight");
   }
 }
 const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone already has a passkey for your account." : err.name === "SecurityError" ? "Passkeys only work on georgefarrowgreen.com." : err.message || "The passkey didn’t work. Try again.";
@@ -8308,7 +8340,7 @@ async function onChange(e) {
   const el = e.target;
   if (el.id === "file-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
-  if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); return renderSheet(); }
+  if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); render(); return renderSheet(); }
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);

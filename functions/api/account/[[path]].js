@@ -38,11 +38,11 @@ import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
-import { prefsOf } from "../../_notify.js";
+import { prefsOf, cleanPrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
-import { ADMIN_ROUTES, adminOf } from "../pigeon/[[path]].js";
+import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
 const UNITS = { temp: ["c", "f"], wind: ["mph", "kmh", "ms", "kn"], precip: ["mm", "in"], pressure: ["hpa", "inhg", "mmhg"], clock: ["12", "24"] };
@@ -135,6 +135,17 @@ async function view(env, u) {
     },
   };
 }
+// InFlight's settings that are the account's rather than a phone's, for its page here: which notifications, how they
+// read on the lock screen, quiet hours and email; who sees what; and who's blocked (pushes on or off, its lock and the
+// like are each phone's, in the app)
+async function inflightSettings(env, u) {
+  const { results } = await (await db(env)).prepare(`SELECT p.id, p.handle, p.name FROM pg_links l JOIN pg_users p ON p.id = l.b
+    WHERE l.a = ? AND l.status = 'blocked' ORDER BY p.name COLLATE NOCASE`).bind(u.id).all();
+  return { notify: prefsOf(u), email: !!u.notify_email, emailOk: !!u.email_ok,
+    privacy: { showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, approxLocation: !!u.loc_approx, shareTracker: !u.hide_tracker },
+    blocked: results.map((p) => ({ id: p.id, handle: p.handle, name: p.name })) };
+}
+const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
@@ -515,6 +526,36 @@ const ROUTES = {
       await unitsForAccount(env, u.id, s);
     }
     return json(await view(env, now));
+  },
+
+  // ---- InFlight's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own
+  // rules (functions/_notify.js cleanPrefs, functions/api/pigeon setPrivacy), and the app takes it up as it next syncs ----
+  "GET inflight": async ({ request, env }) => json(await inflightSettings(env, await signedIn(request, env))),
+  "PATCH inflight": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 4096), D = await db(env);
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.notify !== undefined) {
+      if (!b.notify || typeof b.notify !== "object") throw new HttpError(400, "Bad request.");
+      await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
+    }
+    if (b.email !== undefined) {
+      if (typeof b.email !== "boolean") throw new HttpError(400, "Choose on or off.");
+      await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.email ? 1 : 0, Date.now(), u.id).run();
+    }
+    if (b.privacy !== undefined) {
+      const P = b.privacy && typeof b.privacy === "object" ? b.privacy : {}, set = {};
+      for (const k of PRIVACY) if (P[k] !== undefined) { if (typeof P[k] !== "boolean") throw new HttpError(400, "Choose on or off."); set[k] = P[k]; }
+      await setPrivacy(D, u, set);
+    }
+    return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
+  },
+  // someone blocked in InFlight, unblocked (only lifted: they aren't told, as they weren't told of the block)
+  "DELETE inflight/block": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), id = String((await body(request)).id || ""), D = await db(env);
+    await D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'blocked'").bind(u.id, id).run();
+    return json(await inflightSettings(env, u));
   },
 
   // ---- your data: everything kept with the account that can be read (InFlight's letters can't: they're encrypted on

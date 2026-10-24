@@ -267,15 +267,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (b.skin !== null && !(await skinOpen(env, u.id, String(b.skin)))) throw new HttpError(403, "Earn its achievement first.");
     await D.prepare("UPDATE pg_users SET skin = ? WHERE id = ?").bind(b.skin, u.id).run();
   }
-  if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
-  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
-  if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
-  if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
-  // Approximate Location: on, the spot already kept becomes approximate at once (off: precise from the next update)
-  if (b.approxLocation !== undefined) {
-    await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
-    if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
-  }
+  await setPrivacy(D, u, b);
   // To the Moon: a spot on it, and none on Earth (it isn't kept while you're there); Update
   // Automatically goes off, so the phone doesn't bring you straight back. Setting a place on
   // Earth again (below) brings you home.
@@ -566,6 +558,19 @@ async function refundGrounded(D, res) {
   for (const m of res?.at(-1)?.results || []) {
     await dropNear(D, m.id, -Infinity).catch(() => {}); await dropFly(D, m.id, -Infinity).catch(() => {});
     await refundLoft(D, m.sender, m.pigeon, t).catch((e) => console.error("pigeon refund", e && e.message));
+  }
+}
+// Who sees what, each on or off: when you're online, read receipts, your news, the live tracker, and Approximate
+// Location (on, the spot already kept becomes approximate at once; off, precise from the next update). From the app
+// (PATCH me) and from its settings on the account's page (functions/api/account), by the same rules.
+export async function setPrivacy(D, u, b) {
+  if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
+  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
+  if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
+  if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
+  if (b.approxLocation !== undefined) {
+    await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
+    if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
   }
 }
 // Blocking: no friendship, no requests (theirs look like they're still waiting), no

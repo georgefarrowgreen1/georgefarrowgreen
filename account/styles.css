@@ -223,6 +223,19 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); transition-duration: var(--dur-press); }
 @media (hover: hover) { .app .open-app:hover { background: color-mix(in srgb, var(--tint) 22%, transparent); } }
+/* (InFlight's: its settings, a round button beside Open) */
+.app .app-acts { margin-top: auto; display: flex; gap: 8px; }
+.app .app-acts .open-app { flex: 1; margin-top: 0; }
+.app .app-set { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--tint-text); cursor: pointer;
+  background: color-mix(in srgb, var(--tint) 16%, transparent); transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
+.app .app-set:active { transform: scale(0.92); transition-duration: var(--dur-press); }
+.app .app-set:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+/* InFlight's settings (app.js inflightView): an hour picked over its row; someone blocked, by their initial; the way back to the app */
+.row.pick { position: relative; }
+.row.pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; cursor: pointer; }
+.row.pick .val { margin-left: auto; }
+.ic.initial { font-size: 15px; font-weight: 600; color: #fff; }
+.sheet-head .link.back.toapp { display: inline-flex; align-items: center; gap: 0; width: auto; padding: 0 8px 0 0; font-size: 17px; white-space: nowrap; }
 
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;

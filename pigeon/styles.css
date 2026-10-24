@@ -179,6 +179,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .cell .val{flex:none;max-width:55%;color:var(--label-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell .val .mono,.cell .val.mono{font-family:var(--mono);font-size:15px}
 .cell .chev{font-size:14px;color:var(--label-3);stroke-width:2.8}
+.cell .chev.away{font-size:13px;stroke-width:2.6}   /* (opens the account's page: InFlight Settings) */
 .cell.action{color:var(--tint)}
 .cell.center{justify-content:center;text-align:center}
 .cell.destructive{color:var(--red)}

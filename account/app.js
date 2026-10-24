@@ -107,6 +107,9 @@ addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
+// (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
+const OPENS = { profile: () => profileView, inflight: () => inflightView };
+const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
 function backToApp() {
@@ -314,9 +317,9 @@ async function load() {
   if (S.me?.signedIn) S.gate = null;
   // (a sheet coming straight up over it, from an app, Admin's link or the home page: the page behind it there already,
   // not rising under it as it comes)
-  if (S.me?.signedIn && (HANDOFF?.open === "profile" || (S.me.admin && location.hash === "#admin") || homeEdit())) S.settled = true;
+  if (S.me?.signedIn && (opens() || (S.me.admin && location.hash === "#admin") || homeEdit())) S.settled = true;
   await anew(render);
-  if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
+  if (opens() && S.me?.signedIn) openSheet(opens());
   confirmForHome();
 }
 // The page drawn anew, signed in or out, or being deleted (or as it opens, from its skeleton): the old one fading as
@@ -492,11 +495,14 @@ const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; retur
 function signedIn(r) {
   const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
+  // (InFlight's settings that are the account's, a tap from its card: inflightView)
+  const open = (id, name) => h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
-    h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6)));
+    id === "inflight" ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": "inflight-settings", onclick: () => openSheet(inflightView) },
+      icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
   const f = ap.inflight || {}, w = ap.weather || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
@@ -836,7 +842,7 @@ function handoffPage(r) {
   const go = h("button.btn", { type: "button", onclick: async () => {
     try {
       const m = await busy(go, "Signing in…", () => post("handoff", { code: HANDOFF.code }));
-      S.handoff = null; welcome(m, null, HANDOFF.open === "profile" && profileView);
+      S.handoff = null; welcome(m, null, opens());
     } catch (err) { anew(() => { S.handoff = null; S.settled = false; render(); }); toast(err.message, true, 4000); }
   } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
   return [h("div.welcome", {},
@@ -2790,6 +2796,76 @@ function emailsView() {
       wxRow("warn", "Warnings", W.warnFor?.length ? `Official warnings as they’re issued, for ${and(W.warnFor)}` : "Official warnings, for the places you choose in Weather"),
       wxRow("brief", "Morning briefing", W.briefFor ? `${W.briefFor}, at ${W.briefAt}` : "For the place you choose in Weather")),
     h("p.hint", { text: "Which places, and when, are in Weather’s Notifications. Rain alerts stay on your phone." }),
+    said] };
+}
+
+// ---- InFlight's settings that are the account's (functions/api/account inflight): which notifications, how they read
+// on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
+// (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
+let IF = null, ifAt = 0;
+const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off", "When a friend sends you one"], ["rerouted", "A pigeon changes course", "When a friend moves while yours is flying"],
+  ["lost", "A pigeon is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
+  ["accepted", "Request accepted"], ["reactions", "Reactions", "When someone reacts to your message"], ["moments", "Mid-air moments", "Near misses, cheers, ships, and friends’ pigeons flying over you"],
+  ["streaks", "Flight streaks", "A few hours before a streak with a friend runs out"], ["weekly", "Your week in flight", "Sunday evening: miles flown and badges earned"]];
+const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
+  ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
+const hh = (n) => `${String(n).padStart(2, "0")}:00`;
+function inflightView() {
+  // (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it comes)
+  if (!IF || Date.now() - ifAt > 5000) {
+    ifAt = Date.now();
+    call("inflight").then((r) => { IF = r; redraw(); }, (e) => { if (!IF) { IF = { error: e.message }; redraw(); } });
+  }
+  const back = HANDOFF?.open === "inflight" && fromApp() === "inflight"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
+  if (!IF) return { title: "InFlight", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (IF.error) return { title: "InFlight", left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] };
+  const said = h("p.said", { role: "alert" });
+  // a change, as it's made: kept, and what's kept shown (the switch put back, and why, if it can't be)
+  const change = async (input, patch, after) => {
+    input.disabled = true; say(said, "");
+    try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
+    catch (e) { if (input.type === "checkbox") input.checked = !input.checked; say(said, e.message); }
+    finally { input.disabled = false; }
+  };
+  const sw = (title, sub, on, patch, { after, disabled } = {}) => {
+    const input = h("input.switch", { type: "checkbox", role: "switch", checked: !!on, disabled: !!disabled });
+    input.onchange = () => change(input, patch(input.checked), after);
+    return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+  };
+  const n = IF.notify, notify = (k) => (v) => ({ notify: { [k]: v } });
+  const hour = (k, title) => {
+    const sel = h("select", { "aria-label": title }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: n[k] === i, text: hh(i) })));
+    const val = h("span.val", { text: hh(n[k]) });
+    sel.onchange = () => { val.textContent = hh(Number(sel.value)); change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }); };
+    return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
+  };
+  const blocked = IF.blocked.length ? IF.blocked.map((b) => h("div.row.plain", { "data-id": b.id },
+    h("span.ic.grey.initial", { text: String(b.name || b.handle).trim().charAt(0).toUpperCase() }),
+    h("span.tx", {}, h("b", { text: b.name }), h("small", { text: `@${b.handle}` })),
+    twice("Unblock", "Unblock?", async (btn) => {
+      try { IF = await busy(btn, "", () => call("inflight/block", { method: "DELETE", body: { id: b.id } })); redraw(); toast(`${b.name} is unblocked.`); }
+      catch (e) { say(said, e.message); }
+    }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in InFlight." })))];
+  return { title: "InFlight", left: back, body: [
+    h("p", { text: "For InFlight on every phone you use it on." }),
+    h("h4.app-k", { text: "Notify me when" }),
+    h("div.group", {}, IF_NOTIFY.map(([k, t, sub]) => sw(t, sub, n[k], notify(k)))),
+    h("h4.app-k", { text: "Lock screen" }),
+    h("div.group", {}, sw("Show names", n.names ? "Notifications say who sent a pigeon" : "Just “A pigeon has landed”, not who sent it", n.names, notify("names"), { after: redraw })),
+    h("p.hint", { text: "Never what a message says: only your phone can read that." }),
+    h("h4.app-k", { text: "Quiet hours" }),
+    h("div.group", {}, sw("Quiet hours", null, n.quiet, (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
+      n.quiet && hour("quietFrom", "From"), n.quiet && hour("quietTo", "To")),
+    h("p.hint", { text: n.quiet ? `Nothing arrives between ${hh(n.quietFrom)} and ${hh(n.quietTo)} (${n.tz} time). Pigeons that land meanwhile are announced when quiet hours end.` : "Hold notifications overnight, or whenever suits." }),
+    h("h4.app-k", { text: "Email" }),
+    h("div.group", {}, sw("Email me", IF.emailOk ? "Only when a pigeon has waited 10 minutes unread, at most every half hour" : "Confirm your email first", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk })),
+    h("h4.app-k", { text: "Who sees what" }),
+    h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => sw(t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
+    h("p.hint", { text: "Online, read receipts and news work both ways: turn one off and you won’t see other people’s either." }),
+    h("h4.app-k", { text: "Blocked" }),
+    h("div.group", {}, blocked),
+    h("p.hint", { text: "Push notifications, Lock InFlight and haptics are set in InFlight, on each phone." }),
     said] };
 }
 
