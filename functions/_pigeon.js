@@ -507,11 +507,12 @@ const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? app
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
 export const othersOf = (u) => { const a = u.sessionHash, b = u.parent || u.sessionHash; return [a, b, a, b]; };
-export async function issueSession(env, userId, request) {
+// (authAt: when it was last shown it's you, where that wasn't just now: a sign-in handed on from another, no fresher)
+export async function issueSession(env, userId, request, authAt) {
   const token = randomToken(32), t = Date.now();
   const D = await db(env);
   await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
+    .bind(hex(await sha256(token)), userId, t, t, authAt ?? t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
     D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
   return token;
 }

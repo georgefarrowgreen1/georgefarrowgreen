@@ -184,10 +184,10 @@ export const E2E = {
   },
   async prfSalt() { return new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode("inflight/prf/v1"))); },
 
-  // A sign-in handed back from the account's page. Before going there, this tab makes a word for the sign-in (its
+  // A sign-in handed back from the account's page. Before going there, the app makes a word for the sign-in (its
   // hash, ask, goes there; the code that comes back is good only with the word itself: the server checks) and a key
-  // pair for the trip (its public half goes there, the private half stays in this tab), all three kept for the tab
-  // alone (sessionStorage).
+  // pair for the trip (its public half goes there, the private half stays here), kept on this phone until it's back
+  // (pigeon/app.js toAccountSignIn).
   async handbackPair() {
     const kp = await crypto.subtle.generateKey(ECDH, true, ["deriveBits"]), word = b64url(rand(32));
     return { word, ask: b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(word)))),

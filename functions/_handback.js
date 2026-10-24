@@ -1,12 +1,12 @@
 // Signing in to an app on the site happens on the account's own page (account.<site>), and only there. The app sends
-// you there with a word of its own for this sign-in (ask: the hash of a secret its tab keeps); you sign in there (or,
+// you there with a word of its own for this sign-in (ask: the hash of a secret it keeps); you sign in there (or,
 // signed in already, carry on as yourself); and the page hands the sign-in back to the app, with a code in the
-// address's # that's good once, for two minutes, and only with that tab's secret. So a code seen anywhere else, or one
+// address's # that's good once, for two minutes, and only with the app's secret. So a code seen anywhere else, or one
 // a page elsewhere sends you back with, signs nothing in. The app swaps it for a sign-in of its own (InFlight's:
 // functions/api/pigeon handback; Weather's: functions/_wxacct.js).
 //
 // For InFlight it brings what unlocks the key there (box): the password's first half, or the PRF secret of a passkey
-// with its own copy of the key (pk: which one, for that copy), sealed on the account's page to a key pair InFlight's tab
+// with its own copy of the key (pk: which one, for that copy), sealed on the account's page to a key pair InFlight
 // made for the trip (pigeon/crypto.js sealFor). Neither this server nor anyone else with the code can open it; and as
 // the key's opened with it, a code for InFlight is made only for a sign-in that's just shown it's you (requireFresh).
 
@@ -41,7 +41,8 @@ export async function makeHandback(env, u, b) {
 }
 
 // (the app) the code used up, whatever comes of it, and the sign-in it hands back, if it's this app's and its word is
-// this tab's, and the sign-in it was made for still lasts: { row, u, siteHash (that sign-in's, for the browser's cookie) }
+// the one the app kept, and the sign-in it was made for still lasts: { row, u, siteHash (that sign-in's, for the
+// browser's cookie), authAt (when it last showed it's you: a sign-in made from it is no fresher) }
 export async function takeHandback(env, request, app, b) {
   await limit(env, "handback-ip:" + clientIp(request), 30, 15 * 60e3);
   const code = String(b.code || ""), verifier = String(b.verifier || ""), D = await db(env), t = Date.now();
@@ -49,7 +50,7 @@ export async function takeHandback(env, request, app, b) {
   const word = WORD.test(verifier) ? b64url(await sha256(verifier)) : "";
   if (!row || row.expires < t || row.app !== app || !word || !safeEqual(word, row.ask)) throw new HttpError(400, "That sign-in has run out. Sign in again.", "handback");
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
-  const from = u && !u.delete_at && await D.prepare("SELECT site_hash FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, u.id).first();
+  const from = u && !u.delete_at && await D.prepare("SELECT site_hash, auth_at FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, u.id).first();
   if (!from) throw new HttpError(400, "That sign-in has ended. Sign in again.", "handback");
-  return { row, u, siteHash: from.site_hash || null };
+  return { row, u, siteHash: from.site_hash || null, authAt: from.auth_at || 0 };
 }

@@ -103,20 +103,25 @@ async function salt({ request, env }) {
   return json({ salt: await saltFor(env, request, (await body(request)).email) });
 }
 
-// Signed in on the account's page, for InFlight (functions/_handback.js): the code it was handed back with, and this
-// tab's word for it, swapped for InFlight's own sign-in; with the password-locked key, and the passkey's own copy where
-// it was a passkey that can open it, for what the page sealed to this tab to unlock (box). Where the browser shares the
-// site's sign-in, it's the one the page just made, moved to this one (as Continue as did); where it doesn't (a test
-// server's separate addresses), this one's given to the browser as well.
+// Signed in on the account's page, for InFlight (functions/_handback.js): the code it was handed back with, and the
+// word the app kept for it, swapped for InFlight's own sign-in (as fresh as the page's, no fresher); with the
+// password-locked key, and the passkey's own copy where it was a passkey that can open it, for what the page sealed to
+// the app to unlock (box). Where the browser shares the site's sign-in, it's the one the page just made, moved to this
+// one (as Continue as did), with all that was the page's; where it doesn't (a test server's separate addresses), this
+// one's given to the browser as well.
 async function handback({ request, env }) {
   sameOrigin(request);
-  const { row, u, siteHash } = await takeHandback(env, request, "inflight", await body(request));
-  const token = await issueSession(env, u.id, request), hash = await hashOf(token), D = await db(env);
+  const { row, u, siteHash, authAt } = await takeHandback(env, request, "inflight", await body(request));
+  const token = await issueSession(env, u.id, request, authAt), hash = await hashOf(token), D = await db(env);
   const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
   const res = json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
   const c = await cookieUser(request, env, true).catch(() => null);
   if (c && c.sessionHash === row.session) {
-    await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(siteHash, hash), D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(row.session)]);
+    // (the page's codes and links still to be used, the sign-ins opened from it and its notifications going with it)
+    await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(siteHash, hash),
+      ...["pg_handback", "pg_handoff", "pg_push"].map((t) => D.prepare(`UPDATE ${t} SET session = ? WHERE session = ?`).bind(hash, row.session)),
+      D.prepare("UPDATE pg_sessions SET parent = ? WHERE parent = ?").bind(hash, row.session),
+      D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(row.session)]);
     return res;
   }
   return withSession(res, request, env, hash, true);

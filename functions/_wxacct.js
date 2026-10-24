@@ -90,15 +90,16 @@ export const ACCOUNT_ROUTES = {
       D.prepare("INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)").bind(hex(await sha256(code)), u.id, u.sessionHash, t + 60e3)]);
     return json({ code });
   },
-  // Signed in on the account's page, for Weather (functions/_handback.js): the code it was handed back with, and this
-  // tab's word for it. Where the browser shares the site's sign-in, it's the one the page just made, and that's all;
-  // where it doesn't (a test server's separate addresses), Weather's own, given to the browser.
+  // Signed in on the account's page, for Weather (functions/_handback.js): the code it was handed back with, and the
+  // word Weather kept for it. Where the browser shares the site's sign-in, it's the one the page just made, and that's
+  // all; where it doesn't (a test server's separate addresses), Weather's own, given to the browser, and no fresher
+  // than the page's (Weather's asked for with no password: it mustn't count as having shown it's you when that didn't)
   "POST handback": async ({ request, env }) => {
     sameOrigin(request);
-    const { row, u } = await takeHandback(env, request, "weather", await body(request));
+    const { row, u, authAt } = await takeHandback(env, request, "weather", await body(request));
     const c = await cookieUser(request, env).catch(() => null);
     if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c)), request, env, c.token);
-    const token = await issueSession(env, u.id, request);
+    const token = await issueSession(env, u.id, request, authAt);
     return withSession(json(await view(env, u)), request, env, hex(await sha256(token)), true);
   },
   // signing out, and the profile, as on every such page on the site (functions/_accountapi.js: signing in is the

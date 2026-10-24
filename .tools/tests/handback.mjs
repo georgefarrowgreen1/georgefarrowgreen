@@ -1,10 +1,12 @@
 // Signing in to InFlight from a test's own requests, as a phone does it now: on the account's page (account.localhost
-// beside InFlight run locally), which hands the sign-in back to InFlight with a code and the word only the asking tab
-// has (functions/_handback.js). For the tests that drive InFlight's API directly.
+// beside InFlight run locally), which hands the sign-in back to InFlight with a code, good only with the word the app
+// kept for it (functions/_handback.js). For the tests that drive InFlight's API directly.
 //   acctCall(path, body, { cookie, ip })   the account's API, from its page: { s, j, cookie (the sign-in it gave) }
 //   inflightFrom(cookie, { ip })           that sign-in handed to InFlight: InFlight's answer { s, j: { token, me, vault, … } }
 //   madeIn(signupBody, { ip })             an account made on the account's page and signed in to InFlight: { s, j }
 //   signedIn({ email, proof }, { ip })     an account signed in to on the account's page, then InFlight: { s, j }
+//   hostCall(host, path, body, { cookie, ip })  a POST to any of the site's addresses (the tests' gfg.test ones too),
+//                                          from its own page: { s, j, cookie }
 import http from 'http';
 import { createHash, randomBytes } from 'crypto';
 const PORT = Number((process.env.TEST_BASE || 'http://localhost:8788').match(/:(\d+)\/?$/)?.[1] || 8788);
@@ -23,6 +25,7 @@ function post(host, path, body, { cookie, ip } = {}) {
     q.on('error', no); q.end(data);
   });
 }
+export const hostCall = post;
 export const acctCall = (path, body, opts) => post('account.localhost', '/api/account/' + path, body, opts);
 export async function inflightFrom(cookie, { ip } = {}) {
   const word = randomBytes(32).toString('base64url'), ask = createHash('sha256').update(word).digest('base64url');

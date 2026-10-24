@@ -9003,7 +9003,11 @@ function movedNote(force) {
 }
 
 async function start() {
-  if (document.documentElement.dataset.device === "computer") return notAvailable();
+  if (document.documentElement.dataset.device === "computer") {
+    // (a sign-in handed back is no use here: out of the address, and so out of the code to scan)
+    if (/^#signin=/.test(location.hash)) history.replaceState(null, "", location.pathname);
+    return notAvailable();
+  }
   // at the old address, signed out in a browser: straight to the new one, with whatever link
   // brought you (an invite, a reset); a Home Screen app stays, to say how to move (movedNote)
   if (NEW_HOME && !standalone() && !(await idb.get("session"))?.token) return location.replace(`${NEW_HOME}/${location.hash}`);

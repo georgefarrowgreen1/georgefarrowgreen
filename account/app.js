@@ -73,8 +73,12 @@ const SIGN_FOR = (() => {
   history.replaceState(null, "", location.pathname + location.search);
   const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
   const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now() };
-  // (an app asks with its word, and InFlight with its key as well: without them, it didn't come from the app)
-  if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) return null;
+  // (an app asks with its word, and InFlight with its key as well: without them, it didn't come from the app; and one
+  // kept from before is dropped, as arriving any other way drops it)
+  if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) {
+    try { sessionStorage.removeItem("acct-for"); } catch (_) {}
+    return null;
+  }
   try { sessionStorage.setItem("acct-for", JSON.stringify(a)); sessionStorage.setItem("acct-from", a.app); } catch (_) {}
   return a;
 })();

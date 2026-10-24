@@ -226,13 +226,15 @@ Motion, solid with Reduce Transparency.
   and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
   `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
   password; or a new account made), you're sent straight back, the sign-in handed back with a code in the address's
-  `#` that's good once, for two minutes, and only in the tab that asked: the app keeps a secret for it (sessionStorage),
+  `#` that's good once, for two minutes, and only for the app that asked: it keeps a secret for it (on the device, for
+  half an hour or until it's used: not just in the tab, as a Home Screen app can open this page in a view of its own),
   sends only its hash (`ask`), and swaps the code with the secret itself (`POST /api/pigeon/handback`, `POST
   /api/weather/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
+  The sign-in an app gets is no fresher than the one here (it counts as having shown it's you only if that one does).
   Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, <site>/, or
   InFlight's old <site>/pigeon/). For InFlight it brings what unlocks the key there: the password's first half, or the
   PRF secret of a passkey with its own copy of the key (asked for with the sign-in), sealed on this page to a key pair
-  InFlight's tab made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
+  InFlight made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
   neither the server nor anyone with the code can open it, and you show it's you once, here. A passkey that can't open
   the messages (no copy of the key, or no PRF in that browser) asks for the password too, as "One more step for
   InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
