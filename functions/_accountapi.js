@@ -72,10 +72,14 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
       const u = await signedIn(request, env), res = await photoOf(env, u.id, { "Cross-Origin-Resource-Policy": "same-origin" });
       return res || json({ error: "No photo." }, 404);
     },
+    // (at and focus: the account's page moving what shows of the same photo, its circle cut again from the poster sent
+    // at that time, which is kept; refused if that's not the poster now, another app's new photo having replaced it)
     "PUT me/photo": async ({ request, env }) => {
       sameOrigin(request);
-      const u = await signedIn(request, env), t = await putPhoto(env, u, request);
-      return json(await view(env, { ...u, avatar_at: t, poster_at: null, poster_focus: null }));
+      const u = await signedIn(request, env), q = new URL(request.url).searchParams, at = q.get("at"), keep = at ? q.get("focus") || "" : null;
+      if (at && Number(at) !== u.poster_at) throw new HttpError(409, "Your photo changed elsewhere. Open it again.");
+      const t = await putPhoto(env, u, request, keep);
+      return json(await view(env, { ...u, avatar_at: t, ...(at ? { poster_focus: cleanFocus(keep) } : { poster_at: null, poster_focus: null }) }));
     },
     // (the poster: the same photo larger, for the account's page, and the point of it that stays in view)
     "GET me/poster": async ({ request, env }) => {

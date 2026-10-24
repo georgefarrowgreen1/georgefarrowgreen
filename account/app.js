@@ -287,24 +287,27 @@ function theme(pref, fade) {
   else go();
 }
 const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
-try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (_) {}
+// (what's remembered is put on the page before it's first drawn: theme.js)
 
 // ---- the page ----
+// (the account as boot.js asked for it while this was on its way, taken once; with no answer, asked for here)
+const firstMe = async () => { const p = self.acctMe; self.acctMe = null; return (p && (await p)) || call("me"); };
 async function load() {
   fromGate();
   if (S.signFor?.join && !S.gate) S.gate = "join";
   await fromLink();
-  // (a sign-in handed over by an app: who it's for asked first, and only taken once that's said yes to, as a page
-  // elsewhere could send this browser here with a code of its own; never over a different account's sign-in here)
+  // (a sign-in handed over by an app: who it's for asked first, alongside who's signed in here, and only taken once
+  // that's said yes to, as a page elsewhere could send this browser here with a code of its own; never over a different
+  // account's sign-in here)
   if (HANDOFF) {
     try {
-      const now = await call("me"), who = await post("handoff/who", { code: HANDOFF.code });
+      const [now, who] = await Promise.all([firstMe(), post("handoff/who", { code: HANDOFF.code })]);
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
       else if (now.signedIn) { S.me = now; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
-      else S.handoff = who;
+      else { S.me = now; S.handoff = who; }
     } catch (e) { setTimeout(() => toast(e.message, true), 400); }
   }
-  try { if (!S.me?.signedIn) S.me = await call("me"); S.pulled = Date.now(); }
+  try { if (!S.me) S.me = await firstMe(); S.pulled = Date.now(); }
   catch (e) {
     main.removeAttribute("aria-busy");
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
@@ -499,7 +502,7 @@ function signedIn(r) {
   const open = (id, name) => h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
-      h("button.about", { type: "button", "aria-label": `About ${name}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
+      h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
     id === "inflight" ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": "inflight-settings", onclick: () => openSheet(inflightView) },
       icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
@@ -550,6 +553,8 @@ const placed = (img, f) => { img.style.objectPosition = `${f[0]}% ${f[1]}%`; ret
 // (the card as it was last drawn, and what it showed: the same one put back while none of that's changed, so its photo
 // isn't put in anew each time the page is drawn)
 let card = null;
+// (its buttons each with a data-k, so a sheet one opened gives it the focus back once it closes, even with the card drawn
+// anew meanwhile: the camera and Add a photo the same one, as each becomes the other)
 function posterCard(m) {
   const key = [m.photoAt, m.poster?.at, m.poster?.focus, m.name, m.handle].join("|");
   if (card?.key === key) return card.el;
@@ -560,13 +565,13 @@ function posterCard(m) {
       h("div.pc-photo", { "aria-hidden": "true" }, pic ? placed(photo(posterSrc(m)), focusOf(m))
         : h("span.pc-initial", { text: [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?" })),
       h("div.pc-shade", { "aria-hidden": "true" }),
-      pic ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
-        : h("button.pc-add", { type: "button", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
+      pic ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", "data-k": "photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
+        : h("button.pc-add", { type: "button", "data-k": "photo", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
       h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }), h("div.who", { text: `@${m.handle}` }))),
     h("div.pc-body", {},
       h("div.hero-acts", {},
-        h("button.pill.primary", { type: "button", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
-        h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),
+        h("button.pill.primary", { type: "button", "data-k": "edit-profile", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
+        h("button.pill", { type: "button", "data-k": "your-code", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),
     file);
   card = { key, el };
   return el;
@@ -645,6 +650,9 @@ async function savePhoto(btn, said) {
       const source = PV.file || (m.poster?.at ? await fetch(posterSrc(m), { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : null)) : null);
       if (!source) { S.me = await call("me/poster", { method: "PATCH", body: { focus: { x: f[0], y: f[1] } } }); return; }
       const img = await readImage(source);
+      // (the same photo, what shows of it moved: only the circle sent again, the poster kept as it is, with its new
+      // focus, rather than made again and sent again whole)
+      if (!PV.file) { S.me = await call(`me/photo?at=${m.poster.at}&focus=${f[0]},${f[1]}`, { method: "PUT", body: await asAvatar(img, f), type: "image/jpeg" }); return; }
       const [circle, poster] = await Promise.all([asAvatar(img, f), asPoster(img)]);
       S.me = await call("me/photo", { method: "PUT", body: circle, type: "image/jpeg" });
       S.me = await call(`me/poster?focus=${f[0]},${f[1]}`, { method: "PUT", body: poster, type: "image/jpeg" });
@@ -1551,8 +1559,17 @@ function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong
   // (above an open sheet too: the top layer)
   if (top && !toastEl.matches(":popover-open")) { toastEl.showPopover(); void toastEl.offsetWidth; }
   toastEl.classList.add("on"); toastAt = Date.now();
+  // (a sheet that's up is modal, so the toast, outside it, is seen but never read out: said in the sheet as well, on the
+  // next frame, so the same words again are said again)
+  const at = toastAt, heard = sheetEl.open && !sheetEl.classList.contains("closing") && $("#sheet-say", sheetEl);
+  if (heard) { heard.textContent = ""; requestAnimationFrame(() => { heard.textContent = text; }); }
+  // (a sheet on its way out is still modal, so the toast is too: said again once it's gone, the same words put back)
+  else if (sheetEl.classList.contains("closing")) Sheet.closed?.then(() => {
+    const s = toastAt === at && toastEl.classList.contains("on") && toastEl.querySelector("span");
+    if (s) s.replaceWith(h("span", { text: s.textContent }));
+  });
   clearTimeout(toastT);
-  toastT = setTimeout(() => { toastEl.classList.remove("on"); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, ms);
+  toastT = setTimeout(() => { toastEl.classList.remove("on"); $("#sheet-say", sheetEl)?.replaceChildren(); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, ms);
 }
 // (a sheet opened since: the word put back above it, dropping in again if it had only just started to)
 function toastOnTop() {
@@ -1655,7 +1672,8 @@ function draw(mode) {
   if (body0 && body.querySelector(".adm-wait, [aria-busy='true']")) body.style.minHeight = `${body0.offsetHeight}px`;
   body.classList.add("arriving"); setTimeout(() => body.classList.remove("arriving"), 250);
   const swap = (mode === "push" || mode === "back") && body0 && head0;
-  if (!swap) sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), head, body);
+  // (with somewhere in it for a toast to be read out: toast())
+  if (!swap) sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), head, body, h("p.vh", { id: "sheet-say", role: "status" }));
   else if (still.matches) { head.classList.add("swap"); body.classList.add("swap"); head0.replaceWith(head); body0.replaceWith(body); }
   else {
     const going = [head0, body0].map((el) => ({ el, y: el.offsetTop, h: el.offsetHeight, cs: getComputedStyle(el) })).map((g) => ({ ...g, o: g.cs.opacity, tf: g.cs.transform }));
@@ -2035,7 +2053,7 @@ function passwordView({ then } = {}) {
         if (then) setTimeout(() => openSheet(then), 500);
       } catch (err) { say(said, err.message, err.field === "current" ? cur : nw); }
     } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }),
-      field("Current password", cur), field("New password", nw), meter, hint, field("New password again", again), go),
+      pwField("Current password", cur), pwField("New password", nw), meter, hint, pwField("New password again", again), go),
     said] };
 }
 
@@ -2699,7 +2717,7 @@ function checkView() {
         if (n) { say(said, leakedSay(n).replace("Choose another.", "Change it now.")); change.hidden = false; }
         else { if (Sheet.stack.length > 1) popSheet(); else closeSheet(); toast("Your password isn’t in any known data breach."); }
       } catch (err) { say(said, err.message, pw); }
-    } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Your password", pw), go),
+    } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Your password", pw), go),
     said, change] };
 }
 
@@ -2957,6 +2975,8 @@ function whoBar() {
 }
 
 // ---- glass behind the status bar, once the page has scrolled under it ----
+// (how far, on the bar itself: on the page's root, every part of the page was styled anew at each frame of a scroll)
+const statusEl = $(".status");
 let ticking = false;
 function scrolled() {
   if (ticking) return;
@@ -2964,7 +2984,7 @@ function scrolled() {
   requestAnimationFrame(() => {
     ticking = false;
     const t = Math.min(1, Math.max(0, scrollY / 24));
-    document.documentElement.style.setProperty("--bar", t.toFixed(3));
+    statusEl.style.setProperty("--bar", t.toFixed(3));
     // (your card's photo: a little slower than the page as it scrolls away, and stretched as it's pulled down at the
     // top; held still for Reduce Motion)
     const pc = $("main .poster-card");

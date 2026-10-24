@@ -11,7 +11,7 @@
   --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.56);
   --glass: rgba(34, 40, 66, 0.5); --glass-strong: rgba(28, 33, 56, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
-  --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --danger: #ff6a5f; --good: #4fdc8e; --warn: #ffbd4a;
+  --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --danger: #ff6a5f; --good: #4fdc8e; --good-text: #4fdc8e; --warn: #ffbd4a;
   --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.08), inset 0 0 22px rgba(255, 255, 255, 0.03);
   --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16);
   --blur: blur(28px) saturate(180%);
@@ -48,7 +48,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #945600;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -69,7 +69,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #e5372c; --good: #1f9d55; --warn: #945600;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -94,14 +94,16 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)); }
 /* (each light soft at its edge by its own gradient, eased as a blur would ease it, not by blurring it: a blur of 70px
    redone every frame, as they drift, was the most work anything on the page did, and every pane of glass blurred it
-   again. Measured against the blurred ones, a difference of about 1 in 255.) */
+   again. Measured against the blurred ones, a difference of about 1 in 255. And moved on in small steps, twice a second,
+   as Weather's clouds are: a slow drift looks the same, and the glass over them is blurred afresh twice a second rather
+   than at every frame, the page at rest drawing next to nothing.) */
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; opacity: 0.9; will-change: transform; }
 .a1 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-1) 73%, transparent), color-mix(in srgb, var(--aura-1) 66%, transparent) 20%, color-mix(in srgb, var(--aura-1) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
+  color-mix(in srgb, var(--aura-1) 29%, transparent) 60%, color-mix(in srgb, var(--aura-1) 12%, transparent) 80%, transparent); top: -32vmax; left: -22vmax; animation: drift1 38s steps(76) infinite alternate, aura-in 0.9s ease-out backwards; }
 .a2 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-2) 73%, transparent), color-mix(in srgb, var(--aura-2) 66%, transparent) 20%, color-mix(in srgb, var(--aura-2) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
+  color-mix(in srgb, var(--aura-2) 29%, transparent) 60%, color-mix(in srgb, var(--aura-2) 12%, transparent) 80%, transparent); top: 10vmax; right: -34vmax; animation: drift2 46s steps(92) infinite alternate, aura-in 0.9s ease-out backwards; }
 .a3 { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--aura-3) 73%, transparent), color-mix(in srgb, var(--aura-3) 66%, transparent) 20%, color-mix(in srgb, var(--aura-3) 49%, transparent) 40%,
-  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s ease-in-out infinite alternate, aura-in 0.9s ease-out backwards; }
+  color-mix(in srgb, var(--aura-3) 29%, transparent) 60%, color-mix(in srgb, var(--aura-3) 12%, transparent) 80%, transparent); bottom: -40vmax; left: 4vmax; animation: drift3 54s steps(108) infinite alternate, aura-in 0.9s ease-out backwards; }
 /* (held where they are while a sheet's up over the page) */
 body.sheet-up .aura { animation-play-state: paused; }
 /* dawn, as you're signed in (app.js dawnBreak): a warm light at the foot, the sky's own lights brighter */
@@ -203,7 +205,7 @@ button.row:active, a.row:active { background-color: var(--press); }
 button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .row.action { justify-content: center; min-height: 54px; color: var(--tint-text); font-weight: 500; }
 .row.danger { color: var(--danger); }
-.row .badge { flex: none; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; color: var(--good); background: color-mix(in srgb, var(--good) 16%, transparent); }
+.row .badge { flex: none; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; color: var(--good-text); background: color-mix(in srgb, var(--good) 16%, transparent); }
 
 /* ---- your apps: a tile each ---- */
 .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -409,7 +411,7 @@ dialog.sheet.dragging { transition: none; }
 .meter i { display: block; height: 100%; width: calc(var(--m, 0) * 100%); border-radius: inherit; background: var(--mc, var(--danger)); transition: width 0.45s var(--ease), background-color 0.3s; }
 .hint { margin: -4px 6px 0; font-size: 13px; color: var(--text-3); }
 .hint.bad { color: var(--danger); }
-.hint.ok { color: var(--good); }
+.hint.ok { color: var(--good-text); }
 .empty { padding: 26px 18px; text-align: center; color: var(--text-2); font-size: 15px; }
 .tag { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); margin-left: 6px; vertical-align: 1px; }
 /* (one asking once more, "Sign out?", turns red as it asks, not in a frame; app.js eases its width) */
@@ -745,7 +747,7 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 .adm-alert b { font-size: 16px; font-weight: 600; }
 .adm-alert small { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
 .adm-alert .mini { display: inline-flex; align-items: center; color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
-.adm-ok { display: inline-flex; align-items: center; gap: 5px; color: var(--good); }
+.adm-ok { display: inline-flex; align-items: center; gap: 5px; color: var(--good-text); }
 /* (a row with a + of its own, where its chevron would be: Invites) */
 .row-plus { position: relative; }
 .row-plus > .row { padding-right: 62px; }
@@ -780,7 +782,8 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 /* ---- your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind what's under
    it; your name and handle on it. No photo: your colours and initial. (The photo drifts a little as the page scrolls,
    and stretches as it's pulled down: --drift, --pull, from app.js) ---- */
-.poster-card { display: block; justify-items: stretch; padding: 0; gap: 0; text-align: left; background: var(--pc-base); isolation: isolate; }
+/* (its own colour under it, solid in both looks: no blur of what's behind, which would never be seen) */
+.poster-card { display: block; justify-items: stretch; padding: 0; gap: 0; text-align: left; background: var(--pc-base); isolation: isolate; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .poster-card::after { display: none; }
 .pc-blur { position: absolute; inset: -60px; z-index: -1; pointer-events: none; overflow: hidden; }
 .pc-blur img { width: 100%; height: 100%; object-fit: cover; filter: var(--pc-blur); transform: scale(1.15); }
@@ -798,7 +801,7 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
   color: #fff; background: rgba(20, 22, 40, 0.3); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.15); transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .pc-cam { width: 40px; }
-.pc-add { padding: 0 15px 0 12px; font-size: 15px; font-weight: 600; background: rgba(255, 255, 255, 0.2); }
+.pc-add { padding: 0 15px 0 12px; font-size: 15px; font-weight: 600; }
 .pc-cam:active, .pc-add:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .pc-id { position: absolute; left: 20px; right: 20px; bottom: 14px; }
 .pc-id h2 { margin: 0; font: 800 40px/1.04 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
@@ -824,9 +827,13 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 .pv-circle img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pv-also p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-2); }
 
-/* the small round and pill controls keep their size, and are each a finger's width to tap (44 px) */
-.x, .mini, .sheet-head .link.back { position: relative; }
-.x::after, .mini::after, .sheet-head .link.back::after { content: ""; position: absolute; inset: -6px; }
+/* the small round and pill controls, and the links that are a word or two, keep their size, and are each a finger's
+   width to tap (44 px) */
+.x, .mini, .sheet-head .link, .jhead .back, .signin .link.forgot, .signin .link.usepw, .welcome .new .link { position: relative; }
+.x::after, .mini::after, .sheet-head .link::after, .signin .link.forgot::after, .signin .link.usepw::after { content: ""; position: absolute; inset: -6px; }
+/* (the join step's Back and the links under the card, between signing in, joining and a forgotten password, are a
+   short line of text: more above and below) */
+.jhead .back::after, .welcome .new .link::after { content: ""; position: absolute; inset: -9px -6px; }
 .sheet-head h2:focus { outline: none; }
 
 /* (what the handle checks says: room for two lines, so the fields under it don't move as it changes) */
@@ -856,8 +863,7 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
   .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--pc-pill), white 12%); }
   .poster-card .hero-acts .pill.primary:hover, .btn:not(:disabled):hover, button.adm-alert:hover { filter: brightness(1.06); }
   button.mini:not(.sure):hover, .row-plus .plus:hover { background-color: color-mix(in srgb, currentColor 22%, transparent); }
-  .pc-cam:hover { background-color: rgba(20, 22, 40, 0.45); }
-  .pc-add:hover { background-color: rgba(255, 255, 255, 0.3); }
+  .pc-cam:hover, .pc-add:hover { background-color: rgba(20, 22, 40, 0.45); }
   .link:not(:active):hover { opacity: 0.75; }
   .seg button[aria-checked="false"]:hover { color: var(--text); }
 }

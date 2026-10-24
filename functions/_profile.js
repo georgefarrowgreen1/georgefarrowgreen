@@ -39,8 +39,10 @@ export async function setHandle(env, u, v) {
   catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, `@${handle} is taken.`, "handle"); throw e; }
   return handle;
 }
-// A new photo, from the request's body: → when it was set (the account's avatar_at)
-export async function putPhoto(env, u, request) {
+// A new photo, from the request's body: → when it was set (the account's avatar_at). (keep, "x,y": not a new photo, but
+// the same one's circle cut again by the account's page around another point of it, so its poster's kept, with that
+// as what shows of it)
+export async function putPhoto(env, u, request, keep = null) {
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   await limit(env, "avatar:" + u.id, 20, DAY);
   if (!(Number(request.headers.get("Content-Length")) <= MAX_AVATAR)) throw new HttpError(413, "That picture is too large. Try another one.");
@@ -49,6 +51,10 @@ export async function putPhoto(env, u, request) {
   if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");
   const t = Date.now();
   await env.BIO_R2.put(avatarKey(u.id), bytes, { httpMetadata: { contentType: "image/jpeg" } });
+  if (keep != null && u.poster_at) {
+    await (await db(env)).prepare("UPDATE pg_users SET avatar_at = ?, poster_focus = ? WHERE id = ?").bind(t, cleanFocus(keep), u.id).run();
+    return t;
+  }
   // (a new photo, from any app: the poster of the last one goes; the account's page sends its own after this one)
   if (u.poster_at) await env.BIO_R2.delete(posterKey(u.id));
   await (await db(env)).prepare("UPDATE pg_users SET avatar_at = ?, poster_at = NULL, poster_focus = NULL WHERE id = ?").bind(t, u.id).run();
