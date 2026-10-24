@@ -76,6 +76,8 @@ export async function serveApp(ctx, res, path, chat) {
     if (chat) html = atRoot(html);
     const out = withSecurity(new Response(head ? null : html, res));
     out.headers.delete("content-length"); out.headers.delete("etag");
+    // (Pages' own preload hints name the files unstamped, and at the old address: each would be fetched again, uncached)
+    out.headers.delete("Link");
     out.headers.set("Cache-Control", "no-store");
     // the new address may open the old one's handover page, hidden (pigeon/handover.js)
     if (chat) out.headers.set("Content-Security-Policy", `${SECURITY["Content-Security-Policy"]}; frame-src ${url.protocol}//${url.host.replace(/^chat\./, "")}`);

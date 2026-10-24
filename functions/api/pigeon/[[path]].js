@@ -612,13 +612,10 @@ const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
-let sweptAt = 0;
 async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  // photos past their time are deleted promptly (two indexed look-ups): at most once a minute from this copy of the
-  // server, not on every open app's every sync (the scheduled tick sweeps every few minutes as well)
-  if (t - sweptAt > 60e3) { sweptAt = t; waitUntil(sweepPhotos(env).catch(() => {})); }
+  waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their

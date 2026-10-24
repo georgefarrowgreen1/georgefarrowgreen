@@ -308,6 +308,7 @@ const I = {
   wave: ico(`<path d="M8.5 12.5V6a1.5 1.5 0 0 1 3 0v5.5"/><path d="M11.5 11V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14.5 11V5.8a1.5 1.5 0 0 1 3 0V12"/><path d="M17.5 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.8a6.5 6.5 0 0 1-5.3-2.7l-3.1-4.4a1.5 1.5 0 0 1 2.4-1.8l1.8 2.2"/>`),
   heart: ico(`<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>`),
   reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
+  copy: ico(`<rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
@@ -1788,6 +1789,15 @@ async function forget() {
 /* ---------- the way in: signing in to the georgefarrowgreen.com account ----------
    Accounts are made, and forgotten passwords reset, on the account's own page (account.georgefarrowgreen.com), not
    here: an invite or a reset link that comes here is passed on to it. */
+// a friend's link (#add=handle): kept for a day, so it's still there after the account is made on its own page
+function keepAdd(h) {
+  S.pendingAdd = h;
+  try { if (h) localStorage.setItem("inflight-add", JSON.stringify({ h, at: Date.now() })); else localStorage.removeItem("inflight-add"); } catch (_) {}
+}
+function keptAdd() {
+  try { const k = JSON.parse(localStorage.getItem("inflight-add") || "null"); if (k && /^[a-z0-9_]{3,20}$/.test(k.h) && Date.now() - k.at < DAY) return k.h; localStorage.removeItem("inflight-add"); } catch (_) {}
+  return null;
+}
 const toAccount = (hash = "") => (accountPage() || "https://account.georgefarrowgreen.com/") + hash;
 const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
@@ -1814,13 +1824,21 @@ function nightSky(cv) {
   cancelAnimationFrame(skyLoop); skyOn = cv;
   const g = cv.getContext("2d"), still = STILL.matches, t0 = performance.now();
   const bird = new Path2D(BIRD);
-  let W = 0, H = 0, dpr = 1, stars = [], shoot = null, nextShoot = t0 + 2500;
+  let W = 0, H = 0, dpr = 1, stars = [], shoot = null, nextShoot = t0 + 2500, ground = null, last = 0;
   const seed = (n) => { let x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); };
   const size = () => {
     const w = cv.clientWidth, h = cv.clientHeight; if (w === W && h === H) return;
     W = w; H = h; dpr = Math.min(2, devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr;
     stars = Array.from({ length: Math.round((W * H) / 2600) }, (_, i) => ({ x: seed(i) * W, y: seed(i + 500) * H * 0.92, r: 0.35 + seed(i + 900) ** 3 * 1.5,
       p: seed(i + 1300) * 6.28, s: 0.4 + seed(i + 1700) * 1.4, b: 0.35 + seed(i + 2100) * 0.65 }));
+    // the planet's edge, far below: the same every frame, so drawn once for this size
+    ground = Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
+    const k = ground.getContext("2d"); k.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const R = W * 2.2, py = H + R - H * 0.13;
+    const rim = k.createRadialGradient(W / 2, py, R * 0.985, W / 2, py, R * 1.06);
+    rim.addColorStop(0, "rgba(70,120,255,0)"); rim.addColorStop(0.24, "rgba(90,150,255,.42)"); rim.addColorStop(0.32, "rgba(60,90,220,.14)"); rim.addColorStop(1, "rgba(20,30,90,0)");
+    k.fillStyle = rim; k.beginPath(); k.arc(W / 2, py, R * 1.06, 0, 6.29); k.fill();
+    k.fillStyle = "#020309"; k.beginPath(); k.arc(W / 2, py, R, 0, 6.29); k.fill();
   };
   // the flight: a long arc, left to right, then a rest, then again
   const FLY = 11000, REST = 2600;
@@ -1828,23 +1846,27 @@ function nightSky(cv) {
     const a = (1 - u) ** 2, b = 2 * (1 - u) * u, c = u * u; return [a * ax + b * cx + c * bx, a * ay + b * cy + c * by]; };
   const frame = (now) => {
     if (!cv.isConnected || !document.documentElement.classList.contains("night")) { skyOn = null; return; }
+    // 30 frames a second is plenty for a slow sky; while you type (the keyboard up), fewer still
+    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
+    if (!still && now - last < (typing ? 120 : 31)) { skyLoop = requestAnimationFrame(frame); return; }
+    last = now;
     size();
     const t = now - t0;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    // stars, breathing, drifting very slowly
+    // stars, breathing, drifting very slowly (drawn in a dozen or so batches, by brightness, not one by one)
+    const lit = new Map();
     for (const s of stars) {
-      const tw = still ? s.b : s.b * (0.55 + 0.45 * Math.sin(s.p + (t / 1000) * s.s));
+      const tw = still ? s.b : s.b * (0.55 + 0.45 * Math.sin(s.p + (t / 1000) * s.s)), a = Math.round(tw * 20) / 20;
       const x = (s.x + t * 0.003 * s.r) % W;
-      g.globalAlpha = tw; g.fillStyle = "#dfe8ff"; g.beginPath(); g.arc(x, s.y, s.r, 0, 6.29); g.fill();
+      let path = lit.get(a); if (!path) lit.set(a, (path = new Path2D()));
+      path.moveTo(x + s.r, s.y); path.arc(x, s.y, s.r, 0, 6.29);
     }
+    g.fillStyle = "#dfe8ff";
+    for (const [a, path] of lit) { g.globalAlpha = a; g.fill(path); }
     g.globalAlpha = 1;
     // the planet's edge, far below
-    const R = W * 2.2, py = H + R - H * 0.13;
-    const rim = g.createRadialGradient(W / 2, py, R * 0.985, W / 2, py, R * 1.06);
-    rim.addColorStop(0, "rgba(70,120,255,0)"); rim.addColorStop(0.24, "rgba(90,150,255,.42)"); rim.addColorStop(0.32, "rgba(60,90,220,.14)"); rim.addColorStop(1, "rgba(20,30,90,0)");
-    g.fillStyle = rim; g.beginPath(); g.arc(W / 2, py, R * 1.06, 0, 6.29); g.fill();
-    g.fillStyle = "#020309"; g.beginPath(); g.arc(W / 2, py, R, 0, 6.29); g.fill();
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(ground, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!still) {
       // a shooting star, now and then
       if (!shoot && now > nextShoot) shoot = { x: W * (0.2 + Math.random() * 0.7), y: H * (0.05 + Math.random() * 0.3), at: now, a: 2.5 + Math.random() * 0.5 };
@@ -2053,18 +2075,23 @@ async function sync() {
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
       // nothing new since last time: no redraw, no re-saving (an open app asks every 15 s)
-      const sig = JSON.stringify({ ...d, now: 0 }), same = sig === S.syncSig && S.synced;
-      S.syncSig = sig; S.syncFails = 0; S.lastSync = Date.now();
+      // (a friend's last-seen time moves once a minute while they're about: that alone is taken in quietly, and only
+      // a change of who's online now redraws)
+      const sig = JSON.stringify({ ...d, now: 0 }, (k, v) => (k === "seenAt" ? undefined : v)), same = sig === S.syncSig && S.synced;
+      const onSig = d.friends.map((f) => (isOnline(f) ? f.id : "")).join(), seen = JSON.stringify(d.friends.map((f) => f.seenAt));
+      const onlineMoved = onSig !== S.onSig, seenMoved = seen !== S.seenSig;
+      S.syncSig = sig; S.onSig = onSig; S.seenSig = seen; S.syncFails = 0; S.lastSync = Date.now();
       if (!same) { S.raw = d; await applySync(d); skiesFollow(); }
+      else if (seenMoved) { S.raw = d; for (const f of d.friends) { const o = S.friends.find((x) => x.id === f.id); if (o) o.seenAt = f.seenAt; } }
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
       const wasCache = S.fromCache; S.fromCache = false;
-      if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged)) render();
+      if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged || onlineMoved)) calmRender();
       S.chatChanged = false;
       S.synced = true;                            // from here on, what changes is news
-      if (!same) cacheSave();
+      if (!same || seenMoved) cacheSave();
       if (S.outbox.length) outboxFlush();
     } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; } }
     finally { syncing = null; }
@@ -3047,7 +3074,7 @@ function mount() {
   lockPage();
   setTimeout(() => { pullToRefresh(); tabSwipe(); holdRows(); navGestures(); });
   root().innerHTML = `
-    <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
+    <div class="offline" role="status" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
     <main class="view"></main>
     <form class="compose" hidden data-form="compose">
@@ -3076,7 +3103,7 @@ function mount() {
 
     <div class="layer"></div>
     <div class="poplayer"></div>
-    <div class="toasts"></div>`;
+    <div class="toasts" role="status" aria-live="polite"></div>`;
   $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
   pressFeedback($compose); composeTouch();
   $view.addEventListener("scroll", () => {
@@ -3157,6 +3184,7 @@ function go(view, chat) {
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
   if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
+  if (!same && !S.sheet && !AUTH_VIEWS.has(view)) focusTitle();
   if (backTop != null) { $view.scrollTop = backTop; S.under = null; }   // back where you were
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
   const shown = view === "chat" && chat && (S.msgs.get(chat) || []).length > 0;
@@ -3222,8 +3250,23 @@ function playFresh() {
   for (const [id, at] of S.fresh) if (t - at > 700) S.fresh.delete(id);
   $view.querySelectorAll("[data-fresh]").forEach((el) => { const at = S.fresh.get(el.dataset.fresh); if (at) el.style.animationDelay = `${at - t}ms`; else el.classList.remove("fresh"); });
 }
+// A redraw that news brings (not one you asked for): held while a finger's down or the list is still gliding, so a
+// scroll isn't stopped dead and a button isn't swapped out from under a tap; it follows as soon as that's over.
+let touching = 0, glidedAt = 0, calmWait = null;
+addEventListener("touchstart", () => { touching++; }, { passive: true, capture: true });
+addEventListener("touchend", (e) => { touching = e.touches.length; }, { passive: true, capture: true });
+addEventListener("touchcancel", (e) => { touching = e.touches.length; }, { passive: true, capture: true });
+addEventListener("scroll", () => { glidedAt = performance.now(); }, { passive: true, capture: true });
+function calmRender() {
+  if (calmWait) return;
+  const busy = () => touching > 0 || performance.now() - glidedAt < 180;
+  if (!busy()) return render();
+  const later = () => { if (busy()) { calmWait = setTimeout(later, 120); return; } calmWait = null; render(); };
+  calmWait = setTimeout(later, 120);
+}
 function render() {
   if (!$view) return;
+  if (calmWait) { clearTimeout(calmWait); calmWait = null; }
   clearSwipes();
   const auth = AUTH_VIEWS.has(S.view) || !S.me;
   const chat = !auth && S.view === "chat";
@@ -3253,7 +3296,7 @@ function render() {
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
-  if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
+  if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else if (Math.abs($view.scrollTop - keepTop) > 1) $view.scrollTop = keepTop;     // (left be when it's there already: setting it stops a glide)
   if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
   if (!chat && S.view === "messages") airMount();
@@ -3362,7 +3405,7 @@ function vMessages() {
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
   const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
-      ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
+      ${f.unread ? `<span class="dot" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
         <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span>${g ? "" : streakBadge(f)}<time>${fmtListTime(at)}</time>${chevSm}</span>
@@ -3608,7 +3651,7 @@ function chatSub(f) {
 }
 const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
 /* ---------- pigeons on their way to you, kept small ---------- */
-const flyTrack = (m) => `<span class="ctrack" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></i></span>`;
+const flyTrack = (m) => `<span class="ctrack" aria-hidden="true" data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><i></i><b class="cb"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></b></span>`;
 const inbound = (m) => m.from !== S.me.id && m.flying && !m.lost && !m.stopover;
 // Several on their way at once (a group, or swifts one after another): one card, a row each
 function flyRun(run, g) {
@@ -3646,7 +3689,7 @@ const atTime = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + D
 const atShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : ts - now() < 6 * DAY ? `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}` : `${new Date(ts).getDate()} ${MON[new Date(ts).getMonth()]} ${fmtTime(ts)}`);
 // a duration, roughly: "45m", "2h", "1d 10h"
 const durShort = (ms) => (ms < HOUR ? fmtDur(ms) : ms < DAY ? `${Math.round(ms / HOUR)}h` : fmtDur(ms));
-const airTrack = (m) => `<span class="trk" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}">${I.bird}</i></span>`;
+const airTrack = (m) => `<span class="trk" aria-hidden="true" data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><i></i><b class="cb">${I.bird}</b></span>`;
 function footHtml(m, mine, g) {
   if (mine && m.lost && !g) return `<span class="ft lostft">${I.skull}${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`;
   if (mine && m.flying && !g) return `<span class="ft">${m.waiting ? I.clock : ""}lands ${atTime(m.deliverAt)}</span>`;
@@ -3681,7 +3724,7 @@ function bubble(f, m, gapTop, g) {
   const jumbo = !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
   // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
-  const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
+  const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : "";
   const up = mine && m.flying, foot = footHtml(m, mine, g);
   // in the air (one to one): the way so far, then when it lands
   const tail = up && !g ? `<span class="frow">${m.waiting ? "" : airTrack(m)}${foot}</span>` : foot;
@@ -3710,7 +3753,7 @@ function bubble(f, m, gapTop, g) {
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
     const ar = p.p.w > 0 && p.p.h > 0 ? ` data-ar="${Math.max(0.4, Math.min(2.5, p.p.w / p.p.h)).toFixed(4)}"` : "";
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
+    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}" role="button" tabindex="0">`;
     else photo = `<div class="ph"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
     html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
@@ -4371,7 +4414,9 @@ function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
   const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
   const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
+  const words = m && S.plain.get(id)?.t;
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
+    ...(typeof words === "string" && words.trim() ? [{ label: "Copy", icon: I.copy, act: "copymsg", id }] : []),
     ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])]);
   if (m) {
     const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
@@ -4655,6 +4700,7 @@ function vAuth() {
     case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
         <div class="wtop">
           <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+          ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
     // (as on every page of the site that signs in: a passkey first, then your email and password)
@@ -4994,7 +5040,7 @@ async function addGo(h, btn) {
   btn?.classList.remove("pulsing");
   const ok = r && /^Request sent|joined/.test(r.message);
   if (ok) {
-    S.pendingAdd = null;
+    keepAdd(null);
     if (b) { b.classList.remove("sending"); b.classList.add("sent"); b.innerHTML = I.check; b.setAttribute("aria-label", "Sent"); }
     haptic("success");
     const sub = row?.querySelector(".csub"); if (sub) sub.textContent = /joined/.test(r.message) ? "You’re friends now" : "Request sent";
@@ -5064,8 +5110,24 @@ function keepGlides(el, before) {
 // slides it away. Redrawing an open sheet doesn't replay its entrance, and a
 // switch that changed still glides across.
 let shownSheet = null;
+// Focus, for anyone moving through the app by keyboard or VoiceOver: a new screen starts at its title, and a sheet
+// that closes hands focus back to the row or button it was opened from (or, that gone, the screen's title)
+let lastTap = null, sheetFrom = null;
+function focusTitle() {
+  const h = $view && $(".navbar .nb-title, h1, h2", $view); if (!h) return;
+  if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1");
+  try { h.focus({ preventScroll: true }); } catch (_) {}
+}
+function focusBack(from) {
+  const a = document.activeElement; if (a && a !== document.body && !$layer.contains(a)) return;     // (somewhere already)
+  const sel = from && `[data-act="${CSS.escape(from.act)}"]${from.id ? `[data-id="${CSS.escape(from.id)}"]` : ""}`;
+  const b = sel && ($(sel, $view) || $(sel, $tabbar));
+  if (b) { try { b.focus({ preventScroll: true }); } catch (_) {} } else focusTitle();
+}
 function renderSheet(refresh) {
   if (S.scan && S.sheet?.type !== "scan") stopScan();
+  if (S.sheet && !shownSheet && !sheetFrom) sheetFrom = lastTap;
+  if (!S.sheet && shownSheet) { const f = sheetFrom; sheetFrom = null; setTimeout(() => { if (!S.sheet) focusBack(f); }, 340); }
   if (S.sheet?.type !== "lookup" && (look.on || look.stream || look.camPending || look.watch != null)) lookStop();
   // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
@@ -5596,7 +5658,7 @@ function drawSheet(refresh) {
               <b>@${esc(S.me.handle)}</b><span>A friend can scan this with their phone’s camera to add you.</span>
               <div class="row2"><button type="button" class="btn small" data-act="share">${I.up}Share Link</button><button type="button" class="btn small gray" data-act="copylink">Copy Link</button></div></div>`,
           { left: { label: "Cancel", act: "close" }, right: { label: "Send", form: "add-form" } });
-        const i = $("#add-h", $layer); i.value = S.pendingAdd || ""; if (i.value) addLookup(); setTimeout(() => i.focus(), 300);
+        const i = $("#add-h", $layer); i.value = S.pendingAdd || ""; if (i.value) { addLookup(); try { localStorage.removeItem("inflight-add"); } catch (_) {} }   // (shown, signed in: not again next launch) setTimeout(() => i.focus(), 300);
       }
       // requests, kept here too (they change as you accept, decline or cancel)
       { const rq = $(".addreqs", $layer), row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
@@ -6886,8 +6948,10 @@ function smoothMap(m) {
     mapAnim = requestAnimationFrame(step);   // just the wings
   });
 }
+// (as a share, --f, that the bar and its pigeon are moved by: transforms only, so the second-by-second glide doesn't lay
+// the page out again every frame)
 function setProgress(el) {
-  el.querySelectorAll("i[data-from]").forEach((e) => { const a = +e.dataset.from, b = +e.dataset.to; e.style.width = (Math.min(1, Math.max(0, (now() - a) / (b - a))) * 100).toFixed(1) + "%"; });
+  el.querySelectorAll(".ctrack[data-from], .trk[data-from]").forEach((e) => { const a = +e.dataset.from, b = +e.dataset.to; e.style.setProperty("--f", Math.min(1, Math.max(0, (now() - a) / (b - a))).toFixed(4)); });
 }
 function live() {
   if (document.hidden) return;                       // nothing to see: nothing to redraw
@@ -6934,7 +6998,7 @@ function closePop() {
 let toastTimer = 0;
 function toast(html, btn, fn) {
   if (!$toast || S.locked) return;                 // nothing shows over the lock
-  $toast.innerHTML = `<div class="toast" role="status"><span class="ticon">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
+  $toast.innerHTML = `<div class="toast"><span class="ticon" aria-hidden="true">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
   S.toastFn = fn;
   clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 5000);
 }
@@ -6966,6 +7030,7 @@ const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
   if (!t) return;
+  if (!t.closest(".layer, .poplayer")) lastTap = { act: t.dataset.act, id: t.dataset.id };     // (what a sheet opened from it gives focus back to)
   if (ONCE_ACTS.has(t.dataset.act)) {
     const key = `${t.dataset.act}:${t.dataset.id || ""}`;
     if (acting.has(key)) return;
@@ -7176,6 +7241,11 @@ async function onClick1(e, t) {
       renderCompose(); $ta.focus(); return;
     }
     case "unreply": S.replyTo = null; return renderCompose();
+    case "copymsg": {     // (the words are copied, not the page: copying is otherwise kept to the fields)
+      const t = S.plain.get(id)?.t; if (typeof t !== "string" || !t) return;
+      try { await navigator.clipboard.writeText(t); haptic("tick"); toast("Copied."); } catch (_) { toast("Couldn’t copy that here."); }
+      return;
+    }
     case "searchopen": {
       const mid = t.dataset.m; S.q = ""; go("chat", id);
       const jump = () => { const el = $(`[data-mid="${CSS.escape(mid)}"]`, $view); if (!el) return false; S.stick = false; el.scrollIntoView({ block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return true; };
@@ -8155,7 +8225,7 @@ async function send() {
 }
 // Drawn buttons (a passport's stamps: SVG, not <button>) answer Enter and Space too; the passport turns with the arrow keys
 document.addEventListener("keydown", (e) => {
-  if ((e.key === "Enter" || e.key === " ") && e.target instanceof SVGElement && e.target.getAttribute("role") === "button" && e.target.dataset.act) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); return; }
+  if ((e.key === "Enter" || e.key === " ") && !(e.target instanceof HTMLButtonElement) && e.target.getAttribute("role") === "button" && e.target.dataset?.act) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); return; }
   if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && S.sheet?.type === "passport" && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
     const book = $(".ppbook", $layer); if (book) { e.preventDefault(); book.scrollBy({ left: (e.key === "ArrowRight" ? 1 : -1) * book.clientWidth, behavior: STILL.matches ? "auto" : "smooth" }); }
   }
@@ -8402,7 +8472,8 @@ async function start() {
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
-  if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
+  if (m) { keepAdd(m[1].toLowerCase()); history.replaceState(null, "", location.pathname); }
+  else S.pendingAdd = keptAdd();                 // (a friend's link from before, still to use: making the account on its page in between)
   // a confirm-your-email link: works signed in or not, on any phone
   const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (cf) { history.replaceState(null, "", location.pathname); confirmEmail(cf[1]); }
@@ -8410,7 +8481,14 @@ async function start() {
   const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (away) return location.replace(toAccount(`#${away[1]}=${away[2]}`));
   if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
-  await moveIn();
+  // the old address asked for what it kept: signed in here already, that's only clearing it, done alongside; signed out,
+  // the welcome is up while it's asked (what it hands over, a sign-in, is taken up below)
+  if ((await idb.get("session"))?.token) moveIn().catch(() => {});
+  else {
+    let fresh = false; try { fresh = !!OLD_HOME && !localStorage.getItem("inflight-movedin"); } catch (_) {}
+    if (fresh) { S.view = "welcome"; render(); }
+    await moveIn().catch(() => {});
+  }
   const saved = await idb.get("session");
   if (saved?.token && saved.priv) {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
@@ -8442,7 +8520,7 @@ async function start() {
       refreshPush(); autoLocate(); movedNote();
     } catch (e) { console.error("start", e); }
     }
-  } else { go("welcome"); movedNote(); resumeCheck(); }
+  } else { if (S.view !== "welcome") go("welcome"); movedNote(); resumeCheck(); }
   // an add-a-friend link opened while InFlight is already open in this tab (an invite or a reset link: passed on)
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
@@ -8453,7 +8531,7 @@ async function start() {
     const a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
     if (!a) return;
     history.replaceState(null, "", location.pathname);
-    S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); }
+    keepAdd(a[1].toLowerCase()); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); }
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   // every 15 s while open; after failures, less often (up to every 2 minutes) until one works
