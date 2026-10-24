@@ -14,7 +14,7 @@
 //   dayScore(day)               how nice a day looks, 0 to 100
 //   changes(prev, wx, now, f)   what's changed in the forecast since you last looked
 
-import { codeInfo, rank, isWetCode } from "./codes.js";
+import { codeInfo, rank, isWetCode, heaviness } from "./codes.js";
 import { HOUR, DAY, dayStart, keyOf, hourOf, compassWord } from "./format.js";
 import { climateOn, rankIn, extremes } from "./climate.js";
 import { skyDay, moonAt, offsetFor } from "./sky.js";
@@ -301,7 +301,7 @@ export function nowcast(wx, now, f) {
   const nowWet = wet(m[0]) || (wx.current?.precip ?? 0) > 0.05 && wet(m[1] || {});
   const peak = Math.max(...m.map((x) => (x.precip ?? 0) * 4));
   if (!nowWet && !m.some(wet)) return null;
-  const strength = peak >= T.HEAVY_MMH ? "heavy " : peak < 0.6 ? "light " : "";
+  const strength = ["light ", "", "heavy "][heaviness(peak) - 1];
   const snow = m.some((x) => codeInfo(x.code).kind === "snow");
   const what = snow ? "snow" : `${strength}rain`, span = m.length * 15;
   const mins = (t) => Math.max(0, Math.round((t - now) / 60e3 / 5) * 5);

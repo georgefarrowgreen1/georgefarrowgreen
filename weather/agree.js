@@ -10,15 +10,13 @@
 // Pure: no page, no network.
 
 import { rainChance } from "./insights.js";
-import { isWetCode } from "./codes.js";
+import { isWetCode, wetAt } from "./codes.js";
 import { HOUR, DAY } from "./format.js";
 
 const QUARTER = 15 * 60e3;
-// a rate's weather, as the radar's are (rainmap.js blend)
-const rate = (mmh, snow) => (snow ? (mmh < 1 ? 71 : mmh < 4 ? 73 : 75) : mmh < 2.5 ? 61 : mmh < 7.6 ? 63 : 65);
 const SNOW = new Set([71, 73, 75, 77, 85, 86]);
-// a quarter hour's weather, wet: its own, or by its rate
-const wetCode = (q) => (isWetCode(q.code) ? q.code : rate((q.precip || 0) * 4, SNOW.has(q.code)));
+// a quarter hour's weather, wet: its kind of weather (as given: kind, else its own), as heavy as its rate (codes.js)
+const wetCode = (q, kind = q.code) => wetAt(isWetCode(kind) ? kind : q.code, (q.precip || 0) * 4, SNOW.has(q.code));
 
 export function oneRain(wx, now) {
   if (!wx?.hourly?.length) return wx;
@@ -44,7 +42,8 @@ export function oneRain(wx, now) {
       const precip = Math.round(mine.reduce((a, q) => a + (q.precip || 0), 0) * 100) / 100;
       const led = mine.reduce((a, q) => a + (q.radar || 0), 0) / 4, wettest = mine.reduce((a, q) => ((q.precip || 0) > (a.precip || 0) ? q : a));
       const snow = mine.some((q) => SNOW.has(q.code));
-      const code = precip >= 0.1 ? (isWetCode(wettest.code) ? wettest.code : isWetCode(h.code) ? h.code : rate(precip, snow)) : isWetCode(h.code) ? (led >= 0.5 ? 3 : h.code) : h.code;
+      // (wet: the kind of weather the quarters or the hour have it as, as heavy as the hour's rain)
+      const code = precip >= 0.1 ? wetAt(isWetCode(wettest.code) ? wettest.code : h.code, precip, snow) : isWetCode(h.code) ? (led >= 0.5 ? 3 : h.code) : h.code;
       if (!led) return { ...h, precip, code };
       // (where the radar leads: its say on whether it rains, as far as it leads)
       const seen = precip >= 0.2 ? 95 : precip >= 0.05 ? 60 : 3;
@@ -52,13 +51,14 @@ export function oneRain(wx, now) {
     });
   }
   // now: raining as the next four hours say (insights.js nowcast: this quarter hour wet, or the next one with rain
-  // falling now), else not, so the top of the page says what the card under it does
+  // falling now), and as heavily (its kind of weather the forecast's, if it has it wet), else not, so the top of the page
+  // says what the card under it does: not "Light Rain" over a card reading 1.2 mm an hour, moderate
   let current = wx.current;
   const left = qs.filter((q) => q.t + QUARTER > now);
   if (current && left.length >= 4) {
     const wet = (q) => (q?.precip || 0) >= 0.05, raining = wet(left[0]) || ((current.precip || 0) > 0.05 && wet(left[1]));
-    if (raining && !isWetCode(current.code)) current = { ...current, code: wetCode(wet(left[0]) ? left[0] : left[1]) };
-    else if (!raining && isWetCode(current.code)) current = { ...current, code: (current.cloud ?? 100) >= 70 ? 3 : 2 };
+    if (raining) current = { ...current, code: wetCode(wet(left[0]) ? left[0] : left[1], current.code) };
+    else if (isWetCode(current.code)) current = { ...current, code: (current.cloud ?? 100) >= 70 ? 3 : 2 };
   }
   const told = { ...wx, hourly, current };
   // each day: the chance of rain at some point in it (today's from now)

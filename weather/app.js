@@ -2,7 +2,7 @@
 import { load, due, searchPlaces, nameOf, store, peek, cell } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
-import { codeInfo, iconOf, label } from "./codes.js";
+import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
 import { weatherIcon, moonIcon, glyph } from "./icons.js";
 import { timeChart, rangeChart } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
@@ -868,16 +868,17 @@ function nowcast(wx, now, { fresh = false, tick = false } = {}) {
   // or its keys: that would take the reading away)
   const host = $("nowcast-chart");
   if (tick && host.matches(":hover, :focus-within")) return;
-  // on the scale it's felt: light, moderate, heavy (under 0.6 mm an hour, to 4, over), so it needs no units
-  // (a square root within light, so drizzle still shows; the amounts are in the readout)
-  const band = (mmh) => (mmh <= 0 ? 0 : mmh < 0.6 ? Math.sqrt(mmh / 0.6) : mmh < 4 ? 1 + Math.log(mmh / 0.6) / Math.log(4 / 0.6) : Math.min(3, 2 + Math.log(mmh / 4) / Math.log(4)));
+  // on the scale it's felt: light, moderate, heavy (codes.js heaviness: the same as the weather now says), so it needs
+  // no units (a square root within light, so drizzle still shows; the amounts are in the readout)
+  const L = LIGHT_MMH, H = HEAVY_MMH;
+  const band = (mmh) => (mmh <= 0 ? 0 : mmh < L ? Math.sqrt(mmh / L) : mmh < H ? 1 + Math.log(mmh / L) / Math.log(H / L) : Math.min(3, 2 + Math.log(mmh / H) / Math.log(4)));
   timeChart(host, {
     kind: "columns", height: 120, color: COLOR.rain, key: cell(wx.place.lat, wx.place.lon),
     points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip, radar: led(x) })),
     y: { min: 0, max: 3, ticks: [1, 2, 3], fmt: (v) => ["", "Light", "Moderate", "Heavy"][v], inside: true },
     x: { step: 15 * 60e3, hour: (t) => f.time(t) },
     now, summary: `Rain, every 15 minutes for the next 4 hours, on a scale of light, moderate and heavy. ${nc.text}`,
-    tip: (p) => ({ title: p.radar ? `${f.time(p.t)} · radar` : f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? (p.mm * 4 >= 4 ? "heavy" : p.mm * 4 >= 0.6 ? "moderate" : "light") : "dry"]] }),
+    tip: (p) => ({ title: p.radar ? `${f.time(p.t)} · radar` : f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? ["light", "moderate", "heavy"][heaviness(p.mm * 4) - 1] : "dry"]] }),
     table: { head: ["Time", "Rain"], rows: m.map((x) => [f.time(x.t), f.rate(x.precip * 4)]) },
   });
 }

@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dbzOf, mmhOf, rgbaFor, hexFor, shade, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette, gridAt, rainSaid } from "../../../weather/rainmap.js";
+import { heaviness } from "../../../weather/codes.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -175,7 +176,7 @@ test("the next hours' rain: the radar's for the first half hour, giving way to t
   assert.ok(out[1].precip === 0 && out[2].precip < 0.05 && out[1].code === 3 && out[1].radar === 1, "the models' shower: not what the radar sees");
   // an hour on (its middle 67.5 minutes after the frame): the radar's 2 mm an hour, with a little over half the say
   const s4 = 1 - (67.5 - 30) / 90;
-  assert.ok(Math.abs(out[4].radar - s4) < 1e-9 && Math.abs(out[4].precip - Math.round(s4 * 0.5 * 100) / 100) < 1e-9 && out[4].code === 61, `the radar's rain, an hour on: ${JSON.stringify(out[4])}`);
+  assert.ok(Math.abs(out[4].radar - s4) < 1e-9 && Math.abs(out[4].precip - Math.round(s4 * 0.5 * 100) / 100) < 1e-9 && out[4].code === [61, 63, 65][heaviness(out[4].precip * 4) - 1], `the radar's rain, an hour on, as heavy as it falls: ${JSON.stringify(out[4])}`);
   // 1h37 on: 2 mm an hour from the radar and none from the models, about evenly
   const mid = out[6], share = 1 - (97.5 - 30) / 90;
   assert.ok(Math.abs(mid.radar - share) < 1e-9 && Math.abs(mid.precip - Math.round(share * 0.5 * 100) / 100) < 1e-9, JSON.stringify(mid));

@@ -263,7 +263,8 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
 {
   const sum = await p.evaluate(() => { const b = document.querySelector('#alerts .warn-sum'); return b && { title: b.querySelector('.ins-open').textContent, line: b.querySelector('p').textContent,
     open: b.querySelector('.ins-open').getAttribute('aria-expanded'), hidden: document.getElementById('warn-all').hidden, first: document.getElementById('alerts').previousElementSibling?.matches('script, .hero') }; });
-  ok(sum && sum.title === '4 warnings' && /^Amber thunderstorm, Yellow rain, Gales, (Frost|Icy patches)$/.test(sum.line) && sum.open === 'false' && sum.hidden && sum.first,
+  // (the official ones first, worst first; the app's own after, in either order)
+  ok(sum && sum.title === '4 warnings' && /^Amber thunderstorm, Yellow rain, (Gales, (Frost|Icy patches)|(Frost|Icy patches), Gales)$/.test(sum.line) && sum.open === 'false' && sum.hidden && sum.first,
     'several warnings: one banner under the temperature, saying what they are, worst first', JSON.stringify(sum));
   await p.locator('#alerts .warn-sum .ins-open').click();
   await p.waitForTimeout(400);

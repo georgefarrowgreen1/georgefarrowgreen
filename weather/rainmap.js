@@ -6,7 +6,7 @@
 // made from, painting a frame of them, and the timeline of frames; and the rain
 // at a place over the next two hours from the radar, with the models' after it.
 
-import { isWetCode } from "./codes.js";
+import { isWetCode, wetAt } from "./codes.js";
 
 // Universal Blue: rain every 2 dBZ from -10 to 66, snow every 5 (hex RGBA)
 const RAIN = "-10:63615914,-8:69665c1e,-6:6f6b5f29,-4:75706234,-2:7c75653e,0:827b6949,2:88806c54,4:8e856f5e,6:9e93756e,8:b6a97e82,10:cec08796,12:d6c88faa,14:ded097be,16:6cd1ebff,18:36bae5ff,20:00a3e0ff,22:0091caff,24:007fb4ff,26:0070a3ff,28:006295ff,30:005588ff,32:004e78ff,34:004768ff,36:ffe000ff,38:ffc500ff,40:ffaa00ff,42:ff9500ff,44:ff8100ff,46:f23600ff,48:d91b00ff,50:c10000ff,52:8f0000ff,54:5d0000ff,56:ff9fffff,58:ff8bffff,60:ff77ffff,62:ff62ffff,64:ff4effff,66:ffffffff";
@@ -512,7 +512,6 @@ export function along(codes, cover, w, drift, from = 0, until = 120, step = 5) {
 // Each quarter it had a say in carries `radar`, its share
 export function blend(minutely, steps, at, offset = 0) {
   if (!steps?.length || !minutely?.length) return minutely;
-  const rate = (mmh, snow) => (snow ? (mmh < 1 ? 71 : mmh < 4 ? 73 : 75) : mmh < 2.5 ? 61 : mmh < 7.6 ? 63 : 65);
   return minutely.map((q) => {
     const lead = (q.t - offset * 1000 - at) / 60e3 + 7.5, near = steps.filter((s) => Math.abs(s.lead - lead) <= 7.5);
     if (!near.length) return q;
@@ -520,8 +519,9 @@ export function blend(minutely, steps, at, offset = 0) {
     if (!share) return q;
     const mmh = near.reduce((a, s) => a + s.mmh, 0) / near.length, snow = near.some((s) => s.snow);
     const precip = Math.round((share * (mmh / 4) + (1 - share) * (q.precip ?? 0)) * 100) / 100;
-    // (its weather: the models' where they say it's wet too, else the radar's rain or snow; dry, not the models' rain)
-    const code = precip >= 0.05 ? (isWetCode(q.code) ? q.code : rate(precip * 4, snow)) : isWetCode(q.code) && share >= 0.5 ? 3 : q.code;
+    // (its weather: the kind the models have it as where they say it's wet too, else the radar's rain or snow, as heavy
+    // as it's falling (codes.js); dry, not the models' rain)
+    const code = precip >= 0.05 ? wetAt(q.code, precip * 4, snow) : isWetCode(q.code) && share >= 0.5 ? 3 : q.code;
     return { ...q, precip, code, radar: share };
   });
 }

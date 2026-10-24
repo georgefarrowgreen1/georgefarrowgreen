@@ -401,7 +401,11 @@ so there's nothing to set up beyond the address.
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
   long it lasts and how heavy, charted as light, moderate or heavy (those words in a margin of their own at
   the chart's end, so no column runs under them; the amounts are in the readout
-  as you touch it). Where there's radar (RainViewer's
+  as you touch it). One scale for how heavy, near enough the Met Office's: light
+  under 0.6 mm an hour, moderate to 4, heavy beyond (`codes.js` heaviness), so the
+  weather now at the top says the same as the chart ("Rain", not "Light Rain",
+  over 1.2 mm an hour), in the kind the forecast has it (rain, showers, drizzle
+  while it's light, snow). Where there's radar (RainViewer's
   coverage), the radar leads: the rain on it carried along its own track and
   read over a circle about the place that widens the further ahead (about 2 km
   across now, 20 km two hours on), the radar's alone for the first half hour,

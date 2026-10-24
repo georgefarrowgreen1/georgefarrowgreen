@@ -46,3 +46,20 @@ const RANK = { clear: 0, partly: 1, cloudy: 2, fog: 3, drizzle: 4, showers: 5, r
 export const rank = (code) => RANK[codeInfo(code).kind] ?? 2;
 export const isWetCode = (code) => codeInfo(code).wet > 0;
 export const isSnowCode = (code) => codeInfo(code).kind === "snow";
+
+// How heavy rain is, by how fast it's falling, as it's felt (and near enough as the Met Office has it): light under
+// 0.6 mm an hour, moderate to 4, heavy beyond (snow, by its water: light under 1, moderate to 4). One scale for the page:
+// the next four hours' chart and what it says, and the weather now and the hours ahead when they're from a rate
+export const LIGHT_MMH = 0.6, HEAVY_MMH = 4;
+export const heaviness = (mmh) => (mmh >= HEAVY_MMH ? 3 : mmh >= LIGHT_MMH ? 2 : 1);
+// The weather for something wet falling at a rate (mm an hour), in the kind of weather it is (code: showers stay showers,
+// snow snow, drizzle drizzle while it's light; dry, it's rain, or snow): light, moderate or heavy by the rate. A
+// thunderstorm, or freezing rain, as it is
+export function wetAt(code, mmh, snow = false) {
+  const { kind, wet } = codeInfo(code), k = heaviness(mmh);
+  if (kind === "storm" || kind === "sleet") return code;
+  if (kind === "snow" || (!wet && snow)) return code === 85 || code === 86 ? (mmh < 1 ? 85 : 86) : mmh < 1 ? 71 : mmh < HEAVY_MMH ? 73 : 75;
+  if (kind === "showers") return [80, 81, 82][k - 1];
+  if (kind === "drizzle" && k === 1) return code;
+  return [61, 63, 65][k - 1];
+}
