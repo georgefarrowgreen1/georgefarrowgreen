@@ -480,6 +480,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
 .brief b { font-weight: 650; color: #fff; }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1.4em; }
+/* (and no room kept for it while it says nothing: the brief and what's under it, a warning, closer) */
+.status:empty { margin: 0; min-height: 0; }
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */
