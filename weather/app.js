@@ -2875,13 +2875,26 @@ function openSheet(d) {
     d.style.setProperty("--in-t", cs.transform); d.style.setProperty("--in-o", cs.opacity); d.style.setProperty("--dim-o", getComputedStyle(d, "::backdrop").opacity);
   } else for (const k of ["--in-t", "--in-o", "--dim-o"]) d.style.removeProperty(k);
   d.classList.remove("closing"); d.style.transform = "";
-  if (!d.open) d.showModal();
+  // (a test: opened as an ordinary pop-up, not a modal one, its dim our own (styles.css .dimmer), to see whether Safari
+  // then shows the page under its bar with a sheet up)
+  if (!d.open) d.show();
+  dimmer();
   // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
   d.querySelector(".sheet-head h2")?.focus({ preventScroll: true });
 }
 // Closing: it slides away (styles.css) from wherever it is, still rising or where a finger's left it, and it's closed
 // once its own slide is over (not the end of anything moving inside it: a day's parts still rising, a chart drawing in).
 // → a promise, kept once it's gone (never, if it's opened again meanwhile)
+function dimmer() {
+  let el = document.querySelector(".dimmer");
+  if (!el) {
+    el = document.createElement("div"); el.className = "dimmer"; el.setAttribute("aria-hidden", "true");
+    el.addEventListener("click", () => { const open = [...document.querySelectorAll("dialog.sheet[open]")].pop(); if (open) closeSheet(open); });
+    document.body.append(el);
+    addEventListener("keydown", (e) => { if (e.key !== "Escape") return; const open = [...document.querySelectorAll("dialog.sheet[open]")].pop(); if (open) { e.preventDefault(); closeSheet(open); } });
+  }
+  return el;
+}
 function closeSheet(d) {
   if (!d.open) return Promise.resolve();
   if (d.classList.contains("closing")) return d._gone;

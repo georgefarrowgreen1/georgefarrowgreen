@@ -1897,3 +1897,12 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   dialog.sheet::backdrop { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
   dialog.sheet { margin-bottom: 120px; max-height: calc(86svh - 112px); }
 }
+
+/* (a test: sheets as ordinary pop-ups, at the foot, over all; their dim our own, ending above Safari's bar on a phone) */
+dialog.sheet { inset: 0; z-index: 90; }
+.dimmer { position: fixed; z-index: 89; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.38); opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-sheet-out) var(--glide); }
+body.sheet-up .dimmer { opacity: 1; pointer-events: auto; transition-duration: var(--dur-sheet-in); }
+@media (hover: none) and (display-mode: browser) {
+  .dimmer { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+}
