@@ -65,9 +65,13 @@ async function browser(name, { push = false } = {}) {
 }
 const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await x.p.goto(`${WX}/${q ? `?${q}` : ''}`); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
 // (open already, as it is just after signing out from it: brought back to its first page, not opened again behind itself)
+// (just back from signing in, Weather opens Settings itself a moment later: a click that meets it closes it and tries again)
 const settings = async (x) => {
-  if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
-  await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
+  for (let i = 0; i < 3; i++) {
+    if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
+    if (await x.p.click('#settings-btn', { timeout: 5000 }).then(() => true, () => false)) break;
+  }
+  await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
 };
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
