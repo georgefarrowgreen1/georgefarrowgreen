@@ -797,8 +797,8 @@ so there's nothing to set up beyond the address.
   rest likewise wait, in a different order each time). Each connection can only ask the
   API so often. Each device's notifications are a row a place
   (`functions/_wxpush.js`: wx_devs, the device; wx_subs, its places, each with
-  what's been told there), at most 12 places a device; an app from before (one
-  place) is still understood.
+  what's been told there), at most 12 places a device (Settings says so at a 13th, rather than keep one the server
+  would refuse); an app from before (one place) is still understood.
 - **The rain in words**, for a screen reader: the radar map's description is the
   rain about the place from the latest radar, "Light rain about 25 km to the west,
   moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate

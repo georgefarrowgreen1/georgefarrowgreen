@@ -89,7 +89,8 @@ function notifyOf(n) {
   // (signed in: the warnings and the briefing by email too)
   const email = { warn: !!n.email?.warn, brief: !!n.email?.brief };
   if (!Array.isArray(n.places)) { const p = spot(n.place); return { places: p && (n.rain || n.warn) ? [{ ...p, rain: !!n.rain, warn: !!n.warn }] : [], brief: p && n.brief ? p : null, briefAt: at, email, ...keep }; }
-  const places = n.places.map((x) => { const p = spot(x); return p && (x.rain || x.warn) ? { ...p, rain: !!x.rain, warn: !!x.warn } : null; }).filter(Boolean);
+  // (no more than the server takes: a device that has more already, or a merge with the account's, keeps the first)
+  const places = n.places.map((x) => { const p = spot(x); return p && (x.rain || x.warn) ? { ...p, rain: !!x.rain, warn: !!x.warn } : null; }).filter(Boolean).slice(0, A.MAX_NOTIFY);
   return { places, brief: n.brief && typeof n.brief === "object" ? spot(n.brief) : null, briefAt: at, email, ...keep };
 }
 // (kept, and signed in, sent to the account soon after: inStepSoon)
@@ -2229,7 +2230,8 @@ async function syncNow() {
   let r;
   try {
     r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
-      units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+      // (signed out here, though the browser may have the site's sign-in: this device's own choices, not the account's)
+      account: !!S.acct, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
   } catch (e) {
     // (not told, offline, say, or the server busy: out of step, so it's told again the next time the app's opened or
     // back online, keepNotify, not a week on)

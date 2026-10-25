@@ -2,10 +2,10 @@
 // notifications together (weather/account.js), and what's kept made safe (functions/_wxacct.js, _wxpush.js wantOf).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergePlaces, mergeNotify, mergeSettings, notifyChanges, keyOf, nkeyOf } from "../../../weather/account.js";
+import { mergePlaces, mergeNotify, mergeSettings, notifyChanges, keyOf, nkeyOf, MAX_NOTIFY } from "../../../weather/account.js";
 import { cookieToken, withCookie, withoutSession } from "../../../functions/_account.js";
 import { cleanData } from "../../../functions/_wxacct.js";
-import { wantOf, mailWant } from "../../../functions/_wxpush.js";
+import { wantOf, mailWant, MAX_PLACES } from "../../../functions/_wxpush.js";
 
 const P = (name, lat, lon) => ({ name, region: "", lat, lon });
 const london = P("London", 51.5072, -0.1276), leeds = P("Leeds", 53.8, -1.55), york = P("York", 53.96, -1.08), bath = P("Bath", 51.38, -2.36);
@@ -104,4 +104,9 @@ test("the site's sign-in, as a cookie: the whole site's where the address is the
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `x=1; __Secure-account=${"a".repeat(43)}`), {}), "a".repeat(43));
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `account=${"a".repeat(43)}`), {}), null);
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `__Secure-account=bad"value`), {}), null);
+});
+
+test("the app turns notifications on for no more places than the server takes", () => {
+  // (one more would be refused on every save after, the account's places and settings with it)
+  assert.equal(MAX_NOTIFY, MAX_PLACES);
 });

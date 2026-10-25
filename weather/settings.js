@@ -238,6 +238,8 @@ async function notifyChanged(note = "") {
 async function togglePlace(p, k) {
   const n = S.settings.notify, key = nkey(p), e = n.places.find((x) => nkey(x) === key), on = !e?.[k];
   let note = "";
+  // (a place more than the server takes isn't added: it'd refuse every save after, and the account's with it)
+  if (on && !e && n.places.length >= A.MAX_NOTIFY) { notifySay(`Notifications can be on for ${A.MAX_NOTIFY} places at most. Turn one off first.`); return; }
   if (on) { const [go, said] = await allowed(); if (!go) { notifySay(said); return; } note = said; }
   if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
   n.places = n.places.filter((x) => x.rain || x.warn);

@@ -40,6 +40,8 @@ export async function signInWord() {
 export const handback = (code, verifier) => call("handback", { method: "POST", body: { code, verifier } });
 
 // ---- in step ----
+// The most places notifications can be on for: the server's MAX_PLACES (functions/_wxpush.js), which refuses more
+export const MAX_NOTIFY = 12;
 // A place's key: two decimal places (about a kilometre), as the app tells places apart when it saves them
 export const keyOf = (p) => `${Number(p.lat).toFixed(2)},${Number(p.lon).toFixed(2)}`;
 // The saved places, kept here and kept with the account, put together: the account's (in its order) less any this
