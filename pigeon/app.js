@@ -2931,8 +2931,8 @@ function trimPhotos(fid) {
    ============================================================ */
 const root = () => $("#screen");
 let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
-// No zooming the page (only the map zooms, and it handles its own pinches),
-// and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
+// No copying (outside the fields), and no double-tap zoom; a pinch zooms the page,
+// except on the map, which handles its own pinches.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
 /* ---------- swiping between the tabs ----------
    Drag Messages, Friends or Account sideways and the next tab comes in beside
@@ -2971,7 +2971,7 @@ function tabSwipe() {
   v.addEventListener("touchstart", (e) => {
     st = null;
     const ids = TABS.map(([id]) => id), i = ids.indexOf(S.view), t = e.target;
-    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform) return;
+    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform || zoomed()) return;
     if (t.closest?.("input:focus, textarea, select, .rail") || sideways(t)) return;   // (a search box you aren't typing in swipes too; the cards in the air never do, even when they all fit)
     const p = e.touches[0];
     st = { ids, i, x: p.clientX, y: p.clientY, lx: p.clientX, ly: p.clientY, lt: performance.now(), vx: 0, vy: 0, dx: 0, w: r.clientWidth, dir: null, side: 0, peek: null };
@@ -3106,7 +3106,7 @@ function haptic(kind = "tick") {
 function pullToRefresh() {
   const v = $view, ind = $(".ptr", root()), bird = $(".ptrb", ind);
   let y0 = null, x0 = 0, down = false, pull = 0, ready = false, busy = false;
-  const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy;
+  const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy && !zoomed();
   const show = (px, anim) => {
     for (const el of [v, ind]) { el.classList.toggle("ptr-anim", !!anim); el.style.transition = anim ? "" : "none"; }
     v.style.transform = px ? `translateY(${px}px)` : "";
@@ -3194,7 +3194,7 @@ function edgeBack() {
   };
   r.addEventListener("touchstart", (e) => {
     st = null;
-    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX - r.getBoundingClientRect().left > EDGE) return;
+    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX - r.getBoundingClientRect().left > EDGE || zoomed()) return;
     const b = backBtn(); if (b) st = { b, x: t.clientX, y: t.clientY, lx: t.clientX, ly: t.clientY, lt: performance.now(), vx: 0, dx: 0, w: r.clientWidth, dir: null };
   }, { passive: true });
   r.addEventListener("touchmove", (e) => {
@@ -3231,7 +3231,7 @@ function sheetDrag() {
   $layer.addEventListener("touchstart", (e) => {
     st = null;
     const sh = e.target.closest?.(".sheet"), t = e.touches[0];
-    if (!sh || sh.classList.contains("closing") || e.touches.length !== 1) return;
+    if (!sh || sh.classList.contains("closing") || e.touches.length !== 1 || zoomed()) return;
     const body = $(".body", sh), head = !!e.target.closest(".grab, .sheet > header");
     // from its top, or anywhere once it's scrolled to the top (not on the map, a field or a list that slides sideways)
     if (!head && (!body || body.classList.contains("flush") || body.scrollTop > 0 || e.target.closest("input, textarea, select, canvas, .gifgrid"))) return;
@@ -3272,7 +3272,7 @@ function viewerDrag() {
   let st = null;
   $layer.addEventListener("touchstart", (e) => {
     const v = e.target.closest?.(".viewer"); st = null;
-    if (v && e.touches.length === 1) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
+    if (v && e.touches.length === 1 && !zoomed()) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
   }, { passive: true });
   $layer.addEventListener("touchmove", (e) => {
     if (!st) return;
@@ -3346,9 +3346,9 @@ function navGestures() {
 }
 function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
-  const stop = (e) => e.preventDefault();
-  ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
-  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });   // two fingers never zoom the page (the map pinches itself)
+  // two fingers zoom the page, for reading small words: not on the map, which pinches itself (mapGestures; and iPhone's
+  // own gesture events, stopped there too)
+  ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, (e) => { if (e.target?.closest?.(".map")) e.preventDefault(); }, { passive: false }));
   // a quick second tap in the same spot zooms on older iOS: stop that, and only that.
   // (Not after a scroll or a tap somewhere else, and never on anything you can
   // tap: those taps are meant, and touch-action already keeps them from zooming.)
@@ -3361,15 +3361,9 @@ function lockPage() {
     last = tap && t ? { at: now, x: t.clientX, y: t.clientY } : null;
   }, { passive: false });
   for (const n of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(n, (e) => { if (!inField(e.target)) e.preventDefault(); });
-  // if the page ends up zoomed anyway (an older copy allowed it), put it back: text size comes from the phone's own setting instead
-  const vv = window.visualViewport, meta = document.querySelector('meta[name="viewport"]');
-  if (vv && meta) vv.addEventListener("resize", () => {
-    if (vv.scale <= 1.01 || inField(document.activeElement)) return;
-    const was = meta.content;
-    meta.content = was + ", maximum-scale=1";
-    setTimeout(() => { meta.content = was; }, 300);
-  });
 }
+// pinched in: a finger moves you round the bigger page, so the app's own swipes and pulls wait till it's back to size
+const zoomed = () => (window.visualViewport?.scale || 1) > 1.01;
 // What you press shows it at once (a little smaller and a shade deeper, .down),
 // and long enough to see on a quick tap: the phone's own pressed look comes late,
 // or not at all, for a tap that's over in a moment.
@@ -3422,7 +3416,7 @@ function composeTouch() {
     if (document.activeElement !== $ta && !$ta.disabled && $(".crow", $compose)?.offsetParent) { $ta.focus(); const n = $ta.value.length; $ta.setSelectionRange(n, n); }
   });
   // iOS can leave the page nudged up once the keyboard has gone: put it back
-  $ta.addEventListener("blur", () => setTimeout(() => { if (window.scrollY && document.activeElement !== $ta) window.scrollTo(0, 0); }, 80));
+  $ta.addEventListener("blur", () => setTimeout(() => { if (window.scrollY && document.activeElement !== $ta && !zoomed()) window.scrollTo(0, 0); }, 80));
 }
 function mount() {
   lockPage();
@@ -3497,6 +3491,7 @@ function fitKeyboard() {
   let raf = 0, was = false;
   const fit = () => {
     raf = 0;
+    if (zoomed()) return;             // (pinched in, the page is where you've moved it: fitted again once it's back to size)
     const kb = window.innerHeight - vv.height > 80 && inField(document.activeElement);
     if (kb) doc.style.setProperty("--app-h", `${Math.round(vv.height)}px`); else doc.style.removeProperty("--app-h");
     doc.classList.toggle("kbup", kb);
@@ -3770,7 +3765,7 @@ function render() {
     return;
   }
   if (document.documentElement.classList.contains("night")) { document.documentElement.classList.remove("night"); applyTheme(); }
-  if (S.locked) { $view.innerHTML = ""; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; drawLock(); return; }
+  if (S.locked) { $view.innerHTML = ""; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; syncInert(); drawLock(); return; }
   drawLock();
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
@@ -3778,6 +3773,11 @@ function render() {
   // on from last time would replay the rise as the bar unhides, so it always comes off)
   if (tabsBack) { $tabbar.classList.remove("rise", "back"); if (!S.noRise) { void $tabbar.offsetWidth; $tabbar.classList.add(S.nav === "pop" ? "back" : "rise"); } }
   S.noRise = false;
+  // the same screen drawn again: what you'd reached by keyboard or VoiceOver (a switch you've just flipped, the search
+  // box) keeps its focus, and a field its caret, as in a sheet (renderSheet)
+  const fa = $view.contains(document.activeElement) ? document.activeElement : null, fAt = kView();
+  const fid = fa?.id || "", fk = !fid && fa?.dataset?.act ? switchKey(fa) : null;
+  const caret = fid && typeof fa.selectionStart === "number" ? [fa.selectionStart, fa.selectionEnd] : null;
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view), was = snapKeyed();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
@@ -3796,6 +3796,11 @@ function render() {
   if (!chat && S.view === "messages") { airMount(); if (!S.listAt && $(".mlist:not(.skel)", $view)) S.listAt = performance.now(); }
   inRender = true; renderCompose(); inRender = false;
   renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh(); playKeyed(was);
+  // (only if nothing else has taken the focus since: the message box, a sheet's title)
+  if (fa && !fa.isConnected && fAt === kView() && (!document.activeElement || document.activeElement === document.body)) {
+    const back = fid ? document.getElementById(fid) : fk ? [...$view.querySelectorAll(`[data-act="${CSS.escape(fa.dataset.act)}"]`)].find((x) => switchKey(x) === fk) : null;
+    if (back && $view.contains(back)) { try { back.focus({ preventScroll: true }); if (caret) back.setSelectionRange(...caret); } catch (_) {} }
+  }
 }
 
 // Scrolled up to read, and a pigeon arrives below: a pill over the composer says so, and takes you down to it (it goes
@@ -3914,7 +3919,7 @@ function vMessages() {
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find=""${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" data-key="d:${esc(f.id)}" data-in="pop" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext" data-key="t:${esc(f.id)}" data-sig="${kSig(`${at}|${html}|${S.drafts.get(f.id) || ""}`)}">
@@ -4235,7 +4240,8 @@ function whoHasLabel(m) {
    the air is an outline with its pigeon on a hairline of the way; theirs is
    sealed until it lands. Tap yours in the air for the flight; anything that
    has landed to react, reply or see the flight. */
-const atTime = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
+// (six days or more ahead, a pigeon booked for then, with its date: "Thu 5 Nov 18:00", as a weekday alone reads as this week's)
+const atTime = (ts) => { const d = new Date(ts); return sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : ts - now() < 6 * DAY ? `${DOW[d.getDay()]} ${fmtTime(ts)}` : `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} ${fmtTime(ts)}`; };
 // the same, where room is short (the message box, a card): "18:40", "Thu 02:20"
 const atShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : ts - now() < 6 * DAY ? `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}` : `${new Date(ts).getDate()} ${MON[new Date(ts).getMonth()]} ${fmtTime(ts)}`);
 // a duration, roughly: "45m", "2h", "1d 10h"
@@ -5766,6 +5772,16 @@ function focusBack(from) {
   const b = sel && ($(sel, $view) || $(sel, $tabbar));
   if (b) { try { b.focus({ preventScroll: true }); } catch (_) {} } else focusTitle();
 }
+// what's under a sheet, or under a menu or question, can't be reached by Tab or Switch Control (as aria-modal says).
+// (A menu opened with a tap while you're typing leaves the message box be, so the keyboard stays up under it.)
+function syncInert() {
+  if (!$view) return;
+  const pop = !!$pop.querySelector(".menu-pop:not(.closing), .asheet:not(.closing)");
+  const sheet = !!S.sheet && !!$layer.querySelector(".sheet:not(.closing), .viewer:not(.closing)");
+  $view.inert = $tabbar.inert = sheet || pop;
+  $compose.inert = sheet || (pop && !$compose.contains(document.activeElement));
+  $layer.inert = pop;
+}
 // (going back to a page you came from inside a sheet: How It Flies doesn't play itself in again)
 let sheetBack = false;
 function renderSheet(refresh) {
@@ -5779,6 +5795,7 @@ function renderSheet(refresh) {
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
   if (!S.sheet) {
+    syncInert();
     root().classList.remove("sheeted"); sheetType = null;
     if (!open) { $layer.innerHTML = ""; return; }
     if (closing) return;
@@ -5859,7 +5876,7 @@ function renderSheet(refresh) {
     // (ready before a page is gone on to: built when there's nothing else to do, or, without that, once it's up)
     if (!ghostCSS && canGhost()) window.requestIdleCallback ? requestIdleCallback(() => ghostStyles(), { timeout: 2000 }) : setTimeout(() => ghostStyles(), SHEET_SLIDE_MS + 200);
   }
-  root().classList.toggle("sheeted", !!$(".sheet", $layer));
+  root().classList.toggle("sheeted", !!$(".sheet", $layer)); syncInert();
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);
 }
@@ -7149,7 +7166,7 @@ const spaceSub = (mn, from, at) => ((L) => spaceNow(L.mn, L.from, L.to, now(), w
 function airFill(el, r) {
   const who = r.label.split(" · ")[0], wx = wxSay(r, true);
   el.dataset.at = r.deliverAt; el.dataset.from = r.sentAt;
-  el.setAttribute("aria-label", `${who}, ${r.out ? "your pigeon" : "on its way to you"}${r.g ? `, in ${r.g.name}` : ""}. Watch it on the map.`);
+  el.setAttribute("aria-label", `${who}, ${r.out ? "your pigeon" : "on its way to you"}${r.g ? `, in ${r.g.name}` : ""}, lands ${atTime(r.deliverAt)}. Watch it on the map.`);
   $(".awho .one", el).textContent = who;
   const sub = $(".asub", el);
   sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
@@ -7734,7 +7751,7 @@ function openMenu(anchor, items) {
   if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
   if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
   m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
-  popOpened($(".mi", m));
+  popOpened($(".mi", m)); syncInert();
 }
 function openActions({ title, message, actions }) {
   clearTimeout(popTimer);
@@ -7742,7 +7759,7 @@ function openActions({ title, message, actions }) {
     <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
       `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
     <button class="cancel" data-act="closepop">Cancel</button></div>`;
-  popOpened($(".asheet .ab", $pop));
+  popOpened($(".asheet .ab", $pop)); syncInert();
 }
 let popTimer = 0, popFrom = null, keyAt = -1e9;
 // For a keyboard or VoiceOver: a menu or question opened with Enter or Space starts on its first choice, Up and Down
@@ -7768,6 +7785,7 @@ function closePop() {
   if (!live.length) return;
   // (from wherever it had got to, if it's still coming in; taken away once its exit has played: styles.css .asheet.closing)
   $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => { freeze(e); e.classList.add("closing"); });
+  syncInert();
   clearTimeout(popTimer); popTimer = setTimeout(() => {
     const f = popFrom, lost = $pop.contains(document.activeElement); popFrom = null;
     $pop.innerHTML = "";

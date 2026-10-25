@@ -13,6 +13,8 @@ const SHELL = "inflight-shell-v2", PAGE = "/pigeon/", WAIT = 4000;        // (v2
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k.startsWith("inflight-shell") && k !== SHELL) await caches.delete(k);
+  // the page is asked for as the phone starts this worker, not once it's started (a cold open is that much sooner)
+  try { await self.registration.navigationPreload?.enable(); } catch (_) {}
   await self.clients.claim();
 })()));
 
@@ -24,12 +26,15 @@ self.addEventListener("fetch", (e) => {
   let u; try { u = new URL(r.url); } catch (_) { return; }
   if (!ours(u)) return;
   if (r.mode === "navigate" && (u.pathname === "/pigeon/" || u.pathname === "/pigeon/index.html")) return e.respondWith(page(e, r));
+  if (r.mode === "navigate") return e.respondWith(asked(e, r));        // (any other page: the answer already asked for, not a second ask)
   if (u.searchParams.has("v") && /\.(js|css)$/.test(u.pathname)) return e.respondWith(file(r));
 });
 
+// a page as the phone asked for it while this worker started (navigation preload), or asked for now
+const asked = (e, r) => Promise.resolve(e.preloadResponse).then((p) => p || fetch(r));
 // the page: the network if it answers in time, else last time's copy
 async function page(e, r) {
-  const net = fetch(r);
+  const net = asked(e, r);
   // keeping this copy outlasts the answer (which may already be last time's): asked for now, while it still can be
   e.waitUntil(net.then(async (res) => {
     if (!res.ok || !(res.headers.get("Content-Type") || "").includes("text/html")) return;
@@ -78,7 +83,7 @@ self.addEventListener("push", (e) => {
   e.waitUntil(self.registration.showNotification(d.title || "InFlight", {
     body: d.body || "A pigeon has landed.",
     icon: "/pigeon/icon-192.png",
-    badge: "/pigeon/icon-192.png",
+    badge: "/pigeon/badge-96.png",                // (Android draws this small, from its shape alone: the white pigeon)
     tag: d.tag || undefined,
     renotify: !!d.tag,
     data: { url: d.url || "/pigeon/" },
