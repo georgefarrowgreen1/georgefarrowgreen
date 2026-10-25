@@ -910,9 +910,21 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-radar text { font-size: 10px; font-weight: 700; fill: var(--text-2); }
 .p-train-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .p-train-head b { display: block; font: 700 28px/1.1 var(--font-d); letter-spacing: -0.6px; } .p-train-head b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
-.p-wbars { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; align-items: end; height: 140px; margin-top: 14px; }
-.p-wbar { display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 100%; }
-.p-wbar i { display: block; height: var(--h); border-radius: 3px; } .p-wbar.now i { opacity: 0.55; }
+/* (the weeks' chart: hour lines with their hours on the right, the average dashed across, each week one rounded column
+   split by zone, a dot for a week off, this week softer while it's still going, and the months under) */
+.p-wchart { margin-top: 18px; }
+.p-wbars { position: relative; display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; align-items: end; height: 150px; padding-right: 30px; border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, transparent); }
+.p-wgrid, .p-wavg { position: absolute; left: 0; right: 30px; bottom: var(--y); height: 0; border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent); pointer-events: none; }
+.p-wgrid u, .p-wavg u { position: absolute; right: -30px; width: 26px; text-align: right; top: -6px; font-size: 10px; line-height: 1; text-decoration: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.p-wavg { z-index: 2; border-top: 1.5px dashed color-mix(in srgb, var(--text) 55%, transparent); }
+.p-wavg u { top: -7px; width: auto; padding: 1px 4px; border-radius: 5px; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--text) 14%, transparent); }
+.p-wbar { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+.p-wcol { display: flex; flex-direction: column; width: 100%; max-width: 12px; height: var(--h); min-height: 4px; border-radius: 4px; overflow: hidden; gap: 1.5px; }
+.p-wcol i { display: block; flex: var(--f) 1 0; min-height: 2px; }
+.p-wbar.off::after { content: ""; width: 4px; height: 4px; margin-bottom: 3px; border-radius: 50%; background: color-mix(in srgb, var(--text) 18%, transparent); }
+.p-wbar.now .p-wcol { opacity: 0.5; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent); }
+.p-wmonths { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; padding: 6px 30px 0 0; font-size: 10px; color: var(--text-3); }
+.p-wmonths span { white-space: nowrap; overflow: visible; }
 .p-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0 0; }
 .p-mini { display: grid; gap: 6px; align-content: start; padding: 16px; border-radius: 24px; }
 .p-mini b { font-size: 16px; } .p-mini small { font-size: 13px; line-height: 1.35; }

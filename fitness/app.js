@@ -1105,10 +1105,16 @@ function radarSvg(s) {
 
 // Training: week by week, how much and how hard; consistency; this month's mix; month by month
 function trainingView() {
-  const acts = progActs(), wk = G.weekly(acts, TODAY, 26), max = Math.max(3600, ...wk.map((w) => w.secs)), first4 = wk.slice(0, 4), last4 = wk.slice(-5, -1);
+  const acts = progActs(), wk = G.weekly(acts, TODAY, 26), first4 = wk.slice(0, 4), last4 = wk.slice(-5, -1);
   const avg = (ws) => ws.reduce((a, w) => a + w.secs, 0) / Math.max(1, ws.length), d = avg(last4) - avg(first4), all = avg(wk);
-  const bars = wk.map((w, i) => h("span.p-wbar" + (i === wk.length - 1 ? ".now" : ""), { title: `${dayShort(w.mon)}: ${dur(w.secs)}` },
-    ["hard", "mid", "easy", "unknown"].map((k) => w[k] > 0 && h("i." + k, { vars: { "--h": (w[k] / max) * 100 + "%" } }))));
+  // (the scale in whole steps of an hour or so, two or three lines up the chart)
+  const peak = Math.max(3600, ...wk.map((w) => w.secs)), step = [1800, 3600, 7200, 10800, 18000, 36000].find((x) => peak / x <= 3) || 36000, max = Math.ceil(peak / step) * step;
+  const grid = Array.from({ length: max / step }, (_, k) => (k + 1) * step).map((v) => h("span.p-wgrid", { vars: { "--y": (v / max) * 100 + "%" } }, h("u", { text: `${Math.floor(v / 3600) || ""}${v % 3600 ? "½" : ""} h` })));
+  const bars = wk.map((w, i) => h("span.p-wbar" + (i === wk.length - 1 ? ".now" : "") + (w.secs ? "" : ".off"), { title: `${dayShort(w.mon)}: ${dur(w.secs)}` },
+    w.secs > 0 && h("span.p-wcol", { vars: { "--h": (w.secs / max) * 100 + "%" } }, ["hard", "mid", "easy", "unknown"].map((k) => w[k] > 0 && h("i." + k, { vars: { "--f": w[k] / w.secs } }))))));
+  // (each month's name under its first week)
+  const monthsUnder = wk.map((w, i) => { const m = new Date(w.mon).getMonth(); const starts = i === 0 ? new Date(wk[2].mon).getMonth() === m : new Date(wk[i - 1].mon).getMonth() !== m;   // (the first, only if its month has a few weeks still to run: else it'd sit on the next)
+    return h("span", { text: starts ? monthOf(w.mon, "short") : "" }); });
   const st = G.streak(G.weekly(acts, TODAY, 52)), it = G.intensity(acts, addDays(TODAY, -30));
   // (Rhythm's sessions, from when it began: how many done)
   const r = rhythmOn() ? rh() : null, pd = r ? r.days.filter((x) => x.date < TODAY && x.id && x.date >= (S.rhythm.at || 0)) : [], dn = pd.filter((x) => x.done).length;
@@ -1120,7 +1126,8 @@ function trainingView() {
   return { title: "Training", body: [
     h("div.card.glass.p-train", {},
       h("div.p-train-head", {}, h("span", {}, h("small.p-kick", { text: "Hours a week, by zone" }), h("b", {}, dur(all), h("u", { text: " on average" }))), Math.abs(d) >= 600 && h("span.p-gain" + (d < 0 ? ".down" : ""), { text: `${d > 0 ? "+" : "−"}${dur(Math.abs(d))} since ${monthOf(wk[0].mon, "short")}` })),
-      h("div.p-wbars", { role: "img", "aria-label": "26 weeks of hours, each split into easy, in between and hard" }, bars),
+      h("div.p-wchart", {}, h("div.p-wbars", { role: "img", "aria-label": `26 weeks of hours, each split into easy, in between and hard; ${dur(all)} a week on average` }, grid,
+        all > 0 && h("span.p-wavg", { vars: { "--y": (all / max) * 100 + "%" } }, h("u", { text: "avg" })), bars), h("div.p-wmonths", { "aria-hidden": "true" }, monthsUnder)),
       h("div.p-legend", {}, h("span", {}, h("i.easy"), "Easy"), h("span", {}, h("i.mid"), "In between"), h("span", {}, h("i.hard"), "Hard"), wk.some((w) => w.unknown) && h("span", {}, h("i.unknown"), "No zones"))),
     h("div.p-pair", {},
       pd.length >= 4 && h("div.p-mini.green", {}, svgOf(ringSvg(dn / pd.length, `${Math.round((dn / pd.length) * 100)}%`, "done")), h("b", { text: "Sessions done" }), h("small", { text: `${dn} of Rhythm’s ${pd.length} since it began.` })),
