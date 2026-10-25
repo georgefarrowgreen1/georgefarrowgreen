@@ -54,7 +54,7 @@ const norm = (v) => JSON.parse(JSON.stringify(v, (k, x) => {
   if (typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(x)) { if (!labels.has(x)) labels.set(x, 'id' + labels.size); return labels.get(x); }
   if (typeof x === 'number' && x > 1e12) return 'T';
   if (typeof x === 'number' && !Number.isInteger(x)) return Math.round(x * 100) / 100;   // (where a pigeon is now moves on between runs)
-  if (['now', 'x', 'y', 'seenAt', 'locAt', 'streak', 'skin', 'legs', 'near', 'fly', 'liveAt'].includes(k)) return undefined;   // (the minute's background round adds to these when it runs)
+  if (['now', 'tag', 'x', 'y', 'seenAt', 'locAt', 'streak', 'skin', 'legs', 'near', 'fly', 'liveAt'].includes(k)) return undefined;   // (the minute's background round adds to these when it runs)
   if (Array.isArray(x) && x.length && x[0] && typeof x[0] === 'object' && 'toPlace' in x[0]) return [...x].sort((a, b) => String(a.toPlace).localeCompare(String(b.toPlace)));
   return x; }));
 // (in a steady order: friends and members by handle, groups by name; the database's own order follows random ids)
@@ -64,5 +64,12 @@ const steady = (b) => ({ ...b, friends: [...b.friends].sort(byKey('handle')), in
 const mine = norm({ sync: steady(last.body), chat: { ...chat, now: 0 }, gchat: { ...gchat, now: 0 } }), file = `${S}/sync-saved.json`;
 if (process.env.SAVE) { writeFileSync(file, JSON.stringify(mine, null, 1)); console.log('saved', file); }
 else if (existsSync(file)) { const was = readFileSync(file, 'utf8'), now = JSON.stringify(mine, null, 1); ok(was === now, 'the same answer as the saved one', was === now ? '' : `differs at char ${[...was].findIndex((c, i) => c !== now[i])}: …${now.slice(Math.max(0, [...was].findIndex((c, i) => c !== now[i]) - 120), [...was].findIndex((c, i) => c !== now[i]) + 120)}…`); }
+// an open chat asked again with the tag of the copy the phone has: only "the same", until something in it changes
+const [, again] = await api(H.token, `messages?with=${F[0].me.id}&tag=${chat.tag}`), [, gagain] = await api(H.token, `group-messages?id=${gs0.id}&tag=${gchat.tag}`);
+ok(/^[0-9a-f]{16}$/.test(chat.tag) && again.same === true && again.tag === chat.tag && !again.messages && gagain.same === true && !gagain.messages,
+  'asked again with the tag of the copy it has: just “the same”, not the chat again', JSON.stringify({ again, gagain }).slice(0, 160));
+await api(H.token, 'messages', { id: randomUUID(), to: F[0].me.id, ct, pigeon: 'swift' });
+const [, moved] = await api(H.token, `messages?with=${F[0].me.id}&tag=${chat.tag}`);
+ok(!moved.same && moved.tag !== chat.tag && moved.messages?.length === chat.messages.length + 1, 'something new in it: the whole chat, with a new tag');
 console.log(`FAILS ${fails}`);
 process.exit(0);

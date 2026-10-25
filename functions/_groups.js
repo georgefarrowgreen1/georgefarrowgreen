@@ -12,7 +12,7 @@ import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
 import { vanishOk } from "./_vanish.js";
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
+  HttpError, json, chatJson, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
@@ -364,7 +364,7 @@ async function listMessages({ request, env }) {
     }
   }
   for (const v of vs) { const k = marks.get(v.from === u.id ? v.id : `${v.id}:${u.id}`); if (k?.length) v.postmarks = k; }
-  return json({ now: t, messages: vs, events, reacts, turn: tn });
+  return chatJson(request, t, { messages: vs, events, reacts, turn: tn });
 }
 
 async function send({ request, env, waitUntil }) {

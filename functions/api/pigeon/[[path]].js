@@ -1,5 +1,5 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
@@ -362,7 +362,8 @@ async function sessionsList({ request, env }) {
   return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
 }
 // The keys you've trusted, sealed on your phone to your own key (the server can't
-// read or change them): kept so a new phone still notices a key that was swapped.
+// read or change them): kept so a new phone still notices a key that was swapped,
+// as long as it's given them back (a server could always say there are none).
 async function pinsGet({ request, env }) {
   const u = await requireUser(request, env);
   return json({ pins: u.pins || null });
@@ -725,7 +726,7 @@ async function listMessages({ request, env }) {
     if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
     if (marks.has(v.id)) v.postmarks = marks.get(v.id);
   }
-  return json({ now: t, messages: views, fly, reacts, turn: turn(u.id, lastOne, t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  return chatJson(request, t, { messages: views, fly, reacts, turn: turn(u.id, lastOne, t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {

@@ -1557,7 +1557,8 @@ as a faint dotted line from where it turned (kept on the turn's point,
 `[lat, lon, at, "r", why, { was, storm }]`), the storms it went around (planned
 or on the way) are drawn as a storm cloud while it flies, and where it
 sheltered gets an orange ring. An open map keeps up by itself: the chat is
-fetched again every 15 seconds, and a notification arriving while the app is
+asked for again every 15 seconds (and sent again only if something in it has
+changed: the phone names the copy it has), and a notification arriving while the app is
 open (a course change, say) makes it catch up at once (the service worker
 tells it to sync); if the way changes while you watch, a note says so ("Its
 way just changed: rerouted around storms over France").
@@ -1726,7 +1727,9 @@ sealed (ciphertext only, opened again with your key after a reload) and takes
 off by itself when the phone is back online, on returning to the app, or at
 the next sync; the server takes each message id once, so a retry can't send it
 twice. If the server turns it down meanwhile (no swifts left, not your turn),
-it stays, marked "Not sent" with why, to try again or delete. One standard
+it stays, marked "Not sent" with why, to try again or delete (in a group, Try
+Again seals its key again for whoever's in it now, should someone have joined
+or left; one told when to land says so if that time has passed). One standard
 pigeon waits per chat; a swift, turbo or rocket can wait beside it. Signing out
 deletes what's waiting.
 
@@ -2169,7 +2172,9 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   compare the digits and Mark as Verified. It's kept, sealed, with your trusted
   keys; if a verified friend's key changes, the chat warns more strongly.
 - **Disappearing messages** (a chat's or group's info sheet: 1, 7 or 30 days
-  after reading): when the time's up, the server wipes the sealed message, its
+  after reading; someone else's in a group goes from your phone when the server
+  wipes it, as only the server knows when everyone has read it): when the time's
+  up, the server wipes the sealed message, its
   photo or voice pigeon, stopover note and reactions (in a group, once everyone
   it flew to has read it), and phones stop showing it at once, even from their
   saved copy. The flight itself stays for the Flight Log (`functions/_vanish.js`).

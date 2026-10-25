@@ -63,6 +63,9 @@ ok(/Pat set messages to disappear 7 days after they’re read/.test(await G.p.lo
 await G.p.screenshot({ path: `${out}/vanish-group.png` });
 sql(`UPDATE pg_gdeliv SET deliver_at = ${Date.now() - 1000}, read_at = ${Date.now() - 8 * DAY} WHERE msg_id = '${mid}' AND user_id = '${ms.me.id}'`); await tick();
 ok(!one(`SELECT gone_at FROM pg_gmsgs WHERE id = '${mid}'`)[0].gone_at, 'not while someone hasn’t read it yet');
+// (Mira read it 8 days ago, Pat not yet: her phone keeps it, as the server does, rather than going by her own read)
+await M.p.reload(); await M.p.waitForSelector('.tabs'); await openChat(M, gid); await M.p.waitForTimeout(1500);
+ok(await M.p.locator(`.msgs [data-key^="m:${mid}"]`).count() > 0, 'and it’s still in Mira’s group chat');
 sql(`UPDATE pg_gdeliv SET deliver_at = ${Date.now() - 1000}, read_at = ${Date.now() - 8 * DAY} WHERE msg_id = '${mid}'`); await tick();
 const gg = one(`SELECT body, sender_key, gone_at FROM pg_gmsgs WHERE id = '${mid}'`)[0];
 ok(gg.gone_at && gg.body === '' && gg.sender_key === '' && !/k{40}/.test(sql(`SELECT wrap FROM pg_gdeliv WHERE msg_id = '${mid}'`)), 'everyone read it a week ago: wiped');
