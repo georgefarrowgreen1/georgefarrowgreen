@@ -1,8 +1,10 @@
 // The account's sign-in and getting back in, run as they are against a database of their own (Node's own SQLite in
 // memory, standing in for D1, with the site's schema): a reset link's server key stays the same however often the link's
 // opened; a sign-in an app handed over to a browser signed in to nothing is the account page's alone until it's shown
-// it's you; and guessing a password from many networks at once holds the account back, but not on a device that's
-// signed in to it before (or made it), for each account it has, while its password is the one it was given with.
+// it's you; guessing a password from many networks at once holds the account back, but not on a device that's signed
+// in to it before (or made it, or changed its password or email there), for each account it has, while its password is
+// the one it was given with; a new password's kept as checked against data breaches only if the check got an answer;
+// and a new account's said to have been sent its confirm link only if it went.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -136,4 +138,80 @@ test('an account made here: the device it was made on is known to it from the st
   const u = await D.prepare('SELECT * FROM pg_users WHERE handle = ?').bind('sol').first();
   await heldBack(u);
   assert.equal((await signIn(u, 'a long test password', word)).id, u.id);
+});
+
+// (the account's API, as its page asks it, from a device signed in to the account (cookie) or not)
+const PAGE_ENV = { ...env, ACCOUNT_HOST: 'account.localhost' };
+async function onPage(path, data, { cookie, ip = '198.51.100.50', e = PAGE_ENV } = {}) {
+  const later = [], request = new Request(`${ACCT}/api/account/${path}`, { method: 'POST',
+    headers: { Origin: ACCT, 'CF-Connecting-IP': ip, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(data) });
+  const res = await accountApi({ request, env: e, params: { path: path.split('/') }, waitUntil: (p) => later.push(p) });
+  await Promise.allSettled(later);
+  return res;
+}
+const knownIn = (res) => res.headers.getSetCookie().find((c) => c.startsWith('known-'))?.split(';')[0];
+async function signedInHere(u) {
+  const site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hex(await sha256(await issueSession(env, u.id, req('/api/account/me'))))).run();
+  return `account=${site}`;
+}
+const changePassword = (u, cookie, extra = {}) => onPage('password', { oldProof: proofOf('a long test password'), salt: E2E.newSalt(), proof: proofOf('a newer password'), vault: 'w'.repeat(40), ...extra }, { cookie });
+
+test('a password changed on the account’s page: the device that changed it is given a word for the new one', async () => {
+  const u = await account('tia', 'a long test password'), old = await wordFor(u), signed = await signedInHere(u);
+  const res = await changePassword(u, `${signed}; ${old}`, { checked: true });
+  assert.equal(res.status, 200, await res.clone().text());
+  const word = knownIn(res);
+  assert.ok(word && word.split('=')[0] === old.split('=')[0], 'a new word, in the old one’s place');
+  const now = await D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(u.id).first();
+  await heldBack(now);
+  assert.equal((await signIn(now, 'a newer password', word)).id, u.id, 'the new password, on the device that changed it: in');
+  await assert.rejects(signIn(now, 'a newer password', old), { status: 429, message: /for this account/ }, 'the word from before: held back');
+});
+
+test('a new password is kept as checked against data breaches only if the check got an answer', async () => {
+  const a = await account('uma', 'a long test password'), b = await account('vic', 'a long test password');
+  const checked = await (await changePassword(a, await signedInHere(a), { checked: true })).json();
+  assert.equal(checked.password.leaked, false, 'checked, and not in a breach');
+  assert.ok((await D.prepare('SELECT pw_checked_at FROM pg_users WHERE id = ?').bind(a.id).first()).pw_checked_at);
+  // (Pwned Passwords not reached as it was changed, or a page from before that said nothing)
+  for (const extra of [{ checked: false }, {}]) {
+    const r = await (await changePassword(b, await signedInHere(b), extra)).json();
+    assert.equal(r.password.leaked, null, `not checked (${JSON.stringify(extra)}): left for the check-up`);
+    assert.equal((await D.prepare('SELECT pw_checked_at FROM pg_users WHERE id = ?').bind(b.id).first()).pw_checked_at, null);
+    await D.prepare('UPDATE pg_users SET proof_hash = ? WHERE id = ?').bind(a.proof_hash, b.id).run();          // (the old password again, to change it once more)
+  }
+});
+
+test('a new email confirmed in a browser signed in to the account: a word for the new address', async () => {
+  const u = await account('wes', 'a long test password'), token = 'k'.repeat(43);
+  const ask = () => D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?');
+  await ask().bind('wes.new@example.com', hex(await sha256(token)), Date.now(), u.id).run();
+  const res = await onPage('email/change-confirm', { token }, { cookie: await signedInHere(u) });
+  assert.equal(res.status, 200, await res.clone().text());
+  const word = knownIn(res), now = await D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(u.id).first();
+  assert.equal(now.email, 'wes.new@example.com');
+  assert.ok(word, 'given one');
+  await heldBack(now);
+  assert.equal((await signIn(now, 'a long test password', word)).id, u.id, 'the new address, on that device: in');
+  // (opened elsewhere, signed in to nothing: none)
+  await ask().bind('wes.newer@example.com', hex(await sha256(token)), Date.now(), u.id).run();
+  assert.equal(knownIn(await onPage('email/change-confirm', { token }, { ip: '198.51.100.51' })), undefined);
+});
+
+test('an account made here: said to have been sent its confirm link only if it went', async () => {
+  const id = await E2E.newIdentity(), RESEND = 'http://resend.test/emails', real = globalThis.fetch;
+  let refuse = true;
+  globalThis.fetch = async (url, o) => (String(url) === RESEND ? new Response(refuse ? '{"message":"Refused"}' : '{"id":"1"}', { status: refuse ? 422 : 200 }) : real(url, o));
+  try {
+    for (const [handle, no] of [['xan', true], ['yew', false]]) {
+      refuse = no;
+      const res = await onPage('signup', { name: handle, handle, email: `${handle}@example.com`, salt: E2E.newSalt(), proof: proofOf('a long test password'), vault: 'v'.repeat(40), pub: id.pub },
+        { ip: `198.51.100.${no ? 60 : 61}`, e: { ...PAGE_ENV, PIGEON_OPEN_SIGNUP: '1', RESEND_API_KEY: 'test', RESEND_API_URL: RESEND } });
+      assert.equal(res.status, 201, await res.clone().text());
+      const m = await res.json(), row = await D.prepare('SELECT email_sent, email_code FROM pg_users WHERE handle = ?').bind(handle).first();
+      if (no) assert.ok(m.emailSentAt === null && row.email_sent === null && row.email_code === null, 'refused: not said to be on its way (so the page offers it again)');
+      else assert.ok(m.emailSentAt && m.emailSentAt === row.email_sent && row.email_code, 'sent: said, as when it went');
+    }
+  } finally { globalThis.fetch = real; }
 });

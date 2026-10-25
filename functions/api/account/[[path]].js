@@ -160,11 +160,12 @@ const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) 
 const cleanLabel = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ").slice(0, 40);
 const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
 
-// A confirm link to the account's email (the same one InFlight sends, said as the account's). One that couldn't be sent
-// is said, so the page doesn't say it's on its way, and the link before it (if any) is still the one that works.
+// A confirm link to the account's email (the same one InFlight sends, said as the account's): when it went. One that
+// couldn't be sent is said, so the page doesn't say it's on its way, and the link before it (if any) is still the one
+// that works.
 async function sendConfirm(env, u, request) {
-  const token = randomToken(32), code = hex(await sha256(token)), D = await db(env);
-  await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(code, Date.now(), u.id).run();
+  const token = randomToken(32), code = hex(await sha256(token)), D = await db(env), at = Date.now();
+  await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(code, at, u.id).run();
   await accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets and security notes go. If you didn’t ask for this, ignore it: nothing more will be sent.",
     to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request))
@@ -172,6 +173,7 @@ async function sendConfirm(env, u, request) {
       await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ? AND email_code = ?").bind(u.email_code ?? null, u.email_sent ?? null, u.id, code).run().catch(() => {});
       throw e;
     });
+  return at;
 }
 
 const ROUTES = {
@@ -235,11 +237,12 @@ const ROUTES = {
   "POST signup": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await makeAccount(env, request, await body(request));
-    if (emailReady(env)) waitUntil(sendConfirm(env, u, request).catch((e) => console.error("confirm mail", e.message)));
+    // (the confirm link, sent as it's made, and said in what the page's shown only if it went: one that couldn't be sent
+    // is offered again there, which says why if it still can't)
+    const sent = emailReady(env) ? await sendConfirm(env, u, request).catch((e) => { console.error("confirm mail", e.message); return null; }) : null;
     waitUntil(logEvent(env, u.id, "signup", request));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    // (the confirm link, sent as it's made, said in what the page's shown)
-    return withKnown(await withSession(json(await view(env, { ...u, email_sent: emailReady(env) ? Date.now() : null, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
+    return withKnown(await withSession(json(await view(env, { ...u, email_sent: sent, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
   },
   // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
   "POST reset/request": async ({ request, env, waitUntil }) => {
@@ -314,7 +317,8 @@ const ROUTES = {
     return json({ ok: true, salt: b.salt });
   },
   // a new password: the old one's proof, the new one's salt and proof, and the key locked with it. Every other sign-in
-  // ends (this one stays), as anywhere a password's changed. (Checked against data breaches on the page as it was typed.)
+  // ends (this one stays), as anywhere a password's changed. (Checked against data breaches on the page as it was typed,
+  // and kept as checked only if that got an answer (checked: true): one that didn't is left for the check-up to ask.)
   "POST password": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
@@ -322,15 +326,18 @@ const ROUTES = {
     if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "Your current password isn’t right.", "current");
     const vault = String(b.vault || "");
     if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32 || vault.length < 20 || vault.length > 4000) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
-    const D = await db(env), t = Date.now();
+    const D = await db(env), t = Date.now(), ck = b.checked === true ? t : null;
     await D.batch([
-      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
+      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, ck, u.id),
       D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
-    return json(await view(env, { ...u, salt: b.salt, pw_at: t, pw_leaked: 0, pw_checked_at: t, email_new: null, email_new_at: null }));
+    // (and this device, which has just shown it knows the password, given a new word that it's signed in to the account
+    // before, as the one it had counts for nothing with the new password: functions/_account.js withKnown)
+    const now = { ...u, salt: b.salt, pw_at: t, pw_leaked: 0, pw_checked_at: ck, email_new: null, email_new_at: null };
+    return withKnown(json(await view(env, now)), request, env, now);
   },
   // How the password did against data breaches, checked on the page (which has it as you type it): kept with its proof,
   // so only someone who knows it can say. (It's shown it's you, too.)
@@ -512,7 +519,10 @@ const ROUTES = {
     waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
       after: "If this wasn’t you, you can no longer sign in or reset your password with this address. Ask the person who runs the site for a reset link, and you can put your email back.",
       to: u.email, pill: ["mail", hide(u.email_new)] }, linkOrigin(request)));
-    return json({ ok: true, email: u.email_new });
+    // (opened in a browser signed in to the account: its word that it's signed in to it before given anew, for the new
+    // address, as the one it had is named by the old: functions/_account.js withKnown)
+    const res = json({ ok: true, email: u.email_new });
+    return (await cookieUser(request, env).catch(() => null))?.id === u.id ? withKnown(res, request, env, { ...u, email: u.email_new }) : res;
   },
   "POST email/cancel": async ({ request, env }) => {
     sameOrigin(request);

@@ -300,7 +300,8 @@ Motion, solid with Reduce Transparency.
   locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
   link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
-  and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working);
+  and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working;
+  one that couldn't be sent isn't said to be on its way, and **Send link** tries again, saying why if it still can't);
   InFlight then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
   there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
@@ -362,8 +363,8 @@ Motion, solid with Reduce Transparency.
   first 5 characters of its SHA-1 asked); every other device is signed out. **Checked against data breaches** from the
   check-up, or quietly whenever it's typed here (signing in, showing it's you): how it went is kept with its proof
   (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say; if Pwned Passwords can't be reached,
-  nothing's kept (and the check-up's Check says so). One password's asked about once a visit, however often it's
-  typed or sent.
+  nothing's kept (and the check-up's Check says so), and a new password it couldn't check as it was changed is left
+  for the check-up. One password's asked about once a visit, however often it's typed or sent.
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
   `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
@@ -2290,11 +2291,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   signs a phone out; a wrong password never does. Wrong passwords hold back the
   address they come from (30 an hour), and only guessing from many at once (300
   an hour) the account itself, and then not on a device that's signed in to it
-  before (or made it, or reset its password there): that keeps a word saying so
-  (a cookie of the account page's own, one for each account, a MAC of the
-  email's hash, the account and when its password was set, so a new password or
-  a reset ends every word given before) and counts its own wrong tries instead
-  (10 an hour).
+  before (or made it, or changed or reset its password there): that keeps a
+  word saying so (a cookie of the account page's own, one for each account, a
+  MAC of the email's hash, the account and when its password was set, so a new
+  password or a reset ends every word given before) and counts its own wrong
+  tries instead (10 an hour).
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
   days; the account's page can send another). Until then the address gets
   nothing but that link, password resets and word of the email being changed, so no one can sign up with
