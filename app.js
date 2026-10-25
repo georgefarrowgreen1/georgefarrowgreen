@@ -305,8 +305,9 @@ async function soften(img, p) {
 }
 // The strip behind a phone's status bar, in the photo's own colour at its top: the top row of the photo made small,
 // under the shade the page lays over its top (styles.css .bg::after); scrolled down, under the bar's frosted band, that
-// band's colour. Faded from one to the next. (Safari takes it from the colour of what's fixed at the top of the screen,
-// the photos' own layer, not the page's colour or its theme-color: so that layer's colour, under the photo, is it too.)
+// band's colour. Faded from one to the next. (Safari, which takes no notice of theme-color, takes it from what's along
+// the very top of the page where that's one colour all the way across: so a band of it there, fading out, styles.css
+// .toptint; the page's colour and the photos' layer's too, for whatever else asks.)
 const themeMeta = $('meta[name="theme-color"]');
 let tops = null, tinted = "";
 function topOf(px, w) {
@@ -323,6 +324,7 @@ function tint() {
   const c = scrollY > 350 ? tops.band : tops.photo;
   if (c === tinted) return;
   tinted = c; themeMeta?.setAttribute("content", c); body.style.backgroundColor = c; bgEl.style.backgroundColor = tops.photo;
+  root.style.setProperty("--top-tint", c);
 }
 // (each pixel the average of those within r of it, across then down; the edges held)
 function boxBlur(px, w, h, r) {

@@ -86,6 +86,12 @@ svg { display: block; flex: none; }
 .slide.was { opacity: 1; }
 /* as you scroll, the photo softens behind what's over it: a softened copy of it faded in (app.js soften), not a blur
    redrawn each frame; the copy itself fades in when it's made, rather than appearing over the plain tint */
+/* the photo's own colour at its top, solid along the top edge and fading out (app.js tint): Safari tints the strip behind
+   the status bar with what's along the top of the page, only where that's one colour all the way across, and a photo's
+   edge never is */
+@property --top-tint { syntax: "<color>"; inherits: true; initial-value: #07090d; }
+.toptint { position: fixed; z-index: 1; top: 0; left: 0; right: 0; height: 28px; pointer-events: none;
+  background: linear-gradient(var(--top-tint), color-mix(in srgb, var(--top-tint) 0%, transparent)); transition: --top-tint 1.2s ease; }
 .soft {
   position: fixed; inset: 0;
   opacity: 0; visibility: hidden;
