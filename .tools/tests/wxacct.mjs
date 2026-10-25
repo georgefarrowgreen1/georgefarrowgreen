@@ -65,9 +65,13 @@ async function browser(name, { push = false } = {}) {
 }
 const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await x.p.goto(`${WX}/${q ? `?${q}` : ''}`); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
 // (open already, as it is just after signing out from it: brought back to its first page, not opened again behind itself)
+// (just back from signing in, Weather opens Settings itself a moment later: a click that meets it closes it and tries again)
 const settings = async (x) => {
-  if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
-  await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
+  for (let i = 0; i < 3; i++) {
+    if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
+    if (await x.p.click('#settings-btn', { timeout: 5000 }).then(() => true, () => false)) break;
+  }
+  await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
 };
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
@@ -78,7 +82,9 @@ const backInWeather = async (x) => { await x.p.waitForURL((u) => u.hostname.star
 const folder = async (x, f) => { await x.p.click(`[data-go="${f}"]`); await x.p.waitForTimeout(300); };
 const places = (x) => x.p.evaluate(() => JSON.parse(localStorage.getItem('wx:places') || '[]').map((p) => p.name));
 const kept = (handle) => { const r = rows(`SELECT a.data, a.ver FROM wx_accts a JOIN pg_users u ON u.id = a.user_id WHERE u.handle = '${handle}'`)[0]; return r ? { ver: r.ver, ...JSON.parse(r.data) } : null; };
-const waitFor = async (fn, ms = 10000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v || Date.now() - t0 > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
+// (the time given counted only while this script is free: as it reads the database it does nothing else, and every
+// request the pages make waits for it meanwhile, as each is put to the stand-ins in browser() first)
+const waitFor = async (fn, ms = 10000) => { for (let free = 0; ; free += 300) { const v = await fn(); if (v || free > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
 
 // ---- 1. Signed up to InFlight on a laptop: Weather in the same browser is signed in too, and its places go up ----
 const L = await browser('laptop', { push: true });
@@ -117,6 +123,8 @@ await settings(P);
 const signedOutRow = await acctSays(P);
 ok(/^Sign in Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
 await signInPage(P);
+// (whether an account can be made here is asked as the page is drawn, and said under the card once it's known)
+await P.p.waitForFunction(() => document.getElementById('joinline')?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});
 const signedOutSays = await P.p.evaluate(() => document.querySelector('main').innerText.replace(/\s+/g, ' ').trim());
 ok(/Sign in to continue to Weather/.test(signedOutSays) && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays),
   'the account\'s page, for Weather: a passkey first, then email and password; a forgotten password, and a new account', signedOutSays);
@@ -152,10 +160,12 @@ await P.p.waitForFunction(() => /^On: rain alerts for Edinburgh\./.test(document
 ok(/^On: rain alerts for Edinburgh\./.test(await P.p.textContent('#notify-status')), 'rain alerts for Edinburgh, from its own row', await P.p.textContent('#notify-status'));
 const devs = () => rows("SELECT d.dev, d.label, (SELECT handle FROM pg_users WHERE id = d.user_id) AS who FROM wx_devs d ORDER BY created");
 const subs = () => rows('SELECT dev, name, rain, warn, brief FROM wx_subs ORDER BY name');
-await waitFor(() => devs().length === 1);
-ok(devs().length === 1 && devs()[0].who === 'sam' && /iPhone/.test(devs()[0].label) && subs().length === 1 && subs()[0].name === 'Edinburgh' && subs()[0].rain === 1, 'the phone is one of the account\'s devices, with Edinburgh\'s rain alerts', JSON.stringify([devs(), subs()]));
 const whereTo = (x) => x.p.evaluate(() => document.getElementById('notify-acct')?.innerText.replace(/\s+/g, ' ').trim());
-await waitFor(async () => /Notifications go to this device/.test(await whereTo(P)), 8000);
+// (what the phone says waited for before the database is read: while it's read, the pages' requests wait too (waitFor),
+// and the phone's asking for the account's devices, just after turning them on, is given up on after 20 seconds of that)
+await waitFor(async () => /Notifications go to this device/.test(await whereTo(P)), 15000);
+const pDevs = devs(), pSubs = subs();
+ok(pDevs.length === 1 && pDevs[0].who === 'sam' && /iPhone/.test(pDevs[0].label) && pSubs.length === 1 && pSubs[0].name === 'Edinburgh' && pSubs[0].rain === 1, 'the phone is one of the account\'s devices, with Edinburgh\'s rain alerts', JSON.stringify([pDevs, pSubs]));
 ok(/Notifications go to this device\./.test(await whereTo(P)), 'and Notifications says they go to this device', await whereTo(P));
 await closeSheet(P);
 // the laptop: Edinburgh's rain on there too (the account's), and "here too" puts the laptop among the devices
@@ -217,9 +227,9 @@ await closeSheet(L);
   await settings(P);
   ok(await P.p.textContent('#acct-title') === 'Sam Taylor', 'and the name changed back in InFlight is Weather\'s', await P.p.textContent('#acct-title'));
   await closeSheet(P);
-  const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', headers: { Host: 'weather.gfg.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+  const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', agent: false, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
   ok(noPic === 401, 'the photo only for whoever\'s signed in', String(noPic));
-  const xl = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/account-link', method: 'POST', headers: { Host: 'weather.gfg.test:8788', Origin: 'http://chat.gfg.test:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end('{}'); });
+  const xl = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/account-link', method: 'POST', agent: false, headers: { Host: 'weather.gfg.test:8788', Origin: 'http://chat.gfg.test:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end('{}'); });
   ok(xl === 403, 'a code only for Weather\'s own pages', String(xl));
 }
 
@@ -292,16 +302,48 @@ await waitFor(() => tDev()?.user_id, 20000);
 const sess = rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess;
 ok(!!sess && rows(`SELECT 1 FROM pg_sessions WHERE hash = '${sess}'`).length === 1, 'linked again, with the sign-in that linked it', String(sess));
 sql(`DELETE FROM pg_sessions WHERE hash = '${sess}'`);
-await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { res.resume(); res.on('end', done); }); r.end(); });
+await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { res.resume(); res.on('end', done); }); r.end(); });
 const t5 = tDev();
 ok(t5 && !t5.user_id && t5.n > 0 && !rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess, 'signed out from elsewhere: by the next tick the tablet is no longer the account’s, and keeps its places as its own', JSON.stringify(t5));
 tSubs = t5?.n || 0;
+await closeSheet(T);
+// signed in again, then, with Weather not opened meanwhile, out of that account in this browser and in as someone else
+// (as if Weather were last in step with another account, the tablet cut loose from it when it signed out): asked before
+// the tablet's places go to the one signed in now, and till then nothing goes to it, nor do its notifications come here
+await weather(T); await settings(T); await T.p.waitForSelector('#acct-signin', { timeout: 15000 }).catch(() => {});
+await signInPage(T); await onAccountPage(T.p, { email: 'sam@example.com', password: PW }); await backInWeather(T);
+await waitFor(() => tDev()?.user_id, 20000); await T.p.waitForTimeout(1500);
+await T.p.evaluate(() => { const k = JSON.parse(localStorage.getItem('wx:acct')); localStorage.setItem('wx:acct', JSON.stringify({ ...k, id: 'someone-else', name: 'Pat Doe', handle: 'pat' })); });
+sql(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE dev = '${tId}'`);
+const ver0 = kept('sam')?.ver;
+// (opened with its notifications due to be told again, and the server slow to say who's signed in: told meanwhile as
+// the tablet's own, not the one signed in now's; and Settings, open meanwhile on the account it had, signed out of it
+// once it asks)
+await T.p.evaluate(() => { const s = JSON.parse(localStorage.getItem('wx:settings')); localStorage.setItem('wx:settings', JSON.stringify({ ...s, notify: { ...s.notify, syncedAt: 0 } })); });
+const slowMe = async (r) => { await new Promise((d) => setTimeout(d, 8000)); await r.continue().catch(() => {}); }, tw = Date.now();
+await T.ctx.route(/\/api\/weather\/me$/, slowMe);
+await weather(T); await settings(T);
+const told = await waitFor(() => T.p.evaluate((t0) => (JSON.parse(localStorage.getItem('wx:settings')).notify?.syncedAt || 0) > t0, tw), 7000);
+const tEarly = tDev();
+await T.ctx.unroute(/\/api\/weather\/me$/, slowMe);
+await T.p.waitForSelector('#acct-keep', { timeout: 20000 }).catch(() => {});
+const tAsks = await acctSays(T), footOut = await T.p.isHidden('#out-grp');
+ok(told && tEarly && !tEarly.user_id && tEarly.n > 0 && /Keep them with @sam/.test(tAsks) && footOut,
+  'signed in as someone else meanwhile, the server slow to say so: the tablet\'s notifications told meanwhile as its own, and Settings no longer signed in once it asks', JSON.stringify({ told, tEarly, tAsks, footOut }));
+// (a unit changed meanwhile: kept here, and the tablet's notifications told it)
+const to = await T.p.evaluate(() => (JSON.parse(localStorage.getItem('wx:settings')).temp === 'f' ? 'c' : 'f')), t0 = Date.now();
+await folder(T, 'units'); await T.p.click(`input[name="temp"][value="${to}"]`);
+await waitFor(() => T.p.evaluate((t0) => (JSON.parse(localStorage.getItem('wx:settings')).notify?.syncedAt || 0) > t0, t0), 15000); await T.p.waitForTimeout(2000);
+const t6 = tDev();
+ok(/Keep them with @sam/.test(tAsks) && !/Pat|@pat/.test(tAsks) && !(await T.p.evaluate(() => localStorage.getItem('wx:acct'))) && t6 && !t6.user_id && t6.n > 0 && kept('sam')?.ver === ver0,
+  'signed in as someone else meanwhile: asked before the tablet\'s places go to them, and till then nothing goes to them, nor their notifications here', JSON.stringify({ tAsks, t6, ver: [ver0, kept('sam')?.ver] }));
+tSubs = t6?.n || 0;
 await closeSheet(T);
 
 // ---- 7. The account's own rules ----
 const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new Promise((done, fail) => {
   const data = body == null ? null : JSON.stringify(body);
-  const r = http.request({ host: '127.0.0.1', port: 8788, path, method, headers: { Host: 'weather.gfg.test:8788', Origin: origin, 'Content-Type': 'application/json', ...(c ? { Cookie: c } : {}), ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
+  const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.gfg.test:8788', Origin: origin, 'Content-Type': 'application/json', ...(c ? { Cookie: c } : {}), ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
     let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, headers: res.headers }));
   });
   r.on('error', fail); if (data) r.write(data); r.end();
@@ -312,29 +354,48 @@ ok(JSON.parse((await call('GET', '/api/weather/me', null)).body).signedIn === fa
 ok((await call('PUT', '/api/weather/me', { base: 1, data: {} }, { cookie: `account=${lc.value}`, origin: CHAT })).status === 403, 'a change from another address on the site is turned away, sign-in or not');
 const stale = await call('PUT', '/api/weather/me', { base: 1, data: { places: [{ name: 'Leeds', lat: 53.8, lon: -1.55 }] } }, { cookie: `account=${lc.value}` });
 ok(stale.status === 409 && JSON.parse(stale.body).ver > 1, 'a change from an old version is told the account\'s moved on (not taken)', `${stale.status}`);
-const resumeElsewhere = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/resume', method: 'POST', headers: { Host: 'chat.gfg.test:8788', Origin: WX, Cookie: `account=${lc.value}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
+const resumeElsewhere = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/resume', method: 'POST', agent: false, headers: { Host: 'chat.gfg.test:8788', Origin: WX, Cookie: `account=${lc.value}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
 ok(resumeElsewhere.status === 403 && !/token/.test(resumeElsewhere.body), 'InFlight hands its sign-in only to its own pages', `${resumeElsewhere.status}`);
 // the cookie is the site's sign-in for the browser, not a key to InFlight: as InFlight's bearer token it opens nothing
-const asBearer = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/sync', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${lc.value}` } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+const asBearer = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/sync', agent: false, headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${lc.value}` } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
 ok(asBearer === 401, 'the cookie isn\'t a key to InFlight\'s API', String(asBearer));
 // a sign-in sent from another site (with a good password: its own account's, say) doesn't sign the browser in
 {
   const proof = await K.p.evaluate(async () => { const { E2E } = await import('/crypto.js'); const { salt } = await (await fetch('/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'sam@example.com' }) })).json(); return (await E2E.fromPassword('a long test password', salt)).proof; }).catch((e) => String(e));
-  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/signin/password', method: 'POST', headers: { Host: 'account.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
+  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/signin/password', method: 'POST', agent: false, headers: { Host: 'account.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
   const evil = await login('https://evil.example'), own = await login('http://account.gfg.test:8788');
   ok(evil.status === 403 && !evil.cookie && own.status === 200 && /account=/.test(String(own.cookie)), 'a sign-in sent from another site is turned away (one from the account\'s own page signs the browser in)', `${evil.status} ${evil.cookie} | ${own.status}`);
 }
 // the account's API only at Weather's own address (not the site's, nor a preview's)
-const atSite = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me', headers: { Host: 'localhost:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+const atSite = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me', agent: false, headers: { Host: 'localhost:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
 ok(atSite === 404, 'the account isn\'t answered at the site\'s own address', String(atSite));
 const old = await call('POST', '/api/weather/subscribe', { sub: { endpoint: 'https://fcm.googleapis.com/fcm/send/acct-before', keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }, place: { lat: 52.2, lon: 0.12, name: 'Cambridge' }, rain: true, brief: true });
 const cam = rows("SELECT name, rain, brief FROM wx_subs WHERE name = 'Cambridge'");
 ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief === 1, 'the app from before (one place) still turns them on', `${old.status} ${JSON.stringify(cam)}`);
+// (asked again where the server let the connection go while the database was being read)
+const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') throw e; return call(...a); });
+// a page not signed in to Weather, in a browser with the site's sign-in (asking whether its places go to the account):
+// its notifications its own, and the device not the account's
+{
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/acct-asked';
+  const own = await again('POST', '/api/weather/subscribe', { sub: { endpoint, keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }, account: false, places: [{ lat: 51.75, lon: -1.26, name: 'Oxford', rain: true }] }, { cookie: `account=${lc.value}` });
+  const d = rows(`SELECT d.user_id, s.name FROM wx_devs d JOIN wx_subs s ON s.dev = d.dev WHERE d.endpoint = '${endpoint}'`);
+  ok(own.status === 200 && d.length === 1 && !d[0].user_id && d[0].name === 'Oxford', 'signed out of Weather, though the browser has the site\'s sign-in: the device\'s own notifications, not the account\'s', `${own.status} ${JSON.stringify(d)}`);
+  await again('POST', '/api/weather/unsubscribe', { endpoint });
+}
+// units changed in Weather on one device: every device's notifications say them at once, not only that one's
+{
+  const me = JSON.parse((await again('GET', '/api/weather/me', null, { cookie: `account=${lc.value}` })).body);
+  const units = () => rows(`SELECT DISTINCT s.units FROM wx_subs s JOIN wx_devs d ON d.dev = s.dev WHERE d.user_id = '${me.id}' AND d.dev NOT LIKE 'mail:%'`).map((r) => r.units);
+  const was = units(), put = await again('PUT', '/api/weather/me', { base: me.ver, data: { ...me.data, settings: { ...me.data.settings, temp: 'c' } } }, { cookie: `account=${lc.value}` }), now = units();
+  ok(put.status === 200 && was.length && was.every((u) => /"temp":"f"/.test(u)) && now.length && now.every((u) => /"temp":"c"/.test(u)), 'units changed in Weather: the notifications of every device of the account say them', JSON.stringify({ status: put.status, was, now }));
+  await again('PUT', '/api/weather/me', { base: me.ver + 1, data: me.data }, { cookie: `account=${lc.value}` });
+}
 
 // ---- 8. The tick: Edinburgh's rain to both devices of the account ----
 {
   const quiet = (() => { const h = new Date().getUTCHours(); return h >= 21 || h < 7; })();
-  const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
+  const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
   if (!quiet) ok(tick.rain >= 2, 'the tick: Edinburgh\'s rain alert to the phone and the laptop', JSON.stringify(tick));
   else console.log('(quiet hours in Edinburgh: the rain alert waits)', JSON.stringify(tick));
 }
@@ -361,7 +422,7 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   sql(`UPDATE wx_subs SET brief_at = '${hhmm}', last_brief = NULL WHERE dev = '${mailDev}' AND brief = 1`);
   sql(`UPDATE wx_subs SET tz_off = 0, told = '{}' WHERE dev = '${mailDev}' AND warn = 1`);
   const before = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).length;
-  const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
+  const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
   const mails = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).slice(before).map((l) => JSON.parse(l).body).filter((m) => /^Weather </.test(m.from));
   const brief = mails.find((m) => /^Edinburgh: .+, \d+°$/.test(m.subject)), warn = mails.find((m) => /^Amber thunderstorm warning: London/.test(m.subject));
   if (at.getUTCDate() === new Date().getUTCDate()) ok(brief && brief.to === 'sam@example.com' && /mail\/wx-[a-z-]+\.png/.test(brief.html) && /Morning:/.test(brief.text), 'the tick: the briefing by email, from Weather, with the day in three', `${JSON.stringify(tick)} ${mails.map((m) => m.subject)}`);
@@ -389,7 +450,9 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   // (deleting needs it shown it's you in the last ten minutes: as if the password had just been asked for)
   sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = (SELECT id FROM pg_users WHERE email = 'sam@example.com')`);
   const ck = (await L.ctx.cookies(CHAT)).find((c) => c.name === 'account'), handle = rows("SELECT handle FROM pg_users WHERE email = 'sam@example.com'")[0]?.handle;
-  const post = (path, host, headers, data) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', headers: { Host: host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); if (data) r.write(data); r.end(); });
+  // (each on a connection of its own, as every request here is: one kept open since may have been let go by the server
+  // while the database was being changed, and the next sent on it dies with "socket hang up")
+  const post = (path, host, headers, data) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', agent: false, headers: { Host: host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); if (data) r.write(data); r.end(); });
   const del = await post('/api/account/delete', 'account.gfg.test:8788', { 'Content-Type': 'application/json', Origin: 'http://account.gfg.test:8788', Cookie: `account=${ck?.value}` }, JSON.stringify({ confirm: handle }));
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
   // (the week's grace over: the next tick deletes it, and what Weather kept with it)

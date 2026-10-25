@@ -142,10 +142,15 @@ const resetSays = await text(V);
 ok(V.p.url() === `${ACCT}/` && /For Ivy Lane \(@ivy, i\S*@example\.com\)/.test(resetSays) && /Keep messages with passkey/.test(resetSays) && /Start fresh instead/.test(resetSays),
   'the link: who it\'s for (the email half hidden), and, with a passkey that has her key, a way to keep it', resetSays.slice(0, 220));
 await shot(V, '06-reset');
+// (the link opened again in another tab before the first is used, as a second tap on it would: the first still works)
+const V2 = await V.ctx.newPage(); await V2.goto(`${ACCT}/#reset=${RT}`);
+const twice = await V2.waitForFunction(() => /Choose a new password/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 30000 }).then(() => true, () => false);
+await V2.close();
+ok(twice, 'the same link opened again, in another tab');
 await V.p.fill('main input[name=password]', PW2); await V.p.click('main .btn:has-text("Keep messages with passkey")');
 await waitText(V, /Password changed/, '#toast');
 const after = user('ivy');
-ok(/Password changed\. Your messages are safe\./.test(await text(V, '#toast')) && after.pub === ivy.pub && after.salt !== ivy.salt, 'kept: the same key, a new password', await text(V, '#toast'));
+ok(/Password changed\. Your messages are safe\./.test(await text(V, '#toast')) && after.pub === ivy.pub && after.salt !== ivy.salt, 'kept in the first tab all the same: the same key, a new password', await text(V, '#toast') || await text(V, 'main .said'));
 ok(count(`SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id = '${ivy.id}'`) === 0 && count(`SELECT COUNT(*) AS n FROM pg_sessions WHERE user_id = '${ivy.id}'`) === 1 && !!after.email_ok,
   'every other sign-in, and every passkey, gone (just this one, signed in now); and the email confirmed by the link');
 await shot(V, '07-reset-kept');
@@ -184,7 +189,25 @@ await X.p.click('#acct-signin'); await X.p.waitForURL((u) => u.hostname.startsWi
 await X.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
 ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather\'s Sign in: the account\'s page, saying so, with the way back to Weather', await text(X, 'main .lead'));
 
-// ---- 8. The hand-back itself, straight against the API (functions/_handback.js) ----
+// ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
+// changed, a word there saying how to get the account back ----
+{
+  const AC = 'account.gfg.test', ip = '10.8.0.3';
+  const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
+  const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
+    proof: randomBytes(32).toString('base64url'), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip });
+  const asked = await hostCall(AC, '/api/account/email/change', { email: 'eve.new@example.com' }, { cookie: made.cookie, ip });
+  const warn = await waitMail('eve@example.com', /new email was asked for/), link = await waitMail('eve.new@example.com', /Confirm your new email/);
+  ok(made.s === 201 && asked.s === 200 && !rows("SELECT email_ok FROM pg_users WHERE handle = 'evemead'")[0].email_ok && /e•+@example\.com/.test(warn?.text || '')
+    && /If this wasn’t you, sign in now and change your password\. That calls the change off and signs out every other device\./.test(warn?.text || ''),
+    'a new email asked for: the address as it is told, confirmed or not, and how to call it off', `${made.s} ${asked.s} ${(warn?.text || '').slice(0, 200)}`);
+  const done = await hostCall(AC, '/api/account/email/change-confirm', { token: tokenIn(link, 'email') }, { ip });
+  const told = await waitMail('eve@example.com', /email was changed/);
+  ok(done.s === 200 && /Ask the person who runs the site for a reset link, and you can put your email back\./.test(told?.text || ''),
+    'opened: the old address told, and how to get the account back if it wasn\'t them', `${done.s} ${(told?.text || '').slice(0, 240)}`);
+}
+
+// ---- 9. The hand-back itself, straight against the API (functions/_handback.js) ----
 {
   const AC = 'account.gfg.test', IN = 'chat.gfg.test', WE = 'weather.gfg.test', ip = '10.8.0.2';
   const word = () => { const w = randomBytes(32).toString('base64url'); return { w, ask: createHash('sha256').update(w).digest('base64url') }; };

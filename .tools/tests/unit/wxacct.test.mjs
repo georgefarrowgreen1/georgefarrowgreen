@@ -2,10 +2,10 @@
 // notifications together (weather/account.js), and what's kept made safe (functions/_wxacct.js, _wxpush.js wantOf).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergePlaces, mergeNotify, notifyChanges, keyOf, nkeyOf } from "../../../weather/account.js";
+import { mergePlaces, mergeNotify, mergeSettings, notifyChanges, keyOf, nkeyOf, MAX_NOTIFY } from "../../../weather/account.js";
 import { cookieToken, withCookie, withoutSession } from "../../../functions/_account.js";
 import { cleanData } from "../../../functions/_wxacct.js";
-import { wantOf, mailWant } from "../../../functions/_wxpush.js";
+import { wantOf, mailWant, MAX_PLACES } from "../../../functions/_wxpush.js";
 
 const P = (name, lat, lon) => ({ name, region: "", lat, lon });
 const london = P("London", 51.5072, -0.1276), leeds = P("Leeds", 53.8, -1.55), york = P("York", 53.96, -1.08), bath = P("Bath", 51.38, -2.36);
@@ -18,6 +18,18 @@ test("places put together: the account's, less what this device took away since,
   assert.deepEqual(mergePlaces([london, bath], [york, london], []).map((p) => p.name), ["London", "Bath", "York"]);
   // taken away elsewhere, and not touched here: gone here too
   assert.deepEqual(mergePlaces([london], [london, leeds], [london, leeds].map(keyOf)).map((p) => p.name), ["London"]);
+});
+
+test("settings put together, setting by setting: those changed here since, the rest the account's", () => {
+  // (as app.js has canon: an object's keys in order)
+  const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+  // in step at °C and the 24-hour clock; since then, the 12-hour clock here, and °F on another device
+  const base = { temp: "c", clock: "24" }, mine = { temp: "c", clock: "12" }, theirs = { temp: "f", clock: "24" };
+  assert.deepEqual(mergeSettings(theirs, mine, base, ["temp", "clock"], canon), { temp: "f", clock: "12" });
+  // (a setting that's an object: the same, its keys in any order, isn't a change)
+  assert.deepEqual(mergeSettings({ commute: { on: true, am: "07:30" } }, { commute: { am: "08:00", on: false } }, { commute: { on: false, am: "08:00" } }, ["commute"], canon), { commute: { on: true, am: "07:30" } });
+  // nothing kept with the account, nor in step before: all of this device's
+  assert.deepEqual(mergeSettings(null, mine, null, ["temp", "clock"], canon), mine);
 });
 
 test("notifications put together, place by place: this device's changes since, over the account's", () => {
@@ -62,6 +74,8 @@ test("what's kept with the account, made safe", () => {
   assert.deepEqual(d.notify.places.map((p) => [p.name, p.lat, p.lon, p.rain, p.warn]), [["London", 51.51, -0.13, true, false]]);
   assert.equal(d.notify.brief.name, "London"); assert.equal(d.notify.briefAt, "07:00");
   assert.throws(() => cleanData({ places: Array.from({ length: 51 }, (_, i) => P(`P${i}`, i, i)) }), /50 places at most/);
+  // (notifications for more places than a device can have: refused, not cut short, so the app knows; it keeps to them)
+  assert.throws(() => cleanData({ notify: { places: Array.from({ length: 13 }, (_, i) => ({ lat: i, lon: i, rain: true })) } }), /12 places at most/);
   assert.throws(() => cleanData([]), /Bad request/);
 });
 
@@ -90,4 +104,9 @@ test("the site's sign-in, as a cookie: the whole site's where the address is the
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `x=1; __Secure-account=${"a".repeat(43)}`), {}), "a".repeat(43));
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `account=${"a".repeat(43)}`), {}), null);
   assert.equal(cookieToken(req("https://weather.georgefarrowgreen.com/", `__Secure-account=bad"value`), {}), null);
+});
+
+test("the app turns notifications on for no more places than the server takes", () => {
+  // (one more would be refused on every save after, the account's places and settings with it)
+  assert.equal(MAX_NOTIFY, MAX_PLACES);
 });

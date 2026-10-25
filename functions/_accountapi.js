@@ -4,18 +4,16 @@
 // functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
 // address (sameOrigin). view(env, u): the account as that page shows it.
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256 } from "./_pigeon.js";
+import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
-import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
+import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
 
 // (answers about the account: never kept by anything in between, and for this page's own address alone)
 export const json = (o, status = 200) => { const r = pjson(o, status); r.headers.set("Cross-Origin-Resource-Policy", "same-origin"); return r; };
 // a small JSON object
 export async function body(request, max = 64 * 1024) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "Too big.");
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "Too big.");
+  const text = new TextDecoder().decode(await readCapped(request, max, "Too big."));
   try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
   throw new HttpError(400, "Bad request.");
 }
@@ -30,11 +28,12 @@ export async function signedIn(request, env, { deleting = false } = {}) {
 export function accountRoutes(view, { onSignOut = null, deleting = false, signIn = true } = {}) {
   // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's,
   // or as the app's it's for, where an app sent you here to sign in (app: "inflight" or "weather")
-  // (the session's own token's never given out here: only the cookie's)
+  // (the session's own token's never given out here: only the cookie's; and the browser's word that it's signed in to
+  // this account before, so guessing elsewhere can't hold its password sign-in back: functions/_account.js withKnown)
   async function started(request, env, waitUntil, u, how, app) {
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", app === "weather" ? "weather" : null).catch(() => {}));
-    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash);
+    return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash), request, env, u);
   }
   const ins = {
     "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
@@ -72,10 +71,14 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
       const u = await signedIn(request, env), res = await photoOf(env, u.id, { "Cross-Origin-Resource-Policy": "same-origin" });
       return res || json({ error: "No photo." }, 404);
     },
+    // (at and focus: the account's page moving what shows of the same photo, its circle cut again from the poster sent
+    // at that time, which is kept; refused if that's not the poster now, another app's new photo having replaced it)
     "PUT me/photo": async ({ request, env }) => {
       sameOrigin(request);
-      const u = await signedIn(request, env), t = await putPhoto(env, u, request);
-      return json(await view(env, { ...u, avatar_at: t, poster_at: null, poster_focus: null }));
+      const u = await signedIn(request, env), q = new URL(request.url).searchParams, at = q.get("at"), keep = at ? q.get("focus") || "" : null;
+      if (at && Number(at) !== u.poster_at) throw new HttpError(409, "Your photo changed elsewhere. Open it again.");
+      const t = await putPhoto(env, u, request, keep);
+      return json(await view(env, { ...u, avatar_at: t, ...(at ? { poster_focus: cleanFocus(keep) } : { poster_at: null, poster_focus: null }) }));
     },
     // (the poster: the same photo larger, for the account's page, and the point of it that stays in view)
     "GET me/poster": async ({ request, env }) => {

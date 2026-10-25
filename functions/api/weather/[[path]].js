@@ -18,7 +18,7 @@
 //   POST /api/weather/email-off    scanners that follow links turn nothing off); POST turns them off, and is the mail
 //                                  app's own one-click Unsubscribe too (RFC 8058)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
-import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError } from "../../_pigeon.js";
+import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { linkOrigin } from "../../_email.js";
 import { unsubscribe, moveSub, wxTick, maybeWxTick, publicKey, leaveAny } from "../../_wxpush.js";
@@ -47,9 +47,7 @@ function sameOrigin(request) {
 }
 // a small JSON object, or nothing
 async function body(request) {
-  if (Number(request.headers.get("Content-Length")) > 8192) throw new HttpError(413, "Too big.");
-  const text = await request.text();
-  if (text.length > 8192) throw new HttpError(413, "Too big.");
+  const text = new TextDecoder().decode(await readCapped(request, 8192, "Too big."));
   let b; try { b = JSON.parse(text || "{}"); } catch (_) { throw new HttpError(400, "Bad request."); }
   if (!b || typeof b !== "object" || Array.isArray(b)) throw new HttpError(400, "Bad request.");
   return b;

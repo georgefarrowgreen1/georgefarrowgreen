@@ -17,6 +17,7 @@
   --alert: #ff5a4f;
   --good: #34c759;
   --tint-blue: #9fd0ff;
+  --rain-text: var(--tint-blue);   /* the chances of rain (paler on the palest skies: body) */
   /* the motion, as every app on the site has it: out (quick, then settling), the glide (iOS's own, for things that rise
      and slide: quick then soft, no overshoot), in (for what leaves), and a soft spring (about 2% over, then back: for
      what's let go of, never for a fade); and how long each kind of thing takes */
@@ -67,9 +68,15 @@ body[data-sky="cloudy-night"] { --pane: 0 0 94 / 0.13; --pane-c: 0 0 163 / 0.05;
 body[data-sky="rain-night"] { --pane: 0 26 81 / 0.24; --pane-c: 0 41 159 / 0.11; --pane-t: 14 25 45 / 0.60; }
 body[data-sky="snow-night"] { --pane: 0 2 101 / 0.15; --pane-c: 0 0 232 / 0.05; --pane-t: 9 21 43 / 0.53; }
 body[data-sky="dusk"] { --pane: 5 0 20 / 0.31; --pane-c: 0 0 0 / 0.05; --pane-t: 14 21 38 / 0.89; }
-body[data-sky="dawn"] { --pane: 0 0 9 / 0.31; --pane-c: 0 0 0 / 0.05; --pane-t: 12 20 37 / 0.88; }
+body[data-sky="dawn"] { --pane: 0 0 9 / 0.41; --pane-c: 0 0 0 / 0.05; --pane-t: 12 20 37 / 0.88; }
 body[data-glass="clear"] { --pane-now: var(--pane-c); --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
 body[data-glass="tinted"] { --pane-now: var(--pane-t); --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
+/* (on the palest skies, the secondary words, the chances of rain and "Uncertain" a little stronger: as far as 4.5:1 over
+   the standard glass takes, the panes left as they were tuned, but for dawn's, a little deeper, where even white fell
+   short over it. With contrast turned up, its own, below) */
+@media not all and (prefers-contrast: more) {
+  body:is([data-sky$="-day"], [data-sky="fog"], [data-sky="dusk"], [data-sky="dawn"]) { --text-2: rgba(255, 255, 255, 0.9); --text-3: rgba(255, 255, 255, 0.86); --rain-text: #d8edff; --unsure: #ffe8b8; }
+}
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; -webkit-tap-highlight-color: transparent; }
@@ -349,7 +356,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* the weather now, the saved places either side of it beside it, in a scroller that stops at each (app.js pager): the
    one either side drawn to its height, not adding to it (contain), and on a phone reaching the screen's edges, so a
    place comes in from the edge, not from inside the page's margin; faded and shrunk a little as the page is scrolled
-   down (app.js: --c, on the page) */
+   down (app.js: --c, on it and on the .pv-hero copies) */
 .pager { position: relative; display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
   transform-origin: 0 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
 .pager::-webkit-scrollbar { display: none; }
@@ -436,10 +443,12 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
    the page's columns out past the screen's edge, it would widen the page to take them in) */
 .hero-icon { position: relative; }
 .hero-icon > .wi-was { position: absolute; left: 0; top: 0; pointer-events: none; }
-/* and lives a little: the sun's rays turn, clouds drift, rain and snow fall, the lightning flickers */
+/* and lives a little: the sun's rays turn, clouds drift, rain and snow fall, the lightning flickers (the slow drifts, the
+   rays' turn and the clouds' and the fog's, in small steps as the sky's clouds move: a degree or a fraction of a pixel at
+   a time looks the same, and the page isn't drawn afresh every frame for them) */
 .hero-icon .wi-rays, .hero-icon .wi-flakes > * { transform-box: fill-box; transform-origin: 50% 50%; }
-.hero-icon .wi-rays { animation: wi-turn 30s linear infinite; }
-.hero-icon .wi-cloud { animation: wi-drift 7s ease-in-out infinite alternate; }
+.hero-icon .wi-rays { animation: wi-turn 30s steps(360) infinite; }
+.hero-icon .wi-cloud { animation: wi-drift 7s steps(56) infinite alternate; }
 .hero-icon .wi-cloud + .wi-cloud { animation-duration: 5.4s; animation-direction: alternate-reverse; }
 .hero-icon .wi-drops > * { animation: wi-fall 1.3s cubic-bezier(0.5, 0, 0.9, 0.6) infinite; }
 .hero-icon .wi-drops > :nth-child(2) { animation-delay: -0.45s; }
@@ -447,7 +456,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .hero-icon .wi-drops > :nth-child(4) { animation-delay: -0.25s; }
 .hero-icon .wi-flakes > * { animation: wi-flake 3.4s ease-in-out infinite; }
 .hero-icon .wi-flakes > :nth-child(2) { animation-delay: -1.7s; }
-.hero-icon .wi-fog > * { animation: wi-drift 6s ease-in-out infinite alternate; }
+.hero-icon .wi-fog > * { animation: wi-drift 6s steps(48) infinite alternate; }
 .hero-icon .wi-fog > :nth-child(2) { animation-direction: alternate-reverse; animation-duration: 7.5s; }
 .hero-icon .wi-bolt { animation: wi-flicker 4.6s linear infinite; }
 @keyframes wi-turn { to { transform: rotate(360deg); } }
@@ -628,7 +637,7 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
 .hour.now .h-time { color: #fff; }
 .hour .h-temp { font-size: 17px; font-weight: 600; }
-.hour .h-pop { font-size: 12px; color: var(--tint-blue); font-weight: 650; min-height: 16px; }
+.hour .h-pop { font-size: 12px; color: var(--rain-text); font-weight: 650; min-height: 16px; }
 .hour.sunev .h-temp { font-size: 13px; font-weight: 600; color: var(--text-2); }
 .chart-note { font-size: 12.5px; color: var(--text-3); margin: 4px 0 0; }
 
@@ -785,10 +794,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .day-row:active { background-color: rgba(255, 255, 255, 0.1); }
 .d-name { font-weight: 600; font-size: 16px; line-height: 1.15; }
 .d-name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--text-3); }
-.d-name small.unsure { color: #ffd68a; }
+.d-name small.unsure { color: var(--unsure, #ffd68a); }
 .d-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; line-height: 1; }
 .d-icon > span:first-child { display: block; line-height: 0; }
-.d-pop { font-size: 11.5px; font-weight: 650; color: var(--tint-blue); margin-top: 1px; }
+.d-pop { font-size: 11.5px; font-weight: 650; color: var(--rain-text); margin-top: 1px; }
 .d-lo { text-align: right; color: var(--text-3); font-weight: 560; font-variant-numeric: tabular-nums; }
 .d-hi { font-weight: 650; font-variant-numeric: tabular-nums; }
 /* the days by rain or by wind: when it falls, an hour a bar, and its chance and how much; or the wind, a line, with its
@@ -802,7 +811,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .dw .line { fill: none; stroke: #3fd6c2; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .d-val { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .d-val b { font-weight: 650; font-size: 16px; }
-.d-val b.rain { color: var(--tint-blue); }
+.d-val b.rain { color: var(--rain-text); }
 .d-val b small.u { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .d-val > small { font-size: 12px; color: var(--text-3); font-weight: 500; }
 /* the days' own switch: icons only, small */
@@ -936,6 +945,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .tile h3 { margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
 .tile .big, .detail-now .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
 .tile .big small, .detail-now .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
+/* (the Sun's: its word under the time where the two don't fit side by side, "10:48pm Sunset" on a narrow phone, rather
+   than out over the card's edge; only the Sun's, so the wind's figure and its unit never part) */
+.tile[data-kind="sun"] .big { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 3px; }
+.tile[data-kind="sun"] .big small { margin-left: 0; }
 .tile p, .detail-now p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
 .tile .sub { margin-top: auto; }
 .detail-now .sub { margin-top: 6px; }
@@ -1226,8 +1239,10 @@ select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .np-row { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 12px 0 16px; }
 .np-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-name small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
-.np-chip { flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
+.np-chip { position: relative; flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
   background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); transition: background-color 0.2s, color 0.2s; }
+/* (a finger's 44 points to tap, above and below it, as it looks; not either side, into the chip beside it) */
+.np-chip::after { content: ""; position: absolute; inset: -5px 0; border-radius: inherit; }
 .np-chip[aria-pressed="true"] { color: #fff; background-color: #2f6fde; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
 @media (hover: hover) and (pointer: fine) { .np-chip:hover { background-color: rgba(255, 255, 255, 0.14); } .np-chip[aria-pressed="true"]:hover { background-color: #3b7cf0; } }
 .np-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -1310,7 +1325,7 @@ a.acct-btn { text-decoration: none; }
 .part { border-radius: var(--r-inner); padding: 9px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
 .part .p-name { font-size: 12px; color: var(--text-3); font-weight: 600; }
 .part .p-temp { font-weight: 650; }
-.part .p-pop { font-size: 12px; color: var(--tint-blue); font-weight: 600; min-height: 15px; }
+.part .p-pop { font-size: 12px; color: var(--rain-text); font-weight: 600; min-height: 15px; }
 .day-section { margin: 18px 0 6px; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); font-weight: 650; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stats + .models, .stats + .stats, .conf + .stats { margin-top: 10px; }
@@ -1776,6 +1791,9 @@ fieldset.opt label.fld { align-items: stretch; }
 .fld input:-webkit-autofill:focus { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 0 0 100px rgba(118, 118, 128, 0.26), 0 0 0 3px rgba(159, 208, 255, 0.45); }
 .fld small { color: var(--text-3); }
 .act-btns { grid-column: span 2; display: flex; gap: 16px; align-items: center; }
+/* (both a finger's 44 points, and Remove at the other end from Done) */
+.act-btns .pill-btn { min-height: 44px; }
+.act-btns .link { min-height: 44px; padding: 0 10px; margin-left: auto; }
 .link.danger { color: #ffb3ad; }
 select option { color: #fff; background: #1c2434; }
 

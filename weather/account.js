@@ -40,6 +40,8 @@ export async function signInWord() {
 export const handback = (code, verifier) => call("handback", { method: "POST", body: { code, verifier } });
 
 // ---- in step ----
+// The most places notifications can be on for: the server's MAX_PLACES (functions/_wxpush.js), which refuses more
+export const MAX_NOTIFY = 12;
 // A place's key: two decimal places (about a kilometre), as the app tells places apart when it saves them
 export const keyOf = (p) => `${Number(p.lat).toFixed(2)},${Number(p.lon).toFixed(2)}`;
 // The saved places, kept here and kept with the account, put together: the account's (in its order) less any this
@@ -49,6 +51,13 @@ export function mergePlaces(theirs, mine, base) {
   for (const p of theirs) { const k = keyOf(p); if (seen.has(k) || (was.has(k) && !have.has(k))) continue; seen.add(k); out.push(p); }
   for (const p of mine) { const k = keyOf(p); if (seen.has(k) || was.has(k)) continue; seen.add(k); out.push(p); }
   return out;
+}
+// The settings, the same way, setting by setting: each one this device has changed since they were last in step (base:
+// the settings then) this device's, the rest the account's (keys: the settings kept with it; canon: one as words, its
+// keys in order, so the same setting always reads the same)
+export function mergeSettings(theirs, mine, base, keys, canon) {
+  const b = base || {};
+  return Object.fromEntries(keys.map((k) => [k, canon(mine[k]) !== canon(b[k]) ? mine[k] : (theirs?.[k] ?? mine[k])]));
 }
 // A place as notifications know it: My Location is "gps", wherever it is on whichever device last moved it
 export const nkeyOf = (p) => (p.gps ? "gps" : keyOf(p));

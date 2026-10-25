@@ -261,8 +261,11 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
 // several at once: one banner straight under the temperature, saying what they are (the most severe first), that opens
 // to them all
 {
+  // (straight under it: nothing between them but a script, the warnings first in the cards' column and the temperature
+  // last before it, in the scroller that has the places either side of it)
   const sum = await p.evaluate(() => { const b = document.querySelector('#alerts .warn-sum'); return b && { title: b.querySelector('.ins-open').textContent, line: b.querySelector('p').textContent,
-    open: b.querySelector('.ins-open').getAttribute('aria-expanded'), hidden: document.getElementById('warn-all').hidden, first: document.getElementById('alerts').previousElementSibling?.matches('script, .hero') }; });
+    open: b.querySelector('.ins-open').getAttribute('aria-expanded'), hidden: document.getElementById('warn-all').hidden,
+    first: (() => { for (let n = document.getElementById('alerts'); n && n !== document.body;) { const s = n.previousElementSibling; if (!s) { n = n.parentElement; continue; } n = s; if (!n.matches('script')) return n.matches('.hero, .pager:has(> .hero)'); } return false; })() }; });
   // (the official ones first, worst first; the app's own after, in either order)
   ok(sum && sum.title === '4 warnings' && /^Amber thunderstorm, Yellow rain, (Gales, (Frost|Icy patches)|(Frost|Icy patches), Gales)$/.test(sum.line) && sum.open === 'false' && sum.hidden && sum.first,
     'several warnings: one banner under the temperature, saying what they are, worst first', JSON.stringify(sum));
@@ -322,7 +325,11 @@ const cards = await p.locator('#insights .ins-title').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));
 // (an umbrella only when it's needed or might be: the unit tests have which; nothing to say on a dry day)
 ok(!cards.some((t) => /No umbrella|much the same|Shorter days|Longer days|Confident forecast|No big changes|Fresh air/.test(t)), 'only what\'s worth knowing: nothing to say there\'s nothing to say', cards.join(' · '));
-if (new Date(now).getUTCHours() < 13) ok(cards.some((t) => /High UV/.test(t)), 'high UV today');
+// (a high UV today said by its tile, today's peak and when, whatever the time of day: so not again in the highlights)
+{
+  const uv = await p.textContent('#tiles [data-kind="uv"] .sub').catch(() => '');
+  ok(/^Peaks at 7 \(high\) around \d\d:\d\d\.$/.test(uv) && !cards.some((t) => /UV/.test(t)), 'high UV today: its tile says so (and the highlights don\'t again)', `${uv} | ${cards.join(' · ')}`);
+}
 ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
 // (those not worth it, named in a line under the rest; a tap shows them too, faded)
 {
@@ -694,8 +701,14 @@ await p.waitForTimeout(700);
 const fills = await p.evaluate(() => { const m = document.querySelector('#radar .radar-map').getBoundingClientRect(), c = document.querySelector('#radar .maplibregl-canvas').getBoundingClientRect(); return Math.abs(m.width - c.width) < 1 && Math.abs(m.height - c.height) < 1 && m.height > 500; });
 ok(fills, 'the map filling it, edge to edge');
 await p.screenshot({ path: `${out}/wx-radar.png` });
+// (the page under it out of reach meanwhile: Tab goes round the map's own controls, never to a card hidden under it)
+const tabbed = [];
+for (let k = 0; k < 14; k++) { await p.keyboard.press('Tab'); tabbed.push(await p.evaluate(() => { const a = document.activeElement; return a === document.body ? 'body' : a?.closest('#radar') ? 'map' : `${a?.tagName}.${a?.className}`; })); }
+ok(tabbed.includes('map') && tabbed.every((t) => t === 'map' || t === 'body'), 'full screen, Tab stays on the map', tabbed.join(', '));
 await p.keyboard.press('Escape');
 ok(await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'and back');
+const closedFocus = await p.evaluate(() => ({ on: !!document.activeElement?.matches('#radar .radar-full'), foot: document.querySelector('.foot').inert, pv: document.querySelector('.pv-prev').inert }));
+ok(closedFocus.on && !closedFocus.foot && closedFocus.pv, 'focus on its × again, and the page in reach again (the places either side\'s pages still not)', JSON.stringify(closedFocus));
 // the map's layers, as Apple's: the wind, flowing, its bubble saying which way and how strong, by the hour from two hours
 // ago to twelve on; the temperature, its bubble the temperature there; and back to the rain, each kept as chosen
 {
@@ -930,6 +943,11 @@ await p.selectOption('#act-add', 'golf');
 ok((await p.locator('#acts-list .act').count()) === 4, 'golf added to the list');
 await p.locator('#acts-list .act').first().locator('button').click();
 ok(await p.textContent('#settings-title') === 'Run' && await p.getAttribute('#set-back', 'aria-label') === 'Back to Best times', 'an activity has a page of its own, in Best times');
+{
+  // (the temperatures with a keyboard that has a minus, below zero being one: an iPhone's numeric keypad hasn't; the rest the keypad)
+  const modes = await p.evaluate(() => Object.fromEntries([...document.querySelectorAll('.act-edit input[type="number"]')].map((x) => [x.name, x.getAttribute('inputmode')])));
+  ok(modes.tmin === null && modes.tmax === null && modes.windMax === 'numeric' && modes.hours === 'numeric', 'its temperatures can be typed below zero (no digits-only keypad)', JSON.stringify(modes));
+}
 await p.fill('.act-edit input[name="tmax"]', '20');
 await p.click('.act-edit .pill-btn');
 ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()) && await p.textContent('#settings-title') === 'Best times', 'a run\'s limits changed, and back in Best times', await p.locator('#acts-list .act-lim').first().textContent());
@@ -962,8 +980,11 @@ const lens = await p.evaluate(() => ['temp', 'wind'].map((k) => {
   return { k, off: Math.round(Math.abs(3 + tx - chosen.offsetLeft)), dw: Math.round(Math.abs(w - chosen.offsetWidth)) };
 }));
 ok(lens.every((x) => x.off <= 2 && x.dw <= 2), 'the lens sits under the chosen one (°C of two; knots, the last of four)', JSON.stringify(lens));
+// (what moves by the clock, that is: not what the scroller of places leads as it's swiped, the cards, the pages either
+// side and their skies, which move only as it does: styles.css --cur)
 const still = await p.evaluate(() => {
-  const bar = getComputedStyle(document.querySelector('.top'), '::before'), sky = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky')), page = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.page'));
+  const ticking = document.getAnimations().filter((a) => !(a.timeline instanceof ScrollTimeline)), bar = getComputedStyle(document.querySelector('.top'), '::before');
+  const sky = ticking.filter((a) => a.effect?.target?.closest?.('.sky')), page = ticking.filter((a) => a.effect?.target?.closest?.('.page'));
   return { blur: bar.backdropFilter, sky: sky.every((a) => a.playState !== 'running'), page: page.filter((a) => a.playState === 'running' && !(a instanceof CSSTransition)).map((a) => a.animationName) };
 });
 ok(still.blur === 'none' && still.sky && !still.page.length, 'under a sheet the page holds still: its glass unblurred, nothing moving on it or in the sky', JSON.stringify(still));
@@ -987,7 +1008,8 @@ const back = await p.evaluate(() => getComputedStyle(document.querySelector('.to
 ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
 // scrolled on past the top, the sky behind the cards holds still too (and moves again back at the top)
 {
-  const skyRunning = () => p.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky') && a instanceof CSSAnimation).map((a) => a.playState));
+  // (by the clock: not the next place's sky, which comes in only as the page is swiped)
+  const skyRunning = () => p.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky') && a instanceof CSSAnimation && !(a.timeline instanceof ScrollTimeline)).map((a) => a.playState));
   // (as it was at the top before: at dusk, dawn or under a clear sky its clouds are still anyway)
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(400);
   const before = await skyRunning();
@@ -1058,17 +1080,22 @@ await p.keyboard.press('Escape');
   // (the page's columns follow the finger, both together)
   const shift = () => p.evaluate(() => { const [a, b] = [...document.querySelectorAll('#main > .col')].map((c) => { const t = getComputedStyle(c).translate; return t === 'none' ? 0 : Math.round(parseFloat(t)); }); return a === b ? a : NaN; });
   const name = () => p.textContent('#place-name');
-  // Edinburgh's the last: leftwards it gives, less and less (190 px of swipe, past the 10 it took to tell), and comes back
+  // Edinburgh's the last: leftwards (190 px of swipe) it goes no further, and is left as it was. (The swipe is the
+  // scroller's own, so its give at the end is the browser's, as iOS's scrollers give, not moving what's in it; held
+  // there, not handed on to the browser to go back or forward with: contain. Headless Chromium's scrollers don't give)
   await drag([300, 290, 270, 240, 200, 160, 120, 80]);
-  const gave = await shift();
+  const gave = await shift(), ends = await p.evaluate(() => getComputedStyle(document.getElementById('pager')).overscrollBehaviorX);
   await touch('touchEnd'); await p.waitForTimeout(700);
-  ok(gave < -40 && gave > -110 && (await name()) === 'Edinburgh' && (await shift()) === 0, 'swiped on past the last place: the page gives a little (not with the finger) and springs back', `${gave} px for 190 px`);
-  // a short swipe the other way: the page with the finger, from where the swipe was told (no jump), then back
+  ok(gave === 0 && ends === 'contain' && (await name()) === 'Edinburgh' && (await shift()) === 0, 'swiped on past the last place: the page goes no further (giving there as the browser\'s scrollers do) and stays', `${gave} px for 190 px, ${ends}`);
+  // a short swipe the other way: the page with the finger from where the browser took it for a scroll (not jumping
+  // the way it took to tell: less than the 52 px gone), then pixel for pixel with it (20 px more); then back
   await drag([100, 110, 125, 140, 152]);
-  const followed = await shift();
+  const told = await shift();
+  await touch('touchMove', 172); await p.waitForTimeout(100);
+  const followed = await shift() - told;
   await touch('touchEnd'); await p.waitForTimeout(700);
   const back = { name: await name(), shift: await shift() };
-  ok(Math.abs(followed - 27) <= 1 && back.name === 'Edinburgh' && back.shift === 0, 'a short swipe: the page follows the finger exactly, from where it was told from a scroll, and springs back', `${followed} px for 27 px, then ${JSON.stringify(back)}`);
+  ok(told > 0 && told < 52 && Math.abs(followed - 20) <= 1 && back.name === 'Edinburgh' && back.shift === 0, 'a short swipe: the page follows the finger exactly, from where it was told from a scroll, and springs back', `${told} px for 52 px, ${followed} px for 20 more, then ${JSON.stringify(back)}`);
   // far enough: London, the page turning to it
   await drag([60, 90, 130, 180, 230, 280, 320]);
   await touch('touchEnd');
@@ -1113,7 +1140,11 @@ await ctx.close();
   for (let y = 0; y < 7000; y += 700) { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(120); }
   await p.locator('#hourly-seg [data-mode="wind"]').evaluate((e) => e.click());
   await p.locator('.day-row').nth(2).evaluate((e) => e.click()); await p.waitForSelector('#day[open]'); await p.waitForTimeout(300);
-  const moving = await p.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation && a.playState === 'running').map((a) => `${a.animationName} on ${a.effect?.target?.className?.baseVal ?? a.effect?.target?.className}`));
+  // (what the scroller of places leads as it's swiped, moving only as it does, here only fading, or out of sight: the
+  // cards and the next place's sky crossfading, the pages either side hidden; styles.css --cur)
+  const moving = await p.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation && a.playState === 'running'
+    && !(a.timeline instanceof ScrollTimeline && (getComputedStyle(a.effect.target).visibility === 'hidden' || a.effect.getKeyframes().every((k) => !['translate', 'transform', 'scale', 'rotate'].some((x) => x in k)))))
+    .map((a) => `${a.animationName} on ${a.effect?.target?.className?.baseVal ?? a.effect?.target?.className}`));
   ok(!moving.length, 'with Reduce Motion, nothing moves: no drawing in, no settling, no sky', moving.slice(0, 5).join('; '));
   ok(!(await p.locator('.pre, svg.c-enter').count()), 'and nothing is left waiting to move (all drawn in full)');
   await p.locator('#radar').scrollIntoViewIfNeeded();
@@ -1155,6 +1186,30 @@ await ctx.close();
     'its sheet: two days of the tide (its turns marked and listed) and of the waves, and what it is: a model, not a tide table', JSON.stringify(sheet).slice(0, 260));
   await ctx.close();
 }
+// a notification for My Location tapped (its link is just where it was, to two decimal places): My Location shown, not
+// offered as a place to add; a link to near there from someone else still asked about
+{
+  const { ctx, p } = await open({}, { settle: false });
+  let asked = 0; p.on('dialog', () => asked++);
+  const soho = { name: 'Soho', region: 'London, England', lat: 51.5136, lon: -0.1357, gps: true };
+  const seed = (notify) => p.evaluate(([soho, notify]) => {
+    localStorage.setItem('wx:places', JSON.stringify([soho, { name: 'Paris', region: 'France', lat: 48.8566, lon: 2.3522 }]));
+    localStorage.setItem('wx:cur', '1');
+    localStorage.setItem('wx:settings', JSON.stringify({ notify }));
+  }, [soho, notify]);
+  await seed({ places: [{ ...soho, rain: true, warn: false }], brief: null });
+  await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 }); await p.waitForTimeout(500);
+  const shown = await p.evaluate(() => ({ name: document.getElementById('place-name').textContent, places: JSON.parse(localStorage.getItem('wx:places')).length, cur: JSON.parse(localStorage.getItem('wx:cur')) }));
+  ok(!asked && shown.name === 'Soho' && shown.places === 2 && shown.cur === 0, 'a notification for My Location, tapped: My Location shown, and nothing asked or added', JSON.stringify({ asked, ...shown }));
+  // (and My Location as an earlier version kept it, to four decimal places, kept to three from the start, its
+  // notification's too, though the phone's not been asked where it is)
+  const kept = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('wx:places'))[0], e = JSON.parse(localStorage.getItem('wx:settings')).notify.places[0]; return [g.lat, g.lon, e.lat, e.lon]; });
+  ok(JSON.stringify(kept) === JSON.stringify([51.514, -0.136, 51.514, -0.136]), 'My Location kept from before, to three decimal places from the start, and its notification', JSON.stringify(kept));
+  await seed({ places: [], brief: null });
+  await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 });
+  ok(asked === 1, 'a link to near there that isn\'t one of its own notifications: asked about, as any shared link is', `${asked} asked`);
+  await ctx.close();
+}
 // fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a
 // new version of the app, starting on it straight away (or, if it came while a sheet was open, the next time it's opened)
 {
@@ -1174,7 +1229,9 @@ await ctx.close();
   await away(); await p.waitForTimeout(1500);
   ok(asked.forecast === before && await p.evaluate(() => window.__updates) === 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${await p.evaluate(() => window.__updates)} checks`);
   // back after a while (the forecast kept 20 minutes ago, as if the phone had been put away): asked again, and said so
-  await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('wx:') && !k.startsWith('wx:s')) { const v = JSON.parse(localStorage.getItem(k)); if (v?.forecast) { v.forecast.at -= 20 * 60e3; localStorage.setItem(k, JSON.stringify(v)); } } });
+  // (what's kept is read once a session, then held in memory as it's written: so the page is told it's changed, as it
+  // is when another tab changes it, data.js keptRaw)
+  await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('wx:') && !k.startsWith('wx:s')) { const v = JSON.parse(localStorage.getItem(k)); if (v?.forecast) { v.forecast.at -= 20 * 60e3; localStorage.setItem(k, JSON.stringify(v)); dispatchEvent(new StorageEvent('storage', { key: k, storageArea: localStorage })); } } });
   await p.evaluate(() => { document.getElementById('updated').textContent = 'Updated 20 min ago'; });
   await p.waitForTimeout(5500);
   before = asked.forecast;

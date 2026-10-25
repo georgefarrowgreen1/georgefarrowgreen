@@ -5,11 +5,11 @@
 // done, and opened; "Not you?" on a password sign-in from another device (not a passkey one, nor this browser's), which
 // signs everywhere else out then asks for a new password; device and passkey rows slid to sign out and remove; and two
 // columns on a wide screen; and your data as a PDF (read back by poppler: its pages, text, pictures, and a place name
-// Helvetica can't show, drawn as a picture of itself), or as JSON. The site's addresses are stood in for by gfg.test,
-// as in acctpage.mjs.
+// Helvetica can't show, drawn as a picture of itself), and the export it's written from. The site's addresses are
+// stood in for by gfg.test, as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { writeFileSync, readFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
@@ -44,11 +44,17 @@ const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?
 const sheetText = (x) => text(x, '#sheet');
 const openRow = async (x, title) => { await x.p.click(`main .row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
 const closeSheet = async (x) => { await x.p.click('#sheet .sheet-head .x'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
+// (what's kept in Sign-in and security: its row on the page, then one of its own rows, opened over it)
+const openSecure = async (x, title) => { await openRow(x, 'Sign-in and security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
 const account = async (x) => { await x.p.goto('about:blank'); await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
 const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
+// (who signed in here last is remembered, their email known: just the password, or, a passkey last time, the password a
+// tap away)
 const signIn = async (x) => {
-  await x.p.fill('main input[type=email]', 'rowan@example.com'); await x.p.fill('main input[type=password]', PW); await x.p.click('main form .btn');
+  if (await x.p.$('main .signin input[name=email]')) await x.p.fill('main .signin input[name=email]', 'rowan@example.com');
+  if (!(await x.p.isVisible('main .signin input[name=password]')) && await x.p.$('main .signin .usepw')) { await x.p.click('main .signin .usepw'); await settle(x, 400); }
+  await x.p.fill('main .signin input[name=password]', PW); await x.p.click('main .signin form .btn');
   await waitText(x, /Rowan Hale/);
 };
 const signOut = async (x) => { await x.p.click('main .row.action:text-is("Sign out")'); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
@@ -118,7 +124,27 @@ ok(await P.p.$eval('main .pc-photo img', (i) => i.style.objectPosition).catch(()
 await shot(P, '01-photo');
 await P.p.click('main .pc-cam'); await P.p.waitForSelector('#sheet[open] .pv-frame');
 ok(/Choose another photo/.test(await text(P, '#sheet')) && /Remove photo/.test(await text(P, '#sheet')), 'the camera: Your photo again, to move it, change it or remove it');
-await P.p.click('#sheet .link:text-is("Cancel")'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+// (what shows of the same photo moved: only the circle cut again and sent, the poster kept as it was, with its new focus)
+await P.p.waitForFunction(() => document.querySelector('#sheet[open] .pv-frame img')?.naturalWidth > 0, null, { timeout: 15000 }).catch(() => {}); await settle(P, 700);
+const fb2 = await P.p.locator('#sheet .pv-frame').boundingBox();
+await P.p.mouse.move(fb2.x + fb2.width / 2, fb2.y + fb2.height / 2); await P.p.mouse.down();
+await P.p.mouse.move(fb2.x + fb2.width / 2, fb2.y + fb2.height / 2 - 30, { steps: 6 }); await P.p.mouse.up();
+const pos2 = await P.p.$eval('#sheet .pv-frame img', (i) => i.style.objectPosition);
+await P.p.click('#sheet .link.done'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+const moved = rows(`SELECT avatar_at, poster_at, poster_focus FROM pg_users WHERE id = '${uid}'`)[0];
+ok(pos2 !== pos && moved.poster_at === saved.poster_at && moved.avatar_at > saved.avatar_at && moved.poster_focus === `50 ${pos2.split(' ')[1].replace('%', '')}`,
+  'moved what shows: the circle cut again, the poster kept as it was, with what shows of it now', JSON.stringify({ pos2, moved }));
+// (and changed elsewhere meanwhile, as by another app: refused and said, and the one there now taken, so it's moved the
+// next time it's opened)
+sql(`UPDATE pg_users SET poster_at = poster_at + 1 WHERE id = '${uid}'`);
+const nudge = async () => {
+  await P.p.click('main .pc-cam'); await P.p.waitForFunction(() => document.querySelector('#sheet[open] .pv-frame img')?.naturalWidth > 0, null, { timeout: 15000 }).catch(() => {}); await settle(P, 500);
+  await P.p.focus('#sheet .pv-frame'); await P.p.keyboard.press('ArrowDown'); await P.p.click('#sheet .link.done'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+  return text(P, '#toast');
+};
+const refused = await nudge(), again = await nudge(), after = rows(`SELECT poster_at, poster_focus FROM pg_users WHERE id = '${uid}'`)[0];
+ok(/changed elsewhere/.test(refused) && /Saved/.test(again) && after.poster_at === saved.poster_at + 1 && after.poster_focus !== moved.poster_focus,
+  'changed elsewhere: refused and said, then the photo there now moved', JSON.stringify({ refused, again, after }));
 
 // ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
 await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
@@ -143,7 +169,8 @@ ok(/^InFlight 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]
 await P.p.click('main .app:has(b:text-is("InFlight")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
 const inf = await sheetText(P);
 ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'InFlight: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
-ok(/end-to-end encrypted/.test(inf) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', inf);
+const counted = await P.p.$$eval('#sheet .stats .stat span', (ss) => ss.map((x) => x.textContent));
+ok(counted.length === 4 && !counted.some((c) => /letter|message/i.test(c)) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', JSON.stringify(counted));
 ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'InFlight', 'the sheet named, for a screen reader');
 await shot(P, '03-app-inflight');
 await closeSheet(P);
@@ -155,8 +182,8 @@ await shot(P, '04-app-weather');
 await closeSheet(P);
 
 // ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
-const ck0 = await P.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(!(await P.p.$('main .checkup')) && /Security check-up \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and security)', ck0);
+const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(!(await P.p.$('main .checkup')) && /Sign-in and security \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and security)', ck0);
 await signOut(P); await signIn(P);
 await P.p.waitForSelector('#sheet .nudge', { timeout: 8000 }).catch(() => {}); await settle(P, 600);
 ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-in: a word about a passkey', await sheetText(P));
@@ -166,38 +193,42 @@ await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P
 // (then a word on InFlight's messages, which a passkey can open too: not now, here)
 await P.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
-ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await text(P)), 'a passkey made from it', await text(P, '#toast'));
+const made = await text(P, '#toast');
+await openRow(P, 'Sign-in and security');
+ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await sheetText(P)), 'a passkey made from it', made);
+await closeSheet(P);
 // (a laptop that can't make one isn't asked)
 const L = await browser('laptop', { laptop: true });
 await account(L); await signIn(L); await settle(L, 2200);
 ok(!(await L.p.$('#sheet[open]')), 'a laptop with no way to make a passkey isn\'t asked');
 
-// ---- 6. The check-up: a row in Sign-in and security, opened as a sheet; a fix opens over it, Back returns ----
-const ckRow = () => P.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-const openCheckup = async () => { await P.p.click('.row:has(b:text-is("Security check-up"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
+// ---- 6. The check-up: how it stands said by Sign-in and security's row, and at the head of its sheet; a fix opens
+// over it, Back returns ----
+const ckRow = () => P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+const openCheckup = async () => { await P.p.click('main .row:has(b:text-is("Sign-in and security"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
 const shut = async () => { await P.p.keyboard.press('Escape'); await P.p.waitForSelector('#sheet', { state: 'hidden' }).catch(() => {}); await settle(P, 300); };
 // (the email confirmed; the password not yet checked, as for an account from before)
 sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = NULL, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Security check-up 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
+ok(/Sign-in and security 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
 await openCheckup();
 ok(/1 thing to do/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 3 && /Check your password for data breaches/.test(await text(P, '#sheet .checkup')), 'opened: what\'s left to do, and what\'s done', await text(P, '#sheet .checkup'));
 await P.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await P.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(P, 400);
-await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Security check-up")'); await settle(P, 400);
+await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Sign-in and security")'); await settle(P, 400);
 ok(!!(await P.p.$('#sheet .checkup')), 'its fix opens over it, and Back returns to it');
 await shut();
 // all done
 sql(`UPDATE pg_users SET pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Security check-up All done/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
+ok(/Sign-in and security Secure/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
 await openCheckup();
-ok(/Well protected/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 4, 'opened: well protected, all four done', await text(P, '#sheet .checkup'));
+ok(/Well protected/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row')).length === 0, 'opened: well protected, folded to just that (not the four checks)', await text(P, '#sheet .checkup'));
 await shot(P, '06-checkup-sheet');
 await shut();
 // a password found in a data breach: the one check that's said up top too, with the way to change it
 sql(`UPDATE pg_users SET pw_leaked = 1 WHERE id = '${uid}'`);
 await account(P);
-ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Security check-up 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
+ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Sign-in and security 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
 await shot(P, '06b-leaked');
 await P.p.click('main .banner .mini'); await P.p.waitForSelector('#sheet[open] .sheet-body'); await settle(P, 400);
 ok(/password/i.test(await text(P, '#sheet h2')), 'its Change opens a new password', await text(P, '#sheet h2'));
@@ -207,7 +238,7 @@ await account(P);
 
 // ---- 7. "Not you?": a password sign-in from the laptop (not a passkey one from elsewhere, nor this phone's own) ----
 sql(`INSERT INTO pg_events (user_id, at, kind, app, device, place, detail) VALUES ('${uid}', ${t - DAY}, 'signin', 'Weather', 'Mac · Safari', 'Leeds, United Kingdom', 'Passkey')`);
-await openRow(P, 'Recent activity'); await P.p.waitForSelector('#sheet .day', { timeout: 10000 }).catch(() => {}); await settle(P, 500);
+await openSecure(P, 'Recent activity'); await P.p.waitForSelector('#sheet .day', { timeout: 10000 }).catch(() => {}); await settle(P, 500);
 const flagged = await P.p.$$eval('#sheet .activity .row', (rs) => rs.filter((r) => r.querySelector('.mini')).map((r) => r.querySelector('small').textContent));
 ok(flagged.length === 1 && /Windows · Chrome/.test(flagged[0]), 'only the laptop\'s password sign-in asks "Not you?"', JSON.stringify(flagged));
 const act = await P.p.evaluate(() => ({ marks: [...document.querySelectorAll('#sheet .activity .row .app-mark')].map((i) => i.alt), times: document.querySelectorAll('#sheet .activity .row .t').length,
@@ -235,7 +266,7 @@ await P.p.evaluate(() => document.querySelector('#sheet')?.close()); await settl
 await signIn(L);
 sql(`INSERT INTO pg_passkeys (id, user_id, public_key, alg, created_at, label, provider) SELECT 'spare-key', user_id, public_key, alg, ${t - DAY}, 'Old phone', 'Google Password Manager' FROM pg_passkeys WHERE user_id = '${uid}'`);
 await account(P);
-await openRow(P, 'Signed-in devices');
+await openSecure(P, 'Signed-in devices');
 ok((await P.p.$$('#sheet .swipe')).length === 1 && await P.p.$eval('#sheet .row.current', (e) => !e.closest('.swipe')), 'other devices slide; this one doesn\'t');
 await drag(P, '#sheet .swipe > .row', 0, -60);
 ok(!(await P.p.$('#sheet .swipe.open')), 'up and down: no slide');
@@ -245,7 +276,7 @@ await shot(P, '09-device-slid');
 await P.p.click('#sheet .swipe-act'); await confirmIfAsked(P, PW); await settle(P, 1200);
 ok(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${uid}'`).length === 1 && (await P.p.$$('#sheet .swipe')).length === 0, 'the laptop signed out by it', String(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${uid}'`).length));
 await closeSheet(P);
-await openRow(P, 'Passkeys'); await settle(P, 600);
+await openSecure(P, 'Passkeys'); await settle(P, 600);
 await drag(P, '#sheet .swipe:has(b:text-is("Old phone")) > .row', -150);
 ok(/Remove/.test(await text(P, '#sheet .swipe.open .swipe-act')), 'a passkey slid: Remove');
 // (a tap on it, open, closes it rather than opening it)
@@ -261,10 +292,10 @@ await account(L); await signIn(L); await settle(L, 900);
 const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
 ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
 const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
-ok(halves[0].join() === 'Your apps,Your data' && halves[1].join() === 'Sign-in and security,Preferences', 'two even columns: who you are, your apps and your data; and the settings', JSON.stringify(halves));
+ok(halves[0].join() === 'Your apps' && halves[1].join() === 'Account,Preferences', 'two even columns: who you are and your apps; and the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
-// (a short window, so the profile can scroll away)
-await L.p.setViewportSize({ width: 1280, height: 480 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
+// (a short window, so the profile can scroll away: side by side, with the account two rows, the page is short)
+await L.p.setViewportSize({ width: 1280, height: 320 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
 ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on: whose account, in a bar at the top');
 await L.p.setViewportSize({ width: 1280, height: 860 }); await L.p.evaluate(() => scrollTo(0, 0));
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
@@ -275,12 +306,12 @@ const top = await bar(); await P.p.evaluate(() => scrollTo(0, 900)); await settl
 await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
 ok(!top && down && !(await bar()), 'a phone: the bar comes once the profile\'s scrolled away, and goes at the top', JSON.stringify({ top, down }));
 
-// ---- 10. Your data: as a PDF to read and keep, and as JSON ----
+// ---- 10. Your data: as a PDF to read and keep, written from the export (the server's JSON) ----
 await account(P);
-await openRow(P, 'Download your data');
-ok(/Download as PDF/.test(await sheetText(P)) && /Download as JSON/.test(await sheetText(P)), 'your data: as a PDF, or as JSON');
+await openRow(P, 'Your data');
+ok(/Download as PDF/.test(await sheetText(P)) && !/Download as JSON/.test(await sheetText(P)), 'your data: as a PDF (the JSON it\'s written from stays the server\'s)');
 await shot(P, '11-data');
-const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 }), (async () => { await P.p.click('#sheet .btn:has-text("Download as PDF")'); await confirmIfAsked(P, PW); })()]);
+const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 }), (async () => { await P.p.click('#sheet .row:has-text("Download as PDF")'); await confirmIfAsked(P, PW); })()]);
 const pdfPath = `${out}/data.pdf`; await dl.saveAs(pdfPath);
 const sh = (c) => { try { return execSync(c, { stdio: 'pipe' }).toString(); } catch (e) { return 'ERROR ' + e.stderr; } };
 const info = sh(`pdfinfo "${pdfPath}"`), pages = Number(/Pages:\s+(\d+)/.exec(info)?.[1] || 0);
@@ -297,10 +328,9 @@ const imgs = sh(`pdfimages -list "${pdfPath}"`).trim().split('\n').slice(2);
 ok(imgs.length >= 4 && imgs.some((l) => /\bjpeg\b/.test(l) && /\b64\b|\b512\b|\b300\b/.test(l)) && imgs.some((l) => /\bimage\b.*\brgb\b.*\b(8)\b/.test(l) && !/jpeg/.test(l)),
   '...but drawn as a picture of itself; and your photo and the apps\' icons in it', imgs.join(' | '));
 sh(`pdftoppm -r 70 -png "${pdfPath}" "${out}/pdf-page"`);
-const [dj] = await Promise.all([P.p.waitForEvent('download', { timeout: 30000 }), (async () => { await P.p.click('#sheet .btn:has-text("Download as JSON")'); await confirmIfAsked(P, PW); })()]);
-const json = JSON.parse(readFileSync(await dj.path(), 'utf8'));
-ok(dj.suggestedFilename() === 'georgefarrowgreen-account-rowan.json' && json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
-  'and as JSON: pigeons sent and had counted as InFlight\'s log counts them', JSON.stringify(json.inflight?.pigeons));
+const json = await P.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
+ok(json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
+  'and the export it\'s written from: pigeons sent and had counted as InFlight\'s log counts them', JSON.stringify(json.inflight?.pigeons));
 await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');

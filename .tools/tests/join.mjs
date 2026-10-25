@@ -103,3 +103,17 @@ export async function joinInFlight(page, inflight, { name, handle, email, passwo
   await page.click(passkey ? '[data-act=pkadd]' : '[data-act=onbdone]');
   await page.waitForSelector('.tabs', { timeout: 30000 });
 }
+
+// InFlight's settings on the account's page, as its Settings opens them (InFlight Settings: a window of its own, signed
+// in there by the code InFlight hands over, with the sheet open): → that window, its switches #if-<setting> (landed,
+// names, quiet, email, receipts, approxLocation…) and hours (#if-quietFrom, #if-quietTo). Each change is saved as it's
+// made; InFlight takes it up as it next syncs.
+export async function inflightSettings(page) {
+  await page.click('[data-act=tab][data-id=account]'); await page.waitForTimeout(500);
+  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('#screen > main.view [data-act=ifsettings]')]);
+  await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
+  const go = await w.waitForSelector('#sheet[open] #if-landed, main .welcome .btn', { timeout: 20000 });
+  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-landed', { timeout: 20000 }); }
+  await w.waitForTimeout(400);
+  return w;
+}

@@ -29,10 +29,11 @@ export async function onRequest(ctx) {
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
     // (InFlight's old admin dashboard: Admin's on the admin's account page now)
     if (/^\/pigeon\/admin(\/|$)/.test(url.pathname)) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
-    // (the apps' icons, for the home page's Apps: kept with each app, and Weather's own address is its own host)
+    // (the apps' icons, for the home page's Apps: kept with each app, and Weather's own address is its own host; asked
+    // with the browser's own request, so a browser asking about the copy it has is told it's the same, kept a day more)
     if (APP_ICONS[url.pathname]) {
-      const r = await ctx.env.ASSETS.fetch(new Request(new URL(APP_ICONS[url.pathname], url))), out = new Response(r.body, r);
-      if (r.ok) out.headers.set("Cache-Control", "public, max-age=86400");
+      const r = await ctx.env.ASSETS.fetch(new Request(new URL(APP_ICONS[url.pathname], url), ctx.request)), out = new Response(r.body, r);
+      if (r.ok || r.status === 304) out.headers.set("Cache-Control", "public, max-age=86400");
       return out;
     }
     const res = await ctx.next();

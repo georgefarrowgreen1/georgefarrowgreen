@@ -49,6 +49,9 @@ const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?
 const sheetText = (x) => text(x, '#sheet');
 const openRow = async (x, title) => { await x.p.click(`.row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
 const closeSheet = async (x) => { await x.p.click('#sheet .x, #sheet .link:text-is("Cancel")'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
+// (what's kept in Sign-in and security: its row on the page, then one of its own rows, opened over it)
+const openSecure = async (x, title) => { await openRow(x, 'Sign-in and security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
+const secRow = (x) => x.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
 const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
 const user = (h) => rows(`SELECT id, name, handle, email, email_ok, salt, avatar_at, poster_at, appearance, delete_at FROM pg_users WHERE handle = '${h}'`)[0];
@@ -57,6 +60,15 @@ const mailTo = (to, re, since = 0) => mails().slice(since).filter((m) => [].conc
 const tokenIn = (m, kind) => (new RegExp(`#${kind}=([A-Za-z0-9_-]{40,50})`).exec(m?.text || '') || [])[1];
 const waitMail = async (to, re, ms = 15000, since = 0) => { const t0 = Date.now(); for (;;) { const m = mailTo(to, re, since); if (m || Date.now() - t0 > ms) return m; await new Promise((r) => setTimeout(r, 300)); } };
 // (shown it's you, if it asks)
+// signing in here with a password: who signed in here last is remembered, their email known (just the password, or, a
+// passkey last time, the password a tap away); remembered as someone else, or as the email was before, Not you? first
+const signInPw = async (x, email, pw) => {
+  const known = await x.p.$eval('main .signin.remembered input[type=email]', (i) => i.value).catch(() => null);
+  if (known && known !== email) { await x.p.click('main .notyou'); await x.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); await settle(x, 400); }
+  if (await x.p.$('main .signin input[name=email]')) await x.p.fill('main .signin input[name=email]', email);
+  if (!(await x.p.isVisible('main .signin input[name=password]')) && await x.p.$('main .signin .usepw')) { await x.p.click('main .signin .usepw'); await settle(x, 400); }
+  await x.p.fill('main .signin input[name=password]', pw); await x.p.click('main .signin form .btn');
+};
 const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
 // the once-a-minute tick (its housekeeping, now, whenever it last ran)
 const tick = async (x) => { sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'"); return req(x, `${CHAT}/api/pigeon/notify-tick`, { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } }); };
@@ -64,10 +76,9 @@ const tick = async (x) => { sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'"
 // ---- 1. An account made here, then InFlight (with a passkey): the account's page in the same browser is signed in ----
 const L = await browser('laptop');
 await joinInFlight(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London', passkey: true });
-// (InFlight's way here: Privacy & Security, Your Account)
-await L.p.click('[data-act=tab][data-id=account]'); await L.p.click('#screen > main.view [data-act=securitysheet]');
-await L.p.waitForSelector('.sheet #to-account', { timeout: 15000 }).catch(() => {});
-ok(!!(await L.p.$('.sheet #to-account')) && !/Weather/.test(await text(L, '.sheet')), 'InFlight leads here, without naming any other app');
+// (InFlight's ways here: its account card, and InFlight Settings)
+await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForSelector('#screen > main.view [data-act=ifsettings]', { timeout: 15000 }).catch(() => {});
+ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(await text(L, '#screen > main.view [data-act=ifsettings]')), 'InFlight leads here, without naming any other app');
 // (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in
 // this tab, where the browser's signed in already)
 await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
@@ -83,23 +94,25 @@ for (const name of ['InFlight', 'Weather']) {
   links.push(await L.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))); await closeSheet(L);
 }
 ok(links.join() === `${CHAT}/,${WX}/`, 'and its ⓘ, what it keeps of yours, with the way in too', links.join());
-ok(/Passkeys 1/.test(home) && /Signed-in devices (1|This \w+)/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices (This )?\S+/g)?.join(' | '));
-ok(/Password Set today/.test(home) && /Recent activity Today/.test(home), 'each row says how things are: the password set today, the latest activity today', home.match(/Password \S+ \S+|Recent activity \S+/g)?.join(' | '));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
-// (the check-up: kept in Sign-in and security, a row saying how it stands, opened as a sheet)
-const ckRow = await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(!(await L.p.$('main .checkup')) && /Security check-up 1 to do/.test(ckRow), 'the check-up isn\'t on the page itself: a row in Sign-in and security, saying how it stands', ckRow);
-await openRow(L, 'Security check-up');
+// (Sign-in and security: a row on the page saying how it stands, by the check-up; the check-up at the head of its
+// sheet, then its rows, each saying how things are)
+const ckRow = await secRow(L);
+ok(!(await L.p.$('main .checkup')) && /Sign-in and security 1 to do/.test(ckRow) && !/Passkeys|Security check-up/.test(home), 'the check-up isn\'t on the page itself: the row for Sign-in and security says how it stands', ckRow);
+await openRow(L, 'Sign-in and security');
+const sec = await sheetText(L);
+ok(/Passkeys 1/.test(sec) && /Signed-in devices (1|This \w+)/.test(sec), 'sign-in and security: the passkey made in InFlight, and this device', sec.match(/Passkeys \S+|Signed-in devices (This )?\S+/g)?.join(' | '));
+ok(/Password Set today/.test(sec) && /Recent activity Today/.test(sec), 'each row says how things are: the password set today, the latest activity today', sec.match(/Password \S+ \S+|Recent activity \S+/g)?.join(' | '));
 const ck = await text(L, '#sheet .checkup');
 ok(/1 thing to do/.test(ck) && /Confirm your email/.test(ck) && /Passkey saved/.test(ck) && /Password not in a known data breach/.test(ck) && /No devices left unused/.test(ck),
-  'opened: one thing to do (the email), three done (the password checked as the account was made)', ck);
+  'opened: the check-up at its head, one thing to do (the email), three done (the password checked as the account was made)', ck);
 await shot(L, '01b-checkup-sheet');
 await closeSheet(L);
 ok(/Confirm your email/.test(await text(L, '.banner')), 'and the email not yet confirmed, said up top', await text(L, '.banner'));
 await shot(L, '01-signed-in');
 // the large title giving way to the bar
 await L.p.evaluate(() => scrollTo(0, 400)); await settle(L, 500);
-const bar = await L.p.evaluate(() => ({ glass: Number(getComputedStyle(document.documentElement).getPropertyValue('--bar')), header: !!document.querySelector('header, .bar'), title: document.querySelector('main .titlebar h1').getBoundingClientRect().bottom }));
+const bar = await L.p.evaluate(() => ({ glass: Number(getComputedStyle(document.querySelector('.status')).getPropertyValue('--bar')), header: !!document.querySelector('header, .bar'), title: document.querySelector('main .titlebar h1').getBoundingClientRect().bottom }));
 ok(bar.glass === 1 && !bar.header && bar.title < 0, 'scrolled: the large title goes with the page (no bar to take it), glass behind the status bar', JSON.stringify(bar));
 await shot(L, '02-scrolled');
 await L.p.evaluate(() => scrollTo(0, 0)); await settle(L, 300);
@@ -132,7 +145,7 @@ ok(user('rowan').email_ok > 0 && /Your email is confirmed/.test(await text(L, '#
 // (as for an account from before, whose password was never checked: a new one's is, as it's made)
 sql("UPDATE pg_users SET pw_checked_at = NULL WHERE handle = 'rowan'");
 await account(L);
-await openRow(L, 'Security check-up');
+await openRow(L, 'Sign-in and security');
 await L.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await L.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(L, 500);
 await L.p.fill('#sheet input[type=password]', PW); await L.p.click('#sheet form .btn');
 await waitText(L, /data breach/, '#toast');
@@ -143,7 +156,7 @@ ok(/^\/range\/[0-9A-F]{5}$/.test(lg.url) && lg.pad === 'true', 'only 5 character
 await settle(L, 900);
 await shot(L, '07-checkup');
 await closeSheet(L);
-ok(/Security check-up All done/.test(await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim())), 'and its row says so', await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim()));
+ok(/Sign-in and security Secure/.test(await secRow(L)), 'and its row says so', await secRow(L));
 
 // ---- 3. Your profile: name, handle and photo, the same everywhere ----
 await L.p.click('.hero .pill'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 700);
@@ -182,7 +195,7 @@ ok(photo[0]?.[0] === 512 && photo[0]?.[1] === 512 && photo[1]?.[0] === 1000 && p
 await shot(L, '04-photo');
 
 // ---- 4. A new password: the key locked anew with it, here; InFlight opens with it on a new phone ----
-await openRow(L, 'Password');
+await openSecure(L, 'Password');
 await shot(L, '05-password');
 const pwField = (n) => `#sheet .field:has(span:text-is("${n}")) input`;
 await L.p.fill(pwField('Current password'), 'not my password');
@@ -213,7 +226,7 @@ ok(opened, 'InFlight on a new phone opens with the new password: the key it lock
 // ---- 5. Passkeys: a name of your own; adding one needs you to show it's you; one's taken away ----
 sql(`UPDATE pg_sessions SET auth_at = 0 WHERE user_id = '${user('rowan_h').id}'`);
 await account(L);
-await openRow(L, 'Passkeys');
+await openSecure(L, 'Passkeys');
 ok((await L.p.$$('#sheet .row')).length === 1 && /added/.test(await sheetText(L)), 'your passkeys: the one from InFlight', await sheetText(L));
 await L.p.click('#sheet .row'); await L.p.waitForSelector('#sheet .field input'); await settle(L, 500);
 ok(/Saved in/.test(await sheetText(L)) && /Last used/.test(await sheetText(L)), 'one passkey: where it\'s saved, when added and last used', await sheetText(L));
@@ -248,12 +261,12 @@ await account(Ph);
 ok(/Rowan Ash Hale/.test(await text(Ph)), 'on the phone: signed in already, from InFlight there');
 sql(`UPDATE pg_sessions SET seen_at = ${Date.now() - 100 * 86400e3} WHERE user_id = '${user('rowan_h').id}' AND created_at = (SELECT MAX(created_at) FROM pg_sessions WHERE user_id = '${user('rowan_h').id}')`);
 await account(L);
-await openRow(L, 'Security check-up');
+await openRow(L, 'Sign-in and security');
 ok(/1 thing to do/.test(await text(L, '#sheet .checkup')) && /unused for 3 months/.test(await text(L, '#sheet .checkup')), 'the check-up notices a device long unused', await text(L, '#sheet .checkup'));
 await closeSheet(L);
-await openRow(L, 'Signed-in devices');
+await openSecure(L, 'Signed-in devices');
 const devs = await sheetText(L);
-ok((await L.p.$$('#sheet .row:not(.action)')).length === 2 && /This browser/.test(devs) && /Not used for 3 months/.test(devs) && /Sign out 1 unused device/.test(devs), 'both devices, this one marked, the other unused for months', devs);
+ok((await L.p.$$('#sheet .row:not(.action)')).length === 2 && (await L.p.$eval('#sheet .row.current .tag', (e) => e.textContent).catch(() => '')) === 'This iPhone' && /Not used for 3 months/.test(devs) && /Sign out 1 unused device/.test(devs), 'both devices, this one marked, the other unused for months', devs);
 await shot(L, '10-devices');
 await L.p.click('#sheet .row.action:has-text("unused")');
 await L.p.waitForFunction(() => document.querySelectorAll('#sheet .row:not(.action)').length === 1, null, { timeout: 15000 }).catch(() => {});
@@ -265,7 +278,7 @@ await waitText(Ph, /Sign in with a passkey/, 'main', 15000);
 ok(/Sign in with a passkey/.test(await text(Ph)) && /signed out/.test(await text(Ph, '#toast')), 'and the phone\'s page notices, without a reload', (await text(Ph, '#toast')));
 
 // ---- 6b. Recent activity ----
-await openRow(L, 'Recent activity');
+await openSecure(L, 'Recent activity');
 await L.p.waitForSelector('#sheet .day', { timeout: 15000 }).catch(() => {});
 const act = await sheetText(L);
 ok(/today/i.test(act) && /Signed in/.test(act) && /Password changed/.test(act) && /Passkey added/.test(act) && /Passkey removed/.test(act) && /Signed out 1 unused device/.test(act) && /Email confirmed/.test(act) && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'InFlight') && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'Account'),
@@ -275,7 +288,7 @@ await shot(L, '11-activity');
 await closeSheet(L);
 
 // ---- 6c. A new email: a link to it, a word to the old; it changes when the link's opened ----
-await openRow(L, 'Email');
+await openSecure(L, 'Email');
 await shot(L, '12-email');
 await L.p.fill('#sheet input[type=email]:not([readonly])', 'rowan@example.com'); await L.p.click('#sheet form .btn');
 await waitText(L, /already/, '#sheet .said', 10000);
@@ -327,28 +340,31 @@ ok(wxm?.warn === true && wxm?.brief === true, 'Weather\'s warnings and briefing 
 await closeSheet(L);
 ok(/Emails All on/.test(await emRow()), 'and with all of them on, its row says so', await emRow());
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);
-await openRow(L, 'Download your data');
+await openRow(L, 'Your data');
 await shot(L, '15-data');
-const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 30000 }), (async () => { await L.p.click('#sheet .btn:has-text("Download as JSON")'); await confirmIfAsked(L, PW2); })()]);
-const data = JSON.parse(readFileSync(await dl.path(), 'utf8'));
+// (a PDF, written here from the export, the server's: what's in it read back by acctmore.mjs; here, what it's written from)
+const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 60000 }), (async () => { await L.p.click('#sheet .row:has-text("Download as PDF")'); await confirmIfAsked(L, PW2); })()]);
+const data = await L.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(data.account?.handle === 'rowan_h' && data.account.email === 'rowan.hale@example.com' && /^data:image\/jpeg;base64,/.test(data.account.photo || '') && Array.isArray(data.inflight?.friends)
-  && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'georgefarrowgreen-account-rowan_h.json',
+  && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'georgefarrowgreen-account-rowan_h.pdf',
   'your data: the profile and photo, sign-in, InFlight\'s and Weather\'s, as a file (and why the letters aren\'t in it)', dl.suggestedFilename());
 await closeSheet(L);
 
 // ---- 7. Signed out: how it looks; signing in with a password (wrong first), and with a passkey ----
 await Ph.p.evaluate(() => document.querySelectorAll('.rise').forEach((e) => e.getAnimations().filter((a) => a.animationName === 'rise').forEach((a) => a.finish())));
 await shot(Ph, '16-signed-out');
-await Ph.p.fill('main input[type=email]', 'rowan.hale@example.com'); await Ph.p.fill('main input[type=password]', 'wrong wrong wrong');
-await Ph.p.click('main form .btn'); await waitText(Ph, /match/, 'main .said');
+// (the phone remembers who signed in there last, as they were then: their email since changed, on the laptop)
+await signInPw(Ph, 'rowan.hale@example.com', 'wrong wrong wrong'); await waitText(Ph, /match/, 'main .said');
 ok((await text(Ph, 'main .said')).length > 0 && !/Rowan/.test(await text(Ph)), 'a wrong password: said, still signed out', await text(Ph, 'main .said'));
-await Ph.p.fill('main input[type=password]', PW2); await Ph.p.click('main form .btn');
+await signInPw(Ph, 'rowan.hale@example.com', PW2);
 await waitText(Ph, /Rowan Ash Hale/);
 ok(/Rowan Ash Hale/.test(await text(Ph)) && /Welcome back, Rowan/.test(await text(Ph, '#toast')), 'signed in with the password: welcomed back', await text(Ph, '#toast'));
 const sessions = rows(`SELECT hash FROM pg_sessions WHERE user_id = '${user('rowan_h').id}'`).length;
 // signing out here signs this browser out of the site
 await Ph.p.click('.row.action:text-is("Sign out")'); await waitText(Ph, /Sign in/);
-ok(/Your account/.test(await text(Ph)) && rows(`SELECT hash FROM pg_sessions WHERE user_id = '${user('rowan_h').id}'`).length === sessions - 1, 'signed out: this browser\'s sign-in ended', String(sessions));
+// (who it was still remembered here, to sign in again: Not you? forgets them)
+const left = rows(`SELECT hash FROM pg_sessions WHERE user_id = '${user('rowan_h').id}'`).length;
+ok(/Welcome back, Rowan/.test(await text(Ph)) && !!(await Ph.p.$('main .signin.remembered')) && left === sessions - 1, 'signed out: this browser\'s sign-in ended', `${sessions} → ${left}`);
 await L.p.click('.row.action:text-is("Sign out")'); await waitText(L, /Sign in with a passkey/);
 await L.p.click('main .btn:has-text("Sign in with a passkey")'); await waitText(L, /Rowan Ash Hale/);
 ok(/Rowan Ash Hale/.test(await text(L)), 'signed in with the passkey added here');
@@ -367,12 +383,14 @@ await D.p.setViewportSize({ width: 1280, height: 860 }); await settle(D, 400);
 await shot(D, '19-wide');
 
 // ---- 9. Deleting the account: typed to confirm; then in 7 days, unless it's kept ----
+// (at the foot of Your data's sheet, apart, and asked again in a sheet of its own)
+const openDelete = async () => { await openRow(L, 'Your data'); await L.p.click('#sheet .sheet-body:not(.going) .row.action.danger:text-is("Delete account…")'); await L.p.waitForSelector('#sheet h2:text-is("Delete account")'); await settle(L, 700); };
 const delete1 = async () => {
-  await L.p.click('.row.action.danger:text-is("Delete account")'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 700);
+  await openDelete();
   await L.p.fill('#sheet .at input', 'rowan_h'); await L.p.click('#sheet form .btn'); await confirmIfAsked(L, PW2);
   await waitText(L, /Sign in with a passkey/, 'main', 30000);
 };
-await L.p.click('.row.action.danger:text-is("Delete account")'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 700);
+await openDelete();
 ok(await L.p.$eval('#sheet form .btn', (e) => e.disabled), 'Delete waits for the handle to be typed');
 await L.p.fill('#sheet .at input', 'rowan'); ok(await L.p.$eval('#sheet form .btn', (e) => e.disabled), 'not with the wrong one');
 await L.p.fill('#sheet .at input', 'rowan_h');
@@ -386,11 +404,11 @@ const km = await waitMail('rowan.hale@example.com', /will be deleted/);
 ok(tokenIn(km, 'keep'), 'an email with a link to keep it', km?.subject);
 // InFlight won't sign in to it: its Sign in, on this page, stays here, to keep it
 await Ph.p.goto(`${CHAT}/`); await Ph.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 20000 }); await Ph.p.click('.welcome [data-act=acctsignin]');
-await Ph.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
-await Ph.p.fill('main input[name=email]', 'rowan.hale@example.com'); await Ph.p.fill('main input[name=password]', PW2); await Ph.p.click('main .signin form .btn');
+await Ph.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 });
+await signInPw(Ph, 'rowan.hale@example.com', PW2);
 await Ph.p.waitForFunction(() => /being deleted/.test(document.body.innerText), null, { timeout: 30000 }).catch(() => {});
 ok(/being deleted/.test(await Ph.p.evaluate(() => document.body.innerText)) && !(await Ph.p.$('.tabs')), 'InFlight won\'t sign in to it, and says where to keep it');
-await L.p.fill('main input[type=email]', 'rowan.hale@example.com'); await L.p.fill('main input[type=password]', PW2); await L.p.click('main form .btn');
+await signInPw(L, 'rowan.hale@example.com', PW2);
 await waitText(L, /being deleted/);
 await settle(L, 600);
 ok(/Your account is being deleted/.test(await text(L)) && /Keep my account/.test(await text(L)), 'here: signed in to it, to keep it', (await text(L)).slice(0, 140));
@@ -401,9 +419,11 @@ ok(!user('rowan_h').delete_at && /staying/.test(await text(L, '#toast')), 'kept:
 await delete1();
 const km2 = await waitMail('rowan.hale@example.com', /will be deleted/, 15000);
 await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#keep=${tokenIn(km2, 'keep')}`); await D.p.waitForSelector('main:not([aria-busy])'); await settle(D);
-ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, signed out', await text(D, '#toast'));
+ok(user('rowan_h').delete_at && /Keep your account\?/.test(await text(D)), 'the email\'s link, opened: asks first (a mail scanner opening it doesn\'t keep it)', (await text(D)).slice(0, 80));
+await D.p.click('main .btn:has-text("Keep my account")'); await waitText(D, /staying/, '#toast');
+ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, once tapped, signed out', await text(D, '#toast'));
 // asked a third time, and the week up: gone
-await L.p.fill('main input[type=email]', 'rowan.hale@example.com'); await L.p.fill('main input[type=password]', PW2); await L.p.click('main form .btn');
+await signInPw(L, 'rowan.hale@example.com', PW2);
 await waitText(L, /Rowan Ash Hale/);
 await delete1();
 sql(`UPDATE pg_users SET delete_at = ${Date.now() - 1000} WHERE handle = 'rowan_h'`);

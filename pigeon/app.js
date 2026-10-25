@@ -2,7 +2,7 @@
 // here; the server (functions/api/pigeon) only ever sees ciphertext.
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
-import { PLACES, nearestPlace, snapToMile } from "./places.js";
+import { PLACES, nearestPlace, snapToMile, snapTo } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.3";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.4";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -294,6 +294,8 @@ const I = {
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   sun: ico(`<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
+  sliders: ico(`<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>`),
+  away: ico(`<path d="M8 16 16 8M9.5 8H16v6.5"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
   mic: ico(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>`),
@@ -2385,10 +2387,12 @@ async function sync() {
       if (!Number.isFinite(d.now) || !d.me || !Array.isArray(d.friends)) throw new Error("A sync came back incomplete.");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
+      const caught = S.pinsUnread && await pinsCatchUp();      // (trusted keys it couldn't fetch at the start: now, before it trusts any shown here)
+      if (S.token !== tok) return;                // (signed out while it asked: as above)
       // nothing new since last time: no redraw, no re-saving (an open app asks every 15 s)
       // (a friend's last-seen time moves once a minute while they're about: that alone is taken in quietly, and only
       // a change of who's online now redraws)
-      const sig = JSON.stringify({ ...d, now: 0 }, (k, v) => (k === "seenAt" ? undefined : v)), same = sig === S.syncSig && S.synced;
+      const sig = JSON.stringify({ ...d, now: 0 }, (k, v) => (k === "seenAt" ? undefined : v)), same = sig === S.syncSig && S.synced && !caught;
       const onSig = d.friends.map((f) => (isOnline(f) ? f.id : "")).join(), seen = JSON.stringify(d.friends.map((f) => f.seenAt));
       const onlineMoved = onSig !== S.onSig, seenMoved = seen !== S.seenSig;
       S.syncSig = sig; S.onSig = onSig; S.seenSig = seen; S.syncFails = 0; S.lastSync = Date.now();
@@ -2397,7 +2401,9 @@ async function sync() {
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
-      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
+      // (the open Skies map keeps up every time; on Messages the strip does whenever the sync changed, a new landing
+      // time say, and past that every couple of minutes, for what no sync shows)
+      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || (S.view === "messages" && (!same || Date.now() - (S.skiesAt || 0) > 120e3))) loadSkies();
       const wasCache = S.fromCache; S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged || onlineMoved)) calmRender();
       S.chatChanged = false;
@@ -2425,28 +2431,67 @@ const keyId = (pub) => `${pub.x}.${pub.y}`;
 const pubFromId = (k) => { const [x, y] = k.split("."); return { kty: "EC", crv: "P-256", x, y }; };
 // The keys you've trusted also go to the server, sealed so only your own key can
 // open them: on a new phone (or after this one forgets), they come back, and a
-// key the server swapped in while you weren't looking is still caught.
+// key the server swapped in while you weren't looking is still caught, as long as
+// the server hands the copy back (it can always say there's none). Each save adds
+// to the copy there rather than replacing it, so one phone's Verified marks and old
+// keys aren't lost to another's; and a phone that couldn't fetch it saves nothing
+// over it until it has.
 const pinsMeta = () => ({ type: "pins", id: "pins", from: S.me.id, to: S.me.id });
+// Two sets of trusted keys as one: `mine` wins wherever both have something (a Verified
+// mark turned off is kept as "", so it stays off); keys trusted before and a group's
+// members seen are kept from both; a Verified mark only `theirs` has, only for the key
+// trusted now.
+function mergePins(mine, theirs) {
+  const out = { ...theirs, ...mine };
+  for (const [k, v] of Object.entries(theirs)) {
+    if (/^(old|g):/.test(k) && Array.isArray(v) && Array.isArray(mine[k])) out[k] = [...new Set([...mine[k], ...v])];
+    else if (k.startsWith("v:") && !(k in mine) && v && v !== out[k.slice(2)]) delete out[k];
+  }
+  return out;
+}
+// the copy on the server, opened (null: there's none, or it won't open, which asking again won't change; no answer throws)
+async function serverPins() {
+  const r = await api("pins");
+  const p = r.pins ? await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins).catch(() => null) : null;
+  return p?.pins && typeof p.pins === "object" ? p.pins : null;
+}
 let pinsTimer = 0;
 function savePins() {
   if (!S.me) return;
   idb.set("pins:" + S.me.id, S.pins);
   clearTimeout(pinsTimer);
   pinsTimer = setTimeout(async () => {
+    if (S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
     try {
+      const had = await serverPins();            // (what another of your phones saved since stays)
+      if (had) { S.pins = mergePins(S.pins, had); await idb.set("pins:" + S.me.id, S.pins); }
       const ct = await E2E.seal(await pairFor(S.myPub), pinsMeta(), { pins: S.pins, at: Date.now() });
       await api("pins", { method: "POST", body: { pins: ct } }); await idb.set("pinsup:" + S.me.id, Date.now());
     } catch (_) {}
   }, 1500);
 }
 // Nothing trusted on this phone yet (a new phone, a reinstall): bring back what was saved
+// (no answer: the next sync asks again, before it trusts anything it shows; noted on the
+// phone, so a restart before then still does)
 async function restorePins() {
+  const tok = S.token, id = S.me.id;
+  S.pinsUnread = !!(await idb.get("pinsunread:" + id).catch(() => null));
   if (Object.keys(S.pins).length) return;
-  try {
-    const r = await api("pins"); if (!r.pins) return;
-    const p = await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins);
-    if (p?.pins && typeof p.pins === "object") { S.pins = p.pins; await idb.set("pins:" + S.me.id, S.pins); await idb.set("pinsup:" + S.me.id, Date.now()); }
-  } catch (_) {}
+  let p;
+  // (a sign-in that had ended signs out as it's asked: that's not "no answer", and start carries on to the welcome)
+  try { p = await serverPins(); } catch (_) { if (S.token === tok) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
+  if (p && S.token === tok) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
+}
+// ...and once it answers, the server's copy wins for each friend's key, so one that changed meanwhile is
+// flagged, with what this phone trusted meanwhile added. True once done.
+async function pinsCatchUp() {
+  const tok = S.token; let p;
+  try { p = await serverPins(); } catch (_) { return false; }
+  if (S.token !== tok) return false;
+  S.pinsUnread = false; await idb.del("pinsunread:" + S.me.id);
+  if (p) S.pins = mergePins(p, S.pins);
+  savePins();
+  return true;
 }
 // Verify in person: your safety number with a friend, as a QR code. Scanning theirs (or
 // comparing the digits and saying they match) marks them Verified, kept with the trusted
@@ -2454,7 +2499,7 @@ async function restorePins() {
 const safetyCode = (digits) => `inflight-safety:1:${(digits || []).join("")}`;
 const isVerified = (p) => !!p?.pub && !p.keyChanged && S.pins["v:" + p.id] === keyId(p.pub);
 const wasVerified = (p) => !!p?.keyChanged && !!S.pins["v:" + p.id];         // verified, and their key has changed since
-function setVerified(p, on) { if (on) S.pins["v:" + p.id] = keyId(p.pub); else delete S.pins["v:" + p.id]; savePins(); }
+function setVerified(p, on) { S.pins["v:" + p.id] = on ? keyId(p.pub) : ""; savePins(); }     // (off is kept, as "": mergePins)
 const safeState = (p) => p?.keyChanged ? "warn" : isVerified(p) ? "ok" : "none";
 // A key you can know at a glance: its fingerprint drawn as a 5×5 pattern, mirrored like a face, in two colours
 // of its own. A different key looks different, without reading 32 characters.
@@ -2541,10 +2586,11 @@ const base = (fid) => pairFor(trustedPub(friend(fid)));
 // A key the server says changed isn't used until you've checked it.
 const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
 // What a decrypted thing must look like, by what it is: a reaction is one of
-// the reactions and nothing else; a message (or a stopover's copy) has words.
+// the reactions (and the id of the message it's on: reactOf) and nothing else;
+// a message (or a stopover's copy) has words.
 // Anything else is treated as unreadable, whatever the server sent.
 const shapeOK = (kind, o) => !!o && typeof o === "object" && !Array.isArray(o) && (kind === "react"
-  ? Object.keys(o).length === 1 && REACTIONS.includes(o.r)
+  ? REACTIONS.includes(o.r) && (Object.keys(o).length === 1 || (Object.keys(o).length === 2 && typeof o.m === "string"))
   : typeof o.t === "string" && !("r" in o) && !("k" in o));
 // Each id belongs to one conversation (and one kind of thing): if the same id
 // turns up somewhere else, neither is shown as the other.
@@ -2600,10 +2646,14 @@ async function decryptGroup(g, m, kind = "msg") {
 }
 async function loadGroup(gid) { return loadChat(gid); }
 async function loadChat(fid) {
-  const g = group(fid), tok = S.token;
-  const d = await api(g ? "group-messages?id=" + encodeURIComponent(fid) : "messages?with=" + encodeURIComponent(fid));
+  const g = group(fid), tok = S.token, tags = (S.chatTags ||= new Map());
+  // (a chat that's here already says which copy it has: unchanged, the server just says so, rather than send it all again)
+  const tag = S.msgs.has(fid) && tags.get(fid);
+  const d = await api((g ? "group-messages?id=" : "messages?with=") + encodeURIComponent(fid) + (tag ? "&tag=" + encodeURIComponent(tag) : ""));
   if (S.token !== tok) return;                     // signed out meanwhile
   S.skew = d.now - Date.now();
+  if (d.same) { if (S.msgs.has(fid) && tags.get(fid) === d.tag) return; tags.delete(fid); return loadChat(fid); }
+  if (d.tag) tags.set(fid, d.tag); else tags.delete(fid);
   // the same as last time: nothing to open, draw or save again
   const sig = JSON.stringify({ ...d, now: 0 }), sigs = (S.chatSigs ||= new Map());
   if (sigs.get(fid) === sig && S.msgs.has(fid)) return;
@@ -2615,14 +2665,17 @@ async function loadChat(fid) {
 // fills in until the fresh one arrives, and never tells the server anything.
 // Disappearing messages (functions/_vanish.js): one whose time is up, after it was read
 // (in a group, by everyone it flew to). The server wipes it within a minute; this hides
-// it at once, even from a copy saved on the phone.
+// it at once, even from a copy saved on the phone: one to one, and your own in a group
+// (someone else's in a group goes when the server wipes it: only it knows when everyone has read it).
 const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
 // Messages are kept for 30 days after they land (or are lost), then go for everyone (functions/_retention.js)
 const KEEP_MS = 30 * DAY, KEEP_SAY = "Messages are kept for 30 days after they land, then deleted for everyone. Your Flight Log, passport and badges keep every flight.";
 const kept = (m, t = now()) => { const end = m.lost ? m.lostAt || m.deliverAt : m.deliverAt; return !!end && end + KEEP_MS < t && !(m.flock || []).some((x) => !x.lost && x.deliverAt + KEEP_MS >= t); };
 function vanished(m, t = now()) {
   if (!m?.vanish) return false;
+  if (m.vanishAt) return m.vanishAt <= t;          // (read receipts off: the server says when, read or not)
   if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
+  if (m.gid) return false;                         // (someone else's in a group: your own read isn't the rule)
   return !!m.readAt && m.readAt + m.vanish <= t;
 }
 async function applyChat(fid, d, live) {
@@ -2641,7 +2694,8 @@ async function applyChat(fid, d, live) {
     if (!g && m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
-  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
+  if (!live) S.chatTags?.delete(fid);              // (what's shown now isn't the copy the server last named: loadChat)
+  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn && { ...d.turn, at: d.now || 0 }); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
   if (g) { S.gevents.set(fid, d.events || []); if (live) (S.geventsLive ||= new Set()).add(fid); }
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
@@ -2701,6 +2755,13 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.4", at: Date.UTC(2026, 9, 25), title: "Steadier", items: [
+    ["sliders", "indigo", "Your settings, on your account", "InFlight Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
+    ["search", "blue", "Search finds people again", "Searching Messages for a friend’s or a group’s name shows their chat, as it should."],
+    ["bird", "green", "Easier on your battery", "InFlight asks the server for less while you’re in it: a chat you’ve left, a phone that hasn’t moved and an open chat that hasn’t changed all cost nothing now."],
+    ["lock", "orange", "Quieter about you", "With read receipts off, a disappearing message counts from landing, so no one learns when you read it; and a reaction is sealed to its message."],
+    ["person", "teal", "Easier to use", "Pinch to zoom, bigger buttons by the message box, and the keyboard and screen readers keep their place."],
+  ] },
   { v: "1.3.3", at: Date.UTC(2026, 9, 24), title: "Coming and going", items: [
     ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in InFlight, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
     ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
@@ -2929,8 +2990,8 @@ function trimPhotos(fid) {
    ============================================================ */
 const root = () => $("#screen");
 let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
-// No zooming the page (only the map zooms, and it handles its own pinches),
-// and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
+// No copying (outside the fields), and no double-tap zoom; a pinch zooms the page,
+// except on the map, which handles its own pinches.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
 /* ---------- swiping between the tabs ----------
    Drag Messages, Friends or Account sideways and the next tab comes in beside
@@ -2969,7 +3030,7 @@ function tabSwipe() {
   v.addEventListener("touchstart", (e) => {
     st = null;
     const ids = TABS.map(([id]) => id), i = ids.indexOf(S.view), t = e.target;
-    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform) return;
+    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform || zoomed()) return;
     if (t.closest?.("input:focus, textarea, select, .rail") || sideways(t)) return;   // (a search box you aren't typing in swipes too; the cards in the air never do, even when they all fit)
     const p = e.touches[0];
     st = { ids, i, x: p.clientX, y: p.clientY, lx: p.clientX, ly: p.clientY, lt: performance.now(), vx: 0, vy: 0, dx: 0, w: r.clientWidth, dir: null, side: 0, peek: null };
@@ -3104,7 +3165,7 @@ function haptic(kind = "tick") {
 function pullToRefresh() {
   const v = $view, ind = $(".ptr", root()), bird = $(".ptrb", ind);
   let y0 = null, x0 = 0, down = false, pull = 0, ready = false, busy = false;
-  const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy;
+  const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy && !zoomed();
   const show = (px, anim) => {
     for (const el of [v, ind]) { el.classList.toggle("ptr-anim", !!anim); el.style.transition = anim ? "" : "none"; }
     v.style.transform = px ? `translateY(${px}px)` : "";
@@ -3192,7 +3253,7 @@ function edgeBack() {
   };
   r.addEventListener("touchstart", (e) => {
     st = null;
-    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX - r.getBoundingClientRect().left > EDGE) return;
+    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX - r.getBoundingClientRect().left > EDGE || zoomed()) return;
     const b = backBtn(); if (b) st = { b, x: t.clientX, y: t.clientY, lx: t.clientX, ly: t.clientY, lt: performance.now(), vx: 0, dx: 0, w: r.clientWidth, dir: null };
   }, { passive: true });
   r.addEventListener("touchmove", (e) => {
@@ -3229,7 +3290,7 @@ function sheetDrag() {
   $layer.addEventListener("touchstart", (e) => {
     st = null;
     const sh = e.target.closest?.(".sheet"), t = e.touches[0];
-    if (!sh || sh.classList.contains("closing") || e.touches.length !== 1) return;
+    if (!sh || sh.classList.contains("closing") || e.touches.length !== 1 || zoomed()) return;
     const body = $(".body", sh), head = !!e.target.closest(".grab, .sheet > header");
     // from its top, or anywhere once it's scrolled to the top (not on the map, a field or a list that slides sideways)
     if (!head && (!body || body.classList.contains("flush") || body.scrollTop > 0 || e.target.closest("input, textarea, select, canvas, .gifgrid"))) return;
@@ -3270,7 +3331,7 @@ function viewerDrag() {
   let st = null;
   $layer.addEventListener("touchstart", (e) => {
     const v = e.target.closest?.(".viewer"); st = null;
-    if (v && e.touches.length === 1) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
+    if (v && e.touches.length === 1 && !zoomed()) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
   }, { passive: true });
   $layer.addEventListener("touchmove", (e) => {
     if (!st) return;
@@ -3300,7 +3361,7 @@ function viewerDrag() {
 function toastSwipe() {
   let st = null;
   $toast.addEventListener("touchstart", (e) => {
-    const t = e.target.closest?.(".toast"); st = t && e.touches.length === 1 ? { t, y: e.touches[0].clientY, ly: e.touches[0].clientY, lx: 0, lt: performance.now(), vy: 0, dy: 0 } : null;
+    const t = e.target.closest?.(".toast"); st = t && e.touches.length === 1 && !zoomed() ? { t, y: e.touches[0].clientY, ly: e.touches[0].clientY, lx: 0, lt: performance.now(), vy: 0, dy: 0 } : null;
     if (st) clearTimeout(toastTimer);
   }, { passive: true });
   $toast.addEventListener("touchmove", (e) => {
@@ -3344,9 +3405,9 @@ function navGestures() {
 }
 function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
-  const stop = (e) => e.preventDefault();
-  ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
-  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });   // two fingers never zoom the page (the map pinches itself)
+  // two fingers zoom the page, for reading small words: not on the map, which pinches itself (mapGestures; and iPhone's
+  // own gesture events, stopped there too)
+  ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, (e) => { if (e.target?.closest?.(".map")) e.preventDefault(); }, { passive: false }));
   // a quick second tap in the same spot zooms on older iOS: stop that, and only that.
   // (Not after a scroll or a tap somewhere else, and never on anything you can
   // tap: those taps are meant, and touch-action already keeps them from zooming.)
@@ -3359,15 +3420,9 @@ function lockPage() {
     last = tap && t ? { at: now, x: t.clientX, y: t.clientY } : null;
   }, { passive: false });
   for (const n of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(n, (e) => { if (!inField(e.target)) e.preventDefault(); });
-  // if the page ends up zoomed anyway (an older copy allowed it), put it back: text size comes from the phone's own setting instead
-  const vv = window.visualViewport, meta = document.querySelector('meta[name="viewport"]');
-  if (vv && meta) vv.addEventListener("resize", () => {
-    if (vv.scale <= 1.01 || inField(document.activeElement)) return;
-    const was = meta.content;
-    meta.content = was + ", maximum-scale=1";
-    setTimeout(() => { meta.content = was; }, 300);
-  });
 }
+// pinched in: a finger moves you round the bigger page, so the app's own swipes and pulls wait till it's back to size
+const zoomed = () => (window.visualViewport?.scale || 1) > 1.01;
 // What you press shows it at once (a little smaller and a shade deeper, .down),
 // and long enough to see on a quick tap: the phone's own pressed look comes late,
 // or not at all, for a tap that's over in a moment.
@@ -3398,7 +3453,7 @@ function composeTouch() {
     // held still first, then moved in the words: that's choosing text or the caret, leave it be
     if (!t0.moved && d > 8) { t0.moved = true; t0.select = e.target === $ta && document.activeElement === $ta && performance.now() - t0.at > 350; }
     if (d > TAP) t0.far = true;
-    if (!t0.scrolls && !t0.select && e.cancelable) e.preventDefault();           // the screen stays where it is
+    if (!t0.scrolls && !t0.select && e.cancelable && !zoomed()) e.preventDefault();      // the screen stays where it is (pinched in, it moves: lockPage)
   }, { passive: false });
   $compose.addEventListener("touchend", (e) => {
     const s = t0; t0 = null;
@@ -3420,7 +3475,7 @@ function composeTouch() {
     if (document.activeElement !== $ta && !$ta.disabled && $(".crow", $compose)?.offsetParent) { $ta.focus(); const n = $ta.value.length; $ta.setSelectionRange(n, n); }
   });
   // iOS can leave the page nudged up once the keyboard has gone: put it back
-  $ta.addEventListener("blur", () => setTimeout(() => { if (window.scrollY && document.activeElement !== $ta) window.scrollTo(0, 0); }, 80));
+  $ta.addEventListener("blur", () => setTimeout(() => { if (window.scrollY && document.activeElement !== $ta && !zoomed()) window.scrollTo(0, 0); }, 80));
 }
 function mount() {
   lockPage();
@@ -3495,6 +3550,9 @@ function fitKeyboard() {
   let raf = 0, was = false;
   const fit = () => {
     raf = 0;
+    // (pinched in, the page is where you've moved it: fitted again once it's back to size; and a finger on the message
+    // box moves it too, styles.css html.zoomed)
+    if (doc.classList.toggle("zoomed", zoomed())) return;
     const kb = window.innerHeight - vv.height > 80 && inField(document.activeElement);
     if (kb) doc.style.setProperty("--app-h", `${Math.round(vv.height)}px`); else doc.style.removeProperty("--app-h");
     doc.classList.toggle("kbup", kb);
@@ -3540,8 +3598,8 @@ function go(view, chat) {
     if (view === "chat") S.backTo = ["messages", "friends", "account"].includes(S.view) ? S.view : "messages";
   }
   const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
-  // what you'd typed stays with its chat, for when you come back
-  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
+  // what you'd typed stays with its chat, for when you come back (not words going up with a photo or a voice pigeon)
+  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
   if (!same) newPill(false);
   S.chatWas = S.chat;
@@ -3742,6 +3800,7 @@ function calmRender() {
   const later = () => { if (busy()) { calmWait = setTimeout(later, 120); return; } calmWait = null; render(); };
   calmWait = setTimeout(later, 120);
 }
+let drawnView = null;            // (the screen render() last drew: a redraw of that one keeps its focus)
 function render() {
   if (!$view) return;
   if (calmWait) { clearTimeout(calmWait); calmWait = null; }
@@ -3763,12 +3822,12 @@ function render() {
       if (nb && shown) nb.classList.add("swap"); else if (nb && a) nb.style.animationDelay = `${left}ms`;
       return;
     }
-    $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
+    $view.innerHTML = vAuth(); drawnView = null; $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     if (S.view === "welcome") S.welcomed = true;
     return;
   }
   if (document.documentElement.classList.contains("night")) { document.documentElement.classList.remove("night"); applyTheme(); }
-  if (S.locked) { $view.innerHTML = ""; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; drawLock(); return; }
+  if (S.locked) { $view.innerHTML = ""; drawnView = null; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; syncInert(); drawLock(); return; }
   drawLock();
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
@@ -3776,8 +3835,14 @@ function render() {
   // on from last time would replay the rise as the bar unhides, so it always comes off)
   if (tabsBack) { $tabbar.classList.remove("rise", "back"); if (!S.noRise) { void $tabbar.offsetWidth; $tabbar.classList.add(S.nav === "pop" ? "back" : "rise"); } }
   S.noRise = false;
+  // the same screen drawn again: what you'd reached by keyboard or VoiceOver (a switch you've just flipped, the search
+  // box) keeps its focus, and a field its caret, as in a sheet (renderSheet)
+  const fa = $view.contains(document.activeElement) ? document.activeElement : null, fAt = drawnView;
+  const fid = fa?.id || "", fk = !fid && fa?.dataset?.act ? switchKey(fa) : null;
+  const caret = fid && typeof fa.selectionStart === "number" ? [fa.selectionStart, fa.selectionEnd] : null;
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view), was = snapKeyed();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
+  drawnView = kView();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
@@ -3794,6 +3859,12 @@ function render() {
   if (!chat && S.view === "messages") { airMount(); if (!S.listAt && $(".mlist:not(.skel)", $view)) S.listAt = performance.now(); }
   inRender = true; renderCompose(); inRender = false;
   renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh(); playKeyed(was);
+  // (only if nothing else has taken the focus since: the message box, a sheet's title. A card in the air is the same
+  // one put back, airMount, so it has its focus back as it is)
+  if (fa && fAt === drawnView && (!document.activeElement || document.activeElement === document.body)) {
+    const back = fa.isConnected ? fa : fid ? document.getElementById(fid) : fk ? [...$view.querySelectorAll(`[data-act="${CSS.escape(fa.dataset.act)}"]`)].find((x) => switchKey(x) === fk) : null;
+    if (back && $view.contains(back)) { try { back.focus({ preventScroll: true }); if (caret) back.setSelectionRange(...caret); } catch (_) {} }
+  }
 }
 
 // Scrolled up to read, and a pigeon arrives below: a pill over the composer says so, and takes you down to it (it goes
@@ -3912,7 +3983,7 @@ function vMessages() {
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find=""${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" data-key="d:${esc(f.id)}" data-in="pop" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext" data-key="t:${esc(f.id)}" data-sig="${kSig(`${at}|${html}|${S.drafts.get(f.id) || ""}`)}">
@@ -4042,14 +4113,52 @@ function vAccount() {
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Settings</div>
     <div class="group">
-      ${notifyCell(u)}
-      ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
-      ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+      ${accountPage() ? `<button type="button" class="cell has-icon" data-act="ifsettings"><span class="tile indigo">${I.sliders}</span><span class="ctext"><span>InFlight Settings</span><span class="csub">${ifSummary(u)}</span></span>${I.away.replace('class="ico"', 'class="ico chev away"')}</button>`
+        : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
+    ${accountPage() ? `<div class="gfoot">Saved to your account, so they’re the same on every phone. Appearance is there too.</div>` : ""}
+    ${thisPhone()}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
+}
+// InFlight Settings, in a line: how many notifications are on, quiet hours, and who's blocked (as the account's page
+// has them: taken up as the app next syncs, so a change made there shows here on the way back)
+const IF_KEYS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
+function ifSummary(u) {
+  const n = u.notify || {}, on = IF_KEYS.filter((k) => n[k]).length;
+  return [on === IF_KEYS.length ? "All notifications on" : on ? `${on} of ${IF_KEYS.length} notifications on` : "Notifications off",
+    n.quiet && `quiet ${String(n.quietFrom).padStart(2, "0")}:00–${String(n.quietTo).padStart(2, "0")}:00`,
+    u.receipts === false && "read receipts off", S.blocked.length && `${S.blocked.length} blocked`].filter(Boolean).join(" · ");
+}
+// Encryption & Safety Numbers, as a row (This Phone, and Privacy & Security where that's in the app): a friend's key
+// that's changed first, else how many are verified and who's next (with its bar, in the sheet: its width set as it's drawn)
+function encCell(bar) {
+  const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
+  const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
+  return `<button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
+            ${bar && S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>`;
+}
+// What's this phone's own, under Settings: pushes on or off here, InFlight's lock, haptics, and the key (only ever on
+// your phones); the rest of InFlight's settings are the account's, on its page (InFlight Settings)
+function thisPhone() {
+  if (!accountPage()) return "";
+  const ps = pushState(), lock = !!lockPrefs();
+  const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
+  const pushFoot = { homescreen: "On iPhone, notifications need InFlight on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings.",
+    unsupported: "This browser can’t show notifications." }[ps];
+  return `<div class="ghead">This Phone</div>
+    <div class="group">
+      ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
+      ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
+      ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
+      ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
+        <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
+      ${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", on: hapticsOn() })}
+      ${encCell(false)}
+    </div>
+    <div class="gfoot">${pushFoot ? `${pushFoot} ` : ""}Only on this phone.</div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
@@ -4195,7 +4304,8 @@ function whoHasLabel(m) {
    the air is an outline with its pigeon on a hairline of the way; theirs is
    sealed until it lands. Tap yours in the air for the flight; anything that
    has landed to react, reply or see the flight. */
-const atTime = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
+// (six days or more ahead, a pigeon booked for then, with its date: "Thu 5 Nov 18:00", as a weekday alone reads as this week's)
+const atTime = (ts) => { const d = new Date(ts); return sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : ts - now() < 6 * DAY ? `${DOW[d.getDay()]} ${fmtTime(ts)}` : `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} ${fmtTime(ts)}`; };
 // the same, where room is short (the message box, a card): "18:40", "Thu 02:20"
 const atShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : ts - now() < 6 * DAY ? `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}` : `${new Date(ts).getDate()} ${MON[new Date(ts).getMonth()]} ${fmtTime(ts)}`);
 // a duration, roughly: "45m", "2h", "1d 10h"
@@ -4925,17 +5035,20 @@ function quoteHtml(q, g) {
   else q = { id: String(q.id || ""), from: String(q.from || ""), t: String(q.t || "").slice(0, 90), p: ["gif", "voice", "photo"].includes(q.p) ? q.p : "" };
   return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
+// A reaction's emoji, only on the message it was sealed for: its id goes inside it, so the server can't move it
+// to another (one from before that has none: shown where the server says, until it goes after 30 days)
+const reactOf = (r) => { const p = S.plain.get(r.id); return p?.r && (p.m === undefined || p.m === r.msg) ? p.r : null; };
 // The reactions on a message: each once it has landed (yours straight away)
 function reactsHtml(m, mine) {
-  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && S.plain.get(r.id)?.r);
+  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && reactOf(r));
   if (!list.length) return "";
   const by = new Map();
-  for (const r of list) { const e = S.plain.get(r.id).r, x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
+  for (const r of list) { const e = reactOf(r), x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
   return `<div class="reacts${mine ? " me" : ""}" data-key="rx:${esc(m.id)}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" data-key="rp:${esc(m.id)}:${esc(e)}" data-sig="${x.n}${x.flying ? "f" : ""}" data-in="pop" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
 }
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
-  const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+  const cur = mineNow && reactOf(mineNow), m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
   const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   const words = m && S.plain.get(id)?.t;
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
@@ -4954,12 +5067,12 @@ async function sendReact(id, e) {
   const g = group(S.chat), chat = S.chat, list = S.reacts.get(chat) || [];
   const mineNow = list.find((r) => r.msg === id && r.from === S.me.id);
   try {
-    if (mineNow && S.plain.get(mineNow.id)?.r === e) {          // the same one again takes it back
+    if (mineNow && reactOf(mineNow) === e) {          // the same one again takes it back
       await api("react", { method: "DELETE", body: { msg: id } });
       S.reacts.set(chat, list.filter((r) => r !== mineNow)); return render();
     }
     const m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m) return;
-    const rid = uuid(), payload = { r: e };
+    const rid = uuid(), payload = { r: e, m: id };
     let body;
     if (g) {
       const { body: sealed, key, h } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id, type: "react" }, payload);
@@ -5107,7 +5220,7 @@ function birdLine(m) {
   return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 // at the top of a chat whose messages disappear
-const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
+const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read (or land, if read receipts are off)${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -5123,7 +5236,7 @@ function geventLines(list) {
       text = made ? `${by} made the group${whos.length ? ` with ${and(whos)}` : ""}` : `${by} added ${and(whos)}`;
     } else if (e.kind === "leave") text = `${by} left`;
     else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
-    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read` : `${by} turned off disappearing messages`;
+    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read (or land, if read receipts are off)` : `${by} turned off disappearing messages`;
     else continue;
     out += `<div class="sysline" data-key="ge:${e.at}:${esc(e.kind)}" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
   }
@@ -5318,7 +5431,8 @@ function composeState() {
   // a group stands in for a friend here: its turn, and any member's changed key
   const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat);
   if (!f) return null;
-  const t = S.turns.get(f.id) || f.turn;
+  // (whose turn: the chat's, unless a sync since knows better; both say when, by the server's clock)
+  const ct = S.turns.get(f.id), t = ct && ct.at >= (S.raw?.now || 0) ? ct : f.turn;
   // off the Earth: space pigeons only (lunar to the Moon, laser to Mars), any time, straight there
   if (!g && moonChat(f)) {
     const ks = kindsFor(f), can = Object.fromEntries(ks.map((k) => [k, (S.me[k] || 0) > 0]));
@@ -5584,6 +5698,9 @@ function onInput(e) {
 
 /* ---------- sheets ---------- */
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
+// (Back to Privacy & Security, from Encryption and Passkeys: only where it's in the app, with no account page to have
+// its settings: thisPhone)
+const toSecurity = () => (accountPage() ? null : { label: "Back", act: "securitysheet" });
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain, name } = {}) {
   const b = (x, cls) => !x ? ""
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
@@ -5723,6 +5840,16 @@ function focusBack(from) {
   const b = sel && ($(sel, $view) || $(sel, $tabbar));
   if (b) { try { b.focus({ preventScroll: true }); } catch (_) {} } else focusTitle();
 }
+// what's under a sheet, or under a menu or question, can't be reached by Tab or Switch Control (as aria-modal says).
+// (A menu opened with a tap while you're typing leaves the message box be, so the keyboard stays up under it.)
+function syncInert() {
+  if (!$view) return;
+  const pop = !!$pop.querySelector(".menu-pop:not(.closing), .asheet:not(.closing)");
+  const sheet = !!S.sheet && !!$layer.querySelector(".sheet:not(.closing), .viewer:not(.closing)");
+  $view.inert = $tabbar.inert = sheet || pop;
+  $compose.inert = sheet || (pop && !$compose.contains(document.activeElement));
+  $layer.inert = pop;
+}
 // (going back to a page you came from inside a sheet: How It Flies doesn't play itself in again)
 let sheetBack = false;
 function renderSheet(refresh) {
@@ -5736,6 +5863,7 @@ function renderSheet(refresh) {
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
   if (!S.sheet) {
+    syncInert();
     root().classList.remove("sheeted"); sheetType = null;
     if (!open) { $layer.innerHTML = ""; return; }
     if (closing) return;
@@ -5816,7 +5944,7 @@ function renderSheet(refresh) {
     // (ready before a page is gone on to: built when there's nothing else to do, or, without that, once it's up)
     if (!ghostCSS && canGhost()) window.requestIdleCallback ? requestIdleCallback(() => ghostStyles(), { timeout: 2000 }) : setTimeout(() => ghostStyles(), SHEET_SLIDE_MS + 200);
   }
-  root().classList.toggle("sheeted", !!$(".sheet", $layer));
+  root().classList.toggle("sheeted", !!$(".sheet", $layer)); syncInert();
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);
 }
@@ -5956,8 +6084,6 @@ function drawSheet(refresh) {
     case "security": {
       // The settings, grouped (a password and passkeys are the account's: Your Account opens its page)
       const u = S.me, lock = !!lockPrefs();
-      const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
-      const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
       const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
       $layer.innerHTML = sheetHtml("Privacy & Security", `
         <div class="ghead">Account</div>
@@ -5967,8 +6093,7 @@ function drawSheet(refresh) {
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
-          <button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
-            ${S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>
+          ${encCell(true)}
         </div>
         <div class="ghead">This Phone</div>
         <div class="group">
@@ -6012,7 +6137,7 @@ function drawSheet(refresh) {
         ${fr.length ? `<div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
           <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>
           <div class="gfoot">Verify a friend together, in person or on a video call: tap them, then scan their code or compare the digits.</div>`
-        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
+        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: toSecurity() });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     }
@@ -6504,7 +6629,7 @@ function drawSheet(refresh) {
           <div class="wnlist">${[["lock", "green", "Safer than a password", "Nothing to guess, reuse or type into the wrong site."],
             ["key", "indigo", "Keeps your messages", "On newer phones it also unlocks them, so a password reset doesn’t lose them."],
             ["face", "teal", "Lets InFlight lock", "Lock InFlight when you leave it, and open it with a glance."]].map(([ic, tile, t, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${t}</b><small>${sub}</small></span></div>`).join("")}</div>
-          <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: { label: "Back", act: "securitysheet" } });
+          <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: toSecurity() });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     case "reauth":
@@ -6881,7 +7006,7 @@ function fcDrag(card) {
   let st = null;
   card.addEventListener("touchstart", (e) => {
     const tl = e.target.closest(".fctl");
-    st = card.classList.contains("fc") && e.touches.length === 1 && !(tl && tl.scrollHeight > tl.clientHeight + 1)
+    st = card.classList.contains("fc") && e.touches.length === 1 && !zoomed() && !(tl && tl.scrollHeight > tl.clientHeight + 1)
       ? { y: e.touches[0].clientY, x: e.touches[0].clientX, t: performance.now(), v: 0, dy: 0, dir: null } : null;
   }, { passive: true });
   card.addEventListener("touchmove", (e) => {
@@ -6954,8 +7079,8 @@ function fcEvents(m, t) {
     const o = n.other, nm = (id) => first(personById(id)?.name || "a friend");
     const whose = o.from === S.me.id ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
     const over = n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air";
-    if (n.kind === "flock") {                                       // (they part where its next "f" point is)
-      const parts = legs.find((l) => l[3] === "f" && l[2] > n.at)?.[2] ?? n.at;
+    if (n.kind === "flock") {                                       // (they part when the server says: n.until)
+      const parts = n.until ?? n.at;
       ev.push({ at: n.at, icon: I.people, tone: "teal", cls: "near flock", title: `${n.at > t ? "Flies" : parts > t ? "Flying" : "Flew"} with ${whose}`, sub: `${over} · 10% faster together` }); continue;
     }
     ev.push({ at: n.at, icon: I.pass, tone: "orange", cls: "near", title: n.kind === "overtake" ? (n.lead === "other" ? `Overtaken by ${whose}` : `Overtook ${whose}`) : `Passed ${whose}`, sub: over });
@@ -7109,7 +7234,7 @@ const spaceSub = (mn, from, at) => ((L) => spaceNow(L.mn, L.from, L.to, now(), w
 function airFill(el, r) {
   const who = r.label.split(" · ")[0], wx = wxSay(r, true);
   el.dataset.at = r.deliverAt; el.dataset.from = r.sentAt;
-  el.setAttribute("aria-label", `${who}, ${r.out ? "your pigeon" : "on its way to you"}${r.g ? `, in ${r.g.name}` : ""}. Watch it on the map.`);
+  el.setAttribute("aria-label", `${who}, ${r.out ? "your pigeon" : "on its way to you"}${r.g ? `, in ${r.g.name}` : ""}, lands ${atTime(r.deliverAt)}. Watch it on the map.`);
   $(".awho .one", el).textContent = who;
   const sub = $(".asub", el);
   sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
@@ -7256,7 +7381,9 @@ function airTick() {
       continue;
     }
     const at = +c.dataset.at, from = +c.dataset.from, f = Math.min(1, Math.max(0, (t - from) / Math.max(1, at - from)));
-    c.style.setProperty("--f", f.toFixed(4));
+    // (moved only by as much as shows, a thousandth of the track: on a long flight that's every few seconds or more,
+    // rather than a fresh second-long glide, and a redraw, every second for each card)
+    const fv = f.toFixed(3); if (c._f !== fv) { c._f = fv; c.style.setProperty("--f", fv); }
     if (c.classList.contains("landed") || c.classList.contains("lost")) continue;
     if (at <= t) { airLand(c); continue; }
     n++;
@@ -7694,7 +7821,7 @@ function openMenu(anchor, items) {
   if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
   if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
   m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
-  popOpened($(".mi", m));
+  popOpened($(".mi", m)); syncInert();
 }
 function openActions({ title, message, actions }) {
   clearTimeout(popTimer);
@@ -7702,7 +7829,7 @@ function openActions({ title, message, actions }) {
     <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
       `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
     <button class="cancel" data-act="closepop">Cancel</button></div>`;
-  popOpened($(".asheet .ab", $pop));
+  popOpened($(".asheet .ab", $pop)); syncInert();
 }
 let popTimer = 0, popFrom = null, keyAt = -1e9;
 // For a keyboard or VoiceOver: a menu or question opened with Enter or Space starts on its first choice, Up and Down
@@ -7728,8 +7855,11 @@ function closePop() {
   if (!live.length) return;
   // (from wherever it had got to, if it's still coming in; taken away once its exit has played: styles.css .asheet.closing)
   $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => { freeze(e); e.classList.add("closing"); });
+  syncInert();
   clearTimeout(popTimer); popTimer = setTimeout(() => {
-    const f = popFrom, lost = $pop.contains(document.activeElement); popFrom = null;
+    // (focus that's fallen to the page is lost too: what opened it was made inert under it, and let it go. Not for a
+    // field, though, whose keyboard has gone: that doesn't come back up unasked)
+    const f = popFrom, a = document.activeElement, lost = $pop.contains(a) || ((!a || a === document.body) && !inField(f)); popFrom = null;
     $pop.innerHTML = "";
     if (lost && f?.isConnected) f.focus({ preventScroll: true });
   }, STILL.matches ? 220 : 320);
@@ -8004,10 +8134,10 @@ async function onClick1(e, t) {
       flashMsg(el, id); return;
     }
     case "applock": {
-      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); return renderSheet(); }
+      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); render(); return renderSheet(); }
       if (!S.passkeys?.length) { toast("Add a passkey first: it’s what unlocks InFlight."); S.sheet = { type: "passkeys" }; return renderSheet(); }
       try { await lockCheck(); } catch (_) { return toast("Couldn’t check it’s you, so InFlight won’t lock yet."); }
-      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); return renderSheet();
+      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); render(); return renderSheet();
     }
     case "unlock": return unlock();
     case "lockout": return openActions({ message: "Sign out of InFlight on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
@@ -8024,7 +8154,15 @@ async function onClick1(e, t) {
       const o = S.outbox.find((x) => x.id === id); if (!o) return;
       return openMenu(t, [{ label: o.err ? "Try Again" : "Send Now", icon: I.up, act: "outretry", id }, { label: "Delete", icon: I.trash, act: "outdel", id, destructive: true }]);
     }
-    case "outretry": { closePop(); const o = S.outbox.find((x) => x.id === id); if (o) { o.err = null; await outboxSave(); render(); } return outboxFlush(true); }
+    case "outretry": {
+      closePop(); const o = S.outbox.find((x) => x.id === id);
+      if (o) {
+        try { if (o.err) await outboxRetry(o); o.err = null; }
+        catch (e) { o.err = e.message || "This pigeon couldn’t be sealed again. Delete it and send it again."; await outboxSave(); return render(); }
+        await outboxSave(); render();
+      }
+      return outboxFlush(true);
+    }
     case "outdel": { closePop(); S.outbox = S.outbox.filter((x) => x.id !== id); await outboxSave(); haptic("tick"); return render(); }
     case "whohas": haptic("tick"); S.sheet = { type: "whohas", id }; return renderSheet();
     case "flymenu": {
@@ -8088,7 +8226,7 @@ async function onClick1(e, t) {
     }
     case "vanishask": {
       const g = group(id), who = g ? "everyone in the group" : first(friend(id)?.name || "your friend");
-      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read, for you and ${who}. The flight stays in your Flight Log.`,
+      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read (or land, if read receipts are off), for you and ${who}. The flight stays in your Flight Log.`,
         actions: [[DAY, "1 Day"], [7 * DAY, "7 Days"], [30 * DAY, "30 Days"], [0, "Off"]].map(([ms, label]) => ({ label, act: "vanishset", id: `${id}|${ms}` })) });
     }
     case "vanishset": {
@@ -8096,7 +8234,7 @@ async function onClick1(e, t) {
       try {
         await api(g ? "group-vanish" : "vanish", { method: "POST", body: g ? { id: cid, ms: Number(ms) } : { with: cid, ms: Number(ms) } });
         await sync(); if (S.chat === cid) await loadChat(cid).catch(() => {});
-        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read.` : "Disappearing messages are off.");
+        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read (or land, if read receipts are off).` : "Disappearing messages are off.");
         if (S.sheet) renderSheet(); render();
       } catch (err) { toast(esc(err.message)); }
       return;
@@ -8240,7 +8378,7 @@ async function onClick1(e, t) {
       }
       return renderSheet();
     }
-    case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
+    case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); render(); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
     case "via": S.sheet = { type: "via", chat: S.chat, ids: null }; renderSheet();
@@ -8300,6 +8438,7 @@ async function onClick1(e, t) {
     }
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
+    case "ifsettings": return openAccount("inflight");
   }
 }
 const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone already has a passkey for your account." : err.name === "SecurityError" ? "Passkeys only work on georgefarrowgreen.com." : err.message || "The passkey didn’t work. Try again.";
@@ -8308,7 +8447,7 @@ async function onChange(e) {
   const el = e.target;
   if (el.id === "file-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
-  if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); return renderSheet(); }
+  if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); render(); return renderSheet(); }
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
@@ -8324,8 +8463,9 @@ const agoText = (at) => {
 // look in the background), so pigeons on their way can follow you. It never
 // asks for permission by itself (only when you turn it on). It checks every
 // minute, saves when you've moved to a new square mile, and otherwise just
-// notes every few minutes that you're still there.
-const AUTO_EVERY = MIN, AUTO_KM = 1, AUTO_FRESH = 3 * MIN;
+// says every ten minutes that you're still there (so a pigeon the server held
+// back from turning, as it turns one at most every ten minutes, still turns).
+const AUTO_EVERY = MIN, AUTO_KM = 1, AUTO_FRESH = 10 * MIN;
 async function setRisky(on) {
   S.me = { ...S.me, risky: on }; render();             // the switch moves straight away
   try { const r = await api("me", { method: "PATCH", body: { risky: on } }); const same = !!r.me.risky === on; S.me = r.me; if (!same) render(); }
@@ -8340,7 +8480,8 @@ async function setAutoLocation(on, btn) {
 // While InFlight is open (and you've turned it on) the phone watches your
 // location: iPhone asks once a session, then reports as you move. The minute
 // timer saves what it last heard (a new square mile at once; otherwise a
-// "still here" every few minutes), and asks directly if the watch goes quiet.
+// "still here" every ten minutes, timed on this phone: the server's "Updated"
+// moves only when you do), and asks directly if the watch goes quiet.
 // (Safari often says permission is only "prompt" even once allowed, so only a
 // clear "denied" stops it.)
 let locWatch = null, lastFix = null, lastFixAt = 0, lastSave = 0, saving = false;
@@ -8359,15 +8500,18 @@ async function autoLocate(ask) {
 async function saveFix(force) {
   if (!lastFix || !S.me?.autoLocation || S.me.moon || saving) return;
   const { lat, lon } = snapToMile(lastFix.coords.latitude, lastFix.coords.longitude);     // the exact spot never leaves the phone
-  const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, lat, lon) >= AUTO_KM;
-  if (!moved && now() - (S.me.locAt || 0) < AUTO_FRESH) return;
+  // (with Approximate Location the server keeps the 10 km square it's in: that's what's compared, like with like)
+  const at = S.me.approxLocation ? snapTo(lat, lon, 10) : { lat, lon };
+  const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, at.lat, at.lon) >= AUTO_KM;
+  if (!moved && Date.now() - lastSave < AUTO_FRESH) return;
   if (!force && Date.now() - lastSave < 20e3) return;                                       // a burst of fixes saves once
-  // still here: keep the spot (and its name) and just refresh when it was checked
+  // still here: keep the spot (and its name), so a pigeon held back from turning can catch up
   const body = moved ? { lat, lon, place: nearestPlace(lat, lon) } : { lat: S.me.lat, lon: S.me.lon, place: S.me.place };
-  const before = S.me.place;
+  const before = S.me.place, was = JSON.stringify(S.me);
   saving = true; lastSave = Date.now();
   try {
-    const r = await api("me", { method: "PATCH", body }); S.me = r.me; render(); refreshProfile();
+    // (redrawn only if something changed, and calmly: never under a scroll or a tap)
+    const r = await api("me", { method: "PATCH", body }); S.me = r.me; if (moved || JSON.stringify(r.me) !== was) { calmRender(); refreshProfile(); }
     if (moved && r.me.place !== before) toast(`Location updated to ${esc(r.me.place)}.`);
   } catch (_) { /* try again next time */ }
   saving = false;
@@ -8687,7 +8831,7 @@ function drawLock() {
   if (el?.classList.contains("out")) { el.classList.remove("out"); el.inert = false; }     // (locked again as it went)
   if (!el) {
     el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "InFlight is locked");
-    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with Face ID, Touch ID or your passkey.</p>
+    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with ${isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey"}.</p>
       <button type="button" class="btn wide" data-act="unlock">${I.face}Unlock</button><button type="button" class="link" data-act="lockout">Sign Out Instead</button></div>`;
     root().appendChild(el);
   }
@@ -8839,6 +8983,19 @@ async function outboxOpen(o) {
     } catch (_) {}
   }
 }
+// Try Again, on one the server turned down: a group's may have changed since it was sealed, so the same key is
+// wrapped again for whoever's in it now (the sealed words and photo stay as they are); one told when to land can't
+// land in the past. (Only once you've seen why it didn't go: nothing is ever re-addressed by itself.)
+async function outboxRetry(o) {
+  if (o.meta?.landAt && o.meta.landAt <= now()) throw new Error("Its landing time has passed. Delete it and send it again.");
+  const g = group(o.to); if (!g || !o.meta?.keys) return;
+  const mine = { id: S.me.id, pub: S.myPub || S.me.pub };
+  const w = await E2E.open(await pairFor(mine.pub), { id: o.id, from: S.me.id, to: S.me.id, type: "wrap" }, o.meta.keys[S.me.id]).catch(() => null);
+  if (!w?.k) throw new Error("This pigeon couldn’t be sealed again. Delete it and send it again.");
+  const keys = {};
+  for (const p of [mine, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id: o.id, from: S.me.id, to: p.id, type: "wrap" }, { k: w.k, h: w.h });
+  o.meta = { ...o.meta, keys };
+}
 let flushing = null;
 async function outboxFlush(force) {
   if (!S.me || !S.outbox.length || flushing) return flushing;
@@ -8898,7 +9055,8 @@ async function send() {
     S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; S.glideDown = true; render();
   }
   const tidy = () => {
-    if (att) { if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null; }
+    if (!att) return;              // (words alone left the box as they went up: what's in it now is the next one)
+    if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null;
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
   };
   try {
@@ -8988,7 +9146,8 @@ async function send() {
     // words that were up already come back down into the box (or its draft), with what they replied to
     if (!att && S.pending?.id === id) {
       S.pending = null;
-      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); } else if (!S.drafts.get(to)?.trim()) S.drafts.set(to, raw);
+      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); }
+      else { const d = S.drafts.get(to); S.drafts.set(to, d?.trim() ? `${raw}\n${d}` : raw); }     // (with anything typed after, kept as its draft)
       if (rt && !S.replyTo) S.replyTo = rt;
       if (here()) render();
     }
@@ -9283,8 +9442,8 @@ async function start() {
     if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
-    if (!Object.keys(S.pins).length) await restorePins();
-    else if (!(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
+    const had = Object.keys(S.pins).length; await restorePins();
+    if (had && !S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
@@ -9375,7 +9534,9 @@ function flightCheck() {
   const t = now();
   const lands = [];
   for (const f of S.friends) if (f.last?.flying) lands.push(f.last.deliverAt);
-  for (const list of S.msgs.values()) for (const m of list) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
+  // (only the chat on screen: sync fetches no other, so a chat you've left keeps the copy it had, its pigeons still "flying")
+  const open = S.view === "chat" && S.chat && !S.locked ? S.msgs.get(S.chat) : null;
+  for (const m of open || []) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
   const due = lands.filter((x) => x <= t);
   if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
 }

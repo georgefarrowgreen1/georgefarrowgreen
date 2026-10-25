@@ -119,7 +119,7 @@ ok(dA === dB && dA.replace(/\D/g, '').length === 60, 'safety numbers match (60 d
 sql("UPDATE pg_msgs SET expires_at = (strftime('%s','now') * 1000) - 1000 WHERE photo = 1");
 await B.p.reload(); await B.p.waitForSelector('.tabs'); await B.p.click('.mrow'); await B.p.waitForSelector('.b.once:has-text("expired")', { timeout: 20000 }).catch(() => {});
 ok((await txt(B, '.b.once')).includes('Photo expired'), 'a photo not opened in time is gone for Mira');
-await B.p.waitForTimeout(1500);
+await fetch(new globalThis.URL(URL).origin + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });   // (the minute tick deletes it)
 ok(/"photo": 2/.test(sql("SELECT photo FROM pg_msgs WHERE photo > 0")), 'server marks the photo deleted');
 
 // ---- George: sign out, and back in on the account's page (where InFlight signs in; a passkey there opening the

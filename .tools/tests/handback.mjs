@@ -10,10 +10,11 @@
 import http from 'http';
 import { createHash, randomBytes } from 'crypto';
 const PORT = Number((process.env.TEST_BASE || 'http://localhost:8788').match(/:(\d+)\/?$/)?.[1] || 8788);
+// (each on a connection of its own: the local server can drop an idle kept-alive one while a test waits)
 function post(host, path, body, { cookie, ip } = {}) {
   const data = JSON.stringify(body || {});
   return new Promise((done, no) => {
-    const q = http.request({ host: '127.0.0.1', port: PORT, path, method: 'POST', headers: { Host: `${host}:${PORT}`, Origin: `http://${host}:${PORT}`, 'Content-Type': 'application/json',
+    const q = http.request({ host: '127.0.0.1', port: PORT, path, method: 'POST', agent: false, headers: { Host: `${host}:${PORT}`, Origin: `http://${host}:${PORT}`, 'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(data), ...(cookie ? { Cookie: cookie } : {}), ...(ip ? { 'CF-Connecting-IP': ip } : {}) } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c));
       res.on('end', () => {

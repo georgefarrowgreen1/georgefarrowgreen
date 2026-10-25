@@ -18,8 +18,8 @@
 //
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
-import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
-  deviceOf, regionOf, accountPage } from "./_pigeon.js";
+import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, waitText, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, SESSION_MAX, randomToken,
+  safeEqual, deviceOf, regionOf, accountPage } from "./_pigeon.js";
 import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
@@ -96,6 +96,39 @@ export async function saltFor(env, request, email) {
   // (one in eight in the older form, as an account from before Argon2id still has: so that form says nothing either)
   return u ? u.salt : (fake[16] < 32 ? "" : "a2:") + b64url(fake.slice(0, 16));
 }
+// A device that's signed in to an account on its page before (its password or a passkey) keeps a word saying so: a
+// cookie of the page's own address alone, one for each account (named by its email's hash, so signing in to another
+// account on the same device doesn't take its place), good only for that account and its password as they are now (the
+// email's hash, an id of the device's own, and a MAC of both with the account's id and when its password was set, under
+// the server's secret: once the password's changed or reset, or the account's gone, every word given before counts for
+// nothing). Its wrong passwords count against it alone, not the account as a whole.
+const emailKey = async (email) => hex(await sha256(email)).slice(0, 32);
+function knownOf(request, env, em) {
+  const secure = cookieOf(request, env).name.startsWith("__Secure-");
+  return { name: `${secure ? "__Host-known" : "known"}-${em.slice(0, 8)}`, attrs: `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
+}
+async function knownMac(env, em, id, u) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(await serverSecret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`known-device|${em}|${id}|${u.id}|${u.pw_at || ""}`)))).slice(0, 32);
+}
+// (a response to a sign-in to the account u, its row as it is now, with the word given to the browser: a new one each
+// time, kept a year)
+export async function withKnown(res, request, env, u) {
+  const em = await emailKey(u.email), id = randomToken(12), { name, attrs } = knownOf(request, env, em);
+  res.headers.append("Set-Cookie", `${name}=${em}.${id}.${await knownMac(env, em, id, u)}; ${attrs}; Max-Age=${Math.floor(SESSION_MAX / 1000)}`);
+  return res;
+}
+// (the device's id, if the browser has the word for the account u, whose email's hash is em; else null)
+async function knownHere(request, env, em, u) {
+  const { name } = knownOf(request, env, em);
+  for (const part of (request.headers.get("Cookie") || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0 || part.slice(0, i).trim() !== name) continue;
+    const [e, id, mac] = part.slice(i + 1).trim().split(".");
+    if (e === em && /^[A-Za-z0-9_-]{16}$/.test(id || "") && safeEqual(mac || "", await knownMac(env, em, id, u))) return id;
+  }
+  return null;
+}
 // The account an email and its password's proof are for, or a 401 (with the same limits wherever it's tried). One being
 // deleted only where it can be kept (deleting).
 export async function passwordUser(env, request, b, { deleting = false } = {}) {
@@ -106,16 +139,22 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
   if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
   // Only wrong passwords count against an account, and only from where they were tried: 30 an hour
   // from one address holds that address back, and only a spread-out guessing (300 an hour, from
-  // many addresses at once) holds back the account itself. So guessing elsewhere can't lock you out.
-  const em = hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
-  const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em;
-  for (const [key, max] of [[here, 30], [acct, 300]]) {
-    const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
-    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
-  }
+  // many addresses at once) holds back the account itself, and then only on devices that haven't
+  // signed in to it before. One that has (its word: withKnown) counts its own wrong tries instead,
+  // 10 an hour, so guessing elsewhere can't lock you out there, and a word that's stolen is worth
+  // no more than one more network. (A passkey's never held back by any of this.)
+  const em = await emailKey(email), D = await db(env), now0 = Date.now();
+  // (the account first, as a word's good only for it as it is)
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
+  const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em, dev = u && await knownHere(request, env, em, u);
+  const holds = [[here, 30], dev ? ["loginacct:dev:" + em + ":" + dev, 10] : [acct, 300]];
+  for (const [key, max] of holds) {
+    const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
+    const wait = held && waitText(held.reset_at - now0);
+    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, key === acct ? `Too many tries for this account. Try again in ${wait}, or sign in with a passkey.` : `Too many tries. Try again in ${wait}.`);
+  }
   if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
-    await limit(env, here, 30, 60 * 60e3).catch(() => {}); await limit(env, acct, 300, 60 * 60e3).catch(() => {});
+    for (const [key, max] of holds) await limit(env, key, max, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");
   }
   if (u.delete_at && !deleting) refuseDeleting(u);

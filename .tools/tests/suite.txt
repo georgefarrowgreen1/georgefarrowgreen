@@ -40,5 +40,6 @@ acctlink
 acctmore
 acctjoin
 acctsignin
+acctinflight
 sitepaths
 acctpkmsg

@@ -1,7 +1,7 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
-  db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -15,7 +15,7 @@ import { findNear, flockUp, dropNear, renear, nearViews, stopsOf, posAt } from "
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
-import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
+import { PASSPORT_ROUTES, newStamps, restampPair } from "../../_passport.js";
 import { bumpStreak, streakBetween, streakView, ensureStreaks } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
@@ -37,11 +37,11 @@ import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
-import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
-import { checkNewSecret, handleFree as handleFreeOf } from "../../_join.js";
+import { proofOk, lockVault, openVault } from "../../_atrest.js";
+import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -55,6 +55,8 @@ function meView(u, t) {
     lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, lunar: ln.count, lunarNextAt: ln.nextAt, lunarx: lx.count, lunarxNextAt: lx.nextAt, laser: lz.count, laserNextAt: lz.nextAt, orbital: ob.count, orbitalNextAt: ob.nextAt, moon: moonView(u), avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
+// …with the look your pigeons fly with now (a seasonal one gone, and not kept, isn't shown as yours: functions/_seasons.js)
+async function meOf(D, u, t) { return { ...meView(u, t), skin: await skinNow(D, u, t) }; }
 
 /* ---------------- accounts ----------------
    New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
@@ -114,7 +116,7 @@ async function handback({ request, env }) {
   const { row, u, siteHash, authAt } = await takeHandback(env, request, "inflight", await body(request));
   const token = await issueSession(env, u.id, request, authAt), hash = await hashOf(token), D = await db(env);
   const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
-  const res = json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
+  const res = json({ token, me: await meOf(D, u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
   const c = await cookieUser(request, env, true).catch(() => null);
   if (c && c.sessionHash === row.session) {
     // (the page's codes and links still to be used, the sign-ins opened from it and its notifications going with it)
@@ -256,8 +258,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (!["light", "dark", "auto"].includes(b.appearance)) throw new HttpError(400, "Choose Light, Dark or Automatic.");
     await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
   }
-  if (b.notify && typeof b.notify === "object")
-    await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
+  if (b.notify && typeof b.notify === "object") await savePrefs(D, u.id, b.notify);
   if (b.notifyEmail !== undefined)
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
@@ -267,15 +268,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (b.skin !== null && !(await skinOpen(env, u.id, String(b.skin)))) throw new HttpError(403, "Earn its achievement first.");
     await D.prepare("UPDATE pg_users SET skin = ? WHERE id = ?").bind(b.skin, u.id).run();
   }
-  if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
-  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
-  if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
-  if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
-  // Approximate Location: on, the spot already kept becomes approximate at once (off: precise from the next update)
-  if (b.approxLocation !== undefined) {
-    await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
-    if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
-  }
+  await setPrivacy(D, u, b);
   // To the Moon: a spot on it, and none on Earth (it isn't kept while you're there); Update
   // Automatically goes off, so the phone doesn't bring you straight back. Setting a place on
   // Earth again (below) brings you home.
@@ -297,7 +290,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (u.moon || moved > REROUTE_KM) await followAll(env, D, u, endOf({ lat: p.lat, lon: p.lon, place: p.place }), t, waitUntil);
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ me: meView(fresh, Date.now()) });
+  return json({ me: await meOf(D, fresh, Date.now()) });
 }
 
 /* ---------------- profile pictures ----------------
@@ -307,12 +300,12 @@ async function updateMe({ request, env, waitUntil }) {
    them until they say yes. */
 async function putAvatar({ request, env }) {
   const u = await requireUser(request, env), t = await putPhoto(env, u, request);
-  return json({ me: meView({ ...u, avatar_at: t }, t) });
+  return json({ me: await meOf(await db(env), { ...u, avatar_at: t }, t) });
 }
 async function deleteAvatar({ request, env }) {
   const u = await requireUser(request, env);
   await dropPhoto(env, u);
-  return json({ me: meView({ ...u, avatar_at: null }, Date.now()) });
+  return json({ me: await meOf(await db(env), { ...u, avatar_at: null }, Date.now()) });
 }
 async function getAvatar({ request, env }, id) {
   const u = await requireUser(request, env);
@@ -370,7 +363,8 @@ async function sessionsList({ request, env }) {
   return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
 }
 // The keys you've trusted, sealed on your phone to your own key (the server can't
-// read or change them): kept so a new phone still notices a key that was swapped.
+// read or change them): kept so a new phone still notices a key that was swapped,
+// as long as it's given them back (a server could always say there are none).
 async function pinsGet({ request, env }) {
   const u = await requireUser(request, env);
   return json({ pins: u.pins || null });
@@ -492,7 +486,7 @@ async function addFriend({ request, env, waitUntil }) {
       if (l.status === "blocked") return json({ message: `You blocked @${t.handle}. Unblock them in Privacy & Security first.` });
       // you said no, then changed your mind: if they still want to, you're friends; if not, it's your request now
       if (l.asked_at) {
-        await D.prepare("UPDATE pg_links SET status = 'ok', asked_at = NULL WHERE a = ? AND b = ?").bind(u.id, t.id).run();
+        await D.batch([D.prepare("UPDATE pg_links SET status = 'ok', asked_at = NULL WHERE a = ? AND b = ?").bind(u.id, t.id), restampPair(D, u.id, t.id)]);
         waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
         return json({ message: `@${t.handle} joined your flock.` });
       }
@@ -508,7 +502,7 @@ async function addFriend({ request, env, waitUntil }) {
   }
   if (l && l.a === u.id) return json({ message: `Your request to @${t.handle} is still waiting.` });
   if (l) {
-    await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id).run();
+    await D.batch([D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id), restampPair(D, u.id, t.id)]);
     waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
     return json({ message: `@${t.handle} joined your flock.` });
   }
@@ -526,7 +520,7 @@ async function respondFriend({ request, env, waitUntil }) {
   const b = await body(request), D = await db(env);
   if (b.accept) {
     const r = await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
-    if (r.meta.changes) waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {}));
+    if (r.meta.changes) { await restampPair(D, u.id, String(b.id)).run(); waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {})); }
   }
   // Declining: they aren't told, and can't ask again for 30 days (their request just keeps waiting)
   else await D.batch([
@@ -566,6 +560,21 @@ async function refundGrounded(D, res) {
   for (const m of res?.at(-1)?.results || []) {
     await dropNear(D, m.id, -Infinity).catch(() => {}); await dropFly(D, m.id, -Infinity).catch(() => {});
     await refundLoft(D, m.sender, m.pigeon, t).catch((e) => console.error("pigeon refund", e && e.message));
+  }
+}
+// Who sees what, each on or off: when you're online, read receipts, your news, the live tracker, and Approximate
+// Location (on, the spot already kept becomes approximate at once; off, precise from the next update). From the app
+// (PATCH me) and from its settings on the account's page (functions/api/account), by the same rules.
+export async function setPrivacy(D, u, b) {
+  if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
+  // (and since when they've been off: a disappearing message that landed before goes its time after that, functions/_vanish.js)
+  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ?1, no_receipts_at = CASE WHEN ?1 = 0 THEN NULL ELSE COALESCE(no_receipts_at, ?2) END WHERE id = ?3")
+    .bind(b.receipts ? 0 : 1, Date.now(), u.id).run();
+  if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
+  if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
+  if (b.approxLocation !== undefined) {
+    await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
+    if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
   }
 }
 // Blocking: no friendship, no requests (theirs look like they're still waiting), no
@@ -613,15 +622,19 @@ const lastBetweenQ = (D, a, b, t) => D.prepare(
 const lastBetween = (D, a, b, t) => lastBetweenQ(D, a, b, t).first();
 
 // Read receipts go both ways: if either of you has them off, neither sees them.
-// read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none
-const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null, viewedAt: null } : v);
+// read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none (and a
+// disappearing one says when it goes, as functions/_vanish.js times it then, so a phone hides it from its saved copy too)
+const receipts = (me, other, v) => {
+  const off = me.no_receipts || other?.no_receipts;
+  if (off && v.vanish) v = { ...v, vanishAt: (v.lost ? v.lostAt : Math.max(v.deliverAt, me.no_receipts_at || 0, other?.no_receipts_at || 0)) + v.vanish };
+  return v.from === me.id && off ? { ...v, readAt: null, viewedAt: null } : v;
+};
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
-async function sync({ request, env, waitUntil }) {
+async function sync({ request, env }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their
@@ -630,7 +643,7 @@ async function sync({ request, env, waitUntil }) {
   // passkeys, streaks, feathers, named pigeons, and your groups (a fixed set of questions however many)
   const res = await D.batch([
     D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
-    D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
+    D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.no_receipts_at, p.notify_prefs
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id),
     D.prepare(`
       WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
@@ -643,7 +656,8 @@ async function sync({ request, env, waitUntil }) {
       SELECT id, sender, recipient, sent_at, deliver_at, lost_at, recalled FROM pg_msgs WHERE id IN (
         SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
         UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t),
-    D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t),
+    // (one whose words have disappeared isn't waiting: with read receipts off, that can be before it's read)
+    D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL AND gone_at IS NULL GROUP BY sender").bind(u.id, t),
     D.prepare("SELECT a, b, ms, by, at FROM pg_vanish WHERE (a = ?1 OR b = ?1) AND ms > 0").bind(u.id),
     D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id),
     D.prepare("SELECT * FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(u.id),
@@ -683,7 +697,7 @@ async function sync({ request, env, waitUntil }) {
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
   const groups = groupsFrom(res.slice(10, 10 + GROUP_QS), u, t);
-  return json({ now: t, me: { ...meView(u, t), skin: await skinNow(D, u, t) }, feathers: bal.n, friends, groups, incoming, outgoing, blocked,
+  return json({ now: t, me: await meOf(D, u, t), feathers: bal.n, friends, groups, incoming, outgoing, blocked,
     birds: hasBirds.length ? await birdsFor(D, u.id, t) : { birds: [], hall: [] }, emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) },
   );
@@ -698,7 +712,7 @@ async function listMessages({ request, env }) {
   // with you, and the last pigeon between you (whose turn), in one trip; nothing is sent unless you're friends)
   const [{ results: fr }, { results: [them] }, { results }, { results: stops }, { results: [lastOne] }] = await D.batch([
     D.prepare("SELECT 1 AS x FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, other),
-    D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other),
+    D.prepare("SELECT no_receipts, no_receipts_at FROM pg_users WHERE id = ?").bind(other),
     // yours waiting to take off show (to you only); theirs only once they're in the air
     D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3) AND gone_at IS NULL
       ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t),
@@ -720,16 +734,16 @@ async function listMessages({ request, env }) {
     if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
     if (marks.has(v.id)) v.postmarks = marks.get(v.id);
   }
-  return json({ now: t, messages: views, fly, reacts, turn: turn(u.id, lastOne, t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  return chatJson(request, t, { messages: views, fly, reacts, turn: turn(u.id, lastOne, t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
-  if (!(Number(request.headers.get("Content-Length")) <= MAX_PHOTO + MAX_CT + 4096)) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
-    const f = await request.formData();
+    const f = await new Response(await readCapped(request, MAX_PHOTO + MAX_CT + 4096, "That photo is too large. Try a smaller one."),
+      { headers: { "Content-Type": request.headers.get("Content-Type") } }).formData();
     try { meta = JSON.parse(f.get("meta")); } catch (_) { throw new HttpError(400, "That scroll was malformed."); }
     const p = f.get("photo");
     if (p && typeof p !== "string") photo = p;
@@ -741,7 +755,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now();
   if (await idTaken(D, id)) throw new HttpError(409, "That scroll was already sent.");
-  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
+  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place, moon FROM pg_users WHERE id = ?").bind(to).first();
   // off the Earth (or round it, by orbit): only a space pigeon goes, and it flies none of the Earth's ways
@@ -859,7 +873,7 @@ async function sendMessage({ request, env, waitUntil }) {
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null && !mystery ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: await meOf(D, me, t) } : {}) });
 }
 
 // A space pigeon (functions/_moon.js): lunar to, from or across the Moon, laser to or from Mars,
@@ -904,7 +918,7 @@ async function sendSpace({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
   waitUntil(pigeonSent(env, u, to, deliver, SPACE_NAME[kind]).catch(() => {}));
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: meView(me, t) });
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: await meOf(D, me, t) });
 }
 
 // Before sending: the weather along the way now, and for the next day hour by
@@ -985,7 +999,7 @@ async function cancelScheduled(env, D, u, m, t) {
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${m.id}`);
   await refundLoft(D, u.id, m.pigeon, t);
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ cancelled: m.id, me: meView(me, t) });
+  return json({ cancelled: m.id, me: await meOf(D, me, t) });
 }
 
 // Checks a stopover and finds where it is: a friend of you both, with a location.
@@ -1040,7 +1054,7 @@ async function recallMessage({ request, env }) {
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   const view = msgView(u.id, fresh, t);
   if (!(await areFriends(D, u.id, m.recipient))) for (const k of ["route", "legs", "toPlace", "viaPlace"]) delete view[k];
-  return json({ message: view, me: meView(me, t) });
+  return json({ message: view, me: await meOf(D, me, t) });
 }
 
 async function markRead({ request, env }) {
@@ -1072,7 +1086,7 @@ async function getPhoto({ request, env }, id) {
   return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
 
-/* ---------------- password: change, forgotten, reset ----------------
+/* ---------------- password (changed, forgotten and reset on the account's page) ----------------
    The password locks the private key, so a reset can only keep someone's
    scrolls if their phone unlocks the key another way (a passkey with PRF).
    Otherwise the phone makes a new key pair and old scrolls stay sealed. */
@@ -1082,12 +1096,6 @@ async function notifyPasskeyAdded(env, u, label, request) {
     line: `a new passkey (“${label}”) can now sign in to your account.`,
     after: "If this wasn’t you, remove it in Passkeys and change your password straight away.",
     pill: ["passkey", label], rows: [["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
-}
-async function notifyPasswordChanged(env, u, request) {
-  await accountMail(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed",
-    line: "the password for your account was just changed. Your InFlight messages are still safe.",
-    after: "If this wasn’t you, reset your password straight away with Forgot password? at account.georgefarrowgreen.com.",
-    rows: [["Changed in", "InFlight"]], button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
 
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
@@ -1104,27 +1112,6 @@ async function pwned({ request, env }) {
   const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.georgefarrowgreen.com)" } }).catch(() => null);
   const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
   return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
-}
-
-// An account from before Argon2id, moved on at its next password sign-in: the same
-// password, stretched the new way (the phone sends the old proof as the check).
-// Not a password change: no email, and no one is signed out.
-async function changePassword({ request, env, waitUntil }) {
-  const u = await requireUser(request, env);
-  await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
-  const b = await body(request);
-  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "Your current password isn’t right.", "current");
-  const vault = checkNewSecret(b);
-  const D = await db(env), t = Date.now();
-  await D.batch([
-    // (checked against data breaches on the phone first, so none it's found in: the account's page counts it checked)
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
-    D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
-  ]);
-  waitUntil(logEvent(env, u.id, "password", request));
-  waitUntil(notifyPasswordChanged(env, u, request).catch(() => {}));
-  return json({ ok: true });
 }
 
 // Always answers the same way, so it can't be used to find out who has an account.
@@ -1446,7 +1433,7 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password": elsewhere("Change your password"), "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
   "POST password-upgrade": elsewhere("Sign in"),   // (an older password moved on: on the account's page, as you sign in there)
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,

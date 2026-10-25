@@ -16,7 +16,7 @@ import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet, is
 import { cookieUser, sameOrigin, withCookie, withSession, cookieToken } from "./_account.js";
 import { takeHandback } from "./_handback.js";
 import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
-import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
+import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, unitsForAccount } from "./_wxpush.js";
 import { isWeather } from "./_wxapp.js";
 
 const MAX_SAVED = 50, MAX_DATA = 48 * 1024;
@@ -38,8 +38,6 @@ export function cleanData(d) {
   if (places.length > MAX_SAVED) throw new HttpError(400, `You can keep ${MAX_SAVED} places at most.`);
   const settings = d.settings && typeof d.settings === "object" && !Array.isArray(d.settings) ? d.settings : {};
   const n = wantOf(d.notify);
-  // (where each notification's place is My Location on the device that chose it)
-  n.places = n.places.slice(0, MAX_PLACES);
   const out = { places, settings, notify: n };
   if (JSON.stringify(out).length > MAX_DATA) throw new HttpError(413, "That's more than can be kept.");
   return out;
@@ -76,7 +74,10 @@ export const ACCOUNT_ROUTES = {
       : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(u.id, JSON.stringify(data), t, base).run();
     if (!r.meta?.changes) { const now = await kept(env, u.id); return json({ conflict: true, ver: now.ver, data: now.data }, 409); }
     // (the notifications, for each of the account's devices and its email, if they've changed, or the units its emails are in)
-    if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify) || unitsChanged(data.settings, was.data.settings)) await applyAccount(env, u.id, data.notify, data.settings);
+    const notifyChanged = JSON.stringify(data.notify) !== JSON.stringify(was.data.notify), newUnits = unitsChanged(data.settings, was.data.settings);
+    if (notifyChanged || newUnits) await applyAccount(env, u.id, data.notify, data.settings);
+    // (new units: every device's notifications say them from now on, as when they're set on the account's page)
+    if (newUnits) await unitsForAccount(env, u.id, data.settings);
     return json({ ver: base + 1, data });
   },
   // The account's own page, opened signed in as you (from the account's card): a code good once, for a minute, for this
@@ -122,9 +123,14 @@ export async function setMail(env, userId, change) {
   }
   throw new HttpError(409, "That didn’t save. Try again.");
 }
-// Turning notifications on (or changing them) on a device: signed in, as the account's choices, and the device one of
-// the account's; signed out, as its own
+// Turning notifications on (or changing them) on a device: signed in to Weather (not just asked about it), as the
+// account's choices, and the device one of the account's; signed out, as its own. (b.account: false from a page that's
+// signed out, though the browser has the site's sign-in, and asks whether this device's places go to it; the account's
+// id from one signed in, so a page still in step with the account it had, the browser signed in to another since and
+// the page not yet told, is taken as signed out too; an app from before says nothing, or true, and the sign-in
+// decides, as it did)
 export async function subscribeHere(request, env, b) {
-  const u = cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
+  let u = b.account !== false && cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
+  if (u && typeof b.account === "string" && b.account !== u.id) u = null;
   return subscribe(env, b, u, u ? (await kept(env, u.id)).data.notify : null, u ? deviceOf(request) : "", hex(await sha256("wxnet|" + clientNet(request))).slice(0, 24));
 }

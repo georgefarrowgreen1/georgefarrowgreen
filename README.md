@@ -15,19 +15,29 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
 - **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
-  into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar.
+  into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar (the buttons,
+  once faded, can't be tapped or tabbed to, and the slideshow's segments go with them).
   **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
   preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
   account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
   in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
   app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
+  Back from the account's page by the browser's Back (the page as the browser kept it), it asks again for the words
+  (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
+  name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and
+  the page is opened afresh.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
   press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
-  tick and a thank-you. See **Contact form** below.
+  tick and a thank-you. One that's slow to be answered says it may have gone all the same (not that you're offline),
+  so it isn't sent twice. See **Contact form** below.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
-  description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo.
+  description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
+  page takes them from there, rather than asking for them again (except back by the browser's Back or Forward, when it
+  may be the copy the browser kept, or when the server couldn't read them as it sent the page, which it marks
+  `data-words` only when they're in it: then it asks, and Edit waits for the answer; with no answer to such a page,
+  Edit says it couldn't load the words, rather than starting from the defaults it's written with).
 - **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
   glass redraw for no reason.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
@@ -37,8 +47,8 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
     scroll-linked CSS animations (`animation-timeline: scroll()`), which move with the scroll itself; the script only
     measures, once, where each line fades. Without them, a frame sets the opacity of a few things from those
     measurements, never measuring as it scrolls.
-  - The softened photo is a copy of the one showing, drawn 48 px wide and smoothed once, stretched over the screen and
-    faded in: not a full-screen blur redrawn each frame.
+  - The softened photo is a copy of the one showing, drawn 48 px wide (made small as it's decoded, off the page's own
+    thread) and smoothed once, stretched over the screen and faded in: not a full-screen blur redrawn each frame.
   - Sheets spring up (a `linear()` spring); the page steps back by moving only (the sheet's backdrop dims it). Dragged
     by its top a sheet follows the finger, the page coming forward with it; let go, it springs back, or carries on at
     the speed it was thrown.
@@ -57,10 +67,13 @@ from the site's own pages, too).
 - **Edit:** the line above the name, the name and the line under it are outlined and typed into in place (Return
   finishes a line; what's pasted comes in as plain text). **Done** saves them (`PUT /api/content`) and says **Saved**
   with **Undo** for a few seconds (back to how they were: `POST /api/history`, which keeps the last 15). Escape leaves
-  editing without saving. A line left empty shows the default (`functions/_content.js`).
+  editing without saving. A line left empty shows the default (`functions/_content.js`). A line can be 120 characters
+  above the name, 80 for the name and 400 under it: a longer one isn't saved, and the page says which, keeping what was
+  typed to shorten.
 - **Background photos:** a bar at the foot while editing shows them; **Change** opens a sheet of them all: **Add photos**
-  (several at once, each made at most 2000 px and JPEG on the phone first), a tap on one to choose the part that stays
-  in view as the screen crops it, its tag (Both, Phone, Computer) to choose where it shows, and × to remove it.
+  (several at once, up to 50 in all, each made at most 2000 px and JPEG on the phone first), a tap on one (or the arrow
+  keys on it) to choose the part that stays in view as the screen crops it, its tag (Both, Phone, Computer) to choose
+  where it shows, and × to remove it.
 - **Messages** sent through Get in touch are in **Admin → Messages** on the owner's account page (below).
 
 ## Files
@@ -127,9 +140,11 @@ email look (below): their words as they wrote them, their address, when they
 sent it, and a button to reply (a reply goes to them). With `WEB3FORMS_KEY` set
 instead, Web3Forms sends them, in its own format. Until one is set, the form
 politely reports it's not configured. Spam defenses: a hidden honeypot field + a
-per-IP rate limit (5/hour) in KV. Each message is kept in D1 as well
-(`functions/_messages.js`), and read in **Admin → Messages** on the owner's
-account page.
+rate limit for each network (5 an hour, and 10 a day from an IPv6 /48). Each
+message is kept in D1 as well (`functions/_messages.js`), and read in **Admin →
+Messages** on the owner's account page, until it's deleted there; past 60 in a
+day, a message is kept there but not emailed, and past 150 the form says it's
+had a lot of messages today and keeps nothing more.
 
 ## Email
 
@@ -233,8 +248,9 @@ Motion, solid with Reduce Transparency.
   be opened from (taken as if it had been opened, the way back to the app kept); a used or wrong invite says so there.
 - **Signing in, as seamless as it can be** (October 2026). The email field offers your passkeys in the keyboard as you
   tap it (passkey autofill: a quiet `mediation: "conditional"` ask as each sign-in card is drawn, put away before any
-  other passkey's asked for: `passkeyAsk`, `passkeyMake`; so `signin/options` allows 150 asks in 15 minutes from one
-  address). Signed in here before, the page remembers who (`acct:last`, in this browser only: name, handle, email and
+  other passkey's asked for: `passkeyAsk`, `passkeyMake`; and asked anew every 4 minutes while the page is in sight, as
+  its challenge lasts 5; so `signin/options` allows 150 asks in 15 minutes from one address). Signed in here before,
+  the page remembers who (`acct:last`, in this browser only: name, handle, email and
   whether it was a passkey): "Welcome back, George", your photo or initial, and just your password, or **Continue with
   your passkey** (that one asked for) if that's how you did, with the password a tap away; **Not you? Use another
   account** forgets it, as deleting the account does. Signed in with a password for an app, on a device that can make a passkey and with none yet,
@@ -246,7 +262,9 @@ Motion, solid with Reduce Transparency.
   picture. For InFlight, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
   server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
   there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
-  placeholder only shows if it's slow to start. Signing out, dusk passes over it. The way there is one movement too:
+  placeholder only shows if it's slow to start; the account's asked for as the page is read (`account/boot.js`), not
+  once `app.js` has come and started, and Light or Dark, where chosen, is on before it's first drawn (`account/theme.js`).
+  Signing out, dusk passes over it. The way there is one movement too:
   each app fades this page's sky in over everything as it goes (opacity only), so the page opens on what was already in
   sight. Your initial and photo go back to every app
   (InFlight `theme.js`, Weather `early.js`, the home page `signedin.js`), and InFlight swaps the code on its first frame
@@ -273,10 +291,12 @@ Motion, solid with Reduce Transparency.
   InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
   a passkey that opens the messages (a code for InFlight is made only for a sign-in that's just shown it's you), or one
   tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
-  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself.
+  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself; as
+  the server can't tell it's the same password, that's in Recent activity ("Password protection strengthened") and
+  emailed (if it wasn't you, a reset link is the way back, as the password may be someone else's by then).
   The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
-  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
-  has none.
+  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in, as does
+  its old password change (`POST /api/pigeon/password`); Weather has none.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
   No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
@@ -284,18 +304,26 @@ Motion, solid with Reduce Transparency.
   locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
   link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
-  and the confirm email sent; InFlight then opens with **Continue as**, and only needs the password to unlock the key.
+  and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working;
+  one that couldn't be sent, Resend refusing it or not answering in 10 seconds, isn't said to be on its way, and
+  **Send link** tries again, saying why if it still can't);
+  InFlight then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
   there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
   (`#reset=`, InFlight's older ones passed on here) says who it's for (the email half hidden) and asks for a new
   password. With a passkey that holds a copy of the InFlight key (one made in InFlight, which can), **Keep messages
   with passkey** unlocks the key here and locks it anew; otherwise, or by choice, **Start fresh**: a new key, friends
   kept, older messages sealed. Either way every sign-in and passkey ends, a pending email change is called off, and
-  this browser's signed in.
+  this browser's signed in. (The server key the passkey's proof is checked against is the link's own, made as it's
+  first opened, so opening it again, in another tab or on another device, doesn't spoil the first.)
 - **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
-  server too, 409).
+  server too, 409), and what the app's link was to open (Edit profile, InFlight's settings) isn't opened for that one;
+  nor is it where the code can't be checked (run out, or refused), as whose it was isn't known. A browser that wasn't
+  signed in is signed in on this page alone (`pg_sessions.handed`), as a name is anyone's to give their own account:
+  the rest of the site and every app treat it as signed out, and none is handed it, until you've shown it's you here
+  (**Continue to Weather** asks first, with a passkey or your password).
 - **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
   the buttons, with your name and handle on it in large type (your email's in Edit profile, and Sign-in and security);
   **Edit profile** (your name and handle) and **Your code** under it. Its camera opens **Your photo** (the one place to change it): drag the photo (or use the arrow keys) to choose what shows, with the circle every
@@ -303,23 +331,26 @@ Motion, solid with Reduce Transparency.
   your initial, and **Add a photo** goes to the picker, then to Your photo. A photo is saved twice: the 512px circle every
   app shows (cut around the part you chose), and the card's poster, the whole photo at most 1600px across
   (`pigeon-posters/` in R2, its focus in `pg_users.poster_focus`); a new photo from another app drops the old poster
-  until one's sent again. The photo drifts a little slower than the page as it scrolls away, and stretches as it's
+  until one's sent again. Moving what shows of the same photo sends only the circle again, cut around the new part
+  (`PUT me/photo?at=…&focus=…`), the poster kept as it is (refused, 409, if another app's new photo has replaced it, and the page then shows that one). The photo drifts a little slower than the page as it scrolls away, and stretches as it's
   pulled down at the top (both off with Reduce Motion); the light page has its own colours for the card. **Your apps**
   (a card for each); **Account**, two rows: **Sign-in and security** (saying how it stands by the **Security check-up**,
-  below: "All done", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
-  then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the downloads, and
+  below: "Secure", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
+  then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the download, and
   **Delete account…** at its foot, apart, asked again in its own sheet; **Preferences**; **Sign out** (of every app on
   the site, in this browser; not when an app opened the page in its own window: signing out is the app's own). Each row says how things are, not what to do: the check-up "2 to do" and an
   unconfirmed email in amber, the password "Set today" or "Changed 3 Oct" (`pg_users.pw_at`, kept from now on, and for
   accounts from before as far back as recent activity goes), passkeys **Add one** where there are none, devices "This
   iPhone" where it's the only one, recent activity when the latest was. Once the profile's scrolled away, a bar of
   glass at the top keeps your photo and name in sight (a tap goes back up). On a wide screen (1000 pixels and up), two
-  even columns: your profile, your apps and your data on the left, sign-in and security and preferences on the right.
-- **Security check-up:** a row at the top of Sign-in and security that says how it stands ("All done", or "2 to do"
-  with an amber icon), kept off the page itself. Tapped, a sheet: a ring for how far along, then four checks (email
-  confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one
-  left with its fix, which opens over the check-up (Back returns to it). A password found in a data breach is the one
-  check also said up top, in a banner with **Change**, as an unconfirmed email is.
+  even columns: your profile and your apps on the left, the account (sign-in and security, your data) and preferences on
+  the right.
+- **Security check-up:** at the head of Sign-in and security's sheet, kept off the page itself (the row there says how
+  it stands: "Secure", or "2 to do" with an amber icon): a ring for how far along, then four checks (email confirmed, a
+  passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one left with its
+  fix, which opens over the sheet (Back returns to it); all done, just that it's well protected, not the list. A
+  password found in a data breach is the one check also said up top, in a banner with **Change**, as an unconfirmed
+  email is.
 - **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
   shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
 - **Your apps:** each card says what you have there ("4 friends · 9 sent", "6 places in your passport"; "4 places",
@@ -329,15 +360,18 @@ Motion, solid with Reduce Transparency.
   Weather: its saved places (the first few by name), its notifications (how many places, and the morning brief) and
   units.
 - **Email.** Not confirmed: a banner up top sends a confirm link (the same one InFlight sends, said as the account's).
-  A new email: a link to it (good for 2 days) and a word to the old one (the new one half hidden); nothing changes until
-  the link's opened, then the old one's told. The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
+  A new email: a link to it (good for 2 days) and a word to the old one, confirmed or not (the new one half hidden; if it
+  wasn't you, change your password, which calls it off and signs every other device out); nothing changes until the
+  link's opened, then the old one's told (if it wasn't you, ask the site's admin for a reset link, as sign-ins and resets
+  go by the new address now). The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
   what counts, so they work signed in or not, in whichever browser the email opens them in.
 - **Password.** A new one: the old one's proof gets the key it locks, which the page unlocks and locks anew with the new
   one, so nothing locked changes hands; a password from a data breach is said as it's typed (Pwned Passwords, only the
   first 5 characters of its SHA-1 asked); every other device is signed out. **Checked against data breaches** from the
   check-up, or quietly whenever it's typed here (signing in, showing it's you): how it went is kept with its proof
-  (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say. A password changed in InFlight counts
-  as checked (InFlight won't take one from a breach).
+  (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say; if Pwned Passwords can't be reached,
+  nothing's kept (and the check-up's Check says so), and a new password it couldn't check as it was changed is left
+  for the check-up. One password's asked about once a visit, however often it's typed or sent.
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
   `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
@@ -350,11 +384,12 @@ Motion, solid with Reduce Transparency.
   noted as it's used (`pg_sessions.apps`). The account's page is named **Account** only when it's on the Home Screen
   (it says so with each ask, `X-Home-Screen`, noted as `pg_sessions.home`); in Safari it's Safari. The account's page opened from an app (its hand-off) isn't a device of its
   own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
-  opened and ending with it (one used by an app as well is the browser's own sign-in from then on; one from before, only
-  ever used on the account's page, is taken in when the app opens it again). The country's left
+  opened and ending with it (one used by an app as well, once it's shown it's you here, is the browser's own sign-in from
+  then on; one from before, only ever used on the account's page, is taken in when the app opens it again). The country's left
   out where it's this device's, and the device where it's the same kind. On a touch screen a device's row slides left to show
   **Sign out**, and a passkey's to show **Remove**, as lists do on a phone (the buttons stay, for a keyboard).
-- **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
+- **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset (or an older one's protection
+  strengthened), passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
   with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
   security too), each on one line with its time on the right and the app it happened in on its icon, where most of a
@@ -370,6 +405,14 @@ Motion, solid with Reduce Transparency.
   `PUT /api/account/prefs`); Weather's warnings and morning briefing by email, a switch each, kept with Weather's own
   choices (`functions/_wxacct.js` setMail), for the places and time chosen in its Notifications (said under each). The
   row says "All on", "Security only", or which apps email.
+- **InFlight's settings** that are the account's rather than a phone's: on InFlight's card under Your apps, a round
+  button beside **Open**, and what InFlight's own **InFlight Settings** opens (with `open=inflight` in the code it hands
+  over, and **‹ InFlight** to go back). Which notifications (the eleven of Notify me when), names on the lock screen,
+  quiet hours (in the phone's time zone), email; who sees what (online, read receipts, news, approximate location, the
+  live tracker); and who's blocked, to unblock (Unblock, then Unblock? to be sure). `GET`/`PATCH /api/account/inflight`
+  and `DELETE /api/account/inflight/block`, from this page's address only, changing them by InFlight's own rules
+  (`functions/_notify.js` cleanPrefs, `functions/api/pigeon` setPrivacy, shared with its `PATCH me`); InFlight takes a
+  change up as it next syncs (`.tools/tests/acctinflight.mjs`).
 - **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
   activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
   them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,
@@ -382,7 +425,8 @@ Motion, solid with Reduce Transparency.
   stays the server's, `POST /api/account/export`, for the PDF to be written from).
 - **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
-  email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
+  email's link keeps it too, once its **Keep my account** is tapped (it asks first, so a mail scanner that opens the
+  link doesn't keep it). A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
   dueDeletions). (InFlight has no Delete Account of its own: deleting is on the account's page.)
 - **Keeping up:** the page looks again when you come back to it (and every minute while it's open), so a device
   signed out elsewhere, or a change made in another app, shows without a reload.
@@ -397,22 +441,29 @@ Motion, solid with Reduce Transparency.
   `argon2.js`) and the apps' icons.
 - Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
   yes to), with the way back to the app.
-- Tests: `.tools/tests/acctpage.mjs` (71 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
+- Tests: `.tools/tests/acctpage.mjs` (79 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (66 checks: the photo from its badge, your code and its link, each app's sheet and its
+  `.tools/tests/acctmore.mjs` (75 checks: the photo from its badge (moved, only the circle sent again, and once it's changed elsewhere), your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
-  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
+  back by poppler and pypdf, and the export it's written from), `.tools/tests/acctjoin.mjs` (41 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
   Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
   password only here; a reset link by email,
-  passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
-  refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
-  over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
-  wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
+  passed on from InFlight's older address, keeping the key with a passkey (the link opened in another tab first), then
+  starting fresh, the old password refused; a new email's words to the old address), `.tools/tests/acctlink.mjs` (24
+  checks: the hand-off code: said yes to first, once, for a minute, only here, and never over another account's sign-in;
+  a browser it signs in is this page's alone until it's shown it's you), `unit/pdf.test.mjs` (the PDF writer: Windows
+  Latin 1, Helvetica's widths, wrapping, every object where the cross-reference table says), `unit/activity.test.mjs`
+  (passkey providers) and `unit/acctsec.test.mjs` (a reset link's key kept for its life, a handed-over sign-in kept to
+  this page, and the password sign-in hold, with a device's word that it's signed in before: one for each account, given
+  as an account's made too, and when its password's changed or a new email's confirmed there, and no use once the
+  password's changed; a new password kept as checked against data breaches only when the check got an answer; and a new
+  account's confirm link said to be on its way only when it went, Resend refusing it or not answering in time; against
+  Node's own SQLite standing in for D1).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.
@@ -583,9 +634,10 @@ so there's nothing to set up beyond the address.
   radar's on OpenStreetMap's own map instead (Leaflet), toned to match, with the same controls; either is driven the
   same way (`mapgl.js`, `mapleaf.js`). Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
-  colour read back into reflectivity, blended with a cubic B-spline (curved
+  colour read back into reflectivity (each tile as it comes, on a thread of its own, `weather/radarwork.js`, where the
+  browser can draw there; on the page where it can't), blended with a cubic B-spline (curved
   edges, colours that flow between bands) and recoloured, the frame on show first,
-  off the page's own thread (up to three workers, `weather/radarwork.js`, so the map keeps moving under a finger
+  off the page's own thread too (up to three workers, `weather/radarwork.js`, so the map keeps moving under a finger
   meanwhile; on the page a few tiles at a time where there are none), each tile's radar stitched into one block so
   the smoothing reads it straight through (`rainmap.js` decode, ramp, resample, rainValues). The radar
   is asked for in 512-pixel tiles a zoom out, which carry the same detail in a
@@ -601,7 +653,8 @@ so there's nothing to set up beyond the address.
   a phone a tap opens it full screen to pan and pinch (the page scrolls past it
   otherwise), which "Tap to explore" says at the map's foot, between the scale
   and the ©, once the credits have folded away. Full screen, as Apple's: the map to every edge, an × at the top left,
-  the legend in a panel under it, and the dock in glass at the foot.
+  the legend in a panel under it, and the dock in glass at the foot; the page under it out of reach meanwhile, so Tab
+  and a screen reader stay on the map, starting at the ×, where focus is again once it's closed.
   MapLibre GL JS 6.12.0 and Leaflet 1.9.4 are vendored in `weather/vendor/`
   (each checked against npm's integrity hash); MapLibre's megabyte is fetched as
   the card comes within a screen of view, and the map made once it's in view
@@ -653,7 +706,8 @@ so there's nothing to set up beyond the address.
   airport, so each day's high and low, and its hours (temperature, dew point,
   wind, gusts), are kept in
   D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
-  only reports just fetched are written), and the phone compares them with what each of
+  only reports just fetched are written, a day kept already only where they have
+  more of it, as an answer's oldest day is cut short), and the phone compares them with what each of
   the seven models forecast a day and three days ahead (Open-Meteo's archive of
   past forecasts). The card shows each model's average error and lean ("±0.8°,
   runs 1.2° warm") and which is most accurate here. From 7 days of record, the
@@ -719,7 +773,9 @@ so there's nothing to set up beyond the address.
   claimed before it's sent, so a slow or doubled tick can't send it twice; a
   phone is forgotten when its push service says it's gone, after five failures
   in a row, or after four months unheard of (the app tells the server again now
-  and then, and when the browser changes its subscription). **By email too**
+  and then, when the browser changes its subscription, and after a change it
+  couldn't send, the next time it's opened, at most every ten minutes while that
+  keeps failing, or back online). **By email too**
   (signed in: an Email group there, two switches, warnings and the briefing, for
   the places and time above; `notify.email`, the account's choice, so on every
   device and on the account's own page): from Weather's own address, to the
@@ -743,13 +799,17 @@ so there's nothing to set up beyond the address.
   next tick. An address not confirmed yet, or an account being deleted, gets
   nothing (and nothing's held for it). Rain checks ask
   Open-Meteo only for the next four hours' rain; the whole forecast only where
-  a briefing is due; and each tick asks no more than Open-Meteo's free
-  allowance spread over a day (briefings first; places left over wait ten
-  minutes, in a different order each time). Each connection can only ask the
+  a briefing is due; and the ticks ask no more than Open-Meteo's free
+  allowance spread over a day, however often they come (briefings first; places
+  left over wait for a later tick, in a different order each time; what the quiet
+  hours don't use is kept, up to an hour and a half's, for the morning's
+  briefings). Official warnings are asked for at most 150 places a tick, a few at
+  a time, for 20 seconds of the tick or 10 of their own, whichever's later (the
+  rest likewise wait, in a different order each time). Each connection can only ask the
   API so often. Each device's notifications are a row a place
   (`functions/_wxpush.js`: wx_devs, the device; wx_subs, its places, each with
-  what's been told there), at most 12 places a device; an app from before (one
-  place) is still understood.
+  what's been told there), at most 12 places a device (Settings says so at a 13th, rather than keep one the server
+  would refuse); an app from before (one place) is still understood.
 - **The rain in words**, for a screen reader: the radar map's description is the
   rain about the place from the latest radar, "Light rain about 25 km to the west,
   moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate
@@ -780,15 +840,17 @@ so there's nothing to set up beyond the address.
   them here too" where this one isn't among them). Signed out there (or
   anywhere on the site), Weather notices the next time it asks, and this
   device's notifications stay, as its own (`POST /api/weather/leave`, by its
-  push address). Places says nothing of it while all's in step; a quiet note under the saved places says when it's
+  push address); signed in there as someone else meanwhile, the same, and it asks before this device's places go to
+  them (nor do this device's notifications, even before it's heard: it says which account it's in step with as it sends
+  them). Places says nothing of it while all's in step; a quiet note under the saved places says when it's
   syncing, offline ("Your places will sync when you're back online") or couldn't sync, and the account's card says so
   briefly. What's kept is one record with a version
   (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
   choices; at most 50 places and 48 KB); a change goes up a moment after it's
   made, from the version it was made from, and if another device got there first
   the two are put together (the account's places, less those taken away here
-  since, plus those added here; settings changed here win; notifications place
-  by place) and sent again (`weather/account.js`). Signing in on a device with
+  since, plus those added here; each setting changed here wins, the rest are the
+  account's; notifications place by place) and sent again (`weather/account.js`). Signing in on a device with
   places of its own keeps them all. My Location is each device's own (in Places it's
   on its own at the top, the Saved header over the places kept only once there are some). Signing
   out keeps everything on the device, and its notifications go on as its own.
@@ -945,7 +1007,8 @@ Notifications, Commute and Best times, then Units, Appearance, Arrange your page
 with what's in it said beside it ("On", "08:00, 17:30", "Run, Walk, Ride", "°C,
 mph, mm") and opening over the list, the sheet's title its name and a way back
 beside it; an activity's limits are a page of their own in Best times, kept as
-you go back. The sheet keeps one height on a phone, so it doesn't jump from one
+you go back (its Remove, at the other end from Done, asks first). The sheet
+keeps one height on a phone, so it doesn't jump from one
 to another. Settings → Appearance makes the glass Clear, Standard or Tinted (as
 iOS 27's slider does: a web page can't read the phone's own). Everything to tap is a finger's 44 points,
 and no words are smaller than 11. Like an app, its words can't be selected,
@@ -965,9 +1028,9 @@ directly, so a branch can be tried before it's merged.
 
 | Part | Where |
 | --- | --- |
-| Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout, as iOS 27 has it (translucent panels, with a light-catching rim and a darker hairline round it, over a sky that follows the weather and the time of day: the cards' glass tinted for each sky to look as blurred glass does over it, without every card being blurred afresh at each frame of a scroll, which cost a phone most of its frames (behind a card there's only ever the sky, a soft gradient a blur hardly changes); the top bar and the sheets, over the page's own busy content, blurred; where the page scrolls under the top bar, a bar of glass the width of the screen with a hairline under it; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it; once each, then left be); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (a finger or wheel on it doesn't scroll it; its glass unblurred, nothing on it, the radar included, or in the sky moving, so the sheet's own glass isn't blurred afresh every frame; its panes of glass and the hero's icon named one by one, and how far back it steps the page's alone, so a sheet comes and goes, and follows a finger down, without every part of the page being restyled); with a mouse, a soft light follows the pointer across the pane it's over; the sky holds still too once the page has scrolled on past the top (and behind the radar full screen; its slow drifts, clouds and stars, move in small steps a few times a second, so the glass over them isn't blurred afresh every frame, and the clouds not at all where there are none to see); a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go; on a phone a place is first drawn from the top (what's on the screen), the cards under it a moment later, once that's shown; something new near the top while the page is there (a warning come in, say) has what's under it glide to its new place rather than jump; and the bar takes up the temperature with a crossfade of its own once the big one's mostly scrolled away. Nothing is measured mid-way through drawing the page (which would lay it all out again, once for each chart): a chart's width is as it was last time at the window's width, or worked out from it, and put right by its ResizeObserver before it's shown if that's another; and the glide's "from" is where each part was as last shown. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
+| Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout, as iOS 27 has it (translucent panels, with a light-catching rim and a darker hairline round it, over a sky that follows the weather and the time of day: the cards' glass tinted for each sky to look as blurred glass does over it, without every card being blurred afresh at each frame of a scroll, which cost a phone most of its frames (behind a card there's only ever the sky, a soft gradient a blur hardly changes), and on the palest skies (by day, in fog, at dawn and dusk) the secondary words, the chances of rain and "Uncertain" a little stronger, so they read at 4.5:1 over the Standard glass (dawn's glass a little deeper too: under it, its sky is too pale for even white); the top bar and the sheets, over the page's own busy content, blurred; where the page scrolls under the top bar, a bar of glass the width of the screen with a hairline under it; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it; once each, then left be); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (a finger or wheel on it doesn't scroll it; its glass unblurred, nothing on it, the radar included, or in the sky moving, so the sheet's own glass isn't blurred afresh every frame; its panes of glass and the hero's icon named one by one, and how far back it steps the page's alone, so a sheet comes and goes, and follows a finger down, without every part of the page being restyled); with a mouse, a soft light follows the pointer across the pane it's over; the sky holds still too once the page has scrolled on past the top (and behind the radar full screen; its slow drifts, clouds and stars, move in small steps a few times a second, so the glass over them isn't blurred afresh every frame, and the clouds not at all where there are none to see; and the big icon's, its rays turning and its clouds drifting, so the page isn't drawn afresh every frame for them); a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go; on a phone a place is first drawn from the top (what's on the screen), the cards under it a moment later, once that's shown; something new near the top while the page is there (a warning come in, say) has what's under it glide to its new place rather than jump; and the bar takes up the temperature with a crossfade of its own once the big one's mostly scrolled away. Nothing is measured mid-way through drawing the page (which would lay it all out again, once for each chart): a chart's width is as it was last time at the window's width, or worked out from it, and put right by its ResizeObserver before it's shown if that's another; and the glide's "from" is where each part was as last shown. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js`; fetched when first wanted, `weather/detail.js` (a tile or a day in full) and `weather/settings.js` (Settings, and arranging the page); `weather/boot.js` (the weather as last shown, put up as the page opens) |
-| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the sea (temperature, waves, tide), the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the sea (temperature, waves, tide), the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim), either sent it to two decimal places, about a kilometre; My Location itself is kept, and its forecast asked for, to three, about 100 m. Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
 | Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline, the minutes between: pure), `weather/radarwork.js` (the smoothing, off the page's thread), `weather/radarmix.js` (the minutes between blended as rain on the graphics chip: WebGL 1), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
@@ -1040,9 +1103,22 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.2
+## InFlight (chat.georgefarrowgreen.com) — 1.3.4
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.4** (steadier): the site-wide audit's fixes. Searching Messages by name works again; the app asks the server for
+less (a chat you've left with a pigeon in the air, a phone that hasn't moved, an open chat that hasn't changed, the
+Skies on Messages); what's typed while a message sends is kept; with read receipts off a disappearing message counts
+from landing; a reaction carries its message's id inside its seal; pinch zoom; focus kept through redraws and inside
+sheets; and the account's settings, below.
+
+**Settings on your account** (1.3.4): InFlight's Settings has one row, **InFlight Settings**, which opens the
+account's page at InFlight's settings (notifications, lock screen names, quiet hours, email, who sees what, who's
+blocked) and says in a line what's set ("10 of 11 notifications on · quiet 22:00–07:00 · 1 blocked"). **Location**
+stays, and **This Phone** has what's each phone's own: Push Notifications (and a test), Lock InFlight, Haptics, and
+Encryption & Safety Numbers (a friend's changed key said on its row). Appearance is the account's page's, as it already
+was. With no account page beside it, InFlight keeps its own Notifications and Privacy & Security, as before.
 
 **1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
 there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
@@ -1077,7 +1153,7 @@ keeps + and − still. Reduce Motion fades instead of moving, rather than cuttin
 
 **1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
-**Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it) and `icon-maskable-512.png` square for Android's masks.
+**Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it), `icon-maskable-512.png` square for Android's masks, and `badge-96.png`, the white pigeon alone on transparent, for Android's notification badge.
 
 **1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
@@ -1192,8 +1268,9 @@ apart on the server, so this is decided on the device).
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
-**Notifications.** Account → Notifications has Push (Web Push, works on
-Android, and on iPhone and iPad once InFlight is added to the Home Screen) and Email (via Resend). Push is per phone; the rest is per account:
+**Notifications.** Push (Web Push, works on Android, and on iPhone and iPad once InFlight is added to the Home Screen)
+is switched on per phone, in Account → This Phone (with **Send a Test Notification**); the rest, and Email (via
+Resend), are the account's, on the account's page (Account → **InFlight Settings**, which says in a line what's set):
 which events notify (a pigeon lands, takes off, friend requests, accepted
 requests), whether names show on the lock screen, and quiet hours in the
 phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
@@ -1415,7 +1492,11 @@ that stretch, taking turns at the front: each goes 10% faster for it
 from there are squeezed, with a point ("f") where they meet and where they
 part; it's kept as a moment like a near miss, so both people are told ("Your
 pigeon to Reuben and your pigeon to Nia are flying together over France"), the
-chat says so, and the card's timeline has it.
+chat says so, and the card's timeline has it. The points go to phones only as
+places where it sped up ("c", as a cheer's does), so the map keeps its pace but
+nothing says it flew with another (that pigeon may be one a person can't see):
+only someone who can see both pigeons hears of it, with the moment saying when
+they part.
 
 **How sure the landing time is.** While a landing is a way off, the card,
 How It Flies and The Way give it as a range ("lands 21:10–21:40", "likely Fri
@@ -1541,7 +1622,8 @@ as a faint dotted line from where it turned (kept on the turn's point,
 `[lat, lon, at, "r", why, { was, storm }]`), the storms it went around (planned
 or on the way) are drawn as a storm cloud while it flies, and where it
 sheltered gets an orange ring. An open map keeps up by itself: the chat is
-fetched again every 15 seconds, and a notification arriving while the app is
+asked for again every 15 seconds (and sent again only if something in it has
+changed: the phone names the copy it has), and a notification arriving while the app is
 open (a course change, say) makes it catch up at once (the service worker
 tells it to sync); if the way changes while you watch, a note says so ("Its
 way just changed: rerouted around storms over France").
@@ -1632,7 +1714,7 @@ and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
   under 300 km never show;
 - in a shuffled order with no ids, so a dot now can't be linked to a dot later;
 - a pigeon shows only if both its sender and the person it's flying to leave
-  **Privacy & Security → Live Tracker** on (it's on unless switched off);
+  **Live tracker** on, in InFlight Settings on the account's page (it's on unless switched off);
 - one answer a minute for everyone, kept at the edge: no sign-in, no cookies,
   nothing about who looked is stored, and asking more often learns nothing.
 
@@ -1672,10 +1754,13 @@ closes whatever is on top, for a keyboard.
 light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
 little darker than iOS's, the blue a touch deeper, and green, orange and red
 words use darker versions of those colours, while switches, dots and badges
-keep the bright ones). The page itself doesn't zoom, so it always fits the
-screen (pinching zooms the map; text size follows the iPhone's own setting,
-below), every icon button has a spoken name, sheets are labelled dialogs with their own heading,
-chats have a heading for screen readers, and the app's content is the page's
+keep the bright ones). Pinching zooms the page, for words too small to read
+(on the map it zooms the map; zoomed in, one finger moves round the page,
+even from the message box, so the swipes between tabs and back, pulling to refresh,
+pulling a sheet or photo away, folding the map's card and flicking a banner
+wait till it's back to size). Every icon button has a spoken name, sheets are labelled
+dialogs with their own heading (Tab and Switch Control stay in a sheet, menu or
+question till it closes), chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the
 iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
 every movement: screens, sheets, banners and new messages dissolve in and out instead.
@@ -1686,7 +1771,7 @@ the ones kept from before), ignoring case and accents, newest first, with the
 word highlighted. Tap one to open the chat at that message. It all happens on
 the phone; what you search for is never sent anywhere.
 
-**App lock.** Privacy & Security → Lock InFlight (per phone; needs a
+**App lock.** Account → This Phone → Lock InFlight (per phone; needs a
 passkey). InFlight then locks when you leave it, straight away or after 1, 15
 or 60 minutes, and opens with Face ID, Touch ID or the passkey: a
 user-verified passkey check made on the phone itself, so it works offline.
@@ -1710,7 +1795,9 @@ sealed (ciphertext only, opened again with your key after a reload) and takes
 off by itself when the phone is back online, on returning to the app, or at
 the next sync; the server takes each message id once, so a retry can't send it
 twice. If the server turns it down meanwhile (no swifts left, not your turn),
-it stays, marked "Not sent" with why, to try again or delete. One standard
+it stays, marked "Not sent" with why, to try again or delete (in a group, Try
+Again seals its key again for whoever's in it now, should someone have joined
+or left; one told when to land says so if that time has passed). One standard
 pigeon waits per chat; a swift, turbo or rocket can wait beside it. Signing out
 deletes what's waiting.
 
@@ -1866,10 +1953,13 @@ times, never message text, photos or private keys.
 What each ciphertext is (a message, a reaction, a group key, a stopover's copy
 or note) is bound into it along with its id, sender and recipient (format v2;
 v1 from before still opens), so the server can't re-address, swap or
-re-label one. In a group, each member's sealed key also carries a hash of the
-body, so the body is provably the sender's, not just the group's. The phone
-checks each decrypted thing looks like what it should (a reaction is one of
-the six; a message has words), and remembers which conversation each id
+re-label one. A reaction also carries, sealed inside it, the id of the message
+it's on, so the server can't move it to another (one from before this, without
+it, shows where the server says until it goes after 30 days). In a group, each
+member's sealed key also carries a hash of the body, so the body is provably
+the sender's, not just the group's. The phone checks each decrypted thing looks
+like what it should (a reaction is one of the six, on the message it was sealed
+for; a message has words), and remembers which conversation each id
 belongs to: if the same id turns up elsewhere, neither is shown as the other.
 The server keeps message, group message and reaction ids in one table
 (`pg_ids`), so no id can be two things. A reply's quote shows the original's
@@ -1906,7 +1996,7 @@ same whichever app it's tried in. A web app added to an iPhone's Home Screen kee
 signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
 page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
-(Privacy & Security → Your Account).
+(InFlight's account card at the top of Account), and InFlight's settings that are the account's (InFlight Settings).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
@@ -1917,8 +2007,7 @@ they restore messages without the password. A forgotten password can be reset
 by email (below); because the password is what locks the key, only a passkey
 can carry the old key across a reset.
 
-**Passwords and resets.** People can change their password in Account → My
-Profile → Privacy & Security, or tap
+**Passwords and resets.** People can change their password on the account's page (Sign-in and security), or tap
 "Forgot password?" (which opens the account's page) to get a one-hour, single-use reset link by email. The
 password locks the encryption key, so a reset keeps someone's scrolls only if
 they unlock their key with a passkey; otherwise the phone makes a new key,
@@ -2033,7 +2122,7 @@ A pass over every app for UI and UX, motion, speed, stability and how the apps w
   the name reaches the bar however short the page. Photos get a phone-sized copy at upload (`bg/<id>-m`, sent for
   `?s=m` and to phones asking for the cover; older photos have none until added again), an ETag, a day at the edge,
   and the next one is fetched shortly before it shows. A new focal point doesn't restart the slideshow. The stamped
-  script and styles are cached for good. Send says what's missing.
+  scripts and styles are cached for good. Send says what's missing.
 - **Account page:** a sheet that opens over another focuses its title, and one that closes hands focus back to its row;
   each sheet is a step in the browser's history, so the back swipe closes it. Banners no longer re-announce on every
   redraw. A reset link checked without signal says so, with Try again. Light-mode greys and amber have more contrast;
@@ -2100,9 +2189,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   address written oddly (`/%77eather/`, `//account/`) is sent to its plain self first (so it's routed as that), and one
   that can't be read as an address is a 404 (`.tools/tests/sitepaths.mjs`). HSTS covers every subdomain, and the home
   page opens in a window of its own (COOP). If Functions were ever skipped, `_redirects` still keeps `README.md`,
-  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form holds a network (an IPv6
-  /64 counts as one) to 5 messages an hour and the site to 60 a day, counted in D1 in one step, reads at most 16 KB, and
-  keeps line breaks out of the name; Admin's Reply link takes the writer's address as one address. A Weather device is
+  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form takes none from another site's
+  page, holds a network (an IPv6 /64 counts as one) to 5 messages an hour and a wider one (an IPv6 /48) to 10 a day,
+  keeps 150 a day in all and emails 60 of them (past 60, kept but not emailed; past 150, the form says it's busy and keeps
+  nothing more, which takes 15 networks or more in a day), counted in D1 in one step, reads at most 16 KB, and keeps line
+  breaks out of the name; Admin's Reply link takes the writer's address as one address. A Weather device is
   the account's only while the sign-in that made it so lasts (`wx_devs.sess`): signed out from anywhere (Signed-in
   devices, a new password, a reset), it's no longer the account's by the next tick, as if signed out on it, so a phone
   someone else had signed in hears nothing more of the account. Deleting an account removes Weather's share first (so a
@@ -2154,10 +2245,18 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   compare the digits and Mark as Verified. It's kept, sealed, with your trusted
   keys; if a verified friend's key changes, the chat warns more strongly.
 - **Disappearing messages** (a chat's or group's info sheet: 1, 7 or 30 days
-  after reading): when the time's up, the server wipes the sealed message, its
+  after reading; someone else's in a group goes from your phone when the server
+  wipes it, as only the server knows when everyone has read it): when the time's
+  up, the server wipes the sealed message, its
   photo or voice pigeon, stopover note and reactions (in a group, once everyone
   it flew to has read it), and phones stop showing it at once, even from their
-  saved copy. The flight itself stays for the Flight Log (`functions/_vanish.js`).
+  saved copy. Where read receipts are off (either friend's, or the sender's or
+  anyone's it flew to in a group), the time counts from landing instead, read or
+  not, so its going can't tell anyone when it was read; for one that landed
+  before they were turned off, from then, so turning them off wipes nothing at
+  once (`pg_users.no_receipts_at`). The server says when that is with the
+  message (`vanishAt`), so a phone's saved copy hides it on time too. The flight
+  itself stays for the Flight Log (`functions/_vanish.js`).
 - **Nothing is kept for long**: every message is deleted for everyone 30 days
   after it lands, whatever its chat's setting; only a line of what its pigeon
   did is kept, for the Flight Log (`functions/_retention.js`). An account
@@ -2173,7 +2272,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   itself, so neither server ever sees the password or its hash.
 - **New sign-ins are announced:** a push to your other phones and an email
   (device, country, how), saying how to sign it out.
-- **Approximate Location** (Privacy & Security) keeps your spot to a 10 km
+- **Approximate Location** (InFlight Settings, on the account's page) keeps your spot to a 10 km
   grid instead of a 1-mile one.
 - **A copy of the database alone is no use:** each password's proof hash and
   the private key it locks are locked again with `PIGEON_PEPPER`, a secret set
@@ -2201,17 +2300,24 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   10 minutes, so a stolen sign-in alone isn't enough. Passkeys must verify the
   person (Face ID, fingerprint or passcode), each passkey request can be used
   once, and adding a passkey emails the account. Only a sign-in that has ended
-  signs a phone out; a wrong password never does.
+  signs a phone out; a wrong password never does. Wrong passwords hold back the
+  address they come from (30 an hour), and only guessing from many at once (300
+  an hour) the account itself, and then not on a device that's signed in to it
+  before (or made it, or changed or reset its password there, or confirmed a
+  new email there): that keeps a word saying so (a cookie of the account page's
+  own, one for each account, a MAC of the email's hash, the account and when its
+  password was set, so a new password, a reset or a new email ends every word
+  given before) and counts its own wrong tries instead (10 an hour).
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
-  days; Privacy & Security can send another). Until then the address gets
-  nothing but that link and password resets, so no one can sign up with
+  days; the account's page can send another). Until then the address gets
+  nothing but that link, password resets and word of the email being changed, so no one can sign up with
   someone else's address and have notifications sent to it. Accounts from
   before this count as confirmed; an emailed reset link confirms too.
 - **Handles** given up (changed, or the account deleted) are held for 30 days,
   so no one can step into one and receive requests meant for its owner. Place
   names are plain words (no web addresses or hidden direction characters),
   email addresses ordinary ones, and request bodies are capped at 512 KB.
-- **Signed-In Phones** (Privacy & Security) lists every sign-in, as "iPhone ·
+- **Signed-in devices** (the account's page, Sign-in and security) lists every sign-in, as "iPhone ·
   Safari" with when it was last used, to sign out one or all the others.
 - **One address.** InFlight's pages on Cloudflare's preview addresses
   (`*.pages.dev`) redirect to georgefarrowgreen.com, so there's never a second
@@ -2220,15 +2326,16 @@ has, so they stop partway (their other checks, run past that point, pass as befo
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it
-  holds that key (an HMAC under the secret it shares with a one-off server key),
+  holds that key (an HMAC under the secret it shares with a server key of the link's own),
   so a stolen link can't quietly swap in a key without friends being warned.
 - **Friend requests** show the person you asked nothing of them (name or
   picture) until they say yes. Declining isn't told to the asker: their
   request just keeps looking like it's waiting, and asking again reaches no one
   for 30 days. **Blocking** (from a request, a chat's menu or contact info)
   ends the friendship and stops their requests, pigeons, and access to your
-  picture and place; they aren't told, and Privacy & Security → Blocked lists
-  them to unblock.
+  picture and place (in a group you're both still in, neither sees the other's
+  reactions, whose flight times would say how far away they are); they aren't told, and InFlight Settings (on the account's page) lists them under Blocked, to
+  unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
   only friends see it. A month after a pigeon lands, its route's ends are
   rounded to half a degree (about 50 km) and the points where it changed course

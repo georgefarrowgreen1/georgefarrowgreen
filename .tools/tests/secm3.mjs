@@ -42,8 +42,7 @@ const [s2, j2] = await api('passkey-options', 'POST', { mode: 'login' }); ok(s2 
 
 // adding a passkey: the sheet asks for the password first
 await G.click('[data-act=tab][data-id=account]'); await G.waitForTimeout(300);
-await G.waitForSelector('#screen > main.view [data-act=securitysheet]'); await G.click('#screen > main.view [data-act=securitysheet]');
-await G.waitForSelector('.sheet [data-act=applock]'); await G.click('.sheet [data-act=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock InFlight needs a passkey: it opens Passkeys)
+await G.waitForSelector('#screen > main.view [data-act=applock]'); await G.click('#screen > main.view [data-act=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock InFlight, in This Phone, needs a passkey: it opens Passkeys)
 await G.click('.sheet [data-act=pkadd]'); await G.waitForSelector('#reauth-form', { timeout: 8000 });
 ok(/Confirm It’s You/.test(await txt('.sheet')), 'Add a Passkey opens “Confirm It’s You”');
 ok(!(await G.locator('[data-act=reauthpk]').count()), 'with no passkey saved there’s no passkey option');
@@ -96,8 +95,9 @@ ok(r.reg === 400 && r.status === 410 && (r.flags & 1) && !(r.flags & 4), 'a pass
 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: bare });
 
 // changing the password is on the account's page too (which locks the messages' key with the new one), not in InFlight
-await G.click('.sheet .nbtn.l'); await G.waitForSelector('.sheet [data-act=encryptionsheet]');
-ok(!(await G.$('.sheet [data-act=changepw]')) && !(await G.$('.sheet [data-act=passkeys]')), 'no Change Password or Passkeys in InFlight’s Privacy & Security');
+await G.click('.sheet header [data-act=close]'); await G.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 });
+ok(!(await G.$('#screen > main.view [data-act=changepw]')) && !(await G.$('#screen > main.view [data-act=passkeys]')) && !(await G.$('#screen > main.view [data-act=securitysheet]')),
+  'no Change Password, Passkeys or Privacy & Security in InFlight: they’re on the account’s page');
 
 // deleting the account is on its own page, not in InFlight
 if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }

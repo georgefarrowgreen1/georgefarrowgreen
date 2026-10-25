@@ -109,11 +109,14 @@ const send = async (ph, kind, text) => {
   }
 };
 async function pushOn(ph) {
-  await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700); await ph.p.click('#screen > main.view [data-act=notifysheet]'); await ph.p.waitForSelector('[data-act=pushtoggle]');
-  await ph.p.click('[data-act=pushtoggle]'); await ph.p.waitForSelector('[data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
-  const sw = await ph.p.locator('[role=switch][data-id=moments]').getAttribute('aria-checked').catch(() => null);
-  await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
-  return sw;
+  await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
+  await ph.p.click('#screen > main.view [data-act=pushtoggle]'); await ph.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
+  // (whether Mid-air Moments is on: the account's, as InFlight has it from its sync)
+  return ph.p.evaluate(() => new Promise((res) => {
+    const r = indexedDB.open('inflight'); r.onerror = () => res(null);
+    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onerror = () => res(null);
+      g.onsuccess = () => fetch('/api/pigeon/sync', { headers: { Authorization: 'Bearer ' + g.result?.token } }).then((x) => x.json()).then((d) => res(String(!!d.me?.notify?.moments)), () => res(null)); };
+  }));
 }
 
 // ---- the passport ----
@@ -176,7 +179,7 @@ const gt = res.badges.find((b) => b.id === 'globetrotter');
 ok(st === 200 && res.passport?.places.length && gt && gt.n === res.passport.countries && gt.of === 25, 'the Flight Log has the passport, and Globetrotter counts countries towards 25', JSON.stringify(gt));
 // a flight that landed before the passport existed is stamped as you open it
 const old = one(`SELECT COUNT(*) AS n FROM pg_stamped`)[0].n;
-sql(`DELETE FROM pg_stamped WHERE id = '${m2}'`); sql(`UPDATE pg_passport SET n = n - 1 WHERE user_id = '${gs.me.id}' AND place = 'Kazakhstan'`);
+sql(`DELETE FROM pg_stamped WHERE id = '${m2}'`); sql(`UPDATE pg_msgs SET stamped = NULL WHERE id = '${m2}'`); sql(`UPDATE pg_passport SET n = n - 1 WHERE user_id = '${gs.me.id}' AND place = 'Kazakhstan'`);
 [st, res] = await api(gs.token, 'passport');
 ok(one(`SELECT COUNT(*) AS n FROM pg_stamped`)[0].n === old && res.places.find((p) => p.name === 'Kazakhstan').n === 2, 'older flights get stamped when you open your passport');
 // in the app

@@ -142,18 +142,46 @@ function next() {
     a.go();
   }
 }
+// (read back off the page's own thread where it can be: each tile handed to a thread of its own (radarwork.js) as a
+// bitmap, its codes handed back, so the page isn't held up a tile at a time as it opens or the map's moved; here,
+// where there's no such thread, or it won't start or can't read one)
+let reader = null, reads = 0;
+const reading = new Map();
+function readerOf() {
+  if (reader !== null) return reader;
+  reader = false;
+  if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap !== "function") return reader;
+  try {
+    const w = new Worker(new URL("./radarwork.js", import.meta.url), { type: "module" });
+    w.onmessage = ({ data: { id, codes: got } }) => { const f = reading.get(id); reading.delete(id); f?.(got); };
+    w.onerror = (e) => { e.preventDefault?.(); reader = false; try { w.terminate(); } catch (_) {} for (const f of reading.values()) f(null); reading.clear(); };
+    reader = w;
+  } catch (_) {}
+  return reader;
+}
 function tileCodes(url, shown = () => true) {
   if (codes.has(url)) return codes.get(url);
   const p = new Promise((ok) => {
     asks.push({ shown, go: () => {
       const img = new Image(), end = (v) => { asking--; ok(v); next(); };
       img.crossOrigin = "anonymous";
-      img.onload = () => {
+      const here = () => {
         try {
           const c = document.createElement("canvas"); c.width = c.height = SRC;
           const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0, SRC, SRC);
           end(decode(x.getImageData(0, 0, SRC, SRC).data));
         } catch (_) { end(null); }
+      };
+      img.onload = () => {
+        const w = readerOf();
+        if (!w) return here();
+        createImageBitmap(img).then((bmp) => {
+          // (its thread gone meanwhile: read here)
+          if (reader !== w) { bmp.close(); return here(); }
+          const id = ++reads;
+          w.postMessage({ id, bmp, size: SRC }, [bmp]);
+          reading.set(id, (got) => (got ? end(got) : here()));
+        }).catch(here);
       };
       img.onerror = () => { if (codes.get(url) === p) codes.delete(url); end(null); };
       img.src = url;
@@ -1382,10 +1410,17 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     credit.setAttribute("aria-label", `Map data © ${names.join(", ")}: all the credits`);
   }
   // (while it fills the screen, a space of its height holds its place, so the page under it doesn't move up)
-  let held = null;
+  let held = null, behind = [];
   function big(on) {
     if (on && !held) { held = document.createElement("div"); held.className = "radar-held"; held.style.height = `${card.offsetHeight}px`; card.after(held); }
     else if (!on && held) { held.remove(); held = null; }
+    // (the page under it out of reach while it fills the screen, so Tab and a screen reader stay on the map; what's
+    // inert already, the places either side's pages, left as it is; the sheets and the toast over it left reachable)
+    if (on && !behind.length) {
+      for (let n = card; n !== document.body; n = n.parentElement)
+        for (const s of n.parentElement.children)
+          if (s !== n && !s.inert && !s.matches("script, dialog, .toast")) { s.inert = true; behind.push(s); }
+    } else if (!on) { for (const s of behind) s.inert = false; behind = []; }
     card.classList.toggle("radar-big", on);
     document.body.classList.toggle("no-scroll", on);
     full.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
@@ -1394,6 +1429,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (map) { map.resize(); map.explore(on); flowRestart(); }
     // (the timeline's clock times again for its new width)
     if (frames.length) drawScale();
+    // (opened by a tap, the × is where a screen reader starts; closed, focus isn't left on something hidden)
+    if (on || card.contains(document.activeElement) || document.activeElement === document.body) full.focus({ preventScroll: true });
   }
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
   // can morph one into the other (a view transition); at once otherwise, or with reduced motion

@@ -72,6 +72,13 @@ export function json(body, status = 200, headers = {}) {
   });
 }
 
+// An open chat is asked for every 15 s: each answer carries a tag (a hash of what it says, but not when), and a phone
+// that sends back the tag of the copy it has is told only that nothing has changed, not sent it all again.
+export async function chatJson(request, t, out) {
+  const tag = hex(await sha256(JSON.stringify(out))).slice(0, 16);
+  return json(new URL(request.url).searchParams.get("tag") === tag ? { now: t, tag, same: true } : { now: t, tag, ...out });
+}
+
 // D1 binds at most 100 parameters a statement: lists for IN (...) go in slices.
 export const chunks = (a, n = 90) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -152,6 +159,9 @@ const SCHEMA = [
      from_lat REAL, from_lon REAL, from_place TEXT)`,
   `CREATE INDEX IF NOT EXISTS pg_gmsgs_group ON pg_gmsgs(group_id, sent_at)`,
   `CREATE INDEX IF NOT EXISTS pg_gmsgs_photo ON pg_gmsgs(photo, expires_at)`,
+  // (what someone's sent: counted for their account and their log without reading every group message; with the id, so
+  // a question that also names the messages still goes straight to them)
+  `CREATE INDEX IF NOT EXISTS pg_gmsgs_sender ON pg_gmsgs(sender, id)`,
   `CREATE TABLE IF NOT EXISTS pg_gdeliv (msg_id TEXT NOT NULL, user_id TEXT NOT NULL, wrap TEXT NOT NULL, km REAL NOT NULL, deliver_at INTEGER NOT NULL,
      lost_at INTEGER, read_at INTEGER, notified_at INTEGER, to_lat REAL, to_lon REAL, to_place TEXT, legs TEXT, PRIMARY KEY (msg_id, user_id))`,
   `CREATE INDEX IF NOT EXISTS pg_gdeliv_user ON pg_gdeliv(user_id, deliver_at)`,
@@ -252,7 +262,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_at INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
   "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
-  "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // a one-off key a reset that keeps the old key proves it against
+  "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // the link's own key a reset that keeps the old key proves it against
   // declined and blocked links: a = who said no, b = who asked; asked_at = b still sees their request as waiting
   "ALTER TABLE pg_links ADD COLUMN asked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN email_ok INTEGER",        // when the email address was confirmed (a link sent to it)
@@ -314,6 +324,26 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_lostdue ON pg_gdeliv(lost_at) WHERE lost_at IS NOT NULL AND notified_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_wx ON pg_gdeliv(wx_at) WHERE wx_at IS NOT NULL AND wx_told IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_reacts_due ON pg_reacts(deliver_at) WHERE notified_at IS NULL",
+  // …and the flights still to stamp in the passport (functions/_passport.js: stamped = 1 once it's in pg_stamped), the
+  // named pigeons whose flights aren't settled (functions/_birds.js), and what's unread for the email (functions/_notify.js)
+  "ALTER TABLE pg_msgs ADD COLUMN stamped INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN stamped INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_unstamped ON pg_msgs(deliver_at) WHERE stamped IS NULL AND lost_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_unstamped ON pg_gdeliv(deliver_at) WHERE stamped IS NULL AND lost_at IS NULL",
+  // (flights stamped before there was the mark: marked here)
+  "UPDATE pg_msgs SET stamped = 1 WHERE stamped IS NULL AND lost_at IS NULL AND id IN (SELECT id FROM pg_stamped)",
+  "UPDATE pg_gdeliv SET stamped = 1 WHERE stamped IS NULL AND lost_at IS NULL AND EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = pg_gdeliv.msg_id || ':' || pg_gdeliv.user_id)",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_birdopen ON pg_msgs(bird) WHERE bird IS NOT NULL AND bird_done IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gmsgs_birdopen ON pg_gmsgs(bird) WHERE bird IS NOT NULL AND bird_done IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_unread ON pg_msgs(deliver_at) WHERE read_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_unread ON pg_gdeliv(deliver_at) WHERE read_at IS NULL",
+  // the Skies (functions/_skies.js): only pigeons not yet landed, from you and to you (notified_at is set on landing, loss
+  // or recall), so not the month of your others; the unread count and marking read keep pg_msgs_to
+  "CREATE INDEX IF NOT EXISTS pg_msgs_air_from ON pg_msgs(sender, deliver_at) WHERE notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_air_to ON pg_msgs(recipient, deliver_at) WHERE notified_at IS NULL",
+  // since when read receipts have been off (null: on), so turning them off doesn't wipe a chat's disappearing messages
+  // that landed long before, unread (functions/_vanish.js: from landing, or from then); those already off: from now
+  "ALTER TABLE pg_users ADD COLUMN no_receipts_at INTEGER",
+  "UPDATE pg_users SET no_receipts_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000 WHERE no_receipts = 1 AND no_receipts_at IS NULL",
   // the Moon (functions/_moon.js): where on it you are (JSON; null: on Earth), your lunar lofts, and a flight's two ends
   "ALTER TABLE pg_users ADD COLUMN moon TEXT",
   "ALTER TABLE pg_users ADD COLUMN lunar INTEGER", "ALTER TABLE pg_users ADD COLUMN lunar_at INTEGER",
@@ -361,6 +391,9 @@ const MIGRATIONS = [
   // same page in Safari is Safari)
   "ALTER TABLE pg_sessions ADD COLUMN home TEXT",
   "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
+  // (one handed over from an app to a browser signed in to nothing: the account's page's alone, until it's shown it's
+  // you there: functions/api/account handoff, reauth)
+  "ALTER TABLE pg_sessions ADD COLUMN handed INTEGER",
   // the home page's own owner sign-ins, from when it had a password of its own (it's the admin account's now: functions/_auth.js)
   "DROP TABLE IF EXISTS pg_owner_sessions",
   // the profile card's poster: a larger copy of your photo (functions/_profile.js putPoster), and the point of it that
@@ -435,10 +468,25 @@ async function setUp(env) {
 // JSON bodies are small (the biggest, a group message with a key for each of
 // up to 50 people, is well under this); anything bigger is refused unread.
 export const MAX_JSON = 512 * 1024;
+// A request's body, at most max bytes: refused unread if it says it's bigger, and as soon as it's past max if it doesn't
+// say (sent in pieces, with no Content-Length), so it's never held whole first
+export async function readCapped(request, max, msg = "That request is too large.") {
+  const said = request.headers.get("Content-Length");
+  if (said !== null && !(Number(said) <= max)) throw new HttpError(413, msg);
+  if (!request.body) return new Uint8Array(0);
+  const r = request.body.getReader(), parts = []; let n = 0;
+  for (;;) {
+    const { done, value } = await r.read();
+    if (done) break;
+    if ((n += value.byteLength) > max) { r.cancel().catch(() => {}); throw new HttpError(413, msg); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(n); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.byteLength; }
+  return out;
+}
 export async function body(request, max = MAX_JSON) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "That request is too large.");
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "That request is too large.");
+  const text = new TextDecoder().decode(await readCapped(request, max));
   try { return JSON.parse(text); } catch (_) { throw new HttpError(400, "That request wasn’t valid JSON."); }
 }
 export const clientIp = (request) => {
@@ -450,6 +498,11 @@ export const clientIp = (request) => {
   return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 };
 
+// "23h 5m", "1 hour", "12 minutes": how long until something's allowed again
+export function waitText(ms) {
+  const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
+  return h && !m ? `${h} hour${h === 1 ? "" : "s"}` : h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
+}
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
 // A network, as one asker: the address, or for IPv6 its whole /48 (as a provider hands them out). For limits where many
 // addresses from one place mustn't count as many askers.
@@ -462,7 +515,7 @@ export async function limit(env, key, max, windowMs, n = 1) {
     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ?3 THEN ?4 ELSE count + ?4 END,
       reset_at = CASE WHEN reset_at < ?3 THEN ?2 ELSE reset_at END
     RETURNING count, reset_at`).bind(key, t + windowMs, t, n).first();
-  if (row.count > max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((row.reset_at - t) / MIN)} minutes and try again.`);
+  if (row.count > max) throw new HttpError(429, `Too many tries. Try again in ${waitText(row.reset_at - t)}.`);
 }
 
 // A per-install random secret (used to fake salts for unknown emails).
@@ -556,7 +609,7 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home,
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
   // (a sign-in lasts while it's used, up to a year from when it was made: then it's asked for again, wherever it's in use)
@@ -566,13 +619,17 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
   // browser's own sign-in now, listed by itself)
   const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);
+  // (one handed over from an app to a browser signed in to nothing is the account's page's alone until it's shown it's
+  // you there: anywhere else the browser's signed out, so a code a page elsewhere sent it there with can't sign it in
+  // to that page's own account across the site)
+  if (u.s_handed && app !== "account") throw new HttpError(401, "Please sign in.", "session");
   const parent = learn && app !== "account" ? null : u.s_parent || null, home = homeOf(request) || u.s_home || null;
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
   if (learn || home !== (u.s_home || null) || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
     D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ?, home = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, home, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home;
-  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_made; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home; u.handed = !!u.s_handed;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_made; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held; delete u.s_handed;
   return u;
 }
 
@@ -696,14 +753,18 @@ export function msgView(me, m, t) {
     ...(m.moon ? { moon: JSON.parse(m.moon) } : {}),       // to, from or on the Moon: its two ends (functions/_moon.js)
     style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
     liveAt: flying ? m.live_at ?? null : null,   // when the weather ahead was last looked at (_live.js)
-    legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])
+    // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"]); where it met and
+    // parted from another it flew with ("f") go as just points where it sped up, so the map keeps its pace without saying
+    // so (the other can be a pigeon this person can't see; who sees both is told with the moment: _moments.js nearViews)
+    legs: (m.legs ? JSON.parse(m.legs) : []).map((l) => (l[3] === "f" ? [l[0], l[1], l[2], "c"] : l)),
     ...cheerView(m, me), ...birdOn(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,
     ct: (flying || lost) && m.recipient === me ? null : m.ct,
   };
 }
 
-// Delete photo blobs whose 24 hours are up. Cheap; runs alongside syncs.
+// Delete photo blobs whose 24 hours are up. Cheap; runs from the minute tick (until then, one past its time is shown and
+// served as gone already: msgView, getPhoto).
 export async function sweepPhotos(env) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND expires_at < ? LIMIT 50").bind(Date.now()).all();
@@ -915,13 +976,22 @@ export async function findReset(env, token) {
   return { reset: r, user: u };
 }
 // A reset that keeps the account's key must show it holds that key: the phone
-// signs the link with the secret its key shares with a one-off server key.
+// signs the link with the secret its key shares with a server key of the link's
+// own. It's made the first time the link's looked at and kept for its life, so
+// opening it again (another tab, another device) doesn't undo the first one.
 const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" };
-export async function resetKx(env, hash) {
-  const kp = await crypto.subtle.generateKey(ECDH_P256, true, ["deriveBits"]);
-  const priv = await crypto.subtle.exportKey("jwk", kp.privateKey), pub = await crypto.subtle.exportKey("jwk", kp.publicKey);
-  await (await db(env)).prepare("UPDATE pg_resets SET kx = ? WHERE hash = ?").bind(JSON.stringify(priv), hash).run();
-  return { kty: "EC", crv: "P-256", x: pub.x, y: pub.y };
+export async function resetKx(env, reset) {
+  let jwk = reset.kx ? JSON.parse(reset.kx) : null;
+  if (!jwk) {
+    const D = await db(env), kp = await crypto.subtle.generateKey(ECDH_P256, true, ["deriveBits"]);
+    await D.prepare("UPDATE pg_resets SET kx = ? WHERE hash = ? AND kx IS NULL")
+      .bind(JSON.stringify(await crypto.subtle.exportKey("jwk", kp.privateKey)), reset.hash).run();
+    // (two looks at once: both are given whichever key was kept first)
+    const row = await D.prepare("SELECT kx FROM pg_resets WHERE hash = ?").bind(reset.hash).first();
+    if (!row?.kx) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
+    jwk = JSON.parse(row.kx);
+  }
+  return { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
 }
 export async function keyProofOk(reset, pubJson, proof) {
   if (!reset.kx || !/^[A-Za-z0-9_-]{43}$/.test(String(proof || ""))) return false;

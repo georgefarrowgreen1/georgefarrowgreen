@@ -44,16 +44,20 @@ export function placesAlong(stops) {
 // they open their passport), or anyone's (from the tick). Oldest first, a few
 // at a time (a long flight takes up to a millisecond, and a request has only
 // so much time), so older flights fill in over a few runs; a flight is only
-// ever stamped once, even if two of these run together.
+// ever stamped once, even if two of these run together. (Each is marked on its
+// own row once stamped, so the next look finds those still to do by index, not
+// by reading every flight there is; a group one to someone who isn't the
+// sender's friend, which waits for that, is marked 0 and left out until they
+// are: restampPair.)
 export async function stampPassports(D, t, uid = null, max = 12) {
   const mine = uid ? "AND m.sender = ?2" : "", args = uid ? [t, uid] : [t];
   const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.km, m.from_lat, m.from_lon, m.to_lat, m.to_lon, m.sent_at, m.deliver_at, m.legs FROM pg_msgs m
-    WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.from_lat IS NOT NULL AND m.to_lat IS NOT NULL ${mine}
+    WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.stamped IS NULL AND m.from_lat IS NOT NULL AND m.to_lat IS NOT NULL ${mine}
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id) ORDER BY m.deliver_at LIMIT ${max}`).bind(...args).all();
-  const { results: grp } = await D.prepare(`SELECT m.id || ':' || d.user_id AS id, m.sender, d.km, m.from_lat, m.from_lon, d.to_lat, d.to_lon, m.sent_at, d.deliver_at, d.legs
+  const { results: grp } = await D.prepare(`SELECT m.id || ':' || d.user_id AS id, m.sender, d.km, m.from_lat, m.from_lon, d.to_lat, d.to_lon, m.sent_at, d.deliver_at, d.legs,
+      NOT EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = m.sender AND l.b = d.user_id) OR (l.a = d.user_id AND l.b = m.sender))) AS apart
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
-    WHERE d.deliver_at <= ?1 AND d.lost_at IS NULL AND m.from_lat IS NOT NULL AND d.to_lat IS NOT NULL ${mine}
-    AND EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = m.sender AND l.b = d.user_id) OR (l.a = d.user_id AND l.b = m.sender)))
+    WHERE d.deliver_at <= ?1 AND d.lost_at IS NULL AND d.stamped IS NULL AND m.from_lat IS NOT NULL AND d.to_lat IS NOT NULL ${mine}
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id) ORDER BY d.deliver_at LIMIT ${max}`).bind(...args).all();
   // off the Earth or round it (functions/_moon.js): no countries or seas on the way, just the Moon, Mars or
   // Low Earth Orbit, and the postmarks of where it landed (or bounded past)
@@ -68,6 +72,10 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   const flights = [...one, ...grp, ...[...lunar, ...glunar].map((f) => ({ ...f, lunar: true }))].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
   if (flights.length) await ensureFeathers(D);         // (everyone's feathers so far, before any more are earned)
   for (const f of flights) {
+    const [mid, to] = f.id.split(":");
+    // (not friends: left out of the next looks, unless they've just become friends meanwhile)
+    if (f.apart) { await D.prepare(`UPDATE pg_gdeliv SET stamped = 0 WHERE msg_id = ?1 AND user_id = ?2 AND stamped IS NULL
+      AND NOT EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = ?3 AND l.b = ?2) OR (l.a = ?2 AND l.b = ?3)))`).bind(mid, to, f.sender).run(); continue; }
     let places = [], marks = [];
     if (f.lunar) {
       try {
@@ -78,6 +86,8 @@ export async function stampPassports(D, t, uid = null, max = 12) {
     }
     else try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
     const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places, marks) VALUES (?, ?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places), marks.length ? JSON.stringify(marks) : null).run();
+    // (marked stamped on its own row, even where another run got there first)
+    await (to ? D.prepare("UPDATE pg_gdeliv SET stamped = 1 WHERE msg_id = ? AND user_id = ?").bind(mid, to) : D.prepare("UPDATE pg_msgs SET stamped = 1 WHERE id = ?").bind(mid)).run();
     if (!r.meta.changes) continue;
     // feathers: for the flight, each country or sea new to the passport, each new postmark
     const had = async (table, col, list) => (list.length ? new Set((await D.prepare(`SELECT ${col} AS k FROM ${table} WHERE user_id = ? AND ${col} IN (${list.map(() => "?").join(",")})`).bind(f.sender, ...list).all()).results.map((x) => x.k)) : new Set());
@@ -98,6 +108,9 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   }
   return flights.length;
 }
+// Two people who've just become friends: the group flights between them that waited for it are stamped from the next look
+export const restampPair = (D, a, b) => D.prepare(`UPDATE pg_gdeliv SET stamped = NULL WHERE stamped = 0
+  AND ((user_id = ?1 AND msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?2)) OR (user_id = ?2 AND msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?1)))`).bind(a, b);
 // Your passport: each place, when your pigeons first flew over it, and how often since,
 // and the journey that stamped it (trip: its message, ord: where on its way), so the
 // passport's pages can be filled journey by journey; trips: each journey's ends (yours,

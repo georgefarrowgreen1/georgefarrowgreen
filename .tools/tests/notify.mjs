@@ -4,7 +4,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
-import { joinInFlight, accountUrl, signInInFlight } from './join.mjs';
+import { joinInFlight, accountUrl, signInInFlight, inflightSettings } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
 const AUDIT = new Function('return (' + readFileSync(`${S}/wr/audit.mjs`, 'utf8').match(/const AUDIT = (\(\) => \{[\s\S]*?\n\});/)[1] + ')')();
@@ -82,8 +82,8 @@ await signup(M, 'Mira Okafor', 'mira', 'mira@example.com', 'Paris');
 const gId = await idOf(G), mId = await idOf(M);
 sql("UPDATE pg_users SET notify_prefs = json_object('names', json('true'))");   // (names on: since 1.0.2 lock-screen names are off unless chosen)
 
-// ---- George turns push on in Account ----
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=notifysheet]'); await G.p.waitForSelector('[data-act=pushtoggle]');
+// ---- George turns push on in Account (This Phone) ----
+await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.waitForSelector('#screen > main.view [data-act=pushtoggle]');
 ok(await G.p.getAttribute('[data-act=pushtoggle]', 'aria-checked') === 'false', 'push starts off');
 ok(await M.p.isVisible('[data-act=tab][data-id=account]') && true, 'Mira signed in');
 let t0 = Date.now();
@@ -126,47 +126,51 @@ r = await tick(); ok(r.landed === 0, 'no repeat notification for the same pigeon
 
 // ---- settings: each one changes what arrives ----
 const gPrefs = () => JSON.parse(/"notify_prefs": "(.*)"/.exec(sql(`SELECT notify_prefs FROM pg_users WHERE id = '${gId}'`))[1].replace(/\\"/g, '"'));
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=notifysheet]'); await G.p.waitForSelector('[data-act=npref][data-id=names]');
+// (InFlight Settings: the account's page, at InFlight's settings; each switch saved as it's flipped)
+const W = await inflightSettings(G.p);
+const flip = async (k) => { await W.click('#if-' + k); await W.waitForFunction((k) => !document.getElementById('if-' + k)?.disabled, k); await W.waitForTimeout(300); };
 ok(gPrefs().tz === 'Europe/London', 'quiet hours use the phone’s time zone', gPrefs().tz);
-await G.p.screenshot({ path: `${out}/notify-sheet.png` });
-const a3 = await G.p.evaluate(AUDIT); ok(!a3.issues.length, 'notifications sheet: no overlaps', a3.issues.join(' '));
-await G.p.evaluate(() => { const b = document.querySelector('.sheet .body'); b.scrollTo(0, b.scrollHeight); }); await G.p.waitForTimeout(300);
-await G.p.screenshot({ path: `${out}/notify-sheet-bottom.png` });
+await W.screenshot({ path: `${out}/notify-sheet.png` });
+await W.evaluate(() => { const b = document.querySelector('#sheet .sheet-body'); b.scrollTo(0, b.scrollHeight); }); await W.waitForTimeout(300);
+await W.screenshot({ path: `${out}/notify-sheet-bottom.png` });
 const send = async (text) => { await M.p.fill('#msg', text); await M.p.click('.send'); await M.p.waitForTimeout(1600); };
 const landAll = () => sql("UPDATE pg_msgs SET deliver_at = (strftime('%s','now') * 1000) - 5000 WHERE deliver_at > (strftime('%s','now') * 1000)");
 // names off
-await G.p.click('[data-act=npref][data-id=names]'); await G.p.waitForSelector('[data-act=npref][data-id=names][aria-checked=false]'); await G.p.waitForTimeout(400);
+await flip('names'); ok(!(await W.isChecked('#if-names')), 'Show names, off on the account’s page');
 ok(gPrefs().names === false, 'Show Names turns off (saved to the account)');
 await send('second'); landAll(); t0 = Date.now(); r = await tick();
 let np = await lastPush(gKeys, t0);
 ok(np && np.msg.title === 'InFlight' && !/Mira/.test(JSON.stringify(np.msg)), 'with names off, the lock screen doesn’t say who', JSON.stringify(np?.msg));
 // take-off
-await G.p.click('[data-act=npref][data-id=takeoff]'); await G.p.waitForTimeout(500);
+await flip('takeoff');
 t0 = Date.now(); await send('third'); await G.p.waitForTimeout(500);
 np = await lastPush(gKeys, t0);
 ok(np && /on its way to you\. It lands in/.test(np.msg.body), '“A Pigeon Takes Off” notifies when a friend sends one', np?.msg.body);
-await G.p.click('[data-act=npref][data-id=names]'); await G.p.click('[data-act=npref][data-id=takeoff]'); await G.p.waitForTimeout(500);
+await flip('names'); await flip('takeoff');
 ok(gPrefs().names === true && gPrefs().takeoff === false, 'settings switch back');
 // quiet hours: hold, then announce when they end
 const hourNow = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hourCycle: 'h23' }).format(Date.now()));
-await G.p.click('[data-act=npref][data-id=quiet]'); await G.p.waitForSelector('select[data-id=quietFrom]');
-await G.p.selectOption('select[data-id=quietFrom]', String(hourNow)); await G.p.waitForTimeout(400);
-await G.p.selectOption('select[data-id=quietTo]', String((hourNow + 1) % 24)); await G.p.waitForTimeout(600);
+await flip('quiet'); await W.waitForSelector('#if-quietFrom');
+await W.selectOption('#if-quietFrom', String(hourNow)); await W.waitForFunction(() => !document.getElementById('if-quietFrom').disabled); await W.waitForTimeout(300);
+await W.selectOption('#if-quietTo', String((hourNow + 1) % 24)); await W.waitForFunction(() => !document.getElementById('if-quietTo').disabled); await W.waitForTimeout(400);
 ok(gPrefs().quiet && gPrefs().quietFrom === hourNow && gPrefs().quietTo === (hourNow + 1) % 24, 'quiet hours set', `${gPrefs().quietFrom}–${gPrefs().quietTo}`);
 landAll(); t0 = Date.now(); r = await tick();
 ok(r.held === 1 && r.pushes === 0 && !(await lastPush(gKeys, t0)), 'during quiet hours the landing waits', JSON.stringify(r));
 // (switching quiet hours off is itself a request, which may run the tick before we do)
-t0 = Date.now(); await G.p.click('[data-act=npref][data-id=quiet]'); await G.p.waitForTimeout(600);
+t0 = Date.now(); await flip('quiet');
 r = await tick(); np = await lastPush(gKeys, t0);
 ok(pushes().filter((x) => x.at > t0).length === 1 && np?.msg.title === 'Mira', 'when quiet hours end, it’s announced once', JSON.stringify(np?.msg));
 // landings off
-await G.p.click('[data-act=npref][data-id=landed]'); await G.p.waitForTimeout(500);
+await flip('landed');
 await send('fourth'); landAll(); t0 = Date.now(); r = await tick();
 ok(r.pushes === 0 && !(await lastPush(gKeys, t0)), 'with “A Pigeon Lands” off, landings are silent');
-await G.p.click('[data-act=npref][data-id=landed]'); await G.p.waitForTimeout(500);
+await flip('landed');
 r = await tick(); ok(r.pushes === 0, 'turning it back on doesn’t replay old landings');
-await G.p.click('.sheet [data-act=close].nbtn'); await G.p.waitForTimeout(600);
-ok((await txt(G, '#screen > main.view [data-act=notifysheet]')).includes('Push'), 'the Account row shows what’s on', (await txt(G, '#screen > main.view [data-act=notifysheet]')));
+await W.close();
+// (back in InFlight, opened again: push on here, and InFlight Settings saying what's on, as the account has it)
+await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700);
+ok(await G.p.getAttribute('#screen > main.view [data-act=pushtoggle]', 'aria-checked') === 'true' && /notifications on/.test(await txt(G, '#screen > main.view [data-act=ifsettings]')),
+  'the Account tab: push on for this phone, and what’s on under InFlight Settings', await txt(G, '#screen > main.view [data-act=ifsettings]'));
 
 // ---- tapping it opens the chat ----
 await G.p.goto(URL + `#open=${mId}`); await G.p.waitForSelector('.chatnav', { timeout: 15000 });
@@ -186,10 +190,12 @@ if (regs) {
 } else ok(false, 'found the service worker registration over CDP');
 
 // ---- email: Mira turns it on; a pigeon waits unread; she gets one email ----
-await M.p.click('.chatnav .back'); await M.p.click('[data-act=tab][data-id=account]'); await M.p.waitForTimeout(700); await M.p.click('#screen > main.view [data-act=notifysheet]'); await M.p.waitForSelector('[data-act=emailtoggle]');
-await M.p.click('[data-act=emailtoggle]'); await M.p.waitForSelector('[data-act=emailtoggle][aria-checked=true]');
-ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 1'), 'Mira turns email on');
-ok(/Emails start once you confirm your address/.test(await M.p.locator('.sheet').innerText()), 'until she confirms her address, the sheet says emails wait for it');
+await M.p.click('.chatnav .back'); const MW = await inflightSettings(M.p);
+ok(await MW.isDisabled('#if-email') && /Confirm your email first/.test(await MW.locator('#sheet').innerText()), 'until she confirms her address, Email me waits for it');
+await MW.close();
+// (on, as an account from before could have it, to show nothing goes to an address not confirmed)
+sql("UPDATE pg_users SET notify_email = 1 WHERE handle = 'mira'");
+ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 1'), 'Mira has email on');
 await G.p.fill('#msg', 'Lovely to hear from you'); await G.p.click('.send'); await G.p.waitForSelector('.msgs .b.up', { timeout: 10000 });
 sql("UPDATE pg_msgs SET deliver_at = (strftime('%s','now') * 1000) - 5000 WHERE recipient IN (SELECT id FROM pg_users WHERE handle = 'mira')");
 const m0 = mails().length;
@@ -227,7 +233,7 @@ ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"not
 
 // ---- devices that go away stop getting pushes ----
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '410' });
-await G.p.click('.chatnav .back'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=notifysheet]'); await G.p.click('[data-act=pushtest]'); await G.p.waitForTimeout(800);
+await G.p.click('.chatnav .back'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=pushtest]'); await G.p.waitForTimeout(800);
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'a subscription the push service says is gone is deleted');
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '201' });
 await G.p.evaluate(() => localStorage.removeItem('inflight-pushsub'));   // (a day later: the phone re-sends its subscription once a day)
@@ -239,7 +245,7 @@ await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.lo
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'signing out stops notifications to this phone');
 // a sign-in that ends elsewhere (password reset, sign out everywhere) also stops them
 await signInInFlight(G.p, URL, { email: 'george@example.com' }); await G.p.waitForSelector('.tabs', { timeout: 20000 });
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=notifysheet]'); await G.p.click('[data-act=pushtoggle]'); await G.p.waitForSelector('[data-act=pushtoggle][aria-checked=true]');
+await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=pushtoggle]'); await G.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]');
 sql(`DELETE FROM pg_sessions WHERE user_id = '${gId}'`);
 await tick();
 const before = pushes().length;
@@ -252,8 +258,8 @@ const ictx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobil
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
 await ictx.addInitScript(() => { delete window.PushManager; });
 const ip = await ictx.newPage();
-await signInInFlight(ip, URL, { email: 'mira@example.com' }); await ip.waitForSelector('.tabs', { timeout: 20000 }); await ip.click('[data-act=tab][data-id=account]'); await ip.waitForTimeout(700); await ip.click('#screen > main.view [data-act=notifysheet]');
-ok(await ip.isDisabled('[data-act=pushtoggle]') && /Add to Home Screen/.test(await ip.locator('.sheet').innerText()), 'iPhone Safari: explains Add to Home Screen');
+await signInInFlight(ip, URL, { email: 'mira@example.com' }); await ip.waitForSelector('.tabs', { timeout: 20000 }); await ip.click('[data-act=tab][data-id=account]'); await ip.waitForTimeout(700);
+ok(await ip.isDisabled('#screen > main.view [data-act=pushtoggle]') && /Add to Home Screen/.test(await ip.locator('#screen > main.view').innerText()), 'iPhone Safari: explains Add to Home Screen');
 await ip.waitForTimeout(400); await ip.screenshot({ path: `${out}/notify-iphone.png` });
 const a2 = await ip.evaluate(AUDIT); ok(!a2.issues.length, 'iPhone account screen: no overlaps', a2.issues.join(' '));
 

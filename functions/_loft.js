@@ -12,7 +12,7 @@ import { rankOf, settleBirds } from "./_birds.js";
 import { passportFor, stampPassports } from "./_passport.js";
 import { logFor, SKINS } from "./_stats.js";
 import { itemView, ITEMS } from "./_feathers.js";
-import { SEASONS } from "./_seasons.js";
+import { SEASONS, skinNow } from "./_seasons.js";
 
 const day = (t) => (t == null ? null : Math.floor(t / DAY) * DAY);         // dates to the day
 const MILES_STEP = 100 * 1.609344;                                          // total miles, to the hundred
@@ -28,9 +28,11 @@ export async function loftFor(D, uid, t) {
   ]);
   const view = (b) => ({ name: b.name, rank: rankOf(b.km), since: day(b.created_at) });
   const owned = new Set(kit.results.map((r) => r.item));
+  // (the look their pigeons fly with now: a seasonal one that's gone, and wasn't kept, isn't theirs)
+  const skin = who?.skin && SKINS[who.skin] ? await skinNow(D, { id: uid, skin: who.skin }, t) : null;
   return {
     since: day(who?.created_at),
-    skin: who?.skin && SKINS[who.skin] ? who.skin : null,
+    skin,
     birds: birds.results.filter((b) => !b.retired_at && !b.lost_at).map((b) => ({ ...view(b), wear: b.wear && itemView(b.wear) ? b.wear : null })),
     hall: birds.results.filter((b) => b.retired_at || b.lost_at).map((b) => ({ ...view(b), retired: day(b.retired_at), lost: day(b.lost_at) }))
       .sort((a, b) => (b.retired || b.lost) - (a.retired || a.lost)),

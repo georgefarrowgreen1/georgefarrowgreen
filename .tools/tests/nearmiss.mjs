@@ -109,13 +109,19 @@ const send = async (ph, kind, text) => {
   }
 };
 async function pushOn(ph) {
-  await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700); await ph.p.click('#screen > main.view [data-act=notifysheet]'); await ph.p.waitForSelector('[data-act=pushtoggle]');
-  await ph.p.click('[data-act=pushtoggle]'); await ph.p.waitForSelector('[data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
-  const sw = await ph.p.locator('[role=switch][data-id=moments]').getAttribute('aria-checked').catch(() => null);
-  await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
-  return sw;
+  await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
+  await ph.p.click('#screen > main.view [data-act=pushtoggle]'); await ph.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
+  // (whether Mid-air Moments is on: the account's, as InFlight has it from its sync)
+  return ph.p.evaluate(() => new Promise((res) => {
+    const r = indexedDB.open('inflight'); r.onerror = () => res(null);
+    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onerror = () => res(null);
+      g.onsuccess = () => fetch('/api/pigeon/sync', { headers: { Authorization: 'Bearer ' + g.result?.token } }).then((x) => x.json()).then((d) => res(String(!!d.me?.notify?.moments)), () => res(null)); };
+  }));
 }
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '201' });
+// still air, whatever the weather stand-in was left at: in its own steady westerly a pigeon flying into it rides the
+// wind round by Siberia (and one to New York by Greenland), so the two each way wouldn't fly the same way at one pace
+await fetch('http://127.0.0.1:8796/mode', { method: 'POST', body: JSON.stringify({ speed: 0, down: false, pattern: '' }) });
 const gKeys = await makeKeys(), rKeys = await makeKeys();
 const G = await phone('george', gKeys), R = await phone('reuben', rKeys), P = await phone('nia');
 await signup(G, 'George Farrow-Green', 'george', 'george@example.com', 'Norwich');

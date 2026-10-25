@@ -1,5 +1,6 @@
 // InFlight Live: the desktop tracker, and everything it must never show.
 import { kit } from './lib.mjs';
+import { inflightSettings } from './join.mjs';
 import { chromium } from 'playwright';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -109,11 +110,11 @@ const ph = await pctx.newPage(); await ph.goto('http://chat.localhost:8788/track
 ok(await ph.isVisible('.tk-phone') && !(await ph.isVisible('.tk-map')), 'on a phone: made for bigger screens');
 await ph.screenshot({ path: `${out}/tracker-phone.png` });
 // the app's switch
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(500);
-await G.p.click('#screen > main.view [data-act=securitysheet]'); await G.p.waitForSelector('.sheet [data-id=shareTracker]');
-await G.p.locator('.sheet [data-id=shareTracker]').scrollIntoViewIfNeeded(); await G.p.waitForTimeout(400);
-await G.p.screenshot({ path: `${out}/tracker-switch.png` });
-ok(await G.p.getAttribute('.sheet [data-id=shareTracker]', 'aria-checked') === 'true', 'Privacy & Security has the Live Tracker switch, on');
+const W = await inflightSettings(G.p);
+await W.locator('#if-shareTracker').scrollIntoViewIfNeeded(); await W.waitForTimeout(400);
+await W.screenshot({ path: `${out}/tracker-switch.png` });
+ok(await W.isChecked('#if-shareTracker'), 'InFlight Settings has the Live Tracker switch, on');
+await W.close();
 // the computer page links to it
 const cctx = await b.newContext({ viewport: { width: 1280, height: 800 } }); const cp = await cctx.newPage(); await cp.goto('http://chat.localhost:8788/');
 ok(await cp.isVisible('.na-live') && (await cp.getAttribute('.na-live', 'href')) === '/tracker', 'the "not on a computer" page links to InFlight Live');

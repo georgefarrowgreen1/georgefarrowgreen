@@ -3,6 +3,7 @@ import { kit } from './lib.mjs';
 import { signInInFlight } from './join.mjs';
 import { acctCall } from './handback.mjs';
 import http from 'http';
+import { readFileSync } from 'fs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
 const { ok, one, api } = K;
@@ -18,7 +19,8 @@ const acctPost = (path, data) => new Promise((done, no) => {
 });
 const r = await acctPost('/api/account/signup', JSON.stringify({ name: 'Olive Old', handle: 'olive', email: 'olive@example.com', salt: b64url(salt), proof: old.proof, vault: await E2E.lock(old.lockKey, { ecdh: id.privJwk }), pub: id.pub }));
 ok(r.status === 201, 'an account from before (PBKDF2): made as it was (on the account\'s page now)', String(r.status));
-K.sql("UPDATE pg_users SET lat = 52.63, lon = 1.29, place = 'Norwich' WHERE handle = 'olive'");
+// (an account from before has its email confirmed: those from before that was asked count as confirmed)
+K.sql("UPDATE pg_users SET lat = 52.63, lon = 1.29, place = 'Norwich', email_ok = 1 WHERE handle = 'olive'");
 const before = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0];
 ok(!before.salt.startsWith('a2:'), 'stored with a bare salt');
 // ---- it signs in on a phone (on the account's page, which moves it on, and back to InFlight with the new key's half) ----
@@ -27,6 +29,11 @@ await signInInFlight(O.p, K.URL, { email: 'olive@example.com', password: PW });
 ok(await O.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'it signs in with its password (PBKDF2)');
 let after = before; for (let k = 0; k < 30 && !after.salt.startsWith('a2:'); k++) { await O.p.waitForTimeout(300); after = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0]; }
 ok(after.salt.startsWith('a2:') && after.proof_hash !== before.proof_hash, 'and moves on to Argon2id quietly', after.salt.slice(0, 6));
+// (but not unseen: the server can't tell it's the same password, so it's in Recent activity, and emailed)
+const mails = () => { try { return readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m); } catch (_) { return []; } };
+let told = null; for (let k = 0; k < 30 && !told; k++) { told = mails().find((m) => [].concat(m.to).includes('olive@example.com') && /protection was strengthened/.test(m.subject || '')); if (!told) await O.p.waitForTimeout(300); }
+const noted = one("SELECT COUNT(*) AS n FROM pg_events e JOIN pg_users u ON u.id = e.user_id WHERE u.handle = 'olive' AND e.kind = 'upgrade'")[0].n;
+ok(Number(noted) === 1 && !!told && /get a reset link/.test(told.text || '') && !/change your password/.test(told.text || ''), 'noted in Recent activity, and emailed (a reset the way back, if it wasn\'t you), as the server can\'t tell it\'s the same password', `${noted} ${told?.subject}`);
 // ---- and signs in again, now with Argon2id, on another phone ----
 const O2 = await K.phone('olive2');
 const t0 = Date.now(); await signInInFlight(O2.p, K.URL, { email: 'olive@example.com', password: PW });
@@ -54,4 +61,6 @@ const up = await acctCall('password/upgrade', { oldProof: 'x'.repeat(43), salt: 
 ok(signedIn.s === 200 && up.s === 200 && one("SELECT salt FROM pg_users WHERE handle = 'olive'")[0].salt === after.salt, 'once moved on, the upgrade does nothing more', `${signedIn.s} ${up.s}`);
 const [gone] = await api((await K.sess(O2)).token, 'password-upgrade', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
 ok(gone === 410, 'InFlight’s own upgrade is gone (it signs in on the account’s page)', String(gone));
+const [change] = await api((await K.sess(O2)).token, 'password', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
+ok(change === 410, 'and its own password change (that’s on the account’s page too)', String(change));
 console.log(`FAILS ${K.fails()}`); process.exit(0);

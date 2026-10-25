@@ -31,18 +31,18 @@
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
-import { prefsOf } from "../../_notify.js";
+import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
-import { ADMIN_ROUTES, adminOf } from "../pigeon/[[path]].js";
+import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
 const UNITS = { temp: ["c", "f"], wind: ["mph", "kmh", "ms", "kn"], precip: ["mm", "in"], pressure: ["hpa", "inhg", "mmhg"], clock: ["12", "24"] };
@@ -106,7 +106,11 @@ async function view(env, u) {
     // (the card's poster: its own larger copy, if one's been sent, and the point of it that stays in view)
     poster: u.avatar_at ? { at: u.poster_at || null, focus: u.poster_focus || "50 50" } : null,
     emailNew: u.email_new && t - (u.email_new_at || 0) < CHANGE_TTL ? u.email_new : null,
+    // (when the last confirm link went, so the page says one's on its way rather than offering one: a new one stops it working)
+    emailSentAt: u.email_ok ? null : u.email_sent || null,
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
+    // (a sign-in an app handed over to this browser, signed in to nothing: this page's alone until it's shown it's you)
+    handed: !!u.handed,
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     // (messages: it has its own locked copy of the key to InFlight's messages, so it opens them on a new phone by itself)
@@ -135,6 +139,17 @@ async function view(env, u) {
     },
   };
 }
+// InFlight's settings that are the account's rather than a phone's, for its page here: which notifications, how they
+// read on the lock screen, quiet hours and email; who sees what; and who's blocked (pushes on or off, its lock and the
+// like are each phone's, in the app)
+async function inflightSettings(env, u) {
+  const { results } = await (await db(env)).prepare(`SELECT p.id, p.handle, p.name FROM pg_links l JOIN pg_users p ON p.id = l.b
+    WHERE l.a = ? AND l.status = 'blocked' ORDER BY p.name COLLATE NOCASE`).bind(u.id).all();
+  return { notify: prefsOf(u), email: !!u.notify_email, emailOk: !!u.email_ok,
+    privacy: { showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, approxLocation: !!u.loc_approx, shareTracker: !u.hide_tracker },
+    blocked: results.map((p) => ({ id: p.id, handle: p.handle, name: p.name })) };
+}
+const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
@@ -145,13 +160,20 @@ const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) 
 const cleanLabel = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ").slice(0, 40);
 const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
 
-// A confirm link to the account's email (the same one InFlight sends, said as the account's)
+// A confirm link to the account's email (the same one InFlight sends, said as the account's): when it went. One that
+// couldn't be sent is said, so the page doesn't say it's on its way, and the link before it (if any) is still the one
+// that works.
 async function sendConfirm(env, u, request) {
-  const token = randomToken(32);
-  await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
-  await tell(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
+  const token = randomToken(32), code = hex(await sha256(token)), D = await db(env), at = Date.now();
+  await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(code, at, u.id).run();
+  await accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets and security notes go. If you didn’t ask for this, ignore it: nothing more will be sent.",
-    to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
+    to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request))
+    .catch(async (e) => {
+      await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ? AND email_code = ?").bind(u.email_code ?? null, u.email_sent ?? null, u.id, code).run().catch(() => {});
+      throw e;
+    });
+  return at;
 }
 
 const ROUTES = {
@@ -159,7 +181,9 @@ const ROUTES = {
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
   // (a code a page elsewhere sent this browser here with can't sign it in unasked: who it's for is shown first, and it's
-  // used only once that's said yes to; nor does it ever take the place of a different account's sign-in here)
+  // used only once that's said yes to; nor does it ever take the place of a different account's sign-in here. And one
+  // that signs in a browser signed in to nothing is this page's alone (handed): the rest of the site, and every app,
+  // treat the browser as signed out until it's shown it's you here, as the name said yes to is whatever its owner chose)
   "POST handoff/who": async ({ request, env }) => {
     sameOrigin(request);
     await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
@@ -192,16 +216,19 @@ const ROUTES = {
     }
     // (part of the app's sign-in it came from: listed with it and ending with it, and the last one it opened replaced)
     const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
-    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ? WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
+    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ?, handed = 1 WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
       D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, hash)]);
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
-    return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0 })), request, env, hash);
+    return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0, handed: true })), request, env, hash);
   },
   // an app that sent you here to sign in, handed the sign-in back (functions/_handback.js): { code }, for the address
   // the page goes back to it with
   "POST handback": async ({ request, env }) => {
     sameOrigin(request);
-    return json(await makeHandback(env, await signedIn(request, env), await body(request, 8192)));
+    const u = await signedIn(request, env);
+    // (one handed over from an app goes on to none until it's shown it's you here)
+    if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth");
+    return json(await makeHandback(env, u, await body(request, 8192)));
   },
   // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
   // (the invite in the body, never the address: an address ends up in logs)
@@ -210,10 +237,13 @@ const ROUTES = {
   "POST signup": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await makeAccount(env, request, await body(request));
-    if (emailReady(env)) waitUntil(sendConfirm(env, u, request).catch((e) => console.error("confirm mail", e.message)));
+    // (the confirm link, sent as it's made, and said in what the page's shown only if it went: one that couldn't be sent,
+    // Resend not answering in time among them (functions/_email.js sendEmail), is offered again there, which says why if
+    // it still can't)
+    const sent = emailReady(env) ? await sendConfirm(env, u, request).catch((e) => { console.error("confirm mail", e.message); return null; }) : null;
     waitUntil(logEvent(env, u.id, "signup", request));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash);
+    return withKnown(await withSession(json(await view(env, { ...u, email_sent: sent, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
   },
   // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
   "POST reset/request": async ({ request, env, waitUntil }) => {
@@ -231,7 +261,7 @@ const ROUTES = {
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
       rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"], ["Passkeys", "Removed: add one again in Sign-in and security"]] }, linkOrigin(request)));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    return withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash);
+    return withKnown(await withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash), request, env, u);
   },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env, false, { deleting: true });
@@ -251,7 +281,8 @@ const ROUTES = {
       ok = !!cred && await verifyAssertion(cred, request, b, env);
     }
     if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
-    await D.prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
+    // (and one handed over from an app, shown to be yours, is the browser's own from now on)
+    await D.prepare("UPDATE pg_sessions SET auth_at = ?, handed = NULL WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
     return json({ ok: true });
   },
   // the password-locked key, for the password itself (its proof is the check): the page unlocks it, to lock it anew
@@ -265,8 +296,9 @@ const ROUTES = {
   },
   // An account from before Argon2id, signed in to here with its password: stretched again the new way (the same
   // password and key, a new salt, and the key locked anew with what it gives), as InFlight did when it signed in itself.
-  // Nothing else changes, so nothing's said.
-  "POST password/upgrade": async ({ request, env }) => {
+  // Nothing else changes; but as the server can't tell it's the same password, it's noted in Recent activity and
+  // emailed, so it's never a quiet way to change one (at most once an account).
+  "POST password/upgrade": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
     await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
@@ -274,12 +306,20 @@ const ROUTES = {
     if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
     const vault = checkNewSecret(b);
     if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
-    await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
+    const r = await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
       .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
+    if (r.meta?.changes) {
+      waitUntil(logEvent(env, u.id, "upgrade", request));
+      waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
+        line: "your account’s password is now kept with a stronger kind of protection.",
+        // (not "change your password": that needs the password as it is now, which, if it wasn't them, someone else chose)
+        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.georgefarrowgreen.com. A reset signs out every other device." }, linkOrigin(request)));
+    }
     return json({ ok: true, salt: b.salt });
   },
   // a new password: the old one's proof, the new one's salt and proof, and the key locked with it. Every other sign-in
-  // ends (this one stays), as anywhere a password's changed. (Checked against data breaches on the page as it was typed.)
+  // ends (this one stays), as anywhere a password's changed. (Checked against data breaches on the page as it was typed,
+  // and kept as checked only if that got an answer (checked: true): one that didn't is left for the check-up to ask.)
   "POST password": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
@@ -287,15 +327,18 @@ const ROUTES = {
     if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "Your current password isn’t right.", "current");
     const vault = String(b.vault || "");
     if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32 || vault.length < 20 || vault.length > 4000) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
-    const D = await db(env), t = Date.now();
+    const D = await db(env), t = Date.now(), ck = b.checked === true ? t : null;
     await D.batch([
-      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
+      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, ck, u.id),
       D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
-    return json(await view(env, { ...u, salt: b.salt, pw_leaked: 0, pw_checked_at: t }));
+    // (and this device, which has just shown it knows the password, given a new word that it's signed in to the account
+    // before, as the one it had counts for nothing with the new password: functions/_account.js withKnown)
+    const now = { ...u, salt: b.salt, pw_at: t, pw_leaked: 0, pw_checked_at: ck, email_new: null, email_new_at: null };
+    return withKnown(json(await view(env, now)), request, env, now);
   },
   // How the password did against data breaches, checked on the page (which has it as you type it): kept with its proof,
   // so only someone who knows it can say. (It's shown it's you, too.)
@@ -397,7 +440,7 @@ const ROUTES = {
       await D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).run();
       if (s) waitUntil(logEvent(env, u.id, "signout-device", request, s.label || "A phone or browser"));
     }
-    return json(await view(env, u));
+    return json(await view(env, b.others ? { ...u, email_new: null, email_new_at: null } : u));
   },
   "GET activity": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -439,13 +482,21 @@ const ROUTES = {
     await limit(env, "emailchange:" + u.id, 5, DAY);
     const D = await db(env);
     if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "That email is already used by another account.", "email");
-    const token = randomToken(32), t = Date.now();
-    await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, hex(await sha256(token)), t, u.id).run();
+    const token = randomToken(32), t = Date.now(), code = hex(await sha256(token));
+    await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, code, t, u.id).run();
     const origin = linkOrigin(request);
-    await tell(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
+    // (a link that couldn't be sent is said, and nothing else is done: a change that was waiting before is put back,
+    // unless a newer one has taken its place since)
+    const sendLink = (...a) => accountMail(...a).catch(async (e) => {
+      await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ? AND email_new_code = ?")
+        .bind(u.email_new ?? null, u.email_new_code ?? null, u.email_new_at ?? null, u.id, code).run().catch(() => {});
+      throw e;
+    });
+    await sendLink(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
       after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
+    // (to the address as it is, confirmed or not, with how to call it off)
     waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
-      pill: ["mail", hide(email)] }, origin));
+      after: "If this wasn’t you, sign in now and change your password. That calls the change off and signs out every other device.", to: u.email, pill: ["mail", hide(email)] }, origin));
     waitUntil(logEvent(env, u.id, "email-change-asked", request, hide(email)));
     return json(await view(env, { ...u, email_new: email, email_new_at: t }));
   },
@@ -465,9 +516,14 @@ const ROUTES = {
       ]);
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
+    // (and what to do if it wasn't them: password sign-ins and resets go by the new address now, so the site's admin)
     waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
+      after: "If this wasn’t you, you can no longer sign in or reset your password with this address. Ask the person who runs the site for a reset link, and you can put your email back.",
       to: u.email, pill: ["mail", hide(u.email_new)] }, linkOrigin(request)));
-    return json({ ok: true, email: u.email_new });
+    // (opened in a browser signed in to the account: its word that it's signed in to it before given anew, for the new
+    // address, as the one it had is named by the old: functions/_account.js withKnown)
+    const res = json({ ok: true, email: u.email_new });
+    return (await cookieUser(request, env).catch(() => null))?.id === u.id ? withKnown(res, request, env, { ...u, email: u.email_new }) : res;
   },
   "POST email/cancel": async ({ request, env }) => {
     sameOrigin(request);
@@ -515,6 +571,36 @@ const ROUTES = {
       await unitsForAccount(env, u.id, s);
     }
     return json(await view(env, now));
+  },
+
+  // ---- InFlight's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own
+  // rules (functions/_notify.js cleanPrefs, functions/api/pigeon setPrivacy), and the app takes it up as it next syncs ----
+  "GET inflight": async ({ request, env }) => json(await inflightSettings(env, await signedIn(request, env))),
+  "PATCH inflight": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 4096), D = await db(env);
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.notify !== undefined) {
+      if (!b.notify || typeof b.notify !== "object") throw new HttpError(400, "Bad request.");
+      await savePrefs(D, u.id, b.notify);
+    }
+    if (b.email !== undefined) {
+      if (typeof b.email !== "boolean") throw new HttpError(400, "Choose on or off.");
+      await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.email ? 1 : 0, Date.now(), u.id).run();
+    }
+    if (b.privacy !== undefined) {
+      const P = b.privacy && typeof b.privacy === "object" ? b.privacy : {}, set = {};
+      for (const k of PRIVACY) if (P[k] !== undefined) { if (typeof P[k] !== "boolean") throw new HttpError(400, "Choose on or off."); set[k] = P[k]; }
+      await setPrivacy(D, u, set);
+    }
+    return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
+  },
+  // someone blocked in InFlight, unblocked (only lifted: they aren't told, as they weren't told of the block)
+  "DELETE inflight/block": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), id = String((await body(request)).id || ""), D = await db(env);
+    await D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'blocked'").bind(u.id, id).run();
+    return json(await inflightSettings(env, u));
   },
 
   // ---- your data: everything kept with the account that can be read (InFlight's letters can't: they're encrypted on

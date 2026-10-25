@@ -351,11 +351,11 @@ test("the tick keeps to Open-Meteo's free allowance: whole forecasts first, then
 });
 
 test("what's due when the app's opened: the forecast after 10 minutes, warnings after 5, the rest hourly", async () => {
-  const { due } = await import("../../../weather/data.js");
+  const { due, forgetKept } = await import("../../../weather/data.js");
   const mem = new Map(), had = globalThis.localStorage;
   globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
   try {
-    const here = { lat: 52.86, lon: 1.47 }, at = Date.UTC(2026, 9, 20, 9), kept = (o) => mem.set("wx:52.9,1.5", JSON.stringify(o));
+    const here = { lat: 52.86, lon: 1.47 }, at = Date.UTC(2026, 9, 20, 9), kept = (o) => { mem.set("wx:52.9,1.5", JSON.stringify(o)); forgetKept(); };   // (written behind data.js's back, as another tab would: forgotten, so it's read afresh)
     assert.equal(due(here, at), true, "nothing kept");
     kept({ forecast: { at: at - 4 * 60e3 }, warnings: { at: at - 4 * 60e3 }, models: { at: at - 50 * 60e3 } });
     assert.equal(due(here, at), false, "all of it fresh");

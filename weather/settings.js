@@ -238,6 +238,8 @@ async function notifyChanged(note = "") {
 async function togglePlace(p, k) {
   const n = S.settings.notify, key = nkey(p), e = n.places.find((x) => nkey(x) === key), on = !e?.[k];
   let note = "";
+  // (a place more than the server takes isn't added: it'd refuse every save after, and the account's with it)
+  if (on && !e && n.places.length >= A.MAX_NOTIFY) { notifySay(`Notifications can be on for ${A.MAX_NOTIFY} places at most. Turn one off first.`); return; }
   if (on) { const [go, said] = await allowed(); if (!go) { notifySay(said); return; } note = said; }
   if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
   n.places = n.places.filter((x) => x.rain || x.warn);
@@ -406,17 +408,19 @@ function editAct(i) {
   const a = S.settings.activities[i], f = S.f;
   const tU = (c) => Math.round(f.units.temp === "f" ? c * 9 / 5 + 32 : c), tM = (v) => (f.units.temp === "f" ? (v - 32) * 5 / 9 : v);
   const wk = f.windNum(1000) / 1000, wU = (k) => Math.round(k * wk), wM = (v) => v / wk;
-  const num = (name, text, v, unit) => h("label", { class: "fld" }, h("span", {}, text), h("span", { class: "fld-in" }, h("input", { type: "number", name, value: String(v), inputmode: "numeric", step: "1" }), unit ? h("small", {}, unit) : null));
+  // (signed: the temperatures, which can be below zero; an iPhone's keypad for numeric has no minus, the one it shows a
+  // number field otherwise has)
+  const num = (name, text, v, unit, signed) => h("label", { class: "fld" }, h("span", {}, text), h("span", { class: "fld-in" }, h("input", { type: "number", name, value: String(v), inputmode: signed ? null : "numeric", step: "1" }), unit ? h("small", {}, unit) : null));
   const hour = (name, text, v) => h("label", { class: "fld" }, h("span", {}, text), h("select", { name }, ...Array.from({ length: 25 }, (_, k) => h("option", { value: String(k), selected: k === v ? true : null }, k === 24 ? "midnight" : f.time(Date.UTC(2000, 0, 1, k))))));
   const ed = h("div", { class: "act-edit" },
     h("label", { class: "fld wide" }, h("span", {}, "Name"), h("input", { type: "text", name: "name", value: a.name, maxlength: "24" })),
-    num("tmin", "Feels like from", tU(a.tmin), "°"), num("tmax", "to", tU(a.tmax), "°"),
+    num("tmin", "Feels like from", tU(a.tmin), "°", true), num("tmax", "to", tU(a.tmax), "°", true),
     num("windMin", "Wind at least", wU(a.windMin || 0), f.windUnit), num("windMax", "Wind at most", wU(a.windMax), f.windUnit),
     num("gustMax", "Gusts at most", wU(a.gustMax), f.windUnit),
     h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
     num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
     h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: setBack }, "Done"),
-      h("button", { class: "link danger", type: "button", onclick: () => { actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
+      h("button", { class: "link danger", type: "button", onclick: () => { if (!confirm(`Remove “${a.name}”?`)) return; actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
   const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
   function done() {
     Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),

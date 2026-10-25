@@ -8,8 +8,10 @@
 //
 // Each day is the airport's own (its UTC offset, from Open-Meteo), whoever
 // asks; and only reports just fetched from the Aviation Weather Center are
-// written (the same reports again would change nothing). The tick clears out
-// days older than six weeks (functions/_wxpush.js).
+// written (the same reports again would change nothing), a day kept already only
+// where they have more of its reports, or as many but not the same (an answer's
+// oldest day is cut short at its start: it mustn't replace the whole day kept
+// before it). The tick clears out days older than six weeks (functions/_wxpush.js).
 //
 // AWC_URL, WXAPP_URL: tests only.
 
@@ -64,7 +66,9 @@ export async function obsFor(env, lat, lon) {
       const { data, fresh } = await cachedJSON(`${base}/api/data/metar?ids=${encodeURIComponent(st.id)}&format=json&hours=360`, 3600);
       if (fresh) {
         const rows = Object.entries(obsDays(data, await offsetAt(env, st)));
-        if (rows.length) await D.batch(rows.map(([day, x]) => D.prepare("INSERT OR REPLACE INTO wx_obs (station, day, tmax, tmin, n, hours) VALUES (?, ?, ?, ?, ?, ?)").bind(st.id, day, x.tmax, x.tmin, x.n, JSON.stringify(x.hours))));
+        if (rows.length) await D.batch(rows.map(([day, x]) => D.prepare(`INSERT INTO wx_obs (station, day, tmax, tmin, n, hours) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(station, day) DO UPDATE SET tmax = excluded.tmax, tmin = excluded.tmin, n = excluded.n, hours = excluded.hours
+          WHERE excluded.n > wx_obs.n OR (excluded.n = wx_obs.n AND excluded.hours IS NOT wx_obs.hours)`).bind(st.id, day, x.tmax, x.tmin, x.n, JSON.stringify(x.hours))));
       }
     } catch (e) { console.error("weather obs: reports", st.id, e && e.message); }
     const { results } = await D.prepare("SELECT day, tmax, tmin, hours FROM wx_obs WHERE station = ? AND day >= ? ORDER BY day").bind(st.id, since).all();

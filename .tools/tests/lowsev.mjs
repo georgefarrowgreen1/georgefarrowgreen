@@ -1,7 +1,8 @@
-// Three small server fixes: guessing elsewhere can't lock you out, two standard pigeons at once
-// can't both take the turn, and unfriending puts booked pigeons back in their lofts.
+// Three small server fixes: guessing elsewhere can't lock you out (nor, on a device that's signed in
+// before, guessing from everywhere at once), two standard pigeons at once can't both take the turn,
+// and unfriending puts booked pigeons back in their lofts.
 import { kit } from './lib.mjs';
-import { signInInFlight } from './join.mjs';
+import { signInInFlight, accountUrl, PASSWORD } from './join.mjs';
 import { acctCall } from './handback.mjs';
 import { randomUUID } from 'crypto';
 const [,, S, out] = process.argv;
@@ -42,6 +43,26 @@ await fetch(K.BASE + '/api/pigeon/friends', { method: 'DELETE', headers: { Autho
 const gone = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE pigeon = 'swift'`)[0].n);
 const loft = one(`SELECT swift FROM pg_users WHERE id = '${as.me.id}'`)[0].swift;
 ok(gone === 0 && loft === before, 'unfriended: the booked pigeon stays home, and is back in the loft', `rows ${gone}, loft ${loft}`);
+// 4. Ann signs in on the account's page on her phone (and out again): it keeps a word that it has. Then guessing spread
+// wide (ten more from each of thirty addresses) holds the account itself back, but not on her phone; a new one is told
+// a passkey still works
+// (signing in on the account's page, in a phone's browser, and out again if asked: → "signed in", or what it says)
+const onPage = async (ph, out = false) => {
+  const q = await ph.ctx.newPage(); await q.goto(accountUrl(K.URL));
+  await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 30000 });
+  if (await q.$('main .signin input[name=email]')) await q.fill('main .signin input[name=email]', 'ann@example.com');
+  await q.fill('main .signin input[name=password]', PASSWORD); await q.click('main .signin form .btn');
+  const r = await Promise.race([q.waitForSelector('main .hero', { timeout: 30000 }).then(() => 'signed in'),
+    q.waitForSelector('main .said.bad', { timeout: 30000 }).then((e) => e.innerText())]).catch(() => 'nothing');
+  if (r === 'signed in' && out) { await q.click('main .row.action:text-is("Sign out")'); await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 15000 }); }
+  await q.close(); return r;
+};
+const before4 = await onPage(A2, true);
+for (let ip = 10; ip < 40; ip++) for (let i = 0; i < 10; i++) await acctCall('signin/password', { email: 'ann@example.com', proof: 'x'.repeat(43) }, { ip: `198.51.100.${ip}` });
+const A3 = await K.phone('ann3');
+const [mine, theirs] = [await onPage(A2), await onPage(A3)];
+ok(before4 === 'signed in' && mine === 'signed in', 'guessed at from everywhere: Ann still signs in with her password on her phone, which has signed in before', `${before4} | ${mine}`);
+ok(/^Too many tries for this account\. Try again in [^,]+, or sign in with a passkey\.$/.test(theirs), 'a device that hasn\'t signed in before is held back, and told a passkey still works', theirs);
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
 process.exit(0);

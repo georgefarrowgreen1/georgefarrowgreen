@@ -342,17 +342,24 @@ export function rangeChart(host, o, again = false) {
   svg.append(el("rect", { x: X(o.p25), y: y0 - 6, width: X(o.p75) - X(o.p25), height: 12, rx: 6, class: "r-mid" }));
   svg.append(el("line", { x1: X(o.mean), x2: X(o.mean), y1: y0 - 10, y2: y0 + 10, class: "r-mean" }));
   svg.append(el("text", { x: X(o.mean), y: y0 + 24, class: "r-text", "text-anchor": "middle" }, `Normal ${o.fmt(o.mean)}`));
-  svg.append(el("text", { x: X(o.p10), y: y0 - 12, class: "r-small", "text-anchor": "middle" }, o.fmt(o.p10)));
-  svg.append(el("text", { x: X(o.p90), y: y0 - 12, class: "r-small", "text-anchor": "middle" }, o.fmt(o.p90)));
+  // (today's label kept inside the chart, its width guessed rather than measured: a card not yet laid out measures
+  // nothing; an end of the range named only where that label leaves it room, the band's edge showing where it is)
+  const vlab = o.value != null ? (o.valueLabel || o.fmt(o.value)) : null;
+  const vw = vlab ? vlab.length * 7.5 + 4 : 0;
+  const vx = vlab ? Math.min(Math.max(X(o.value), L + vw / 2), W - R - vw / 2) : null;
+  for (const p of [o.p10, o.p90]) {
+    const s = o.fmt(p);
+    if (vx == null || Math.abs(X(p) - vx) > vw / 2 + s.length * 3.5 + 4)
+      svg.append(el("text", { x: X(p), y: y0 - 12, class: "r-small", "text-anchor": "middle" }, s));
+  }
   if (o.record) {
     const x = X(o.record.v);
     svg.append(el("line", { x1: x, x2: x, y1: y0 - 8, y2: y0 + 8, class: "r-record" }));
     svg.append(el("text", { x: Math.min(x, W - 30), y: y0 + 24, class: "r-small", "text-anchor": "middle" }, `Record ${o.fmt(o.record.v)}`));
   }
-  if (o.value != null) {
-    const x = X(o.value);
-    svg.append(el("circle", { cx: x, cy: y0, r: 7, class: "r-value" }));
-    svg.append(el("text", { x: Math.min(Math.max(x, 24), W - 24), y: y0 - 14, class: "r-vtext", "text-anchor": "middle" }, o.valueLabel || o.fmt(o.value)));
+  if (vlab) {
+    svg.append(el("circle", { cx: X(o.value), cy: y0, r: 7, class: "r-value" }));
+    svg.append(el("text", { x: vx, y: y0 - 14, class: "r-vtext", "text-anchor": "middle" }, vlab));
   }
   put(host, svg, fresh, !again, "r");
 }
