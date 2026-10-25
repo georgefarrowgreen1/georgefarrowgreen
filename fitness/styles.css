@@ -223,7 +223,7 @@ button.card:active { transform: scale(0.985); transition-duration: var(--dur-pre
 .wday.today .d { color: var(--tint-text); }
 .wday .mark { height: 16px; display: grid; place-items: center; color: var(--good); }
 .wday .mark .o { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: 0.6; }
-.week-sum { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.week-sum { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-top: 14px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .week-sum b { color: var(--text); font-weight: 600; }
 
 /* how you feel */
@@ -383,7 +383,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .zrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) 66px; align-items: center; gap: 8px; font-size: 13px; }
 .zrow > span:first-child { font-weight: 700; color: var(--text-2); }
 .zrow .zbar { height: 18px; border-radius: 6px; background: var(--glass-ctl); overflow: hidden; }
-.zrow .zbar i { display: block; height: 100%; border-radius: 6px; min-width: 2px; width: 0; transition: width 0.7s var(--ease-out); }
+.zrow .zbar i { display: block; height: 100%; border-radius: 6px; width: 0; transition: width 0.7s var(--ease-out); }
 .zrow .zv { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .zone-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 22px; padding: 0 7px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #10131f; }
 
@@ -402,7 +402,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
 .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
 .stepper button:active { background: var(--press); }
-.stepper output { min-width: 64px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stepper output { min-width: 88px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stepper label { display: none; }
 .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
 .field:focus { outline: 2px solid var(--tint); outline-offset: 0; }
@@ -695,7 +695,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .rh-today h2 { margin: 0; font: 700 26px/1.1 var(--font-d); letter-spacing: -0.4px; }
 .rh-today .rh-chip + h2 { margin-top: 8px; }
 .rh-today p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
-.rh-today-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.rh-today-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 .rh-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 999px; background: var(--glass-ctl); font-size: 13px; font-weight: 600; color: var(--text); }
 .rh-today.done .rh-chip, .rh-today.rest .rh-chip { padding-left: 10px; }
 .rh-today .extras { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--text-2); }
@@ -750,3 +750,12 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .checkin-q { display: grid; gap: 10px; }
 .checkin-q b { font-size: 16px; font-weight: 600; }
 .rh-today .acts { flex-wrap: wrap; }
+
+/* ---- from the look over every screen ---- */
+.pill { white-space: nowrap; }
+.rh-chip { white-space: nowrap; }
+.row small.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .tx { min-width: 0; }
+/* (a narrow phone: the day's shape left out of Coming up, so its name has the room) */
+@media (max-width: 359px) { .rh-coming .mini { display: none; } }
+.row .tx small[hidden] { display: none; }

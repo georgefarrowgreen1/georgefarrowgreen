@@ -706,7 +706,7 @@ function rhythmSetup() {
     };
     return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(4, editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
       h("div.group", {}, ds.map(rowOf)),
-      h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard", plural(hard.length, "session")], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
+      h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard days", String(hard.length)], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
       h("button.btn.rh-next", { type: "button", onclick: start }, editing ? "Save" : "Start Rhythm"),
       h("p.rh-note", { text: "Change your week any time in Plan" })] };
   };
@@ -874,7 +874,7 @@ function uploadFilesView() {
 function actRow(a) {
   const s = sumOf(a);
   return h("button.row", { type: "button", onclick: () => openAct(a) }, sportTile(a.sport),
-    h("span.tx", {}, h("b", { text: a.name }), h("small", { text: `${dayShort(a.start)} · ${a.device || (a.sample ? "Example" : "Imported")}` })),
+    h("span.tx", {}, h("b", { text: a.name }), h("small.one-line", { text: `${dayShort(a.start)} · ${a.device || (a.sample ? "Example" : "Imported")}` })),
     h("span.val", {}, s ? (s.dist > 100 ? dist(s.dist) : hm(s.moving)) : "", h("small", { text: s ? [s.dist > 100 ? hm(s.moving) : null, s.tss != null ? `TSS ${s.tss}` : null].filter(Boolean).join(" · ") : "" })));
 }
 // an activity, opened: its file read first, where it isn't here yet (from this device's copy, or the account's)
@@ -1030,8 +1030,8 @@ function settingsView() {
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; keep("prefs"); redraw(true); } }))),
       section("Your data", h("div.group", {},
-        row({ icon: "inbox", tint: "blue", title: "Import files", sub: "FIT, GPX, TCX, ZWO, ERG, MRC, or a zip of them", onclick: () => { closeSheet(); chooseFiles(); } }),
-        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity's own file, and your workouts as FIT and ZWO, in one zip", onclick: exportAll }))),
+        row({ icon: "inbox", tint: "blue", title: "Import files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => { closeSheet(); chooseFiles(); } }),
+        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity’s file, in one zip", onclick: exportAll }))),
       section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
     ],
   };
@@ -1060,7 +1060,7 @@ function numbersView() {
         field("Threshold pace", "runPace", (v) => pace(paceOf(v)), 5, 150, 600), field("CSS", "css", (v) => pace(v, "/100 m"), 1, 50, 240)),
       best20 > 0 && card(null, "From your rides", h("p.line-said", { text: `Your best 20 minutes in the last six weeks: ${best20} W, an FTP of about ${Math.round(best20 * 0.95)} W.` }),
         Math.abs(Math.round(best20 * 0.95) - p.ftp) >= 5 && h("button.pill.small", { type: "button", onclick: () => { S.profile = { ...P(), ftp: Math.round(best20 * 0.95) }; keep("profile"); Sheet.redraw(); resum(); redraw(); toast(`FTP set to ${S.profile.ftp} W`); } }, `Use ${Math.round(best20 * 0.95)} W`)),
-      h("p", { text: "FTP is the power you could hold for about an hour. The ramp test or the 20-minute test in Workouts will find it; or ride hard and Fitness will notice." }),
+      h("p", { text: "FTP is the power you could hold for about an hour. Ride hard for 20 minutes and Fitness will notice, and suggest one." }),
     ],
   };
 }
@@ -1195,11 +1195,12 @@ function uploadView(got) {
     h("button.btn.quiet", { type: "button", onclick: () => { closeSheet(); chooseFiles(); } }, "Choose other files")] };
   const rows = got.acts.map((a) => {
     const sum = summarise(a, P()), tile = h("span.tile.s-" + a.sport, {}, sportIcon(a.sport, 20)), name = h("b", { text: a.name });
-    const said = h("small.said", { text: a.guessed ? "Fitness worked this out: check it" : "As your device recorded it" });
+    // (said only where it matters: a sport worked out, to check; or one you chose)
+    const said = h("small.said", { text: "Fitness worked this out: check it" }); said.hidden = !a.guessed;
     const pick = h("select.sport-pick", { "aria-label": `What ${a.name} was`, onchange: () => {
       const was = defaultFor(a), now = pick.value; a.sport = now; a.guessed = false;
       if (a.name === was) { a.name = defaultFor(a); name.textContent = a.name; }
-      tile.className = "tile s-" + now; tile.replaceChildren(sportIcon(now, 20)); said.textContent = "Chosen by you";
+      tile.className = "tile s-" + now; tile.replaceChildren(sportIcon(now, 20)); said.textContent = "Chosen by you"; said.hidden = false;
     } }, SPORT_NAMES.map(([v, l]) => h("option", { value: v, selected: a.sport === v, text: l })));
     return h("div.row.up" + (a.guessed ? ".guess" : ""), {}, tile,
       h("span.tx", {}, name, h("small", { text: [`${dayShort(a.start)}, ${timeOf(a.start)}`, sum.dist > 100 ? dist(sum.dist) : null, hm(sum.moving)].filter(Boolean).join(" · ") }), said),
