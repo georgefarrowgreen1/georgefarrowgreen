@@ -2388,6 +2388,7 @@ async function sync() {
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
       const caught = S.pinsUnread && await pinsCatchUp();      // (trusted keys it couldn't fetch at the start: now, before it trusts any shown here)
+      if (S.token !== tok) return;                // (signed out while it asked: as above)
       // nothing new since last time: no redraw, no re-saving (an open app asks every 15 s)
       // (a friend's last-seen time moves once a minute while they're about: that alone is taken in quietly, and only
       // a change of who's online now redraws)
@@ -2400,9 +2401,9 @@ async function sync() {
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
-      // (the open Skies map keeps up every time; on Messages the strip already catches up when something sets off or
-      // lands, and on any redraw, so past that it's every couple of minutes, for what no sync shows)
-      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || (S.view === "messages" && Date.now() - (S.skiesAt || 0) > 120e3)) loadSkies();
+      // (the open Skies map keeps up every time; on Messages the strip does whenever the sync changed, a new landing
+      // time say, and past that every couple of minutes, for what no sync shows)
+      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || (S.view === "messages" && (!same || Date.now() - (S.skiesAt || 0) > 120e3))) loadSkies();
       const wasCache = S.fromCache; S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged || onlineMoved)) calmRender();
       S.chatChanged = false;
@@ -2473,11 +2474,13 @@ function savePins() {
 // (no answer: the next sync asks again, before it trusts anything it shows; noted on the
 // phone, so a restart before then still does)
 async function restorePins() {
-  S.pinsUnread = !!(await idb.get("pinsunread:" + S.me.id).catch(() => null));
+  const tok = S.token, id = S.me.id;
+  S.pinsUnread = !!(await idb.get("pinsunread:" + id).catch(() => null));
   if (Object.keys(S.pins).length) return;
   let p;
-  try { p = await serverPins(); } catch (_) { S.pinsUnread = true; await idb.set("pinsunread:" + S.me.id, 1); return; }
-  if (p) { S.pins = p; await idb.set("pins:" + S.me.id, S.pins); await idb.set("pinsup:" + S.me.id, Date.now()); }
+  // (a sign-in that had ended signs out as it's asked: that's not "no answer", and start carries on to the welcome)
+  try { p = await serverPins(); } catch (_) { if (S.token === tok) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
+  if (p && S.token === tok) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
 }
 // ...and once it answers, the server's copy wins for each friend's key, so one that changed meanwhile is
 // flagged, with what this phone trusted meanwhile added. True once done.
@@ -2583,10 +2586,11 @@ const base = (fid) => pairFor(trustedPub(friend(fid)));
 // A key the server says changed isn't used until you've checked it.
 const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
 // What a decrypted thing must look like, by what it is: a reaction is one of
-// the reactions and nothing else; a message (or a stopover's copy) has words.
+// the reactions (and the id of the message it's on: reactOf) and nothing else;
+// a message (or a stopover's copy) has words.
 // Anything else is treated as unreadable, whatever the server sent.
 const shapeOK = (kind, o) => !!o && typeof o === "object" && !Array.isArray(o) && (kind === "react"
-  ? Object.keys(o).length === 1 && REACTIONS.includes(o.r)
+  ? REACTIONS.includes(o.r) && (Object.keys(o).length === 1 || (Object.keys(o).length === 2 && typeof o.m === "string"))
   : typeof o.t === "string" && !("r" in o) && !("k" in o));
 // Each id belongs to one conversation (and one kind of thing): if the same id
 // turns up somewhere else, neither is shown as the other.
@@ -5012,17 +5016,20 @@ function quoteHtml(q, g) {
   else q = { id: String(q.id || ""), from: String(q.from || ""), t: String(q.t || "").slice(0, 90), p: ["gif", "voice", "photo"].includes(q.p) ? q.p : "" };
   return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
+// A reaction's emoji, only on the message it was sealed for: its id goes inside it, so the server can't move it
+// to another (one from before that has none: shown where the server says, until it goes after 30 days)
+const reactOf = (r) => { const p = S.plain.get(r.id); return p?.r && (p.m === undefined || p.m === r.msg) ? p.r : null; };
 // The reactions on a message: each once it has landed (yours straight away)
 function reactsHtml(m, mine) {
-  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && S.plain.get(r.id)?.r);
+  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && reactOf(r));
   if (!list.length) return "";
   const by = new Map();
-  for (const r of list) { const e = S.plain.get(r.id).r, x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
+  for (const r of list) { const e = reactOf(r), x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
   return `<div class="reacts${mine ? " me" : ""}" data-key="rx:${esc(m.id)}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" data-key="rp:${esc(m.id)}:${esc(e)}" data-sig="${x.n}${x.flying ? "f" : ""}" data-in="pop" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
 }
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
-  const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+  const cur = mineNow && reactOf(mineNow), m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
   const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   const words = m && S.plain.get(id)?.t;
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
@@ -5041,12 +5048,12 @@ async function sendReact(id, e) {
   const g = group(S.chat), chat = S.chat, list = S.reacts.get(chat) || [];
   const mineNow = list.find((r) => r.msg === id && r.from === S.me.id);
   try {
-    if (mineNow && S.plain.get(mineNow.id)?.r === e) {          // the same one again takes it back
+    if (mineNow && reactOf(mineNow) === e) {          // the same one again takes it back
       await api("react", { method: "DELETE", body: { msg: id } });
       S.reacts.set(chat, list.filter((r) => r !== mineNow)); return render();
     }
     const m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m) return;
-    const rid = uuid(), payload = { r: e };
+    const rid = uuid(), payload = { r: e, m: id };
     let body;
     if (g) {
       const { body: sealed, key, h } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id, type: "react" }, payload);

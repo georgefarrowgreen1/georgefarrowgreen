@@ -1885,10 +1885,13 @@ times, never message text, photos or private keys.
 What each ciphertext is (a message, a reaction, a group key, a stopover's copy
 or note) is bound into it along with its id, sender and recipient (format v2;
 v1 from before still opens), so the server can't re-address, swap or
-re-label one. In a group, each member's sealed key also carries a hash of the
-body, so the body is provably the sender's, not just the group's. The phone
-checks each decrypted thing looks like what it should (a reaction is one of
-the six; a message has words), and remembers which conversation each id
+re-label one. A reaction also carries, sealed inside it, the id of the message
+it's on, so the server can't move it to another (one from before this, without
+it, shows where the server says until it goes after 30 days). In a group, each
+member's sealed key also carries a hash of the body, so the body is provably
+the sender's, not just the group's. The phone checks each decrypted thing looks
+like what it should (a reaction is one of the six, on the message it was sealed
+for; a message has words), and remembers which conversation each id
 belongs to: if the same id turns up elsewhere, neither is shown as the other.
 The server keeps message, group message and reaction ids in one table
 (`pg_ids`), so no id can be two things. A reply's quote shows the original's
