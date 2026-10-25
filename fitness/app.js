@@ -1112,7 +1112,20 @@ async function pull() {
   } catch (_) {} finally { pull.busy = false; }
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); });
-addEventListener("pageshow", (e) => { if (e.persisted && S.me) pull(); });
+addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
+
+// ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
+// come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js"];
+const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
+let version = null, versionAt = Date.now();
+versionNow().then((v) => { version = v; });
+addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !version || Date.now() - versionAt < 30e3) return;
+  versionAt = Date.now();
+  const v = await versionNow();
+  if (v && !v.split(",").includes("") && v !== version && !document.querySelector(".btn[disabled]")) location.reload();
+});
 // Signing out, here (everywhere on the site, in this browser), or found to be signed out (elsewhere): this device's
 // copies of your files go too
 async function signOutHere(already = false) {

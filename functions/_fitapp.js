@@ -34,9 +34,8 @@ export function serveFitness(res, path) {
   if (res.status === 404) return notFound();
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(FIT_SECURITY)) out.headers.set(k, v);
-  // small files, always checked for a newer copy (the browser keeps its copy until one appears); private, so
-  // Cloudflare passes them through rather than keeping them
-  if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "private, no-cache");
+  // the page and its code never kept, so each opening is the latest (app.js also checks, as you come back to it)
+  if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "no-store");
   if (res.status === 200 && /\.(png|svg)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=86400");
   return out;
 }
