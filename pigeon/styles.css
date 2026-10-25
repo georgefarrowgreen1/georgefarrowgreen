@@ -1883,7 +1883,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
    flight's timeline (app.js flightCard). It springs between the two (its
    height, with the map re-fitting above it), its rows rise in one by one and
    the line flown draws down to the pigeon, which pulses gently where it is now. */
-.mapcard.fc{padding:6px 16px 14px;gap:12px;transition:transform .5s var(--snappy),border-radius .4s var(--smooth)}
+.mapcard.fc{padding:6px 16px 14px;gap:12px;transition:transform .5s var(--snappy),border-radius .4s var(--smooth);
+  max-height:calc(100% - 28px - env(safe-area-inset-bottom,0px))}   /* (never taller than the map: a long flight's timeline scrolls in it rather than the card's top going under the title) */
 .mapcard.fc.fold{padding:6px 14px 12px;gap:10px;border-radius:26px}
 .mapcard.fc.drag{transition:none}
 .mapcard.fc.morph{overflow:hidden;transition:height .6s var(--snappy),transform .5s var(--snappy),border-radius .4s var(--smooth)}
