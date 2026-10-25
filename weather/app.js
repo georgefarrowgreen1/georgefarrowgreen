@@ -1103,6 +1103,11 @@ function status() {
 // the top of each sky (styles.css), for the browser's bar to match
 const SKY_TOP = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day": "#43566c", "rain-day": "#303f52", storm: "#1c2130", "snow-day": "#4f6580", fog: "#59626e",
   "clear-night": "#070d22", "partly-night": "#0c1428", "cloudy-night": "#151b27", "rain-night": "#10151f", "snow-night": "#1b2335", dusk: "#1f2b55", dawn: "#24376a" };
+// (each sky's colour at its foot, styles.css --s4: the page's own colour on a phone or a tablet, where the sky ends above
+// Safari's bar at the foot of the screen and the page shows under it)
+const SKY_FOOT = { "clear-day": "#6aa7e2", "partly-day": "#7ea2c9", "cloudy-day": "#7a8a9c", "rain-day": "#5d6d80", storm: "#3f4559", "snow-day": "#92a3b8", fog: "#8d959f",
+  "clear-night": "#1d2c57", "partly-night": "#263453", "cloudy-night": "#313a4c", "rain-night": "#2a3343", "snow-night": "#3e4a62", dusk: "#d98b62", dawn: "#e7ad7c" };
+const footed = matchMedia("(hover: none)");
 function skyFor(wx, now) {
   const c = wx.current || I.hourAt(wx, now) || {}, kind = codeInfo(c.code).kind, day = !!c.isDay, d = I.dayOf(wx, now);
   let s;
@@ -1123,7 +1128,9 @@ function sky(wx, now) {
   document.body.dataset.sky = s;
   const top = SKY_TOP[s] || "#2b5d96";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
-  document.documentElement.style.backgroundColor = top;      // (what shows when the page is pulled past its ends)
+  // (what shows when the page is pulled past its ends; on a phone or a tablet, under Safari's bar at the foot too, so the
+  // sky's colour at its foot there)
+  document.documentElement.style.backgroundColor = footed.matches ? SKY_FOOT[s] || top : top;
   // (and kept, for the page to open on next time, before the app has started: early.js)
   const kept = store.get("wx:sky");
   if (kept?.sky !== s || Date.now() - kept.at > 10 * 60e3) store.set("wx:sky", { sky: s, at: Date.now() });
