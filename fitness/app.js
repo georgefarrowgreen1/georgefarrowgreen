@@ -652,9 +652,9 @@ function actView(a) {
       return h("div.row.plain", {}, h("span.tx", {}, h("b", { text: `Lap ${i + 1}` }), h("small", { text: clock(l.secs) })), h("span.val", { text: [p != null && `${Math.round(p)} W`, hr != null && `${Math.round(hr)} bpm`].filter(Boolean).join(" · ") }));
     }))));
   }
-  // and out again
+  // and out again (the example rides only: your own are kept as you uploaded them)
   const stem = `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`;
-  body.push(section("Export", h("div.group", {},
+  if (a.sample) body.push(section("Export", h("div.group", {},
     row({ tile: h("span.ic.coral", {}, icon("file", 18, 2)), title: "FIT", sub: "For Garmin Connect, Strava, TrainingPeaks, intervals.icu, and the Wahoo app", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "fit"), F.fitFromActivity(x, s)) }),
     x.s.lat && row({ tile: h("span.ic.blue", {}, icon("file", 18, 2)), title: "GPX", sub: "For maps and route apps (Komoot, RideWithGPS), with heart rate, cadence and power", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "gpx"), F.gpxFromActivity(x)) }),
     row({ tile: h("span.ic.grey", {}, icon("file", 18, 2)), title: "TCX", sub: "Garmin’s older format, for tools that want it", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "tcx"), F.tcxFromActivity(x, s)) })),
