@@ -7,13 +7,13 @@
 // nothing of what it says) and worded by the app's own code (weather/alerts.js),
 // so a notification says what the app would.
 //
-// A tick (.github/workflows/weather-tick.yml, every 10 minutes) looks at each
+// A tick (workers/ticker, every 5 minutes, and .github/workflows/weather-tick.yml, every 10) looks at each
 // place that needs it: rain alerts outside the quiet hours (22:00 to 07:00 there),
 // briefings around their time (with any official warnings: functions/_wxwarn.js), and each place's warnings (its
 // weather service's feeds, kept a few minutes for all: a warning new, or raised, since the last told). For rain it asks only for the next few hours'
 // rain (one small request for every place at once); the whole forecast only
-// where a briefing is due; and no more each tick than Open-Meteo's free service
-// allows over a day (the rest wait for the next). Where there's radar, the next
+// where a briefing is due; and no more, however often the ticks come, than Open-Meteo's free service
+// allows over a day (the rest wait for a later one). Where there's radar, the next
 // couple of hours' rain is led by it, as the app's is (functions/_wxradar.js),
 // for the places whose rain alerts could go now. Places are kept to two decimal places (about a
 // kilometre) and forgotten when notifications are turned off, the phone
@@ -49,11 +49,15 @@ import { radarForTick } from "./_wxradar.js";
 const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
 // (a device's places with notifications: as many as a list of saved places is likely to want)
 export const MAX_PLACES = 12;
-// what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
-// (its free service allows 10,000 a day: this keeps the ticks to about 8,000 at most)
-const BUDGET = 55, COST_FULL = 7;
+// what Open-Meteo is asked, in its own measure: a place's rain is one call, its whole forecast about seven (its free
+// service allows 10,000 a day: the ticks have OM_DAY a day between them, earned evenly through it, however often they
+// come, and at most BUDGET in one)
+const BUDGET = 55, COST_FULL = 7, OM_DAY = 8000;
 // the places the radar's read for in a tick (each costs a few tiles, shared with any place near it)
 const RADAR_PLACES = 40;
+// the places whose official warnings are asked for in a tick, at most, how many at once, and none begun once the tick's
+// had this long (well inside the 30 seconds a tick the site's traffic starts is given, and the schedulers' minute)
+const WARN_PLACES = 150, WARN_AT_ONCE = 6, WARN_MS = 20e3;
 // Weather's emails a day, at most (WX_MAIL_DAY sets another), a briefing only within four-fifths of them
 const MAIL_DAY = 60, MAIL = "mail:";
 let ready = null;
@@ -208,7 +212,7 @@ async function moveDev(D, from, s, to, t) {
 // Weather settings, for the units its emails are in)
 export async function applyAccount(env, userId, notify, settings = null) {
   const D = await wxdb(env), w = wantOf(notify), t = Date.now();
-  await unlinkEnded(D);
+  await unlinkEnded(D, userId);
   const { results: devs } = await D.prepare(`SELECT * FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%'`).bind(userId).all();
   for (const dv of devs) await setRows(D, { ...dv }, w, t);
   await setMailDev(D, userId, w, unitsOf(settings), t);
@@ -236,8 +240,9 @@ export async function unitsForAccount(env, userId, U) {
     D.prepare("UPDATE wx_devs SET units = ?2 WHERE user_id = ?1").bind(userId, units)]);
 }
 export async function devicesOf(env, userId) {
-  const D = await wxdb(env); await unlinkEnded(D);
-  const { results } = await D.prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId).all();
+  // (those whose sign-in has ended let go first, in the same trip)
+  const D = await wxdb(env);
+  const [, { results }] = await D.batch([ended(D, userId), D.prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId)]);
   return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
 }
 
@@ -317,12 +322,17 @@ export async function dropAccount(env, userId) {
 // no longer the account's, as if signed out on the device itself. They keep the places they had as their own, but hear
 // nothing more of the account (its changes, its places to come), so a phone someone else had signed in is cut off.
 // (Signed in again on the phone, the app makes it one of the account's again.) Each tick, and before the account's
-// choices go out or its devices are listed.
-export async function unlinkEnded(D) {
-  await D.prepare("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)").run();
+// choices go out or its devices are listed (then only the account's: userId, as its devices' index has them; a device
+// has a sign-in only while it's the account's).
+const ended = (D, userId) => {
+  const q = D.prepare(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE ${userId ? "user_id = ?1 AND " : ""}sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)`);
+  return userId ? q.bind(userId) : q;
+};
+export async function unlinkEnded(D, userId = null) {
+  await ended(D, userId).run();
 }
 
-// Ticks are asked for every 10 minutes by a scheduler, which runs late (GitHub's can be hours late): so the site's traffic
+// Ticks are asked for every 5 minutes by schedulers, which can run late (GitHub's by hours): so the site's traffic
 // asks too, as InFlight's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
 // every 20 seconds from one copy of the server.)
 let wxLook = 0;
@@ -367,13 +377,15 @@ async function tick(env, D, t, origin) {
   ]);
   const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1").all();
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
-  // briefings first (they're kept to their time), and only so many a tick (the rest wait ten minutes)
-  const need = subs.filter((s) => s.tz_off == null || (s.rain && !isQuiet(local(s))) || due(s)).sort((a, b) => due(b) - due(a)).slice(0, PER_TICK);
+  const need = toLook(subs, t);
   // places a few kilometres apart share a forecast (0.05°); the whole of it only where a briefing's due (or the clock's not known yet)
   const snap = (v) => Math.round(v * 20) / 20, cellOf = (s) => `${snap(s.lat)},${snap(s.lon)}`;
   const cells = new Map();
   for (const s of need) { const k = cellOf(s), c = cells.get(k) || { lat: snap(s.lat), lon: snap(s.lon), full: false }; c.full ||= due(s) || s.tz_off == null; cells.set(k, c); }
-  const asked = budgeted([...cells]);
+  // (what's left of Open-Meteo's allowance, kept between ticks: they run one at a time)
+  let left = null; try { left = JSON.parse((await D.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").first())?.v); } catch (_) {}
+  const have = allowance(left, t), asked = budgeted([...cells], Math.floor(have)), cost = asked.reduce((a, [, c]) => a + (c.full ? COST_FULL : 1), 0);
+  if (cost) await D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('om_bucket', ?)").bind(JSON.stringify({ n: have - cost, at: t })).run();
   const forecasts = new Map(), base = env.WXAPP_URL || "https://api.open-meteo.com";
   ask: for (const full of [true, false]) {
     const list = asked.filter(([, c]) => c.full === full);
@@ -390,24 +402,49 @@ async function tick(env, D, t, origin) {
     }
   }
   // the radar's say on the next couple of hours, as the app has it, for each place whose rain alert could go now (not
-  // in its quiet hours, nor within three hours of the last) or whose briefing's due: read all at once, while the
-  // phones are gone through
+  // in its quiet hours, nor within three hours of the last) or whose briefing's due, and whose forecast came: read all
+  // at once, while the phones are gone through
   const radar = radarForTick(env, t), rains = new Map(), spot = (s) => `${s.lat},${s.lon}`;
   const could = (s) => s.rain && (s.tz_off == null || !isQuiet(local(s))) && !(s.last_rain && t - s.last_rain < RAIN_GAP);
-  for (const s of need) if (rains.size < RADAR_PLACES && !rains.has(spot(s)) && (could(s) || due(s))) rains.set(spot(s), radar.at(s.lat, s.lon));
+  for (const s of need) if (rains.size < RADAR_PLACES && forecasts.has(cellOf(s)) && !rains.has(spot(s)) && (could(s) || due(s))) rains.set(spot(s), radar.at(s.lat, s.lon));
   const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, warn: 0, gone: 0 };
   for (const s of need) {
     // (one phone's trouble doesn't stop the others')
     try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s)), origin); } catch (e) { console.error("weather tick:", e && e.message); }
   }
-  // official warnings, every tick, for each place that wants them (once its clock's known, for saying when): each
-  // place's asked for once a tick, however many phones are there
-  const warned = new Map();
+  // official warnings, every tick, for each place that wants them (warningsFor), and sent from those looked at
+  const warned = await warningsFor(subs, (s) => warningsAt(env, s.lat, s.lon, t).then((r) => r.warnings), t);
+  out.warnPlaces = warned.size;
   for (const s of subs) {
-    if (!s.warn || s.tz_off == null) continue;
+    if (!s.warn || s.tz_off == null || !warned.has(spot(s))) continue;
     try { await warnNotify(env, D, s, t, out, warned, origin); } catch (e) { console.error("weather tick: warnings", e && e.message); }
   }
   return out;
+}
+// The places a tick looks at (subs: those with anything on): those whose clock isn't known yet, rain alerts outside the
+// quiet hours there, briefings due. Briefings first (they're kept to their time), and only so many a tick: the rest wait
+// for a later tick, in a different order each time (so the same ones aren't always left out)
+export function toLook(subs, t, most = PER_TICK, rnd = Math.random) {
+  const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
+  return subs.filter((s) => s.tz_off == null || (s.rain && !isQuiet(local(s))) || due(s))
+    .map((s) => [s, due(s) ? -1 : rnd()]).sort((a, b) => a[1] - b[1]).map(([s]) => s).slice(0, most);
+}
+// What a tick may ask Open-Meteo for (left: what the last tick that asked left, { n, at }): that, and what's been earned
+// since (OM_DAY a day), up to BUDGET; the whole of BUDGET the first time
+export const allowance = (left, t) => Math.min(BUDGET, left && Number.isFinite(left.n) && Number.isFinite(left.at) ? left.n + Math.max(0, t - left.at) * OM_DAY / 864e5 : BUDGET);
+// Official warnings for the places that want them, once each place's clock is known (for saying when): each place's
+// asked for once, however many phones are there, a few at a time; at most WARN_PLACES a tick, and none begun once the
+// tick's had WARN_MS. The rest wait for a later tick, in a different order each time (nothing's taken as told for them
+// meanwhile). look(s): a place's warnings. → "lat,lon" → its warnings (null: not to be had this tick), for those looked at
+export async function warningsFor(subs, look, t, most = WARN_PLACES, rnd = Math.random) {
+  const places = new Map(), got = new Map();
+  for (const s of subs) if (s.warn && s.tz_off != null) places.set(`${s.lat},${s.lon}`, s);
+  const queue = [...places].map((e) => [e, rnd()]).sort((a, b) => a[1] - b[1]).map(([e]) => e).slice(0, most);
+  const ask = async (n = Infinity) => { for (; n > 0 && queue.length && Date.now() - t < WARN_MS; n--) { const [k, s] = queue.shift(); got.set(k, await look(s).catch(() => null)); } };
+  // (the first on its own, so a feed many places share, a country's, is in the cache before the rest ask for it)
+  await ask(1);
+  await Promise.all(Array.from({ length: WARN_AT_ONCE }, () => ask()));
+  return got;
 }
 // A warning new, or raised, since the last told (alerts.js warningAlert), sent; the record of what's been told kept
 // either way (and claimed before it's sent, as the others are, so it can't go twice)
