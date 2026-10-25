@@ -62,7 +62,7 @@ for (let ip = 10; ip < 40; ip++) for (let i = 0; i < 10; i++) await acctCall('si
 const A3 = await K.phone('ann3');
 const [mine, theirs] = [await onPage(A2), await onPage(A3)];
 ok(before4 === 'signed in' && mine === 'signed in', 'guessed at from everywhere: Ann still signs in with her password on her phone, which has signed in before', `${before4} | ${mine}`);
-ok(/^Too many tries for this account\. Try again in (\d+h \d+m|\d+ minutes?), or sign in with a passkey\.$/.test(theirs), 'a device that hasn\'t signed in before is held back, and told a passkey still works', theirs);
+ok(/^Too many tries for this account\. Try again in [^,]+, or sign in with a passkey\.$/.test(theirs), 'a device that hasn\'t signed in before is held back, and told a passkey still works', theirs);
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
 process.exit(0);

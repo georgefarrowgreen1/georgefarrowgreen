@@ -84,7 +84,7 @@ test('guessing from many networks holds the account back, but not on a device th
   assert.equal((await passwordUser(env, req('/api/account/signin/password', { ip: '198.51.100.8', cookie: known }), right)).id, u.id, 'the device that knows it: in');
   // (its own wrong tries count against it alone, ten an hour, not the account)
   for (let i = 0; i < 10; i++) await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: `192.0.2.${i}`, cookie: known }), { email: u.email, proof: 'y'.repeat(43) }), { status: 401 });
-  await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '192.0.2.99', cookie: known }), right), { status: 429, message: /^Too many tries\. Wait/ });
+  await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '192.0.2.99', cookie: known }), right), { status: 429, message: /^Too many tries\. Try again in / });
   // a word that isn't the server's, or is another account's, counts for nothing
   const other = await account('ned', 'another test password'), theirs = (await withKnown(new Response('{}'), req('/'), env, other)).headers.get('Set-Cookie').split(';')[0];
   const forged = known.replace(/\.[^.]+$/, '.' + 'A'.repeat(32));

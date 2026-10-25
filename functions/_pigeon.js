@@ -471,10 +471,10 @@ export const clientIp = (request) => {
   return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 };
 
-// "23h 5m", "12 minutes": how long until something's allowed again
+// "23h 5m", "1 hour", "12 minutes": how long until something's allowed again
 export function waitText(ms) {
   const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
-  return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
+  return h && !m ? `${h} hour${h === 1 ? "" : "s"}` : h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
 }
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
 // A network, as one asker: the address, or for IPv6 its whole /48 (as a provider hands them out). For limits where many

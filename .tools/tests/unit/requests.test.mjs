@@ -38,7 +38,8 @@ test('how long a limit says to wait', () => {
   assert.equal(waitText(30e3), '1 minute');
   assert.equal(waitText(0), '1 minute');
   assert.equal(waitText(12 * 60e3), '12 minutes');
-  assert.equal(waitText(60 * 60e3 - 1), '1h 0m', 'never "60 minutes"');
+  assert.equal(waitText(60 * 60e3 - 1), '1 hour', 'never "60 minutes"');
+  assert.equal(waitText(24 * 60 * 60e3), '24 hours');
 });
 
 test('notification settings: each change merged where they are kept, so two at once both stay', async () => {
