@@ -21,13 +21,17 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
   in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
   app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
+  Back from the account's page by the browser's Back (the page as the browser kept it), it asks again who's signed in:
+  the same, and their figures are brought up to date; someone else, or no one now, and the page is opened afresh.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
   press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
-  tick and a thank-you. See **Contact form** below.
+  tick and a thank-you. One that's slow to be answered says it may have gone all the same (not that you're offline),
+  so it isn't sent twice. See **Contact form** below.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
-  description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo.
+  description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
+  page takes them from there, rather than asking for them again.
 - **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
   glass redraw for no reason.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
@@ -37,8 +41,8 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
     scroll-linked CSS animations (`animation-timeline: scroll()`), which move with the scroll itself; the script only
     measures, once, where each line fades. Without them, a frame sets the opacity of a few things from those
     measurements, never measuring as it scrolls.
-  - The softened photo is a copy of the one showing, drawn 48 px wide and smoothed once, stretched over the screen and
-    faded in: not a full-screen blur redrawn each frame.
+  - The softened photo is a copy of the one showing, drawn 48 px wide (made small as it's decoded, off the page's own
+    thread) and smoothed once, stretched over the screen and faded in: not a full-screen blur redrawn each frame.
   - Sheets spring up (a `linear()` spring); the page steps back by moving only (the sheet's backdrop dims it). Dragged
     by its top a sheet follows the finger, the page coming forward with it; let go, it springs back, or carries on at
     the speed it was thrown.
@@ -59,8 +63,9 @@ from the site's own pages, too).
   with **Undo** for a few seconds (back to how they were: `POST /api/history`, which keeps the last 15). Escape leaves
   editing without saving. A line left empty shows the default (`functions/_content.js`).
 - **Background photos:** a bar at the foot while editing shows them; **Change** opens a sheet of them all: **Add photos**
-  (several at once, each made at most 2000 px and JPEG on the phone first), a tap on one to choose the part that stays
-  in view as the screen crops it, its tag (Both, Phone, Computer) to choose where it shows, and × to remove it.
+  (several at once, each made at most 2000 px and JPEG on the phone first), a tap on one (or the arrow keys on it) to
+  choose the part that stays in view as the screen crops it, its tag (Both, Phone, Computer) to choose where it shows,
+  and × to remove it.
 - **Messages** sent through Get in touch are in **Admin → Messages** on the owner's account page (below).
 
 ## Files

@@ -89,11 +89,21 @@ await V.p.click('#contact-send');
 ok(/email doesn’t look right/.test(await text(V, '#contact-err')), 'an email that can’t be one is said', await text(V, '#contact-err'));
 await V.p.fill('#c-email', 'sam@example.com');
 ok(await V.p.isHidden('#contact-err'), 'and the warning goes as it’s put right');
+// a send that doesn't go (here, too many sent already, a moment coming back): said, and the focus kept on Send, not lost
+// from the sheet as Send was busy
+await V.p.route('**/api/contact', async (rt) => { await new Promise((w) => setTimeout(w, 400)); await rt.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'You’ve sent a few already. Please try again later.' }) }); });
+await V.p.focus('#contact-send'); await V.p.keyboard.press('Enter');
+await V.p.waitForFunction(() => /sent a few already/.test(document.querySelector('#contact-err')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+ok(/sent a few already/.test(await text(V, '#contact-err')) && await V.p.evaluate(() => document.activeElement?.id === 'contact-send'), 'a send that doesn’t go: said, and the focus kept on Send',
+  await V.p.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`));
+await V.p.unroute('**/api/contact');
 await shot(V, 'contact');
 const mails0 = mails().length;
 await V.p.click('#contact-send');
 await V.p.waitForSelector('#contact-sent:not([hidden])', { timeout: 10000 }).catch(() => {});
 ok(await text(V, '#contact-sent') === 'Sent Thanks, Sam. You’ll hear back by email. Done', 'sent: a tick and a thank-you', await text(V, '#contact-sent'));
+ok(await V.p.evaluate(() => { const d = document.activeElement; return !!d?.matches('#contact-sent [data-close]') && (d.getAttribute('aria-describedby') || '').split(' ').map((id) => document.getElementById(id)?.textContent).join(' ') === 'Sent Thanks, Sam. You’ll hear back by email.'; }),
+  'and said: Done, with the focus, is described by Sent and the thank-you');
 const m = mails().slice(mails0).at(-1) || {};
 ok(m.reply_to === 'sam@example.com' && /Loved the photos/.test(m.text || ''), 'it’s emailed, a reply going to them', `${m.reply_to}`);
 ok(/Sam Okoro/.test(sql('SELECT name FROM messages')), 'and kept');
@@ -156,6 +166,11 @@ ok(G.p.url().startsWith(SITE) && await G.p.evaluate(() => document.body.classLis
 await G.p.keyboard.press('Escape'); await settle(G, 500);
 
 // ---- 4. Editing the words in place, and Undo ----
+// (by keyboard: Edit hands the focus on to Done, in its place, and Done hands it back)
+await G.p.focus('#edit'); await G.p.keyboard.press('Enter'); await settle(G, 600);
+ok(await G.p.evaluate(() => document.body.classList.contains('edit') && document.activeElement?.id === 'done'), 'Edit by keyboard: the focus goes on to Done, in its place');
+await G.p.keyboard.press('Enter'); await settle(G, 600);
+ok(await G.p.evaluate(() => !document.body.classList.contains('edit') && document.activeElement?.id === 'edit'), 'and Done hands it back to Edit');
 await G.p.click('#edit'); await settle(G, 600);
 ok(await G.p.evaluate(() => document.body.classList.contains('edit') && [...document.querySelectorAll('[data-edit]')].every((e) => e.isContentEditable)), 'Edit: the three lines can be typed in');
 ok(await shown(G, '#done') && await shown(G, '#editbar') && !(await shown(G, '#edit')), 'Done in its place, and the photos’ bar at the foot');
@@ -165,6 +180,7 @@ await G.p.click('.lede'); await G.p.keyboard.press('ControlOrMeta+A'); await G.p
 await shot(G, 'edit');
 await G.p.click('#done'); await settle(G, 900);
 ok(/^Saved/.test(await text(G, '#toast')) && await shown(G, '#toast-undo'), 'Done saves it: Saved, with Undo', await text(G, '#toast'));
+ok(await G.p.textContent('#toast-say') === 'Saved', 'and it’s read out, from a place that’s always there', await G.p.textContent('#toast-say'));
 r = await req(null, `${SITE}/api/content`);
 ok(r.json?.role === 'Rides · Photos · Apps' && /camera in the back pocket/.test(r.json?.bio) && r.json?.name === 'George Farrow-Green', 'the new words are kept', r.body);
 r = await req(null, `${SITE}/`);
@@ -197,6 +213,11 @@ const box = await G.p.locator('#tiles .tile img').first().boundingBox();
 await G.p.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.3); await settle(G, 800);
 list = (await req(null, `${SITE}/api/background`)).json.images;
 ok(list[0].focus === '20% 30%', 'a tap on a photo: the part that stays in view', list[0].focus);
+await G.p.locator('#tiles .tile img').first().focus();
+for (const k of ['ArrowRight', 'ArrowRight', 'ArrowDown']) await G.p.keyboard.press(k);
+await settle(G, 1400);
+ok((await req(null, `${SITE}/api/background`)).json.images[0].focus === '30% 35%' && /30% across, 35% down/.test(await G.p.locator('#tiles .tile img').first().getAttribute('alt')),
+  'or the arrow keys on it, kept once they’ve stopped', (await req(null, `${SITE}/api/background`)).json.images[0].focus);
 await G.p.locator('#tiles .tile .where').first().click(); await settle(G, 700);
 ok(await text(G, '#tiles .tile .where') === 'Phone' && (await req(null, `${SITE}/api/background`)).json.images[0].device === 'mobile', 'its screens: Both, then Phone');
 await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
