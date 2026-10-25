@@ -103,7 +103,7 @@ await p.evaluate(() => { window.__code = 'inflight-safety:1:' + '0'.repeat(60); 
 await p.click('.sheet [data-act=scanany]'); await p.waitForSelector('.scanbox video');
 ok(await p.waitForFunction(() => /isn’t your safety number with any of your friends/.test(document.querySelector('.sheet .scanmsg')?.textContent || ''), null, { timeout: 15000 }).then(() => true, () => false), 'Verify a Friend: a code that\'s no friend\'s says so');
 await p.evaluate((d) => { window.__code = 'inflight-safety:1:' + d; }, samDigits);
-await p.click('.sheet [data-act=scanany]'); await p.waitForSelector('.scanbox video');
+await p.click('.sheet [data-act=scanany]');      // (Try Again: the reader's loaded now, so it can be read before the camera's seen)
 ok(await p.waitForSelector('.sheet .safehero.won', { timeout: 15000 }).then(() => true, () => false) && /Sam/.test(await txt('.sheet .safehero')) && /Verified in person/.test(await txt('.sheet .safehero')), 'Verify a Friend: Sam\'s code read, and it\'s Sam, verified', await txt('.sheet .safehero'));
 await shot('verify-friend');
 await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(600);

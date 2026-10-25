@@ -2515,7 +2515,7 @@ function keyArt(fp, cls = "") {
     const fill = v & 1 ? `hsl(${hue2} 70% 55%)` : `hsl(${hue} 72% 48%)`;
     for (const x of c === 2 ? [2] : [c, 4 - c]) cells += `<rect x="${x * 10 + 1}" y="${r * 10 + 1}" width="8" height="8" rx="2.4" fill="${fill}"/>`;
   }
-  return `<svg class="keyart ${cls}" viewBox="0 0 50 50" role="img" aria-label="Your key, as a pattern"><rect width="50" height="50" rx="12" fill="hsl(${hue} 60% 50% / .12)"/>${cells}</svg>`;
+  return `<svg class="keyart ${cls}" viewBox="0 0 50 50" role="img" aria-label="Your key, as a pattern">${cells}</svg>`;
 }
 function stopScan() { if (!S.scan) return; S.scan.on = false; S.scan.stream?.getTracks().forEach((t) => t.stop()); S.scan = null; }
 async function startScan(p, want) {
