@@ -25,6 +25,7 @@ import * as C from "./charts.js";
 import * as A from "./account.js";
 import * as R from "./rhythm.js";
 import * as G from "./progress.js";
+import * as M from "./map.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -902,6 +903,22 @@ function savedView(w, day, dev, name) {
   ] };
 }
 
+// ---- the map under a route (map.js): the points along it (a few thousand at most), each its stretch's colour ----
+const lightNow = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "light" : !matchMedia("(prefers-color-scheme: dark)").matches);
+function routeOf(s, zoneAt) {
+  const idx = []; for (let i = 0; i < s.t.length; i++) if (s.lat[i] != null && s.lon[i] != null) idx.push(i);
+  const step = Math.max(1, Math.ceil(idx.length / 3000)), use = idx.filter((_, j) => j % step === 0 || j === idx.length - 1);
+  const css = getComputedStyle(document.documentElement), col = {};
+  const colourOf = (z) => (col[z] ??= css.getPropertyValue("--" + z).trim() || "#0a84ff");
+  return { coords: use.map((i) => [s.lon[i], s.lat[i]]), colours: zoneAt ? use.map((i) => colourOf(zoneAt(i))) : null };
+}
+// the route's map, the whole sheet, to move and zoom
+function bigMapView(name, route) {
+  const holder = h("div.map-gl.big", {}, h("span.map-credit", { text: "© OpenStreetMap · OpenFreeMap" }));
+  setTimeout(() => M.routeMap(holder, { ...route, light: lightNow(), explore: true }).catch(() => {}), 350);
+  return { title: name, body: [holder] };
+}
+
 // ---- Progress: how you're coming on, the story first (progress.js has the figures) ----
 const RANGES = [[42, "6 wk"], [91, "3 mo"], [182, "6 mo"], [365, "Year"]];
 // (each with its figures as now; its time in zones as worked out when it came in, where a new FTP has cleared them since)
@@ -1298,9 +1315,19 @@ function actView(a) {
   let mapAt = null;
   if (x.s.lat) {
     const roll = ps.pwr ? rollAvg(ps.pwr, 30) : null;
-    const r = C.route(x.s, roll ? (i) => zoneOf((roll[Math.min(roll.length - 1, Math.round(x.s.t[i]))] || 0) / P().ftp).c : null, sheetW() + 36, U.metric);
-    mapAt = (sec) => { if (sec == null) return r.at(null); let lo = 0, hi = x.s.t.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (x.s.t[m] < sec) lo = m + 1; else hi = m; } r.at(lo); };
-    body.push(h("div.map", {}, r.el));
+    const zoneAt = roll ? (i) => zoneOf((roll[Math.min(roll.length - 1, Math.round(x.s.t[i]))] || 0) / P().ftp).c : null;
+    const r = C.route(x.s, zoneAt, sheetW() + 36, U.metric), box = h("div.map", {}, r.el);
+    let gl = null;
+    const sampleAt = (sec) => { let lo = 0, hi = x.s.t.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (x.s.t[m] < sec) lo = m + 1; else hi = m; } return lo; };
+    mapAt = (sec) => { if (sec == null) { r.at(null); gl?.at(null); return; } const i = sampleAt(sec); r.at(i); if (gl && x.s.lat[i] != null) gl.at([x.s.lon[i], x.s.lat[i]]); };
+    // (on a real map, where the phone can draw one: the route as ridden, over it; a tap opens it to explore)
+    if (M.able()) {
+      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => pushSheet(() => bigMapView(a.name, route)) }, h("span.map-credit", { text: "© OpenStreetMap" }), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
+      box.replaceChildren(holder);
+      // (and where it can't after all, its own drawing of the route back)
+      M.routeMap(holder, { ...route, light: lightNow() }).then((g) => { gl = g; }).catch(() => box.replaceChildren(r.el));
+    }
+    body.push(box);
   }
   const ftp = P().ftp;
   body.push(card(null, null, h("div.stats", {},
@@ -2065,7 +2092,7 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
-const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js"];
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
 versionNow().then((v) => { version = v; });

@@ -191,7 +191,7 @@ ok(/^3 activities/.test(listed) && await P.p.getByText('Wahoo ELEMNT BOLT', { ex
 await P.p.locator('.row', { hasText: 'Wahoo ELEMNT BOLT' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P, 1200);
 const stats = await P.p.locator('#sheet .stat').allInnerTexts();
-ok(stats.some((s) => /Normalized Power/.test(s)) && stats.some((s) => /Distance/.test(s)) && await P.p.locator('#sheet .map svg .route').count() > 0, 'opened on the phone, from its file: its figures and its route', `${stats.length} figures`);
+ok(stats.some((s) => /Normalized Power/.test(s)) && stats.some((s) => /Distance/.test(s)) && await P.p.locator('#sheet .map svg .route, #sheet .map .map-gl').count() > 0, 'opened on the phone, from its file: its figures and its route (on a map, or drawn where there\'s no WebGL)', `${stats.length} figures`);
 ok(!(await P.p.locator('#sheet .section', { hasText: 'Export' }).count()), 'no export on a ride you uploaded: it\'s kept as it came');
 await done(P);
 

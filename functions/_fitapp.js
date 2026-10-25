@@ -3,8 +3,8 @@
 // (functions/fitness/_middleware.js), where it opens but can't sign in (the account's API answers only at its own
 // address). Its files only use relative addresses, so they work the same at either.
 //
-// It asks nothing of anywhere else: your rides are read and drawn on the phone, and kept with your account here
-// (functions/api/fitness), so only the site itself is allowed.
+// It asks almost nothing of anywhere else: your rides are read and drawn on the phone, and kept with your account here
+// (functions/api/fitness); the one exception, the map under a route (OpenFreeMap's tiles, fitness/map.js).
 
 import { notFound } from "./_app.js";
 
@@ -13,7 +13,7 @@ export const FITNESS_HOST = "fitness.georgefarrowgreen.com";
 export const isFitness = (url, env) => (env.FITNESS_HOST || FITNESS_HOST).split(",").includes(url.hostname);
 
 export const FIT_SECURITY = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com https://tiles.openfreemap.org; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
@@ -47,6 +47,15 @@ export async function fitnessHost(ctx, url) {
   if (url.pathname === "/fitness" || url.pathname.startsWith("/fitness/")) {
     const to = new URL(url); to.pathname = url.pathname.slice(8) || "/";
     return Response.redirect(to.href, 301);
+  }
+  // (the map's library, Weather's copy: fitness/map.js)
+  if (/^\/weather\/vendor\/maplibre-gl(-shared|-worker)?\.(mjs|css)$/.test(url.pathname)) {
+    const res = await ctx.env.ASSETS.fetch(new Request(new URL(url.pathname, url), ctx.request));
+    if (!res.ok) return notFound();
+    const out = new Response(res.body, res);
+    for (const [k, v] of Object.entries(FIT_SECURITY)) out.headers.set(k, v);
+    out.headers.set("Cache-Control", "public, max-age=604800");
+    return out;
   }
   const path = "/fitness" + (url.pathname === "/index.html" ? "/" : url.pathname);
   const res = await ctx.env.ASSETS.fetch(new Request(new URL(path + url.search, url), ctx.request));
