@@ -279,7 +279,13 @@ body.edit [data-edit]:focus { outline-style: solid; }
 body.edit.lines-on .hero > * { opacity: 1 !important; }
 body.edit.lines-on .hero > .cta { visibility: visible !important; }
 body.edit .page { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
-[contenteditable] { -webkit-user-select: text; user-select: text; caret-color: var(--tint-text); }
+[contenteditable] { caret-color: var(--tint-text); }
+/* (its words aren't selected by a long press or a drag, as they aren't copied (app.js), so there's no Copy that does
+   nothing, and no menu or link preview; what's typed into, and the lines being edited, take selecting and copying;
+   not on the page for an address that isn't one (404.html, .lost), which doesn't block copying: the address it shows
+   can be copied from it) */
+body:not(.lost) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 .editbar {
   position: fixed; z-index: 25; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); transform: translateX(-50%);
   height: 52px; padding: 0 8px 0 18px; border-radius: 999px;
@@ -401,6 +407,8 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .tile .ask p { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
 .tile .ask button { min-width: 96px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 600; background: var(--ctl); }
 .tile .ask .yes { background: rgba(255, 82, 72, 0.92); }
+/* (a photo chosen with Tab, for the arrow keys to move its point in view: ringed inside its edge, which the tile clips) */
+.tile img:focus-visible { outline: 2px solid var(--tint-text); outline-offset: -2px; }
 
 /* ---------------- a word at the foot ---------------- */
 .toast {
@@ -415,6 +423,8 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 .toast:not(:has(button:not([hidden]))) { padding-right: 20px; }
 .toast button { height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(61, 139, 255, 0.2); color: var(--tint-text); font-weight: 600; }
 body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
+/* (what it says, read out from a place that's always there and never seen: index.html #toast-say) */
+.vh { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ---------------- signing in, on the account's page: the way there, and back ---------------- */
 /* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
@@ -463,6 +473,9 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 .sheet-head .x::after, .fld.from .change::after, .tile .where::after, .tile .rm::after, .editbar .add::after, .toast button::after {
   content: ""; position: absolute; inset: -7px;
 }
+/* (and Remove and Keep, asked on a photo: as they look, but a finger's width to tap all the same) */
+.tile .ask button { position: relative; }
+.tile .ask button::after { content: ""; position: absolute; inset: -7px; }
 
 /* ---------------- an address that isn't a page (404.html) ---------------- */
 /* the cover photo, darker, and fading in as it comes; the name in the bar from the start, a way home; the words in the

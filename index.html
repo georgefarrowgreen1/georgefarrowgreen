@@ -153,9 +153,9 @@
       </form>
       <div class="sent" id="contact-sent" hidden>
         <span class="tick" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-        <b>Sent</b>
+        <b id="sent-h">Sent</b>
         <span id="thanks">Thanks. You’ll hear back by email.</span>
-        <button class="btn glass wide" type="button" data-close>Done</button>
+        <button class="btn glass wide" type="button" data-close aria-describedby="sent-h thanks">Done</button>
       </div>
     </div>
   </dialog>
@@ -175,7 +175,9 @@
     </div>
   </dialog>
 
-  <div class="toast glass" id="toast" role="status" aria-live="polite" hidden><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
+  <div class="toast glass" id="toast" hidden><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
+  <!-- (what the toast says, read out from here: always there, unseen, so it's heard however soon the toast shows) -->
+  <p class="vh" id="toast-say" role="status" aria-live="polite"></p>
 
   <script src="app.js"></script>
 </body>

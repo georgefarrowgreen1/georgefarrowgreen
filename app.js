@@ -1,6 +1,7 @@
 /* ----------------------------------------------------------------------
    georgefarrowgreen.com: the home page.
-   - The words (/api/content), the photos behind them as a slideshow (/api/background)
+   - The words (in the page as it's sent: functions/_home.js; the owner's changes, /api/content), the photos behind
+     them as a slideshow (/api/background)
    - Who's looking (/api/me): a visitor (Sign in), someone signed in on the site
      (their photo, and their figures in each app), or the owner, who can edit
      the words in place and change the photos (functions/_auth.js)
@@ -22,28 +23,33 @@ function fadeText(el, t) {
   if (!motion.matches && el.isConnected && Number(getComputedStyle(el).opacity) > 0.5) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT });
 }
 
-const DEFAULTS = {
-  name: "George Farrow-Green",
-  role: "Photography · Cycling · Apps",
-  bio: "I ride, I take photos on the road and in the hills, and I build small apps for the people around me.",
-};
-let content = { ...DEFAULTS };
+// (the words as the page came with them: the server writes them in as it sends it (functions/_home.js), so they're
+// not asked for again, and a request that didn't come back can't put the defaults in their place, for the owner to save)
+const fromPage = (k) => $(`[data-c=${k}][data-edit]`).textContent;
+let content = { role: fromPage("role"), name: fromPage("name"), bio: fromPage("bio") };
 let me = null;           // /api/me, once it's known
 let editing = false;
 let pinned = null;       // where the page was scrolled to, while it's held still behind a sheet
 
 // The server's answer, or an Error saying what went wrong
-// (20 seconds at most: a weak signal says so, rather than hanging; iOS 15 has no AbortSignal.timeout, so it's made here)
+// (20 seconds at most, unless it's given longer: a weak signal says so, rather than hanging; iOS 15 has no
+// AbortSignal.timeout, so it's made here)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-async function api(path, { method = "GET", body: data } = {}) {
-  let r;
+async function api(path, { method = "GET", body: data, timeout = 20000 } = {}) {
+  let r, signal;
   try {
+    signal = AbortSignal.timeout(timeout);
     r = await fetch(path, {
-      method, cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(20000),
+      method, cache: "no-store", credentials: "same-origin", signal,
       headers: data ? { "Content-Type": "application/json" } : {},
       body: data ? JSON.stringify(data) : undefined,
     });
-  } catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
+  } catch (_) {
+    // (out of time isn't the same as no connection, and it may have got there all the same; asked of the signal, as
+    // iOS 15's timer above ends it with no reason given)
+    const slow = !!signal?.aborted;
+    throw Object.assign(new Error(slow ? "That’s taking too long: the signal may be weak. Try again in a moment." : "You’re offline. Try again when you’re back online."), { offline: !slow, slow });
+  }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(d.error || "Something went wrong. Try again."), { status: r.status, field: d.field });
   return d;
@@ -56,10 +62,6 @@ function showContent() {
   const ld = $("#ld-person");
   if (ld) ld.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "Person", name: content.name, description: content.bio,
     url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] });
-}
-async function loadContent() {
-  try { content = { ...DEFAULTS, ...(await api("/api/content")) }; } catch (_) {}
-  if (!editing) showContent();
 }
 
 /* ---------------- scrolling: the name comes into the bar, the hero fades under it ---------------- */
@@ -237,8 +239,8 @@ async function show(i) {
   drift = motion.matches ? null : s.animate([{ transform: "scale(1.08)" }, { transform: "scale(1)" }], { duration: DRIFT, easing: "linear", fill: "forwards" });
   if (was && was !== drift) setTimeout(() => was.cancel(), 1800);
   markSegs(i);
-  // (its softened copy made now, so it's there however soon the page is scrolled: the fade is the compositor's, so the
-  // little work of making it doesn't stutter it)
+  // (its softened copy made now, so it's there however soon the page is scrolled: made small off this thread, so
+  // neither the fade nor its start waits on it)
   soften(s, shown[i]);
   left = SLIDE;
   if (held) drift?.pause(); else schedule();
@@ -264,6 +266,7 @@ function hold() {
 // (a different set when the screen changes size past a phone's, only if it's actually different)
 phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) updateSlides(); });
 document.addEventListener("visibilitychange", hold);
+hold();      // (and from the start: a page opened out of sight, in a tab behind, holds still till it's looked at)
 motion.addEventListener("change", () => { if (at >= 0) show(at); });
 
 // The photo softened behind what's over it as the page scrolls: the photo showing, drawn tiny and smoothed once (a few
@@ -278,9 +281,10 @@ async function soften(img, p) {
       const w = 48, h = Math.max(1, Math.round((w * img.naturalHeight) / img.naturalWidth)), c = document.createElement("canvas");
       c.width = w; c.height = h;
       const x = c.getContext("2d");
-      // (made small by the browser, off this thread, where it can: drawing the full photo down to 48 px here was the
-      // longest moment's work on the page)
-      const small = window.createImageBitmap ? await createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).catch(() => null) : null;
+      // (made small by the browser as it's decoded: from the photo's bytes (from the browser's cache) that's done off this
+      // thread; from the <img> itself Chromium decodes the whole photo again here, the longest moment's work on the page)
+      const bytes = window.createImageBitmap ? await fetch(key, { cache: "force-cache" }).then((r) => (r.ok ? r.blob() : null)).catch(() => null) : null;
+      const small = bytes ? await createImageBitmap(bytes, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).catch(() => null) : null;
       if (img.currentSrc !== key && img.src !== key) return;      // (another photo by now)
       x.drawImage(small || img, 0, 0, w, h); small?.close?.();
       const d = x.getImageData(0, 0, w, h);
@@ -416,8 +420,23 @@ function handOff(url) {
   sky.then(go, go);
   setTimeout(go, 700);
 }
-// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went)
-addEventListener("pageshow", (e) => { if (e.persisted) handing?.undo(); });
+// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went; and who's
+// signed in asked again: the same, their figures brought up to date; someone else, or no one now (signed out there),
+// the page opened afresh, rather than still showing the one before, their name and email in Get in touch)
+const who = (m) => (m?.signedIn ? [m.email, m.name, m.photoAt, !!m.owner].join("\n") : "");
+addEventListener("pageshow", async (e) => {
+  if (!e.persisted) return;
+  handing?.undo();
+  if (!me) return;                                  // (still being asked: loadMe shows it)
+  let now; try { now = await api("/api/me"); } catch (_) { return; }
+  if (who(now) !== who(me)) {
+    removeEventListener("beforeunload", guard);     // (edits that can't be saved now don't ask first)
+    contact.form.reset();                           // (and the last one's name, email and message aren't kept into it)
+    location.reload();
+    return;
+  }
+  me = now; showLines();
+});
 
 // Back from the account's page signed in: its picture (index.html #signedin) taken on, with what's to happen to it.
 // Gone within a few seconds whatever happens: sooner if who's signed in is slow to come (the page as ever meanwhile,
@@ -772,6 +791,10 @@ function toast(text, undo) {
   const t = $("#toast"), b = $("#toast-undo"), tx = $("#toast-text");
   const up = !t.hidden && !t.classList.contains("out");
   if (up) fadeText(tx, text); else tx.textContent = text;
+  // (read out from a place that's always there, unseen: the toast itself, only just shown with it in, often isn't; and
+  // only if it's there, as a page sent before it was can be running this script)
+  const say = $("#toast-say");
+  if (say) say.textContent = text;
   b.hidden = !undo;
   b.onclick = undo ? () => { toast("Undoing…"); undo(); } : null;
   if (!up) { t.classList.remove("out"); t.hidden = false; }
@@ -783,6 +806,9 @@ function hideToast() {
   const t = $("#toast");
   clearTimeout(toastTimer);
   if (t.hidden || t.classList.contains("out")) return;
+  // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+  const say = $("#toast-say");
+  if (say) say.textContent = "";
   t.classList.add("out");
   setTimeout(() => { if (t.classList.contains("out")) { t.hidden = true; t.classList.remove("out"); } }, 500);    // (should its animation not end)
 }
@@ -816,7 +842,9 @@ $("#from-change").addEventListener("click", () => {
 // Someone not signed in, name and email given, starting on the message: the two rows fold into the one From row, as
 // they'd be signed in. The words they typed glide to where they sit in the row, the labels fade as they go, their
 // initial comes in beside them and the box closes up around it (Change unfolds it again, the same way back).
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// (an email as the server takes one, functions/_pigeon.js EMAIL_RE, kept the same by a unit test: one it would refuse
+// isn't folded away, and is said at Send, at the field)
+const EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]$/;
 const fold = () => {
   const name = $("#c-name").value.trim(), email = $("#c-email").value.trim();
   if ($("#sender").classList.contains("known") || !name || !EMAIL.test(email)) return;
@@ -956,7 +984,7 @@ contact.form.addEventListener("submit", async (e) => {
   const wrong = (sel, t) => { const el = $(sel); el.setAttribute("aria-invalid", "true"); if ($("#sender").classList.contains("known") && sel !== "#c-message") $("#from-change").click(); el.focus(); say(t); };
   if (!msg.name) return wrong("#c-name", "Please add your name.");
   if (!msg.email) return wrong("#c-email", "Please add your email, for the reply.");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(msg.email)) return wrong("#c-email", "That email doesn’t look right.");
+  if (!EMAIL.test(msg.email)) return wrong("#c-email", "That email doesn’t look right.");
   if (!msg.message) return wrong("#c-message", "Please write a message.");
   say(""); busyLabel(contact.send, "Sending…", true);
   try {
@@ -965,8 +993,13 @@ contact.form.addEventListener("submit", async (e) => {
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
     settle(contact.sheet, () => { contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
     $("button", contact.sent).focus();
-  } catch (err) { say(err.message); }
+  } catch (err) {
+    // (too slow to answer, it may have gone all the same: said so, so it isn't sent twice without a thought)
+    say(err.slow ? "That’s taking too long. It may still have sent: if you don’t hear back in a day or two, try again." : err.message);
+  }
   busyLabel(contact.send, "Send", false); ready(); grow();
+  // (Send, busy, couldn't keep the focus, which went from the sheet with it: back to it, if it's gone nowhere else)
+  if (contact.sheet.open && !contact.form.hidden && document.activeElement === document.body) contact.send.focus({ preventScroll: true });
 });
 
 /* ---------------- editing (the owner): the words in place ---------------- */
@@ -975,6 +1008,7 @@ let before = null, editOut = null;
 const guard = (e) => e.preventDefault();      // (leaving with the words half changed: the browser asks first)
 function startEdit() {
   if (editing || !me?.owner) return;
+  if (wordsDue) { wordsDue.then(startEdit); return; }     // (the words asked for again, back from history: start from them)
   // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
   if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
   // (and what was typed before a save that didn't go, back where it was)
@@ -983,7 +1017,10 @@ function startEdit() {
   // (the words held where they are, growing downwards as they're typed, not pushing the lines above them up)
   hero.style.paddingTop = `${$(".eyebrow", hero).offsetTop}px`; hero.style.justifyContent = "flex-start";
   clearTimeout(editOut); body.classList.remove("edit-out");
+  // (Edit goes as Done takes its place: the focus, if it was on Edit, goes on to Done, not lost from the page)
+  const fromEdit = document.activeElement === $("#edit");
   body.classList.add("edit");
+  if (fromEdit) $("#done").focus({ preventScroll: true });
   for (const el of editables) {
     // (plain text where the browser has it; where it doesn't, what's pasted is made plain below)
     try { el.contentEditable = "plaintext-only"; } catch (_) {}
@@ -1006,12 +1043,13 @@ async function endEdit(keep = true) {
   if (!editing) return;
   const next = { role: text($("[data-c=role][data-edit]")), name: text($("[data-c=name][data-edit]")), bio: text($("[data-c=bio][data-edit]")) };
   for (const el of editables) el.removeAttribute("contenteditable");
-  document.activeElement?.blur?.();
   editing = false;
   removeEventListener("beforeunload", guard);
   // (the bar at the foot sinks away, and the words settle back to where they sit on the page, smoothly)
   const lines = [...hero.children], tops = lines.map((el) => el.getBoundingClientRect().top);
   body.classList.remove("edit", "lines-on");
+  // (the focus back on Edit, as it comes back in Done's place: not left on a line no longer typed in, or on Done, gone)
+  $("#edit").focus({ preventScroll: true });
   body.classList.add("edit-out");
   clearTimeout(editOut); editOut = setTimeout(() => body.classList.remove("edit-out"), 500);
   hero.style.paddingTop = ""; hero.style.justifyContent = "";
@@ -1023,10 +1061,10 @@ async function endEdit(keep = true) {
   showContent();
   if (!changed) return;
   try {
-    content = { ...DEFAULTS, ...(await api("/api/content", { method: "PUT", body: next })).content };
+    content = (await api("/api/content", { method: "PUT", body: next })).content;
     showContent();
     toast("Saved", async () => {
-      try { content = { ...DEFAULTS, ...(await api("/api/history", { method: "POST", body: { index: 0 } })).content }; showContent(); toast("Undone"); }
+      try { content = (await api("/api/history", { method: "POST", body: { index: 0 } })).content; showContent(); toast("Undone"); }
       catch (err) { toast(err.message); }
     });
   } catch (err) {
@@ -1058,8 +1096,10 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing 
 /* ---------------- the photos, changed from their sheet ---------------- */
 const ph = { sheet: $("#photos-sheet"), tiles: $("#tiles"), err: $("#photos-err"), input: $("#photo-input"), add: $("#add-photos") };
 const WHERE = { both: "Both", mobile: "Phone", desktop: "Computer" }, NEXT = { both: "mobile", mobile: "desktop", desktop: "both" };
-// (with a mouse there's no tapping)
-if (matchMedia("(hover: hover) and (pointer: fine)").matches) $(".hint", ph.sheet).textContent = "Click a photo to choose the part that stays in view.";
+// (with a mouse there's no tapping; and there's a keyboard, for the arrow keys)
+if (matchMedia("(hover: hover) and (pointer: fine)").matches) $(".hint", ph.sheet).textContent = "Click a photo, or use the arrow keys on it, to choose the part that stays in view.";
+// (what a photo in the sheet is, to a screen reader: where its point in view is, and how to move it)
+const inView = (x, y) => `Part in view: ${x}% across, ${y}% down. Arrow keys move it`;
 // the first few, small, in the bar at the foot (each new one popping in: styles.css)
 function showThumbs() {
   const t = $("#thumbs"), want = photos.slice(0, 4);
@@ -1079,7 +1119,9 @@ function makeTile(p, src) {
   const tile = document.createElement("div");
   tile.className = "tile"; tile.dataset.id = p.id;
   const img = document.createElement("img");
-  img.alt = ""; img.decoding = "async"; img.src = src || photoUrl(p, true);
+  // (fetched only as it comes near the sheet's view, which scrolls: there may be fifty; and each one Tab goes to, for
+  // the arrow keys below)
+  img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.tabIndex = 0; img.src = src || photoUrl(p, true);
   fadeOnLoad(img);
   const dot = document.createElement("span");
   dot.className = "dot";
@@ -1090,13 +1132,28 @@ function makeTile(p, src) {
   rm.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
   // (as the photo is now, by its id: not as it was when the tile was made)
   const now = () => photos.find((x) => x.id === p.id);
+  const aim = (x, y) => { img.style.objectPosition = `${x}% ${y}%`; dot.style.left = `${x}%`; dot.style.top = `${y}%`; img.alt = inView(x, y); };
   // (a tap on the photo: the point that stays in view as the screen crops it, moved there at once, and back if it can't be kept)
   img.addEventListener("click", (e) => {
     if ($(".ask", tile)) return;
     const r = img.getBoundingClientRect();
     const x = Math.round(clamp((e.clientX - r.left) / r.width) * 100), y = Math.round(clamp((e.clientY - r.top) / r.height) * 100);
-    img.style.objectPosition = `${x}% ${y}%`; dot.style.left = `${x}%`; dot.style.top = `${y}%`;
+    aim(x, y);
     change(tile, "POST", { focus: `${x}% ${y}%` });
+  });
+  // (or the arrow keys on it, a step at a time: moved at once, and kept once they've been let be for a moment, not
+  // sent for every press)
+  let keyed = null;
+  img.addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key];
+    if (!d || $(".ask", tile)) return;
+    e.preventDefault();
+    // (not while its last change is on its way, as a tap isn't: the answer would move it back, or the two cross)
+    if (tile.classList.contains("busy")) return;
+    const [fx, fy] = (img.style.objectPosition || "50% 50%").split(" ").map(parseFloat);
+    const x = Math.round(clamp((fx + d[0]) / 100) * 100), y = Math.round(clamp((fy + d[1]) / 100) * 100);
+    aim(x, y);
+    clearTimeout(keyed); keyed = setTimeout(() => change(tile, "POST", { focus: `${x}% ${y}%` }), 500);
   });
   where.addEventListener("click", () => { const q = now(); if (q) change(tile, "POST", { device: NEXT[q.device || "both"] }); });
   rm.addEventListener("click", () => askRemove(tile));
@@ -1106,7 +1163,7 @@ function makeTile(p, src) {
 function updateTile(tile, p) {
   const img = $("img", tile), dot = $(".dot", tile), where = $(".where", tile);
   const focus = p.focus || "50% 50%", [fx, fy] = focus.split(" "), w = WHERE[p.device || "both"];
-  img.style.objectPosition = focus; dot.style.left = fx; dot.style.top = fy;
+  img.style.objectPosition = focus; dot.style.left = fx; dot.style.top = fy; img.alt = inView(parseFloat(fx), parseFloat(fy));
   if (where.textContent) fadeText(where, w); else where.textContent = w;
   where.setAttribute("aria-label", `Shows on: ${w}. Change`);
   tile.classList.remove("busy");
@@ -1173,7 +1230,11 @@ function showTiles() {
   }
   let none = null;
   if (!photos.length && !pending.length) { none = $(".none", ph.tiles); if (!none) { none = document.createElement("p"); none.className = "none"; none.textContent = "No photos yet."; } }
+  // (a tile taken out and put back loses the focus, even in the same place: kept on what had it, a photo being moved by
+  // the arrow keys, say, if it's in one that stays)
+  const had = ph.tiles.contains(document.activeElement) ? document.activeElement : null;
   ph.tiles.replaceChildren(...els, ...pending, ...(none ? [none] : []), ...leaving, ...going);
+  if (had?.isConnected && !had.closest(".leaving") && document.activeElement !== had) had.focus({ preventScroll: true });
   if (!animate) return;
   for (const t of els) {
     const a = was.get(t); if (!a) continue;
@@ -1205,12 +1266,15 @@ ph.input.addEventListener("change", async () => {
     for (const [i, f] of files.entries()) {
       if (files.length > 1) fadeText($(".lbl", ph.add), `Adding ${i + 1} of ${files.length}…`);
       const [image, small] = await shrinkBoth(f);
-      photos = (await api("/api/background", { method: "PUT", body: { image, small } })).images || photos;
+      // (a minute and a half to go up, as InFlight gives a file: it's megabytes, and a phone's signal sends slowly)
+      photos = (await api("/api/background", { method: "PUT", body: { image, small }, timeout: 90000 })).images || photos;
       photosChanged();
     }
   } catch (err) {
     photosSaid(err.message === "Invalid or oversized image." ? "That photo couldn’t be added. Try a smaller one." : err.message);
     settle(ph.sheet, () => { for (const t of $$(".tile.pending", ph.tiles)) t.remove(); if (!photos.length) showTiles(); });
+    // (out of time, it may have gone up all the same: the photos asked for again, so it's there before it's tried twice)
+    if (err.slow) try { photos = (await api("/api/background")).images || photos; photosChanged(); } catch (_) {}
   }
   busyLabel(ph.add, "Add photos", false);
 });
@@ -1267,6 +1331,10 @@ for (const ev of ["copy", "cut"]) document.addEventListener(ev, (e) => { if (!in
 
 /* ---------------- start ---------------- */
 $("#year").textContent = new Date().getFullYear();
-loadContent();
+showContent();      // (the Person block for search made from the words: index.html has it with the defaults)
+// (back by the browser's Back or Forward, the page can be the copy the browser kept, not asked for again, with the
+// words as they were then: asked for, so they're not edited from older ones; taken only if they come, and Edit waits)
+let wordsDue = performance.getEntriesByType?.("navigation")[0]?.type === "back_forward"
+  ? api("/api/content").then((c) => { content = c; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; }) : null;
 loadPhotos();
 loadMe();

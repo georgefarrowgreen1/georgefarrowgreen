@@ -1,6 +1,7 @@
 // The site's home page (index.html, app.js) as it's sent: its words (functions/_content.js) already in it, so search
-// engines and link previews read what the page says, not the defaults it's written with. The page fills them in
-// again when it loads (and its owner edits them there). Its scripts and styles are stamped with what's in them (?v=),
+// engines and link previews read what the page says, not the defaults it's written with. The page takes them from
+// there (asking again only when it's come back from the browser's history, which may keep an older copy), and its
+// owner edits them there. Its scripts and styles are stamped with what's in them (?v=),
 // so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
 
