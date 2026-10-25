@@ -693,6 +693,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .rh-balance .easy { background: var(--z2); } .rh-balance .hard { background: var(--z4); }
 .rh-today { display: grid; gap: 10px; padding: 18px; text-align: left; color: var(--text); font: inherit; border: 0; width: 100%; }
 .rh-today h2 { margin: 0; font: 700 26px/1.1 var(--font-d); letter-spacing: -0.4px; }
+.rh-today .rh-chip + h2 { margin-top: 8px; }
 .rh-today p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
 .rh-today-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 .rh-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 999px; background: var(--glass-ctl); font-size: 13px; font-weight: 600; color: var(--text); }
