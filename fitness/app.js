@@ -1033,8 +1033,7 @@ function settingsView() {
         row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; keep("prefs"); redraw(true); } }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Import files", sub: "FIT, GPX, TCX, ZWO, ERG, MRC, or a zip of them", onclick: () => { closeSheet(); chooseFiles(); } }),
-        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity's own file, and your workouts as FIT and ZWO, in one zip", onclick: exportAll })),
-        h("p.foot", { text: "Your rides are kept with your georgefarrowgreen.com account (each file as you imported it, and its figures), with your plan, numbers and workouts, on every device you sign in on. Deleting the account deletes them." })),
+        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity's own file, and your workouts as FIT and ZWO, in one zip", onclick: exportAll }))),
       section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
     ],
   };
