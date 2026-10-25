@@ -940,15 +940,26 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-month small { font-size: 12px; color: var(--text-2); } .p-month small:first-child { font-weight: 700; } .p-month b { font-size: 20px; }
 .p-month i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--tint) 0 var(--w), var(--glass-ctl) var(--w)); }
 .p-month.now { box-shadow: var(--edge), 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); } .p-month.now small:first-child { color: var(--tint-text); }
-.p-ftpcard { display: grid; gap: 4px; padding: 20px; border-radius: 28px; background: linear-gradient(165deg, #fff8e6 0%, #ffeec4 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(160, 110, 0, 0.6); }
-.p-ftpcard .p-kick { color: #8a5a00; } .p-ftpcard .p-head > span, .p-ftpcard .p-head b u { color: rgba(60, 40, 0, 0.6); } .p-ftpcard .p-when { color: rgba(60, 40, 0, 0.7); }
-.p-ftp .ln { fill: none; stroke: #e8890c; stroke-width: 3; stroke-linejoin: round; } .p-ftp .est { fill: #e8890c; } .p-ftp .set { fill: #fff; stroke: #e8890c; stroke-width: 2.5; } .p-ftp .lab { fill: rgba(60, 40, 0, 0.55); }
+/* (FTP's card: amber on the night's glass, and cream by day) */
+.p-ftpcard { display: grid; gap: 4px; padding: 20px; border-radius: 28px; color: var(--text);
+  background: linear-gradient(165deg, rgba(255, 179, 64, 0.2) 0%, rgba(242, 154, 18, 0.07) 100%), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(255, 190, 90, 0.28), 0 18px 36px -28px rgba(242, 154, 18, 0.5); }
+.p-ftpcard .p-kick { color: #ffbe55; } .p-ftpcard .p-head > span, .p-ftpcard .p-head b u { color: var(--text-2); } .p-ftpcard .p-when { color: var(--text-2); line-height: 1.4; }
+.p-ftp .ln { fill: none; stroke: #ffa52e; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; } .p-ftp .est { fill: #ffa52e; } .p-ftp .set { fill: var(--bg, #1a1c28); stroke: #ffa52e; stroke-width: 2.5; } .p-ftp .lab { fill: var(--text-3); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .p-ftpcard { background: linear-gradient(165deg, #fff8e6 0%, #ffeec4 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(160, 110, 0, 0.6); }
+  :root:not([data-theme="dark"]) .p-ftpcard .p-kick { color: #8a5a00; } :root:not([data-theme="dark"]) :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when) { color: rgba(60, 40, 0, 0.66); }
+  :root:not([data-theme="dark"]) .p-ftp :is(.ln, .set) { stroke: #e8890c; } :root:not([data-theme="dark"]) .p-ftp .est { fill: #e8890c; } :root:not([data-theme="dark"]) .p-ftp .set { fill: #fff; } :root:not([data-theme="dark"]) .p-ftp .lab { fill: rgba(60, 40, 0, 0.55); }
+}
+:root[data-theme="light"] .p-ftpcard { background: linear-gradient(165deg, #fff8e6 0%, #ffeec4 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(160, 110, 0, 0.6); }
+:root[data-theme="light"] .p-ftpcard .p-kick { color: #8a5a00; } :root[data-theme="light"] :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when) { color: rgba(60, 40, 0, 0.66); }
+:root[data-theme="light"] .p-ftp :is(.ln, .set) { stroke: #e8890c; } :root[data-theme="light"] .p-ftp .est { fill: #e8890c; } :root[data-theme="light"] .p-ftp .set { fill: #fff; } :root[data-theme="light"] .p-ftp .lab { fill: rgba(60, 40, 0, 0.55); }
 .p-effcard, .p-stay { display: grid; gap: 6px; padding: 20px; }
 .p-row { display: flex; justify-content: space-between; align-items: center; }
 .p-title { font: 700 21px/1.2 var(--font-d); letter-spacing: -0.3px; }
 .p-eff .band { fill: color-mix(in srgb, #e5372c 14%, transparent); } .p-eff .trend { stroke: #e5372c; stroke-width: 3; stroke-linecap: round; }
 .p-eff .pt { fill: #e5372c; } .p-eff .last { fill: var(--glass-strong); stroke: #d22a20; stroke-width: 3; }
 .p-dials { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0; }
+.p-dials:has(> div:only-child) { grid-template-columns: minmax(0, 1fr); }   /* (one dial alone: in the middle, not off to one side) */
 .p-dials > div { display: grid; justify-items: center; gap: 2px; text-align: center; } .p-dials b { font-size: 22px; } .p-dials small { font-size: 12px; line-height: 1.35; color: var(--text-2); }
 .p-gauge .needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; } .p-gauge .hub { fill: var(--text); }
 .p-arc .bg, .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } .p-arc .bg { stroke: var(--glass-ctl); } .p-arc .fg { stroke: var(--tint); }
