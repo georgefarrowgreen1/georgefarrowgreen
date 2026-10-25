@@ -125,7 +125,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
   };
   addEventListener("scroll", () => {
     if (pinned !== null) return;      // (held behind a sheet: it reads as the top, but it's still where it was)
-    hold(); tint();
+    hold();
     if (!linked && !queued) { queued = true; requestAnimationFrame(draw); }
   }, { passive: true });
   addEventListener("resize", measure);
@@ -277,7 +277,7 @@ const softs = new Map();
 async function soften(img, p) {
   const el = $("#soft"), key = img.currentSrc || img.src;
   if (!softs.has(key)) {
-    let url = null, top = null;
+    let url = null, foot = null;
     try {
       const w = 48, h = Math.max(1, Math.round((w * img.naturalHeight) / img.naturalWidth)), c = document.createElement("canvas");
       c.width = w; c.height = h;
@@ -289,42 +289,26 @@ async function soften(img, p) {
       if (img.currentSrc !== key && img.src !== key) return;      // (another photo by now)
       x.drawImage(small || img, 0, 0, w, h); small?.close?.();
       const d = x.getImageData(0, 0, w, h);
-      top = topOf(d.data, w);
+      foot = footOf(d.data, w, h);
       for (let k = 0; k < 3; k++) boxBlur(d.data, w, h, 3);
       x.putImageData(d, 0, 0);
       url = c.toDataURL("image/png");
     } catch (_) {}
-    softs.set(key, { url, top });
+    softs.set(key, { url, foot });
   }
   if (img !== bgEl.querySelector(".slide.on")) return;              // (another photo showing by now)
-  const { url, top } = softs.get(key);
-  tops = top; tint();
+  const { url, foot } = softs.get(key);
+  if (foot) body.style.backgroundColor = foot;
   el.style.setProperty("--soft-img", url ? `url("${url}")` : "none");
   el.style.setProperty("--soft-pos", p.focus || "50% 50%");
   el.style.setProperty("--soft-on", url ? "1" : "0");
 }
-// The strip behind a phone's status bar, in the photo's own colour at its top: the top row of the photo made small,
-// under the shade the page lays over its top (styles.css .bg::after); scrolled down, under the bar's frosted band, that
-// band's colour. Faded from one to the next. (Safari, which takes no notice of theme-color, takes it from what's along
-// the very top of the page where that's one colour all the way across: so a band of it there, fading out, styles.css
-// .toptint; the page's colour and the photos' layer's too, for whatever else asks.)
-const themeMeta = $('meta[name="theme-color"]');
-let tops = null, tinted = "";
-function topOf(px, w) {
+// The page's own colour, under the photos where they end above Safari's bar at the foot (styles.css .bg): the photo's
+// at its foot, its bottom row made small, under the shade the page lays over it there, so the page carries on from it
+function footOf(px, w, h) {
   let r = 0, g = 0, b = 0;
-  for (let i = 0; i < w; i++) { r += px[i * 4]; g += px[i * 4 + 1]; b += px[i * 4 + 2]; }
-  const mix = (c, under, a) => c.map((v, i) => v * (1 - a) + under[i] * a);
-  const photo = mix([r / w, g / w, b / w], [5, 7, 12], 0.32);
-  const band = mix(mix([r / w, g / w, b / w], [6, 8, 12], 0.42), [10, 12, 18], 0.62);
-  const hex = (c) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
-  return { photo: hex(photo), band: hex(band) };
-}
-function tint() {
-  if (!tops) return;
-  const c = scrollY > 350 ? tops.band : tops.photo;
-  if (c === tinted) return;
-  tinted = c; themeMeta?.setAttribute("content", c); body.style.backgroundColor = c; bgEl.style.backgroundColor = tops.photo;
-  root.style.setProperty("--top-tint", c);
+  for (let i = (h - 1) * w; i < h * w; i++) { r += px[i * 4]; g += px[i * 4 + 1]; b += px[i * 4 + 2]; }
+  return "#" + [r / w, g / w, b / w].map((v, i) => Math.round(v * 0.14 + [5, 7, 12][i] * 0.86).toString(16).padStart(2, "0")).join("");
 }
 // (each pixel the average of those within r of it, across then down; the edges held)
 function boxBlur(px, w, h, r) {
