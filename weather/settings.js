@@ -416,7 +416,7 @@ function editAct(i) {
     h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
     num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
     h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: setBack }, "Done"),
-      h("button", { class: "link danger", type: "button", onclick: () => { actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
+      h("button", { class: "link danger", type: "button", onclick: () => { if (!confirm(`Remove “${a.name}”?`)) return; actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
   const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
   function done() {
     Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),
