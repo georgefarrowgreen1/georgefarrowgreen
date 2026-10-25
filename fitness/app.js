@@ -1321,8 +1321,12 @@ function garminView() {
     h("div.garmin-key", {}, ...keyForm("Connect")),
     section(null, h("p.foot", { text: "The key is kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in your activities from the last six months, then each new one. Workouts still go to your device by Download." })),
   ] };
-  const disconnect = async () => {
-    if (!confirm("Disconnect Garmin Connect? Activities already brought in stay.")) return;
+  // (a second tap to be sure, saying what stays, as deleting an activity has)
+  const sure = h("p.foot", { text: "New activities stop coming in. The ones already brought in stay." });
+  sure.hidden = true;
+  const disconnect = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Disconnect Garmin Connect"; sure.hidden = false; return; }
     try { S.garmin = await A.garminDisconnect(); } catch (e) { return toast(e.message, true); }
     sheetBack(); redraw(); toast("Disconnected");
   };
@@ -1341,7 +1345,7 @@ function garminView() {
     !g.ok && section("A new key", h("div.garmin-key", {}, ...keyForm("Add the new key"))),
     g.ok && checkBtn,
     section(null, h("p.foot", { text: "Fitness looks for new activities every 15 minutes, and as you open it: a ride shows up a minute or two after your watch syncs with Garmin Connect." })),
-    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect"))),
+    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect")), sure),
   ] };
 }
 
