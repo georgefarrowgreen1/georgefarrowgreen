@@ -18,7 +18,7 @@
 //
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
-import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, SESSION_MAX, randomToken,
+import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, waitText, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, SESSION_MAX, randomToken,
   safeEqual, deviceOf, regionOf, accountPage } from "./_pigeon.js";
 import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
@@ -150,8 +150,8 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
   const holds = [[here, 30], dev ? ["loginacct:dev:" + em + ":" + dev, 10] : [acct, 300]];
   for (const [key, max] of holds) {
     const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
-    const wait = held && Math.ceil((held.reset_at - now0) / 60e3);
-    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, key === acct ? `Too many tries for this account. Wait ${wait} minutes, or sign in with a passkey.` : `Too many tries. Wait ${wait} minutes and try again.`);
+    const wait = held && waitText(held.reset_at - now0);
+    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, key === acct ? `Too many tries for this account. Try again in ${wait}, or sign in with a passkey.` : `Too many tries. Try again in ${wait}.`);
   }
   if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
     for (const [key, max] of holds) await limit(env, key, max, 60 * 60e3).catch(() => {});
