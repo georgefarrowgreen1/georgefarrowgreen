@@ -306,7 +306,7 @@ Motion, solid with Reduce Transparency.
   app shows (cut around the part you chose), and the card's poster, the whole photo at most 1600px across
   (`pigeon-posters/` in R2, its focus in `pg_users.poster_focus`); a new photo from another app drops the old poster
   until one's sent again. Moving what shows of the same photo sends only the circle again, cut around the new part
-  (`PUT me/photo?at=…&focus=…`), the poster kept as it is (refused, 409, if another app's new photo has replaced it). The photo drifts a little slower than the page as it scrolls away, and stretches as it's
+  (`PUT me/photo?at=…&focus=…`), the poster kept as it is (refused, 409, if another app's new photo has replaced it, and the page then shows that one). The photo drifts a little slower than the page as it scrolls away, and stretches as it's
   pulled down at the top (both off with Reduce Motion); the light page has its own colours for the card. **Your apps**
   (a card for each); **Account**, two rows: **Sign-in and security** (saying how it stands by the **Security check-up**,
   below: "All done", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
@@ -413,7 +413,7 @@ Motion, solid with Reduce Transparency.
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (67 checks: the photo from its badge (moved, only the circle sent again), your code and its link, each app's sheet and its
+  `.tools/tests/acctmore.mjs` (68 checks: the photo from its badge (moved, only the circle sent again, and once it's changed elsewhere), your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
   back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,

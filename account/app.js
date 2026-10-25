@@ -290,8 +290,14 @@ const isDark = () => (document.documentElement.dataset.theme ? document.document
 // (what's remembered is put on the page before it's first drawn: theme.js)
 
 // ---- the page ----
-// (the account as boot.js asked for it while this was on its way, taken once; with no answer, asked for here)
-const firstMe = async () => { const p = self.acctMe; self.acctMe = null; return (p && (await p)) || call("me"); };
+// (the account as boot.js asked for it while this was on its way, taken once; refused, asked for here, to say why;
+// not reached at all, said as call() says it, not waited for a second time)
+const firstMe = async () => {
+  const p = self.acctMe; self.acctMe = null;
+  const r = p && (await p);
+  if (r === "offline") throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true });
+  return r || call("me");
+};
 async function load() {
   fromGate();
   if (S.signFor?.join && !S.gate) S.gate = "join";
@@ -659,7 +665,12 @@ async function savePhoto(btn, said) {
     });
     const was = !!PV.file;
     forgetPhoto(); closeSheet(); render(); toast(was ? "Photo updated." : "Saved.");
-  } catch (e) { say(said, e.message); }
+  } catch (e) {
+    // (refused, the photo having changed elsewhere since: the account asked for again, so the card, and Your photo
+    // opened again, show the one there now, and its next Save goes by that one's poster)
+    if (e.status === 409) try { S.me = await call("me"); S.pulled = Date.now(); forgetPhoto(); closeSheet(); render(); return toast(e.message, true); } catch (_) {}
+    say(said, e.message);
+  }
 }
 // Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
 function codeView() {
