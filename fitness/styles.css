@@ -586,7 +586,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .rh-sum b { font: 700 22px/1.1 var(--font-d); letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
 .rh-sum span { font-size: 14px; color: var(--text-2); }
 .rh-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-.rh-day { display: grid; justify-items: center; gap: 6px; }
+.rh-day { display: grid; justify-items: center; gap: 6px; min-width: 0; }
 .rh-day .v { font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rh-day .track { position: relative; width: 100%; height: 210px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); touch-action: none; cursor: ns-resize; display: flex; align-items: flex-end; }
 .rh-day .track:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }

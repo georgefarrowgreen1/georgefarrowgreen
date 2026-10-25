@@ -555,7 +555,8 @@ function rhythmSetup() {
   const top = (n, title, sub) => [dots(at(n)), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
   // 1. When you ride: a bar a day, dragged up to how long you have (to 6 hours, by quarter hours); a tap makes it rest
-  const MAX = 360, said = (v) => (v ? dur(v * 60) : "Rest");
+  // (said short, so a day's label fits over its bar: 45m, 1h, 1h45)
+  const MAX = 360, said = (v) => (!v ? "Rest" : v < 60 ? `${v}m` : `${Math.floor(v / 60)}h${v % 60 ? String(v % 60).padStart(2, "0") : ""}`);
   const days = () => {
     const total = h("b"), count = h("span");
     const sum = () => { const n = draft.days.filter((x) => x).length; total.textContent = n ? dur(draft.days.reduce((a, x) => a + x, 0) * 60) : "No days yet"; count.textContent = `${plural(n, "day")} · ${plural(7 - n, "rest")}`; };
