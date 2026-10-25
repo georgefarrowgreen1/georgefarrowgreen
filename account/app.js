@@ -315,21 +315,24 @@ async function load() {
   fromGate();
   if (S.signFor?.join && !S.gate) S.gate = "join";
   await fromLink();
+  // (the account asked for once, whatever a hand-off below does: one that fails falls back on it, and an account that
+  // can't be reached is said once, by the page, not by the hand-off too)
+  const mine = firstMe();
   // (a sign-in handed over by an app: who it's for asked first, alongside who's signed in here, and only taken once
   // that's said yes to, as a page elsewhere could send this browser here with a code of its own; never over a different
   // account's sign-in here)
   if (HANDOFF) {
     try {
-      const [now, who] = await Promise.all([firstMe(), post("handoff/who", { code: HANDOFF.code })]);
+      const [now, who] = await Promise.all([mine, post("handoff/who", { code: HANDOFF.code })]);
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
       else if (now.signedIn) { S.me = now; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
       else { S.me = now; S.handoff = who; }
     } catch (e) {
       // (whose code it was not known: what it was to open isn't opened for whoever's signed in here)
-      HANDOFF.open = null; setTimeout(() => toast(e.message, true), 400);
+      HANDOFF.open = null; mine.then(() => setTimeout(() => toast(e.message, true), 400), () => {});
     }
   }
-  try { if (!S.me) S.me = await firstMe(); S.pulled = Date.now(); }
+  try { if (!S.me) S.me = await mine; S.pulled = Date.now(); }
   catch (e) {
     main.removeAttribute("aria-busy");
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
@@ -2111,7 +2114,8 @@ function passwordView({ then } = {}) {
           let inner;
           try { inner = await E2E.unlock(old.lockKey, vault); } catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
           const salt = E2E.newSalt(), next = await E2E.fromPassword(nw.value, salt);
-          return post("password", { oldProof: old.proof, salt, proof: next.proof, vault: await E2E.lock(next.lockKey, inner) });
+          // (and whether it was checked against data breaches: with no answer, it's kept as not checked yet)
+          return post("password", { oldProof: old.proof, salt, proof: next.proof, vault: await E2E.lock(next.lockKey, inner), checked: n === 0 });
         });
         closeSheet(); render(); toast("Password changed. Your other devices were signed out.");
         if (then) setTimeout(() => openSheet(then), 500);

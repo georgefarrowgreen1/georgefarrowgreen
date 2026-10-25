@@ -83,6 +83,9 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: emailFrom(env, brand), to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }),
+    // (given up on after 10 seconds, as one Resend doesn't answer is one that couldn't be sent: so nothing that waits on
+    // it, a new account's reply among them, is held past the account page's own 30)
+    signal: AbortSignal.timeout(10000),
   }).catch(() => null);
   if (!r?.ok) {
     const why = r ? await r.json().then((d) => d.message || d.error || "", () => "") : "";
