@@ -118,7 +118,27 @@ ok(await P.p.$eval('main .pc-photo img', (i) => i.style.objectPosition).catch(()
 await shot(P, '01-photo');
 await P.p.click('main .pc-cam'); await P.p.waitForSelector('#sheet[open] .pv-frame');
 ok(/Choose another photo/.test(await text(P, '#sheet')) && /Remove photo/.test(await text(P, '#sheet')), 'the camera: Your photo again, to move it, change it or remove it');
-await P.p.click('#sheet .link:text-is("Cancel")'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+// (what shows of the same photo moved: only the circle cut again and sent, the poster kept as it was, with its new focus)
+await P.p.waitForFunction(() => document.querySelector('#sheet[open] .pv-frame img')?.naturalWidth > 0, null, { timeout: 15000 }).catch(() => {}); await settle(P, 700);
+const fb2 = await P.p.locator('#sheet .pv-frame').boundingBox();
+await P.p.mouse.move(fb2.x + fb2.width / 2, fb2.y + fb2.height / 2); await P.p.mouse.down();
+await P.p.mouse.move(fb2.x + fb2.width / 2, fb2.y + fb2.height / 2 - 30, { steps: 6 }); await P.p.mouse.up();
+const pos2 = await P.p.$eval('#sheet .pv-frame img', (i) => i.style.objectPosition);
+await P.p.click('#sheet .link.done'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+const moved = rows(`SELECT avatar_at, poster_at, poster_focus FROM pg_users WHERE id = '${uid}'`)[0];
+ok(pos2 !== pos && moved.poster_at === saved.poster_at && moved.avatar_at > saved.avatar_at && moved.poster_focus === `50 ${pos2.split(' ')[1].replace('%', '')}`,
+  'moved what shows: the circle cut again, the poster kept as it was, with what shows of it now', JSON.stringify({ pos2, moved }));
+// (and changed elsewhere meanwhile, as by another app: refused and said, and the one there now taken, so it's moved the
+// next time it's opened)
+sql(`UPDATE pg_users SET poster_at = poster_at + 1 WHERE id = '${uid}'`);
+const nudge = async () => {
+  await P.p.click('main .pc-cam'); await P.p.waitForFunction(() => document.querySelector('#sheet[open] .pv-frame img')?.naturalWidth > 0, null, { timeout: 15000 }).catch(() => {}); await settle(P, 500);
+  await P.p.focus('#sheet .pv-frame'); await P.p.keyboard.press('ArrowDown'); await P.p.click('#sheet .link.done'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
+  return text(P, '#toast');
+};
+const refused = await nudge(), again = await nudge(), after = rows(`SELECT poster_at, poster_focus FROM pg_users WHERE id = '${uid}'`)[0];
+ok(/changed elsewhere/.test(refused) && /Saved/.test(again) && after.poster_at === saved.poster_at + 1 && after.poster_focus !== moved.poster_focus,
+  'changed elsewhere: refused and said, then the photo there now moved', JSON.stringify({ refused, again, after }));
 
 // ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
 await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);

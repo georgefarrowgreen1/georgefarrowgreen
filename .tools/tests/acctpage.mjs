@@ -98,7 +98,7 @@ ok(/Confirm your email/.test(await text(L, '.banner')), 'and the email not yet c
 await shot(L, '01-signed-in');
 // the large title giving way to the bar
 await L.p.evaluate(() => scrollTo(0, 400)); await settle(L, 500);
-const bar = await L.p.evaluate(() => ({ glass: Number(getComputedStyle(document.documentElement).getPropertyValue('--bar')), header: !!document.querySelector('header, .bar'), title: document.querySelector('main .titlebar h1').getBoundingClientRect().bottom }));
+const bar = await L.p.evaluate(() => ({ glass: Number(getComputedStyle(document.querySelector('.status')).getPropertyValue('--bar')), header: !!document.querySelector('header, .bar'), title: document.querySelector('main .titlebar h1').getBoundingClientRect().bottom }));
 ok(bar.glass === 1 && !bar.header && bar.title < 0, 'scrolled: the large title goes with the page (no bar to take it), glass behind the status bar', JSON.stringify(bar));
 await shot(L, '02-scrolled');
 await L.p.evaluate(() => scrollTo(0, 0)); await settle(L, 300);
