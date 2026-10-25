@@ -1043,6 +1043,10 @@ function toast(text, bad = false, ms = 2600) {
 let lastW = innerWidth, resizeT = null;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (Math.abs(innerWidth - lastW) > 40) { lastW = innerWidth; redraw(true); } }, 250); });
 
+// ---- no zooming, on any screen: Safari pinches whatever the page's rules say, so it's told with the gestures themselves ----
+for (const n of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(n, (e) => e.preventDefault(), { passive: false });
+document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 || (e.scale ?? 1) !== 1) e.preventDefault(); }, { passive: false });
+
 // ---- the status bar's glass, once the page is under it ----
 addEventListener("scroll", () => document.documentElement.style.setProperty("--bar", scrollY > 8 ? 1 : 0), { passive: true });
 

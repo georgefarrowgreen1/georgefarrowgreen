@@ -84,6 +84,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { margin: 0; min-height: 100vh; min-height: 100svh; font: 17px/1.35 var(--font); letter-spacing: -0.2px; color: var(--text); background: var(--sky-c);
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
+/* (no zooming: no pinch, and no double-tap; app.js stops Safari's pinch, which pays this no heed) */
+html { touch-action: pan-x pan-y; }
+button, a, input, select, label { touch-action: manipulation; }
 button { cursor: pointer; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
@@ -397,7 +400,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .bstep { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-radius: 18px; background: var(--glass-ctl); }
 .bstep > i { border-radius: 4px; }
 .bstep .top { display: flex; align-items: center; gap: 8px; }
-.bstep .top select { flex: 1; min-width: 0; border: 0; background: none; font-weight: 600; font-size: 15px; padding: 2px 0; }
+.bstep .top select { flex: 1; min-width: 0; border: 0; background: none; font-weight: 600; font-size: 16px; padding: 2px 0; }
 .bstep .top .x { border: 0; background: none; color: var(--text-3); padding: 4px; display: grid; }
 .bstep .ctl { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; }
 .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
