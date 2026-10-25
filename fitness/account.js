@@ -30,7 +30,21 @@ export function upload(meta, name, bytes) {
   form.append("file", new Blob([bytes]), name);
   return call("acts", { method: "POST", form, wait: 120000 });
 }
-export const fileOf = (id) => call(`acts/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });
+// an activity's file, as it was before it was gzipped (one kept before that, as it is)
+export const fileOf = async (id) => gunzip(await call(`acts/${encodeURIComponent(id)}`, { raw: true, wait: 60000 }));
+// its file again, made smaller here (written as FIT, gzipped) → { kept, size }
+export function replaceFile(id, meta, name, bytes) {
+  const form = new FormData();
+  form.append("meta", JSON.stringify(meta));
+  form.append("file", new Blob([bytes]), name);
+  return call(`acts/${encodeURIComponent(id)}`, { method: "PUT", form, wait: 120000 });
+}
+// Files gzipped here before they're kept, and unpacked as they come back (the browser's own (de)compression; one that
+// has none sends them as they are)
+const pipe = async (u8, stream) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer());
+export const canGzip = () => typeof CompressionStream === "function" && typeof DecompressionStream === "function";
+export const gzip = async (u8) => (canGzip() ? pipe(u8, new CompressionStream("gzip")) : u8);
+export const gunzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b ? pipe(u8, new DecompressionStream("gzip")) : u8);
 export const rename = (id, name) => call(`acts/${encodeURIComponent(id)}`, { method: "PATCH", body: { name } });
 export const remove = (id) => call(`acts/${encodeURIComponent(id)}`, { method: "DELETE" });
 

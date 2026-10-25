@@ -5,6 +5,8 @@
 //                                    where another device has changed it since)
 //   POST   /api/fitness/acts          an activity: its figures (meta, as the phone worked them out) and its file, as imported
 //   GET    /api/fitness/acts/<id>     an activity's file
+//   PUT    /api/fitness/acts/<id>     its file again, made smaller by the phone (as FIT, gzipped): a form, meta ({ type,
+//                                    file }) and file
 //   PATCH  /api/fitness/acts/<id>     renamed
 //   DELETE /api/fitness/acts/<id>
 //   GET    /api/fitness/garmin        Garmin Connect (functions/_garmin.js): connected or not, and the activities waiting
@@ -24,7 +26,7 @@ import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
-import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, MAX_FILE } from "../../_fitness.js";
+import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 async function view(env, u) {
@@ -71,6 +73,19 @@ const ROUTES = {
     // cleared as you sign out)
     return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
+  },
+  "PUT acts/:id": async ({ request, env, id }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    const said = Number(request.headers.get("Content-Length"));
+    if (!(said > 0)) throw new HttpError(411, "Bad request.");
+    if (!(said <= MAX_FILE + 16 * 1024)) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
+    let form;
+    try { form = await request.formData(); } catch (_) { throw new HttpError(400, "Bad request."); }
+    const file = form.get("file"), metaText = form.get("meta");
+    if (!file || typeof file === "string" || typeof metaText !== "string" || metaText.length > 4096) throw new HttpError(400, "Bad request.");
+    let meta; try { meta = JSON.parse(metaText); } catch (_) { throw new HttpError(400, "Bad request."); }
+    return json(await replaceFile(env, u.id, id, { type: meta?.type, file: meta?.file }, new Uint8Array(await file.arrayBuffer())));
   },
   "PATCH acts/:id": async ({ request, env, id }) => {
     sameOrigin(request);

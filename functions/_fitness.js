@@ -7,8 +7,9 @@
 //   your own workouts and your choices, as one record with a version (fx_state): a change is sent with the version it
 //   was made from, so two devices changing it at once can't lose either's (fitness/account.js merges and sends again);
 // - your rides, runs and swims (fx_acts): each one's figures, as the phone worked them out from its file, for the lists
-//   and the charts of fitness and form; and the file itself, as you imported it (a FIT file is the record), in R2
-//   (fitness/<account>/<id>), fetched by the phone when you open the ride.
+//   and the charts of fitness and form; and the file itself in R2 (fitness/<account>/<id>), fetched by the phone when you
+//   open the ride: a FIT file as you imported it, a GPX or TCX (or a part of a multisport file) as the phone wrote it
+//   as FIT, every sample kept, and gzipped by the phone (gz), so it's a fraction of the size.
 // Nothing here reads a file: the phone did that. What's kept is checked to be what it says, and limited in size.
 
 import { HttpError, limit } from "./_pigeon.js";
@@ -40,6 +41,8 @@ async function setup(env) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS fx_acts_start ON fx_acts (user_id, start)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS fx_meta (k TEXT PRIMARY KEY, v TEXT)"),
   ]);
+  // (whether a file's kept gzipped: a table made before it had none)
+  await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN gz INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
 }
 const SCHEMA_FP = (() => { let h = 2166136261; for (const c of setup.toString()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "f" + h.toString(36); })();
 
@@ -114,9 +117,27 @@ export function cleanAct(m) {
 }
 // The file's what it says it is: a FIT file's header, or the XML of a GPX or TCX
 export function fileIs(type, u8) {
+  if (!u8) return false;
   if (type === "fit") return u8.length >= 14 && (u8[0] === 12 || u8[0] === 14) && String.fromCharCode(u8[8], u8[9], u8[10], u8[11]) === ".FIT";
   const head = new TextDecoder().decode(u8.subarray(0, 2000)).replace(/^﻿/, "").trimStart();
   return head.startsWith("<") && (type === "gpx" ? /<gpx[\s>]/i.test(head) : /<TrainingCenterDatabase[\s>]/i.test(head));
+}
+
+// The start of a file as it was before it was gzipped (enough to say what it is: the rest isn't unpacked here)
+export const isGz = (u8) => u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b;
+async function headOf(u8) {
+  if (!isGz(u8)) return u8;
+  try {
+    const r = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip")).getReader();
+    let out = new Uint8Array(0);
+    while (out.length < 2048) {
+      const { value, done } = await r.read();
+      if (done) break;
+      const n = new Uint8Array(out.length + value.length); n.set(out); n.set(value, out.length); out = n;
+    }
+    r.cancel().catch(() => {});
+    return out;
+  } catch (_) { return null; }
 }
 
 // ---- reading and writing it ----
@@ -136,13 +157,13 @@ export async function saveState(env, userId, base, data) {
 }
 // every activity's row, newest first: what the lists and charts need, without the files
 export async function activities(env, userId) {
-  const { results } = await (await fitdb(env)).prepare("SELECT id, start, sport, indoor, name, device, file, type, size, sum FROM fx_acts WHERE user_id = ? ORDER BY start DESC LIMIT ?")
+  const { results } = await (await fitdb(env)).prepare("SELECT id, start, sport, indoor, name, device, file, type, size, sum, gz FROM fx_acts WHERE user_id = ? ORDER BY start DESC LIMIT ?")
     .bind(userId, MAX_ACTS).all();
-  return results.map((r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, sum }; });
+  return results.map((r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, gz: !!r.gz, sum }; });
 }
 // One kept, its file first (so a row never points at nothing). The same activity sent again (the same id): kept once.
 export async function addActivity(env, userId, meta, u8) {
-  if (!meta.type || !fileIs(meta.type, u8)) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
+  if (!meta.type || !fileIs(meta.type, await headOf(u8))) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
   if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
   const D = await fitdb(env);
   await limit(env, `fxup:${userId}`, 600, 3600e3);
@@ -152,9 +173,22 @@ export async function addActivity(env, userId, meta, u8) {
   if ((had?.bytes || 0) + u8.length > MAX_STORE) throw new HttpError(413, "Your activities have used all the space there is (2 GB). Delete some old ones first.");
   if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
   await env.BIO_R2.put(fileKey(userId, meta.id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
-  await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), Date.now()).run();
+  await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added, gz) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), Date.now(), isGz(u8) ? 1 : 0).run();
   return { kept: true };
+}
+// One kept before, its file made smaller by the phone (written as FIT, and gzipped): the same activity, in less space
+export async function replaceFile(env, userId, id, meta, u8) {
+  if (!["fit", "gpx", "tcx"].includes(meta.type) || !isGz(u8) || !fileIs(meta.type, await headOf(u8))) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
+  if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
+  const D = await fitdb(env);
+  await limit(env, `fxsquash:${userId}`, 600, 3600e3);
+  const row = await D.prepare("SELECT size FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
+  if (!row) throw new HttpError(404, "That activity isn’t here any more.");
+  if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
+  await env.BIO_R2.put(fileKey(userId, id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
+  await D.prepare("UPDATE fx_acts SET type = ?, file = ?, size = ?, gz = 1 WHERE user_id = ? AND id = ?").bind(meta.type, text(meta.file, 120) || null, u8.length, userId, id).run();
+  return { kept: true, size: u8.length };
 }
 export async function activityFile(env, userId, id) {
   const row = await (await fitdb(env)).prepare("SELECT type FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();

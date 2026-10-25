@@ -166,8 +166,9 @@ await L.p.waitForSelector('#sheet[open]', { state: 'detached', timeout: 60000 })
 await L.p.waitForFunction(() => !document.querySelector('#sheet[open]'), null, { timeout: 60000 }); await settle(L);
 const kept = acts(sam);
 ok(kept.find((a) => a.name === 'Morning ride')?.sport === 'run', 'the one changed: kept as a run', JSON.stringify(kept.map((a) => [a.name, a.sport])));
-ok(kept.length === 3 && kept.map((a) => a.type).join() === 'fit,fit,gpx' && kept.find((a) => a.type === 'gpx')?.size === Buffer.byteLength(gpx) && kept.find((a) => a.file === 'wahoo.fit')?.size === wahoo.length,
-  'each ride kept with the account: its file as it came (the zip\'s ride as its FIT)', JSON.stringify(kept.map((a) => [a.file, a.type, a.size])));
+const gzOf = (uid) => rows(`SELECT id, gz FROM fx_acts WHERE user_id = '${uid}'`);
+ok(kept.length === 3 && kept.every((a) => a.type === 'fit') && kept.find((a) => a.file === 'ride.fit')?.size < Buffer.byteLength(gpx) / 4 && kept.find((a) => a.file === 'wahoo.fit')?.size < wahoo.length
+  && gzOf(sam).every((r) => r.gz === 1), 'each ride kept with the account, in less space: the GPX written as FIT, every file gzipped', JSON.stringify(kept.map((a) => [a.file, a.type, a.size])) + ` (GPX ${Buffer.byteLength(gpx)}, FIT ${wahoo.length})`);
 await L.p.screenshot({ path: `${out}/imported.png` });
 await done(L);
 await L.p.setInputFiles('#files', FILES.slice(0, 1));
@@ -347,6 +348,17 @@ const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000)
 ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
 const noLeak = await api(L, '/api/fitness/me');
 ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Garmin’s token never sent to the page');
+
+// ---- 8d. One kept before files were made smaller (a GPX, as it came): made smaller as the app opens, its figures kept ----
+const oldAt = (t0 - 86400 * 9) * 1000, oldGpx = gpxFromActivity({ ...ride, start: oldAt, name: 'Old ride' });
+const oldUp = await L.p.evaluate(async ([gpx, at]) => { const f = new FormData(); f.append('meta', JSON.stringify({ id: `i${at}`, start: at, sport: 'ride', name: 'Old ride', file: 'old.gpx', type: 'gpx', sum: { secs: 5400, tss: 70 } }));
+  f.append('file', new Blob([gpx]), 'old.gpx'); const r = await fetch('/api/fitness/acts', { method: 'POST', body: f }); return r.status; }, [oldGpx, oldAt]);
+await L.p.reload(); await L.p.waitForSelector('.head .round.me');
+const squashed = await waitFor(() => rows(`SELECT type, file, size, gz, sum FROM fx_acts WHERE user_id = '${sam}' AND id = 'i${oldAt}'`).find((r) => r.gz === 1), 20000);
+ok(oldUp === 200 && squashed?.type === 'fit' && squashed.file === 'old.fit' && squashed.size < Buffer.byteLength(oldGpx) / 4 && JSON.parse(squashed.sum).tss === 70,
+  'one kept before: written as FIT and gzipped as the app opens, its figures as they were', `${oldUp} ${JSON.stringify(squashed)} (GPX ${Buffer.byteLength(oldGpx)})`);
+const oldBack = await L.p.evaluate(async (id) => { const m = await import('./account.js'); const b = await m.fileOf(id); return [b.length, String.fromCharCode(b[8], b[9], b[10], b[11])]; }, `i${oldAt}`);
+ok(oldBack[1] === '.FIT', 'and back, unpacked, as a FIT file', JSON.stringify(oldBack));
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

@@ -1173,6 +1173,7 @@ async function importFiles(files) {
     try {
       const r = await F.readAny(f.name, await f.arrayBuffer());
       for (const a of r.activities) {
+        a.parts = r.activities.filter((y) => y.raw?.bytes === a.raw?.bytes).length;
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3) || got.acts.some((x) => x.start === a.start)) { got.dupes++; continue; }
         got.acts.push(a);
       }
@@ -1218,6 +1219,38 @@ function uploadView(got) {
   ] };
 }
 const defaultFor = (a) => F.defaultName(a.sport, a.start, a.indoor);
+// What's kept of an activity's file: a FIT file of one activity as it came; a GPX or TCX, or one part of a multisport
+// file, written as FIT (every sample kept, in a fraction of the space, and each part on its own, not the whole file
+// for each). Gzipped as it's sent (account.js).
+function keptFile(a, sum, parts = 1) {
+  if (a.raw.type === "fit" && parts <= 1) return { bytes: a.raw.bytes, name: a.raw.name, type: "fit" };
+  const stem = String(a.raw.name || "activity").replace(/\.[A-Za-z0-9]{2,4}$/, "");
+  return { bytes: F.fitFromActivity(a, sum), name: `${stem}${parts > 1 ? `-${Math.round(a.start / 1000)}` : ""}.fit`, type: "fit" };
+}
+// The ones kept before that, made smaller: a few at a time, as the app opens, each read from its file and sent again
+// (written as FIT, gzipped); the figures stay as they are
+async function squash() {
+  if (squash.busy || !A.canGzip() || !S.me) return;
+  squash.busy = true;
+  try {
+    const me = S.me.id, todo = S.own.filter((a) => !a.gz && !squash.tried.has(a.id)).slice(0, 25);
+    for (const a of todo) {
+      if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
+      squash.tried.add(a.id);
+      try {
+        let bytes = await idb.get(fileKey(a)).catch(() => null);
+        if (!bytes) bytes = await A.fileOf(a.id);
+        const r = await F.readAny(a.file || `activity.${a.type}`, bytes), parts = r.activities;
+        const x = parts.find((y) => Math.abs(y.start - a.start) < 2000) || (parts.length === 1 ? parts[0] : null);
+        if (!x) continue;
+        const k = keptFile(x, a.sum, parts.length), got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, await A.gzip(k.bytes));
+        Object.assign(a, { gz: true, type: k.type, file: k.name, size: got.size });
+        idb.put(fileKey(a), k.bytes).catch(() => {});
+      } catch (e) { if (e.status === 401 || e.offline) break; }
+    }
+  } finally { squash.busy = false; }
+}
+squash.tried = new Set();
 // Each activity kept with your account (its file as it came, and its figures as worked out here), one at a time, the
 // sheet saying how far it's got
 async function upload(got, btn) {
@@ -1225,18 +1258,18 @@ async function upload(got, btn) {
   const done = [], failed = [];
   for (const [i, a] of got.acts.entries()) {
     btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
-    const sum = summarise(a, P()), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
+    const sum = summarise(a, P()), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
     try {
-      const r = await A.upload(meta, a.raw.name, a.raw.bytes);
+      const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
       if (r.already) continue;
     } catch (e) {
       if (e.status === 401) return signedOutHere();
       failed.push(`${a.name}: ${e.message}`); continue;
     }
-    const entry = { ...meta, sample: false };
+    const entry = { ...meta, gz: A.canGzip(), sample: false };
     S.own.push(entry); S.sums.set(entry.id, sum); done.push(entry);
     remember(entry.id, Object.assign(a, { id: entry.id }));
-    idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
+    idb.put(fileKey(entry), k.bytes).catch(() => {});
   }
   if (got.workouts.length) { S.mine.unshift(...got.workouts); keep("workouts"); }
   setActs();
@@ -1270,12 +1303,12 @@ async function fromGarmin({ quiet = false } = {}) {
       for (const [k, a] of acts.entries()) {
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
         if (w.name && acts.length === 1) a.name = w.name;
-        const sum = summarise(a, P()), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
-        try { await A.upload(meta, a.raw.name, a.raw.bytes); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
-        const entry = { ...meta, sample: false };
+        const sum = summarise(a, P()), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
+        try { await A.upload(meta, f.name, await A.gzip(f.bytes)); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
+        const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
         remember(entry.id, Object.assign(a, { id: entry.id }));
-        idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
+        idb.put(fileKey(entry), f.bytes).catch(() => {});
       }
       if (kept < 0) break;
       // (nothing in it to keep: one you have already, or one with nothing Fitness can read)
@@ -1474,6 +1507,7 @@ function arrive(m) {
   if (S.summed) redraw();
   askToday();
   garminNow(m.garmin);
+  setTimeout(squash, 4000);
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
