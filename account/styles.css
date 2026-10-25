@@ -7,6 +7,7 @@
 :root {
   color-scheme: dark;
   --sky-a: #121a3c; --sky-b: #0a0f26; --sky-c: #05060e;
+  --sky-top: #1b2860;   /* (the sky at the very top, its light on it: what a phone tints its status bar with) */
   --aura-1: rgba(80, 120, 255, 0.55); --aura-2: rgba(160, 90, 255, 0.4); --aura-3: rgba(40, 190, 230, 0.32);
   --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.56);
   --glass: rgba(34, 40, 66, 0.5); --glass-strong: rgba(28, 33, 56, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
@@ -44,6 +45,7 @@
   :root:not([data-theme="dark"]) {
     color-scheme: light;
     --sky-a: #e9eefc; --sky-b: #f3f0fb; --sky-c: #f7f8fc;
+    --sky-top: #dde3fb;
     --aura-1: rgba(110, 150, 255, 0.42); --aura-2: rgba(200, 150, 255, 0.36); --aura-3: rgba(90, 210, 240, 0.3);
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
@@ -65,6 +67,7 @@
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
     color-scheme: light;
     --sky-a: #e9eefc; --sky-b: #f3f0fb; --sky-c: #f7f8fc;
+    --sky-top: #dde3fb;
     --aura-1: rgba(110, 150, 255, 0.42); --aura-2: rgba(200, 150, 255, 0.36); --aura-3: rgba(90, 210, 240, 0.3);
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
@@ -79,7 +82,7 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body { margin: 0; min-height: 100vh; min-height: 100svh; font: 17px/1.35 var(--font); letter-spacing: -0.2px; color: var(--text); background: var(--sky-c);
+body { margin: 0; min-height: 100vh; min-height: 100svh; font: 17px/1.35 var(--font); letter-spacing: -0.2px; color: var(--text); background: var(--sky-top);
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 button, input { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; }
@@ -91,7 +94,7 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
 /* ---- the sky: three slow lights drifting over the gradient ---- */
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)); }
+.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }   /* (its colour under the gradient: what Safari tints its status bar with) */
 /* (each light soft at its edge by its own gradient, eased as a blur would ease it, not by blurring it: a blur of 70px
    redone every frame, as they drift, was the most work anything on the page did, and every pane of glass blurred it
    again. Measured against the blurred ones, a difference of about 1 in 255. And moved on in small steps, twice a second,
