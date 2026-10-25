@@ -314,6 +314,22 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_lostdue ON pg_gdeliv(lost_at) WHERE lost_at IS NOT NULL AND notified_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_wx ON pg_gdeliv(wx_at) WHERE wx_at IS NOT NULL AND wx_told IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_reacts_due ON pg_reacts(deliver_at) WHERE notified_at IS NULL",
+  // …and the flights still to stamp in the passport (functions/_passport.js: stamped = 1 once it's in pg_stamped), the
+  // named pigeons whose flights aren't settled (functions/_birds.js), and what's unread for the email (functions/_notify.js)
+  "ALTER TABLE pg_msgs ADD COLUMN stamped INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN stamped INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_unstamped ON pg_msgs(deliver_at) WHERE stamped IS NULL AND lost_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_unstamped ON pg_gdeliv(deliver_at) WHERE stamped IS NULL AND lost_at IS NULL",
+  // (flights stamped before there was the mark: marked here)
+  "UPDATE pg_msgs SET stamped = 1 WHERE stamped IS NULL AND lost_at IS NULL AND id IN (SELECT id FROM pg_stamped)",
+  "UPDATE pg_gdeliv SET stamped = 1 WHERE stamped IS NULL AND lost_at IS NULL AND EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = pg_gdeliv.msg_id || ':' || pg_gdeliv.user_id)",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_birdopen ON pg_msgs(bird) WHERE bird IS NOT NULL AND bird_done IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gmsgs_birdopen ON pg_gmsgs(bird) WHERE bird IS NOT NULL AND bird_done IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_unread ON pg_msgs(deliver_at) WHERE read_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_unread ON pg_gdeliv(deliver_at) WHERE read_at IS NULL",
+  // the Skies (functions/_skies.js): only pigeons not yet landed, from you and to you (notified_at is set on landing, loss
+  // or recall), so not the month of your others; the unread count and marking read keep pg_msgs_to
+  "CREATE INDEX IF NOT EXISTS pg_msgs_air_from ON pg_msgs(sender, deliver_at) WHERE notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_air_to ON pg_msgs(recipient, deliver_at) WHERE notified_at IS NULL",
   // the Moon (functions/_moon.js): where on it you are (JSON; null: on Earth), your lunar lofts, and a flight's two ends
   "ALTER TABLE pg_users ADD COLUMN moon TEXT",
   "ALTER TABLE pg_users ADD COLUMN lunar INTEGER", "ALTER TABLE pg_users ADD COLUMN lunar_at INTEGER",
@@ -696,14 +712,18 @@ export function msgView(me, m, t) {
     ...(m.moon ? { moon: JSON.parse(m.moon) } : {}),       // to, from or on the Moon: its two ends (functions/_moon.js)
     style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
     liveAt: flying ? m.live_at ?? null : null,   // when the weather ahead was last looked at (_live.js)
-    legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])
+    // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"]); not where it flew with
+    // another ("f"), which can be a pigeon this person can't see (who can see both is told where they part with the
+    // moment: functions/_moments.js nearViews)
+    legs: (m.legs ? JSON.parse(m.legs) : []).filter((l) => l[3] !== "f"),
     ...cheerView(m, me), ...birdOn(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,
     ct: (flying || lost) && m.recipient === me ? null : m.ct,
   };
 }
 
-// Delete photo blobs whose 24 hours are up. Cheap; runs alongside syncs.
+// Delete photo blobs whose 24 hours are up. Cheap; runs from the minute tick (until then, one past its time is shown and
+// served as gone already: msgView, getPhoto).
 export async function sweepPhotos(env) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND expires_at < ? LIMIT 50").bind(Date.now()).all();

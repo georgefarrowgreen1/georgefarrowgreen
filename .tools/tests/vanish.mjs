@@ -21,7 +21,7 @@ await G.p.screenshot({ path: `${out}/vanish-choose.png` });
 await G.p.click(`.asheet [data-act=vanishset][data-id="${ms.me.id}|${DAY}"]`); await G.p.waitForTimeout(1500);
 ok(/"ms": 86400000/.test(sql("SELECT ms FROM pg_vanish")), 'turned on: 1 day after reading');
 await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(500);
-ok(/disappear 1 day after they’re read · set by you/.test(await G.p.locator('.msgs').innerText()), 'George’s chat says so', (await G.p.locator('.vanishline').innerText().catch(() => '')));
+ok(/disappear 1 day after they’re read \(or land, if read receipts are off\) · set by you/.test(await G.p.locator('.msgs').innerText()), 'George’s chat says so', (await G.p.locator('.vanishline').innerText().catch(() => '')));
 await say(G, 'swift', 'this one disappears');
 const row = one("SELECT id, vanish FROM pg_msgs WHERE vanish IS NOT NULL")[0];
 ok(row && row.vanish === DAY, 'a message sent after carries the setting');
@@ -43,6 +43,16 @@ const [, list] = await api(gs.token, `messages?with=${ms.me.id}`);
 ok(!list.messages.some((m) => m.id === row.id) && list.messages.length === 1, 'George’s chat no longer has it either');
 await G.p.reload(); await G.p.waitForSelector('.tabs'); await openChat(G, ms.me.id); await G.p.waitForTimeout(1200);
 ok(!/this one disappears/.test(await G.p.locator('.msgs').innerText()), 'and it’s gone from George’s phone');
+// with either one's read receipts off, its time counts from landing, read or not (its going would say when it was read)
+sql(`UPDATE pg_users SET no_receipts = 1 WHERE id = '${ms.me.id}'`);
+await say(G, 'swift', 'gone unread');
+const quiet = one("SELECT id FROM pg_msgs WHERE vanish IS NOT NULL AND gone_at IS NULL")[0];
+sql(`UPDATE pg_msgs SET deliver_at = ${Date.now() - DAY - 5000}, read_at = NULL WHERE id = '${quiet.id}'`); await tick();
+const q = one(`SELECT ct, gone_at FROM pg_msgs WHERE id = '${quiet.id}'`)[0];
+ok(q.gone_at && q.ct === '', 'read receipts off: wiped a day after it landed, though unread', JSON.stringify({ ...q, ct: q.ct.length }));
+const [, sy] = await api(ms.token, 'sync');
+ok(!sy.friends.find((f) => f.id === gs.me.id)?.unread, 'and it isn’t counted as unread');
+sql(`UPDATE pg_users SET no_receipts = 0 WHERE id = '${ms.me.id}'`);
 // turned off: new ones stay
 const [st] = await api(ms.token, 'vanish', { with: gs.me.id, ms: 0 });
 ok(st === 200 && !/"ms": 86400000/.test(sql("SELECT ms FROM pg_vanish")), 'Mira can turn it off');
@@ -68,4 +78,10 @@ const gg = one(`SELECT body, sender_key, gone_at FROM pg_gmsgs WHERE id = '${mid
 ok(gg.gone_at && gg.body === '' && gg.sender_key === '' && !/k{40}/.test(sql(`SELECT wrap FROM pg_gdeliv WHERE msg_id = '${mid}'`)), 'everyone read it a week ago: wiped');
 const [, gl] = await api(gs.token, `group-messages?id=${gid}`);
 ok(!gl.messages.some((m) => m.id === mid), 'and gone from the group chat');
+// with anyone's read receipts off, a week after the last of its pigeons landed, read or not
+sql(`UPDATE pg_users SET no_receipts = 1 WHERE id = '${ps.me.id}'`);
+const mid2 = crypto.randomUUID();
+const [gs2] = await api(gs.token, 'group-messages', { id: mid2, group: gid, body: 'y'.repeat(40), keys, pigeon: 'swift' });
+sql(`UPDATE pg_gdeliv SET deliver_at = ${Date.now() - 7 * DAY - 5000}, read_at = NULL WHERE msg_id = '${mid2}'`); await tick();
+ok(gs2 === 200 && !!one(`SELECT gone_at FROM pg_gmsgs WHERE id = '${mid2}'`)[0]?.gone_at, 'read receipts off in the group: wiped a week after landing, though unread', String(gs2));
 console.log(`FAILS ${K.fails()}`); process.exit(0);

@@ -149,16 +149,20 @@ export async function nearViews(D, me, ids, t) {
   const part = new Set(ids);
   {
     const { results } = await D.prepare(`SELECT n.*, ma.sender AS a_from, ma.recipient AS a_to, ma.pigeon AS a_kind, ma.swift AS a_swift,
-      mb.sender AS b_from, mb.recipient AS b_to, mb.pigeon AS b_kind, mb.swift AS b_swift
+      mb.sender AS b_from, mb.recipient AS b_to, mb.pigeon AS b_kind, mb.swift AS b_swift,
+      CASE WHEN n.kind = 'flock' THEN ma.legs END AS a_legs, CASE WHEN n.kind = 'flock' THEN mb.legs END AS b_legs
       FROM pg_near n JOIN pg_msgs ma ON ma.id = n.a JOIN pg_msgs mb ON mb.id = n.b
       WHERE n.at <= ?1 AND (n.a IN (SELECT value FROM json_each(?2)) OR n.b IN (SELECT value FROM json_each(?2)))`).bind(t, JSON.stringify([...part])).all();
     for (const r of results) {
       if (![r.a_from, r.a_to].includes(me) || ![r.b_from, r.b_to].includes(me)) continue;
       const side = (x) => ({ id: r[x], from: r[x + "_from"], to: r[x + "_to"], pigeon: r[x + "_kind"] || (r[x + "_swift"] ? "swift" : "standard") });
+      // flying together: when they part, its next "f" point (the points themselves go to no one: functions/_pigeon.js msgView)
+      const until = (x) => { try { return JSON.parse(r[x + "_legs"] || "[]").find((l) => l[3] === "f" && l[2] > r.at)?.[2] ?? r.at; } catch (_) { return r.at; } };
       for (const [mine, other] of [["a", "b"], ["b", "a"]]) {
         if (!part.has(r[mine])) continue;
         const list = out.get(r[mine]) || [];
-        list.push({ at: r.at, lat: r.lat, lon: r.lon, place: r.place, kind: r.kind, lead: r.lead == null ? null : r.lead === r[mine] ? "this" : "other", other: side(other) });
+        list.push({ at: r.at, lat: r.lat, lon: r.lon, place: r.place, kind: r.kind, lead: r.lead == null ? null : r.lead === r[mine] ? "this" : "other", other: side(other),
+          ...(r.kind === "flock" ? { until: until(mine) } : {}) });
         out.set(r[mine], list);
       }
     }

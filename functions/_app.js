@@ -30,8 +30,10 @@ export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").incl
 // the app's own paths, as they are at the new address ("/api/pigeon/…" is the API's, and stays)
 const atRoot = (text) => text.replace(/(?<![\w.-])\/pigeon\//g, "/");
 
-// fingerprints, kept per isolate (a deploy starts fresh isolates, with the new files)
-const memo = new Map();
+// fingerprints, kept per isolate (a deploy starts fresh isolates, with the new files); and, for one request, those
+// still being worked out, so each is worked out once (a page asks for all its files at once, and app.js and moon.js for
+// some of the same ones. Not shared between requests: what one is doing is its own)
+const memo = new Map(), working = new WeakMap();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 // a file as it's sent: a module with its imports stamped, and (at the new address) its paths at the root
 async function asSent(ctx, path, body, chat) {
@@ -43,12 +45,16 @@ async function fingerprint(ctx, path, chat) {
   // last version's, and a fingerprint of those mustn't stick for as long as this copy runs
   const k = (chat ? "c:" : "") + path, hit = memo.get(k);
   if (hit && Date.now() - hit.at < 60_000) return hit.v;
-  const r = await ctx.env.ASSETS.fetch(new URL(path, ctx.request.url));
-  if (!r.ok) return "";
-  const body = await asSent(ctx, path, await r.text(), chat);
-  const v = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))).slice(0, 12);
-  memo.set(k, { v, at: Date.now() });
-  return v;
+  let doing = working.get(ctx); if (!doing) working.set(ctx, (doing = new Map()));
+  if (!doing.has(k)) doing.set(k, (async () => {
+    const r = await ctx.env.ASSETS.fetch(new URL(path, ctx.request.url));
+    if (!r.ok) return "";
+    const body = await asSent(ctx, path, await r.text(), chat);
+    const v = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))).slice(0, 12);
+    memo.set(k, { v, at: Date.now() });
+    return v;
+  })());
+  return doing.get(k);
 }
 // import … from "./x.js"  →  "./x.js?v=…" (and import("./x.js"), loaded only when it's needed)
 const IMPORT_RE = /\b(from\s+|import\()"(\.\/[\w./-]+\.js)"/g;

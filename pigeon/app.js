@@ -5147,7 +5147,7 @@ function birdLine(m) {
   return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 // at the top of a chat whose messages disappear
-const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
+const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read (or land, if read receipts are off)${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -5163,7 +5163,7 @@ function geventLines(list) {
       text = made ? `${by} made the group${whos.length ? ` with ${and(whos)}` : ""}` : `${by} added ${and(whos)}`;
     } else if (e.kind === "leave") text = `${by} left`;
     else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
-    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read` : `${by} turned off disappearing messages`;
+    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read (or land, if read receipts are off)` : `${by} turned off disappearing messages`;
     else continue;
     out += `<div class="sysline" data-key="ge:${e.at}:${esc(e.kind)}" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
   }
@@ -6994,8 +6994,8 @@ function fcEvents(m, t) {
     const o = n.other, nm = (id) => first(personById(id)?.name || "a friend");
     const whose = o.from === S.me.id ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
     const over = n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air";
-    if (n.kind === "flock") {                                       // (they part where its next "f" point is)
-      const parts = legs.find((l) => l[3] === "f" && l[2] > n.at)?.[2] ?? n.at;
+    if (n.kind === "flock") {                                       // (they part when the server says: n.until)
+      const parts = n.until ?? n.at;
       ev.push({ at: n.at, icon: I.people, tone: "teal", cls: "near flock", title: `${n.at > t ? "Flies" : parts > t ? "Flying" : "Flew"} with ${whose}`, sub: `${over} · 10% faster together` }); continue;
     }
     ev.push({ at: n.at, icon: I.pass, tone: "orange", cls: "near", title: n.kind === "overtake" ? (n.lead === "other" ? `Overtaken by ${whose}` : `Overtook ${whose}`) : `Passed ${whose}`, sub: over });
@@ -8128,7 +8128,7 @@ async function onClick1(e, t) {
     }
     case "vanishask": {
       const g = group(id), who = g ? "everyone in the group" : first(friend(id)?.name || "your friend");
-      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read, for you and ${who}. The flight stays in your Flight Log.`,
+      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read (or land, if read receipts are off), for you and ${who}. The flight stays in your Flight Log.`,
         actions: [[DAY, "1 Day"], [7 * DAY, "7 Days"], [30 * DAY, "30 Days"], [0, "Off"]].map(([ms, label]) => ({ label, act: "vanishset", id: `${id}|${ms}` })) });
     }
     case "vanishset": {
@@ -8136,7 +8136,7 @@ async function onClick1(e, t) {
       try {
         await api(g ? "group-vanish" : "vanish", { method: "POST", body: g ? { id: cid, ms: Number(ms) } : { with: cid, ms: Number(ms) } });
         await sync(); if (S.chat === cid) await loadChat(cid).catch(() => {});
-        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read.` : "Disappearing messages are off.");
+        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read (or land, if read receipts are off).` : "Disappearing messages are off.");
         if (S.sheet) renderSheet(); render();
       } catch (err) { toast(esc(err.message)); }
       return;
@@ -8728,7 +8728,7 @@ function drawLock() {
   if (el?.classList.contains("out")) { el.classList.remove("out"); el.inert = false; }     // (locked again as it went)
   if (!el) {
     el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "InFlight is locked");
-    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with Face ID, Touch ID or your passkey.</p>
+    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with ${isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey"}.</p>
       <button type="button" class="btn wide" data-act="unlock">${I.face}Unlock</button><button type="button" class="link" data-act="lockout">Sign Out Instead</button></div>`;
     root().appendChild(el);
   }

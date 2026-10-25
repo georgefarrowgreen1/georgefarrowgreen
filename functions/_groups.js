@@ -186,7 +186,7 @@ export function groupQs(D, u, t) {
       FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
       WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id),
     D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
-      WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL GROUP BY m.group_id`).bind(u.id, t),
+      WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL AND m.gone_at IS NULL GROUP BY m.group_id`).bind(u.id, t),
     D.prepare(`SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.id IN (${lastIds})`).bind(u.id),
     D.prepare(`SELECT * FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?1 AND id IN (${lastIds}))`).bind(u.id),

@@ -1,7 +1,7 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -37,8 +37,8 @@ import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
-import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
-import { checkNewSecret, handleFree as handleFreeOf } from "../../_join.js";
+import { proofOk, lockVault, openVault } from "../../_atrest.js";
+import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
@@ -55,6 +55,8 @@ function meView(u, t) {
     lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, lunar: ln.count, lunarNextAt: ln.nextAt, lunarx: lx.count, lunarxNextAt: lx.nextAt, laser: lz.count, laserNextAt: lz.nextAt, orbital: ob.count, orbitalNextAt: ob.nextAt, moon: moonView(u), avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
+// …with the look your pigeons fly with now (a seasonal one gone, and not kept, isn't shown as yours: functions/_seasons.js)
+async function meOf(D, u, t) { return { ...meView(u, t), skin: await skinNow(D, u, t) }; }
 
 /* ---------------- accounts ----------------
    New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
@@ -114,7 +116,7 @@ async function handback({ request, env }) {
   const { row, u, siteHash, authAt } = await takeHandback(env, request, "inflight", await body(request));
   const token = await issueSession(env, u.id, request, authAt), hash = await hashOf(token), D = await db(env);
   const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
-  const res = json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
+  const res = json({ token, me: await meOf(D, u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
   const c = await cookieUser(request, env, true).catch(() => null);
   if (c && c.sessionHash === row.session) {
     // (the page's codes and links still to be used, the sign-ins opened from it and its notifications going with it)
@@ -289,7 +291,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (u.moon || moved > REROUTE_KM) await followAll(env, D, u, endOf({ lat: p.lat, lon: p.lon, place: p.place }), t, waitUntil);
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ me: meView(fresh, Date.now()) });
+  return json({ me: await meOf(D, fresh, Date.now()) });
 }
 
 /* ---------------- profile pictures ----------------
@@ -299,12 +301,12 @@ async function updateMe({ request, env, waitUntil }) {
    them until they say yes. */
 async function putAvatar({ request, env }) {
   const u = await requireUser(request, env), t = await putPhoto(env, u, request);
-  return json({ me: meView({ ...u, avatar_at: t }, t) });
+  return json({ me: await meOf(await db(env), { ...u, avatar_at: t }, t) });
 }
 async function deleteAvatar({ request, env }) {
   const u = await requireUser(request, env);
   await dropPhoto(env, u);
-  return json({ me: meView({ ...u, avatar_at: null }, Date.now()) });
+  return json({ me: await meOf(await db(env), { ...u, avatar_at: null }, Date.now()) });
 }
 async function getAvatar({ request, env }, id) {
   const u = await requireUser(request, env);
@@ -623,10 +625,9 @@ const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
-async function sync({ request, env, waitUntil }) {
+async function sync({ request, env }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their
@@ -648,7 +649,8 @@ async function sync({ request, env, waitUntil }) {
       SELECT id, sender, recipient, sent_at, deliver_at, lost_at, recalled FROM pg_msgs WHERE id IN (
         SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
         UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t),
-    D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t),
+    // (one whose words have disappeared isn't waiting: with read receipts off, that can be before it's read)
+    D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL AND gone_at IS NULL GROUP BY sender").bind(u.id, t),
     D.prepare("SELECT a, b, ms, by, at FROM pg_vanish WHERE (a = ?1 OR b = ?1) AND ms > 0").bind(u.id),
     D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id),
     D.prepare("SELECT * FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(u.id),
@@ -688,7 +690,7 @@ async function sync({ request, env, waitUntil }) {
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
   const groups = groupsFrom(res.slice(10, 10 + GROUP_QS), u, t);
-  return json({ now: t, me: { ...meView(u, t), skin: await skinNow(D, u, t) }, feathers: bal.n, friends, groups, incoming, outgoing, blocked,
+  return json({ now: t, me: await meOf(D, u, t), feathers: bal.n, friends, groups, incoming, outgoing, blocked,
     birds: hasBirds.length ? await birdsFor(D, u.id, t) : { birds: [], hall: [] }, emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) },
   );
@@ -746,7 +748,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now();
   if (await idTaken(D, id)) throw new HttpError(409, "That scroll was already sent.");
-  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
+  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place, moon FROM pg_users WHERE id = ?").bind(to).first();
   // off the Earth (or round it, by orbit): only a space pigeon goes, and it flies none of the Earth's ways
@@ -864,7 +866,7 @@ async function sendMessage({ request, env, waitUntil }) {
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null && !mystery ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: await meOf(D, me, t) } : {}) });
 }
 
 // A space pigeon (functions/_moon.js): lunar to, from or across the Moon, laser to or from Mars,
@@ -909,7 +911,7 @@ async function sendSpace({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
   waitUntil(pigeonSent(env, u, to, deliver, SPACE_NAME[kind]).catch(() => {}));
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: meView(me, t) });
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: await meOf(D, me, t) });
 }
 
 // Before sending: the weather along the way now, and for the next day hour by
@@ -990,7 +992,7 @@ async function cancelScheduled(env, D, u, m, t) {
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${m.id}`);
   await refundLoft(D, u.id, m.pigeon, t);
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ cancelled: m.id, me: meView(me, t) });
+  return json({ cancelled: m.id, me: await meOf(D, me, t) });
 }
 
 // Checks a stopover and finds where it is: a friend of you both, with a location.
@@ -1045,7 +1047,7 @@ async function recallMessage({ request, env }) {
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   const view = msgView(u.id, fresh, t);
   if (!(await areFriends(D, u.id, m.recipient))) for (const k of ["route", "legs", "toPlace", "viaPlace"]) delete view[k];
-  return json({ message: view, me: meView(me, t) });
+  return json({ message: view, me: await meOf(D, me, t) });
 }
 
 async function markRead({ request, env }) {
@@ -1077,7 +1079,7 @@ async function getPhoto({ request, env }, id) {
   return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
 
-/* ---------------- password: change, forgotten, reset ----------------
+/* ---------------- password (changed, forgotten and reset on the account's page) ----------------
    The password locks the private key, so a reset can only keep someone's
    scrolls if their phone unlocks the key another way (a passkey with PRF).
    Otherwise the phone makes a new key pair and old scrolls stay sealed. */
@@ -1087,12 +1089,6 @@ async function notifyPasskeyAdded(env, u, label, request) {
     line: `a new passkey (“${label}”) can now sign in to your account.`,
     after: "If this wasn’t you, remove it in Passkeys and change your password straight away.",
     pill: ["passkey", label], rows: [["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
-}
-async function notifyPasswordChanged(env, u, request) {
-  await accountMail(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed",
-    line: "the password for your account was just changed. Your InFlight messages are still safe.",
-    after: "If this wasn’t you, reset your password straight away with Forgot password? at account.georgefarrowgreen.com.",
-    rows: [["Changed in", "InFlight"]], button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
 
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
@@ -1109,27 +1105,6 @@ async function pwned({ request, env }) {
   const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.georgefarrowgreen.com)" } }).catch(() => null);
   const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
   return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
-}
-
-// An account from before Argon2id, moved on at its next password sign-in: the same
-// password, stretched the new way (the phone sends the old proof as the check).
-// Not a password change: no email, and no one is signed out.
-async function changePassword({ request, env, waitUntil }) {
-  const u = await requireUser(request, env);
-  await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
-  const b = await body(request);
-  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "Your current password isn’t right.", "current");
-  const vault = checkNewSecret(b);
-  const D = await db(env), t = Date.now();
-  await D.batch([
-    // (checked against data breaches on the phone first, so none it's found in: the account's page counts it checked)
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
-    D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
-  ]);
-  waitUntil(logEvent(env, u.id, "password", request));
-  waitUntil(notifyPasswordChanged(env, u, request).catch(() => {}));
-  return json({ ok: true });
 }
 
 // Always answers the same way, so it can't be used to find out who has an account.
@@ -1451,7 +1426,7 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
+  "POST password": elsewhere("Change your password"), "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
   "POST password-upgrade": elsewhere("Sign in"),   // (an older password moved on: on the account's page, as you sign in there)
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,

@@ -85,8 +85,14 @@ function reactView(me, r, t) {
 export async function reactsFor(env, me, ids) {
   if (!ids.length) return [];
   const D = await db(env), t = Date.now(), out = [];
-  const { results } = await D.prepare("SELECT * FROM pg_reacts WHERE msg_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)).all();
-  for (const r of results) out.push(reactView(me, r, t));
+  const [{ results }, { results: bl }] = await D.batch([
+    D.prepare("SELECT * FROM pg_reacts WHERE msg_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)),
+    // (in a group you still share with someone either of you has blocked: nothing of theirs, nor any flying to them, as
+    // its time would say how far they are from whoever's at its other end; your own always)
+    D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(me),
+  ]);
+  const cut = new Set(bl.map((r) => r.id));
+  for (const r of results) if (r.sender === me || !(cut.has(r.sender) || cut.has(r.recipient))) out.push(reactView(me, r, t));
   return out;
 }
 // When an account goes, or a group's last member leaves.

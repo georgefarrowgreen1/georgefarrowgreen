@@ -697,13 +697,16 @@ export async function tick(env, origin) {
   pushes += wk.pushes;
   if (emailReady(env)) {
     // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
+    // (each half picks out its unread recent landings first, by index, not every message there is)
     const { results: waiting } = await D.prepare(`
       WITH inbox AS (
         SELECT recipient AS to_id, sender, sender AS chat, id, read_at, lost_at, deliver_at FROM pg_msgs
-          WHERE EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'ok' AND ((k.a = recipient AND k.b = sender) OR (k.a = sender AND k.b = recipient)))
+          WHERE read_at IS NULL AND lost_at IS NULL AND deliver_at <= ?2 AND deliver_at > ?3
+          AND EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'ok' AND ((k.a = recipient AND k.b = sender) OR (k.a = sender AND k.b = recipient)))
         UNION ALL
         SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
           JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0
+          AND d.read_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?2 AND d.deliver_at > ?3
           AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = d.user_id AND k.b = g.sender) OR (k.a = g.sender AND k.b = d.user_id))))
       SELECT u.id, u.email, u.notify_prefs, u.email_at, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
       FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
