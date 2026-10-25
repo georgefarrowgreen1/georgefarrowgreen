@@ -125,7 +125,7 @@ main { max-width: 680px; margin: 0 auto; padding: calc(var(--top) + 20px) max(16
 @media (min-width: 760px) { main { padding-top: calc(var(--top) + 48px); } }
 
 /* ---- a screen's top: its large title, a line under it, and its buttons ---- */
-.head { display: flex; align-items: flex-start; gap: 10px; margin: 0 4px 18px; }
+.head { display: flex; align-items: center; gap: 10px; margin: 0 4px 18px; }
 .head .t { flex: 1; min-width: 0; }
 .head h1 { margin: 0; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; text-wrap: balance; }
 .head .sub { margin-top: 4px; color: var(--text-2); font-size: 15px; }
