@@ -485,8 +485,7 @@ function rhythmView() {
     h("div.rh-week-head", {}, h("b", { text: "This week" }), h("span", {}, h("b", { text: dur(doneMins * 60) }), ` of ${dur(planMins * 60)} done`)),
     h("div.rh-circles", {}, wk.map((d) => { const [cls, inner] = dot(d); return h("button" + (d.date === TODAY ? ".is-today" : ""), { type: "button", onclick: () => openDay(d.date), "aria-label": `${dayLong(d.date)}: ${cls === "done" ? "done" : d.id ? wkById(d.id)?.name : "rest"}` },
       h("small", { text: d.date === TODAY ? "TODAY" : dayName(d.date).slice(0, 3).toUpperCase() }), h("span.c." + cls.replace(".", "."), {}, inner), h("small.n", { text: new Date(d.date).getDate() })); })),
-    h("div.rh-balance", {}, h("div.bar", {}, h("i.easy", { vars: { "--w": easy + "%" } }), h("i.hard", { vars: { "--w": 100 - easy + "%" } })),
-      h("span", { text: `${easy}% easy, ${100 - easy}% hard this week. ${easy >= 75 ? "Right where it should be." : "A harder week than most: the easy days matter."}` }))));
+    h("div.rh-balance", {}, h("div.bar", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { "--w": easy + "%" } }), h("i.hard", { vars: { "--w": 100 - easy + "%" } })))));
   // today, first
   const td = rhDay(TODAY), tw = td?.id ? wkById(S.swaps[TODAY] !== undefined ? S.swaps[TODAY] : td.id) : null, tdone = actsOn(TODAY);
   if (tdone.length) out.push(h("button.card.glass.rh-today.done", { type: "button", onclick: () => openAct(tdone[0]) }, h("span.rh-chip", {}, icon("check", 13, 3), "Today · done"), h("h2", { text: tdone[0].name }), h("p", { text: "Nice work. Tomorrow’s plan takes it in." })));

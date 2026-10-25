@@ -243,7 +243,7 @@ ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the lapto
 // ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
 await tab(L, 2);
 const circles = await L.p.locator('.rh-circles button').count(), comingUp = await L.p.locator('.section', { hasText: 'Coming up' }).locator('.row:not(.action)').count();
-ok(circles === 7 && await L.p.locator('.rh-today').count() === 1 && comingUp === 3 && /% easy/.test(await L.p.locator('.rh-balance').innerText()), 'the Plan tab: the week at a glance, today first, the next three days', `${circles} ${comingUp}`);
+ok(circles === 7 && await L.p.locator('.rh-today').count() === 1 && comingUp === 3 && /% easy/.test(await L.p.locator('.rh-balance .bar').getAttribute('aria-label')), 'the Plan tab: the week at a glance, today first, the next three days', `${circles} ${comingUp}`);
 // (a day that isn't the day for it: rest instead, and Rhythm takes it in)
 const tomorrowRow = L.p.locator('.section', { hasText: 'Coming up' }).locator('.row:not(.action)').first();
 await tomorrowRow.click(); await L.p.waitForSelector('#sheet[open] .sheet-top'); await settle(L, 500);
