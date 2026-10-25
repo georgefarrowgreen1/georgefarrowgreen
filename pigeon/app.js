@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.4";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.5";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2765,6 +2765,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.5", at: Date.UTC(2026, 9, 25), title: "In keeping", items: [
+    ["sun", "blue", "A sky behind everything", "InFlight now has your account’s sky: slow light drifting behind every screen, dawn in Light and night in Dark."],
+    ["bubble", "indigo", "Glass, all through", "Your chats, friends and settings sit on panes of glass, as they do on your account’s page and in Weather; friends’ bubbles too."],
+    ["key", "teal", "Encryption, simpler", "Encryption opens on your key, as a pattern and its digits, with Verify a Friend straight under it."],
+  ] },
   { v: "1.3.4", at: Date.UTC(2026, 9, 25), title: "Steadier", items: [
     ["sliders", "indigo", "Your settings, on your account", "InFlight Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
     ["search", "blue", "Search finds people again", "Searching Messages for a friend’s or a group’s name shows their chat, as it should."],
@@ -3238,13 +3243,15 @@ const settle = (els, ease, ms, then) => {
 const unstyle = (...els) => { for (const el of els) if (el) { el.style.transition = el.style.transform = el.style.opacity = el.style.animation = ""; } };
 // what you'd see behind the screen you're on: the one you came from, as you left it
 function underlay() {
-  const u = S.under, box = document.createElement("div");
+  const u = S.under, box = document.createElement("div"), inner = document.createElement("div");
   box.className = `under${u?.plain ? " plain" : ""}`; box.setAttribute("aria-hidden", "true"); box.inert = true;
+  // (the screen in a box of its own inside: the outer one is cut off at the edge of the screen you're swiping, styles.css)
+  inner.className = "ghost-in"; box.append(inner);
   if (u) {
     // copies (not re-parsed HTML), so the page's own styling comes along
     const v = u.node.cloneNode(true); v.classList.remove("nav-push", "nav-pop", "nav-fade", "swiped"); v.style.transform = "";
-    v.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); box.append(v);
-    if (u.tabs) { const t = u.tabs.cloneNode(true); t.hidden = false; box.append(t); }
+    v.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); inner.append(v);
+    if (u.tabs) { const t = u.tabs.cloneNode(true); t.hidden = false; inner.append(t); }
     requestAnimationFrame(() => { v.scrollTop = u.top; });
   }
   const dim = document.createElement("div"); dim.className = "under-dim"; box.append(dim);
@@ -3258,7 +3265,9 @@ function edgeBack() {
   const place = (s2, dx) => {
     const p = Math.min(1, dx / s2.w);
     for (const el of moving()) if (el) el.style.transform = `translateX(${dx}px)`;
-    s2.box.style.transform = `translateX(${-28 * (1 - p)}%)`; s2.box.lastChild.style.opacity = String(0.14 * (1 - p));
+    // (the screen behind 28% aside and coming back, its box's edge at your finger)
+    s2.box.style.transform = `translateX(${dx - s2.w}px)`; s2.box.firstChild.style.transform = `translateX(${0.72 * (s2.w - dx)}px)`;
+    s2.box.lastChild.style.opacity = String(0.14 * (1 - p));
     const past = dx > s2.w * 0.35; if (past !== s2.past) { s2.past = past; if (past) haptic("tick"); }
   };
   r.addEventListener("touchstart", (e) => {
@@ -3291,7 +3300,8 @@ function edgeBack() {
       void $view.offsetWidth;
       for (const el of els) if (el) el.style.transition = "";
     };
-    settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-28%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], f.ease, f.ms, done);
+    settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-100%)"],
+      [s2.box.firstChild, go ? "translateX(0)" : "translateX(72%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], f.ease, f.ms, done);
   };
   r.addEventListener("touchend", () => end(false)); r.addEventListener("touchcancel", () => end(true));
 }
@@ -3658,11 +3668,12 @@ function ghostView() {
   $(".nav-ghost", root())?.remove();
   // the whole old screen: its list or chat, and the tab bar or composer that belongs to it (a tab: just its list,
   // under the new one as it fades in, the tab bar staying where it is)
-  const g = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
+  const g = document.createElement("div"), inner = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
   g.className = `nav-ghost nav-ghost-${tab || fade ? "tab" : S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
-  v.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); g.append(v);
-  if (!tab && !$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; g.append(c); }
-  if (!tab && !$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise", "back"); g.append(t); }
+  inner.className = "ghost-in"; g.append(inner);          // (going under a new chat, cut off at its edge: styles.css)
+  v.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); inner.append(v);
+  if (!tab && !$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; inner.append(c); }
+  if (!tab && !$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise", "back"); inner.append(t); }
   g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
   g.style.top = `${$view.offsetTop}px`;
   $view.before(g); v.scrollTop = top;
@@ -9216,7 +9227,7 @@ function chosenTheme() { try { return THEMES.includes(localStorage.getItem("infl
 function applyTheme(t = theme()) {
   document.documentElement.setAttribute("data-theme", t);
   const dark = t === "dark" || (t === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", document.documentElement.classList.contains("night") ? "#03050c" : dark ? "#1c1c1f" : "#f2f2f7");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", document.documentElement.classList.contains("night") ? "#03050c" : dark ? "#1b2860" : "#dde3fb");   // (the sky at its top: styles.css --sky-top)
 }
 window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme());
 

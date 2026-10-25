@@ -1112,9 +1112,21 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.4
+## InFlight (chat.georgefarrowgreen.com) — 1.3.5
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.5** (in keeping): InFlight looks like the account page and Weather. Behind every screen is the account page's
+sky (its gradient, and three slow lights drifting over it in steps, twice a second: dawn in Light, night in Dark; held
+still with Reduce Motion and under a sheet; `index.html` `.sky`), and over it Liquid Glass: groups, the Messages list
+(one pane, as Settings' groups are), cards and friends' bubbles are clear panes with a sheen in the corner, a bright
+rim and a soft lift, and what floats over moving things (the nav buttons, the tab bar, the composer, menus, toasts,
+sheets) is the stronger, blurred glass. The panes on the sky aren't blurred: over its soft light a blur would change
+next to nothing and cost one per pane. Screens are clear over the sky, so one sliding over another cuts the one
+beneath off at its edge as it goes (a push, a pop, a swipe back: the copy beneath slides aside a whole width while what's in it slides back
+72% of one, the 28% iOS shows); bubble tails are cut by a mask, not covered in a background colour. The lock screen is
+the sky's gradient, solid. Solid glass with Reduce Transparency. Encryption opens on your key, as a pattern and its
+digits, with **Verify a Friend** straight under it (scan any friend's code; it finds whose it is).
 
 **1.3.4** (steadier): the site-wide audit's fixes. Searching Messages by name works again; the app asks the server for
 less (a chat you've left with a pigeon in the air, a phone that hasn't moved, an open chat that hasn't changed, the
@@ -1132,7 +1144,7 @@ was. With no account page beside it, InFlight keeps its own Notifications and Pr
 **1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
 there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
 ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
-your initial and photo from the address's `#`): the sky clears to Messages as a padlock opens in the middle ("Messages
+your initial and photo from the address's `#`): the sky (InFlight's own now, since 1.3.5) clears to Messages as a padlock opens in the middle ("Messages
 unlocked"), your picture flies down into Account, and your chats come in a row at a time (`arriving`), all overlapping,
 in about a second and a half. Someone new goes straight on to choosing where they
 are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
