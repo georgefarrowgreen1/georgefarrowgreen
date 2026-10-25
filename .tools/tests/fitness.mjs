@@ -114,8 +114,8 @@ const P = await browser('phone');
 await P.p.goto(`${FIT}/`);
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 const welcome = await P.p.evaluate(() => ({ text: document.querySelector('main').innerText.replace(/\s+/g, ' '), tabs: getComputedStyle(document.querySelector('.tabbar')).display, btns: [...document.querySelectorAll('main button')].map((x) => x.textContent) }));
-ok(/^Fitness Training, riding first/.test(welcome.text) && /InFlight and Weather/.test(welcome.text) && welcome.btns.join() === 'Sign in' && welcome.tabs === 'none',
-  'signed out: what Fitness is, and only Sign in (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
+ok(/^Fitness\s*$/.test(welcome.text.replace('Sign in', '')) && welcome.btns.join() === 'Sign in' && welcome.tabs === 'none',
+  'signed out: Fitness, and only Sign in (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
 await P.p.setInputFiles('#files', FILES.slice(0, 1)); await settle(P, 800);
 ok(!(await P.p.$('#sheet[open]')) && await P.p.$('.welcome #sign-in'), 'a file given it signed out: nothing read, nothing kept');
 const outMe = await api(P, '/api/fitness/me'), outPut = await api(P, '/api/fitness/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"base":0,"data":{}}' });

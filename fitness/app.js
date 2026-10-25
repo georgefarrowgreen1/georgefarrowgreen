@@ -1434,15 +1434,11 @@ function welcome(note = null) {
   S.me = null;
   document.body.classList.add("out");
   const page = A.accountPage();
-  const feature = (ic, b, t) => h("li", {}, h("span.ic.coral", {}, icon(ic, 17, 2.1)), h("div", {}, h("b", { text: b }), h("span", { text: t })));
   main.replaceChildren(h("div.welcome.screen.in", {},
     h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 }),
     h("h1", { text: "Fitness" }),
-    h("p.lead", { text: "Training, riding first: a plan to your goal, workouts for your Garmin or Wahoo, and every ride, run and swim." }),
-    h("ul.features", {}, feature("plan", "Plans", "Week by week to your event, with an easier week every fourth"), feature("upload", "To your devices", "Workouts for Garmin, Wahoo, Zwift and TrainerRoad"),
-      feature("list", "Your rides", "From the files your devices record: power, heart rate, zones and form")),
     h("button.btn", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
-    h("p.small", { text: page ? "With your georgefarrowgreen.com account, the one you use for InFlight and Weather." : "Signing in is at fitness.georgefarrowgreen.com." }),
+    !page && h("p.small", { text: "Signing in is at fitness.georgefarrowgreen.com." }),
     note && h("p.small.said", { role: "status", text: note })));
   main.removeAttribute("aria-busy");
   document.title = "Fitness";
