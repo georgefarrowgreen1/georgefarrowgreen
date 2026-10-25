@@ -133,7 +133,7 @@ await p.click('.tab:nth-child(2)'); await settle();
 await p.getByRole('button', { name: /^Sportive 160 km/ }).click(); await settle();
 await p.fill('#plan-end', '2027-01-03'); await settle(300);
 const by = await p.locator('#sheet .btn.quiet').innerText();
-ok(/^Start at week 6, to end Sun 3 Jan/.test(by), 'an event ten weeks off: the 16-week plan starts at week 6', by);
+ok(/^Start at week 6, to end Sun 3 Jan 2027/.test(by), 'an event ten weeks off: the 16-week plan starts at week 6', by);
 await p.locator('#sheet .btn.quiet').click(); await settle(800);
 ok(/^Sportive 160 km · week 6 of 16/.test(await p.locator('.head .sub').innerText()) && await p.locator('.badge.plan').count() === 0, 'in week 6, nothing before it missed', await p.locator('.head .sub').innerText());
 

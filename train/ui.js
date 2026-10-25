@@ -99,8 +99,10 @@ export const weight = (kg) => (U.metric ? `${kg.toFixed(1).replace(/\.0$/, "")} 
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export const dayLong = (t) => { const d = new Date(t); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
-export const dayShort = (t) => { const d = new Date(t); return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
+// (the year said only when it isn't this one: a ride from 2019, a plan ending next January)
+const yearOf = (d) => (d.getFullYear() === new Date().getFullYear() ? "" : ` ${d.getFullYear()}`);
+export const dayLong = (t) => { const d = new Date(t); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}${yearOf(d)}`; };
+export const dayShort = (t) => { const d = new Date(t); return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}${yearOf(d)}`; };
 export const dayName = (t) => DAYS[new Date(t).getDay()];
 export const dayLetter = (t) => DAYS[new Date(t).getDay()].slice(0, 1);
 export const dateShort = (t) => { const d = new Date(t); return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
