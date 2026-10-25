@@ -298,9 +298,11 @@ body.sheet-up :is(.sky, .sky > *) { transition-duration: 0s; }
   background: rgba(12, 18, 30, 0.5); border-bottom: 0.5px solid rgba(255, 255, 255, 0.16); box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.3);
   -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); }
 .top.scrolled::before { opacity: 1; }
-/* (behind a sheet, or the radar full screen, its glass isn't blurred (as the page's isn't: below): made more solid
-   instead, so the cards under it don't show through the bar as if over the buttons) */
-body:is(.sheet-up, .no-scroll) .top::before { background-color: rgba(12, 18, 30, 0.88); }
+/* (behind the radar full screen, its glass isn't blurred (as the page's isn't: below): made more solid instead, so the
+   cards under it don't show through the bar as if over the buttons; behind a sheet, where the page steps back, it goes:
+   stepping back with the page, it was a dark box, short of the screen's edges and the strip at its top, under the dim) */
+body.no-scroll .top::before { background-color: rgba(12, 18, 30, 0.88); }
+body.sheet-up .top::before { opacity: 0; }
 /* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
 .top .place, .top .icon-btn { transition: background-color 0.3s, transform var(--dur-release) var(--spring), filter 0.25s; }
 .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
