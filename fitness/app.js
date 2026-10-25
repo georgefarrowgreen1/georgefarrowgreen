@@ -912,9 +912,17 @@ function routeOf(s, zoneAt) {
   const colourOf = (z) => (col[z] ??= css.getPropertyValue("--" + z).trim() || "#0a84ff");
   return { coords: use.map((i) => [s.lon[i], s.lat[i]]), colours: zoneAt ? use.map((i) => colourOf(zoneAt(i))) : null };
 }
+// the map's credits, as Weather has them: a © in the corner, that opens out into them when tapped (and folds again)
+function mapCredit() {
+  const b = h("button.map-credit.folded", { type: "button", "aria-label": "Map data © OpenStreetMap, OpenFreeMap", "aria-expanded": "false",
+    onclick: (e) => { e.stopPropagation(); const open = b.classList.toggle("folded"); b.setAttribute("aria-expanded", String(!open)); } },
+  h("span.mc-c", { "aria-hidden": "true", text: "©" }), h("span.mc-t", { "aria-hidden": "true", text: " OpenStreetMap, OpenFreeMap" }));
+  b.addEventListener("keydown", (e) => e.stopPropagation());
+  return b;
+}
 // the route's map, the whole sheet, to move and zoom
 function bigMapView(name, route) {
-  const holder = h("div.map-gl.big", {}, h("span.map-credit", { text: "© OpenStreetMap · OpenFreeMap" }));
+  const holder = h("div.map-gl.big", {}, mapCredit());
   setTimeout(() => M.routeMap(holder, { ...route, light: lightNow(), explore: true }).catch(() => {}), 350);
   return { title: name, body: [holder] };
 }
@@ -1322,7 +1330,7 @@ function actView(a) {
     mapAt = (sec) => { if (sec == null) { r.at(null); gl?.at(null); return; } const i = sampleAt(sec); r.at(i); if (gl && x.s.lat[i] != null) gl.at([x.s.lon[i], x.s.lat[i]]); };
     // (on a real map, where the phone can draw one: the route as ridden, over it; a tap opens it to explore)
     if (M.able()) {
-      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => pushSheet(() => bigMapView(a.name, route)) }, h("span.map-credit", { text: "© OpenStreetMap" }), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
+      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => pushSheet(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
       box.replaceChildren(holder);
       // (and where it can't after all, its own drawing of the route back)
       M.routeMap(holder, { ...route, light: lightNow() }).then((g) => { gl = g; }).catch(() => box.replaceChildren(r.el));
