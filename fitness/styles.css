@@ -317,7 +317,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .tabs { position: relative; pointer-events: auto; display: flex; width: 100%; max-width: 380px; padding: 5px; border-radius: 999px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); transition: transform 0.5s var(--ease-spring); }
 .tabs:has(.tab:active) { transform: scale(1.03); }
-.tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 4); border-radius: 999px; background: var(--glass-ctl);
+.tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 3); border-radius: 999px; background: var(--glass-ctl);
   translate: calc(var(--tab, 0) * 100%) 0; transition: translate 0.55s var(--ease-spring); pointer-events: none; }
 .tabs.moving::before { animation: squish 0.55s var(--ease-glide); }
 @keyframes squish { 35% { scale: 1.18 0.9; } }

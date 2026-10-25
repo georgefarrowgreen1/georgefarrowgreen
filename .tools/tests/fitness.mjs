@@ -118,7 +118,7 @@ ok(!/Example rides/.test(await L.p.innerText('#sheet')), 'no example rides to tu
 await done(L);
 
 // ---- 3. Files in on the laptop: each ride kept with the account, its file as it came ----
-await tab(L, 4);
+await tab(L, 3);
 ok(await L.p.locator('.card.first .btn').innerText() === 'Upload a file' && !(await L.p.$('main .seg')), 'none yet: one button to upload, and where the files are (no filters for nothing)');
 await L.p.screenshot({ path: `${out}/first.png` });
 await L.p.setInputFiles('#files', FILES);
@@ -153,7 +153,7 @@ await P.p.waitForURL((u) => u.hostname.startsWith('fitness.'), { timeout: 30000 
 const said = await toastSays(P);
 await P.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(/Signed in as Sam/.test(said) && !/signin=/.test(P.p.url()), 'Sign in, on the account\'s page, and back in Fitness signed in (the code out of the address)', `${said} ${P.p.url()}`);
-await tab(P, 4);
+await tab(P, 3);
 const listed = await P.p.locator('.head .sub').innerText();
 ok(/^3 activities/.test(listed) && await P.p.getByText('Wahoo ELEMNT BOLT', { exact: false }).count() >= 1, 'the phone has the laptop\'s three rides', listed);
 await P.p.locator('.row', { hasText: 'Wahoo ELEMNT BOLT' }).first().click();
@@ -162,7 +162,6 @@ const stats = await P.p.locator('#sheet .stat').allInnerTexts();
 ok(stats.some((s) => /Normalized Power/.test(s)) && stats.some((s) => /Distance/.test(s)) && await P.p.locator('#sheet .map svg .route').count() > 0, 'opened on the phone, from its file: its figures and its route', `${stats.length} figures`);
 ok(!(await P.p.locator('#sheet .section', { hasText: 'Export' }).count()), 'no export on a ride you uploaded: it\'s kept as it came');
 await done(P);
-await tab(P, 3);
 
 // ---- 5. Rhythm set up on the phone (your week), and a new FTP on the laptop from the version before it: put together ----
 await tab(P, 2);
@@ -207,7 +206,7 @@ ok(/Miles/.test(await L.p.locator('#sheet .row', { hasText: 'Units' }).innerText
 await done(L);
 
 // ---- 6. A ride renamed on the phone, and another deleted: so on the laptop ----
-await tab(P, 4);
+await tab(P, 3);
 await P.p.locator('.row', { hasText: 'Morning ride' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P);
 await P.p.locator('#sheet').getByRole('button', { name: 'Rename' }).click(); await settle(P);
@@ -220,7 +219,7 @@ await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P,
 await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P, 1200);
 const left = acts(sam);
 ok(left.length === 2 && left.some((a) => a.name === 'Saturday loop') && !left.some((a) => a.file === '123_ACTIVITY.fit'), 'renamed and deleted with the account', JSON.stringify(left.map((a) => a.name)));
-await tab(L, 4);
+await tab(L, 3);
 await L.p.reload(); await L.p.waitForSelector('.head .round.me');
 ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.head .sub').innerText());
 
@@ -280,7 +279,7 @@ await L.p.locator('.checkin.done').screenshot({ path: `${out}/checkin.png` });
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);
 const wide = [];
-for (const i of [1, 2, 3, 4]) { await tab(L, i); if (await L.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push(i); }
+for (const i of [1, 2, 3]) { await tab(L, i); if (await L.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push(i); }
 await P.p.setViewportSize({ width: 320, height: 640 }); await settle(P);
 if (await P.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push('welcome');
 ok(!wide.length, 'at 320 px wide, no screen scrolls sideways', wide.join(','));

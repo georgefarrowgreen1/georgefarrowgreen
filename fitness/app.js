@@ -210,7 +210,7 @@ function fitnessSeries() {
 }
 
 // ---- the page ----
-const TABS = [["today", "Today", "today"], ["plan", "Plan", "plan"], ["workouts", "Workouts", "bolt"], ["activities", "Activities", "list"]];
+const TABS = [["today", "Today", "today"], ["plan", "Plan", "plan"], ["activities", "Activities", "list"]];
 function drawTabs() {
   tabsEl.replaceChildren(...TABS.map(([id, name, ic], i) => h("button.tab", { type: "button", "aria-current": S.tab === id ? "page" : null, onclick: () => go(id) }, icon(ic, 24, 1.9), name)));
   tabsEl.style.setProperty("--tab", TABS.findIndex(([id]) => id === S.tab));
@@ -225,7 +225,7 @@ function go(tab) {
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
 }
 function render(fresh = false) {
-  const views = { today: todayView, plan: planView, workouts: workoutsView, activities: activitiesView };
+  const views = { today: todayView, plan: planView, activities: activitiesView };
   const screen = h("div.screen" + (fresh ? ".in" : ""), {}, views[S.tab]());
   main.replaceChildren(screen);
   main.removeAttribute("aria-busy");
@@ -289,7 +289,7 @@ function sessionCard(w, id, done) {
     return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "No plan yet"),
       h("h2", { text: "Fit all year, a day at a time" }),
       h("p.about", { text: "Rhythm decides each day’s session, or rest, from the days you ride, what you’ve done and how you feel. No event needed." }),
-      h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => rhythmSetup() }, "Set up Rhythm"), h("button.pill", { type: "button", onclick: () => go("workouts") }, "Workouts")));
+      h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => rhythmSetup() }, "Set up Rhythm")));
   }
   const rd = rhythmOn() && S.swaps[TODAY] === undefined ? rhDay(TODAY) : null;
   if (!w && rd) {
@@ -752,17 +752,6 @@ function openDay(day) {
   }));
 }
 
-// ---- Workouts ----
-function workoutsView() {
-  const sports = [["ride", "Ride"], ["run", "Run"], ["swim", "Swim"], ["strength", "Strength"]], at = sports.findIndex(([k]) => k === S.sport);
-  const out = [head("Workouts", "Every session, to ride and to send")];
-  out.push(h("div.seg.wide", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.sport === k), onclick: () => { S.sport = k; redraw(); } }, label))));
-  const mine = S.mine.filter((w) => w.sport === S.sport);
-  if (mine.length) out.push(section("Yours", h("div.group.glass", {}, mine.map(workoutRow))));
-  const kinds = [...new Set(WORKOUTS.filter((w) => w.sport === S.sport).map((w) => w.kind))];
-  for (const k of kinds) out.push(section(k, h("div.group.glass", {}, WORKOUTS.filter((w) => w.sport === S.sport && w.kind === k).map(workoutRow))));
-  return out;
-}
 function workoutRow(w) {
   const m = measure(w, paceFor(w.sport));
   return h("button.row", { type: "button", onclick: () => openWorkout(w) },
