@@ -313,11 +313,11 @@ if (await L.p.locator('.session .pill', { hasText: 'Details' }).count()) {
 }
 
 // (the day's check-in: heavy legs and a poor night ease today, and tomorrow too)
-await L.p.locator('.checkin .pill', { hasText: 'Check in' }).click(); await L.p.waitForSelector('#sheet[open] .checkin-q'); await settle(L, 400);
-for (const [k, v] of [['sleep', 'Poorly'], ['legs', 'Heavy'], ['mood', 'Low']]) await L.p.locator(`#sheet .seg[aria-label="${k}"] button`, { hasText: v }).click();
-await L.p.locator('#sheet .btn', { hasText: 'Done' }).click(); await settle(L, 900);
+// (three taps, there on Today's card: no sheet)
+for (const [k, v] of [['Sleep', 'Poor'], ['Legs', 'Heavy'], ['Motivation', 'Low']]) { await L.p.locator(`.checkin .seg3[aria-label="${k}"] button`, { hasText: v }).click(); await settle(L, 300); }
+await settle(L, 600);
 const checked = await L.p.locator('.checkin.done').innerText().catch(() => '');
-ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly\s+Heavy legs\s+Low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
+ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly · heavy legs · low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
 await L.p.locator('.checkin.done').screenshot({ path: `${out}/checkin.png` });
 
 // ---- 8c. Garmin Connect on the laptop: a key Garmin won't take, then yours; the morning's ride comes in, the

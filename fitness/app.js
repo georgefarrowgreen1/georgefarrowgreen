@@ -296,79 +296,109 @@ const sheetW = () => Math.round(Math.min(innerWidth - 16, 600) - 32 - 36);
 // ---- Today ----
 function todayView() {
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
-  const out = [head("Today", dayLong(TODAY))];
+  // (the date over the title, as Apple's own apps have Today)
+  const out = [h("div.head.dated", {}, h("div.t", {}, h("div.sub", { text: dayLong(TODAY) }), h("h1", { text: "Today" })),
+    h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, face()))];
   if (S.examples) {
     out.push(h("div.note.glass", {}, h("span.ic", {}, icon("sparkle", 16, 2.2)), h("div", {},
       h("b", { text: "Example rides are on. " }), "They’re made up, for a rider five weeks into a sportive plan, so there’s something to see. Import your own from a Garmin or a Wahoo, then turn the examples off to see only yours.",
       h("div.gos", {}, h("button.go", { type: "button", onclick: chooseFiles }, "Import files"), h("button.go", { type: "button", onclick: () => setExamples(false) }, "Use only my rides")))));
   }
-  const left = [], right = [];
-  left.push(sessionCard(w, id, done));
-  // (the best time to ride: Weather's, once Fitness has your place; till then, the examples' alone)
-  if (S.examples && w && (w.sport === "ride" || w.sport === "run") && !done.length) left.push(weatherCard(w));
-  right.push(formCard());
-  right.push(weekCard());
+  const left = [sessionCard(w, id, done)], right = [];
+  if (done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(feelCard(w));
+  right.push(weekCard(), formCard());
   out.push(h("div.cols", {}, h("div", {}, left), h("div", {}, right)));
   return out;
 }
+// a length of time as a clock has it: 1:30
+const hmOf = (s) => { const m = Math.round((s || 0) / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`; };
+// a section of Today: its title over it, as a heading, and what's said beside it
+const todaySection = (title, aside, ...kids) => h("section.section.t-sec", {}, h("h3", {}, title, aside && h("span.aside", { text: aside })), ...kids);
+
+// How ready you are, out of 100: your form, and how you said you are this morning. None till there are rides to go on.
+function readiness() {
+  if (!S.summed || !S.acts.some((a) => sumOf(a)?.tss)) return null;
+  const f = S.feel[TODAY], tsb = fitnessSeries().at(-1).tsb;
+  let v = 64 + tsb * 1.1;
+  if (f && FEEL.every(([k]) => f[k] != null)) for (const [k] of FEEL) v += f[k] === 0 ? -11 : f[k] === 2 ? 7 : 0;
+  v = Math.round(Math.max(15, Math.min(97, v)));
+  const tone = v >= 80 ? "good" : v >= 58 ? "steady" : "easy";
+  return { v, tone, word: { good: "Ready", steady: "Steady", easy: "Go easy" }[tone] };
+}
+function readyRing(size = 84) {
+  const r = readiness();
+  if (!r) return null;
+  const c = size / 2, R = c - 7, C = 2 * Math.PI * R;
+  return h("div.ready." + r.tone, { role: "img", "aria-label": `Readiness ${r.v} of 100: ${r.word}`, vars: { "--s": size + "px" } },
+    svgOf(`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${R}"/><circle class="arc" cx="${c}" cy="${c}" r="${R}" stroke-dasharray="${((r.v / 100) * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/></svg>`),
+    h("span", {}, h("b", { text: r.v }), h("small", { text: r.word })));
+}
+// the top of the day's card: what kind of day, its name, and how ready you are
+const heroTop = (chip, title, ring = readyRing()) => h("div.hero-top", {}, h("div.tx", {}, chip, h("h2", { text: title })), ring);
+const metaOf = (w) => { const m = measure(w, paceFor(w.sport)); return [dur(m.secs), w.sport !== "strength" ? `stress ${Math.round(m.tss)}` : null].filter(Boolean).join(" · "); };
+// the next session, with its shape, a tap from the rest day
+const nextUp = (date, w) => h("button.next-up", { type: "button", onclick: () => openWorkout(w) },
+  h("span.tx", {}, h("small", { text: `Next · ${dayName(date)}` }), h("b", { text: w.name }), h("small", { text: metaOf(w) })),
+  h("span.mini", {}, C.profile(w, { mini: true, ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, its shape` })), h("span.chev", {}, icon("chev", 15, 2.6)));
+
 function sessionCard(w, id, done) {
-  // done: against what was planned (where it was the same sport), and what tomorrow brings
+  // done: on its map, against what was planned (where it was the same sport)
   if (done.length) {
     const a = done[0], s = sumOf(a), pl = w && w.sport === a.sport ? w : null, pt = pl ? Math.round(measure(pl, paceFor(pl.sport)).tss) : null;
-    const nd = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null, nw = nd?.id ? wkById(nd.id) : null;
-    const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
-    const how = pl && s?.tss != null && pt ? (s.tss > pt * 1.1 ? "A bit more than planned. " : s.tss < pt * 0.9 ? "A bit less than planned: no matter. " : "Right on target. ") : "";
+    const fig = (k, v, u) => h("div", {}, h("small", { text: k }), h("b", {}, v, u && h("u", { text: u })));
+    const third = s?.np ? fig("Norm. power", String(Math.round(s.np)), " W") : fig("Stress", s?.tss != null ? String(s.tss) : "–");
+    const on = pl && s?.tss != null && pt ? (s.tss > pt * 1.1 ? "A bit more than planned" : s.tss < pt * 0.9 ? "A bit less: no matter" : "Right on target") : null;
+    const bar = (k, v, max, cls) => h("div.vs-row", {}, h("small", { text: k }), h("span.vs-bar", {}, h("i." + cls, { vars: { width: Math.min(100, (v / max) * 100) + "%" } })), h("b", { text: String(v) }));
+    const rec = newBest(a);
     return h("div.card.hero.glass.session.done", {},
-      h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done today · as planned" : "Done today"),
-      h("h2", { text: pl ? pl.name : a.name }),
-      s && h("div.done-figs", {}, pl && pt ? [fig("Planned", `TSS ${pt}`), fig("Ridden", s.tss != null ? `TSS ${s.tss}` : "–"), fig("Time", dur(s.moving))]
-        : [fig("Time", dur(s.moving)), fig("Distance", s.dist ? dist(s.dist) : "–"), fig("Training stress", s.tss != null ? String(s.tss) : "–")]),
-      h("p.about", { text: how + (nd ? (nw ? `Tomorrow: ${nw.name}, ${dur(nd.mins * 60)}.` : "Tomorrow: rest, so today sinks in.") : "") }),
-      h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride")));
+      doneMap(a),
+      heroTop(h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done · as planned" : "Done today"), pl ? pl.name : a.name, null),
+      s && h("div.hero-figs", {}, fig("Time", hmOf(s.moving)), s.dist ? fig("Distance", dist(s.dist)) : fig("Stress", s.tss != null ? String(s.tss) : "–"), third),
+      on && h("div.vs", {}, h("div.vs-head", {}, h("small", { text: "Training stress" }), h("small.ok", { text: on })),
+        bar("Planned", pt, Math.max(pt, s.tss) * 1.08, "plan"), bar("Ridden", s.tss, Math.max(pt, s.tss) * 1.08, "done")),
+      rec && h("div.hero-chips", {}, h("span.rec", {}, icon("medal", 14, 2.2), rec)),
+      h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride", icon("chev", 15, 2.4))));
   }
   if (id === "event") {
-    return h("div.card.hero.glass.session", {}, h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"),
-      h("h2", { text: plan().name }), h("p.about", { text: "This is what the weeks were for. Start steady, eat early, and enjoy it." }));
+    return h("div.card.hero.glass.session", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"), plan().name),
+      h("p.about", { text: "This is what the weeks were for. Start steady, eat early, and enjoy it." }));
   }
   if (!myPlan() && !rhythmOn()) {
-    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "No plan yet"),
-      h("h2", { text: "Fit all year, a day at a time" }),
+    return h("div.card.hero.glass.session.rest", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "No plan yet"), "Fit all year, a day at a time", null),
       h("p.about", { text: "Rhythm decides each day’s session, or rest, from the days you ride, what you’ve done and how you feel. No event needed." }),
       h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => rhythmSetup() }, "Set up Rhythm")));
   }
   const rd = rhythmOn() && S.swaps[TODAY] === undefined ? rhDay(TODAY) : null;
+  const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day");
   if (!w && rd) {
     const next = [1, 2, 3].map((n) => rhDay(addDays(TODAY, n))).find((x) => x?.id), nw = next && wkById(next.id);
-    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day"),
-      h("h2", { text: "Rest, and let it sink in" }), h("p.why", { text: rd.why }),
-      nw && h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openWorkout(nw) }, `${dayName(next.date)}: ${nw.name}`, icon("chev", 15, 2.4))));
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), nw && nextUp(next.date, nw));
   }
   if (!w && myPlan() && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
-    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"),
-      h("h2", { text: `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}` }),
-      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }),
-      fw && h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openWorkout(fw) }, `${dayName(first.date)}: ${fw.name}`, icon("chev", 15, 2.4))));
+    return h("div.card.hero.glass.session.rest", {},
+      heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"), `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}`),
+      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }), fw && nextUp(first.date, fw));
   }
   if (!w) {
     const next = [1, 2, 3].map((n) => addDays(TODAY, n)).find((d) => plannedOn(d));
     const nw = next && plannedOn(next) !== "event" ? wkById(plannedOn(next)) : null;
-    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day"),
-      h("h2", { text: "Rest, and let it sink in" }),
-      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }),
-      nw && h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openWorkout(nw) }, `${dayName(next)}: ${nw.name}`, icon("chev", 15, 2.4))));
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"),
+      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), nw && nextUp(next, nw));
   }
   const m = measure(w, paceFor(w.sport)), swapped = S.swaps[TODAY] !== undefined;
-  return h("div.card.hero.glass.session", {},
-    h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${swapped ? " · swapped" : ""}`),
-    h("h2", { text: w.name }),
-    h("div.meta", { text: [dur(m.secs), w.sport !== "strength" ? `TSS ${Math.round(m.tss)}` : null, w.sport === "ride" ? `IF ${m.iF.toFixed(2)}` : null].filter(Boolean).join(" · ") }),
+  const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
+  return h("div.card.hero.glass.session.go", {},
+    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${swapped ? " · swapped" : ""}`), w.name),
+    h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
     rd ? h("p.why", {}, h("b", { text: "Why today: " }), rd.why) : h("p.about", { text: w.about }),
     rd && (rd.fuel || rd.strength) && h("div.extras", {},
       rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
+    // (the best time to ride: Weather's, once Fitness has your place; till then, the examples' alone)
+    S.examples && (w.sport === "ride" || w.sport === "run") && bestTime(w),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(w) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
@@ -376,73 +406,148 @@ function sessionCard(w, id, done) {
     w.sport !== "strength" && dlFor(w, TODAY));
 }
 // The best time for it today, as Weather would say it (its Best times, for a ride as long as this one). In the demo, a
-// made-up day; signed in, Weather's own forecast for your place.
-function weatherCard(w) {
+// made-up day.
+function bestTime(w) {
   const r = rng("wx" + TODAY), m = measure(w, paceFor(w.sport)), hrs = Math.max(1, Math.ceil(m.secs / 3600));
   const from = 9 + Math.floor(r() * 3), to = Math.min(17, from + hrs + 1 + Math.floor(r() * 2)), temp = 9 + Math.floor(r() * 7), wind = 8 + Math.floor(r() * 14);
-  const dir = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][Math.floor(r() * 8)];
-  return h("div.card.glass", {}, h("h3", {}, "Best time to " + (w.sport === "run" ? "run" : "ride")),
-    h("div.wx", {}, h("span.wxi", {}, C.weatherIcon()), h("div", {}, h("b", { text: `${String(from).padStart(2, "0")}:00 to ${String(to).padStart(2, "0")}:00, dry` }),
-      h("span", { text: `${temp}° and sunny spells, wind ${wind} km/h from the ${dir}${w.sport === "ride" ? `: head out into it, home with it behind you` : ""}.` }))),
-    h("p.line-said", { text: "From Weather’s Best times, for your place. (In the demo, an example day.)" }));
+  const dir = ["northerly", "north-easterly", "easterly", "south-easterly", "southerly", "south-westerly", "westerly", "north-westerly"][Math.floor(r() * 8)];
+  const at = (x) => (x > 12 ? x - 12 : x) + (x >= 12 ? " pm" : " am");
+  return h("div.best-time", {}, h("span.wxi", {}, C.weatherIcon()),
+    h("span.tx", {}, h("b", { text: `Best between ${at(from)} and ${at(to)}` }), h("small", { text: `${temp}°, dry, a ${wind} km/h ${dir} · an example day` })));
+}
+// today's ride on its map (kept between redraws, so the map isn't made again each time the page is)
+let todayMap = null;
+function doneMap(a) {
+  if (!M.able() || !(sumOf(a)?.route || a.sample)) return null;
+  if (todayMap?.id === a.id) return todayMap.el;
+  todayMap?.g?.remove();
+  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route on a map: open the ride", onclick: () => openAct(a) }, mapCredit());
+  todayMap = { id: a.id, el, g: null };
+  (async () => {
+    const x = await load(a);
+    if (!x?.s?.lat?.some((v) => v != null)) throw 0;
+    const ps = perSecond(x), roll = ps.pwr ? rollAvg(ps.pwr, 30) : null;
+    const zoneAt = roll ? (i) => zoneOf((roll[Math.min(roll.length - 1, Math.round(x.s.t[i]))] || 0) / P().ftp).c : null;
+    const g = await M.routeMap(el, { ...routeOf(x.s, zoneAt), light: lightNow() });
+    if (todayMap?.el === el) todayMap.g = g; else g.remove();
+  })().catch(() => el.remove());
+  return el;
+}
+// a new best, from today's ride: the longest length it beat your best before at
+function newBest(a) {
+  const s = sumOf(a);
+  if (a.sport !== "ride" || !s?.curve) return null;
+  const before = G.bests(progActs().filter((x) => x.start < startOfDay(a.start)));
+  if (!Object.keys(before).length) return null;
+  const beat = [...G.LENGTHS].reverse().find(([k]) => s.curve[k] > (before[k]?.w || Infinity));
+  return beat && `Best ${beat[2].replace(/^an /, "")}: ${Math.round(s.curve[beat[0]])} W`;
+}
+// what tomorrow brings, once today's ridden
+function tomorrowCard() {
+  const d = addDays(TODAY, 1), id = plannedOn(d), w = id && id !== "event" ? wkById(id) : null;
+  const then = !w && [2, 3, 4].map((n) => addDays(TODAY, n)).find((x) => plannedOn(x) && plannedOn(x) !== "event"), tw = then && wkById(plannedOn(then));
+  return h("button.card.glass.tomorrow", { type: "button", onclick: () => openDay(d) },
+    h("span.ic." + (w ? "blue" : "indigo"), {}, icon(w ? "calendar" : "heart", 19, 2.2)),
+    h("span.tx", {}, h("small", { text: "Tomorrow" }), h("b", { text: id === "event" ? "The event" : w ? w.name : "Rest, so today sinks in" }),
+      h("small", { text: w ? metaOf(w) : tw ? `Then ${dayName(then)}: ${tw.name}, ${dur(measure(tw, paceFor(tw.sport)).secs)}` : "" })),
+    h("span.chev", {}, icon("chev", 15, 2.4)));
+}
+// what today's ride did: fitness, and form for tomorrow
+function didCard(a) {
+  if (!S.summed || !sumOf(a)?.tss) return null;
+  const f = fitnessSeries(), last = f.at(-1), prev = f.at(-2) || last, gain = last.ctl - prev.ctl, tm = last.ctl - last.atl, said = formSaid(tm);
+  return todaySection("What it did", null, h("div.did", {},
+    h("div.card.glass", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("span.v", {}, h("b", { text: Math.round(last.ctl) }), Math.round(gain) > 0 && h("em", { text: signed(gain) })), h("small.sub", { text: "From today’s ride" })),
+    h("div.card.glass", {}, h("small", {}, h("i.dot-form"), "Form tomorrow"), h("span.v", {}, h("b", { text: signed(tm) })), h("small.sub", { text: said.word }))));
 }
 function formCard() {
-  if (!S.summed) return card(null, "Fitness and form", wait(44), h("div", { vars: { height: "10px" } }), wait(120));
-  if (!S.acts.some((a) => sumOf(a)?.tss)) return card(null, "Fitness and form", h("p.line-said", { text: "Your fitness, fatigue and form come from your rides’ training stress, day by day. Import a few weeks of rides to see them; the more, the truer." }),
-    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: () => openSheet(uploadFilesView) }, icon("inbox", 17, 2.1), "Bring your rides in")));
+  const box = (...kids) => todaySection("Fitness and form", null, ...kids);
+  if (!S.summed) return box(card(null, null, wait(44), h("div", { vars: { height: "10px" } }), wait(120)));
+  if (!S.acts.some((a) => sumOf(a)?.tss)) return box(card(null, null, h("p.line-said", { text: "Your fitness, fatigue and form come from your rides’ training stress, day by day. Import a few weeks of rides to see them; the more, the truer." }),
+    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: () => openSheet(uploadFilesView) }, icon("inbox", 17, 2.1), "Bring your rides in"))));
   const f = fitnessSeries(), last = f.at(-1), said = formSaid(last.tsb), wk = f.at(-8);
-  return h("button.card.glass", { type: "button", onclick: () => openSheet(formView), "aria-label": `Fitness ${Math.round(last.ctl)}, fatigue ${Math.round(last.atl)}, form ${Math.round(last.tsb)}: ${said.word}` },
-    h("h3", {}, "Fitness and form"),
-    h("div.figs", {},
-      h("div.fig", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("b", { text: Math.round(last.ctl) }), h("span.word.tone-neutral", { text: `${last.ctl >= wk.ctl ? "+" : "−"}${Math.abs(Math.round(last.ctl - wk.ctl))} this week` })),
-      h("div.fig", {}, h("small", {}, h("i.dot-fat"), "Fatigue"), h("b", { text: Math.round(last.atl) })),
-      h("div.fig", {}, h("small", {}, h("i.dot-form"), "Form"), h("b", { text: signed(last.tsb) }), h("span.word.tone-" + said.tone, { text: said.word }))),
-    C.fitnessChart(f, { days: 42, W: cardW() }), h("p.line-said", { text: said.line }));
+  // (form on a band: strain, building, neutral, fresh, rested; -40 to +30)
+  const at = Math.max(2, Math.min(98, ((last.tsb + 40) / 70) * 100));
+  return box(h("button.card.glass.form-card", { type: "button", onclick: () => openSheet(formView), "aria-label": `Fitness ${Math.round(last.ctl)}, fatigue ${Math.round(last.atl)}, form ${Math.round(last.tsb)}: ${said.word}` },
+    h("div.form-top", {}, h("div", {}, h("small", { text: "Form" }), h("b", { text: signed(last.tsb) })), h("span.word.pill-word.tone-" + said.tone, { text: said.word })),
+    h("div.fband", { "aria-hidden": "true" }, h("span.track"), h("span.knob", { vars: { left: at + "%" } }), h("span.lab", {}, ["Strain", "Building", "Neutral", "Fresh", "Rested"].map((t) => h("span", { text: t })))),
+    h("div.fit-tiles", {},
+      h("div", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("b", { text: Math.round(last.ctl) }), h("small.sub", { text: `${last.ctl >= wk.ctl ? "+" : "−"}${Math.abs(Math.round(last.ctl - wk.ctl))} this week` })),
+      h("div", {}, h("small", {}, h("i.dot-fat"), "Fatigue"), h("b", { text: Math.round(last.atl) }), h("small.sub", { text: last.atl < 5 ? "All but gone" : last.atl > last.ctl ? "Above your fitness" : "Below your fitness" }))),
+    C.fitnessChart(f, { days: 42, W: cardW() }), h("p.line-said", { text: said.line })));
 }
+// the week: a ring a day (ridden, still to come, missed or rest) and the hours, ridden of planned
 function weekCard() {
   const mon = mondayOf(TODAY), days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(mon, i));
-  const planTss = (d) => { const id = plannedOn(d); const w = id && id !== "event" ? wkById(id) : null; return w ? measure(w, paceFor(w.sport)).tss : 0; };
-  const doneTss = (d) => actsOn(d).reduce((a, x) => a + (sumOf(x)?.tss || 0), 0);
-  const planSecs = (d) => { const id = plannedOn(d); const w = id && id !== "event" ? wkById(id) : null; return w ? measure(w, paceFor(w.sport)).secs : 0; };
+  // (a day before Rhythm, or the plan, began wasn't planned: not missed)
+  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const plannedOn2 = (d) => (d >= began ? plannedOn(d) : null);
+  const wOn = (d) => { const id = plannedOn2(d); return id && id !== "event" ? wkById(id) : null; };
+  const planSecs = (d) => { const w = wOn(d); return w ? measure(w, paceFor(w.sport)).secs : 0; };
   const doneSecs = (d) => actsOn(d).reduce((a, x) => a + (sumOf(x)?.moving || 0), 0);
-  const max = Math.max(60, ...days.map((d) => Math.max(planTss(d), doneTss(d))));
-  const totPlan = days.reduce((a, d) => a + planTss(d), 0), totDone = days.reduce((a, d) => a + doneTss(d), 0);
   const secsPlan = days.reduce((a, d) => a + planSecs(d), 0), secsDone = days.reduce((a, d) => a + doneSecs(d), 0);
+  const planned = days.filter((d) => plannedOn2(d)).length, ridden = days.filter((d) => actsOn(d).length).length;
+  // (a session's ring in the colour of how hard it is)
+  const toneOf = (w) => { if (!w || w.sport !== "ride") return "tint"; const f = measure(w, paceFor(w.sport)).iF; return f >= 0.95 ? "z6" : f >= 0.84 ? "z4" : f >= 0.76 ? "z3" : "z2"; };
   const cols = days.map((d) => {
-    const pt = planTss(d), dt = doneTss(d), did = actsOn(d).length, past = d < TODAY, id = plannedOn(d);
-    const bar = h("span.bar", {}, pt ? h("i.plan", { vars: { height: (pt / max) * 100 + "%" } }) : null, dt ? h("i.done" + (dt >= pt ? ".over" : ""), { vars: { height: (Math.min(dt, max) / max) * 100 + "%" } }) : null);
-    const said = `${dayName(d)}: ${id === "event" ? "event" : id ? wkById(id)?.name : "rest"}${did ? ", done" : past && id ? ", missed" : ""}`;
-    return h("button.wday" + (d === TODAY ? ".today" : ""), { type: "button", "aria-label": said, onclick: () => openDay(d) }, h("span.mark", {}, did ? icon("check", 14, 3) : id ? h("i.o") : null), bar, h("span.d", { text: dayLetter(d) }));
+    const id = plannedOn2(d), did = actsOn(d).length, past = d < TODAY, w = wOn(d), missed = past && id && !did;
+    const kind = did ? "did" : missed ? "missed" : id ? "plan" : "rest";
+    const ring = { did: `<circle cx="16" cy="16" r="13" class="r-did"/><path d="M11 16.5l3.2 3.2L21 12.8" class="r-tick"/>`, missed: `<circle cx="16" cy="16" r="13" class="r-missed"/><path d="M12 16h8" class="r-dash"/>`,
+      plan: `<circle cx="16" cy="16" r="13" class="r-plan ${toneOf(w)}"/>`, rest: `<circle cx="16" cy="16" r="3" class="r-rest"/>` }[kind];
+    const under = did ? hmOf(doneSecs(d)) : missed ? "Missed" : id === "event" ? "Event" : w ? hmOf(planSecs(d)) : "Rest";
+    const said = `${dayName(d)}: ${id === "event" ? "event" : w ? w.name : "rest"}${did ? ", done" : missed ? ", missed" : ""}`;
+    return h("button.wday." + kind + (d === TODAY ? ".today" : ""), { type: "button", "aria-label": said, onclick: () => openDay(d) },
+      h("span.d", { text: dayLetter(d) }), svgOf(`<svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">${ring}</svg>`), h("small", { text: under }));
   });
-  return card(null, ["This week", h("span.more", { text: S.summed ? `${Math.round(totDone)} of ${Math.round(totPlan)} TSS` : "" })],
+  const status = rhythmOn() ? rhythmSaid() : !myPlan() ? null : TODAY < planStart() ? `Starts ${dayShort(planStart())}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}`;
+  return todaySection("This week", planned ? `${ridden} of ${planned} ${planned === 1 ? "ride" : "rides"}` : null, h("div.card.glass.week-card", {},
     h("div.week", {}, cols),
-    h("div.week-sum", {}, h("span", {}, h("b", { text: dur(secsDone) }), ` of ${dur(secsPlan)}`),
-      h("span", { text: rhythmOn() ? rhythmSaid() : !myPlan() ? "No plan" : TODAY < planStart() ? `Starts ${dayShort(planStart())}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}` })));
+    secsPlan > 0 && h("div.week-bar", { role: "img", "aria-label": `${dur(secsDone)} ridden of ${dur(secsPlan)} planned` }, h("i", { vars: { width: Math.min(100, (secsDone / secsPlan) * 100) + "%" } })),
+    h("div.week-sum", {}, h("span", {}, h("b", { text: dur(secsDone) }), " ridden"), h("span", { text: secsPlan ? `of ${dur(secsPlan)}` : "" })),
+    status && h("small.week-status", { text: status })));
 }
-// How you feel: sleep, legs and mood, said in a tap each, and what to do about it with your form. Tired legs on a hard
-// day: an easier session, swapped in with a tap (and back again).
-function feelCard(w) {
-  const f = S.feel[TODAY] || {}, done = ["sleep", "legs", "mood"].every((k) => f[k] != null);
-  // (not yet today: a check-in, a tap away; with Rhythm it's asked as the app opens, once a day)
-  if (!done) return h("div.card.glass.checkin", {}, h("div", {}, h("b", { text: "How are you today?" }), h("small", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps: sleep, legs and motivation." })),
-    h("button.pill.primary", { type: "button", onclick: () => openCheckIn() }, "Check in"));
-  // (each answer a chip: its icon, its words, and its tone: amber for a poor one, green for a good one)
-  const chips = [["sleep", "contrast", ["Slept poorly", "Slept OK", "Slept well"]], ["legs", "run", ["Heavy legs", "Normal legs", "Fresh legs"]], ["mood", "bolt", ["Low motivation", "Motivation OK", "Motivated"]]]
-    .map(([k, ic, xs]) => h("span.chip.tone-" + ["low", "mid", "high"][f[k]], {}, icon(ic, 14, 2.2), xs[f[k]]));
+// How you feel: sleep, legs and motivation, a tap each, there on the page; what Rhythm (or the plan) makes of it under
+// them. Once said, folded to a line, opened again to change it.
+const FEEL = [["sleep", "Sleep", "contrast", ["Poor", "OK", "Great"], ["Slept poorly", "slept OK", "slept well"]],
+  ["legs", "Legs", "run", ["Heavy", "Normal", "Fresh"], ["heavy legs", "normal legs", "fresh legs"]],
+  ["mood", "Motivation", "bolt", ["Low", "OK", "High"], ["low motivation", "motivation OK", "keen"]]];
+let feelDraft = {}, feelOpen = false;
+function verdictOf(w) {
+  const f = S.feel[TODAY];
   const rd = rhythmOn() ? rhDay(TODAY) : null, tm = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null;
-  let verdict;
   if (rd) {
     const eased = rd.feel !== "good", carry = tm && /yesterday/.test(tm.why || "");
-    verdict = !eased && !carry ? ["green", "check", "Ready for it", rd.id ? "Today’s session stands." : "Enjoy the rest day."]
+    return !eased && !carry ? ["green", "check", "Ready for it", rd.id ? "Today’s session stands." : "Enjoy the rest day."]
       : ["amber", "swap", eased ? "Rhythm has eased today" : "Tomorrow eased", [eased && rd.why, carry && `Tomorrow: ${tm.why.charAt(0).toLowerCase()}${tm.why.slice(1)}.`].filter(Boolean).join(". ")];
-  } else {
-    const score = f.sleep + f.legs + f.mood, hard = w && measure(w).iF > 0.8;
-    verdict = score <= 2 && hard ? ["amber", "swap", "Take it easy today", `${w.name} would cost more than it gives today.`] : ["green", "check", score >= 5 ? "Ready for it" : "Good to go", w ? `${w.name} as planned.` : "Ride as you feel."];
   }
-  return h("div.card.glass.checkin.done", {},
-    h("div.checkin-top", {}, h("span.ic." + verdict[0], {}, icon(verdict[1], 18, 2.4)), h("div.tx", {}, h("b", { text: verdict[2] }), h("small", { text: verdict[3] })),
-      h("button.pill.small", { type: "button", onclick: () => openCheckIn(), "aria-label": "Change how you are today" }, "Change")),
-    h("div.checkin-chips", {}, chips));
+  const score = f.sleep + f.legs + f.mood, hard = w && measure(w).iF > 0.8;
+  return score <= 2 && hard ? ["amber", "swap", "Take it easy today", `${w.name} would cost more than it gives today.`] : ["green", "check", score >= 5 ? "Ready for it" : "Good to go", w ? `${w.name} as planned.` : "Ride as you feel."];
+}
+function setFeel(k, v) {
+  const was = S.feel[TODAY], all = (f) => FEEL.every(([x]) => f?.[x] != null);
+  try { localStorage.setItem("fitness:asked", String(TODAY)); } catch (_) {}
+  if (!all(was)) { feelDraft = { ...feelDraft, [k]: v }; if (!all(feelDraft)) return redraw(); }
+  const before = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
+  S.feel[TODAY] = all(was) ? { ...was, [k]: v } : { ...feelDraft }; feelDraft = {}; keep("feel"); redraw();
+  const after = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
+  if (!all(was) || after !== before) toast(before && after !== before ? "Rhythm has changed your plan to suit" : "Thanks: today stands");
+}
+function feelCard(w) {
+  const f = S.feel[TODAY] || {}, done = FEEL.every(([k]) => f[k] != null), cur = done ? f : feelDraft, v = done && verdictOf(w);
+  if (done && !feelOpen) {
+    return h("div.card.glass.checkin.done", {},
+      h("span.ic." + v[0], {}, icon(v[1], 18, 2.4)),
+      h("div.tx", {}, h("b", { text: v[2] }), h("small", { text: FEEL.map(([k, , , , said], i) => (i ? said[f[k]] : said[f[k]].charAt(0).toUpperCase() + said[f[k]].slice(1))).join(" · ") })),
+      h("button.pill.small", { type: "button", onclick: () => { feelOpen = true; redraw(); }, "aria-label": "Change how you are today" }, "Change"));
+  }
+  return h("div.card.glass.checkin.open", {},
+    h("div.checkin-head", {}, h("b", { text: "How are you this morning?" }), done && h("button.link.small", { type: "button", onclick: () => { feelOpen = false; redraw(); } }, "Done")),
+    FEEL.map(([k, label, ic, words]) => h("div.checkin-row", {},
+      h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), label),
+      h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
+        h("button.t" + i, { type: "button", "aria-pressed": String(cur[k] === i), onclick: () => setFeel(k, i) }, word))))),
+    v ? h("div.checkin-said." + v[0], {}, icon(v[1], 16, 2.6), h("span", {}, h("b", { text: v[2] }), v[3] ? `: ${v[3].charAt(0).toLowerCase()}${v[3].slice(1)}` : "")) :
+      h("small.checkin-hint", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
 }
 // The day's check-in: sleep, legs and motivation, a tap each; with Rhythm, today and the days after follow it
 function openCheckIn() {
