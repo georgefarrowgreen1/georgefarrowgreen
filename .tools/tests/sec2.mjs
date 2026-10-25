@@ -12,15 +12,16 @@ const mails = () => readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n'
 const gKeys = await K.makeKeys();
 const G = await K.phone('george', gKeys);
 await G.p.goto(`${accountUrl(K.URL)}#join`); await G.p.waitForSelector('main input[name=name]', { timeout: 20000 });
+// (counted from before it's typed: what's asked as it's typed is the answer the button takes, not asked again)
+const before = plog().length;
 await fillJoin(G.p, { name: 'George Farrow-Green', handle: 'geo', email: 'george@example.com', password: 'password1234' }, { send: false });
 await G.p.waitForTimeout(1200);           // (what it says as it's typed, asked and answered, before what's sent)
-const before = plog().length;
 await G.p.click('main .signin form .btn');
 const err = await G.p.waitForSelector('main .said.bad', { timeout: 15000 }).then((e) => e.innerText(), () => '');
 ok(/123,456 data breaches/.test(err) && !one("SELECT COUNT(*) AS n FROM pg_users")[0].n, 'a leaked password is refused before any account is made', err);
 await G.p.screenshot({ path: `${out}/leaked.png` });
-const asked = plog().slice(before);
-ok(asked.length >= 1 && asked.every((x) => /^\/range\/[0-9A-F]{5}$/.test(x.url) && x.pad === 'true'), 'Pwned Passwords is asked only the first 5 characters of a hash, padded', JSON.stringify(asked));
+const asked = plog().slice(before), mine = asked.filter((x) => x.url === '/range/E6B6A');     // (password1234's)
+ok(mine.length === 1 && asked.every((x) => /^\/range\/[0-9A-F]{5}$/.test(x.url) && x.pad === 'true'), 'Pwned Passwords is asked once (as it’s typed; the button takes that answer), only the first 5 characters of a hash, padded', JSON.stringify(asked));
 ok((await fetch(K.BASE + '/api/pigeon/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status === 410, 'InFlight’s own sign-up is gone: accounts are made on the account’s page');
 ok((await fetch(K.BASE + '/api/pigeon/pwned?p=ABCDEF')).status === 400 && (await fetch(K.BASE + '/api/pigeon/pwned?p=abc')).status === 400, 'the server takes nothing longer than 5 characters');
 // a fine password goes through (the kit's)

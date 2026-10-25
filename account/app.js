@@ -224,6 +224,14 @@ async function startAutofill(field, picked) {
   try {
     const o = await post("signin/options");
     if (ac.signal.aborted || !field.isConnected) return;
+    // (its challenge lasts 5 minutes, and a keyboard's ask has no end: asked for anew before then, while the page is in
+    // sight, else on coming back to it)
+    const renew = () => {
+      if (autofill !== ac || !field.isConnected) return;
+      if (document.hidden) return document.addEventListener("visibilitychange", renew, { once: true });
+      startAutofill(field, picked);
+    };
+    setTimeout(renew, 4 * 60e3);
     const a = await navigator.credentials.get({ mediation: "conditional", signal: ac.signal, publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required",
       extensions: S.signFor?.app === "inflight" ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } });
     if (!a || ac.signal.aborted) return;
@@ -273,14 +281,19 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
 // (fade: changed while you're looking, the page and any sheet on it cross-fade from one to the other, where the
-// browser can and motion's welcome; else, and as the page opens, at once)
+// browser can and motion's welcome; else, and as the page opens, at once). (What's put is the last asked for, so a fade
+// still on its way doesn't undo one asked for since: a choice put back, as it couldn't be kept.)
+let themed;
 function theme(pref, fade) {
+  themed = pref;
   const go = () => {
-    const root = document.documentElement;
+    const root = document.documentElement, pref = themed;
     if (pref === "light" || pref === "dark") root.dataset.theme = pref; else delete root.dataset.theme;
     try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
-    const top = isDark() ? "#0b1024" : "#eef1fb";
-    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top);
+    // (the browser's bar: Light or Dark, both its tags that one's colour; Automatic, each its own scheme's, so the bar
+    // still follows the device as it changes)
+    const top = (d) => (d ? "#0b1024" : "#eef1fb");
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top(root.dataset.theme ? isDark() : (m.getAttribute("media") || "").includes("dark")));
   };
   const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;
   if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) document.startViewTransition(go);
@@ -309,9 +322,12 @@ async function load() {
     try {
       const [now, who] = await Promise.all([firstMe(), post("handoff/who", { code: HANDOFF.code })]);
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
-      else if (now.signedIn) { S.me = now; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
+      else if (now.signedIn) { S.me = now; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
       else { S.me = now; S.handoff = who; }
-    } catch (e) { setTimeout(() => toast(e.message, true), 400); }
+    } catch (e) {
+      // (whose code it was not known: what it was to open isn't opened for whoever's signed in here)
+      HANDOFF.open = null; setTimeout(() => toast(e.message, true), 400);
+    }
   }
   try { if (!S.me) S.me = await firstMe(); S.pulled = Date.now(); }
   catch (e) {
@@ -353,15 +369,17 @@ function fromGate() {
   return true;
 }
 // A link from one of the account's emails: confirming the email, a new email, or keeping the account. The link's own
-// token is what counts, so it works signed in or not, in whichever browser the email opens it in.
+// token is what counts, so it works signed in or not, in whichever browser the email opens it in. (Keeping it waits
+// for a tap: keepPage, so a mail scanner that opens the link to see where it goes doesn't keep it.)
 async function fromLink() {
   const m = /^#(confirm|email|keep)=([A-Za-z0-9_-]{40,50})$/.exec(location.hash);
   if (!m) return;
   history.replaceState(null, "", location.pathname + location.search);
   const [, kind, token] = m;
+  if (kind === "keep") { S.keep = { token }; return; }
   try {
-    const r = await post({ confirm: "email/confirm", email: "email/change-confirm", keep: "delete/keep" }[kind], { token });
-    S.said = { kind, text: kind === "confirm" ? "Your email is confirmed." : kind === "email" ? `Your account’s email is now ${r.email}.` : "Your account is staying. Sign in to carry on." };
+    const r = await post({ confirm: "email/confirm", email: "email/change-confirm" }[kind], { token });
+    S.said = { kind, text: kind === "confirm" ? "Your email is confirmed." : `Your account’s email is now ${r.email}.` };
   } catch (e) { S.said = { kind, bad: true, text: e.message }; }
 }
 // (and one opened in a tab where the page is already open)
@@ -380,7 +398,7 @@ function render() {
   const rise = !S.settled; S.settled = true;
   const was = rise ? null : where(), risers = [];
   const r = (el) => { if (rise && el) risers.push(el); return el; };
-  main.replaceChildren(...(S.reset ? resetPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
@@ -715,10 +733,16 @@ function appView(id) {
     open] };
 }
 
+// (a confirm link sent this last week, as one is as the account's made: said so, rather than offered as if none had
+// gone, as a new one would stop that one working)
+const linkSent = (m) => !!m.emailSentAt && Date.now() - m.emailSentAt < 7 * 864e5;
+// (and one just sent: the page drawn again to say so)
+const confirmSent = (r) => { if (!r.already) { S.me.emailSentAt = Date.now(); patch(); } };
 // Your email isn't confirmed (or a new one's waiting to be): said up top, with what to do
 function banner(m) {
+  const sent = linkSent(m);
   const sending = async (b) => {
-    try { await busy(b, "Sending…", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); }
+    try { confirmSent(await busy(b, "Sending…", () => post("email/confirm-send"))); toast(`A link is on its way to ${m.email}.`); }
     catch (e) { toast(e.message, true); }
   };
   return m.emailNew
@@ -726,8 +750,8 @@ function banner(m) {
       h("span.tx", {}, h("b", { text: "Confirm your new email" }), h("small", { text: `We sent a link to ${m.emailNew}. Your email changes when you open it.` })),
       h("button.mini.go", { type: "button", onclick: () => openSheet(emailView) }, "Details"))
     : h("section.banner.warn.glass", {}, h("span.ic.amber", {}, icon("alert", 19)),
-      h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "So password resets and security notes reach you. We’ll send a link to it." })),
-      h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, "Send link"));
+      h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: sent ? `We sent a link to ${m.email}. Open it to confirm.` : "So password resets and security notes reach you. We’ll send a link to it." })),
+      h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, sent ? "Send again" : "Send link"));
 }
 // Your password found in a data breach: said up top, as it's the one check that can't wait
 function leakBanner() {
@@ -741,8 +765,8 @@ function leakBanner() {
 function checks(m) {
   const stale = m.devices.filter((d) => d.stale).length, pw = m.password || {};
   return [
-    { ok: m.emailOk, label: m.emailOk ? "Email confirmed" : "Confirm your email", go: "Send link", act: async (b) => {
-      try { await busy(b, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (e) { toast(e.message, true); } } },
+    { ok: m.emailOk, label: m.emailOk ? "Email confirmed" : "Confirm your email", go: linkSent(m) ? "Send again" : "Send link", act: async (b) => {
+      try { confirmSent(await busy(b, "", () => post("email/confirm-send"))); redraw(); toast(`A link is on its way to ${m.email}.`); } catch (e) { toast(e.message, true); } } },
     { ok: m.passkeys.length > 0, label: m.passkeys.length ? `Passkey saved${m.passkeys.length > 1 ? ` (${m.passkeys.length})` : ""}` : "Add a passkey", go: "Add", act: () => pushSheet(passkeysView) },
     { ok: pw.leaked === false, label: pw.leaked ? "Password found in a data breach" : pw.leaked === false ? "Password not in a known data breach" : "Check your password for data breaches",
       go: pw.leaked ? "Change" : "Check", act: () => pushSheet(pw.leaked ? passwordView : checkView) },
@@ -798,6 +822,24 @@ function deleting(r) {
         catch (err) { toast(err.message, true); }
       } }, icon("undo", 20, 2.2), "Keep my account"),
       h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
+  ];
+}
+// The email's link to keep it (#keep=): kept once that's tapped, not as the link's opened. (A link that won't work is
+// put away, said why; offline, or the server not answering, it stays, to try again.)
+function keepPage(r) {
+  const go = h("button.btn", { type: "button", onclick: async () => {
+    try { await busy(go, "Keeping it…", () => post("delete/keep", { token: S.keep.token })); S.said = { text: "Your account is staying. Sign in to carry on." }; }
+    catch (err) { if (err.status !== 400) return toast(err.message, true); S.said = { text: err.message, bad: true }; }
+    let m = S.me;
+    try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
+    anew(() => { S.keep = null; S.me = m; S.settled = false; render(); });
+  } }, icon("undo", 20, 2.2), "Keep my account");
+  return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
+    r(h("h1", { text: "Keep your account?" })),
+    r(h("p", { text: "It’s being deleted. Tap below to keep it." })),
+    r(h("div.signin.glass", {}, go,
+      h("button.btn.quiet", { type: "button", onclick: () => anew(() => { S.keep = null; S.settled = false; render(); }) }, "Not now")))),
   ];
 }
 
@@ -1124,10 +1166,11 @@ function joinCard() {
     if (at === 2) return EMAIL_OK.test(v.email) ? toStep(3) : say(said, "That doesn’t look like an email address.", email);
     if (v.password.length < 10) return say(said, "Use at least 10 characters for your password.", pw);
     try {
-      let proof, lock;
+      let proof, lock, checked = false;
       const m = await working(go, "Creating your account", async () => {
         const n = await leakedCount(v.password);
         if (n) throw Object.assign(new Error(leakedSay(n)), { field: "password" });
+        checked = n === 0;
         ready();
         const { privJwk, pub } = await prep.keys;
         const done = prep.pw?.pw === v.password ? prep.pw : null, salt = done ? done.salt : E2E.newSalt();
@@ -1137,8 +1180,8 @@ function joinCard() {
       });
       S.invite = null; S.gate = null; try { sessionStorage.removeItem("acct:invite"); } catch (_) {}
       remember(m, "password");
-      // (made for an app: straight back to it, the password already checked against data breaches, above)
-      if (S.signFor) { post("password/checked", { proof, leaked: false }).catch(() => {}); return handBack(m, { lock }, go); }
+      // (made for an app: straight back to it, the password already checked against data breaches, above, if it could be)
+      if (S.signFor) { if (checked) post("password/checked", { proof, leaked: false }).catch(() => {}); return handBack(m, { lock }, go); }
       dawnBreak(true); await ticked(go);
       welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
       checkQuietly(v.password, proof); maybeNudge(m);
@@ -1393,9 +1436,9 @@ function nudgeView() {
     add, h("button.btn.quiet", { type: "button", onclick: closeSheet }, "Not now"), h("p.said", { role: "alert" })] };
 }
 // The password just typed, checked against data breaches (only 5 characters of its hash asked), and how it went kept
-// with the account (with its proof), for the check-up
+// with the account (with its proof), for the check-up (no answer: nothing kept)
 async function checkQuietly(pw, proof) {
-  try { const n = await leakedCount(pw); S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
+  try { const n = await leakedCount(pw); if (n === null) return; S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
 }
 async function signOut(btn) {
   try { await busy(btn, "Signing out…", () => post("signout")); }
@@ -1512,7 +1555,7 @@ async function leaving(btn, m) {
   document.body.append(me);
   if (btn?.isConnected) btn.style.visibility = "hidden";
   const page = $("main"), ease = tok("--ease-out"), glide = tok("--ease-glide");
-  for (const a of document.querySelectorAll(".sky .aura")) a.animate([{ opacity: getComputedStyle(a).opacity }, { opacity: 0 }], { duration: still.matches ? 300 : 560, easing: ease, fill: "forwards", id: "leaving" });
+  for (const a of document.querySelectorAll(".sky .aura")) a.animate([{ opacity: getComputedStyle(a).opacity }, { opacity: 0 }], { duration: still.matches ? 300 : 560, easing: ease, fill: "forwards" });
   if (still.matches) {
     me.style.transform = `translate(${tx}px, ${ty}px) scale(1.5)`; face.style.opacity = "1"; me.firstChild.style.opacity = "0";
     await page.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: ease, fill: "forwards" }).finished.catch(() => {});
@@ -1543,14 +1586,6 @@ function faceHint(m, face) {
   } catch (_) {}
   return `&${q}`;
 }
-// (back on this page from the app, as the browser keeps a page: as it was before it left)
-addEventListener("pageshow", (e) => {
-  if (!e.persisted) return;
-  document.querySelectorAll(".leave").forEach((el) => el.remove());
-  $("main")?.getAnimations().forEach((a) => a.cancel());
-  $(".sky .dawn")?.getAnimations().forEach((a) => a.cancel()); $(".sky")?.classList.remove("lit");
-  document.querySelectorAll(".sky .aura").forEach((el) => el.getAnimations().forEach((a) => { if (a.id === "leaving") a.cancel(); }));
-});
 // What's in a box changed, the box going smoothly from its size to its new one (what's under it moving with it) as
 // what's new fades in (fade: all of what's in it); from where it is, if it was already on its way. Just the fade with
 // Reduce Motion.
@@ -2003,15 +2038,25 @@ async function asPoster(img) {
 
 // ---- your password ----
 // Has this password turned up in a data breach? Only the first 5 characters of its SHA-1 are asked (k-anonymity), and
-// the answers checked here. No answer: no check.
+// the answers checked here. No answer (Pwned Passwords not reached, or too many asks from here): null, and nothing's
+// said or kept. An answer's kept for the visit (LEAKS, by the hash), so one password's asked about once, not again as
+// it's sent and again as it's kept with the account; an ask on its way is shared.
+const LEAKS = new Map();
 async function leakedCount(pw) {
-  try {
-    const hx = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const r = await fetch(`${API}/pwned?p=${hx.slice(0, 5)}`, { cache: "no-store" });
-    if (!r.ok) return 0;
-    for (const line of (await r.text()).split("\n")) { const [suf, n] = line.trim().split(":"); if (suf === hx.slice(5)) return Number(n) || 0; }
-  } catch (_) {}
-  return 0;
+  let hx;
+  try { hx = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase(); }
+  catch (_) { return null; }
+  if (!LEAKS.has(hx)) {
+    const p = (async () => {
+      const r = await fetch(`${API}/pwned?p=${hx.slice(0, 5)}`, { cache: "no-store" });
+      const text = r.ok ? await r.text() : "";
+      if (!text) throw new Error("no answer");      // (a real one, padded, is never empty: the server's empty 200 is none)
+      for (const line of text.split("\n")) { const [suf, n] = line.trim().split(":"); if (suf === hx.slice(5)) return Number(n) || 0; }
+      return 0;
+    })();
+    LEAKS.set(hx, p); p.catch(() => LEAKS.delete(hx));
+  }
+  return LEAKS.get(hx).catch(() => null);
 }
 const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
 // how strong a password looks, 0 to 4 (at least 10 characters to count at all)
@@ -2120,9 +2165,11 @@ function passkeyView(id) {
       info("InFlight messages", p.messages ? "Opens them" : "Needs your password")),
     !p.messages && passkeysWork() && h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
-      const secret = await busy(b, "Waiting for your passkey…", async () => prfByUse(p.id, (await post("signin/options")).rpId));
-      if (secret) pushSheet(() => keyCopyView(id, secret));
-      else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
+      try {
+        const secret = await busy(b, "Waiting for your passkey…", async () => prfByUse(p.id, (await post("signin/options")).rpId));
+        if (secret) pushSheet(() => keyCopyView(id, secret));
+        else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
+      } catch (err) { say(said, err.message); }
     } }, "Use it for InFlight messages")),
     h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
       try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
@@ -2691,14 +2738,22 @@ function emailView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const input = h("input", { type: "email", autocomplete: "email", inputmode: "email", autocapitalize: "none", spellcheck: "false", placeholder: "you@example.com" });
   const go = h("button.btn", { type: "submit" }, "Send a link to it");
+  const sentSay = "We sent a link to it. Open it to confirm.";
+  const hint = !m.emailOk && h("p.hint", { text: linkSent(m) ? sentSay : "Not confirmed yet: open the link we send to it." });
   const status = h("div.group", {},
     h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: m.email })),
       m.emailOk ? h("span.badge", {}, "Confirmed") : h("button.mini.go", { type: "button", onclick: async (e) => {
-        try { await busy(e.currentTarget, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (err) { say(said, err.message); }
-      } }, "Send link")));
+        const b = e.currentTarget;
+        try {
+          const r = await busy(b, "", () => post("email/confirm-send")); confirmSent(r);
+          // (said here in place, not drawn again, so a new email half typed below stays)
+          if (!r.already) { b.textContent = "Send again"; hint.textContent = sentSay; }
+          toast(`A link is on its way to ${m.email}.`);
+        } catch (err) { say(said, err.message); }
+      } }, linkSent(m) ? "Send again" : "Send link")));
   return { title: "Email", body: [
     status,
-    !m.emailOk && h("p.hint", { text: "Not confirmed yet: open the link we send to it." }),
+    hint,
     m.emailNew && h("div.pending.glass", {}, h("span.ic.blue", {}, icon("mail", 18)),
       h("span.tx", {}, h("b", { text: `Waiting for ${m.emailNew}` }), h("small", { text: "Open the link we sent there (it lasts 2 days). Until then, nothing changes." })),
       h("button.mini", { type: "button", onclick: async (e) => {
@@ -2728,7 +2783,9 @@ function checkView() {
       if (!pw.value) return say(said, "Enter your password.", pw);
       try {
         const n = await busy(go, "Checking…", async () => {
-          const { proof } = await E2E.fromPassword(pw.value, m.salt), n = await leakedCount(pw.value);
+          const n = await leakedCount(pw.value);
+          if (n === null) throw new Error("Couldn’t reach Have I Been Pwned just now. Try again in a few minutes.");
+          const { proof } = await E2E.fromPassword(pw.value, m.salt);
           S.me = await post("password/checked", { proof, leaked: n > 0 });
           return n;
         });
@@ -2742,16 +2799,26 @@ function checkView() {
 
 // ---- preferences, for every app on the site that has them ----
 const APPEAR = [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]];
-async function setPrefs(changes) {
+// (S.me is only ever what was kept, so a choice that wasn't is put back from it, and said why: once the last of that
+// sheet's saves is back, not as each fails, so replies that come back in another order than they were asked for still
+// end on what's kept. out: that sheet's saves on their way, and whether one of them wasn't kept)
+const prefsOut = { appearance: { n: 0 }, units: { n: 0 } };
+async function setPrefs(changes, out, putBack) {
+  out.n++;
   try { S.me = await call("prefs", { method: "PUT", body: changes }); patch(); }
-  catch (e) { toast(e.message, true); }
+  catch (e) { toast(e.message, true); out.missed = true; }
+  if (--out.n || !out.missed) return;
+  out.missed = false; putBack();
 }
 function appearanceView() {
   const m = S.me;
   const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: () => {
-    m.prefs.appearance = k; theme(k, true);
+    theme(k, true);
     for (const b of sheetEl.querySelectorAll(".appear")) { const on = b === opts[APPEAR.findIndex(([x]) => x === k)]; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
-    setPrefs({ appearance: k });
+    setPrefs({ appearance: k }, prefsOut.appearance, () => {
+      theme(S.me.prefs.appearance, true);
+      if (Sheet.stack.at(-1) === appearanceView) redraw();
+    });
   } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
   return { title: "Appearance", body: [
     h("div.appears", {}, opts)] };
@@ -2789,7 +2856,7 @@ function unitsView() {
   const m = S.me, u = { ...unitsHere(), ...(m.prefs.units || {}) };
   return { title: "Units", body: [
     h("p", { text: "For Weather, on every device it’s signed in on: forecasts, the map and notifications." }),
-    h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], (v) => { u[k] = v; setPrefs({ units: { [k]: v } }); })))),
+    h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], (v) => setPrefs({ units: { [k]: v } }, prefsOut.units, () => Sheet.stack.at(-1) === unitsView && redraw()))))),
   ] };
 }
 
@@ -2840,7 +2907,12 @@ function emailsView() {
 // ---- InFlight's settings that are the account's (functions/api/account inflight): which notifications, how they read
 // on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
 // (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
-let IF = null, ifAt = 0;
+// (ifFor: whose they are; ifSeq, ifBusy: what's been asked for, and the changes on their way; ifStale: a fetch dropped
+// for one of those)
+let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0, ifStale = false;
+// (a fetch dropped for a change: the sheet drawn again once the last change is back, from what that gave back, so the
+// rows it didn't touch don't stay as they were cached; and, if one couldn't be kept, fetched again as it's drawn)
+const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (Sheet.stack.at(-1) === inflightView) redraw(); };
 const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off", "When a friend sends you one"], ["rerouted", "A pigeon changes course", "When a friend moves while yours is flying"],
   ["lost", "A pigeon is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
   ["accepted", "Request accepted"], ["reactions", "Reactions", "When someone reacts to your message"], ["moments", "Mid-air moments", "Near misses, cheers, ships, and friends’ pigeons flying over you"],
@@ -2849,22 +2921,30 @@ const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read
   ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
 function inflightView() {
-  // (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it comes)
+  // (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it comes. Another account's,
+  // signed in here since, never shown; and what comes dropped if a change was made since it was asked for, or is still
+  // being made, as what that change gave back is newer)
+  if (ifFor !== S.me.id) { IF = null; ifAt = 0; ifFor = S.me.id; }
   if (!IF || Date.now() - ifAt > 5000) {
     ifAt = Date.now();
-    call("inflight").then((r) => { IF = r; redraw(); }, (e) => { if (!IF) { IF = { error: e.message }; redraw(); } });
+    const s = ++ifSeq, who = S.me.id;
+    call("inflight").then((r) => {
+      if (who !== S.me?.id) return;
+      if (s === ifSeq && !ifBusy) { IF = r; redraw(); } else { ifStale = true; ifCaughtUp(); }
+    }, (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
   }
   const back = HANDOFF?.open === "inflight" && fromApp() === "inflight"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
   if (!IF) return { title: "InFlight", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
   if (IF.error) return { title: "InFlight", left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] };
   const said = h("p.said", { role: "alert" });
-  // a change, as it's made: kept, and what's kept shown (the switch put back, and why, if it can't be)
+  // a change, as it's made: kept, and what's kept shown (the switch put back, or the hour drawn again as it's kept, and
+  // why, if it can't be: said where it's seen, wherever the sheet's scrolled to)
   const change = async (input, patch, after) => {
-    input.disabled = true; say(said, "");
+    input.disabled = true; ifSeq++; ifBusy++;
     try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
-    catch (e) { if (input.type === "checkbox") input.checked = !input.checked; say(said, e.message); }
-    finally { input.disabled = false; }
+    catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (Sheet.stack.at(-1) === inflightView) redraw(); toast(e.message, true); }
+    finally { ifBusy--; input.disabled = false; ifCaughtUp(); }
   };
   const sw = (key, title, sub, on, patch, { after, disabled } = {}) => {
     const input = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });
@@ -2882,6 +2962,7 @@ function inflightView() {
     h("span.ic.grey.initial", { text: String(b.name || b.handle).trim().charAt(0).toUpperCase() }),
     h("span.tx", {}, h("b", { text: b.name }), h("small", { text: `@${b.handle}` })),
     twice("Unblock", "Unblock?", async (btn) => {
+      ifSeq++;
       try { IF = await busy(btn, "", () => call("inflight/block", { method: "DELETE", body: { id: b.id } })); redraw(); toast(`${b.name} is unblocked.`); }
       catch (e) { say(said, e.message); }
     }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in InFlight." })))];

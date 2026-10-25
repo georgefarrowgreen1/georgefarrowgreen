@@ -106,6 +106,8 @@ async function view(env, u) {
     // (the card's poster: its own larger copy, if one's been sent, and the point of it that stays in view)
     poster: u.avatar_at ? { at: u.poster_at || null, focus: u.poster_focus || "50 50" } : null,
     emailNew: u.email_new && t - (u.email_new_at || 0) < CHANGE_TTL ? u.email_new : null,
+    // (when the last confirm link went, so the page says one's on its way rather than offering one: a new one stops it working)
+    emailSentAt: u.email_ok ? null : u.email_sent || null,
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
     // (a sign-in an app handed over to this browser, signed in to nothing: this page's alone until it's shown it's you)
     handed: !!u.handed,
@@ -236,7 +238,8 @@ const ROUTES = {
     if (emailReady(env)) waitUntil(sendConfirm(env, u, request).catch((e) => console.error("confirm mail", e.message)));
     waitUntil(logEvent(env, u.id, "signup", request));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
+    // (the confirm link, sent as it's made, said in what the page's shown)
+    return withKnown(await withSession(json(await view(env, { ...u, email_sent: emailReady(env) ? Date.now() : null, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
   },
   // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
   "POST reset/request": async ({ request, env, waitUntil }) => {

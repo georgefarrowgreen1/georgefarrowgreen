@@ -244,8 +244,9 @@ Motion, solid with Reduce Transparency.
   be opened from (taken as if it had been opened, the way back to the app kept); a used or wrong invite says so there.
 - **Signing in, as seamless as it can be** (October 2026). The email field offers your passkeys in the keyboard as you
   tap it (passkey autofill: a quiet `mediation: "conditional"` ask as each sign-in card is drawn, put away before any
-  other passkey's asked for: `passkeyAsk`, `passkeyMake`; so `signin/options` allows 150 asks in 15 minutes from one
-  address). Signed in here before, the page remembers who (`acct:last`, in this browser only: name, handle, email and
+  other passkey's asked for: `passkeyAsk`, `passkeyMake`; and asked anew every 4 minutes while the page is in sight, as
+  its challenge lasts 5; so `signin/options` allows 150 asks in 15 minutes from one address). Signed in here before,
+  the page remembers who (`acct:last`, in this browser only: name, handle, email and
   whether it was a passkey): "Welcome back, George", your photo or initial, and just your password, or **Continue with
   your passkey** (that one asked for) if that's how you did, with the password a tap away; **Not you? Use another
   account** forgets it, as deleting the account does. Signed in with a password for an app, on a device that can make a passkey and with none yet,
@@ -299,7 +300,8 @@ Motion, solid with Reduce Transparency.
   locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
   link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
-  and the confirm email sent; InFlight then opens with **Continue as**, and only needs the password to unlock the key.
+  and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working);
+  InFlight then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
   there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
   (`#reset=`, InFlight's older ones passed on here) says who it's for (the email half hidden) and asks for a new
@@ -311,9 +313,11 @@ Motion, solid with Reduce Transparency.
 - **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
-  server too, 409). A browser that wasn't signed in is signed in on this page alone (`pg_sessions.handed`), as a name
-  is anyone's to give their own account: the rest of the site and every app treat it as signed out, and none is handed
-  it, until you've shown it's you here (**Continue to Weather** asks first, with a passkey or your password).
+  server too, 409), and what the app's link was to open (Edit profile, InFlight's settings) isn't opened for that one;
+  nor is it where the code can't be checked (run out, or refused), as whose it was isn't known. A browser that wasn't
+  signed in is signed in on this page alone (`pg_sessions.handed`), as a name is anyone's to give their own account:
+  the rest of the site and every app treat it as signed out, and none is handed it, until you've shown it's you here
+  (**Continue to Weather** asks first, with a passkey or your password).
 - **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
   the buttons, with your name and handle on it in large type (your email's in Edit profile, and Sign-in and security);
   **Edit profile** (your name and handle) and **Your code** under it. Its camera opens **Your photo** (the one place to change it): drag the photo (or use the arrow keys) to choose what shows, with the circle every
@@ -357,8 +361,9 @@ Motion, solid with Reduce Transparency.
   one, so nothing locked changes hands; a password from a data breach is said as it's typed (Pwned Passwords, only the
   first 5 characters of its SHA-1 asked); every other device is signed out. **Checked against data breaches** from the
   check-up, or quietly whenever it's typed here (signing in, showing it's you): how it went is kept with its proof
-  (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say. A password changed in InFlight counts
-  as checked (InFlight won't take one from a breach).
+  (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say; if Pwned Passwords can't be reached,
+  nothing's kept (and the check-up's Check says so). One password's asked about once a visit, however often it's
+  typed or sent. A password changed in InFlight counts as checked (InFlight won't take one from a breach).
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
   `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
@@ -412,7 +417,8 @@ Motion, solid with Reduce Transparency.
   stays the server's, `POST /api/account/export`, for the PDF to be written from).
 - **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
-  email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
+  email's link keeps it too, once its **Keep my account** is tapped (it asks first, so a mail scanner that opens the
+  link doesn't keep it). A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
   dueDeletions). (InFlight has no Delete Account of its own: deleting is on the account's page.)
 - **Keeping up:** the page looks again when you come back to it (and every minute while it's open), so a device
   signed out elsewhere, or a change made in another app, shows without a reload.

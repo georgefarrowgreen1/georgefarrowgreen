@@ -400,7 +400,9 @@ ok(!user('rowan_h').delete_at && /staying/.test(await text(L, '#toast')), 'kept:
 await delete1();
 const km2 = await waitMail('rowan.hale@example.com', /will be deleted/, 15000);
 await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#keep=${tokenIn(km2, 'keep')}`); await D.p.waitForSelector('main:not([aria-busy])'); await settle(D);
-ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, signed out', await text(D, '#toast'));
+ok(user('rowan_h').delete_at && /Keep your account\?/.test(await text(D)), 'the email\'s link, opened: asks first (a mail scanner opening it doesn\'t keep it)', (await text(D)).slice(0, 80));
+await D.p.click('main .btn:has-text("Keep my account")'); await waitText(D, /staying/, '#toast');
+ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, once tapped, signed out', await text(D, '#toast'));
 // asked a third time, and the week up: gone
 await L.p.fill('main input[type=email]', 'rowan.hale@example.com'); await L.p.fill('main input[type=password]', PW2); await L.p.click('main form .btn');
 await waitText(L, /Rowan Ash Hale/);

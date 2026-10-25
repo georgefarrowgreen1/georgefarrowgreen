@@ -112,11 +112,16 @@ ok(other === 404, 'only the account\'s page takes one (not InFlight\'s address, 
 // a browser signed in to another account: not swapped for this one (asked, or sent straight to the server)
 const M = await browser('mira');
 await makeAccount(M.p, `${ACCT}/`, { name: 'Mira Okafor', handle: 'mira', email: 'mira@example.com', password: PW });
-await M.p.goto('about:blank'); await M.p.goto(`${ACCT}/#handoff=${c3}`); await M.p.waitForSelector('main .hero', { timeout: 20000 }); await M.p.waitForTimeout(700);
-const mSays = await text(M.p, '.hero'), mToast = await text(M.p, '#toast');
-ok(/Mira Okafor/.test(mSays) && /signed in here as @mira\. Sign out first to use @rowan here/.test(mToast), 'opened where another account\'s signed in: still that one, and said why', `${mSays.slice(0, 40)} | ${mToast}`);
+await M.p.goto('about:blank'); await M.p.goto(`${ACCT}/#handoff=${c3}&open=inflight`); await M.p.waitForSelector('main .hero', { timeout: 20000 }); await M.p.waitForTimeout(700);
+const mSays = await text(M.p, '.hero'), mToast = await text(M.p, '#toast'), mSheet = !!(await M.p.$('#sheet[open]'));
+ok(/Mira Okafor/.test(mSays) && /signed in here as @mira\. Sign out first to use @rowan here/.test(mToast) && !mSheet,
+  'opened where another account\'s signed in: still that one, and said why (and what it was to open, not opened for this one)', `${mSays.slice(0, 40)} | ${mToast} | sheet ${mSheet}`);
 const swap = await M.p.evaluate(async (c) => { const r = await fetch('/api/account/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c }) }); return [r.status, (await (await fetch('/api/account/me')).json()).handle]; }, c3);
 ok(swap[0] === 409 && swap[1] === 'mira', 'and the server won\'t swap it either', swap.join());
+// (a code that can't be checked, the one run out above: whose it was isn't known, so nothing's opened for this one)
+await M.p.goto('about:blank'); await M.p.goto(`${ACCT}/#handoff=${c2}&open=inflight`); await M.p.waitForSelector('main .hero', { timeout: 20000 }); await M.p.waitForTimeout(700);
+const gToast = await text(M.p, '#toast'), gSheet = !!(await M.p.$('#sheet[open]'));
+ok(/run out/.test(gToast) && !gSheet, 'and a code that can\'t be checked: said, and what it was to open not opened for whoever\'s signed in here', `${gToast} | sheet ${gSheet}`);
 const noAuth = await A.p.evaluate(async () => (await fetch('/api/pigeon/account-link', { method: 'POST' })).status);
 ok(noAuth === 401, 'and only a signed-in InFlight can ask for one', String(noAuth));
 
