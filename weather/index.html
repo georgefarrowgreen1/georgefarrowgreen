@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-106" />
+  <meta name="app-version" content="wx-108" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -320,9 +320,8 @@
       <!-- the page's cards: in your order, each shown or not (settings.js drawArrange) -->
       <div class="set-page" data-page="arrange" data-title="Arrange your page" hidden>
         <ul class="grp arrange" id="arrange-list" aria-label="The page’s cards, in order"></ul>
-        <p class="grp-foot">Drag a card by <span class="arr-hint" aria-hidden="true"></span> to move it, or switch it off. Warnings always come first, under the temperature.</p>
-        <p class="sr-only" id="arrange-said" role="status"></p>
         <ul class="grp"><li><button class="grp-out" type="button" id="arrange-reset">Put back as it was</button></li></ul>
+        <p class="sr-only" id="arrange-said" role="status"></p>
       </div>
     </div>
   </dialog>

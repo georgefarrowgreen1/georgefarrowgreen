@@ -338,19 +338,20 @@ export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3
 // minute, or null), driftOf(k): the rain's own way between frames k and k + 1 where it's known (else the latest's, or
 // none), models: [{ t, k }]
 // (the timeline's frames of the models', in order; none where the radar's carried on), model: { rain, snow } }; and
-// after split (the end of those two hours), the models' hours (hourly: their frames; hours: { rain, snow }), blended
-// from what was on show at split into the first of them, then hour into hour.
-// → [{ k (a radar frame), dx, dy (zoom-7 pixels it's moved), alpha }] and [{ rates, snow, alpha }] of the models'
+// after split (the end of those two hours), the models' hours (hourly: their frames; hours: { rain, snow, g: the grid
+// they're on, wider than the two hours' }), what was on show carrying on as it was (the radar along its track) and
+// fading out over the first hour (HANDOVER) as they fade in under it, rather than one cut to the other, then hour into
+// hour.
+// → [{ k (a radar frame), dx, dy (zoom-7 pixels it's moved), alpha }] and [{ rates, snow, alpha, g }] of the models'
 export function partsAt(src, t) {
   const { past = [], models = [], model, hourly = [], hours, split } = src, last = past.length ? past[past.length - 1].time * 1000 : null;
   const still = { vx: 0, vy: 0 };
   if (hourly.length && hours && split != null && t > split) {
-    const H = hourly[0];
-    if (t < H.t) {
-      const a = Math.min(1, (t - split) / (H.t - split)), before = partsAt({ ...src, hourly: [] }, split).map((x) => ({ ...x, alpha: x.alpha * (1 - a) }));
-      return [...before.filter((x) => x.alpha > 0), { rates: hours.rain[H.k], snow: hours.snow[H.k], alpha: a }];
-    }
-    return between(hourly, hours, t);
+    const H = hourly[0], now = t < H.t ? [{ rates: hours.rain[H.k], snow: hours.snow[H.k], alpha: 1, ...(hours.g && { g: hours.g }) }] : between(hourly, hours, t);
+    const a = Math.min(1, (t - split) / Math.max(HANDOVER, H.t - split));
+    if (a >= 1) return now;
+    const before = partsAt({ ...src, hourly: [] }, t).map((x) => ({ ...x, alpha: x.alpha * (1 - a) }));
+    return [...before.filter((x) => x.alpha > 0), ...now.map((x) => ({ ...x, alpha: x.alpha * a }))];
   }
   if (last != null && t <= last) {
     let k = 0;
@@ -373,14 +374,27 @@ export function partsAt(src, t) {
   }
   return between(models, model, t);
 }
-// (the models' frames either side of t, their rates blended, snow where the nearer has it; past the last, the last)
+// (the models' frames either side of t, their rates blended, snow where the nearer has it; past the last, the last; on
+// the grid of their own, if they've one)
 function between(frames, series, t) {
   let j = 0;
   while (j < frames.length - 2 && frames[j + 1].t <= t) j++;
-  const A = frames[j], B = frames[j + 1];
-  if (!B || t >= B.t) return [{ rates: series.rain[(B || A).k], snow: series.snow[(B || A).k], alpha: 1 }];
+  const A = frames[j], B = frames[j + 1], g = series.g ? { g: series.g } : {};
+  if (!B || t >= B.t) return [{ rates: series.rain[(B || A).k], snow: series.snow[(B || A).k], alpha: 1, ...g }];
   const a = Math.max(0, (t - A.t) / (B.t - A.t)), ra = series.rain[A.k], rb = series.rain[B.k];
-  return [{ rates: ra.map((r, p) => r + ((rb[p] ?? 0) - r) * a), snow: a < 0.5 ? series.snow[A.k] : series.snow[B.k], alpha: 1 }];
+  return [{ rates: ra.map((r, p) => r + ((rb[p] ?? 0) - r) * a), snow: a < 0.5 ? series.snow[A.k] : series.snow[B.k], alpha: 1, ...g }];
+}
+// how long what was on show at the end of the next two hours takes to fade into the models' hours
+const HANDOVER = 60 * 60e3;
+// A frame painted over a grid's box faded out towards its edges (edge: the part of the box's width it fades over), so
+// rain near the edge of what the grid reaches thins away there rather than stopping in a line
+export function fadeEdges(buf, w, h, edge = 0.14) {
+  const ew = Math.max(1, w * edge), eh = Math.max(1, h * edge), s = (d, e) => { const x = Math.min(1, d / e); return x * x * (3 - 2 * x); };
+  for (let y = 0; y < h; y++) {
+    const fy = s(Math.min(y + 0.5, h - y - 0.5), eh);
+    for (let x = 0; x < w; x++) { const o = (y * w + x) * 4 + 3; if (buf[o]) buf[o] = Math.round(buf[o] * fy * s(Math.min(x + 0.5, w - x - 0.5), ew)); }
+  }
+  return buf;
 }
 // Web Mercator tiles: where a place is on zoom z's tiles (fractions of a tile, from the world's top left), and where a
 // tile's top left corner is ([lat, lon])

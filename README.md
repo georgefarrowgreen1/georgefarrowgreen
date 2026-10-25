@@ -680,9 +680,10 @@ so there's nothing to set up beyond the address.
   wind's from and how strong ("WSW 14 MPH"). Each has its legend in round values in the units chosen ("Wind (mph)",
   0 to 75) and its own timeline, a tick each hour. The wind's has a choice of **Wind or Gusts** beside its colours
   (kept as chosen): the colours, the flow, the bubble and the words all of the one chosen.
-  **The rain on to twelve hours ahead**: after the next two hours, the models' rain by the hour (Open-Meteo's, on the
-  radar's 9 × 9 grid, asked for once a half hour), the radar or the models' quarter hours faded into the first of
-  them, then hour into hour; the timeline a step a minute up to there and a step every three minutes after, so the
+  **The rain on to twelve hours ahead**: after the next two hours, the models' rain by the hour (Open-Meteo's, on a
+  13 × 13 grid some 550 km across, so it reaches the edges of the map, fading out towards its own; asked for once a
+  half hour), the radar carrying on along its track (or the models' quarter hours as they were) and fading out over
+  the first hour as the hours fade in under it, then hour into hour; the timeline a step a minute up to there and a step every three minutes after, so the
   radar's minutes keep their room on it (ticks each hour, the clock every few hours), played an hour every 0.6 s.
   **The other saved places** are on the map too, each a small bubble with the layer's say there (its temperature now,
   as the list of places has it, on the rain; the models' temperature or wind at the time on show on the others) and
@@ -785,11 +786,19 @@ so there's nothing to set up beyond the address.
   devices to the server (wx_devs `mail:` and the account, its places the ones with
   warnings on, never rain), sent the same warnings and briefings as a phone, with
   the same claim first, but as an email (`functions/_email.js`): the briefing with
-  the day's look, the headline, any official warning in force as a notice in its
-  colour, the morning, afternoon and evening on Weather's blue, and the high and
-  low, rain, wind and sun; a warning with its tile in its colour, the issuer's
-  words, when and where, raised from which colour, and how many more
-  (`weather/alerts.js` briefMail, warningMail). Each has a link to turn them off
+  its rain told one way throughout, as the app tells it (`weather/agree.js`, the
+  radar leading the next hours where it was read): the subject saying when it rains
+  by the clock ("light rain 08:15–09:00, then mostly cloudy · 12°", a warning
+  first), the day's look, the rain by the clock and the high against yesterday's,
+  when the forecast was ("Forecast at 07:15, with the radar"), any official warning
+  in force as a notice in its colour, the morning, afternoon and evening on
+  Weather's blue (each its high, the evening its low, and its rain: "Rain 08:15",
+  "Drizzle 16:00", "Dry") over a bar of the day's rain a quarter hour from 06:00,
+  as tall as it's heavy, then the high and low, rain, wind, sun and tomorrow; a
+  smaller picture, and See the latest with no address under it. A warning with its
+  tile in its colour, the issuer's words, when and where, raised from which
+  colour, and how many more (`weather/alerts.js` briefMail, warningMail). Mail
+  apps are asked not to make times into links. Each has a link to turn them off
   (GET shows a button, POST turns them off: `/api/weather/email-off`, with the
   account's own token, as InFlight's emails have) and the mail app's own
   Unsubscribe (RFC 8058). The site's sending plan is shared by every app's email

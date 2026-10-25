@@ -41,6 +41,7 @@ import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf } from "../weather/format.js";
 import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP, briefMail, warningMail } from "../weather/alerts.js";
 import { blend } from "../weather/rainmap.js";
+import { oneRain } from "../weather/agree.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
 
@@ -484,7 +485,8 @@ async function mailOut(env, D, s, t, origin, m) {
   const app = origin === SITE ? `https://${WEATHER_HOST}` : `${origin}/weather`, api = origin === SITE ? `https://${WEATHER_HOST}/api/weather` : `${origin}/api/weather`;
   const unsub = `${api}/email-off?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
   const url = `${app}/?lat=${s.lat}&lon=${s.lon}&name=${encodeURIComponent(s.name || "")}`;
-  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, button: { label: m.kind === "warn" ? "See it in Weather" : "Open Weather", url } });
+  // (no address under the button: it only opens Weather; a briefing's picture small, so its rain sits higher)
+  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, fallback: false, compact: m.kind === "brief", button: { label: m.kind === "warn" ? "See it in Weather" : "See the latest", url } });
   try {
     await sendEmail(env, { brand: "weather", to: u.email, subject: m.subject, text, html, headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
     return "sent";
@@ -516,8 +518,11 @@ const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHE
 // (rain: the radar's say on the next couple of hours here, if it was read: rainmap.js radarAt)
 async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
   if (!j) return;
-  const wx = shapeForecast(j, { name: s.name, lat: s.lat, lon: s.lon }), now = nowWall(wx.place.offset, t);
+  let wx = shapeForecast(j, { name: s.name, lat: s.lat, lon: s.lon });
+  const now = nowWall(wx.place.offset, t);
   if (rain) wx.minutely = blend(wx.minutely, rain.steps, rain.at, wx.place.offset);
+  // (its rain one story, as the app tells it: the hours, their pictures and their odds as the next hours have them)
+  wx = oneRain(wx, now);
   let units = {}; try { units = JSON.parse(s.units || "{}"); } catch (_) {}
   const f = makeFormat(units), url = linkTo(s.lat, s.lon, s.name), got = [];
   if (s.tz_off !== wx.place.offset) await D.prepare("UPDATE wx_subs SET tz_off = ?2 WHERE id = ?1").bind(s.id, wx.place.offset).run();

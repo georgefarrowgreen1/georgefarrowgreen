@@ -233,26 +233,32 @@ test("the models' rain between their quarter hours: blended, from the latest rad
   // no radar at all: the models' from their first
   assert.deepEqual(partsAt({ past: [], models, model }, last), [{ rates: model.rain[0], snow: model.snow[0], alpha: 1 }]);
 });
-test("then the models' hours: on from the end of the two hours, blended from what was on show into the first, hour into hour", () => {
+test("then the models' hours: on from the end of the two hours, what was on show fading into them over an hour, hour into hour", () => {
   const now = Date.UTC(2026, 9, 18, 15, 7), radar = Array.from({ length: 13 }, (_, k) => Date.UTC(2026, 9, 18, 13) + k * 600e3);
   const ahead = Array.from({ length: 12 }, (_, k) => radar[12] + (k + 1) * 600e3), hourT = Array.from({ length: 13 }, (_, k) => Date.UTC(2026, 9, 18, 15) + k * 3600e3 - 1800e3);
   const tl = timeline(radar, ahead, now, 2 * 3600e3, hourT);
   assert.equal(tl.split, radar[12] + 2 * 3600e3, "the split: the end of the two hours");
   assert.deepEqual(tl.frames.filter((f) => f.kind === "hour").map((f) => new Date(f.t).toISOString().slice(11, 16)), ["17:30", "18:30", "19:30", "20:30", "21:30", "22:30", "23:30", "00:30", "01:30", "02:30"]);
   assert.equal(timeline(radar, ahead, now).split, radar[12] + 2 * 3600e3, "without hours: the same split, nothing after it");
-  // the radar carried on to the split, then faded into the first hour; then hour into hour; past the last, the last
+  // the radar carried on to the split, then on along its track as it fades into the first hour over the next hour; then
+  // hour into hour; past the last, the last
   const last = T0 + 120 * M, split = last + 120 * M, hourly = [{ t: split + 20 * M, k: 3 }, { t: split + 80 * M, k: 4 }];
   const hours = { rain: [[], [], [], [0, 2, 4], [4, 2, 0]], snow: [[], [], [], [0, 0, 0], [1, 1, 1]] };
   const src = { past: pastOf(13), drift: { vx: 0.5, vy: 0 }, hourly, hours, split };
   assert.ok(near(partsAt(src, split)[0].alpha, 0.7) && partsAt(src, split).length === 1, "at the split: the radar carried on, as before");
   const into = partsAt(src, split + 5 * M);
-  assert.ok(into.length === 2 && into[0].k === 12 && near(into[0].dx, 60) && near(into[0].alpha, 0.7 * 0.75) && near(into[1].alpha, 0.25) && into[1].rates === hours.rain[3], JSON.stringify(into));
-  const [h] = partsAt(src, split + 50 * M);
-  assert.ok(h.alpha === 1 && h.rates.every((r, p) => near(r, (hours.rain[3][p] + hours.rain[4][p]) / 2)), JSON.stringify(h));
+  assert.ok(into.length === 2 && into[0].k === 12 && near(into[0].dx, 62.5) && near(into[0].alpha, 0.7 * 11 / 12) && near(into[1].alpha, 1 / 12) && into[1].rates === hours.rain[3], JSON.stringify(into));
+  const hh = partsAt(src, split + 50 * M), h = hh[hh.length - 1];
+  assert.ok(hh.length === 2 && near(hh[0].alpha, 0.7 / 6) && near(h.alpha, 5 / 6) && h.rates.every((r, p) => near(r, (hours.rain[3][p] + hours.rain[4][p]) / 2)), JSON.stringify(hh));
+  const [on] = partsAt(src, split + 65 * M);
+  assert.ok(on.alpha === 1 && on.rates.every((r, p) => near(r, hours.rain[3][p] * 0.25 + hours.rain[4][p] * 0.75)), "an hour on: the models' alone");
   assert.deepEqual(partsAt(src, split + 300 * M), [{ rates: hours.rain[4], snow: hours.snow[4], alpha: 1 }]);
   // (and from the models' quarter hours, where they were on show, the same way)
   const model = { rain: [[1, 1, 1]], snow: [[0, 0, 0]] }, m = partsAt({ past: pastOf(13), models: [{ t: last + 7.5 * M, k: 0 }], model, hourly, hours, split }, split + 10 * M);
-  assert.ok(m.length === 2 && m[0].rates === model.rain[0] && near(m[0].alpha, 0.5) && near(m[1].alpha, 0.5), JSON.stringify(m));
+  assert.ok(m.length === 2 && m[0].rates === model.rain[0] && near(m[0].alpha, 5 / 6) && near(m[1].alpha, 1 / 6), JSON.stringify(m));
+  // (on the hours' own grid, where they've one)
+  const wide = grid(52, 0, 13, 2.5, 6), w = partsAt({ ...src, hours: { ...hours, g: wide } }, split + 300 * M);
+  assert.ok(w.length === 1 && w[0].g === wide, JSON.stringify(w.map((x) => x.g?.n)));
 });
 test("a grid's value at a place: the four points about it blended; none outside it", () => {
   const g = grid(52, 0, 3, 1), vals = [0, 10, 20, 30, 40, 50, 60, 70, 80];

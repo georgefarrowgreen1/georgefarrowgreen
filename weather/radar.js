@@ -1,6 +1,7 @@
 // The rain radar: the last two hours of radar, every ten minutes, from RainViewer's free mosaic of the world's
 // weather radars, then the next two hours as the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9
-// grid about 220 km across around the place, painted in the radar's own colours), on a map: OpenFreeMap's vector
+// grid about 220 km across around the place, painted in the radar's own colours), and the hours after by the hour (on a
+// 13 × 13 grid about 550 km across, so they cover the map), on a map: OpenFreeMap's vector
 // map, drawn on the phone in the app's own style (mapgl.js), or where the phone can't draw it, OpenStreetMap's own
 // turned dark (mapleaf.js). Either is driven the same way from here.
 // RainViewer's free tiles go to zoom 7's detail (about a county across a tile),
@@ -10,7 +11,7 @@
 //
 // The map's code is loaded only as the card comes near (the vector map's, a screen ahead: it's a megabyte).
 
-import { grid, paint, timeline, LEGEND, decode, rainValues, colour, ramp, squareAt, driftOf, rainSaid, radarAt, partsAt, tileOf, cornerOf, paintField, fieldAt, gridAt, tint, mmhOf, MIN_RATE, TEMP_STOPS, WIND_STOPS } from "./rainmap.js";
+import { grid, paint, fadeEdges, timeline, LEGEND, decode, rainValues, colour, ramp, squareAt, driftOf, rainSaid, radarAt, partsAt, tileOf, cornerOf, paintField, fieldAt, gridAt, tint, mmhOf, MIN_RATE, TEMP_STOPS, WIND_STOPS } from "./rainmap.js";
 import { glMix } from "./radarmix.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
@@ -124,12 +125,16 @@ async function hourlyGrid(g, key, url, vars) {
 // 13 points about 220 km across, about 18 km apart: the lie of the land shows in it, close in)
 const modelAir = (g) => hourlyGrid(g, `radaraq:${g.id}`, "https://air-quality-api.open-meteo.com/v1/air-quality", [["european_aqi", "aq"]]);
 const modelFine = (g) => hourlyGrid(g, `radarfine:${g.id}`, MODEL, [["temperature_2m", "temp"]]);
-const canvasFor = (g, rates, snow) => {
+// (edges: faded out towards the box's edges, the models' hours' wider grid: rainmap.js fadeEdges)
+const canvasFor = (g, rates, snow, edges = false) => {
   const c = document.createElement("canvas"); c.width = PX; c.height = PX;
   const ctx = c.getContext("2d"), img = ctx.createImageData(PX, PX);
-  paint(img.data, PX, PX, g, rates, snow); ctx.putImageData(img, 0, 0);
+  paint(img.data, PX, PX, g, rates, snow); if (edges) fadeEdges(img.data, PX, PX); ctx.putImageData(img, 0, 0);
   return c;
 };
+// (the grid the models' hours are on: about 550 km across about the place, 13 × 13, so the hours after the next two
+// cover the map as it's usually seen, not just a box about the place; the next two's, finer, is 220 km)
+const hourGrid = (lat, lon) => grid(lat, lon, 13, 2.5, 6);
 // A radar tile's pixels, read back into reflectivity once (the last 120 kept). Asked for six at a time, the frame
 // on show first; a tile that doesn't come isn't kept (it's asked for again next time it's wanted)
 const codes = new Map(), asks = [];
@@ -542,7 +547,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     slider.setAttribute("aria-valuetext", `${what}, ${when}`);
     drawAreas(tm); sayReading();
     chipTo(ahead ? "model" : "radar");
-    map.box(undefined, ahead && kind === "rain" && (src?.model || tm > split) ? 0.45 : 0);
+    map.box(undefined, ahead && kind === "rain" && src?.model && tm <= split ? 0.45 : 0);
   };
   // The temperature or the wind (kind) at a time, over a grid of its own (the models', 11 × 11 points about 750 km
   // across, so it fills the map zoomed out to the region, as it is for them: FIELD_ZOOM): the models' hours eased between (rainmap.js paintField), on a small
@@ -841,7 +846,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     for (const p of parts) {
       let mmh = 0, sn = 0;
       if (p.rates) {
-        mmh = gridAt(g, p.rates, lat, lon) ?? 0; sn = (gridAt(g, p.snow, lat, lon) ?? 0) > 0.5 ? 1 : 0;
+        mmh = gridAt(p.g || g, p.rates, lat, lon) ?? 0; sn = (gridAt(p.g || g, p.snow, lat, lon) ?? 0) > 0.5 ? 1 : 0;
       } else {
         if (!v) return null;
         const scale = 2 ** (v.Z - 7), [tx, ty] = tileOf(lat, lon, v.Z), gx = tx * 256 - p.dx * scale, gy = ty * 256 - p.dy * scale;
@@ -1115,9 +1120,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
         if (p.base) {
           for (const [x, y] of p.tiles) { const b = entry(p.base, x, y).bmp; if (b) mx.drawImage(b, (x - v.x0) * 256 + p.sx, (y - v.y0) * 256 + p.sy); }
         } else {
-          // the models' rain, painted over the grid's box
-          paint(fimg.data, PX, PX, g, p.rates, p.snow); fx.putImageData(fimg, 0, 0);
-          const [ax, ay] = tileOf(g.north, g.west, v.Z), [bx, by] = tileOf(g.south, g.east, v.Z);
+          // the models' rain, painted over its grid's box (the hours', wider, faded out towards its edges)
+          const pg = p.g || g;
+          paint(fimg.data, PX, PX, pg, p.rates, p.snow); if (p.g) fadeEdges(fimg.data, PX, PX); fx.putImageData(fimg, 0, 0);
+          const [ax, ay] = tileOf(pg.north, pg.west, v.Z), [bx, by] = tileOf(pg.south, pg.east, v.Z);
           mx.drawImage(fc, (ax - v.x0) * 256, (ay - v.y0) * 256, (bx - ax) * 256, (by - ay) * 256);
         }
       }
@@ -1237,7 +1243,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (said) said.textContent = "";
     // (the models' hours asked for meanwhile; not waited for long: if they come later, it's drawn again with them)
     let waited = false;
-    const hoursP = modelHours(rg).catch(() => null), soon = new Promise((ok) => setTimeout(ok, 3000));
+    const hg = hourGrid(spot.lat, spot.lon), hoursP = modelHours(hg).then((h) => { h.g = hg; return h; }).catch(() => null), soon = new Promise((ok) => setTimeout(ok, 3000));
     const rv = await framesNow().catch(() => null);
     const host = rv?.host, past = rv?.radar?.past || [];
     // the next two hours, always: the latest radar carried along its own track, every 10 minutes; where there's no
@@ -1260,7 +1266,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     g = rg;
     const tl = timeline(past.map((f) => f.time * 1000), ahead, Date.now(), 2 * 3600e3, hours ? hours.times : []);
     frames = tl.frames;
-    const box = [[g.south, g.west], [g.north, g.east]];
+    const box = [[g.south, g.west], [g.north, g.east]], hbox = [[hg.south, hg.west], [hg.north, hg.east]];
     // (the radar's frames and the models' have layers of their own on the map, shown as they are where the minutes
     // between can't be drawn; the next two hours carried on from the radar have none: the minutes between draw them,
     // from the latest's tiles, and where they can't, it's the latest as it is)
@@ -1272,8 +1278,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       // (a frame's own tiles first while it's the one on show; not while the minutes either side of it are)
       const j = frames.indexOf(f), shown = () => layerAt(i) === lay[j] && !mixed, from = (k) => `${host}${past[k].path}/${SRC}`;
       if (f.kind === "radar") return { draw: (z, x, y, gone) => keptTile(from(f.k), { z, x, y }, shown, gone).then((e) => (e?.vals ? rgbaOf(e.vals) : null)) };
-      const m = f.kind === "hour" ? hours : model;
-      return { canvas: canvasFor(g, m.rain[f.k], m.snow[f.k]), bounds: box };
+      if (f.kind === "hour") return { canvas: canvasFor(hg, hours.rain[f.k], hours.snow[f.k], true), bounds: hbox };
+      return { canvas: canvasFor(g, model.rain[f.k], model.snow[f.k]), bounds: box };
     }));
     // (what the minutes between are drawn from: rainmap.js partsAt)
     raw.clear();
@@ -1285,7 +1291,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (kind !== "rain") [t0, tEnd, split] = hourly();
     clockOn();
     sight = ""; minute = null; layer = -1; mixed = false;
-    map.box(model || src.hourly.length ? box : null);
+    // (the two hours' box, where they're the models': the hours after cover the map, faded out at their edges)
+    map.box(model ? box : null);
     // (nothing on the radar about here, and nothing coming: said on the map, so an empty map isn't a puzzle; not over
     // the models' hours, if they've rain somewhere)
     dryNow = held; dryLater = !hours || hours.rain.every((r) => r.every((x) => x < 0.1));

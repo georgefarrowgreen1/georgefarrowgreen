@@ -116,22 +116,35 @@ const SYMBOL = { Account: "person", Handle: "at", From: "person", When: "clock",
   "Your messages": "lock", Pigeons: "bird", "Pigeons sent": "bird", "Pigeons received": "bird", "Miles flown": "route", "New badges": "star", "Next badge": "star" };
 // (a line's last two words kept together, so none ends on a word alone)
 const together = (s) => String(s).replace(/ (\S+)$/, " $1");
+// The day's rain under the strip: a bar a quarter hour, as tall as the rain's heavy (bar.levels: 0 dry to 4 heavy), its
+// hours under it (bar.labels, every three hours from 06:00); in table cells, so it holds up in every mail app
+const BAR_H = [3, 10, 17, 23, 28], BAR_C = ["#6f9cee", "#cfe0fc", "#ffffff", "#ffffff", "#ffffff"];
+function barRow(bar, cols) {
+  const n = bar.levels.length, cell = (100 / n).toFixed(3);
+  const bars = bar.levels.map((l) => `<td width="${cell}%" valign="bottom" style="height:28px;padding:0 ${l ? 1 : 0}px 0 0;vertical-align:bottom;line-height:0;font-size:0"><div style="height:${BAR_H[l]}px;line-height:${BAR_H[l]}px;font-size:0;background:${BAR_C[l]};border-radius:${l ? 2 : 0}px">&nbsp;</div></td>`).join("");
+  const step = n / bar.labels.length;
+  const labels = bar.labels.map((t) => `<td colspan="${step}" style="padding:5px 0 0;font-size:10.5px;line-height:13px;font-weight:600;color:#cfe0ff;text-align:left">${escHtml(t)}</td>`).join("");
+  return `<tr><td colspan="${cols}" class="ml-bar" style="padding:2px 12px 12px;border-top:1px solid rgba(255,255,255,.18)">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;margin-top:10px"><tr>${bars}</tr><tr>${labels}</tr></table></td></tr>`;
+}
 // The look of every email on the site, each app in its own colours: its sky behind; a card with the email's own tile
 // and the app's icon as a badge on it (one picture); the title; a pill for the one thing to see at a glance (where a
 // sign-in was, the address to confirm, the day); what happened, then (quieter) what to do; someone's own words, as
 // they wrote them (quote); a notice in its own colour (notice: { tone, lead, text }: a warning in force); a strip of a
 // few columns on the app's own colour (strip: [what, picture, big, small] each: a day's morning, afternoon and evening);
-// the details as a list, a symbol each (rows: [what, value, symbol?]); the button (a web link has its address under
-// it, for when it won't work); the foot. Tables and inline styles, so it holds up in Gmail and Outlook (gradients and
-// glows there are flat colours), with a dark version, in the app's night sky.
-export function emailBody({ brand, title, lines = [], quote, notice, strip = [], button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader }) {
+// the day's rain under the strip (bar: { levels, labels }, above); the details as a list, a symbol each (rows: [what,
+// value, symbol?]); the button (a web link has its address under it, for when it won't work, unless fallback is false:
+// a link that only opens an app); the foot. asOf: a quiet line under the lines (when a forecast was); compact: a smaller
+// picture and title, so what's said sits higher. Tables and inline styles, so it holds up in Gmail and Outlook
+// (gradients and glows there are flat colours), with a dark version, in the app's night sky.
+export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip = [], bar, button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader, compact = false, fallback = true }) {
   const B = brandOf(brand), foot = B.foot?.(origin), e = escHtml;
   const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
   const pic = (f) => e(`${origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
   const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
-  const web = button && /^https?:/i.test(button.url);
+  const web = fallback && button && /^https?:/i.test(button.url);
   const N = notice && (NOTICE[notice.tone] || NOTICE.yellow);
-  const text = [title, pill ? pill[1] : "", ...lines, quote || "", notice ? `${notice.lead} ${notice.text}` : "", strip.map(([k, , big, small]) => `${k}: ${big}${small ? `, ${small}` : ""}`).join("\n"),
+  const text = [title, pill ? pill[1] : "", ...lines, asOf || "", quote || "", notice ? `${notice.lead} ${notice.text}` : "", strip.map(([k, , big, small]) => `${k}: ${big}${small ? `, ${small}` : ""}`).join("\n"),
     ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
     footer || "", foot ? [foot.line, foot.url ? `${foot.label}: ${foot.url}` : ""].filter(Boolean).join("\n") : "",
     unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
@@ -142,9 +155,10 @@ export function emailBody({ brand, title, lines = [], quote, notice, strip = [],
       <td class="ml-v ml-sep" style="padding:13px 16px 13px 0;font-size:15px;line-height:20px;color:#1c1c1e;font-weight:600;text-align:right;${sep}">${e(v)}</td></tr>`; };
   const link = (url, words) => `<a class="ml-a" href="${e(url)}" style="color:${B.ink};text-decoration:none">${e(words)}</a>`;
   const html = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${e(title)}</title>
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${e(title)}</title>
 <style>
   a{color:${B.ink}}
+  a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}
   @media (prefers-color-scheme:dark){
     .ml-bg{background-color:${B.night[1]}!important;background-image:${sky(B.night)}!important}
     .ml-card{background:${B.card}!important;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08),0 18px 50px -24px rgba(0,0,0,.8)!important}
@@ -161,21 +175,22 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">
   <tr><td class="ml-card" align="center" style="background:#ffffff;border-radius:30px;padding:24px 24px 24px;box-shadow:inset 0 0 0 .5px rgba(60,60,120,.08),0 18px 50px -26px ${B.glow}">
     <!-- the email's own tile, its app's icon a badge on it (the sender says the app's name) -->
-    <img src="${pic(`${brand}-${tile}`)}" width="112" height="112" alt="${e(B.name)}" style="display:block;margin:0 auto 8px;border:0">
-    <h1 class="ml-t" style="margin:0 0 10px;font-size:26px;line-height:31px;font-weight:700;letter-spacing:-.4px;color:#1c1c1e">${e(together(title))}</h1>
+    <img class="ml-tile" src="${pic(`${brand}-${tile}`)}" width="${compact ? 64 : 112}" height="${compact ? 64 : 112}" alt="${e(B.name)}" style="display:block;margin:0 auto ${compact ? 10 : 8}px;border:0">
+    <h1 class="ml-t" style="margin:0 0 10px;font-size:${compact ? 23 : 26}px;line-height:${compact ? 28 : 31}px;font-weight:700;letter-spacing:-.4px;color:#1c1c1e">${e(together(title))}</h1>
     ${pill ? `<div style="margin:0 0 16px"><span class="ml-pill" style="display:inline-block;padding:6px 13px 6px 11px;border-radius:999px;background:${B.pill};color:${B.ink};font-size:13.5px;line-height:18px;font-weight:600">${sym(pill[0], 15, "display:inline-block;vertical-align:-3px;margin-right:5px")}${e(pill[1])}</span></div>` : ""}
     ${lines.map((l, i) => i ? `<p class="ml-p2" style="margin:0 0 6px;font-size:14.5px;line-height:21px;color:#8e8e93">${e(together(l))}</p>`
       : `<p class="ml-p1" style="margin:0 0 8px;font-size:16px;line-height:23px;color:#3a3a3c">${e(together(l))}</p>`).join("")}
+    ${asOf ? `<p class="ml-p2 ml-asof" style="margin:0 0 4px;font-size:12.5px;line-height:18px;color:#8e8e93">${e(together(asOf))}</p>` : ""}
     ${quote ? `<div class="ml-box ml-v" style="margin:16px 0 0;padding:14px 16px;background:#f5f5fa;border-radius:16px;text-align:left;font-size:15px;line-height:22px;color:#1c1c1e;white-space:pre-wrap;word-break:break-word">${e(quote)}</div>` : ""}
     ${N ? `<table role="presentation" class="ml-n" width="100%" cellpadding="0" cellspacing="0" bgcolor="${N[0]}" style="margin:18px 0 0;background:${N[0]};border-radius:16px;border-collapse:separate"><tr>
       <td width="32" style="width:18px;padding:12px 0 12px 14px;vertical-align:middle"><img src="${pic(`g-warn-${notice.tone in NOTICE ? notice.tone : "yellow"}`)}" width="18" height="18" alt="" style="display:block;border:0"></td>
       <td class="ml-n-t" style="padding:12px 14px 12px 10px;font-size:14.5px;line-height:20px;color:${N[1]};text-align:left"><b>${e(notice.lead)}</b> ${e(notice.text)}</td></tr></table>` : ""}
-    ${strip.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${B.btn[1]}" style="margin:18px 0 0;background-color:${B.btn[1]};background-image:linear-gradient(180deg,${B.btn[0]},${B.btn[1]});border-radius:18px;border-collapse:separate"><tr>${strip.map(([k, p, big, small], i) =>
+    ${strip.length ? `<table role="presentation" class="ml-strip" width="100%" cellpadding="0" cellspacing="0" bgcolor="${B.btn[1]}" style="margin:18px 0 0;background-color:${B.btn[1]};background-image:linear-gradient(180deg,${B.btn[0]},${B.btn[1]});border-radius:18px;border-collapse:separate"><tr>${strip.map(([k, p, big, small], i) =>
       `<td align="center" width="${Math.floor(100 / strip.length)}%" style="padding:14px 4px 13px;${i ? "border-left:1px solid rgba(255,255,255,.18);" : ""}">
         <div style="font-size:12px;line-height:15px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#dbe9ff">${e(k)}</div>
         <img src="${pic(p)}" width="44" height="44" alt="" style="display:block;margin:5px auto 3px;border:0">
         <div style="font-size:22px;line-height:26px;font-weight:700;color:#ffffff">${e(big)}</div>
-        ${small ? `<div style="font-size:13px;line-height:17px;font-weight:600;color:#d6e6ff">${e(small)}</div>` : ""}</td>`).join("")}</tr></table>` : ""}
+        ${small ? `<div style="font-size:13px;line-height:17px;font-weight:600;color:#d6e6ff">${e(small)}</div>` : ""}</td>`).join("")}</tr>${bar ? barRow(bar, strip.length) : ""}</table>` : ""}
     ${rows.length ? `<table role="presentation" class="ml-box" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#f5f5fa;border-radius:16px;border-collapse:separate">${rows.map(row).join("")}</table>` : ""}
     ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0"><tr><td align="center" bgcolor="${B.btn[1]}" style="background-color:${B.btn[1]};background-image:linear-gradient(180deg,${B.btn[0]},${B.btn[1]});border-radius:999px;box-shadow:0 10px 22px -10px ${B.glow},inset 0 1px 0 rgba(255,255,255,.25)">
       <a href="${e(button.url)}" style="display:block;padding:15px 20px;font-size:17px;line-height:22px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:999px">${e(button.label)}</a></td></tr></table>` : ""}

@@ -455,4 +455,3 @@ $("sign-out").addEventListener("click", signOutHere);
 $("act-add").addEventListener("change", addAct);
 $("alerts-go").addEventListener("click", () => setGo("notify"));
 $("arrange-reset").addEventListener("click", () => { S.settings.layout = { order: CARDS.map((c) => c[0]), off: [] }; arranged(); $("arrange-said").textContent = "Put back as it was."; });
-for (const x of document.querySelectorAll(".arr-hint")) x.innerHTML = glyph("grip", 16);

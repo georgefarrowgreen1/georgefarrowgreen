@@ -1760,7 +1760,6 @@ body.no-scroll { overflow: hidden; }
 .arr-grip { flex: none; width: 44px; height: 48px; margin-left: 2px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: grab; touch-action: none; }
 .arr-grip:active { cursor: grabbing; color: var(--text); }
 .arr-grip:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 12px; }
-.arr-hint { display: inline-grid; vertical-align: -3px; }
 .arrange li.is-off .switch { color: var(--text-3); }
 /* a card switched off there, left off the page */
 main [data-off] { display: none !important; }
