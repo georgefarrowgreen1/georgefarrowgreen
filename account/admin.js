@@ -265,9 +265,9 @@ export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, d
     note.addEventListener("input", () => { AD.note = note.value; });
     const make = h("button.btn", { type: "submit" }, icon("link", 20, 2.2), "Make an invite link");
     const open = (i) => !i.usedAt && !i.revokedAt;
-    const item = (i) => h("div.row", {}, h(`span.ic.${i.usedAt ? "green" : i.revokedAt ? "grey" : "blue"}`, {}, icon(i.usedAt ? "people" : "link", 19)),
+    const item = (i) => h("div.row", {}, h(`span.ic.${i.usedAt ? "green" : "blue"}`, {}, icon(i.usedAt ? "people" : "link", 19)),
       h("span.tx", {}, h("b", { text: i.note || "Invite" }), h("small", { text: i.usedAt ? `Used by ${i.by?.handle ? "@" + i.by.handle : "an account since deleted"} · ${day(i.usedAt)}`
-        : i.revokedAt ? `Cancelled · ${day(i.revokedAt)}` : `Unused · made ${when(i.createdAt)}` })),
+        : `Unused · made ${when(i.createdAt)}` })),
       open(i) && h("button.mini", { type: "button", onclick: async (e) => {
         say(said, "");
         try { await admPost(e.currentTarget, "", "invite-revoke", { id: i.id }); i.revokedAt = Date.now(); admChanged(); redraw(); toast("Invite cancelled."); }
@@ -281,7 +281,8 @@ export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, d
       } }, h("label.field", {}, note), make),
       AD.invite && admCopy(AD.invite, "Copy it now: it isn’t shown again. It makes one account, then stops working."),
       said,
-      !x ? admWait("invites") : x.invites.length > 0 && h("div.group", {}, [...x.invites.filter(open), ...x.invites.filter((i) => !open(i)).slice(0, 20)].map(item))] };
+      // (the unused first, then those used; one cancelled isn't shown again)
+      !x ? admWait("invites") : ((list) => list.length > 0 && h("div.group", {}, list.map(item)))([...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 20)])] };
   }
 
   // Insights: how InFlight is used, in totals over everyone (functions/_insights.js), never who sent what to whom
