@@ -1175,6 +1175,10 @@ await ctx.close();
   await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 }); await p.waitForTimeout(500);
   const shown = await p.evaluate(() => ({ name: document.getElementById('place-name').textContent, places: JSON.parse(localStorage.getItem('wx:places')).length, cur: JSON.parse(localStorage.getItem('wx:cur')) }));
   ok(!asked && shown.name === 'Soho' && shown.places === 2 && shown.cur === 0, 'a notification for My Location, tapped: My Location shown, and nothing asked or added', JSON.stringify({ asked, ...shown }));
+  // (and My Location as an earlier version kept it, to four decimal places, kept to three from the start, its
+  // notification's too, though the phone's not been asked where it is)
+  const kept = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('wx:places'))[0], e = JSON.parse(localStorage.getItem('wx:settings')).notify.places[0]; return [g.lat, g.lon, e.lat, e.lon]; });
+  ok(JSON.stringify(kept) === JSON.stringify([51.514, -0.136, 51.514, -0.136]), 'My Location kept from before, to three decimal places from the start, and its notification', JSON.stringify(kept));
   await seed({ places: [], brief: null });
   await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 });
   ok(asked === 1, 'a link to near there that isn\'t one of its own notifications: asked about, as any shared link is', `${asked} asked`);

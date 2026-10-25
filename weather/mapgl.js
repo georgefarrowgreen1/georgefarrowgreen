@@ -129,16 +129,22 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   // the picture over the map as it is, kept a moment on top of what comes next and faded away (blend draws over the
   // one canvas: so it's copied first)
   const wasCanvas = document.createElement("canvas");
+  // (drawn again since the last picture of it was taken: still(); it's drawn only as something on it changes)
+  let fresh = true;
+  map.on("render", () => { fresh = true; });
   return {
     kind: "gl",
     credit: ["OpenFreeMap", "OpenMapTiles", "OpenStreetMap"],
     // a picture of the map as it's drawn now (a JPEG, as a data URL), or null: taken as a frame's drawn, the one time its
-    // canvas can be read; not while it's on its way somewhere (app.js: the place's page beside the next one's)
+    // canvas can be read; not while it's on its way somewhere (app.js: the place's page beside the next one's), nor when
+    // it's not been drawn since the last, which is still the map as it is (app.js keeps it)
     still() {
-      if (map.isMoving()) return Promise.resolve(null);
+      if (map.isMoving() || !fresh) return Promise.resolve(null);
       return new Promise((ok) => {
         let done = false;
-        const take = () => { if (done) return; done = true; try { ok(map.getCanvas().toDataURL("image/jpeg", 0.72)); } catch (_) { ok(null); } };
+        // (the frame asked for heard by the listener above first, as MapLibre calls those before the once ones: so it's
+        // not left fresh by its own frame)
+        const take = () => { if (done) return; done = true; try { const u = map.getCanvas().toDataURL("image/jpeg", 0.72); fresh = false; ok(u); } catch (_) { ok(null); } };
         map.once("render", take); map.triggerRepaint();
         setTimeout(() => { if (!done) { done = true; map.off("render", take); ok(null); } }, 1000);
       });

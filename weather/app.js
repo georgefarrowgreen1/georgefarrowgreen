@@ -107,6 +107,11 @@ async function start() {
   if (signedIn) arrival = arriveFrom(); else $("back-in")?.remove();
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
+  // (My Location as kept by a version from before it was kept to three decimal places, its notifications' too: so from
+  // the first, as locate has it, not once it's next found, which may not be till it's asked for)
+  const fine = [...S.places, ...S.settings.notify.places, S.settings.notify.brief].filter((x) => x?.gps && (r3(x.lat) !== x.lat || r3(x.lon) !== x.lon));
+  for (const x of fine) { x.lat = r3(x.lat); x.lon = r3(x.lon); }
+  if (fine.length) { store.set("wx:places", S.places); store.set("wx:settings", S.settings); }
   const cur = store.get("wx:cur");
   S.cur = Math.min(Number.isInteger(cur) && cur > 0 ? cur : 0, Math.max(0, S.places.length - 1));
   // My Location first (lists kept from before it was), still showing the same place
@@ -283,7 +288,7 @@ function check(opening = false) {
 document.addEventListener("visibilitychange", opened);
 addEventListener("pageshow", (e) => { if (e.persisted) opened(); });
 addEventListener("focus", opened);
-addEventListener("online", () => { check(true); keepNotify(); });
+addEventListener("online", () => { check(true); keepNotify(true); });
 
 // the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
 // The forecast tuned for here as Settings has it (its highs and lows: applyTuning), steadied from three days on with
@@ -550,7 +555,6 @@ const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.da
 // (the page's cards as they are, copied: without the placeholders, the map (there's one only: a picture of it as it was
 // last shown for that place, id, if it's been), or anything about to move)
 const stills = new Map();
-let stillAt = { id: "", at: 0 };     // (the last taken: readyNearby)
 function copyPage(blank = false, id = "") {
   const col = $("main").querySelector(":scope > .col-a").cloneNode(true), still = stills.get(id);
   for (const x of col.querySelectorAll(".skeleton")) x.remove();
@@ -771,11 +775,11 @@ function readyNearby(soon = false) {
   // (not while the page's own forecast is coming in, or it's being swiped: the page's own first)
   if (pagerBusy() || S.loading) { nearbySoon(soon); return; }
   // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
-  // the map still on its way to it; only with a place beside to swipe to, and once a half minute at most, not again
-  // for each of the minute's passes, a page beside drawn in each)
-  const here = place(), hid = here ? cell(here.lat, here.lon) : "";
-  if (here && !soon && onePage() && S.wx && S.radar?.still && nearby().some(Boolean) && !(stillAt.id === hid && Date.now() - stillAt.at < 30e3))
-    S.radar.still().then((u) => { if (u && place() === here) { stills.set(hid, u); stillAt = { id: hid, at: Date.now() }; } }, () => {});
+  // the map still on its way to it; and taken again only once the map's been drawn again since, mapgl.js still, so not
+  // for each of the minute's passes, a page beside drawn in each, with nothing on it changed; a lone place's too, for
+  // its page beside the next one added)
+  const here = place();
+  if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still().then((u) => { if (u && place() === here) stills.set(cell(here.lat, here.lon), u); }, () => {});
   const list = nearby().filter(Boolean);
   for (const q of list) prepare(q);
   layoutPager(false, true);
@@ -1969,6 +1973,8 @@ function tunedToo(l) {
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 
 /* ---------- places ---------- */
+// (My Location's position, to three decimal places: locate, and start for one kept from before)
+const r3 = (v) => Math.round(v * 1e3) / 1e3;
 // (after: a sheet going, that the page waits for before it turns to where you are)
 async function locate(quiet = false, after = null) {
   if (!navigator.geolocation) { if (!quiet) toast("Location isn't available in this browser."); return false; }
@@ -1977,7 +1983,6 @@ async function locate(quiet = false, after = null) {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
     // (to three decimal places, about 100 m, from here on: all a forecast needs, the hills and valleys in it included,
     // and nothing nearer than that sent anywhere, or kept)
-    const r3 = (v) => Math.round(v * 1e3) / 1e3;
     const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps);
     // (hardly moved since last time, under a kilometre: the name it had, rather than asking again)
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
@@ -2235,17 +2240,19 @@ async function syncNow() {
 }
 // with notifications on, now and then (and whenever the browser's changed this device's subscription, or a change
 // couldn't be sent), the server's told again, so they keep coming (it forgets devices it hasn't heard from in months)
-// (one at a time: opening it is heard more than once at once)
-let keeping = false;
-async function keepNotify() {
+// (one at a time: opening it is heard more than once at once; and after a try that failed, not again for ten minutes
+// however often it's opened meanwhile, as each counts against what this network may send the server, the other phones
+// on it included; now: back online, at once)
+let keeping = false, failedAt = 0;
+async function keepNotify(now = false) {
   const n = S.settings.notify;
-  if (keeping || (!notifying(n) && !n.endpoint) || !canShow()) return;
+  if (keeping || (!now && Date.now() - failedAt < 10 * 60e3) || (!notifying(n) && !n.endpoint) || !canShow()) return;
   keeping = true;
   try {
     const sub = await pushSub(false);
     if (sub && sub.endpoint === n.endpoint && Date.now() - (n.syncedAt || 0) < 7 * 864e5) return;
     await syncNotify();
-  } catch (_) {} finally { keeping = false; }
+  } catch (_) { failedAt = Date.now(); } finally { keeping = false; }
 }
 // (any of them on: rain alerts or official warnings for a place, the briefing)
 const notifying = (n) => !!(n.places.length || n.brief);

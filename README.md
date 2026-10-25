@@ -728,7 +728,8 @@ so there's nothing to set up beyond the address.
   phone is forgotten when its push service says it's gone, after five failures
   in a row, or after four months unheard of (the app tells the server again now
   and then, when the browser changes its subscription, and after a change it
-  couldn't send, the next time it's opened or back online). **By email too**
+  couldn't send, the next time it's opened, at most every ten minutes while that
+  keeps failing, or back online). **By email too**
   (signed in: an Email group there, two switches, warnings and the briefing, for
   the places and time above; `notify.email`, the account's choice, so on every
   device and on the account's own page): from Weather's own address, to the
