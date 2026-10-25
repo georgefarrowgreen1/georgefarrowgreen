@@ -192,4 +192,6 @@ export async function dropFitness(env, userId) {
   }
   const D = await fitdb(env);
   await D.batch([D.prepare("DELETE FROM fx_acts WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_state WHERE user_id = ?").bind(userId)]);
+  // (and Garmin's key, where one was added: functions/_garmin.js)
+  await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId)]).catch(() => {});
 }

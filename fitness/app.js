@@ -59,7 +59,7 @@ const S = {
   tab: "today", me: null, ver: 0, dirty: new Set(), inStepWorkouts: [], pulledAt: 0,
   profile: { ...PROFILE }, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [],
   sport: "ride", actSport: "all", formDays: 42,
-  own: [], acts: [],
+  own: [], acts: [], garmin: { on: false },
   sums: new Map(), summed: false,
 };
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
@@ -998,6 +998,7 @@ function settingsView() {
       section("Power zones", h("div.group", {}, ZONES.map((z, i) => h("div.row.plain", {}, h("span.zone-chip.bg-" + z.c, { text: `Z${z.n}` }), h("span.tx", {}, h("b", { text: z.name })),
         h("span.val", { text: `${i ? Math.round(ZONES[i - 1].top * p.ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * p.ftp) - 1}` : "+"} W` }))))),
       section("Your devices", h("div.group", {},
+        row({ tile: h("span.ic.brand.garmin", {}, icon("device", 18, 2)), title: "Garmin Connect", sub: garminSaid(), onclick: () => pushSheet(garminView) }),
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })),
         row({ icon: "usb", tint: "coral", title: "Sending workouts to a device", onclick: () => pushSheet(() => sendView(wkById("ss-3x12"))) })),
         h("p.foot", { text: "Garmin and Wahoo devices are known from the files they write. Sending workouts straight to them, without a cable, comes with Garmin’s and Wahoo’s partner programmes." })),
@@ -1224,6 +1225,97 @@ async function upload(got, btn) {
   if (done.length === 1 && !got.workouts.length) openAct(done[0]);
 }
 
+// ---- Garmin Connect: your activities, in by themselves (functions/_garmin.js). The server asks Garmin what's new, as
+// you open the app and every 15 minutes, and keeps each new one's file waiting; here each is read as an upload is, its
+// figures worked out, and kept (a ride you've uploaded already isn't kept twice) ----
+function garminNow(g) {
+  if (!g?.on) { S.garmin = g || { on: false }; return; }
+  S.garmin = g;
+  fromGarmin().then(() => (Date.now() - (S.garmin.last || 0) > 2 * 60e3 ? A.garminFetch().then((n) => { S.garmin = n; return fromGarmin(); }) : null)).catch(() => {});
+}
+async function fromGarmin({ quiet = false } = {}) {
+  const waiting = S.garmin?.waiting || [];
+  if (!waiting.length || fromGarmin.busy) return 0;
+  fromGarmin.busy = true;
+  const added = [];
+  try {
+    for (const w of waiting) {
+      let acts;
+      try { acts = (await F.readAny(`garmin-${w.id}.zip`, await A.garminFile(w.id))).activities; }
+      catch (e) { if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
+      let kept = 0;
+      for (const [k, a] of acts.entries()) {
+        if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
+        if (w.name && acts.length === 1) a.name = w.name;
+        const sum = summarise(a, P()), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
+        try { await A.upload(meta, a.raw.name, a.raw.bytes); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
+        const entry = { ...meta, sample: false };
+        S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
+        remember(entry.id, Object.assign(a, { id: entry.id }));
+        idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
+      }
+      if (kept < 0) break;
+      // (nothing in it to keep: one you have already, or one with nothing Fitness can read)
+      if (!kept) await A.garminDone(w.id).catch(() => {});
+      S.garmin.waiting = S.garmin.waiting.filter((x) => x.id !== w.id);
+    }
+  } finally { fromGarmin.busy = false; }
+  if (added.length) { setActs(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from Garmin` : `${plural(added.length, "activity", "activities")} from Garmin`); }
+  return added.length;
+}
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dayShort(t); };
+function garminSaid() {
+  const g = S.garmin;
+  if (!g?.on) return "Bring your activities in by themselves";
+  if (!g.ok) return "Your key has stopped working: add a new one";
+  return g.last ? `Connected · checked ${ago(g.last)}` : "Connected";
+}
+function garminView() {
+  const g = S.garmin, field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
+  const add = async (btn) => {
+    if (!field.value.trim()) return field.focus();
+    btn.disabled = true; btn.textContent = "Connecting…";
+    try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
+    catch (e) { btn.disabled = false; btn.textContent = g?.on ? "Add the new key" : "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
+    Sheet.redraw();
+    // (six weeks of them, a few at a time)
+    let n = await fromGarmin({ quiet: true });
+    for (let i = 0; i < 8 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await fromGarmin({ quiet: true }); }
+    toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six weeks` : "Connected to Garmin Connect");
+  };
+  const keyForm = (label) => { const btn = h("button.btn", { type: "button", onclick: () => add(btn) }, label); field.addEventListener("keydown", (e) => { if (e.key === "Enter") add(btn); }); return [field, btn]; };
+  if (!g?.on) return { title: "Garmin Connect", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: "Your rides, runs and swims, in Fitness by themselves." })),
+    section("How", h("div.group", {},
+      h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: "1" })), h("span.tx", {}, h("b", { text: "Make a key in Garmin Connect" }), h("small", { text: "Settings, then Personal API Key, then Create" }))),
+      h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Copy it, and paste it here" }), h("small", { text: "Garmin shows it only once" }))))),
+    h("div.garmin-key", {}, ...keyForm("Connect")),
+    section(null, h("p.foot", { text: "The key is kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in your activities from the last six weeks, then each new one. Workouts still go to your device by Download." })),
+  ] };
+  const disconnect = async () => {
+    if (!confirm("Disconnect Garmin Connect? Activities already brought in stay.")) return;
+    try { S.garmin = await A.garminDisconnect(); } catch (e) { return toast(e.message, true); }
+    sheetBack(); redraw(); toast("Disconnected");
+  };
+  const check = async (btn) => {
+    btn.disabled = true; btn.textContent = "Checking…";
+    try { S.garmin = await A.garminFetch(true); } catch (e) { btn.disabled = false; btn.textContent = "Check now"; return toast(e.message, true); }
+    const n = await fromGarmin({ quiet: true });
+    Sheet.redraw(); toast(n ? `${plural(n, "activity", "activities")} from Garmin` : S.garmin.ok ? "Nothing new" : garminSaid(), !S.garmin.ok);
+  };
+  const checkBtn = h("button.btn.quiet", { type: "button", onclick: () => check(checkBtn) }, "Check now");
+  return { title: "Garmin Connect", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: g.ok ? (g.said === "unreachable" ? "Connected, but Garmin didn’t answer last time" : "Connected") : "Your key has expired, or was deleted" })),
+    h("div.group", {},
+      row({ icon: "today", tint: "blue", title: "Last checked", value: g.last ? ago(g.last) : "Not yet", chev: false }),
+      row({ icon: "calendar", tint: "green", title: "Connected", value: dayShort(g.since), chev: false })),
+    !g.ok && section("A new key", h("div.garmin-key", {}, ...keyForm("Add the new key"))),
+    g.ok && checkBtn,
+    section(null, h("p.foot", { text: "Fitness looks for new activities every 15 minutes, and as you open it: a ride shows up a minute or two after your watch syncs with Garmin Connect." })),
+    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect"))),
+  ] };
+}
+
 // ---- sheets: up from below, the page stepping back; inside one, on and back slide like pages ----
 const Sheet = { stack: [], tall: false, redraw: null };
 function openSheet(view, { tall = false } = {}) {
@@ -1355,6 +1447,7 @@ function arrive(m) {
   sumUp();
   if (S.summed) redraw();
   askToday();
+  garminNow(m.garmin);
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
@@ -1369,6 +1462,7 @@ async function pull() {
     S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
     for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
     setActs(); redraw();
+    garminNow(m.garmin);
   } catch (_) {} finally { pull.busy = false; }
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });

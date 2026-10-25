@@ -72,3 +72,10 @@ export function merge(theirs, mine, dirty, base = []) {
 }
 // (the workouts' ids in a record: what merge's base is made of)
 export const workoutIds = (d) => (Array.isArray(d?.workouts) ? d.workouts.map((w) => w.id) : []);
+// Garmin Connect, by your Personal API key (functions/_garmin.js): { on, ok, said, last, waiting: [{ id, start, name }] }
+export const garmin = () => call("garmin");
+export const garminConnect = (key) => call("garmin", { method: "POST", body: { key }, wait: 120000 });
+export const garminDisconnect = () => call("garmin", { method: "DELETE" });
+export const garminFetch = (force = false) => call("garmin/fetch", { method: "POST", body: { force }, wait: 120000 });
+export const garminFile = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });
+export const garminDone = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { method: "DELETE" });

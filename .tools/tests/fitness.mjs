@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { deflateRawSync } from 'node:zlib';
+import { createServer } from 'node:http';
 import { readFit, writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
@@ -55,6 +56,28 @@ const FILES = [
   { name: 'activity_123.zip', mimeType: 'application/zip', buffer: zipOf('123_ACTIVITY.fit', Buffer.from(garmin)) },
   { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') },
 ];
+
+// Garmin Connect's Personal API, stood in for (GARMIN_API in server.sh): the key swapped for a token, the activities
+// listed, and each one's file as a zip of its FIT file. A ride this morning, and the Wahoo's ride again (as the same
+// ride, recorded on both, would be): the first kept, the second not twice.
+const GKEY = 'test-garmin-personal-api-key-0123456789', GTOKEN = 'garmin-token-abc';
+const gride = (start, secs) => writeFit([['fileId', { type: 4, manufacturer: 1, product: 3843, serial: 7, created: start }],
+  ...Array.from({ length: secs }, (_, i) => ['record', { timestamp: start + i, heartRate: 128 + (i % 15), power: 190 + (i % 30), cadence: 88, speed: 8.5, distance: i * 8.5 }]),
+  ['session', { timestamp: start + secs - 1, startTime: start, sport: 2, subSport: 7, elapsed: secs, timer: secs }]]);
+const gAt = Math.round(Date.now() / 1000) - 5 * 3600, gTimes = (t) => new Date(t * 1000).toISOString().slice(0, 19).replace('T', ' ');
+const GACTS = [{ activityId: 9001, activityName: 'Morning gravel', startTimeGMT: gTimes(gAt), file: zipOf('9001_ACTIVITY.fit', Buffer.from(gride(gAt, 2400))) },
+  { activityId: 9002, activityName: 'Cycling', startTimeGMT: gTimes(t0), file: zipOf('9002_ACTIVITY.fit', Buffer.from(wahoo)) }];
+const glog = [];
+createServer((req, res) => {
+  const u = new URL(req.url, 'http://x'), auth = req.headers.authorization || '';
+  glog.push(`${req.method} ${u.pathname}`);
+  const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
+  if (u.pathname === '/personalapitoken-service/personal-api/personal-api-key/token') return auth === `ApiKey ${GKEY}` ? send(200, { access_token: GTOKEN, token_type: 'Bearer', expires_in: 86400 }) : send(401, { error: 'invalid key' });
+  if (auth !== `Bearer ${GTOKEN}`) return send(401, {});
+  if (u.pathname === '/activitylist-service/activities/search/activities') return send(200, Number(u.searchParams.get('start')) ? [] : GACTS.map(({ file, ...a }) => a));
+  const m = /^\/download-service\/files\/activity\/(\d+)$/.exec(u.pathname), a = m && GACTS.find((x) => String(x.activityId) === m[1]);
+  return a ? send(200, a.file, 'application/zip') : send(404, {});
+}).listen(8793, '127.0.0.1');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
@@ -275,6 +298,44 @@ await L.p.locator('#sheet .btn', { hasText: 'Done' }).click(); await settle(L, 9
 const checked = await L.p.locator('.checkin.done').innerText().catch(() => '');
 ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly\s+Heavy legs\s+Low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
 await L.p.locator('.checkin.done').screenshot({ path: `${out}/checkin.png` });
+
+// ---- 8c. Garmin Connect on the laptop: a key Garmin won't take, then yours; the morning's ride comes in, the
+// Wahoo's ride (on Garmin too) isn't kept twice; one recorded later is fetched by the scheduler and read as the app opens ----
+await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet #garmin-key'); await settle(L, 500);
+await L.p.fill('#garmin-key', 'not-the-right-key-0123456789');
+await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
+const refused = await waitFor(async () => { const t = await toastSays(L); return /Garmin/.test(t) && t; }, 15000);
+ok(/Garmin didn’t take that key/.test(refused) && !rows(`SELECT user_id FROM fx_garmin WHERE user_id = '${sam}'`).length, 'a key Garmin won’t take: said so, and not kept', refused);
+await L.p.screenshot({ path: `${out}/garmin-connect.png` });
+await L.p.fill('#garmin-key', GKEY);
+await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
+const joined = await waitFor(async () => (await toastSays(L)).match(/Connected.*/)?.[0], 20000);
+await settle(L, 600);
+const gKept = acts(sam), gRow = rows(`SELECT apikey, ok FROM fx_garmin WHERE user_id = '${sam}'`)[0];
+ok(gKept.some((a) => a.id === 'g9001' && a.name === 'Morning gravel' && a.type === 'fit') && !gKept.some((a) => a.id === 'g9002') && gKept.length === 3,
+  'connected: the morning’s ride in, by its Garmin name; the Wahoo’s ride, on Garmin too, not kept twice', `${joined} | ${gKept.map((a) => a.id + ':' + a.name).join(', ')}`);
+ok(gRow && gRow.ok === 1 && gRow.apikey.startsWith('w1:') && !gRow.apikey.includes(GKEY) && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length,
+  'the key kept locked, and nothing left waiting', gRow?.apikey?.slice(0, 6));
+const gSheet = await L.p.locator('#sheet').innerText();
+ok(/Connected/.test(gSheet) && /Last checked/.test(gSheet) && /Check now/.test(gSheet) && /Disconnect/.test(gSheet), 'its sheet: connected, when it last looked, Check now and Disconnect', gSheet.replace(/\s+/g, ' ').slice(0, 160));
+await L.p.screenshot({ path: `${out}/garmin-connected.png` });
+await done(L);
+// (a run this evening, recorded after: the scheduler's turn fetches it, and the app reads it as it opens)
+const gLater = gAt + 3 * 3600;
+GACTS.push({ activityId: 9003, activityName: 'Evening run', startTimeGMT: gTimes(gLater), file: zipOf('9003_ACTIVITY.fit', Buffer.from(writeFit([['fileId', { type: 4, manufacturer: 1, product: 3843, serial: 7, created: gLater }],
+  ...Array.from({ length: 1500 }, (_, i) => ['record', { timestamp: gLater + i, heartRate: 150, speed: 3.2, distance: i * 3.2 }]),
+  ['session', { timestamp: gLater + 1499, startTime: gLater, sport: 1, elapsed: 1500, timer: 1500 }]]))) });
+sql(`UPDATE fx_garmin SET last = 0 WHERE user_id = '${sam}'`);
+const tickNo = await api(L, '/api/fitness/garmin-tick', { method: 'POST' });
+const tickYes = await api(L, '/api/fitness/garmin-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });
+ok(tickNo.status === 401 && JSON.parse(tickYes.body).asked === 1 && rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).map((r) => r.id).join() === '9003',
+  'the scheduler’s turn (with its secret only): the evening’s run fetched, waiting', `${tickNo.status} ${tickYes.body}`);
+await L.p.reload(); await L.p.waitForSelector('.head .round.me');
+const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000);
+ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
+const noLeak = await api(L, '/api/fitness/me');
+ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Garmin’s token never sent to the page');
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

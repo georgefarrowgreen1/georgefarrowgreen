@@ -7,6 +7,13 @@
 //   GET    /api/fitness/acts/<id>     an activity's file
 //   PATCH  /api/fitness/acts/<id>     renamed
 //   DELETE /api/fitness/acts/<id>
+//   GET    /api/fitness/garmin        Garmin Connect (functions/_garmin.js): connected or not, and the activities waiting
+//   POST   /api/fitness/garmin        your Personal API key, tried and kept → as GET
+//   DELETE /api/fitness/garmin        the key forgotten
+//   POST   /api/fitness/garmin/fetch  what's new asked for now (as the app opens; force, for Check now) → as GET
+//   GET    /api/fitness/garmin/new/<id>  a waiting activity's file, as Garmin gave it (a zip of its FIT file)
+//   DELETE /api/fitness/garmin/new/<id>  read, and not to be kept (one you have already, or that can't be read)
+//   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
@@ -15,12 +22,14 @@ import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
+import { tickAuthOk } from "../../_notify.js";
+import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 async function view(env, u) {
-  const [k, acts] = await Promise.all([kept(env, u.id), activities(env, u.id)]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts };
+  const [k, acts, garmin] = await Promise.all([kept(env, u.id), activities(env, u.id), garminOf(env, u.id).catch(() => ({ on: false }))]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts, garmin };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -48,7 +57,11 @@ const ROUTES = {
     const file = form.get("file"), metaText = form.get("meta");
     if (!file || typeof file === "string" || typeof metaText !== "string" || metaText.length > 16 * 1024) throw new HttpError(400, "Bad request.");
     let meta; try { meta = cleanAct(JSON.parse(metaText)); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, "Bad request."); }
-    return json(await addActivity(env, u.id, meta, new Uint8Array(await file.arrayBuffer())));
+    const r = await addActivity(env, u.id, meta, new Uint8Array(await file.arrayBuffer()));
+    // (one that was waiting from Garmin: waiting no longer; a multisport file's parts are g<id>-2 and on)
+    const g = /^g(\d{1,20})(-\d+)?$/.exec(meta.id);
+    if (g) await done(env, u.id, g[1]);
+    return json(r);
   },
   "GET acts/:id": async ({ request, env, id }) => {
     const u = await signedIn(request, env), f = await activityFile(env, u.id, id);
@@ -68,6 +81,36 @@ const ROUTES = {
     await deleteActivity(env, u.id, id);
     return json({ ok: true });
   },
+  "GET garmin": async ({ request, env }) => json(await garminOf(env, (await signedIn(request, env)).id)),
+  "POST garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 8 * 1024);
+    return json(await connect(env, u.id, b.key));
+  },
+  "DELETE garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await disconnect(env, u.id);
+    return json({ on: false });
+  },
+  "POST garmin/fetch": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request);
+    if (b.force) await limit(env, `fxgarminnow:${u.id}`, 30, 3600e3);
+    return json(await fetchNew(env, u.id, { force: b.force === true }));
+  },
+  "GET garmin/new/:id": async ({ request, env, id }) => {
+    const u = await signedIn(request, env);
+    return new Response(await waitingFile(env, u.id, id), { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
+  },
+  "DELETE garmin/new/:id": async ({ request, env, id }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await done(env, u.id, id);
+    return json({ ok: true });
+  },
+  "POST garmin-tick": async ({ request, env }) => { tickAuthOk(request, env); return json(await garminTick(env)); },
   // Signed in on the account's page, for Fitness (functions/_handback.js): the code it was handed back with, and the
   // word Fitness kept for it; where the browser shares the site's sign-in, it's the one the page just made, and that's
   // all; where it doesn't (a Home Screen app, or a test server's separate addresses), Fitness's own, given to the browser
@@ -97,10 +140,12 @@ const ROUTES = {
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
-  const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1] : null;
-  const route = ROUTES[`${ctx.request.method} ${id ? "acts/:id" : parts.join("/")}`];
-  // (only at Fitness's own address)
-  if (!route || !isFitness(url, ctx.env)) return json({ error: "Not found." }, 404);
+  const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
+    : parts[0] === "garmin" && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2] : null;
+  const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
+  // (only at Fitness's own address; the scheduler's turn at the site's own, as InFlight's and Weather's are)
+  const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";
+  if (!route || !(isFitness(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
   try { return await route({ ...ctx, id }); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
