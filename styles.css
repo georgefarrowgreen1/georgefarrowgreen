@@ -69,7 +69,7 @@ svg { display: block; flex: none; }
 }
 
 /* ---------------- the photos, fixed behind everything ---------------- */
-.bg { position: fixed; inset: 0; overflow: hidden; background: #2b2c2e; transition: background-color 1.2s ease; }
+.bg { position: fixed; inset: 0; overflow: hidden; pointer-events: none; background: #2b2c2e; transition: background-color 1.2s ease; }
 .bg::after {
   content: ""; position: absolute; inset: 0; z-index: 2;     /* (over the photos: the one showing is z-index 1) */
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
@@ -93,7 +93,7 @@ svg { display: block; flex: none; }
 .toptint { position: fixed; z-index: 1; top: 0; left: 0; right: 0; height: 28px; pointer-events: none;
   background: linear-gradient(var(--top-tint), color-mix(in srgb, var(--top-tint) 0%, transparent)); transition: --top-tint 1.2s ease; }
 .soft {
-  position: fixed; inset: 0;
+  position: fixed; inset: 0; pointer-events: none;
   opacity: 0; visibility: hidden;
   background: rgba(6, 8, 12, 0.55);
 }
