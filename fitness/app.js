@@ -548,7 +548,7 @@ function sessionView(day) {
   if (perHour) for (let at = 20 * 60; at < m.secs - 10 * 60; at += 20 * 60) feeds.push(at);
   const each = perHour ? Math.round(perHour / 3 / 5) * 5 : 0;
   return { title: dayLong(day), body: [
-    h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), `${SPORTS[w.sport].name} · ${w.kind}`), h("h1", { text: w.name }),
+    h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), kindSaid(w)), h("h1", { text: w.name }),
       h("div.sub.num", { text: [dur(m.secs), w.sport !== "strength" ? `TSS ${Math.round(m.tss)}` : null, ride ? `IF ${m.iF.toFixed(2)}` : null, ride ? `${Math.round((m.avg * ftp * m.secs) / 1000)} kJ` : null].filter(Boolean).join(" · ") })),
     card(null, ride ? `Power, at your FTP of ${ftp} W` : "Effort", C.profile(w, { ftp: ride ? ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: sheetW() })),
     d && h("div.rh-why", {}, h("b", { text: "Why today: " }), S.swaps[day] !== undefined ? "you changed this day." : d.why),
@@ -757,9 +757,9 @@ function workoutView(w) {
     h("div.v", { text: target({ ...s, to: s.to ?? s.from }) }));
   const steps = w.steps.map((s) => (s.repeat ? h("div.repeat", {}, h("div.rh", {}, icon("swap", 14, 2.4), `${s.repeat} times`), h("div.steps", {}, s.steps.map(stepEl))) : stepEl(s)));
   return {
-    title: w.name,
+    title: "Workout",
     body: [
-      h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), `${SPORTS[w.sport].name} · ${w.kind}`), h("h1", { text: w.name }),
+      h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), kindSaid(w)), h("h1", { text: w.name }),
         h("div.sub.num", { text: [dur(m.secs), w.sport === "swim" ? dist(F_metres(w), true) : null, w.sport !== "strength" ? `TSS ${Math.round(m.tss)}` : null, w.sport === "ride" ? `IF ${m.iF.toFixed(2)}` : null, w.sport === "ride" ? `${Math.round((m.avg * ftp * m.secs) / 1000)} kJ` : null].filter(Boolean).join(" · ") })),
       card(null, w.sport === "ride" ? `Power, at your FTP of ${ftp} W` : w.sport === "run" ? "Effort, against your threshold pace" : "Effort", C.profile(w, { ftp: w.sport === "ride" ? ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: sheetW() })),
       w.about && h("p", { text: w.about }),
@@ -770,6 +770,8 @@ function workoutView(w) {
     ],
   };
 }
+// (a workout's sport and kind, the kind left out where it only says the sport again: Strength, not Strength · Strength)
+const kindSaid = (w) => (w.kind && w.kind !== SPORTS[w.sport].name ? `${SPORTS[w.sport].name} · ${w.kind}` : SPORTS[w.sport].name);
 const paceOfSpeed = (ms) => (U.metric ? 1000 / ms : 1609.344 / ms);
 
 // Sending a workout: a file for each device and app, and how to get it there
