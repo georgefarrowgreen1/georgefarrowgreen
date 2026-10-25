@@ -144,6 +144,21 @@ export function fitFromActivity(a, sum) {
   return writeFit(out);
 }
 
+// A route's shape, for a list's row: up to 48 points along it, each across and down in a box 0 to 100 (north up, its
+// own proportions kept, a little margin round it); none for one without places, or that never went anywhere
+export function routeShape(s) {
+  if (!s?.lat || !s?.lon) return null;
+  const pts = [];
+  for (let i = 0; i < s.lat.length; i++) if (s.lat[i] != null && s.lon[i] != null) pts.push([s.lon[i], s.lat[i]]);
+  if (pts.length < 10) return null;
+  const k = Math.cos((pts.reduce((a, p) => a + p[1], 0) / pts.length) * Math.PI / 180), xs = pts.map((p) => p[0] * k), ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), span = Math.max(x1 - x0, y1 - y0);
+  if (span < 0.002) return null;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, n = Math.min(48, pts.length), out = [];
+  for (let j = 0; j < n; j++) { const i = Math.round((j / (n - 1)) * (pts.length - 1)); out.push(Math.round(50 + ((xs[i] - cx) / span) * 88), Math.round(50 - ((ys[i] - cy) / span) * 88)); }
+  return out;
+}
+
 // ---- GPX and TCX: XML, read by what each sample says ----
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const unesc = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");

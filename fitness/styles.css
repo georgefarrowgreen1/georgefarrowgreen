@@ -759,3 +759,48 @@ dialog.sheet.dragging { animation: none; transition: none; }
 /* (a narrow phone: the day's shape left out of Coming up, so its name has the room) */
 @media (max-width: 359px) { .rh-coming .mini { display: none; } }
 .row .tx small[hidden] { display: none; }
+
+/* ---- from the UX proposals ---- */
+/* your numbers: worked out from your rides, or a starting guess, till you set them */
+.row .tx small.est { color: var(--tint-text); font-weight: 600; }
+/* Download: which device it's for; then saved, and how to get it on */
+.dl-for { margin: 10px 0 0; font-size: 13px; color: var(--text-3); }
+.dl-for .link.small { font-size: 13px; font-weight: 600; }
+.saved { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--good) 14%, transparent); font-size: 15px; line-height: 1.35; }
+.saved .ok { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--good); }
+.row .ic.num { width: 26px; height: 26px; border-radius: 8px; }
+.row .ic.num > b { font-size: 13px; }
+.row .tx b.light { font-weight: 500; font-size: 15px; line-height: 1.4; }
+/* signing in: a line about it, and a way in for someone new (below the button, so the button sits where InFlight's does) */
+.welcome .tagline { margin: 4px 0 0; font-size: 16px; color: var(--text-2); }
+.w-cta { position: relative; }
+.welcome .new-here { position: absolute; top: 100%; left: 0; right: 0; margin: 8px 0 0; font-size: 15px; color: var(--text-2); }
+.welcome .new-here .link { font-size: 15px; font-weight: 600; }
+/* someone new: Garmin first */
+.card.first-garmin { display: grid; gap: 14px; margin-top: 16px; padding: 18px; background: var(--glass-strong); box-shadow: 0 0 0 2px var(--tint), 0 14px 30px -22px var(--tint-deep); }
+.first-garmin-top { display: flex; align-items: center; gap: 14px; }
+.first-garmin-top .ic { flex: none; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: #fff; }
+.first-garmin-top .tx { display: grid; gap: 2px; } .first-garmin-top b { font-size: 17px; font-weight: 600; } .first-garmin-top small { font-size: 14px; color: var(--text-2); }
+.first-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--text-2); }
+/* Rhythm's days: the tapped day, a quarter hour at a time */
+.rh-day .track.sel { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tint) 40%, transparent); }
+.rh-daystep { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 10px 14px; border-radius: 18px; background: var(--glass-strong); box-shadow: var(--edge); }
+.rh-daystep > b { flex: 1; font-size: 16px; font-weight: 600; }
+.rh-daystep .stepper button { width: 40px; height: 40px; }
+.rh-daystep .stepper output { min-width: 72px; font-size: 15px; }
+/* a row's route, drawn small */
+.tile.route { background: color-mix(in srgb, var(--s-ride-solid, #ee4b2f) 12%, transparent); box-shadow: none; }
+.tile.route.s-run { background: color-mix(in srgb, #1fa75a 12%, transparent); }
+.tile.route svg { width: 100%; height: 100%; }
+.tile.route path { fill: none; stroke: #ee4b2f; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.tile.route.s-run path { stroke: #1fa75a; } .tile.route.s-swim path { stroke: #1b8fc0; } .tile.route.s-walk path, .tile.route.s-other path { stroke: #6b7389; }
+/* Plan's week: Your days, a tap from the top; the week's time under its balance */
+.pill.tinted { color: var(--tint-text); background: color-mix(in srgb, var(--tint) 14%, transparent); }
+.rh-week-head { align-items: center; }
+.rh-balance > span { font-variant-numeric: tabular-nums; } .rh-balance > span b { color: var(--text); }
+/* today, done: against the plan */
+.session .sport.ok { color: var(--good-text); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.session .sport.ok i { background: var(--good); border-radius: 50%; }
+.done-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.done-figs small { display: block; font-size: 12px; color: var(--text-3); }
+.done-figs b { font-size: 19px; font-variant-numeric: tabular-nums; }

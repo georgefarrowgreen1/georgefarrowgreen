@@ -55,9 +55,12 @@ const D = demo(Date.now());
 // Your record (kept with the account: adopt), your own activities (S.own, their rows from the account), and the example
 // rides, shown only if you turn them on (You › Example rides). The plan's the one you chose (and when it starts), or with
 // the examples on and none chosen, theirs.
+// Your numbers before Fitness knows them: middling ones, each marked not set (so worked out from your rides as they
+// come in, and asked in Rhythm's setup), never someone else's
+const START = { ftp: 200, weight: 75, lthr: 160, maxHr: 182, restHr: 55, runPace: 330, css: 120 };
 const S = {
   tab: "today", me: null, ver: 0, dirty: new Set(), inStepWorkouts: [], pulledAt: 0,
-  profile: { ...PROFILE }, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [],
+  profile: { ...START, set: [] }, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [],
   sport: "ride", actSport: "all", formDays: 42,
   own: [], acts: [], garmin: { on: false },
   sums: new Map(), summed: false,
@@ -65,19 +68,48 @@ const S = {
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
   const ok = (o) => o && typeof o === "object" && !Array.isArray(o), was = numbers();
-  S.profile = { ...PROFILE, ...(ok(d?.profile) ? d.profile : {}) };
+  // (a record from before numbers were marked set or worked out: all of them taken to be yours)
+  const kept = ok(d?.profile) ? d.profile : null;
+  S.profile = { ...START, ...(kept || {}), set: kept ? (Array.isArray(kept.set) ? kept.set : Object.keys(START).filter((k) => k in kept)) : [] };
   S.chosen = ok(d?.plan) && PLANS.some((p) => p.id === d.plan.id) && Number.isFinite(d.plan.start) ? d.plan : null;
   S.rhythm = ok(d?.rhythm) && Array.isArray(d.rhythm.days) ? d.rhythm : null;
   S.swaps = ok(d?.swaps) ? d.swaps : {}; S.feel = ok(d?.feel) ? d.feel : {};
   S.mine = Array.isArray(d?.workouts) ? d.workouts : [];
-  U.metric = d?.prefs?.units !== "imperial"; S.examples = false;   // (the example rides are gone: your own alone)
+  // (units as you chose them; till then, your phone's region's: miles in the US, kilometres elsewhere)
+  S.unitsSet = d?.prefs?.units === "metric" || d?.prefs?.units === "imperial";
+  U.metric = S.unitsSet ? d.prefs.units !== "imperial" : !/-(US|LR|MM)\b/i.test(navigator.language || "");
+  S.ask = d?.prefs?.ask !== false;
+  S.examples = false;   // (the example rides are gone: your own alone)
   setActs();
   // (new numbers, from another device: every ride's stress worked out again for them)
   if (numbers() !== was) resum();
 }
 const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
 // what's kept with the account, as this device has it now
-const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine, prefs: { units: U.metric ? "metric" : "imperial", examples: S.examples } });
+const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine,
+  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}) } });
+// Your numbers from your rides, for those you haven't set: FTP from your best 20 minutes of the last 90 days (95% of
+// it), max heart rate the highest in any of them (and threshold heart rate 90% of that, unless you've set it)
+const isSet = (k) => (P().set || []).includes(k);
+function estimates() {
+  const since = addDays(TODAY, -90), rides = S.own.filter((a) => a.start >= since && a.sport === "ride");
+  const b20 = Math.max(0, ...rides.map((a) => sumOf(a)?.curve?.[1200] || 0)), hr = Math.max(0, ...S.own.map((a) => sumOf(a)?.maxHr || 0));
+  return { ftp: b20 >= 60 ? Math.round(b20 * 0.95) : null, maxHr: hr >= 120 && hr <= 230 ? Math.round(hr) : null, rides: rides.filter((a) => sumOf(a)?.curve?.[1200]).length };
+}
+function estimate() {
+  const e = estimates(), ch = {};
+  if (e.ftp && !isSet("ftp") && Math.abs(e.ftp - P().ftp) >= 3) ch.ftp = e.ftp;
+  if (e.maxHr && !isSet("maxHr") && e.maxHr !== P().maxHr) { ch.maxHr = e.maxHr; if (!isSet("lthr")) ch.lthr = Math.round(e.maxHr * 0.9); }
+  if (!Object.keys(ch).length) return;
+  S.profile = { ...P(), ...ch }; keep("profile"); resum(); redraw();
+}
+// one of your numbers set by you: kept as it is from now on
+function setNumber(k, v) {
+  S.profile = { ...P(), [k]: v, set: [...new Set([...(P().set || []), k])] };
+  // (threshold heart rate follows your max, till you set it too)
+  if (k === "maxHr" && !isSet("lthr")) S.profile.lthr = Math.round(v * 0.9);
+  keep("profile");
+}
 // A change to your record: kept with your account a moment later (a few changes go as one), from the version this
 // device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
 // its own, the days and workouts joined) and sent again.
@@ -274,12 +306,19 @@ function todayView() {
   return out;
 }
 function sessionCard(w, id, done) {
+  // done: against what was planned (where it was the same sport), and what tomorrow brings
   if (done.length) {
-    const a = done[0], s = sumOf(a);
-    return h("button.card.hero.glass.session.done", { type: "button", onclick: () => openAct(a) },
-      h("span.sport", {}, h("i.s-" + a.sport, {}, sportIcon(a.sport, 14)), "Done today"),
-      h("h2", {}, h("span.tick-badge", {}, icon("check", 16, 3)), a.name),
-      h("div.meta", { text: s ? [dur(s.moving), s.dist ? dist(s.dist) : null, s.tss != null ? `TSS ${s.tss}` : null].filter(Boolean).join(" · ") : "…" }));
+    const a = done[0], s = sumOf(a), pl = w && w.sport === a.sport ? w : null, pt = pl ? Math.round(measure(pl, paceFor(pl.sport)).tss) : null;
+    const nd = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null, nw = nd?.id ? wkById(nd.id) : null;
+    const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
+    const how = pl && s?.tss != null && pt ? (s.tss > pt * 1.1 ? "A bit more than planned. " : s.tss < pt * 0.9 ? "A bit less than planned: no matter. " : "Right on target. ") : "";
+    return h("div.card.hero.glass.session.done", {},
+      h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done today · as planned" : "Done today"),
+      h("h2", { text: pl ? pl.name : a.name }),
+      s && h("div.done-figs", {}, pl && pt ? [fig("Planned", `TSS ${pt}`), fig("Ridden", s.tss != null ? `TSS ${s.tss}` : "–"), fig("Time", dur(s.moving))]
+        : [fig("Time", dur(s.moving)), fig("Distance", s.dist ? dist(s.dist) : "–"), fig("Training stress", s.tss != null ? String(s.tss) : "–")]),
+      h("p.about", { text: how + (nd ? (nw ? `Tomorrow: ${nw.name}, ${dur(nd.mins * 60)}.` : "Tomorrow: rest, so today sinks in.") : "") }),
+      h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride")));
   }
   if (id === "event") {
     return h("div.card.hero.glass.session", {}, h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"),
@@ -324,9 +363,10 @@ function sessionCard(w, id, done) {
       rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
     h("div.acts", {},
-      w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("download", 17, 2.2), "Download"),
+      w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(w) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
-      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")));
+      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")),
+    w.sport !== "strength" && dlFor(w, TODAY));
 }
 // The best time for it today, as Weather would say it (its Best times, for a ride as long as this one). In the demo, a
 // made-up day; signed in, Weather's own forecast for your place.
@@ -342,7 +382,7 @@ function weatherCard(w) {
 function formCard() {
   if (!S.summed) return card(null, "Fitness and form", wait(44), h("div", { vars: { height: "10px" } }), wait(120));
   if (!S.acts.some((a) => sumOf(a)?.tss)) return card(null, "Fitness and form", h("p.line-said", { text: "Your fitness, fatigue and form come from your rides’ training stress, day by day. Import a few weeks of rides to see them; the more, the truer." }),
-    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: chooseFiles }, icon("inbox", 17, 2.1), "Import rides")));
+    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: () => openSheet(uploadFilesView) }, icon("inbox", 17, 2.1), "Bring your rides in")));
   const f = fitnessSeries(), last = f.at(-1), said = formSaid(last.tsb), wk = f.at(-8);
   return h("button.card.glass", { type: "button", onclick: () => openSheet(formView), "aria-label": `Fitness ${Math.round(last.ctl)}, fatigue ${Math.round(last.atl)}, form ${Math.round(last.tsb)}: ${said.word}` },
     h("h3", {}, "Fitness and form"),
@@ -423,7 +463,7 @@ function openCheckIn() {
 }
 // (asked once a day, as the app opens or comes back, while you're on Rhythm and haven't said)
 function askToday() {
-  if (!rhythmOn() || S.feel[TODAY] || sheetEl.open) return;
+  if (!rhythmOn() || S.ask === false || S.feel[TODAY] || sheetEl.open) return;
   try { if (localStorage.getItem("fitness:asked") === String(TODAY)) return; } catch (_) {}
   setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
@@ -508,10 +548,11 @@ function rhythmView() {
   const planMins = wk.reduce((a, d) => a + (d.date >= from ? d.mins : rode(d)), 0);
   const hardMins = wk.filter((d) => d.date >= from && d.hard).reduce((a, d) => a + Math.min(d.mins, 60) * 0.55, 0), easy = planMins ? Math.round(100 * (1 - hardMins / planMins)) : 100;
   out.push(h("div.card.glass.rh-week", {},
-    h("div.rh-week-head", {}, h("b", { text: "This week" }), h("span", {}, h("b", { text: dur(doneMins * 60) }), ` of ${dur(planMins * 60)} done`)),
+    h("div.rh-week-head", {}, h("b", { text: "This week" }), h("button.pill.small.tinted", { type: "button", onclick: () => rhythmSetup() }, icon("edit", 14, 2.4), "Your days")),
     h("div.rh-circles", {}, wk.map((d) => { const [cls, inner] = dot(d); return h("button" + (d.date === TODAY ? ".is-today" : ""), { type: "button", onclick: () => openDay(d.date), "aria-label": `${dayLong(d.date)}: ${cls === "done" ? "done" : d.id ? wkById(d.id)?.name : "rest"}` },
       h("small", { text: d.date === TODAY ? "TODAY" : dayName(d.date).slice(0, 3).toUpperCase() }), h("span.c." + cls.replace(".", "."), {}, inner), h("small.n", { text: new Date(d.date).getDate() })); })),
-    h("div.rh-balance", {}, h("div.bar", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { "--w": easy + "%" } }), h("i.hard", { vars: { "--w": 100 - easy + "%" } })))));
+    h("div.rh-balance", {}, h("div.bar", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { "--w": easy + "%" } }), h("i.hard", { vars: { "--w": 100 - easy + "%" } })),
+      h("span", {}, h("b", { text: dur(doneMins * 60) }), ` of ${dur(planMins * 60)} done`))));
   // today, first
   const td = rhDay(TODAY), tw = td?.id ? wkById(S.swaps[TODAY] !== undefined ? S.swaps[TODAY] : td.id) : null, tdone = actsOn(TODAY);
   if (tdone.length) out.push(h("button.card.glass.rh-today.done", { type: "button", onclick: () => openAct(tdone[0]) }, h("span.rh-chip", {}, icon("check", 13, 3), "Today · done"), h("h2", { text: tdone[0].name }), h("p", { text: "Nice work. Tomorrow’s plan takes it in." })));
@@ -523,7 +564,8 @@ function rhythmView() {
       h("div.profile", {}, C.profile(tw, { ftp: tw.sport === "ride" ? P().ftp : null, pace: paceFor(tw.sport), label: `${tw.name}, step by step`, W: cardW(true) })),
       h("p", { text: td.why }),
       (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
-      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw, TODAY)) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
+      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(tw) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change")),
+      tw.sport !== "strength" && dlFor(tw, TODAY)));
   } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
   // coming up: three days, the rest of the week ahead a tap away
   const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
@@ -589,7 +631,7 @@ function sessionView(day) {
       h("div.ss-feeds", {}, feeds.map((at) => h("span", {}, h("b", { text: clk(at) }), `${each} g`))))),
     !perHour && ride && h("p.rh-note", { text: "Under 75 minutes: water is enough." }),
     d?.strength && section("Afterwards", h("div.group.glass", {}, row({ icon: "strength", tint: "indigo", title: "Heavy strength, 20 minutes", sub: "Squats, Romanian deadlifts and step-ups: heavy, few, never to failure", onclick: () => pushSheet(() => workoutView(workoutById("strength-heavy"))) }))),
-    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w, day)) }, "Download"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
+    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => download(w, day) }, "Download"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
   ] };
 }
 // A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
@@ -610,57 +652,75 @@ function rhDayView(day) {
       tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
       opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
     S.swaps[day] !== undefined && future && h("button.btn.quiet", { type: "button", onclick: () => set(undefined, "Back to Rhythm’s plan") }, "Undo the change"),
-    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w, day)) }, "Download"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
+    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => download(w, day) }, "Download"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
   ] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
 // like to ride, build or hold, and the first week it gives you before anything's kept
-function rhythmSetup() {
+function rhythmSetup({ first = false } = {}) {
   const editing = !!S.rhythm, draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
   draft.days = [...draft.days];
   const cancel = () => h("button.link.r", { type: "button", onclick: closeSheet }, "Cancel");
-  // (little of your own riding to go by: a step asking where you've been, so Rhythm starts there)
-  const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY), N = needLevel ? 5 : 4, at = (n) => (needLevel && n > 1 ? n + 1 : n);
-  const dots = (n) => h("div.rh-dots", { "aria-label": `Step ${n} of ${N}` }, Array.from({ length: N }, (_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : ""))));
-  const top = (n, title, sub) => [dots(at(n)), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
+  // (the steps: someone new has had Garmin's first; little of your own riding to go by, a step asking where you've
+  // been, so Rhythm starts there; your numbers, setting up, not changing your week)
+  const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY);
+  const STEPS = [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "preview"].filter(Boolean);
+  const dots = (k) => { const n = STEPS.indexOf(k) + 1; return h("div.rh-dots", { "aria-label": `Step ${n} of ${STEPS.length}` }, STEPS.map((_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : "")))); };
+  const top = (k, title, sub) => [dots(k), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
-  // 1. When you ride: a bar a day, dragged up to how long you have (to 6 hours, by quarter hours); a tap makes it rest
+  // 1. When you ride: a bar a day, dragged up to how long you have (to 6 hours, by quarter hours); or a day tapped, and
+  // its time a quarter hour at a time (all the way down: a rest day)
   // (said short, so a day's label fits over its bar: 45m, 1h, 1h45)
   const MAX = 360, said = (v) => (!v ? "Rest" : v < 60 ? `${v}m` : `${Math.floor(v / 60)}h${v % 60 ? String(v % 60).padStart(2, "0") : ""}`);
   const days = () => {
-    const total = h("b"), count = h("span");
+    const total = h("b"), count = h("span"), NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     const sum = () => { const n = draft.days.filter((x) => x).length; total.textContent = n ? dur(draft.days.reduce((a, x) => a + x, 0) * 60) : "No days yet"; count.textContent = `${plural(n, "day")} · ${plural(7 - n, "rest")}`; };
+    if (days.sel == null) days.sel = Math.max(0, draft.days.findIndex((x) => x));
+    const paints = [], selName = h("b"), selVal = h("output");
+    const step = (d) => { const i = days.sel, x = draft.days[i]; let v = x + d; if (d > 0 && !x) v = 30; else if (v < 30) v = 0; draft.days[i] = Math.max(0, Math.min(MAX, v)); paints[i](); };
+    const pick = (i) => { days.sel = i; paints.forEach((p) => p()); };
     const cols = draft.days.map((v, i) => {
       const label = h("span.v", { text: said(v) }), bar = h("i"), track = h("div.track", {}, bar);
-      const paint = () => { const x = draft.days[i]; bar.className = x ? "" : "rest"; bar.style.setProperty("--h", (x ? Math.max(8, (x / MAX) * 100) : 4) + "%"); label.textContent = said(x); track.setAttribute("aria-valuenow", x); track.setAttribute("aria-valuetext", said(x)); sum(); };
+      const paint = () => { const x = draft.days[i]; bar.className = x ? "" : "rest"; bar.style.setProperty("--h", (x ? Math.max(8, (x / MAX) * 100) : 4) + "%"); label.textContent = said(x); track.setAttribute("aria-valuenow", x); track.setAttribute("aria-valuetext", said(x)); sum();
+        track.classList.toggle("sel", days.sel === i); if (days.sel === i) { selName.textContent = NAMES[i]; selVal.textContent = x ? dur(x * 60) : "Rest"; } };
+      paints[i] = paint;
       const at = (e) => { const r = track.getBoundingClientRect(), f = 1 - (e.clientY - r.top) / r.height, m = Math.round((f * MAX) / 15) * 15; return m < 30 ? 0 : Math.min(MAX, m); };
       let down = null;
       track.addEventListener("pointerdown", (e) => { down = { y: e.clientY, moved: false }; track.setPointerCapture(e.pointerId); e.preventDefault(); });
       track.addEventListener("pointermove", (e) => { if (!down) return; if (Math.abs(e.clientY - down.y) > 4) down.moved = true; if (down.moved) { draft.days[i] = at(e); paint(); } });
-      track.addEventListener("pointerup", () => { if (down && !down.moved) { draft.days[i] = draft.days[i] ? 0 : (S.rhythm?.days?.[i] || 60); paint(); } down = null; });
-      track.addEventListener("keydown", (e) => { const d = { ArrowUp: 15, ArrowRight: 15, ArrowDown: -15, ArrowLeft: -15 }[e.key]; if (d) { e.preventDefault(); draft.days[i] = Math.max(0, Math.min(MAX, draft.days[i] + d)); if (draft.days[i] && draft.days[i] < 30) draft.days[i] = d > 0 ? 30 : 0; paint(); } });
+      track.addEventListener("pointerup", () => { if (down) pick(i); down = null; });
+      track.addEventListener("focus", () => pick(i));
+      track.addEventListener("keydown", (e) => { const d = { ArrowUp: 15, ArrowRight: 15, ArrowDown: -15, ArrowLeft: -15 }[e.key]; if (d) { e.preventDefault(); days.sel = i; step(d); } });
       Object.assign(track, { tabIndex: 0 }); track.setAttribute("role", "slider"); track.setAttribute("aria-label", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]); track.setAttribute("aria-valuemin", 0); track.setAttribute("aria-valuemax", MAX);
       setTimeout(paint);
       return h("div.rh-day", {}, label, track, h("small", { text: "MTWTFSS"[i] }));
     });
     const preset = (name, v) => h("button.pill.small", { type: "button", onclick: () => { draft.days = [...v]; Sheet.redraw(); } }, name);
     setTimeout(sum);
-    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(1, "When do you ride?", "Drag each day up to how long you usually have. Tap a day to make it a rest day."),
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("days", "When do you ride?", "Drag each day up to how long you usually have, or tap a day and use − and +. All the way down is a rest day."),
       h("div.card.rh-days", {}, h("div.rh-sum", {}, total, count), h("div.rh-bars", {}, cols)),
+      h("div.rh-daystep", {}, selName, h("span.stepper", { role: "group", "aria-label": "That day’s time" },
+        h("button", { type: "button", "aria-label": "15 minutes less", onclick: () => step(-15) }, icon("minus", 16, 2.4)), selVal,
+        h("button", { type: "button", "aria-label": "15 minutes more", onclick: () => step(15) }, icon("plus", 16, 2.4)))),
       section("Or start from", h("div.rh-presets", {}, preset("Evenings and weekends", [0, 60, 60, 60, 0, 150, 90]), preset("Weekends only", [0, 0, 0, 0, 0, 180, 150]), preset("Most days", [45, 75, 60, 75, 0, 180, 120]))),
-      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(needLevel ? level : style) : toast("Choose at least one day to ride", true)) }, "Next")] };
+      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(needLevel ? level : editing ? style : numbersStep) : toast("Choose at least one day to ride", true)) }, "Next")] };
   };
   // 1b. Where you've been riding lately (only with less than a month of your own rides to go by)
   const level = () => {
     if (!draft.level) draft.level = "some";
     const opt = (k, t, sub) => h("button.rh-choice" + (draft.level === k ? ".on" : ""), { type: "button", role: "radio", "aria-checked": String(draft.level === k), onclick: () => { draft.level = k; Sheet.redraw(); } },
       h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })), h("span.tick", {}, draft.level === k ? icon("check", 13, 3.2) : null));
-    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [dots(2), h("div.sheet-top", {}, h("h1", { text: "How much have you been riding?" }),
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [dots("level"), h("div.sheet-top", {}, h("h1", { text: "How much have you been riding?" }),
       h("div.sub", { text: `The last month or so. ${S.own.length ? `You’ve uploaded ${plural(S.own.length, "ride")}, so` : "With no rides uploaded yet,"} Rhythm starts from this, and learns from every ride you add.` })),
       h("div.rh-choices", { role: "radiogroup", "aria-label": "Riding lately" },
         opt("none", "Hardly at all", "Starting again, or new to it"), opt("some", "A ride or two a week", "About 2 to 4 hours"), opt("regular", "Most weeks, regularly", "About 5 to 8 hours"), opt("lots", "A lot", "9 hours or more")),
-      next("Next", style)] };
+      next("Next", editing ? style : numbersStep)] };
   };
+  // 1c. Your numbers: every target's set from them (worked out from your rides till you set them)
+  const numbersStep = () => ({ title: "Rhythm", right: cancel(), body: [...top("numbers", "Your numbers", "Every target in your plan is set from these. Not sure? Leave them: Fitness works them out from your rides, and keeps them up to date."),
+    h("div.group", {}, stepper("FTP", "ftp", (v) => `${v} W`, 5, 80, 500), stepper("Weight", "weight", (v) => weight(v), 0.5, 35, 150), stepper("Max heart rate", "maxHr", (v) => `${v} bpm`, 1, 120, 230)),
+    h("p.rh-note", { text: "Threshold heart rate and paces follow from these. Change any of them in You." }),
+    next("Next", style)] });
   // 2. How you like to ride, and a run and a swim
   const pic = (bars) => h("span.rh-pic", { "aria-hidden": "true" }, bars.map(([v, z]) => h("i.bg-" + z, { vars: { "--h": v + "%" } })));
   const style = () => {
@@ -668,7 +728,7 @@ function rhythmSetup() {
       pic(bars), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })), h("span.tick", {}, draft.lean === k ? icon("check", 13, 3.2) : null));
     const tile = (k, ic, title) => h("button.rh-tile" + (draft[k] ? ".on." + k : ""), { type: "button", "aria-pressed": String(!!draft[k]), onclick: () => { draft[k] = !draft[k]; Sheet.redraw(); } },
       h("span.ic", {}, icon(ic, 18, 2)), h("b", { text: title }), h("small", { text: draft[k] ? "On" : "Off" }));
-    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(2, "How do you like to ride?", "Rhythm keeps every kind of effort sharp; this is where it leans."),
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("style", "How do you like to ride?", "Rhythm keeps every kind of effort sharp; this is where it leans."),
       h("div.rh-choices", { role: "radiogroup", "aria-label": "Lean towards" },
         choice("balanced", "Balanced", "A bit of everything, all year", [[45, "z2"], [75, "z4"], [45, "z2"], [85, "z6"], [55, "z2"], [65, "z3"]]),
         choice("endurance", "Long days", "Sportives, hills, all-day rides", [[55, "z2"], [65, "z3"], [55, "z2"], [65, "z4"], [95, "z2"], [95, "z2"]]),
@@ -682,11 +742,11 @@ function rhythmSetup() {
       h("span.rh-goal-top", {}, h("b", { text: title }), h("span.tick", {}, draft.mode === k ? icon("check", 13, 3.2) : null)),
       svgOf(`<svg viewBox="0 0 326 64" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="63" x2="326" y2="63" class="rh-axis"/><path d="${path}" class="rh-line ${c}"/></svg>`),
       h("small", { text: sub }));
-    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(3, "Build, or hold?", "You can change this any time, say for a busy month."),
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("goal", "Build, or hold?", "You can change this any time, say for a busy month."),
       h("div.rh-goals", { role: "radiogroup", "aria-label": "Build or hold" },
         card("build", "Keep building", "Up a few points a week, never faster, with a lighter week every fourth. Uses all the time you gave.", "M0 54 C40 50, 60 46, 90 42 S 130 40, 150 40 C170 40, 190 32, 230 26 S 280 20, 300 18 L326 14", "up"),
         card("hold", "Hold where I am", "Fitness kept level with less riding: shorter sessions, the hard work kept.", "M0 32 C40 28, 70 34, 110 31 S 170 28, 200 32 S 270 34, 326 30", "level")),
-      h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), ", from You. Rhythm sets every interval from it, and from your power curve once your rides show it.")),
+      h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), isSet("ftp") ? ", as you set it." : ", worked out from your rides till you set it.", " Rhythm sets every interval from it, and from your power curve once your rides show it.")),
       next("See your first week", preview)] };
   };
   // 4. The first week, as Rhythm would have it, before anything's kept
@@ -704,7 +764,7 @@ function rhythmSetup() {
       if (S.chosen) { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); }
       keep("rhythm"); closeSheet(); toast(editing ? "Your week is saved" : "Rhythm has started"); if (S.tab !== "plan") go("plan"); else redraw();
     };
-    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(4, editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("preview", editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
       h("div.group", {}, ds.map(rowOf)),
       h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard days", String(hard.length)], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
       h("button.btn.rh-next", { type: "button", onclick: start }, editing ? "Save" : "Start Rhythm"),
@@ -782,7 +842,7 @@ function workoutView(w) {
       card(null, w.sport === "ride" ? `Power, at your FTP of ${ftp} W` : w.sport === "run" ? "Effort, against your threshold pace" : "Effort", C.profile(w, { ftp: w.sport === "ride" ? ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: sheetW() })),
       w.about && h("p", { text: w.about }),
       card(null, "Steps", h("div.steps", {}, steps)),
-      w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, icon("download", 19, 2.2), "Download"),
+      w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => download(w) }, icon("download", 19, 2.2), "Download"),
       mine && h("div.group", {},
         h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
     ],
@@ -794,19 +854,53 @@ const paceOfSpeed = (ms) => (U.metric ? 1000 / ms : 1609.344 / ms);
 
 // Sending a workout: a file for each device and app, and how to get it there
 // (named by the day it's for: 2026-10-25.fit; a workout from the library, today)
+// Download: a workout as a .fit file named by its day. Straight away for the device you chose last (else the one your
+// rides come from), then how to get it on; or a choice of device, the first time
+const dayStamp = (day) => { const dt = new Date(day); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; };
+function myDevice() {
+  const k = store.get("device", null);
+  if (k?.brand === "garmin" || k?.brand === "wahoo") return k;
+  const d = S.own.find((a) => /garmin|wahoo/i.test(a.device || ""));
+  return d ? { brand: /wahoo/i.test(d.device) ? "wahoo" : "garmin", name: d.device } : null;
+}
+function download(w, day = TODAY, dev = myDevice()) {
+  const show = (v) => (sheetEl.open ? pushSheet(v) : openSheet(v));
+  if (!dev) return show(() => sendView(w, day));
+  const name = `${dayStamp(day)}.fit`;
+  saveFile(name, F.fitFromWorkout(w, { pace: paceFor(w.sport) }));
+  show(() => savedView(w, day, dev, name));
+}
+const devName = (dev) => dev.name || (dev.brand === "wahoo" ? "Wahoo" : "Garmin");
+// (under a Download button: which device it's for, and another a tap away)
+function dlFor(w, day) {
+  const dev = myDevice();
+  return dev && h("p.dl-for", {}, `For your ${devName(dev)} · `, h("button.link.small", { type: "button", onclick: () => openSheet(() => sendView(w, day)) }, "Another device?"));
+}
 function sendView(w, day = TODAY) {
-  const fit = () => F.fitFromWorkout(w, { pace: paceFor(w.sport) }), dt = new Date(day);
-  const name = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-  const file = (title, cls) => row({ tile: h("span.ic." + cls, {}, icon("device", 18, 2)), title, sub: ".fit workout file", chev: false,
-    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(`${name}.fit`, fit()) });
-  return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: name })), h("div.group", {}, file("Garmin", "brand.garmin"), file("Wahoo", "brand.wahoo"))] };
+  const file = (title, brand) => row({ tile: h("span.ic.brand." + brand, {}, icon("device", 18, 2)), title, sub: ".fit workout file", chev: false,
+    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => {
+      const was = myDevice(), dev = was?.brand === brand ? was : { brand, name: brand === "wahoo" ? "Wahoo" : "Garmin" };
+      store.set("device", dev); download(w, day, dev);
+    } });
+  return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: dayStamp(day) }), h("div.sub", { text: "Which device is it for?" })), h("div.group", {}, file("Garmin", "garmin"), file("Wahoo", "wahoo"))] };
+}
+// Saved: and how to get it onto your device, step by step
+function savedView(w, day, dev, name) {
+  const steps = dev.brand === "wahoo"
+    ? ["Open the file on your phone, and share it to the ELEMNT app", "The ELEMNT app sends it to your device", "On your ELEMNT, it’s under Workouts"]
+    : ["Plug it into a computer with its cable", "Copy the file into the Garmin › NewFiles folder", "Unplug it: the workout’s under Training › Workouts"];
+  return { title: dayStamp(day), body: [
+    h("div.saved", {}, h("span.ok", {}, icon("check", 15, 3)), h("span", {}, h("b", { text: "Saved" }), ` as ${name}, in your downloads`)),
+    section(`Onto your ${devName(dev)}`, h("div.group", {}, steps.map((t, i) => h("div.row.plain", {}, h("span.ic.soft.blue.num", {}, h("b", { text: String(i + 1) })), h("span.tx", {}, h("b.light", { text: t })))))),
+    section(null, h("div.group", {}, row({ icon: "device", tint: "grey", title: "Another device", onclick: () => pushSheet(() => sendView(w, day)) }))),
+  ] };
 }
 
 // ---- Activities ----
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ", from your devices"}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload activities", onclick: chooseFiles }, icon("upload", 21, 2.1)))];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ", from your devices"}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload files", onclick: () => openSheet(uploadFilesView) }, icon("upload", 21, 2.1)))];
   // Garmin's six months coming in
   if (S.bringing) out.push(bringingCard());
   // none yet: Garmin, or files
@@ -826,7 +920,7 @@ function activitiesView() {
     const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0);
     out.push(section([name, h("span.aside", { text: S.summed ? dur(secs) : "" })], h("div.group.glass", {}, acts.map(actRow))));
   }
-  if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Upload more activities")));
+  if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: () => openSheet(uploadFilesView) }, "Upload more activities")));
   return out;
 }
 // Your first activities: Garmin connected (six months in at once, then each new one by itself), or files uploaded,
@@ -871,11 +965,38 @@ function uploadFilesView() {
       h("span", {}, "On Garmin? ", h("button.link", { type: "button", onclick: () => pushSheet(garminView) }, "Connect it instead"), ", and skip the files.")),
   ] };
 }
+// An activity's row: its route's shape (or, indoors, its sport), its name with its distance, its day and the session
+// it was from your plan (else the device it came from), and how long and how hard
+const withRoute = (sum, a) => { const r = F.routeShape(a.s); return r ? { ...sum, route: r } : sum; };
+function routeTile(r, sport) {
+  const p = []; for (let i = 0; i + 1 < r.length; i += 2) p.push(`${i ? "L" : "M"}${Number(r[i]) || 0} ${Number(r[i + 1]) || 0}`);
+  return h("span.tile.route.s-" + sport, {}, svgOf(`<svg viewBox="0 0 100 100" aria-hidden="true"><path d="${p.join("")}"/></svg>`));
+}
 function actRow(a) {
-  const s = sumOf(a);
-  return h("button.row", { type: "button", onclick: () => openAct(a) }, sportTile(a.sport),
-    h("span.tx", {}, h("b", { text: a.name }), h("small.one-line", { text: `${dayShort(a.start)} · ${a.device || (a.sample ? "Example" : "Imported")}` })),
-    h("span.val", {}, s ? (s.dist > 100 ? dist(s.dist) : hm(s.moving)) : "", h("small", { text: s ? [s.dist > 100 ? hm(s.moving) : null, s.tss != null ? `TSS ${s.tss}` : null].filter(Boolean).join(" · ") : "" })));
+  const s = sumOf(a), r = s?.route, pid = a.sample ? null : plannedOn(startOfDay(a.start)), pw = pid && pid !== "event" ? wkById(pid) : null;
+  const named = s?.dist > 100 && !/\d\s?(km|mi)\b/i.test(a.name) ? `${a.name} · ${dist(s.dist)}` : a.name;
+  return h("button.row", { type: "button", onclick: () => openAct(a) }, r ? routeTile(r, a.sport) : sportTile(a.sport),
+    h("span.tx", {}, h("b", { text: named }), h("small.one-line", { text: `${dayShort(a.start)} · ${pw && pw.sport === a.sport ? pw.name : a.device || (a.sample ? "Example" : "Uploaded")}` })),
+    h("span.val", {}, s ? hm(s.moving) : "", h("small", { text: s?.tss != null ? `TSS ${s.tss}` : "" })));
+}
+// The ones kept before rows had a route's shape: each read from its file as the app opens, a few at a time, and its
+// shape added (one with none, an indoor ride, remembered here so it isn't read again)
+async function routes() {
+  if (routes.busy || !S.me) return;
+  routes.busy = true;
+  const none = new Set(store.get("noroute", [])), me = S.me.id;
+  try {
+    for (const a of S.own.filter((x) => !sumOf(x)?.route && !none.has(x.id)).slice(0, 20)) {
+      if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
+      try {
+        const x = await load(a), r = F.routeShape(x.s);
+        if (!r) { none.add(a.id); continue; }
+        await A.setRoute(a.id, r);
+        a.sum = { ...(a.sum || {}), route: r }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, route: r });
+        if (S.tab === "activities") redraw();
+      } catch (e) { if (e.status === 401 || e.offline) break; none.add(a.id); }
+    }
+  } finally { routes.busy = false; store.set("noroute", [...none].slice(-2000)); }
 }
 // an activity, opened: its file read first, where it isn't here yet (from this device's copy, or the account's)
 async function openAct(a) {
@@ -1028,9 +1149,10 @@ function settingsView() {
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })))),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
-        row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; keep("prefs"); redraw(true); } }))),
+        row({ icon: "ruler", tint: "blue", title: "Units", sub: S.unitsSet ? null : "From your region, until you choose", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; S.unitsSet = true; keep("prefs"); redraw(true); } }),
+        row({ icon: "heart", tint: "green", title: "Ask how I am each morning", sub: "Or check in from the card on Today", value: S.ask === false ? "Off" : "On", onclick: () => { S.ask = S.ask === false; keep("prefs"); Sheet.redraw(); } }))),
       section("Your data", h("div.group", {},
-        row({ icon: "inbox", tint: "blue", title: "Import files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => { closeSheet(); chooseFiles(); } }),
+        row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }),
         row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity’s file, in one zip", onclick: exportAll }))),
       section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
     ],
@@ -1043,24 +1165,37 @@ async function openAccount() {
   try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness" })}`); }
   catch (e) { if (e.status === 401) return signedOutHere(); toast(e.message, true); }
 }
-function numbersView() {
-  const p = P(), field = (label, key, show, by, lo, hi) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: label })),
+// (a number's note: worked out from your rides, or a starting guess, until you set it yourself)
+function numberSaid(k) {
+  if (isSet(k)) return null;
+  const e = estimates();
+  if (k === "ftp") return e.ftp ? `Estimated from ${plural(e.rides, "ride")}` : "A starting guess";
+  if (k === "maxHr" || k === "lthr") return e.maxHr ? "From your rides" : "A starting guess";
+  return "A starting guess";
+}
+// a number, a step at a time: set by you from then on
+function stepper(label, key, show, by, lo, hi, after) {
+  const change = (d) => { setNumber(key, Math.max(lo, Math.min(hi, Math.round((P()[key] + d) * 10) / 10))); Sheet.redraw(); clearTimeout(stepper.t); stepper.t = setTimeout(() => { resum(); redraw(); after?.(); }, 600); };
+  const said = numberSaid(key);
+  return h("div.row.plain", {}, h("span.tx", {}, h("b", { text: label }), said && h("small.est", { text: said })),
     h("span.stepper", { role: "group", "aria-label": label },
-      h("button", { type: "button", "aria-label": `Less ${label}`, onclick: () => change(key, -by, lo, hi) }, icon("minus", 16, 2.4)),
-      h("output", { text: show(p[key]) }),
-      h("button", { type: "button", "aria-label": `More ${label}`, onclick: () => change(key, by, lo, hi) }, icon("plus", 16, 2.4))));
-  const change = (k, d, lo, hi) => { S.profile = { ...P(), [k]: Math.max(lo, Math.min(hi, Math.round((P()[k] + d) * 10) / 10)) }; keep("profile"); Sheet.redraw(); clearTimeout(change.t); change.t = setTimeout(() => { resum(); redraw(); }, 600); };
-  // (your best 20 minutes of the last six weeks, for an FTP to try)
-  const since = addDays(TODAY, -42), best20 = Math.max(0, ...S.acts.filter((a) => a.start >= since).map((a) => sumOf(a)?.curve?.[1200] || 0));
+      h("button", { type: "button", "aria-label": `Less ${label}`, onclick: () => change(-by) }, icon("minus", 16, 2.4)),
+      h("output", { text: show(P()[key]) }),
+      h("button", { type: "button", "aria-label": `More ${label}`, onclick: () => change(by) }, icon("plus", 16, 2.4))));
+}
+function numbersView() {
+  const p = P(), field = (label, key, show, by, lo, hi) => stepper(label, key, show, by, lo, hi);
+  // (your best 20 minutes of the last six weeks, offered only as a rise on an FTP you set: easy weeks never talk it down)
+  const since = addDays(TODAY, -42), best20 = Math.max(0, ...S.acts.filter((a) => a.start >= since).map((a) => sumOf(a)?.curve?.[1200] || 0)), est = Math.round(best20 * 0.95);
   return {
     title: "Your numbers",
     body: [
       h("div.group", {}, field("FTP", "ftp", (v) => `${v} W`, 5, 80, 500), field("Weight", "weight", (v) => weight(v), 0.5, 35, 150),
         field("Threshold heart rate", "lthr", (v) => `${v} bpm`, 1, 100, 210), field("Max heart rate", "maxHr", (v) => `${v} bpm`, 1, 120, 230),
         field("Threshold pace", "runPace", (v) => pace(paceOf(v)), 5, 150, 600), field("CSS", "css", (v) => pace(v, "/100 m"), 1, 50, 240)),
-      best20 > 0 && card(null, "From your rides", h("p.line-said", { text: `Your best 20 minutes in the last six weeks: ${best20} W, an FTP of about ${Math.round(best20 * 0.95)} W.` }),
-        Math.abs(Math.round(best20 * 0.95) - p.ftp) >= 5 && h("button.pill.small", { type: "button", onclick: () => { S.profile = { ...P(), ftp: Math.round(best20 * 0.95) }; keep("profile"); Sheet.redraw(); resum(); redraw(); toast(`FTP set to ${S.profile.ftp} W`); } }, `Use ${Math.round(best20 * 0.95)} W`)),
-      h("p", { text: "FTP is the power you could hold for about an hour. Ride hard for 20 minutes and Fitness will notice, and suggest one." }),
+      isSet("ftp") && est >= p.ftp + 5 && card(null, "From your rides", h("p.line-said", { text: `Your best 20 minutes in the last six weeks: ${best20} W, an FTP of about ${est} W.` }),
+        h("button.pill.small.primary", { type: "button", onclick: () => { setNumber("ftp", est); Sheet.redraw(); resum(); redraw(); toast(`FTP raised to ${est} W`); } }, `Raise FTP to ${est} W`)),
+      h("p", { text: isSet("ftp") ? "FTP is the power you could hold for about an hour. Ride harder than it says for 20 minutes and Fitness will offer a rise; it never talks it down. Think it’s too high? A 20-minute test will tell you." : "FTP is the power you could hold for about an hour. Until you set it, Fitness works it out from your hardest rides, and it rises by itself when you ride harder." }),
     ],
   };
 }
@@ -1259,7 +1394,7 @@ async function upload(got, btn) {
   const done = [], failed = [];
   for (const [i, a] of got.acts.entries()) {
     btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
-    const sum = summarise(a, P()), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
+    const sum = withRoute(summarise(a, P()), a), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
     try {
       const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
       if (r.already) continue;
@@ -1273,7 +1408,7 @@ async function upload(got, btn) {
     idb.put(fileKey(entry), k.bytes).catch(() => {});
   }
   if (got.workouts.length) { S.mine.unshift(...got.workouts); keep("workouts"); }
-  setActs();
+  setActs(); estimate();
   if (failed.length) { btn.disabled = false; btn.lastChild.textContent = "Try again"; got.acts = got.acts.filter((a) => failed.some((f) => f.startsWith(a.name + ":"))); toast(failed[0], true, 6000); redraw(); return; }
   await closeSheet();
   if (done.length) { S.tab !== "activities" && go("activities"); S.actSport = "all"; }
@@ -1304,7 +1439,7 @@ async function fromGarmin({ quiet = false } = {}) {
       for (const [k, a] of acts.entries()) {
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
         if (w.name && acts.length === 1) a.name = w.name;
-        const sum = summarise(a, P()), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
+        const sum = withRoute(summarise(a, P()), a), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
         try { await A.upload(meta, f.name, await A.gzip(f.bytes)); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
         const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
@@ -1317,7 +1452,7 @@ async function fromGarmin({ quiet = false } = {}) {
       S.garmin.waiting = S.garmin.waiting.filter((x) => x.id !== w.id);
     }
   } finally { fromGarmin.busy = false; }
-  if (added.length) { setActs(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from Garmin` : `${plural(added.length, "activity", "activities")} from Garmin`); }
+  if (added.length) { setActs(); estimate(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from Garmin` : `${plural(added.length, "activity", "activities")} from Garmin`); }
   return added.length;
 }
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dayShort(t); };
@@ -1327,6 +1462,46 @@ function garminSaid() {
   if (!g.ok) return "Your key has stopped working: add a new one";
   return g.last ? `Connected · checked ${ago(g.last)}` : "Connected";
 }
+// Garmin's six months, a batch at a time, each read and kept as it comes (Activities shows them coming in); then your
+// numbers worked out from them
+async function bringIn() {
+  S.bringing = { n: 0 }; redraw();
+  const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; redraw(); return k; };
+  let n = await more();
+  for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await more(); }
+  S.bringing = null; redraw(); estimate();
+  toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
+  return n;
+}
+// Someone new: three steps, Garmin (or skip), then Rhythm's setup, with your numbers in it
+function firstRun() {
+  const field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
+  const go1 = async (btn) => {
+    if (!field.value.trim()) return field.focus();
+    btn.disabled = true; btn.textContent = "Connecting…";
+    try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
+    catch (e) { btn.disabled = false; btn.textContent = "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
+    bringIn();   // (coming in meanwhile)
+    rhythmSetup({ first: true });
+  };
+  // (as many steps as Rhythm's setup will have after this one)
+  const n = 6 + (R.sparse(S.own.map((a) => ({ start: a.start })), TODAY) ? 1 : 0);
+  const view = () => {
+    const btn = h("button.btn.rh-next", { type: "button", onclick: () => go1(btn) }, "Connect");
+    field.onkeydown = (e) => { if (e.key === "Enter") go1(btn); };
+    return { title: "Welcome", right: h("button.link.r", { type: "button", onclick: closeSheet }, "Later"), body: [
+      h("div.rh-dots", { "aria-label": `Step 1 of ${n}` }, Array.from({ length: n }, (_, i) => h(i ? "i" : "i.now"))),
+      h("div.sheet-top", {}, h("h1", { text: "Bring your rides in" }), h("div.sub", { text: "Six months of them tells Fitness how fit you are, so your plan starts in the right place. Then your week: about a minute in all." })),
+      h("div.card.first-garmin", {},
+        h("div.first-garmin-top", {}, h("span.ic.brand.garmin", {}, icon("device", 22, 2)), h("span.tx", {}, h("b", { text: "Connect Garmin" }), h("small", { text: "Every ride comes in by itself after this" }))),
+        h("ol.first-steps", {}, h("li", { text: "In Garmin Connect: Settings › Personal API Key › Create" }), h("li", { text: "Copy it, and paste it here" })),
+        field),
+      btn,
+      h("button.btn.quiet", { type: "button", onclick: () => rhythmSetup({ first: true }) }, "Not on Garmin? Skip"),
+    ] };
+  };
+  openSheet(view, { tall: true });
+}
 function garminView() {
   const g = S.garmin, field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
   const add = async (btn) => {
@@ -1334,14 +1509,9 @@ function garminView() {
     btn.disabled = true; btn.textContent = "Connecting…";
     try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
     catch (e) { btn.disabled = false; btn.textContent = g?.on ? "Add the new key" : "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
-    // (six months of them, a batch at a time, coming in on Activities)
-    S.bringing = { n: 0 };
-    await closeSheet(); go("activities"); redraw();
-    const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; redraw(); return k; };
-    let n = await more();
-    for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await more(); }
-    S.bringing = null; redraw();
-    toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
+    // (six months of them, coming in on Activities)
+    await closeSheet(); go("activities");
+    bringIn();
   };
   const keyForm = (label) => { const btn = h("button.btn", { type: "button", onclick: () => add(btn) }, label); field.addEventListener("keydown", (e) => { if (e.key === "Enter") add(btn); }); return [field, btn]; };
   if (!g?.on) return { title: "Garmin Connect", body: [
@@ -1466,22 +1636,23 @@ function welcome(note = null) {
   document.body.classList.add("out");
   const page = A.accountPage();
   main.replaceChildren(h("div.welcome.screen.in", {},
-    h("div.w-top", {}, h("img.mark", { src: "icon.svg", alt: "Fitness", width: 96, height: 96 })),
+    h("div.w-top", {}, h("img.mark", { src: "icon.svg", alt: "Fitness", width: 96, height: 96 }), h("p.tagline", { text: "Training that fits your week" })),
     // (Sign in at the foot of the page, as on the site's other apps)
     h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
       h("button.btn", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
-      !page && h("p.small", { text: "Signing in is at fitness.georgefarrowgreen.com." }))));
+      !page && h("p.small", { text: "Signing in is at fitness.georgefarrowgreen.com." }),
+      page && h("p.new-here", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Fitness";
 }
-async function toAccountSignIn(e) {
-  const page = A.accountPage(), b = e?.currentTarget;
+async function toAccountSignIn(e, mode = "signin") {
+  const page = A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
   if (b) { b.disabled = true; b.textContent = "Signing in…"; }
   try {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("fitness:signin", JSON.stringify({ word, at: Date.now() }));
-    location.assign(`${page}#${new URLSearchParams({ signin: "fitness", ask, back: `${location.origin}/` })}`);
+    location.assign(`${page}#${new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/` })}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the sign-in
@@ -1506,9 +1677,12 @@ function arrive(m) {
   render(true);
   sumUp();
   if (S.summed) redraw();
-  askToday();
-  garminNow(m.garmin);
+  estimate();
+  // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
+  if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); setTimeout(firstRun, 500); }
+  else { askToday(); garminNow(m.garmin); }
   setTimeout(squash, 4000);
+  setTimeout(routes, 6000);
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
@@ -1522,7 +1696,7 @@ async function pull() {
     adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
     S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
     for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
-    setActs(); redraw();
+    setActs(); redraw(); estimate();
     garminNow(m.garmin);
   } catch (_) {} finally { pull.busy = false; }
 }

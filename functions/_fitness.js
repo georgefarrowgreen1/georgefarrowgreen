@@ -83,6 +83,8 @@ export function cleanState(d) {
   const profile = {};
   for (const [k, [lo, hi]] of Object.entries(PROFILE)) { const v = num(d.profile?.[k], lo, hi); if (v != null) profile[k] = v; }
   if (d.profile?.name) profile.name = text(d.profile.name, 60);
+  // (the ones you set yourself: the rest are worked out from your rides)
+  if (Array.isArray(d.profile?.set)) profile.set = [...new Set(d.profile.set.filter((k) => k in PROFILE))];
   const p = d.plan, plan = obj(p) && /^[a-z0-9-]{1,20}$/.test(String(p.id || "")) && num(p.start, 0, 9e12) != null ? { id: p.id, start: p.start, ...(num(p.at, 0, 9e12) != null ? { at: p.at } : {}) } : null;
   const swaps = {}, feel = {};
   for (const [k, v] of Object.entries(obj(d.swaps) ? d.swaps : {}).slice(-400)) if (DAYKEY.test(k) && (v === null || /^[A-Za-z0-9_:-]{1,40}$/.test(String(v)))) swaps[k] = v;
@@ -92,7 +94,8 @@ export function cleanState(d) {
     feel[k] = f;
   }
   const workouts = Array.isArray(d.workouts) ? d.workouts.slice(0, 300).map(cleanWorkout) : [];
-  const prefs = { units: d.prefs?.units === "imperial" ? "imperial" : "metric", examples: d.prefs?.examples === true };
+  // (units only once you've chosen them: till then, your phone's region's; the morning check-in, unless turned off)
+  const prefs = { ...(["imperial", "metric"].includes(d.prefs?.units) ? { units: d.prefs.units } : {}), examples: d.prefs?.examples === true, ...(d.prefs?.ask === false ? { ask: false } : {}) };
   // Rhythm: minutes each day of the week (Monday first, none a rest day), a run and a swim, its lean, build or hold, the
   // Monday it began and the day it was set up
   const r = d.rhythm, rhythm = obj(r) && Array.isArray(r.days) && r.days.length === 7 ? { days: r.days.map((x) => Math.round(num(x, 0, 600) ?? 0)), run: r.run === true, swim: r.swim === true,
@@ -112,8 +115,14 @@ export function cleanAct(m) {
   if (["power", "hr", "pace"].includes(m.sum?.kind)) sum.kind = m.sum.kind;
   if (obj(m.sum?.curve)) { sum.curve = {}; for (const [k, v] of Object.entries(m.sum.curve).slice(0, 20)) if (/^\d{1,5}$/.test(k) && num(v, 0, 5000) != null) sum.curve[k] = Math.round(v); }
   for (const z of ["zones", "hrZones"]) if (Array.isArray(m.sum?.[z]) && m.sum[z].length <= 7) sum[z] = m.sum[z].map((v) => Math.round(num(v, 0, 1e6) ?? 0));
+  const route = cleanRoute(m.sum?.route); if (route) sum.route = route;
   return { id: m.id, start, sport: SPORTS.includes(m.sport) ? m.sport : "other", indoor: !!m.indoor, name: text(m.name, 80) || "Activity", device: text(m.device, 80) || null,
     file: text(m.file, 120) || null, type: TYPES.includes(m.type) ? m.type : null, sum };
+}
+// A route's shape, for its row: up to 48 points, each across and down in a box 0 to 100
+export function cleanRoute(r) {
+  if (!Array.isArray(r) || r.length < 4 || r.length > 96 || r.length % 2) return null;
+  return r.every((v) => num(v, 0, 100) != null) ? r.map((v) => Math.round(v)) : null;
 }
 // The file's what it says it is: a FIT file's header, or the XML of a GPX or TCX
 export function fileIs(type, u8) {
@@ -200,6 +209,15 @@ export async function activityFile(env, userId, id) {
 export async function renameActivity(env, userId, id, name) {
   const r = await (await fitdb(env)).prepare("UPDATE fx_acts SET name = ? WHERE user_id = ? AND id = ?").bind(text(name, 80) || "Activity", userId, id).run();
   if (!r.meta?.changes) throw new HttpError(404, "That activity isn’t here any more.");
+}
+// its route's shape, worked out by the phone for one kept before rows had it
+export async function routeActivity(env, userId, id, route) {
+  const D = await fitdb(env), clean = cleanRoute(route);
+  if (!clean) throw new HttpError(400, "Bad request.");
+  const row = await D.prepare("SELECT sum FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
+  if (!row) throw new HttpError(404, "That activity isn’t here any more.");
+  let sum = {}; try { sum = JSON.parse(row.sum || "{}") || {}; } catch (_) {}
+  await D.prepare("UPDATE fx_acts SET sum = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, route: clean }), userId, id).run();
 }
 export async function deleteActivity(env, userId, id) {
   await (await fitdb(env)).prepare("DELETE FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).run();

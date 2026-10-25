@@ -46,6 +46,7 @@ export const canGzip = () => typeof CompressionStream === "function" && typeof D
 export const gzip = async (u8) => (canGzip() ? pipe(u8, new CompressionStream("gzip")) : u8);
 export const gunzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b ? pipe(u8, new DecompressionStream("gzip")) : u8);
 export const rename = (id, name) => call(`acts/${encodeURIComponent(id)}`, { method: "PATCH", body: { name } });
+export const setRoute = (id, route) => call(`acts/${encodeURIComponent(id)}`, { method: "PATCH", body: { route } });
 export const remove = (id) => call(`acts/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 // ---- the account's own page ----

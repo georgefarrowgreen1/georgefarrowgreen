@@ -89,7 +89,7 @@ const pages = [];
 async function browser(name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, acceptDownloads: true });
   // (the day's check-in, asked as the app opens, left for the step that tests it: as if already asked today)
-  await ctx.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); } catch (_) {} });
+  await ctx.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`${name}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[13]|Cross-Origin-Opener-Policy header has been ignored/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
@@ -114,8 +114,8 @@ const P = await browser('phone');
 await P.p.goto(`${FIT}/`);
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 const welcome = await P.p.evaluate(() => ({ text: document.querySelector('main').innerText.replace(/\s+/g, ' '), tabs: getComputedStyle(document.querySelector('.tabbar')).display, btns: [...document.querySelectorAll('main button')].map((x) => x.textContent) }));
-ok(!welcome.text.replace('Sign in', '').trim() && welcome.btns.join() === 'Sign in' && welcome.tabs === 'none',
-  'signed out: its mark, and only Sign in (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
+ok(/^Training that fits your week Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
+  'signed out: its mark and a line, Sign in, and a way in for someone new (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
 await P.p.setInputFiles('#files', FILES.slice(0, 1)); await settle(P, 800);
 ok(!(await P.p.$('#sheet[open]')) && await P.p.$('.welcome #sign-in'), 'a file given it signed out: nothing read, nothing kept');
 const outMe = await api(P, '/api/fitness/me'), outPut = await api(P, '/api/fitness/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"base":0,"data":{}}' });
@@ -202,11 +202,19 @@ ok(/Rhythm · not set up/.test(await P.p.locator('.head .sub').innerText()) && a
 await P.p.locator('main .btn', { hasText: 'Set up Rhythm' }).click(); await settle(P, 800);
 // (1. your days: Monday, a rest day, tapped to a ride day; 2. a run a week; 3. build; 4. the first week, then Start)
 ok(await P.p.locator('#sheet .rh-day .track').count() === 7 && /^When do you ride\?/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'step 1: a bar for each day');
+// (Monday, a rest day, tapped and made an hour a quarter at a time)
 await P.p.locator('#sheet .rh-day .track').first().click(); await settle(P, 300);
+for (let i = 0; i < 3; i++) { await P.p.getByRole('button', { name: '15 minutes more' }).click(); await settle(P, 150); }
+const dayStep = await P.p.locator('#sheet .rh-daystep').innerText();
+ok(/Monday/.test(dayStep) && /\b1 h\b/.test(dayStep), 'a day tapped, and its time set with − and +', dayStep.replace(/\s+/g, ' '));
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 // (only a few rides uploaded: where you've been riding lately, for Rhythm to start from)
 ok(/How much have you been riding/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'little riding uploaded: asked how much you’ve been riding lately');
 await P.p.locator('#sheet .rh-choice', { hasText: 'Most weeks, regularly' }).click(); await settle(P, 300);
+await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
+// (your numbers: worked out from your rides till you set them)
+const numStep = await P.p.locator('#sheet').innerText();
+ok(/Your numbers/.test(numStep) && /FTP/.test(numStep) && /Estimated from \d+ ride|A starting guess/.test(numStep), 'setting up: your numbers asked, each marked worked out or a guess', numStep.replace(/\s+/g, ' ').slice(0, 160));
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 await P.p.locator('#sheet .rh-tile', { hasText: 'A run a week' }).click(); await settle(P, 300);
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
@@ -221,20 +229,24 @@ const st2 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : n
 ok(/^Aerobic block · week 1 of 4/.test(planSub) && st2?.rhythm?.days?.[0] === 60 && st2.rhythm.run === true && st2.rhythm.level === 'regular', 'Rhythm set up on the phone: your week kept with the account', `${planSub} | ${JSON.stringify(st2?.rhythm)}`);
 await you(L);
 await L.p.locator('#sheet .row', { hasText: 'FTP' }).first().click(); await settle(L, 600);
+const ftpWas = parseInt(await L.p.locator('#sheet .stepper output').first().innerText(), 10);
 await L.p.getByRole('button', { name: 'More FTP' }).click(); await settle(L, 300);
 await L.p.getByRole('button', { name: 'More FTP' }).click();
-const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp ? s : null; });
-ok(st3?.rhythm?.run === true && st3.profile.ftp === PROFILE.ftp + 10, 'a new FTP on the laptop, which hadn\'t heard of Rhythm: both kept', JSON.stringify(st3 && { rhythm: !!st3.rhythm, ftp: st3.profile.ftp }));
+const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp === ftpWas + 10 ? s : null; });
+ok(st3?.rhythm?.run === true && st3.profile.ftp === ftpWas + 10 && st3.profile.set?.includes('ftp'), 'a new FTP on the laptop, which hadn\'t heard of Rhythm: both kept', JSON.stringify(st3 && { rhythm: !!st3.rhythm, ftp: st3.profile.ftp }));
 await done(L); await done(L);
 await tab(L, 2);
 ok(/ block · /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
-// (miles, chosen on the phone: the laptop's in miles too, next it's opened)
+// (units: kilometres at first, from the browsers' region (en-GB); miles, chosen on the phone: the laptop's in miles too,
+// next it's opened)
 await you(P);
+const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Units' }).innerText();
 await P.p.locator('#sheet .row', { hasText: 'Units' }).click(); await settle(P, 400);
 await done(P);
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await you(L);
-ok(/Miles/.test(await L.p.locator('#sheet .row', { hasText: 'Units' }).innerText()), 'miles, chosen on the phone: the laptop\'s in miles too');
+const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Units' }).innerText();
+ok(/Kilometres/.test(unitsFirst) && /From your region/.test(unitsFirst) && /Miles/.test(unitsThen) && !/From your region/.test(unitsThen), 'units from your region at first; miles, chosen on the phone: the laptop\'s in miles too', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));
 await done(L);
 
 // ---- 6. A ride renamed on the phone, and another deleted: so on the laptop ----
@@ -245,7 +257,7 @@ await P.p.locator('#sheet').getByRole('button', { name: 'Rename' }).click(); awa
 await P.p.fill('#sheet input.field', 'Saturday loop');
 await P.p.getByRole('button', { name: 'Save' }).click(); await settle(P, 800);
 await done(P);
-await P.p.locator('.row', { hasText: 'Garmin' }).first().click();
+await P.p.locator('.row', { hasText: 'Indoor ride' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P);
 await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P, 300);
 await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P, 1200);
