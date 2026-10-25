@@ -103,6 +103,8 @@ const screens = [
   ['stopover', async () => { await openChat(G, ps.me.id); await act(G, 'via'); await G.waitForSelector('.sheet'); }],
   ['gifs', async () => { await openChat(G, ps.me.id); await act(G, 'gifs'); await G.waitForSelector('.sheet'); }],
   ['search', async () => { await G.fill('#msearch', 'river'); await G.waitForTimeout(800); }],
+  // (a friend found by name: their chat stays in the list)
+  ['namesearch', async () => { await G.fill('#msearch', 'pierre'); await G.waitForTimeout(400); const vis = await G.locator(`.mlist .mrow[data-id="${ps.me.id}"]`).isVisible(); report.push({ tag: 'namesearch', layout: vis ? [] : ['NAME SEARCH hides Pierre'], ellipsis: [], axe: [] }); await G.fill('#msearch', ''); throw 'done'; }],
   ['drafts', async () => { await openChat(G, ps.me.id); await G.fill('#msg', 'A draft for Pierre'); await openChat(G, ns.me.id); const v1 = await G.inputValue('#msg'); await openChat(G, ps.me.id); const v2 = await G.inputValue('#msg'); report.push({ tag: 'draftcheck', layout: v1 === '' && v2 === 'A draft for Pierre' ? [] : [`DRAFT BUG nia="${v1}" pierre="${v2}"`], ellipsis: [], axe: [] }); await G.fill('#msg', ''); }],
   ['chatmenu', async () => { await openChat(G, ps.me.id); await G.click('[data-act=chatmenu]'); await G.waitForSelector('.menu-pop'); }],
   ['map', async () => { await openChat(G, ps.me.id); await G.click('[data-act=map]'); await G.waitForSelector('.sheet .map', { timeout: 8000 }); await G.waitForTimeout(1500); }],

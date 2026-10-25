@@ -1132,7 +1132,7 @@ keeps + and − still. Reduce Motion fades instead of moving, rather than cuttin
 
 **1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
-**Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it) and `icon-maskable-512.png` square for Android's masks.
+**Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it), `icon-maskable-512.png` square for Android's masks, and `badge-96.png`, the white pigeon alone on transparent, for Android's notification badge.
 
 **1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
@@ -1729,10 +1729,13 @@ closes whatever is on top, for a keyboard.
 light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
 little darker than iOS's, the blue a touch deeper, and green, orange and red
 words use darker versions of those colours, while switches, dots and badges
-keep the bright ones). The page itself doesn't zoom, so it always fits the
-screen (pinching zooms the map; text size follows the iPhone's own setting,
-below), every icon button has a spoken name, sheets are labelled dialogs with their own heading,
-chats have a heading for screen readers, and the app's content is the page's
+keep the bright ones). Pinching zooms the page, for words too small to read
+(on the map it zooms the map; zoomed in, one finger moves round the page,
+even from the message box, so the swipes between tabs and back, pulling to refresh,
+pulling a sheet or photo away, folding the map's card and flicking a banner
+wait till it's back to size). Every icon button has a spoken name, sheets are labelled
+dialogs with their own heading (Tab and Switch Control stay in a sheet, menu or
+question till it closes), chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the
 iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
 every movement: screens, sheets, banners and new messages dissolve in and out instead.

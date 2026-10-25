@@ -101,6 +101,40 @@ await A.p.click('.sheet header [data-act=loftback]').catch(() => {}); await A.p.
 const back = await A.p.evaluate(() => [document.querySelector('.sheet .body')?.className, getComputedStyle(document.querySelector('.sheet .body')).animationName]);
 ok(/go-on/.test(on[0]) && on[1] === 'sheet-on', 'in a sheet, on to another: it slides in from the right', JSON.stringify(on));
 ok(/go-back/.test(back[0]) && back[1] === 'sheet-back', 'and back: from the left', JSON.stringify(back));
+// 5. with a sheet up, Tab stays in it (the screen behind can't be reached), and once it's closed the screen can be again
+const tabbed = [];
+for (let i = 0; i < 16; i++) { await A.p.keyboard.press('Tab'); tabbed.push(await A.p.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'body' : a.closest('.layer') ? 'sheet' : a.outerHTML.slice(0, 80); })); }
+const under = await A.p.evaluate(() => [document.querySelector('#screen > .view').inert, document.querySelector('.tabbar').inert, document.querySelector('.compose').inert]);
+ok(tabbed.every((x) => x === 'sheet' || x === 'body') && under.every(Boolean), 'with a sheet up, Tab never leaves it for the screen behind', JSON.stringify([...new Set(tabbed)]) + ' ' + JSON.stringify(under));
+await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(900);
+const freed = await A.p.evaluate(() => [document.querySelector('#screen > .view').inert, document.querySelector('.compose').inert]);
+ok(freed.every((x) => !x), 'and once it closes, the screen can be reached again', JSON.stringify(freed));
+// 6. a switch flipped by keyboard on Account (the whole screen is drawn again): focus stays on it, so a second press flips it back
+await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=account]')?.click()); await A.p.waitForSelector('.view [data-act=haptics]'); await A.p.waitForTimeout(900);
+const sw = () => A.p.evaluate(() => { const a = document.activeElement; return { act: a?.dataset?.act || a?.tagName, on: a?.getAttribute?.('aria-checked') }; });
+await A.p.evaluate(() => document.querySelector('.view [data-act=haptics]').focus());
+const s0 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(400);
+const s1 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(400);
+const s2 = await sw();
+ok(s1.act === 'haptics' && s1.on !== s0.on && s2.act === 'haptics' && s2.on === s0.on, 'a switch flipped by keyboard keeps its focus through the redraw', JSON.stringify([s0, s1, s2]));
+// 7. a menu opened by a tap that focused its button (as Android's do): the button's inert under the menu, which lets
+// its focus go, and a tap outside the menu gives it back
+await openChat(A, bs.me.id);
+await A.p.click('.view [data-act=chatmenu]'); await A.p.waitForSelector('.menu-pop'); await A.p.waitForTimeout(300);
+const under7 = await A.p.evaluate(() => document.activeElement?.dataset?.act || document.activeElement?.tagName);
+await A.p.click('.menu-scrim', { position: { x: 20, y: 700 } }); await A.p.waitForTimeout(500);
+const back7 = await A.p.evaluate(() => document.activeElement?.dataset?.act || document.activeElement?.tagName);
+ok(back7 === 'chatmenu', 'a menu closed by a tap outside it gives the focus back to what opened it', `${under7} → ${back7}`);
+// 8. a card in the air keeps its focus as Messages is drawn again (it's the same card, put back in the new list)
+await K.say(A, 'standard', 'Off to New York');
+await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=messages]')?.click()); await A.p.waitForSelector('.view .acard', { timeout: 15000 }); await A.p.waitForTimeout(900);
+const where = () => A.p.evaluate(() => { const a = document.activeElement; return a?.classList?.contains('acard') ? 'acard' : a?.outerHTML?.slice(0, 120) || String(a); });
+await A.p.evaluate(() => { document.querySelector('.view .acard').focus(); document.querySelector('.view .mlist').dataset.was = '1'; }); const card0 = await where();
+// (news for Ann, from Ben: her sync draws the list again)
+K.one(`UPDATE pg_users SET place = 'Brooklyn' WHERE id = '${bs.me.id}'`);
+await A.p.evaluate(() => dispatchEvent(new Event('online'))); await A.p.waitForFunction(() => !document.querySelector('.view .mlist[data-was]'), null, { timeout: 20000 }).catch(() => {}); await A.p.waitForTimeout(400);
+const card = await where(), drawn = await A.p.evaluate(() => !document.querySelector('.view .mlist[data-was]'));
+ok(card0 === 'acard' && drawn && card === 'acard', 'a card in the air keeps its focus through a redraw of Messages', `${card0} → ${card}${drawn ? '' : ' (not redrawn)'}`);
 await A.p.screenshot({ path: `${out}/after.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
