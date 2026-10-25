@@ -459,7 +459,7 @@ function openDay(day) {
 // ---- Workouts ----
 function workoutsView() {
   const sports = [["ride", "Ride"], ["run", "Run"], ["swim", "Swim"], ["strength", "Strength"]], at = sports.findIndex(([k]) => k === S.sport);
-  const out = [head("Workouts", "Every session, to ride and to send", h("button.round", { type: "button", "aria-label": "Build a workout", onclick: () => openSheet(() => builderView()) }, icon("plus", 22, 2.2)))];
+  const out = [head("Workouts", "Every session, to ride and to send")];
   out.push(h("div.seg.wide", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.sport === k), onclick: () => { S.sport = k; redraw(); } }, label))));
   const mine = S.mine.filter((w) => w.sport === S.sport);
   if (mine.length) out.push(section("Yours", h("div.group.glass", {}, mine.map(workoutRow))));

@@ -163,7 +163,7 @@ const planSub = await P.p.locator('.head .sub').innerText();
 const st2 = await waitFor(() => { const s = state(sam); return s?.plan ? s : null; });
 ok(/^FTP builder · starts /.test(planSub) && st2?.plan?.id === 'ftp' && st2.ver === st1.ver + 1, 'a plan chosen on the phone: kept with the account', `${planSub} | ${JSON.stringify(st2?.plan)} v${st2?.ver}`);
 await tab(L, 3);
-await L.p.click('.head .round:not(.me)'); await settle(L, 800);
+await L.p.locator('.row', { hasText: 'Build a workout' }).click(); await settle(L, 800);
 await L.p.fill('#sheet input.field', 'Tuesday threes');
 await L.p.getByRole('button', { name: /Repeat$/ }).click();
 await L.p.getByRole('button', { name: 'Save' }).click(); await settle(L, 800);
