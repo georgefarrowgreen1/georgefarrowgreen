@@ -1278,10 +1278,10 @@ function garminView() {
     try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
     catch (e) { btn.disabled = false; btn.textContent = g?.on ? "Add the new key" : "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
     Sheet.redraw();
-    // (six weeks of them, a few at a time)
+    // (six months of them, a batch at a time)
     let n = await fromGarmin({ quiet: true });
-    for (let i = 0; i < 8 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await fromGarmin({ quiet: true }); }
-    toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six weeks` : "Connected to Garmin Connect");
+    for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await fromGarmin({ quiet: true }); }
+    toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
   };
   const keyForm = (label) => { const btn = h("button.btn", { type: "button", onclick: () => add(btn) }, label); field.addEventListener("keydown", (e) => { if (e.key === "Enter") add(btn); }); return [field, btn]; };
   if (!g?.on) return { title: "Garmin Connect", body: [
@@ -1290,7 +1290,7 @@ function garminView() {
       h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: "1" })), h("span.tx", {}, h("b", { text: "Make a key in Garmin Connect" }), h("small", { text: "Settings, then Personal API Key, then Create" }))),
       h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Copy it, and paste it here" }), h("small", { text: "Garmin shows it only once" }))))),
     h("div.garmin-key", {}, ...keyForm("Connect")),
-    section(null, h("p.foot", { text: "The key is kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in your activities from the last six weeks, then each new one. Workouts still go to your device by Download." })),
+    section(null, h("p.foot", { text: "The key is kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in your activities from the last six months, then each new one. Workouts still go to your device by Download." })),
   ] };
   const disconnect = async () => {
     if (!confirm("Disconnect Garmin Connect? Activities already brought in stay.")) return;

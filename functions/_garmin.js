@@ -18,8 +18,8 @@ const TOKEN = "/personalapitoken-service/personal-api/personal-api-key/token";
 const SEARCH = "/activitylist-service/activities/search/activities";
 const FILE = (id) => `/download-service/files/activity/${id}`;
 export const EVERY = 15 * 60e3;          // how often the scheduler asks for each account
-const FIRST = 42;                        // days fetched when first connected: the six weeks fitness is worked out over
-const MOST = 10;                         // files fetched in one go (the rest the next time)
+const FIRST = 183;                       // days fetched when first connected: six months
+const MOST = 25;                         // files fetched in one go (the rest the next time)
 const SEEN = 600;                        // activities remembered as fetched
 export const newKey = (userId, id) => `fitness/${userId}/garmin/${id}`;
 const base = (env) => (env.GARMIN_API || API).replace(/\/$/, "");
@@ -63,7 +63,7 @@ const when = (v) => (typeof v === "number" ? v : typeof v === "string" ? Date.pa
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 
 // ---- connecting, and not ----
-// Your key: tried at once (a key Garmin won't take isn't kept), then kept, locked, and the first six weeks fetched
+// Your key: tried at once (a key Garmin won't take isn't kept), then kept, locked, and the last six months fetched
 export async function connect(env, userId, rawKey) {
   const key = String(rawKey || "").trim();
   if (!/^[\x21-\x7e]{16,2048}$/.test(key)) throw new HttpError(400, "That doesn’t look like a Personal API key. Copy it again from Garmin Connect.", "key");
@@ -117,14 +117,14 @@ export async function fetchNew(env, userId, { force = false } = {}) {
     }
     const seen = new Set(JSON.parse(g.seen || "[]")), waiting = new Set((await D.prepare("SELECT id FROM fx_garmin_new WHERE user_id = ?").bind(userId).all()).results.map((r) => r.id));
     const from = ymd((g.since || now - FIRST * 86400e3) - 86400e3), found = [];
-    for (let start = 0; start < 200; start += 50) {
-      const page = await get(env, token, `${SEARCH}?start=${start}&limit=50&startDate=${from}&endDate=${ymd(now + 86400e3)}`);
+    for (let start = 0; start < 1000; start += 100) {
+      const page = await get(env, token, `${SEARCH}?start=${start}&limit=100&startDate=${from}&endDate=${ymd(now + 86400e3)}`);
       const list = Array.isArray(page) ? page : page?.activities || page?.activityList || page?.results || [];
       for (const a of list) {
         const id = String(a.activityId ?? a.id ?? "");
         if (/^\d{1,20}$/.test(id) && !seen.has(id) && !waiting.has(id)) found.push({ id, start: when(a.startTimeGMT ?? a.beginTimestamp ?? a.startTimeLocal), name: String(a.activityName || "").slice(0, 80) || null });
       }
-      if (list.length < 50) break;
+      if (list.length < 100) break;
     }
     // oldest first, so a long gap fills in order; a few at a time
     found.sort((a, b) => (a.start || 0) - (b.start || 0));
