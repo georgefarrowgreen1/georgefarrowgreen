@@ -117,10 +117,27 @@ await p.getByRole('button', { name: 'Save' }).click(); await settle(800);
 ok(await p.locator('.section', { hasText: 'Yours' }).getByText('Tuesday threes').count() === 1, 'a built workout, saved to yours');
 await p.click('.tab:nth-child(2)'); await settle();
 await p.getByRole('button', { name: /^FTP builder/ }).click(); await settle();
-await p.locator('#sheet .btn').click(); await settle(800);
+await p.getByRole('button', { name: /^Start next Monday/ }).click(); await settle(800);
 ok(/^FTP builder · starts Mon 26 Oct/.test(await p.locator('.head .sub').innerText()), 'another plan, starting next Monday', await p.locator('.head .sub').innerText());
 
-// 6. nothing scrolls sideways on a small phone
+// 6. only your own rides: the examples off, and a plan to end on your event's day (one too near for all its weeks
+// starts partway, the weeks before not missed)
+await p.click('.round.me'); await settle(800);
+await p.getByRole('button', { name: /Showing example rides/ }).click(); await settle(600);
+await p.keyboard.press('Escape'); await settle(700);
+await p.click('.tab:nth-child(4)'); await settle();
+ok(/^3 activities/.test(await p.locator('.head .sub').innerText()), 'Activities: only the three imported', await p.locator('.head .sub').innerText());
+await p.click('.tab:nth-child(1)'); await settle(1200);
+ok(await p.locator('.fig b').count() === 3, 'fitness and form, from your own rides alone');
+await p.click('.tab:nth-child(2)'); await settle();
+await p.getByRole('button', { name: /^Sportive 160 km/ }).click(); await settle();
+await p.fill('#plan-end', '2027-01-03'); await settle(300);
+const by = await p.locator('#sheet .btn.quiet').innerText();
+ok(/^Start at week 6, to end Sun 3 Jan/.test(by), 'an event ten weeks off: the 16-week plan starts at week 6', by);
+await p.locator('#sheet .btn.quiet').click(); await settle(800);
+ok(/^Sportive 160 km · week 6 of 16/.test(await p.locator('.head .sub').innerText()) && await p.locator('.badge.plan').count() === 0, 'in week 6, nothing before it missed', await p.locator('.head .sub').innerText());
+
+// 7. nothing scrolls sideways on a small phone
 await p.setViewportSize({ width: 320, height: 640 }); await settle();
 const wide = [];
 for (const i of [1, 2, 3, 4]) { await p.click(`.tab:nth-child(${i})`); await settle(400); if (await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push(i); }

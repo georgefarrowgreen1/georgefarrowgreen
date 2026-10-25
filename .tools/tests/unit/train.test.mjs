@@ -10,6 +10,7 @@ import {
   ergFromWorkout, mrcFromWorkout, workoutFromCourse, planFromWorkout, readAny, zip, unzip, crc32,
 } from '../../../train/formats.js';
 import { WORKOUTS, workoutById, measure, layOut, PLANS, mondayOf } from '../../../train/workouts.js';
+import { activityFromFit } from '../../../train/formats.js';
 import { summarise, fitness, bestEfforts } from '../../../train/load.js';
 import { demo, samples, PROFILE } from '../../../train/sample.js';
 
@@ -127,6 +128,37 @@ test('a workout out to Zwift, TrainerRoad and an older ELEMNT, and back', () => 
   assert.match(plan, /^=HEADER=\nNAME=Sweet spot 3 × 12\n/);
   assert.equal((plan.match(/=INTERVAL=/g) || []).length, 8, 'repeats written out in full');
   assert.match(plan, /PERCENT_FTP_LO=88\nPERCENT_FTP_HI=93\nMESG_DURATION_SEC>=720\?EXIT/);
+});
+
+test('real devices\' quirks: a corrupt last sample, a sensor of zeros, a triathlon in one file, the oldest speed fields', () => {
+  const t0 = 1792310400, id = (serial) => ['fileId', { type: 4, manufacturer: 1, product: 1, serial, created: t0 }];
+  const rec = (i, x = {}) => ['record', { timestamp: t0 + i, heartRate: 140, power: 0, cadence: 0, distance: i * 5, ...x }];
+  // (a device that lost power mid-write: its last sample dated decades on; and a power meter it never had, all zeros)
+  const cut = activityFromFit(writeFit([id(1), ...Array.from({ length: 600 }, (_, i) => rec(i)), ['record', { timestamp: t0 + 2e9, heartRate: 140 }],
+    ['session', { timestamp: t0 + 599, startTime: t0, sport: 2, elapsed: 599, timer: 599 }]]))[0];
+  assert.equal(cut.s.t.length, 600, 'the corrupt last sample left out');
+  assert.equal(cut.s.pwr, null, 'a power column of zeros: no power meter');
+  assert.ok(summarise(cut).moving >= 599);
+  // (a triathlon: a ride, a transition and a run in one file, its distance counted on through them all)
+  const tri = activityFromFit(writeFit([id(2), ...Array.from({ length: 3420 }, (_, i) => rec(i, { distance: i * 4 })),
+    ['session', { timestamp: t0 + 1800, startTime: t0, sport: 2, elapsed: 1800, timer: 1800 }],
+    ['session', { timestamp: t0 + 1920, startTime: t0 + 1800, sport: 3, elapsed: 120, timer: 120 }],
+    ['session', { timestamp: t0 + 3419, startTime: t0 + 1920, sport: 1, elapsed: 1499, timer: 1499 }]]));
+  assert.deepEqual(tri.map((a) => a.sport), ['ride', 'run'], 'the ride and the run, the transition left out');
+  assert.ok(Math.abs(summarise(tri[1]).dist - 1499 * 4) < 10, 'the run\'s distance its own, not the whole file\'s');
+  // (a Forerunner 405's three bytes of speed and distance, as the writer has no field for them: written here by hand,
+  // 4.5 m/s and 8 m on each second)
+  const head = writeFit([id(3)]), body = [...head.subarray(14, head.length - 2)];
+  body.push(0x41, 0, 0, 20, 0, 3, 253, 4, 0x86, 3, 1, 0x02, 8, 3, 0x0d);
+  for (let i = 0; i < 100; i++) {
+    const d = (i * 8 * 16) % 4096;
+    body.push(1, ...new Uint8Array(new Uint32Array([t0 + i - 631065600]).buffer), 150, 450 & 0xff, ((450 >> 8) & 0x0f) | ((d & 0x0f) << 4), d >> 4);
+  }
+  const u = new Uint8Array(14 + body.length + 2), dv = new DataView(u.buffer);
+  u.set(head.subarray(0, 14)); u.set(body, 14);
+  dv.setUint32(4, body.length, true); dv.setUint16(12, crc16(u, 0, 12), true); dv.setUint16(u.length - 2, crc16(u, 0, u.length - 2), true);
+  const old = activityFromFit(u)[0];
+  assert.ok(Math.abs(summarise(old).dist - 99 * 8) < 1 && Math.abs(old.s.spd[50] - 4.5) < 0.01, 'speed and distance unpacked');
 });
 
 test('a zip of files, stored or deflated, opens to the same files', async () => {

@@ -1115,10 +1115,14 @@ service, with made-up forecasts for the time it runs).
 ## Cadence (a demo, in `train/`)
 
 Training, riding first and running, swimming and strength alongside, proposed as the site's next app and here as a
-working demo. It isn't on any address of its own yet: a preview (`*.pages.dev`) or a local copy serves it at `/train/`,
-as it does Weather at `/weather/`. Everything in it is made-up example data for a rider five weeks into a 16-week plan
-for a 160 km sportive, dated from today so it always reads as now; files you import sit alongside. No build step, no
-keys, no database: like Weather, it works everything out on the phone.
+working app to try. It isn't on any address of its own yet: a preview (`*.pages.dev`) or a local copy serves it at
+`/train/`, as it does Weather at `/weather/`. It opens with example rides (made up, for a rider five weeks into a 16-week
+plan for a 160 km sportive, dated from today so they always read as now); your own files sit alongside, and **Use only my
+rides** (or You › Example rides) turns the examples off, so your fitness, the week and the plan go by your rides alone.
+No build step, no keys, no database: like Weather, it works everything out on the phone, and keeps your rides (the files
+as read), workouts, plan and numbers in this browser (IndexedDB and local storage). Signing in, to keep them with the
+account on every device, comes with its own address: a preview has no account to sign in to (the account's API answers
+only at account.georgefarrowgreen.com).
 
 **What it does**
 
@@ -1130,7 +1134,8 @@ keys, no database: like Weather, it works everything out on the phone.
 - **Plan**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
   asks, what's done), this week's and next week's days (each a tap from its workout), this week's workouts as one zip
   of FIT files, both weeks as calendar events (.ics), and other plans: FTP builder, winter base, a first 10k, a sprint
-  triathlon (each laid out from next Monday, an easier week every fourth).
+  triathlon, each started next Monday or so it ends on your event's day (one too near for all its weeks starts partway, the
+  weeks before not counted as missed), an easier week every fourth; or none, and Today says so.
 - **Workouts**: 22 to start with (endurance, tempo, sweet spot, threshold, over-unders, hill repeats at low cadence,
   VO₂ max, 30/30s, sprints, a ramp test and a 20-minute FTP test; runs, swims, and core work), each with its shape at
   your FTP, its steps in watts (or pace), and its files; yours, built step by step (warm up, intervals, repeats, cool
@@ -1158,6 +1163,13 @@ all, and this reads what the SDK writes; the SDK's licence keeps it out of the s
 | TrainerRoad, Golden Cheetah and others | ERG (watts at your FTP) and MRC (shares of FTP) | | ERG, MRC |
 | Garmin Connect, Strava, TrainingPeaks, intervals.icu, the Wahoo app | | FIT, GPX (with heart rate, cadence and power), TCX | GPX, TCX |
 
+Read against real devices' files (the python-fitparse project's samples: Edges 500, 810 and 820, fenix watches, two
+Wahoo ELEMNTs, COROS, Zwift, the Strava app, Garmin's own workouts, and damaged and cut-short files): a triathlon recorded
+as one file becomes its swim, ride and run (transitions left out, each its own distance); a sensor the device never had,
+written as zeros, isn't one; the last sample of a file a device lost power writing, dated decades on, is left out; a pool
+swim and an indoor ride with no speed count their whole time as moving; and the oldest Forerunners' speed and distance,
+packed into three bytes, are unpacked. Settings, health and weight files are said to be what they are.
+
 Garmin Connect can't take a workout file (only Garmin's partner programme can send one to it), and a newer Edge (the
 1050, or a 540, 840 or 1040 since late 2024) mounts as a phone does rather than a drive, so on a Mac it's OpenMTP: the
 Send sheet says so. Workouts go as shares of FTP, so the device's own FTP sets the watts; a ramp, which FIT can't say,
@@ -1182,11 +1194,11 @@ email in the site's email look (a `cadence` brand). 5. Health: resting heart rat
 programmes, into readiness.
 
 **Tests.** `.tools/tests/unit/train.test.mjs` (in CI: FIT byte for byte, cut short and damaged files, compressed
-timestamps, a ride round FIT, GPX and TCX with the same figures, workouts out to every format and back, zips, the
-training-load maths) and `.tools/tests/cadence.mjs` (end to end on a fixed Tuesday: today's session and form, each
+timestamps, a ride round FIT, GPX and TCX with the same figures, real devices' quirks, workouts out to every format and
+back, zips, the training-load maths) and `.tools/tests/cadence.mjs` (end to end on a fixed Tuesday: today's session and form, each
 device's file downloaded and read back, five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and
 one it can't read, a ride out as FIT with every sample, kept after a reload, a hard day swapped, a workout built, a plan
-started, and no screen wider than a 320 px phone).
+started, the examples turned off and a plan set to end on an event's day, and no screen wider than a 320 px phone).
 
 ## InFlight (chat.georgefarrowgreen.com) — 1.3.5
 

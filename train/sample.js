@@ -91,8 +91,8 @@ export function samples(h, profile = PROFILE) {
     hr.push(Math.round(hrNow + (r() - 0.5) * 2));
     t.push(i);
     if (w.sport === "strength") continue;
-    d += v;
     spd.push(Math.round(v * 100) / 100); dist.push(Math.round(d * 10) / 10);
+    d += v;
     if (!outdoor) continue;
     th.push(theta); ele.push(Math.round((60 + height(theta) - 70) * 10) / 10);
     // (on round the loop by as far as the road went this second)

@@ -15,7 +15,11 @@ export const CURVE = [5, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600];
 
 // The samples as one a second (each held until the next, as long as it's not a pause of more than 10 s)
 export function perSecond(a) {
-  const s = a.s, n = s.t.length, end = Math.floor(s.t[n - 1]);
+  // (two days at most: anything longer is a file's fault, not a ride)
+  const s = a.s, n = s.t.length, end = Math.min(2 * 86400, Math.floor(s.t[n - 1]));
+  // (moving: the wheels turning, or the pedals, or the feet; where nothing says how fast (an indoor trainer with no speed,
+  // a pool swim), whenever it's recording)
+  const fast = s.spd && s.spd.some((v) => v > 0.5), thr = a.sport === "ride" ? 1 : 0.5;
   const keys = ["pwr", "hr", "cad", "spd", "ele", "dist"].filter((k) => s[k]);
   const out = Object.fromEntries(keys.map((k) => [k, new Float64Array(end + 1).fill(NaN)]));
   out.moving = new Uint8Array(end + 1);
@@ -28,7 +32,7 @@ export function perSecond(a) {
       const hold = gap > 10 && (k === "pwr" || k === "cad") ? 0 : v;
       for (let x = from; x < Math.min(to, end + 1); x++) out[k][x] = x === from ? v : hold;
     }
-    const sp = s.spd?.[i], moved = gap <= 10 && (sp == null ? (s.pwr?.[i] || s.cad?.[i] || 0) > 0 || !s.spd : sp > (a.sport === "ride" ? 1 : 0.5));
+    const moved = gap <= 10 && (!fast || a.sport === "swim" || (s.spd[i] ?? 0) > thr || (s.pwr?.[i] || 0) > 0 || (s.cad?.[i] || 0) > 0);
     for (let x = from; x < Math.min(to, end + 1); x++) out.moving[x] = moved ? 1 : 0;
   }
   return out;
@@ -38,8 +42,9 @@ export function perSecond(a) {
 export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190 } = {}) {
   const s = a.s, n = s.t.length, ps = perSecond(a), secs = ps.moving.length;
   const moving = ps.moving.reduce((x, m) => x + m, 0);
-  const last = (arr) => { if (!arr) return null; for (let i = arr.length - 1; i >= 0; i--) if (arr[i] != null) return arr[i]; return null; };
-  const dist = last(s.dist) ?? 0;
+  // (distance: as far as it got from where it started, which a device's reset mid-file can't make less than nothing)
+  let dist = 0;
+  if (s.dist) { const first = s.dist.find((v) => v != null) ?? 0; for (const v of s.dist) if (v != null && v - first > dist) dist = v - first; }
   // climbing: rises in the smoothed height, counted once they pass 2 m (so a GPS's wobble isn't counted as hills)
   let ascent = 0;
   if (s.ele) {
@@ -69,7 +74,7 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190 } = {}) {
     for (let i = 0; i < p.length; i++) if (ps.moving[i] || p[i] > 0) out.zones[zoneOf(p[i] / ftp).n - 1]++;
   }
   if (ps.hr) {
-    out.avgHr = Math.round(avg(ps.hr, true)); out.maxHr = Math.round(max(ps.hr));
+    out.avgHr = Math.round(avg(ps.hr, true) ?? avg(ps.hr)); out.maxHr = Math.round(max(ps.hr));
     out.hrZones = HR_ZONES.map(() => 0);
     let hrs = 0;
     for (let i = 0; i < ps.hr.length; i++) {

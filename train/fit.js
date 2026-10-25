@@ -26,7 +26,7 @@ const MESGS = {
   event: [21, { timestamp: [253, "uint32"], event: [0, "enum"], eventType: [1, "enum"] }],
   record: [20, {
     timestamp: [253, "uint32"], lat: [0, "sint32"], lon: [1, "sint32"], altitude: [2, "uint16", 5, 500], heartRate: [3, "uint8"], cadence: [4, "uint8"],
-    distance: [5, "uint32", 100], speed: [6, "uint16", 1000], power: [7, "uint16"], temperature: [13, "sint8"],
+    distance: [5, "uint32", 100], speed: [6, "uint16", 1000], power: [7, "uint16"], compressedSD: [8, "byte"], temperature: [13, "sint8"],
     enhancedSpeed: [73, "uint32", 1000], enhancedAltitude: [78, "uint32", 5, 500],
   }],
   lap: [19, {

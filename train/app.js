@@ -45,15 +45,27 @@ const idb = (() => {
 
 const TODAY = startOfDay(Date.now());
 const D = demo(Date.now());
+// The example rides (the demo's) are shown until you turn them off (You › Example rides); your own, imported, always.
+// The plan's the one you chose (and when it starts), or with the examples on and none chosen, theirs.
 const S = {
   tab: "today",
   profile: { ...PROFILE, ...store.get("profile", {}) },
-  planId: store.get("plan", "sportive"), planStart: store.get("planStart", D.start),
+  examples: store.get("examples", true), chosen: chosenPlan(),
   swaps: store.get("swaps", {}), feel: store.get("feel", {}), mine: store.get("workouts", []),
   sport: "ride", actSport: "all", formDays: 42,
-  acts: D.history.map((x) => ({ ...x, sample: true })).sort((a, b) => b.start - a.start),
+  own: [], acts: [],
   sums: new Map(), summed: false,
 };
+// (a plan chosen before it said when it started kept its start apart: taken as it was)
+function chosenPlan() {
+  const c = store.get("plan", null);
+  if (typeof c === "string") return { id: c, start: store.get("planStart", D.start) };
+  return c && PLANS.some((p) => p.id === c.id) && Number.isFinite(c.start) ? c : null;
+}
+function setActs() {
+  S.acts = [...(S.examples ? D.history.map((x) => ({ ...x, sample: true })) : []), ...S.own].sort((a, b) => b.start - a.start);
+}
+setActs();
 U.metric = store.get("units", "metric") === "metric";
 const P = () => S.profile;
 const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v));
@@ -63,22 +75,29 @@ const allWorkouts = () => [...S.mine, ...WORKOUTS];
 const wkById = (id) => S.mine.find((w) => w.id === id) || workoutById(id);
 
 // ---- the plan, as days ----
-const plan = () => PLANS.find((p) => p.id === S.planId) || PLANS[0];
+const myPlan = () => S.chosen || (S.examples ? { id: "sportive", start: D.start } : null);
+const plan = () => (myPlan() ? PLANS.find((p) => p.id === myPlan().id) : null);
+const planStart = () => myPlan()?.start ?? Infinity;
 let weeksCache = null;
 function weeks() {
-  const key = S.planId + S.planStart;
-  if (weeksCache?.key !== key) weeksCache = { key, v: layOut(plan(), S.planStart) };
+  const c = myPlan();
+  if (!c) return [];
+  const key = c.id + c.start;
+  if (weeksCache?.key !== key) weeksCache = { key, v: layOut(plan(), c.start) };
   return weeksCache.v;
 }
+// (a plan's chosen on a day: the days before it, in a plan that starts partway, aren't missed, as you weren't on it)
+function choosePlan(c) { S.chosen = { ...c, at: TODAY }; S.swaps = {}; store.set("plan", S.chosen); store.set("planStart", null); store.set("swaps", {}); }
+const missed = (day, wk) => wk && day < TODAY && day >= (myPlan()?.at ?? -Infinity) && !actsOn(day).length;
 // what's planned on a day (a swap you've made, or the plan's): a workout id, "event", or null for rest
 function plannedOn(day) {
   if (S.swaps[day] !== undefined) return S.swaps[day];
   for (const w of weeks()) for (const d of w.days) if (d.date === day) return d.id;
   return undefined;
 }
-const weekIndex = (day) => Math.floor((mondayOf(day) - mondayOf(S.planStart)) / (7 * DAY) + 0.01);
+const weekIndex = (day) => (myPlan() ? Math.floor((mondayOf(day) - mondayOf(planStart())) / (7 * DAY) + 0.01) : -1);
 const actsOn = (day) => S.acts.filter((a) => startOfDay(a.start) === day);
-const eventDay = () => weeks().at(-1).days.at(-1).date;
+const eventDay = () => weeks().at(-1)?.days.at(-1).date ?? null;
 
 // ---- each ride's figures: worked out a few at a time once the page is up, newest first, and kept for next time ----
 const sumKey = () => `${P().ftp}/${P().lthr}`;
@@ -168,19 +187,21 @@ const sheetW = () => Math.round(Math.min(innerWidth - 16, 600) - 32 - 36);
 function todayView() {
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
   const out = [head("Today", dayLong(TODAY))];
-  if (!store.get("noted", false)) {
+  if (S.examples) {
     out.push(h("div.note.glass", {}, h("span.ic", {}, icon("sparkle", 16, 2.2)), h("div", {},
-      h("b", { text: "A demo, with made-up rides. " }), "Everything here is example data for a rider five weeks into a sportive plan. Import your own files from a Garmin or a Wahoo and they'll appear alongside.",
-      h("div.gos", {}, h("button.go", { type: "button", onclick: chooseFiles }, "Import files"), h("button.go", { type: "button", onclick: () => { store.set("noted", true); redraw(); } }, "Hide this")))));
+      h("b", { text: "Example rides are on. " }), "They’re made up, for a rider five weeks into a sportive plan, so there’s something to see. Import your own from a Garmin or a Wahoo, then turn the examples off to see only yours.",
+      h("div.gos", {}, h("button.go", { type: "button", onclick: chooseFiles }, "Import files"), h("button.go", { type: "button", onclick: () => setExamples(false) }, "Use only my rides")))));
   }
   const left = [], right = [];
   left.push(sessionCard(w, id, done));
-  if (w && (w.sport === "ride" || w.sport === "run") && !done.length) left.push(weatherCard(w));
+  // (the best time to ride: Weather's, once Cadence has its own address and your place; till then, the examples' alone)
+  if (S.examples && w && (w.sport === "ride" || w.sport === "run") && !done.length) left.push(weatherCard(w));
   right.push(formCard());
   right.push(weekCard());
   left.push(feelCard(w));
   const recent = S.acts.slice(0, 3);
-  right.push(section("Recent", h("div.group.glass", {}, recent.map(actRow)), h("p.foot", {}, h("button.link", { type: "button", onclick: () => go("activities") }, "All activities"))));
+  right.push(recent.length ? section("Recent", h("div.group.glass", {}, recent.map(actRow)), h("p.foot", {}, h("button.link", { type: "button", onclick: () => go("activities") }, "All activities")))
+    : section("Recent", h("div.group.glass", {}, row({ icon: "inbox", tint: "blue", title: "Import your first ride", sub: "A FIT file from your Garmin or Wahoo, or GPX or TCX from anywhere", onclick: chooseFiles }))));
   out.push(h("div.cols", {}, h("div", {}, left), h("div", {}, right)));
   return out;
 }
@@ -196,10 +217,16 @@ function sessionCard(w, id, done) {
     return h("div.card.hero.glass.session", {}, h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"),
       h("h2", { text: plan().name }), h("p.about", { text: "This is what the weeks were for. Start steady, eat early, and enjoy it." }));
   }
-  if (!w && TODAY < S.planStart) {
+  if (!myPlan()) {
+    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "No plan yet"),
+      h("h2", { text: "Choose a plan, or ride as you like" }),
+      h("p.about", { text: "A plan lays out every week to your goal: base, build, peak and taper, an easier week every fourth. Or pick any workout and send it to your device." }),
+      h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => go("plan") }, "Choose a plan"), h("button.pill", { type: "button", onclick: () => go("workouts") }, "Workouts")));
+  }
+  if (!w && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
     return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"),
-      h("h2", { text: `${plan().name} starts ${dayName(S.planStart)}` }),
+      h("h2", { text: `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}` }),
       h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }),
       fw && h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openWorkout(fw) }, `${dayName(first.date)}: ${fw.name}`, icon("chev", 15, 2.4))));
   }
@@ -236,6 +263,8 @@ function weatherCard(w) {
 }
 function formCard() {
   if (!S.summed) return card(null, "Fitness and form", wait(44), h("div", { vars: { height: "10px" } }), wait(120));
+  if (!S.acts.some((a) => sumOf(a)?.tss)) return card(null, "Fitness and form", h("p.line-said", { text: "Your fitness, fatigue and form come from your rides’ training stress, day by day. Import a few weeks of rides to see them; the more, the truer." }),
+    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: chooseFiles }, icon("inbox", 17, 2.1), "Import rides")));
   const f = fitnessSeries(), last = f.at(-1), said = formSaid(last.tsb), wk = f.at(-8);
   return h("button.card.glass", { type: "button", onclick: () => openSheet(formView), "aria-label": `Fitness ${Math.round(last.ctl)}, fatigue ${Math.round(last.atl)}, form ${Math.round(last.tsb)}: ${said.word}` },
     h("h3", {}, "Fitness and form"),
@@ -263,7 +292,7 @@ function weekCard() {
   return card(null, ["This week", h("span.more", { text: S.summed ? `${Math.round(totDone)} of ${Math.round(totPlan)} TSS` : "" })],
     h("div.week", {}, cols),
     h("div.week-sum", {}, h("span", {}, h("b", { text: dur(secsDone) }), ` of ${dur(secsPlan)}`),
-      h("span", { text: TODAY < S.planStart ? `Starts ${dayShort(S.planStart)}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}` })));
+      h("span", { text: !myPlan() ? "No plan" : TODAY < planStart() ? `Starts ${dayShort(planStart())}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}` })));
 }
 // How you feel: sleep, legs and mood, said in a tap each, and what to do about it with your form. Tired legs on a hard
 // day: an easier session, swapped in with a tap (and back again).
@@ -283,18 +312,19 @@ function feelCard(w) {
         h("p", { text: hard ? `Tired legs and form of ${Math.round(tsb)}: ${w.name} would cost more than it gives. An easy spin keeps the legs turning.` : "Keep it short and easy, or rest. Tomorrow will go better for it." }),
         hard && h("button.pill.small", { type: "button", onclick: () => { S.swaps[TODAY] = "recovery-45"; store.set("swaps", S.swaps); toast("Swapped for a recovery spin"); redraw(); } }, "Swap for a recovery spin")));
     } else verdict = h("div.verdict", {}, h("span.ic.green", {}, icon("check", 16, 2.6)), h("div", {}, h("b", { text: score >= 5 ? "Ready for it" : "Good to go" }),
-      h("p", { text: w ? `Ride ${w.name.toLowerCase().startsWith("rest") ? "as planned" : `${w.name} as planned`}.` : "Enjoy the rest day." })));
+      h("p", { text: w ? `Ride ${w.name} as planned.` : myPlan() ? "Enjoy the rest day." : "Ride as you feel." })));
   }
   return card(null, "How do you feel?", h("div.feel", {}, rows.map(([k, label, opts]) => h("div.feel-row", {}, h("span", { text: label }), seg(k, opts))), verdict));
 }
 
 // ---- Plan ----
 function planView() {
+  if (!myPlan()) return noPlanView();
   const p = plan(), ws = weeks(), now = Math.max(0, Math.min(ws.length - 1, weekIndex(TODAY))), ev = eventDay(), left = Math.round((ev - TODAY) / DAY);
   const planWeekTss = ws.map((w) => ({ phase: w.phase, tss: w.days.reduce((a, d) => a + (d.id && d.id !== "event" ? measure(wkById(d.id), paceFor(wkById(d.id).sport)).tss : 0), 0) }));
   const doneWeek = ws.map((w) => w.days.reduce((a, d) => a + actsOn(d.date).reduce((x, act) => x + (sumOf(act)?.tss || 0), 0), 0));
   const phaseCls = { Base: "z2", Build: "z4", Peak: "z5", Taper: "z3" };
-  const out = [head("Plan", TODAY < S.planStart ? `${p.name} · starts ${dayShort(S.planStart)}` : `${p.name} · week ${now + 1} of ${p.weeks}`)];
+  const out = [head("Plan", TODAY < planStart() ? `${p.name} · starts ${dayShort(planStart())}` : `${p.name} · week ${now + 1} of ${p.weeks}`)];
   out.push(h("div.card.hero.glass", {},
     h("h3", {}, "Your goal"),
     h("div.countdown", {}, h("b", { text: left > 0 ? left : "Today" }), h("span", { text: left > 0 ? `days to ${p.name.toLowerCase().includes("sportive") ? "your sportive" : "the end"}, ${dayShort(ev)}` : "" })),
@@ -309,9 +339,9 @@ function planView() {
       h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: d.date === TODAY ? "Today" : dayName(d.date).slice(0, 3) })),
       h("span.tx", {}, h("b", { text: id === "event" ? "Event day" : wk ? wk.name : "Rest" }), h("small", { text: wk ? `${dur(m.secs)}${wk.sport !== "strength" ? ` · TSS ${Math.round(m.tss)}` : ""}${S.swaps[d.date] !== undefined ? " · swapped" : ""}` : id === "event" ? p.name : "Recover" })),
       wk && h("span.mini", {}, C.profile(wk, { mini: true, pace: paceFor(wk.sport) })),
-      did.length ? h("span.badge", {}, "Done") : past && wk ? h("span.badge.plan", {}, "Missed") : null);
+      did.length ? h("span.badge", {}, "Done") : missed(d.date, wk) ? h("span.badge.plan", {}, "Missed") : null);
   });
-  const started = TODAY >= S.planStart, wkName = (i) => (started ? (i === now ? "This week" : "Next week") : `Week ${i + 1}`);
+  const started = TODAY >= planStart(), wkName = (i) => (started ? (i === now ? "This week" : "Next week") : `Week ${i + 1}`);
   out.push(section([`${wkName(now)} · ${ws[now].phase}${ws[now].recovery ? " (easier)" : ""}`, h("span.aside", { text: `${dateShort(ws[now].days[0].date)} – ${dateShort(ws[now].days[6].date)}` })],
     h("div.group.glass", {}, dayRows(ws[now])),
     h("p.foot", {}, "Tap a day for its workout. Workouts go to your Garmin or Wahoo from there, or all of this week's at once below.")));
@@ -319,18 +349,41 @@ function planView() {
   out.push(section("This week’s files", h("div.group.glass", {},
     row({ icon: "zip", tint: "coral", title: started ? "Send this week’s workouts" : "Send week 1’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip(ws[now]) }),
     row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "This week and next as events (.ics), with each workout in its notes", onclick: () => calendar([ws[now], ws[now + 1]].filter(Boolean)) }))));
-  out.push(section("Plans", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === S.planId ? "coral" : "grey", title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === S.planId ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) })))));
+  out.push(plansList(p.id));
+  if (S.chosen) out.push(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => { S.chosen = null; S.swaps = {}; store.set("plan", null); store.set("swaps", {}); toast("Plan stopped"); redraw(); } }, "Stop this plan"))));
   return out;
 }
+const plansList = (current) => section("Plans", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
+  title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === current ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) }))));
+// no plan: what one is, and the plans to choose from
+function noPlanView() {
+  return [head("Plan", "No plan yet"),
+    h("div.card.hero.glass", {}, h("h3", {}, "A plan for your goal"),
+      h("p.line-said", { text: "Each plan lays out every week to a goal: base miles first, then the harder work, then fresh for the day, an easier week every fourth. Today shows each day’s session, ready to send to your Garmin or Wahoo; done when a ride from that day is imported." })),
+    plansList(null)];
+}
+// A plan: what a week of it looks like, and when to start it: next Monday, or so it ends on your event's day (a plan of
+// 16 weeks to an event 10 weeks off starts six weeks in)
 function planSheet(p) {
-  const mine = p.id === S.planId, start = mondayOf(addDays(TODAY, 7)), ws = layOut(p, start), first = ws[0];
+  const mine = p.id === myPlan()?.id, next = mondayOf(addDays(TODAY, 7)), ws = layOut(p, next), first = ws[0];
+  const endOf = (start) => addDays(start, p.weeks * 7 - 1), startFor = (end) => addDays(mondayOf(end), -(p.weeks - 1) * 7);
+  let end = endOf(next);
+  const iso = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const byEnd = h("button.btn.quiet", { type: "button", onclick: () => start(startFor(end)) });
+  const said = () => { const st = startFor(end), wk = Math.floor((mondayOf(TODAY) - st) / (7 * DAY)) + 1; byEnd.textContent = st > TODAY ? `Start ${dayShort(st)}, to end ${dayShort(end)}` : `Start at week ${Math.min(p.weeks, wk)}, to end ${dayShort(end)}`; };
+  const start = (st) => { choosePlan({ id: p.id, start: st }); closeSheet(); toast(st > TODAY ? `${p.name} starts on ${dayShort(st)}` : `${p.name}: you’re in week ${weekIndex(TODAY) + 1}`); redraw(); };
+  said();
+  const endField = h("input.field", { type: "date", id: "plan-end", value: iso(end), min: iso(addDays(TODAY, 7)), "aria-label": "Your event’s day, or when the plan should end",
+    oninput: (e) => { const v = e.target.valueAsDate; if (v) { end = startOfDay(v.getTime() + v.getTimezoneOffset() * 60e3); said(); } } });
   return {
     title: p.name,
     body: [
       h("div.sheet-top", {}, h("h1", { text: p.name }), h("div.sub", { text: `${p.weeks} weeks · ${p.phases.map(([n, w]) => `${n} ${w}`).join(" · ")}` })),
       h("p", { text: p.about }),
       card(null, "A typical week", h("div.steps", {}, first.days.map((d) => { const w = d.id && d.id !== "event" ? wkById(d.id) : null; return h("div.step", {}, h("i.bg-" + (w ? zoneOf(measure(w).iF).c : "z1")), h("div", {}, h("b", { text: dayName(d.date) }), h("small", { text: w ? w.name : "Rest" })), h("div.v", { text: w ? dur(measure(w, paceFor(w.sport)).secs) : "" })); }))),
-      mine ? h("p", { text: "You’re on this plan." }) : h("button.btn", { type: "button", onclick: () => { S.planId = p.id; S.planStart = start; S.swaps = {}; store.set("plan", p.id); store.set("planStart", start); store.set("swaps", {}); closeSheet(); toast(`${p.name} starts on ${dayShort(start)}`); redraw(); } }, `Start on ${dayShort(start)}`),
+      mine && h("p", { text: "You’re on this plan. Starting it again starts it afresh." }),
+      h("button.btn", { type: "button", onclick: () => start(next) }, `Start next Monday, ${dayShort(next)}`),
+      section("Or end it on your event’s day", h("label", { for: "plan-end", class: "vh", text: "Your event’s day" }), endField), byEnd,
     ],
   };
 }
@@ -499,22 +552,27 @@ function builderView(base) {
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", `${plural(S.acts.length, "activity", "activities")}, from your devices`, h("button.round", { type: "button", "aria-label": "Import files", onclick: chooseFiles }, icon("inbox", 21, 2)))];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}, from your devices` : "None yet", h("button.round", { type: "button", "aria-label": "Import files", onclick: chooseFiles }, icon("inbox", 21, 2)))];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
   const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
-  out.push(card(null, "The last four weeks", S.summed ? h("div.stats", {}, stat("Time", hm(tot.secs), tot.secs >= 3600 ? "h" : null), stat("Distance", ...distNum(tot.dist)), stat("Climbing", ...height(tot.asc))) : wait(48)));
+  if (S.acts.length) out.push(card(null, "The last four weeks", S.summed ? h("div.stats", {}, stat("Time", hm(tot.secs), tot.secs >= 3600 ? "h" : null), stat("Distance", ...distNum(tot.dist)), stat("Climbing", ...height(tot.asc))) : wait(48)));
   out.push(h("div.seg.wide", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.actSport === k), onclick: () => { S.actSport = k; redraw(); } }, label))));
   // by week, newest first
   const byWeek = new Map();
   for (const a of list) { const k = mondayOf(a.start); if (!byWeek.has(k)) byWeek.set(k, []); byWeek.get(k).push(a); }
   const thisMon = mondayOf(TODAY);
+  if (!list.length) out.push(section("Your first ride", h("div.group.glass", {},
+      row({ icon: "inbox", tint: "blue", title: "Import files", sub: "Choose them, or drop them anywhere on this page", onclick: chooseFiles })),
+    h("ol.how.foot", {}, h("li", {}, h("b", { text: "Garmin: " }), "connect it by cable and open ", h("code", { text: "Garmin/Activity" }), ", or in Garmin Connect on the web, an activity’s ⚙ › Export Original."),
+      h("li", {}, h("b", { text: "Wahoo: " }), "in the Wahoo app, History, an activity, then Download .fit; or by cable, the ELEMNT’s ", h("code", { text: "exports" }), " folder."),
+      h("li", {}, h("b", { text: "Anywhere else: " }), "Strava, Zwift and most apps export FIT, GPX or TCX."))));
   for (const [mon, acts] of byWeek) {
     const name = mon === thisMon ? "This week" : mon === addDays(thisMon, -7) ? "Last week" : `${dateShort(mon)} – ${dateShort(addDays(mon, 6))}`;
     const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0);
     out.push(section([name, h("span.aside", { text: S.summed ? dur(secs) : "" })], h("div.group.glass", {}, acts.map(actRow))));
   }
-  out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Import from a Garmin or Wahoo")));
+  if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Import from a Garmin or Wahoo")));
   return out;
 }
 function actRow(a) {
@@ -583,7 +641,7 @@ function actView(a) {
     row({ tile: h("span.ic.grey", {}, icon("file", 18, 2)), title: "TCX", sub: "Garmin’s older format, for tools that want it", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "tcx"), F.tcxFromActivity(x, s)) })),
     h("p.foot", { text: "Garmin Connect: Import Data takes any of these. The Wahoo app: History, then + and Upload, takes the FIT file." })));
   if (!a.sample) body.push(h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async () => {
-    S.acts = S.acts.filter((y) => y.id !== a.id); S.sums.delete(a.id); try { await idb.del(a.id); } catch (_) {} closeSheet(); toast("Deleted"); redraw();
+    S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); try { await idb.del(a.id); } catch (_) {} closeSheet(); toast("Deleted"); redraw();
   } }, "Delete this activity")));
   return { title: a.name, body };
 }
@@ -643,6 +701,10 @@ function settingsView() {
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })),
         row({ icon: "usb", tint: "coral", title: "Sending workouts to a device", onclick: () => pushSheet(() => sendView(wkById("ss-3x12"))) })),
         h("p.foot", { text: "Garmin and Wahoo devices are known from the files they write. Sending workouts straight to them, without a cable, comes with Garmin’s and Wahoo’s partner programmes." })),
+      section("Example rides", h("div.group", {},
+        row({ icon: "sparkle", tint: "coral", title: S.examples ? "Showing example rides" : "Showing only your rides", sub: S.examples ? "Made-up rides and a plan, alongside yours" : `${plural(S.own.length, "ride", "rides")} of your own`, chev: false,
+          extra: h("span.pill.small", { text: S.examples ? "Turn off" : "Turn on" }), onclick: () => { setExamples(!S.examples); Sheet.redraw(); } })),
+        h("p.foot", { text: "Off, your fitness, the week and the plan go by your own rides alone. Your rides and workouts stay either way." })),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; store.set("units", U.metric ? "metric" : "imperial"); redraw(true); } }))),
@@ -683,6 +745,14 @@ function appearanceView() {
   };
   return { title: "Appearance", body: [h("div.group", {}, [["auto", "Automatic", "As your device is set"], ["light", "Light", "Dawn"], ["dark", "Dark", "Night"]].map(([v, l, sub]) =>
     row({ title: l, sub, chev: false, onclick: () => set(v), extra: now === v ? h("span.get", {}, icon("check", 18, 2.6)) : null })))] };
+}
+
+// the example rides on or off (and with them, the example plan, where you haven't chosen one)
+function setExamples(on) {
+  S.examples = on; store.set("examples", on); setActs();
+  if (!on && S.tab === "today") scrollTo(0, 0);
+  toast(on ? "Example rides on" : "Only your rides now");
+  redraw();
 }
 
 // ---- files ----
@@ -762,16 +832,16 @@ async function importFiles(files) {
     try {
       const r = await F.readAny(f.name, await f.arrayBuffer());
       for (const a of r.activities) {
-        if (S.acts.some((x) => !x.sample && Math.abs(x.start - a.start) < 60e3 && x.sport === a.sport)) { got.dupes++; continue; }
+        if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3 && x.sport === a.sport)) { got.dupes++; continue; }
         const entry = { id: `i${a.start}`, sport: a.sport, start: a.start, name: a.name, device: a.device, indoor: a.indoor, sample: false, file: a.file, data: a };
-        S.acts.push(entry); S.sums.set(entry.id, summarise(a, P())); got.acts.push(entry);
+        S.own.push(entry); S.sums.set(entry.id, summarise(a, P())); got.acts.push(entry);
         try { await idb.put(entry); } catch (_) {}
       }
       for (const w of r.workouts) { S.mine.unshift(w); got.workouts.push(w); }
       got.skipped.push(...(r.skipped || []));
     } catch (e) { got.skipped.push(`${f.name}: ${e.message}`); }
   }
-  S.acts.sort((a, b) => b.start - a.start);
+  setActs();
   if (got.workouts.length) store.set("workouts", S.mine);
   toastEl.classList.remove("on");
   redraw();
@@ -867,8 +937,8 @@ addEventListener("scroll", () => document.documentElement.style.setProperty("--b
   // (your imported rides, from this browser, then each ride's figures)
   try {
     const mine = await idb.all();
-    for (const a of mine || []) { if (!S.acts.some((x) => x.id === a.id)) { S.acts.push(a); S.sums.set(a.id, summarise(a.data, P())); } }
-    S.acts.sort((a, b) => b.start - a.start);
+    for (const a of mine || []) { if (!S.own.some((x) => x.id === a.id)) { S.own.push(a); S.sums.set(a.id, summarise(a.data, P())); } }
+    setActs();
   } catch (_) {}
   sumUp();
   if (S.summed) redraw();

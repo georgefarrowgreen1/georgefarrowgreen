@@ -13,21 +13,32 @@
 import { readFit, writeFit, FILE, SPORT, SUB, MAKER, DURATION, TARGET, INTENSITY } from "./fit.js";
 import { flatten } from "./workouts.js";
 
-const SPORT_OF = { [SPORT.cycling]: "ride", [SPORT.eBiking]: "ride", [SPORT.running]: "run", [SPORT.swimming]: "swim", [SPORT.walking]: "walk", [SPORT.hiking]: "walk", [SPORT.training]: "strength", [SPORT.rowing]: "row" };
+const SPORT_OF = { [SPORT.cycling]: "ride", [SPORT.eBiking]: "ride", [SPORT.running]: "run", [SPORT.swimming]: "swim", [SPORT.walking]: "walk", [SPORT.hiking]: "walk", 16: "walk", [SPORT.training]: "strength", [SPORT.fitnessEquipment]: "strength", [SPORT.rowing]: "row" };
 const FIT_SPORT = { ride: SPORT.cycling, run: SPORT.running, swim: SPORT.swimming, walk: SPORT.walking, strength: SPORT.training, row: SPORT.rowing };
 const round = (v, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
 
 // ---- activities ----
 // a new activity, from samples taken at times `t` (seconds from `start`, which is ms since 1970)
 function activity({ sport = "ride", indoor = false, start, name, device, file, t, lat, lon, ele, hr, cad, pwr, spd, dist, laps = [] }) {
-  // (samples without a time, or out of order, are left out)
+  // (samples without a time, or out of order, are left out; and the rest of a file from a jump of more than six hours on,
+  // as a device that lost power mid-write leaves a last sample dated years away)
   const keep = [];
-  for (let i = 0, last = -Infinity; i < t.length; i++) if (t[i] != null && t[i] > last) { keep.push(i); last = t[i]; }
+  for (let i = 0, last = -Infinity; i < t.length; i++) {
+    if (t[i] == null || t[i] <= last || t[i] < 0) continue;
+    if (keep.length && t[i] - last > 6 * 3600) break;
+    keep.push(i); last = t[i];
+  }
   if (keep.length < 2) throw new Error("That file has too few samples to be a ride.");
-  const n = keep.length, col = (a) => (a && keep.some((i) => a[i] != null) ? keep.map((i) => a[i] ?? null) : null);
+  // (a sensor that was never there: a column of nothing but zeros, as some devices write for one they don't have)
+  // (places and heights can be below nought; a sensor's readings can't)
+  const n = keep.length, col = (a, sensor = true) => (a && keep.some((i) => (sensor ? a[i] > 0 : a[i] != null)) ? keep.map((i) => a[i] ?? null) : null);
   t = keep.map((i) => t[i]);
-  const s = { t, lat: col(lat), lon: col(lon), ele: col(ele), hr: col(hr), cad: col(cad), pwr: col(pwr), spd: col(spd), dist: col(dist) };
-  if (s.lat && !s.lon) s.lat = null;
+  const s = { t, lat: col(lat, false), lon: col(lon, false), ele: col(ele, false), hr: col(hr), cad: col(cad), pwr: col(pwr), spd: col(spd), dist: col(dist) };
+  if (!s.lat || !s.lon) s.lat = s.lon = null;
+  // (distance from this activity's own start: a multisport file counts on through each of its parts)
+  if (s.dist) { const d0 = s.dist.find((v) => v != null) || 0; if (d0) s.dist = s.dist.map((v) => (v == null ? null : Math.round((v - d0) * 10) / 10)); }
+  // (places of 0°, 0°: no fix yet, as some devices write before they have one)
+  if (s.lat) for (let i = 0; i < n; i++) if (s.lat[i] === 0 && s.lon[i] === 0) s.lat[i] = s.lon[i] = null;
   // (no distance recorded, but places: measured along them)
   if (!s.dist && s.lat) {
     s.dist = new Array(n).fill(null);
@@ -58,18 +69,37 @@ export function activityFromFit(bytes, file) {
   const fit = readFit(bytes), M = fit.messages;
   if (M.fileId[0].type === FILE.workout) throw Object.assign(new Error("That’s a workout, not a ride."), { workout: true });
   if (M.fileId[0].type === FILE.course) throw new Error("That’s a course (a route to follow). Cadence takes rides, runs and workouts.");
+  if (M.fileId[0].type != null && M.fileId[0].type !== FILE.activity && !(M.record || []).length) throw new Error("That FIT file isn’t an activity (it’s settings or health data from the device).");
   const recs = (M.record || []).filter((r) => r.timestamp != null);
   if (!recs.length) throw new Error("That FIT file has no samples in it.");
-  const ses = (M.session || [])[0] || {}, t0 = ses.startTime || recs[0].timestamp;
-  const pick = (k, alt) => recs.map((r) => r[k] ?? (alt ? r[alt] : null) ?? null);
+  // (the oldest devices pack speed and distance into three bytes: twelve bits of speed in hundredths of a metre a second,
+  // and twelve of distance in sixteenths of a metre, that go round every 256 m)
+  if (recs.some((r) => Array.isArray(r.compressedSD)) && !recs.some((r) => r.distance != null)) {
+    let total = 0, last = null;
+    for (const r of recs) {
+      const c = r.compressedSD;
+      if (!Array.isArray(c) || c.some((x) => x == null)) continue;
+      r.speed = (c[0] | ((c[1] & 0x0f) << 8)) / 100;
+      const d = (c[1] >> 4) | (c[2] << 4);
+      if (last != null) total += ((d - last + 4096) % 4096) / 16;
+      last = d; r.distance = total;
+    }
+  }
   const maker = M.fileId[0].manufacturer, dev = (M.deviceInfo || []).find((d) => d.deviceIndex === 0 && d.productName) || (M.deviceInfo || []).find((d) => d.productName);
   const device = [MAKER[maker] || null, dev?.productName || M.fileId[0].productName || null].filter(Boolean).join(" ") || null;
-  return activity({
-    sport: SPORT_OF[ses.sport] || "ride", indoor: ses.subSport === SUB.indoorCycling || ses.subSport === SUB.virtual || ses.subSport === SUB.treadmill,
-    start: t0 * 1000, device, file,
-    t: recs.map((r) => r.timestamp - t0), lat: pick("lat"), lon: pick("lon"), ele: pick("enhancedAltitude", "altitude").map((v) => round(v, 1)),
-    hr: pick("heartRate"), cad: pick("cadence"), pwr: pick("power"), spd: pick("enhancedSpeed", "speed"), dist: pick("distance"),
-    laps: (M.lap || []).map((l) => ({ start: (l.startTime || t0) - t0, secs: l.timer ?? l.elapsed ?? 0, dist: l.distance ?? null })),
+  // A ride (or run, or swim) for each session: a triathlon from a multisport watch is three, its transitions left out
+  const sessions = (M.session || []).filter((x) => x.sport !== 3 && x.startTime != null).sort((a, b) => a.startTime - b.startTime);
+  const parts = sessions.length > 1 ? sessions.map((x) => ({ ses: x, recs: recs.filter((r) => r.timestamp >= x.startTime && r.timestamp <= x.startTime + (x.elapsed ?? x.timer ?? 0) + 1) })).filter((p) => p.recs.length > 1)
+    : [{ ses: sessions[0] || (M.session || [])[0] || {}, recs }];
+  return parts.map(({ ses, recs: rs }, k) => {
+    const t0 = ses.startTime || rs[0].timestamp, pick = (key, alt) => rs.map((r) => r[key] ?? (alt ? r[alt] : null) ?? null);
+    return activity({
+      sport: SPORT_OF[ses.sport] || (ses.sport == null ? "ride" : "other"), indoor: ses.subSport === SUB.indoorCycling || ses.subSport === SUB.virtual || ses.subSport === SUB.treadmill || ses.subSport === SUB.lapSwimming,
+      start: t0 * 1000, device, file: parts.length > 1 ? `${file} (${k + 1} of ${parts.length})` : file,
+      t: rs.map((r) => r.timestamp - t0), lat: pick("lat"), lon: pick("lon"), ele: pick("enhancedAltitude", "altitude").map((v) => round(v, 1)),
+      hr: pick("heartRate"), cad: pick("cadence"), pwr: pick("power"), spd: pick("enhancedSpeed", "speed"), dist: pick("distance"),
+      laps: (M.lap || []).filter((l) => (l.startTime ?? t0) >= t0 && (l.startTime ?? t0) <= t0 + (ses.elapsed ?? Infinity)).map((l) => ({ start: (l.startTime || t0) - t0, secs: l.timer ?? l.elapsed ?? 0, dist: l.distance ?? null })),
+    });
   });
 }
 
@@ -260,11 +290,12 @@ export function workoutFromFit(bytes, file) {
   // (a repeat step goes back to the step it names: those steps, from there to here, are its block)
   const out = [];
   raw.forEach((r) => {
-    if (r.durationType !== DURATION.repeat) { out.push({ at: r.messageIndex ?? out.length, s: step(r) }); return; }
+    // (a repeat: so many times, or until a time, a distance, a heart rate or a power is reached, which is said as once)
+    if (!(r.durationType >= DURATION.repeat && r.durationType <= 13)) { out.push({ at: r.messageIndex ?? out.length, s: step(r) }); return; }
     const from = out.findIndex((x) => x.at >= r.durationValue);
     if (from < 0) return;
     const inner = out.splice(from).map((x) => x.s);
-    out.push({ at: r.durationValue, s: { repeat: r.targetValue || 1, steps: inner } });
+    out.push({ at: r.durationValue, s: { repeat: r.durationType === DURATION.repeat ? r.targetValue || 1 : 1, steps: inner } });
   });
   return { id: `w${Date.now()}`, sport, kind: "Imported", name: wk.name || stem(file) || "Imported workout", about: `From ${file || "a FIT file"}.`, steps: out.map((x) => x.s), imported: true };
 }
@@ -399,7 +430,7 @@ export async function readAny(name, bytes) {
     return out;
   }
   if (lower.endsWith(".fit") || String.fromCharCode(u8[8], u8[9], u8[10], u8[11]) === ".FIT") {
-    try { return { activities: [activityFromFit(u8, name)], workouts: [] }; }
+    try { return { activities: activityFromFit(u8, name), workouts: [] }; }
     catch (e) { if (e.workout) return { activities: [], workouts: [workoutFromFit(u8, name)] }; throw e; }
   }
   if (lower.endsWith(".gpx")) return { activities: [activityFromGpx(text(), name)], workouts: [] };
