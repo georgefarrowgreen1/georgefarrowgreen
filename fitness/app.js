@@ -806,9 +806,11 @@ function sendView(w, day = TODAY) {
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}, from your devices` : "None yet", h("button.round", { type: "button", "aria-label": "Upload activities", onclick: chooseFiles }, icon("upload", 21, 2.1)))];
-  // none yet: what to do, and where your files are
-  if (!S.acts.length) return [...out, ...firstUpload()];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ", from your devices"}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload activities", onclick: chooseFiles }, icon("upload", 21, 2.1)))];
+  // Garmin's six months coming in
+  if (S.bringing) out.push(bringingCard());
+  // none yet: Garmin, or files
+  if (!S.acts.length) return S.bringing ? out : [...out, ...firstUpload()];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
   const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
@@ -827,22 +829,47 @@ function activitiesView() {
   if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Upload more activities")));
   return out;
 }
-// Your first activity: one button, and where each device and app keeps its files
+// Your first activities: Garmin connected (six months in at once, then each new one by itself), or files uploaded,
+// and what they're for
 function firstUpload() {
-  const where = (ic, tint, title, sub) => h("div.row.plain", {}, h("span.ic." + tint, {}, icon(ic, 18, 2.1)), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })));
+  const choice = (tile, title, sub, onclick, best = false) => h("button.choice" + (best ? ".best" : ""), { type: "button", onclick }, tile,
+    h("span.tx", {}, h("b", {}, title, best && h("small.badge", { text: "Best" })), h("small", { text: sub })), h("span.chev", {}, icon("chev", 17, 2.4)));
+  const gets = (ic, cls, title, sub) => h("div.row.plain", {}, h("span.ic.soft." + cls, {}, icon(ic, 17, 2.2)), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })));
+  const g = S.garmin?.on;
   return [
     h("div.card.glass.first", {},
-      h("span.big", {}, icon("upload", 30, 2)),
-      h("h2", { text: "Add your first activity" }),
-      h("p", { text: "Upload a file from your Garmin, Wahoo, Strava or Zwift. Fitness works out whether it was a ride, a run or a swim, and you can change it before it’s saved." }),
-      h("button.btn", { type: "button", onclick: chooseFiles }, icon("upload", 19, 2.2), "Upload a file"),
-      h("small", { text: "FIT, GPX or TCX, or a zip of them" })),
-    section("Where to find your files", h("div.group.glass", {},
-      where("device", "blue", "Garmin", "In Garmin Connect, open an activity, then ⋯ › Export Original. Or plug the device in and open Garmin › Activity."),
-      where("device", "teal", "Wahoo", "In the Wahoo app, open an activity, then Share › Download .fit."),
-      where("open", "coral", "Strava", "On strava.com, open an activity, then ⋯ › Export Original."),
-      where("trainer", "indigo", "Zwift", "Documents › Zwift › Activities, on the computer you ride on."))),
+      h("div.first-top", {}, h("h2", { text: "Bring your rides in" }), h("p", { text: "Rhythm plans from what you’ve done, so the more it sees, the better it gets." })),
+      choice(h("span.big.ic.brand.garmin", {}, icon("device", 22, 2)), g ? "Garmin connected" : "Connect Garmin", g ? (S.garmin.ok ? "New activities come in by themselves" : "Your key has stopped working: add a new one") : "Six months in at once, then every ride by itself",
+        () => openSheet(garminView), !g),
+      choice(h("span.big.ic.coral", {}, icon("upload", 22, 2.2)), "Upload files", "From Wahoo, Strava, Zwift or anything else", () => openSheet(uploadFilesView))),
+    section("What you’ll get", h("div.group.glass", {},
+      gets("gauge", "red", "Fitness, fatigue and form", "From every ride’s training stress"),
+      gets("calendar", "blue", "A plan that follows you", "Rhythm starts from your real history"),
+      gets("bolt", "green", "Your best power", "5 seconds to an hour, and an FTP to try"))),
   ];
+}
+// Garmin's six months, coming in: how many so far, and how far back it goes
+function bringingCard() {
+  const back = new Date(addDays(TODAY, -183)).toLocaleDateString("en-GB", { month: "long" });
+  return h("div.card.glass.bringing", { role: "status" },
+    h("div.bringing-top", {}, h("span.ic.brand.garmin", {}, icon("device", 20, 2)),
+      h("span.tx", {}, h("b", { text: "Bringing in six months from Garmin" }), h("small", { text: `${S.bringing.n ? `${plural(S.bringing.n, "activity", "activities")} so far` : `Back to ${back}`} · you can carry on meanwhile` }))),
+    h("div.bar", {}, h("i")));
+}
+// Uploading files: choose them, and where each app keeps them (Garmin's connected instead)
+function uploadFilesView() {
+  const where = (letter, cls, title, sub) => h("div.row.plain", {}, h("span.ic." + cls, {}, h("b", { text: letter })), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })));
+  return { title: "Upload files", body: [
+    h("div.drop-zone", {}, h("span.big.ic.coral", {}, icon("upload", 24, 2.2)),
+      h("p", { text: "FIT, GPX or TCX, or a zip of them. Fitness works out what each one was, and you check before it’s saved." }),
+      h("button.btn", { type: "button", onclick: () => { chooseFiles(); closeSheet(); } }, "Choose files")),
+    section("Where to find them", h("div.group", {},
+      where("W", "blue", "Wahoo", "In the Wahoo app: an activity, then Share › Download .fit"),
+      where("S", "amber", "Strava", "On strava.com: an activity, then ⋯ › Export Original"),
+      where("Z", "indigo", "Zwift", "Documents › Zwift › Activities, on the computer you ride on"))),
+    !S.garmin?.on && h("div.note-garmin", {}, h("span.ic.brand.garmin", {}, icon("device", 15, 2.2)),
+      h("span", {}, "On Garmin? ", h("button.link", { type: "button", onclick: () => pushSheet(garminView) }, "Connect it instead"), ", and skip the files.")),
+  ] };
 }
 function actRow(a) {
   const s = sumOf(a);
@@ -1276,10 +1303,13 @@ function garminView() {
     btn.disabled = true; btn.textContent = "Connecting…";
     try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
     catch (e) { btn.disabled = false; btn.textContent = g?.on ? "Add the new key" : "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
-    Sheet.redraw();
-    // (six months of them, a batch at a time)
-    let n = await fromGarmin({ quiet: true });
-    for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await fromGarmin({ quiet: true }); }
+    // (six months of them, a batch at a time, coming in on Activities)
+    S.bringing = { n: 0 };
+    await closeSheet(); go("activities"); redraw();
+    const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; redraw(); return k; };
+    let n = await more();
+    for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await more(); }
+    S.bringing = null; redraw();
     toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
   };
   const keyForm = (label) => { const btn = h("button.btn", { type: "button", onclick: () => add(btn) }, label); field.addEventListener("keydown", (e) => { if (e.key === "Enter") add(btn); }); return [field, btn]; };

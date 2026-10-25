@@ -144,8 +144,14 @@ await done(L);
 
 // ---- 3. Files in on the laptop: each ride kept with the account, its file as it came ----
 await tab(L, 3);
-ok(await L.p.locator('.card.first .btn').innerText() === 'Upload a file' && !(await L.p.$('main .seg')), 'none yet: one button to upload, and where the files are (no filters for nothing)');
+const choices = await L.p.locator('.card.first .choice').allInnerTexts();
+ok(choices.length === 2 && /^Connect Garmin\s*Best/i.test(choices[0]) && /^Upload files/.test(choices[1]) && !(await L.p.$('main .seg')), 'none yet: Garmin, or files (no filters for nothing)', choices.join(' | ').replace(/\s+/g, ' '));
 await L.p.screenshot({ path: `${out}/first.png` });
+await L.p.locator('.card.first .choice', { hasText: 'Upload files' }).click(); await L.p.waitForSelector('#sheet[open] .drop-zone'); await settle(L, 500);
+const filesSheet = await L.p.locator('#sheet').innerText();
+ok(/Choose files/.test(filesSheet) && /Wahoo/.test(filesSheet) && /Strava/.test(filesSheet) && /Zwift/.test(filesSheet) && /Connect it instead/.test(filesSheet), 'Upload files: choose them, where each app keeps them, and Garmin connected instead', filesSheet.replace(/\s+/g, ' ').slice(0, 120));
+await L.p.screenshot({ path: `${out}/upload-files.png` });
+await done(L);
 await L.p.setInputFiles('#files', FILES);
 await L.p.waitForSelector('#sheet[open] .sheet-top', { timeout: 60000 }); await settle(L);
 // (first, what's in them, each with what it was, before anything's kept)
@@ -314,6 +320,9 @@ await L.p.fill('#garmin-key', GKEY);
 await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
 const joined = await waitFor(async () => (await toastSays(L)).match(/Connected.*/)?.[0], 20000);
 await settle(L, 600);
+ok(!(await L.p.$('#sheet[open]')) && /Activities/.test(await L.p.locator('.head h1').innerText()) && !(await L.p.$('.card.bringing')), 'connected: back on Activities, the six months in', joined);
+await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
 const gKept = acts(sam), gRow = rows(`SELECT apikey, ok FROM fx_garmin WHERE user_id = '${sam}'`)[0];
 ok(gKept.some((a) => a.id === 'g9001' && a.name === 'Morning gravel' && a.type === 'fit') && !gKept.some((a) => a.id === 'g9002') && gKept.length === 3,
   'connected: the morning’s ride in, by its Garmin name; the Wahoo’s ride, on Garmin too, not kept twice', `${joined} | ${gKept.map((a) => a.id + ':' + a.name).join(', ')}`);

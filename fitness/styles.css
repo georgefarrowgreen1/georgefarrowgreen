@@ -519,11 +519,39 @@ dialog.sheet.dragging { animation: none; transition: none; }
 }
 
 /* ---- Activities, before the first: one button, and where the files are ---- */
-.card.first { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 28px 22px 22px; }
-.first .big { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: var(--s-ride); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 14px 30px -14px rgba(238, 75, 47, 0.8); margin-bottom: 4px; }
+.card.first { display: grid; gap: 12px; padding: 22px 16px 16px; }
+.first-top { display: grid; gap: 6px; padding: 0 4px 2px; }
 .first h2 { margin: 0; font: 700 24px/1.15 var(--font-d); }
-.first p { margin: 0 0 8px; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
-.first small { color: var(--text-3); font-size: 13px; }
+.first p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+/* the two ways in: Garmin, ringed as the one to pick, and files */
+.choice { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px; border: 0; border-radius: 20px; text-align: left; color: inherit; background: var(--glass-strong); box-shadow: var(--edge); }
+.choice.best { box-shadow: 0 0 0 2px var(--tint), 0 12px 26px -18px var(--tint-deep); }
+.choice:active { transform: scale(0.985); }
+.choice .tx { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.choice .tx > b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+.choice .tx > small { color: var(--text-2); font-size: 14px; line-height: 1.35; }
+.choice .chev { color: var(--text-3); }
+.choice .big { flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
+.badge { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--tint-text); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
+.row .ic.soft { box-shadow: none; }
+.ic.soft.red { background: rgba(238, 75, 47, 0.14); color: #d6402a; } .ic.soft.blue { background: rgba(47, 122, 240, 0.14); color: var(--tint-text); }
+.ic.soft.green { background: rgba(31, 167, 90, 0.14); color: var(--good-text); }
+/* Garmin's six months, coming in */
+.card.bringing { display: grid; gap: 12px; padding: 16px; }
+.bringing-top { display: flex; align-items: center; gap: 12px; }
+.bringing-top .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
+.bringing-top .tx { display: grid; gap: 2px; min-width: 0; } .bringing-top b { font-size: 16px; font-weight: 600; } .bringing-top small { color: var(--text-3); font-size: 13px; }
+.bringing .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bringing .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--tint), var(--tint-deep)); animation: bring 1.6s var(--ease-spring, ease-in-out) infinite; }
+@keyframes bring { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .bringing .bar i { animation: none; width: 100%; opacity: 0.5; } }
+/* Upload files: the files chosen, and where each app keeps them */
+.drop-zone { display: grid; justify-items: center; gap: 12px; margin-top: 8px; padding: 22px 16px; border-radius: 22px; border: 1.5px dashed color-mix(in srgb, var(--tint) 50%, transparent); background: color-mix(in srgb, var(--tint) 6%, transparent); text-align: center; }
+.drop-zone .big { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: #fff; }
+.drop-zone p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; text-wrap: pretty; }
+.note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
+.note-garmin .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+.note-garmin .link { font: inherit; font-weight: 600; padding: 0; }
 .foot.none { text-align: center; padding: 28px 0; }
 
 /* ---- uploading: each activity, with what it was, a tap to change ---- */
