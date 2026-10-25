@@ -41,20 +41,20 @@ async function tables(env) {
 
 // ---- asking Garmin ----
 const garminSaid = (status) => Object.assign(new Error(`Garmin said ${status}`), { status });
-// the key swapped for a token: { token, exp }
+// the key swapped for a token: { token, exp }. Garmin answers with the token itself, as text (a JWT, its life in its
+// own exp), as Garmin's own client (github.com/garmin/connect-personal-api-python) reads it
 async function swap(env, key) {
-  const r = await fetch(base(env) + TOKEN, { method: "POST", headers: { Authorization: `ApiKey ${key}`, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+  const r = await fetch(base(env) + TOKEN, { method: "POST", headers: { Authorization: `ApiKey ${key}`, Accept: "*/*" }, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw garminSaid(r.status);
-  const j = await r.json().catch(() => ({}));
-  const token = j.access_token || j.accessToken || j.token;
-  if (!token) throw garminSaid("no token");
-  // (its life as Garmin gives it, in seconds from now or as a time; else the day it's said to last)
-  const at = Number(j.expires_in ?? j.expiresIn) > 0 ? Date.now() + Number(j.expires_in ?? j.expiresIn) * 1000
-    : j.expires_at ?? j.expiresAt ? (Number(j.expires_at ?? j.expiresAt) > 1e12 ? Number(j.expires_at ?? j.expiresAt) : Number(j.expires_at ?? j.expiresAt) > 1e9 ? Number(j.expires_at ?? j.expiresAt) * 1000 : Date.parse(j.expires_at ?? j.expiresAt)) : NaN;
-  return { token, exp: Number.isFinite(at) ? at : Date.now() + 23 * 3600e3 };
+  let token = (await r.text()).trim();
+  if (token.startsWith("{")) { try { const j = JSON.parse(token); token = j.access_token || j.accessToken || j.token || ""; } catch (_) { token = ""; } }
+  if (!token || /\s/.test(token)) throw garminSaid("no token");
+  let exp = NaN;
+  try { exp = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).exp * 1000; } catch (_) {}
+  return { token, exp: Number.isFinite(exp) ? exp : Date.now() + 23 * 3600e3 };
 }
 async function get(env, token, path, raw = false) {
-  const r = await fetch(base(env) + path, { headers: { Authorization: `Bearer ${token}`, Accept: raw ? "*/*" : "application/json" }, signal: AbortSignal.timeout(30000) });
+  const r = await fetch(base(env) + path, { headers: { Authorization: `Bearer ${token}`, Accept: raw ? "application/zip, application/x-zip-compressed, application/octet-stream" : "application/json" }, signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw garminSaid(r.status);
   return raw ? new Uint8Array(await r.arrayBuffer()) : r.json();
 }

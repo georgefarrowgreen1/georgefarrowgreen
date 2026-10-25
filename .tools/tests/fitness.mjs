@@ -60,7 +60,9 @@ const FILES = [
 // Garmin Connect's Personal API, stood in for (GARMIN_API in server.sh): the key swapped for a token, the activities
 // listed, and each one's file as a zip of its FIT file. A ride this morning, and the Wahoo's ride again (as the same
 // ride, recorded on both, would be): the first kept, the second not twice.
-const GKEY = 'test-garmin-personal-api-key-0123456789', GTOKEN = 'garmin-token-abc';
+// (the token as Garmin gives it: a JWT, as text, its life in its exp)
+const GKEY = 'test-garmin-personal-api-key-0123456789', b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const GTOKEN = `${b64u({ alg: 'RS256' })}.${b64u({ sub: 'me', exp: Math.round(Date.now() / 1000) + 86400 })}.sig`;
 const gride = (start, secs) => writeFit([['fileId', { type: 4, manufacturer: 1, product: 3843, serial: 7, created: start }],
   ...Array.from({ length: secs }, (_, i) => ['record', { timestamp: start + i, heartRate: 128 + (i % 15), power: 190 + (i % 30), cadence: 88, speed: 8.5, distance: i * 8.5 }]),
   ['session', { timestamp: start + secs - 1, startTime: start, sport: 2, subSport: 7, elapsed: secs, timer: secs }]]);
@@ -72,7 +74,7 @@ createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), auth = req.headers.authorization || '';
   glog.push(`${req.method} ${u.pathname}`);
   const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
-  if (u.pathname === '/personalapitoken-service/personal-api/personal-api-key/token') return auth === `ApiKey ${GKEY}` ? send(200, { access_token: GTOKEN, token_type: 'Bearer', expires_in: 86400 }) : send(401, { error: 'invalid key' });
+  if (u.pathname === '/personalapitoken-service/personal-api/personal-api-key/token') return req.headers.accept === 'application/json' ? send(406, '') : auth === `ApiKey ${GKEY}` ? send(200, GTOKEN, 'text/plain') : send(401, '');
   if (auth !== `Bearer ${GTOKEN}`) return send(401, {});
   if (u.pathname === '/activitylist-service/activities/search/activities') return send(200, Number(u.searchParams.get('start')) ? [] : GACTS.map(({ file, ...a }) => a));
   const m = /^\/download-service\/files\/activity\/(\d+)$/.exec(u.pathname), a = m && GACTS.find((x) => String(x.activityId) === m[1]);
