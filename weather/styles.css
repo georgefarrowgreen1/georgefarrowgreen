@@ -356,7 +356,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* the weather now, the saved places either side of it beside it, in a scroller that stops at each (app.js pager): the
    one either side drawn to its height, not adding to it (contain), and on a phone reaching the screen's edges, so a
    place comes in from the edge, not from inside the page's margin; faded and shrunk a little as the page is scrolled
-   down (app.js: --c, on the page) */
+   down (app.js: --c, on it and on the .pv-hero copies) */
 .pager { position: relative; display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
   transform-origin: 0 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
 .pager::-webkit-scrollbar { display: none; }
@@ -945,6 +945,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .tile h3 { margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
 .tile .big, .detail-now .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
 .tile .big small, .detail-now .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
+/* (the Sun's: its word under the time where the two don't fit side by side, "10:48pm Sunset" on a narrow phone, rather
+   than out over the card's edge; only the Sun's, so the wind's figure and its unit never part) */
+.tile[data-kind="sun"] .big { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 3px; }
+.tile[data-kind="sun"] .big small { margin-left: 0; }
 .tile p, .detail-now p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
 .tile .sub { margin-top: auto; }
 .detail-now .sub { margin-top: 6px; }

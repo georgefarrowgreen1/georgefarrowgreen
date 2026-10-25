@@ -12,7 +12,7 @@
 //                functions/_wxwarn.js)
 //
 // Nothing about you is sent beyond the spot asked about (and, to name where you are, your position
-// as your phone gives it: BigDataCloud's free service is for exactly that, and only that). Data by
+// to about a kilometre: BigDataCloud's free service is for exactly that, and only that). Data by
 // Open-Meteo.com (CC BY 4.0).
 
 import { parseWall, keyOf, HOUR } from "./format.js";
@@ -259,13 +259,15 @@ export async function searchPlaces(name) {
 // live: a position just given by the phone (BigDataCloud's free service takes only those: a kept one goes to
 // Nominatim alone)
 export async function nameOf(lat, lon, { live = true } = {}) {
+  // (sent to two decimal places, about a kilometre: all a town's or a suburb's name needs)
+  const r2 = (v) => Math.round(v * 100) / 100;
   if (live) try {
-    const j = await getJSON(`${API.reverse}?${qs({ latitude: r4(lat), longitude: r4(lon), localityLanguage: "en" })}`, 6000);
+    const j = await getJSON(`${API.reverse}?${qs({ latitude: r2(lat), longitude: r2(lon), localityLanguage: "en" })}`, 6000);
     const name = j.locality && j.city && j.locality.length <= j.city.length + 12 && !/^(City of|Borough of|London Borough)/.test(j.locality) ? j.locality : j.city || j.locality || j.principalSubdivision;
     if (name) return { name, region: [j.city !== name ? j.city : null, j.countryCode === "GB" ? j.principalSubdivision : j.countryName].filter(Boolean).join(", ") };
   } catch (_) { /* the other, below */ }
   try {
-    const j = await getJSON(`${API.reverse2}?${qs({ format: "jsonv2", lat: r4(lat), lon: r4(lon), zoom: 14, "accept-language": "en" })}`, 8000, 1), a = j.address || {};
+    const j = await getJSON(`${API.reverse2}?${qs({ format: "jsonv2", lat: r2(lat), lon: r2(lon), zoom: 14, "accept-language": "en" })}`, 8000, 1), a = j.address || {};
     const name = a.town || a.village || a.hamlet || a.suburb || a.city || a.municipality || a.county;
     return name ? { name, region: [a.city && a.city !== name ? a.city : null, a.country_code === "gb" ? a.state : a.country].filter(Boolean).join(", ") } : null;
   } catch (_) { return null; }

@@ -107,6 +107,11 @@ async function start() {
   if (signedIn) arrival = arriveFrom(); else $("back-in")?.remove();
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
+  // (My Location as kept by a version from before it was kept to three decimal places, its notifications' too: so from
+  // the first, as locate has it, not once it's next found, which may not be till it's asked for)
+  const fine = [...S.places, ...S.settings.notify.places, S.settings.notify.brief].filter((x) => x?.gps && (r3(x.lat) !== x.lat || r3(x.lon) !== x.lon));
+  for (const x of fine) { x.lat = r3(x.lat); x.lon = r3(x.lon); }
+  if (fine.length) { store.set("wx:places", S.places); store.set("wx:settings", S.settings); }
   const cur = store.get("wx:cur");
   S.cur = Math.min(Number.isInteger(cur) && cur > 0 ? cur : 0, Math.max(0, S.places.length - 1));
   // My Location first (lists kept from before it was), still showing the same place
@@ -120,10 +125,15 @@ async function start() {
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
     const name = (q.get("name") || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 60);
     history.replaceState(null, "", location.pathname);
-    const p = { name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon }, have = S.places.findIndex((x) => !x.gps && Math.abs(x.lat - lat) < 0.02 && Math.abs(x.lon - lon) < 0.02);
+    const p = { name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon }, n = S.settings.notify;
+    const near = (x, d = 0.02) => Math.abs(x.lat - lat) < d && Math.abs(x.lon - lon) < d;
+    let have = S.places.findIndex((x) => !x.gps && near(x));
+    // (a notification for My Location, one of this device's own: My Location, if it's still roughly there; within 0.2°,
+    // as its notifications' place can be a square of the forecast's behind it, moved only as the square or name changes)
+    if (have < 0 && [...n.places, n.brief].some((e) => e?.gps && near(e))) have = S.places.findIndex((x) => x.gps && near(x, 0.2));
     // (a first visit takes it as its place; a list of your own is added to only if you say so, so a link can't slip a
     // place into it, and on to every device your account's on)
-    if (have >= 0) S.cur = have;
+    if (have >= 0) { S.cur = have; savePlaces(); }
     else if (!S.places.length || confirm(`Add “${p.name}” to your places?`)) addPlace(p);
   }
   let located = false;
@@ -262,6 +272,7 @@ function opened() {
   if ("serviceWorker" in navigator && Date.now() - appAt > 60e3) { appAt = Date.now(); navigator.serviceWorker.getRegistration().then((r) => r?.update()).catch(() => {}); }
   if (Date.now() - pulledAt > 60e3) pull();
   check(true);
+  keepNotify();
 }
 function check(opening = false) {
   const p = place();
@@ -277,7 +288,7 @@ function check(opening = false) {
 document.addEventListener("visibilitychange", opened);
 addEventListener("pageshow", (e) => { if (e.persisted) opened(); });
 addEventListener("focus", opened);
-addEventListener("online", () => check(true));
+addEventListener("online", () => { check(true); keepNotify(true); });
 
 // the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
 // The forecast tuned for here as Settings has it (its highs and lows: applyTuning), steadied from three days on with
@@ -582,9 +593,11 @@ function placePages(a, b, va, vb) {
     const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id, top = id ? heroSig(v, i) : "";
     if (pv._for === want && pv._top === top) continue;
     pv._for = want; pv._id = id; pv._top = top; pv.dataset.whole = e ? "1" : "";
-    // (with the hero's line under its briefing, as tall as it is, said or not)
-    pv.replaceChildren(...(id ? [h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })),
-      ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
+    // (with the hero's line under its briefing, as tall as it is, said or not; faded as far as the page is scrolled, as
+    // the scroller is: wire's onScroll)
+    const now = id ? h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })) : null;
+    now?.style.setProperty("--c", $("pager").style.getPropertyValue("--c") || "0");
+    pv.replaceChildren(...(id ? [now, ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
   }
   keepNear(pages); keepNear(stills);
 }
@@ -762,7 +775,9 @@ function readyNearby(soon = false) {
   // (not while the page's own forecast is coming in, or it's being swiped: the page's own first)
   if (pagerBusy() || S.loading) { nearbySoon(soon); return; }
   // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
-  // the map still on its way to it)
+  // the map still on its way to it; and taken again only once the map's been drawn again since, mapgl.js still, so not
+  // for each of the minute's passes, a page beside drawn in each, with nothing on it changed; a lone place's too, for
+  // its page beside the next one added)
   const here = place();
   if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still().then((u) => { if (u && place() === here) stills.set(cell(here.lat, here.lon), u); }, () => {});
   const list = nearby().filter(Boolean);
@@ -909,6 +924,7 @@ function turnTo(i) {
 }
 // (one kept so long that it's run out, or all but, has nothing to show: two weeks away, say)
 const runOut = (wx) => I.hoursFrom(wx, nowWall(wx.place.offset), 6).length < 6;
+let retried = false;     // (Try again pressed: wire)
 function render() {
   showPlace();
   if (S.base && runOut(S.base)) S.base = S.wx = null;
@@ -927,8 +943,13 @@ function render() {
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("hourly-strip")._sig = $("insights")._sig = null;
     $("nowcast").hidden = true;
-    status(); layoutPager(); return;
+    status(); layoutPager();
+    // (Try again pressed, and back with nothing: the focus back on it, rather than lost to the page as it was hidden
+    // meanwhile)
+    if (retried && !$("retry-btn").hidden) { retried = false; if (!document.activeElement || document.activeElement === document.body) $("retry-btn").focus(); }
+    return;
   }
+  retried = false;
   // (and arriving where there were placeholders, or a message: the cards on screen come up into place after the hero)
   if (before) arrive();
   const now = nowWall(wx.place.offset);
@@ -1059,7 +1080,14 @@ addEventListener("resize", () => {
 });
 function status() {
   const wx = S.wx, el = $("status");
-  if (!wx) { el.classList.remove("warn"); el.textContent = ""; $("updated").textContent = ""; return; }
+  if (!wx) {
+    el.classList.remove("warn");
+    // (no forecast, and none coming: the hero's message said to a screen reader too, as it's on the screen, unseen here
+    // so it isn't shown twice; said once it's done trying, not while it is)
+    const said = S.error && !S.loading ? `${$("now-cond").textContent}. ${$("now-hl").textContent}` : "";
+    if (el.textContent !== said) el.replaceChildren(...(said ? [h("span", { class: "sr-only" }, said)] : []));
+    $("updated").textContent = ""; return;
+  }
   const mins = Math.round((Date.now() - wx.fetchedAt) / 60e3);
   const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.floor(mins / 60)} h ago` : `${Math.floor(mins / 1440) === 1 ? "1 day" : `${Math.floor(mins / 1440)} days`} ago`;
   // (said once, not again every minute as the age goes up: that's in the line under the page; "Updating…" only when
@@ -1213,9 +1241,12 @@ function pinOnMap(wx, now) {
   // and the official warnings' areas, where their services draw them
   const here = cell(wx.place.lat, wx.place.lon);
   glanceAll();
-  S.radar.others(S.places.map((q, i) => ({ q, i })).filter(({ q, i }) => i !== S.cur && cell(q.lat, q.lon) !== here).map(({ q, i }) => {
+  // (each found in the list as it is when it's tapped, as takeUp finds a place: the map keeps a bubble while the same
+  // places are on it, so where it was in the list then may not be where it is now, one before it taken away since, say)
+  const at = (q) => S.places.findIndex((x) => (q.gps ? x.gps : !x.gps && A.keyOf(x) === A.keyOf(q)));
+  S.radar.others(S.places.map((q, i) => ({ q, i })).filter(({ q, i }) => i !== S.cur && cell(q.lat, q.lon) !== here).map(({ q }) => {
     const k = glance(q);
-    return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? pinHue(k.temp) : null, go: () => { S.cur = i; savePlaces(); go(); } };
+    return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? pinHue(k.temp) : null, go: () => { const i = at(q); if (i < 0) return; S.cur = i; savePlaces(); go(); } };
   }));
   S.radar.warnings(inForce(wx.official).filter((w) => w.areas?.length).map((w) => ({ id: w.id, title: w.event || titleOf(w), colour: colourOf(w), onset: w.onset, expires: w.expires, open: !!w.open, rings: w.areas })));
 }
@@ -1942,13 +1973,17 @@ function tunedToo(l) {
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 
 /* ---------- places ---------- */
+// (My Location's position, to three decimal places: locate, and start for one kept from before)
+const r3 = (v) => Math.round(v * 1e3) / 1e3;
 // (after: a sheet going, that the page waits for before it turns to where you are)
 async function locate(quiet = false, after = null) {
   if (!navigator.geolocation) { if (!quiet) toast("Location isn't available in this browser."); return false; }
   const btn = $("locate-btn"); btn.classList.add("busy");
   try {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
-    const lat = pos.coords.latitude, lon = pos.coords.longitude, before = S.places.find((x) => x.gps);
+    // (to three decimal places, about 100 m, from here on: all a forecast needs, the hills and valleys in it included,
+    // and nothing nearer than that sent anywhere, or kept)
+    const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps);
     // (hardly moved since last time, under a kilometre: the name it had, rather than asking again)
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
     // (found quietly, as it's opened: the place being looked at stays the one looked at; and still in the same square
@@ -2033,7 +2068,9 @@ function drawSaved() {
       leave(li).then(() => {
         const at = S.places.indexOf(p); if (at < 0) return;
         const was = place(), n = S.settings.notify, k = nkey(p);
-        S.places.splice(at, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();
+        // (the place on show still on show: what goes by the list, its dots, the map's bubbles and the places beside,
+        // drawn again, as takeUp has them)
+        S.places.splice(at, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go(); else if (S.wx) render(); else showPlace();
         // (its notifications go with it)
         if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved().catch(() => {}); }
       });
@@ -2189,20 +2226,33 @@ async function syncNow() {
   // (signed in, nothing on yet and nothing here before: nothing to tell)
   if (!canShow() || (S.acct && !notifying(n) && !n.endpoint)) return;
   const sub = await pushSub(true), j = sub.toJSON();
-  const r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
-    units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+  let r;
+  try {
+    r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
+      units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+  } catch (e) {
+    // (not told, offline, say, or the server busy: out of step, so it's told again the next time the app's opened or
+    // back online, keepNotify, not a week on)
+    if (n.syncedAt) { n.syncedAt = 0; saveSettings(); }
+    throw e;
+  }
   n.endpoint = j.endpoint; n.devId = r.id || null; n.syncedAt = Date.now(); saveSettings();
 }
-// with notifications on, now and then (and whenever the browser's changed this device's subscription), the server's told
-// again, so they keep coming (it forgets devices it hasn't heard from in months)
-async function keepNotify() {
+// with notifications on, now and then (and whenever the browser's changed this device's subscription, or a change
+// couldn't be sent), the server's told again, so they keep coming (it forgets devices it hasn't heard from in months)
+// (one at a time: opening it is heard more than once at once; and after a try that failed, not again for ten minutes
+// however often it's opened meanwhile, as each counts against what this network may send the server, the other phones
+// on it included; now: back online, at once)
+let keeping = false, failedAt = 0;
+async function keepNotify(now = false) {
   const n = S.settings.notify;
-  if ((!notifying(n) && !n.endpoint) || !canShow()) return;
+  if (keeping || (!now && Date.now() - failedAt < 10 * 60e3) || (!notifying(n) && !n.endpoint) || !canShow()) return;
+  keeping = true;
   try {
     const sub = await pushSub(false);
     if (sub && sub.endpoint === n.endpoint && Date.now() - (n.syncedAt || 0) < 7 * 864e5) return;
     await syncNotify();
-  } catch (_) {}
+  } catch (_) { failedAt = Date.now(); } finally { keeping = false; }
 }
 // (any of them on: rain alerts or official warnings for a place, the briefing)
 const notifying = (n) => !!(n.places.length || n.brief);
@@ -2238,7 +2288,7 @@ function combine(theirs, now, snap, first = false) {
   const tn = theirs.notify || { places: [], brief: null }, theirSettings = theirs.settings && Object.keys(theirs.settings).length ? theirs.settings : null;
   return {
     places: A.mergePlaces(theirs.places || [], now.places, first ? [] : snap.places),
-    settings: first ? theirSettings || now.settings : canon(now.settings) !== snap.settings ? now.settings : theirSettings || now.settings,
+    settings: first ? theirSettings || now.settings : A.mergeSettings(theirSettings, now.settings, JSON.parse(snap.settings || "null"), SYNCED, canon),
     notify: A.mergeNotify(tn, now.notify, first ? A.notifyChanges(now.notify, tn).filter((k) => k === "brief" ? !tn.brief : !tn.places.some((q) => nkey(q) === k)) : A.notifyChanges(now.notify, snap.notify)),
   };
 }
@@ -2944,7 +2994,7 @@ function wire() {
   $("refresh-btn").addEventListener("click", () => go(true));
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
-  $("retry-btn").addEventListener("click", () => go(true));
+  $("retry-btn").addEventListener("click", () => { retried = true; go(true); });
   // temperature, rain or wind: the 48 hours' chart and the days alike, from either switch (and once chosen, kept:
   // otherwise as the weather has it, viewFor)
   const drawMode = () => { if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); daily(S.wx, now); } };
@@ -2963,14 +3013,16 @@ function wire() {
     });
   }
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
-  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), mainEl = $("main"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
-  let ticking = 0;
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), pagerEl = $("pager"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
+  let ticking = 0, lastC = "";
   const onScroll = () => {
     ticking = 0;
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
     // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
-    const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
-    mainEl.style.setProperty("--c", c.toFixed(3));
+    const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = c.toFixed(3);
+    // (on just what fades with it, the scroller and the weather now of the pages beside, and only as it changes: on the
+    // page, it restyled every part of it, the pages beside and all, at every frame of the scroll)
+    if (cs !== lastC) { lastC = cs; for (const el of [pagerEl, ...document.querySelectorAll(".pv-hero")]) el.style.setProperty("--c", cs); }
     // (the bar taking up the temperature, or giving it back: the pill easing from the one's width to the other's, rather
     // than jumping, as only what's showing in it takes room)
     if ((c >= 0.72) !== top.classList.contains("collapsed")) {
