@@ -114,7 +114,7 @@ function setNumber(k, v) {
 // device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
 // its own, the days and workouts joined) and sent again.
 let saveT = null;
-function keep(...parts) { if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); }
+function keep(...parts) { if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
 async function inStep() {
   if (!S.me || !S.dirty.size || inStep.busy) return;
   inStep.busy = true;
@@ -907,7 +907,7 @@ function activitiesView() {
   if (!S.acts.length) return S.bringing ? out : [...out, ...firstUpload()];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
-  const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
+  const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving || 0; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
   if (S.acts.length) out.push(card(null, "The last four weeks", S.summed ? h("div.stats", {}, stat("Time", hm(tot.secs), tot.secs >= 3600 ? "h" : null), stat("Distance", ...distNum(tot.dist)), stat("Climbing", ...height(tot.asc))) : wait(48)));
   out.push(h("div.seg.wide", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.actSport === k), onclick: () => { S.actSport = k; redraw(); } }, label))));
   // by week, newest first
@@ -1150,6 +1150,7 @@ function settingsView() {
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         row({ icon: "ruler", tint: "blue", title: "Units", sub: S.unitsSet ? null : "From your region, until you choose", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; S.unitsSet = true; keep("prefs"); redraw(true); } }),
+        rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
         row({ icon: "heart", tint: "green", title: "Ask how I am each morning", sub: "Or check in from the card on Today", value: S.ask === false ? "Off" : "On", onclick: () => { S.ask = S.ask === false; keep("prefs"); Sheet.redraw(); } }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }),
@@ -1550,6 +1551,82 @@ function garminView() {
   ] };
 }
 
+// ---- the morning notification (functions/_fitpush.js): today's session, or a rest day, at the time you chose, on this
+// phone. Its words for the next week are written here, from Rhythm, and sent again as things change; the server only
+// sends the day's when your time comes ----
+const canPush = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function pushWhy() {
+  if (canPush()) return Notification.permission === "denied" ? "Notifications are blocked for Fitness in this browser’s settings." : null;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  return ios && !standalone ? "Add Fitness to your Home Screen first (Share, then Add to Home Screen), and turn this on there." : "This browser can’t show notifications.";
+}
+const morningOf = () => store.get("morning", null);
+const clockOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+function morningDays() {
+  const out = {};
+  for (let i = 0; i < 8; i++) {
+    const d = addDays(TODAY, i), r = rhDay(d);
+    if (!r) continue;
+    // (Rhythm's reason, where the day's its; one you changed says nothing more)
+    const swapped = S.swaps[d] !== undefined, id = swapped ? S.swaps[d] : r.id, w = id ? wkById(id) : null, why = swapped ? "" : r.why || "";
+    out[dayStamp(d)] = w ? { title: `Today: ${w.name}`, body: `${dur(measure(w, paceFor(w.sport)).secs)}, ${!swapped && r.hard ? "a hard day" : w.kind.toLowerCase()}. ${why}`.trim() }
+      : { title: "Rest day", body: `Rest, and let it sink in. ${why}`.trim() };
+  }
+  return out;
+}
+const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+async function morningSub(make) {
+  const reg = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+  await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && make) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes((await A.pushKey()).key) });
+  return sub;
+}
+const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+async function morningOn(at) {
+  if (Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") throw new Error("Notifications weren’t allowed. Turn them on for Fitness in this browser’s settings.");
+  const sub = await morningSub(true);
+  await A.morning({ sub: sub.toJSON(), at, tz: tz(), days: morningDays() });
+  store.set("morning", { at, endpoint: sub.endpoint });
+}
+async function morningOffHere() {
+  const m = morningOf();
+  store.set("morning", null);
+  try { await A.morningOff(m?.endpoint); (await morningSub(false))?.unsubscribe(); } catch (_) {}
+}
+// (the week's words sent again, a moment after anything that changes them)
+function morningRefresh() {
+  const m = morningOf();
+  if (!m || !S.me || !rhythmOn() || !canPush()) return;
+  clearTimeout(morningRefresh.t);
+  morningRefresh.t = setTimeout(async () => {
+    try { const sub = await morningSub(false); if (!sub) return store.set("morning", null); await A.morning({ sub: sub.toJSON(), at: m.at, tz: tz(), days: morningDays() }); } catch (_) {}
+  }, 3000);
+}
+function morningView() {
+  const m = morningOf(), why = pushWhy(), at = morningView.at ?? m?.at ?? 7 * 60, t0 = morningDays()[dayStamp(addDays(TODAY, 1))];
+  const pick = async (v) => {
+    morningView.at = v;
+    if (m) { try { await morningOn(v); toast(`At ${clockOf(v)} each morning`); } catch (e) { return toast(e.message, true, 6000); } }
+    Sheet.redraw(); redraw();
+  };
+  const on = async (btn) => {
+    btn.disabled = true; btn.textContent = "Turning on…";
+    try { await morningOn(at); } catch (e) { btn.disabled = false; btn.textContent = "Turn on"; return toast(e.message, true, 6000); }
+    toast(`On: at ${clockOf(at)} each morning`); Sheet.redraw();
+  };
+  const onBtn = h("button.btn", { type: "button", onclick: () => on(onBtn) }, "Turn on");
+  return { title: "Morning reminder", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Morning reminder" }), h("div.sub", { text: "Today’s session, or a rest day, at the time you choose. On this phone." })),
+    t0 && h("div.note-preview", {}, h("span.ic", {}, h("img", { src: "icon-192.png", alt: "", width: 20, height: 20 })), h("span.tx", {}, h("b", { text: t0.title }), h("small", { text: t0.body }))),
+    section("At", h("div.times", { role: "radiogroup", "aria-label": "Time" }, [360, 390, 420, 450, 480, 510, 540].map((v) =>
+      h("button.pill.small" + (v === at ? ".tinted" : ""), { type: "button", role: "radio", "aria-checked": String(v === at), onclick: () => pick(v) }, clockOf(v))))),
+    why ? h("p.rh-note", { text: why }) : !m && onBtn,
+    m && section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async () => { await morningOffHere(); morningView.at = null; Sheet.redraw(); redraw(); toast("Morning reminder off"); } }, "Turn off"))),
+  ] };
+}
+
 // ---- sheets: up from below, the page stepping back; inside one, on and back slide like pages ----
 const Sheet = { stack: [], tall: false, redraw: null };
 function openSheet(view, { tall = false } = {}) {
@@ -1683,6 +1760,7 @@ function arrive(m) {
   else { askToday(); garminNow(m.garmin); }
   setTimeout(squash, 4000);
   setTimeout(routes, 6000);
+  morningRefresh();
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
@@ -1718,6 +1796,8 @@ addEventListener("visibilitychange", async () => {
 // Signing out, here (everywhere on the site, in this browser), or found to be signed out (elsewhere): this device's
 // copies of your files go too
 async function signOutHere(already = false) {
+  // (this phone's morning reminder goes with the sign-in)
+  if (already !== true && morningOf()) await morningOffHere();
   if (already !== true) { try { await A.signOut(); } catch (e) { if (e.status !== 401) return toast(e.message, true); } }
   if (sheetEl.open) await closeSheet();
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();

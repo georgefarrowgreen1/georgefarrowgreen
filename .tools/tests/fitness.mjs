@@ -372,6 +372,37 @@ ok(oldUp === 200 && squashed?.type === 'fit' && squashed.file === 'old.fit' && s
 const oldBack = await L.p.evaluate(async (id) => { const m = await import('./account.js'); const b = await m.fileOf(id); return [b.length, String.fromCharCode(b[8], b[9], b[10], b[11])]; }, `i${oldAt}`);
 ok(oldBack[1] === '.FIT', 'and back, unpacked, as a FIT file', JSON.stringify(oldBack));
 
+// ---- 8e. The morning reminder on the laptop: turned on for 07:30; its week's words kept; sent once, when its time
+// comes (the scheduler's turn), and not again that day ----
+const pk = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+const pushPub = Buffer.from(await crypto.subtle.exportKey('raw', pk.publicKey)).toString('base64url'), pushAuth = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url');
+await L.ctx.grantPermissions(['notifications'], { origin: FIT });
+await L.ctx.addInitScript(({ endpoint, p256dh, auth }) => {
+  // (headless Chromium has no push service: one stood in for, with keys the test holds)
+  const make = (key) => ({ endpoint, options: { applicationServerKey: key }, toJSON: () => ({ endpoint, keys: { p256dh, auth } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
+  PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make(null) : null; };
+  PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(null); };
+}, { endpoint: 'https://fcm.googleapis.com/fcm/send/fitness-laptop', p256dh: pushPub, auth: pushAuth });
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Morning reminder' }).click(); await settle(L, 600);
+const preview = await L.p.locator('#sheet .note-preview').innerText().catch(() => '');
+await L.p.locator('#sheet .times .pill', { hasText: '07:30' }).click(); await settle(L, 300);
+await L.p.locator('#sheet .btn', { hasText: 'Turn on' }).click();
+const mrow = await waitFor(() => rows(`SELECT at, tz, days FROM fx_push WHERE user_id = '${sam}'`)[0], 15000);
+const mdays = mrow ? JSON.parse(mrow.days) : {};
+ok(mrow?.at === 450 && Object.keys(mdays).length >= 7 && Object.values(mdays).every((d) => /^(Today: |Rest day)/.test(d.title)) && /^(Today: |Rest day)/.test(preview),
+  'the morning reminder on: at 07:30, and the week’s words with it', `${JSON.stringify(mrow && { at: mrow.at, tz: mrow.tz })} | ${preview.replace(/\s+/g, ' ')}`);
+await L.p.screenshot({ path: `${out}/morning.png` });
+await done(L); await done(L);
+// (its time come: sent by the scheduler's turn; a second turn the same day sends nothing)
+const nowMins = (() => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: mrow.tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value])); return Number(p.hour) * 60 + Number(p.minute); })();
+sql(`UPDATE fx_push SET at = ${Math.max(0, nowMins - 1)}, sent = NULL WHERE user_id = '${sam}'`);
+const pushedBefore = readFileSync(`${S}/pushbox.jsonl`, 'utf8').split('\n').filter((l) => l.includes('fitness-laptop')).length;
+const t1 = JSON.parse((await api(L, '/api/fitness/garmin-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } })).body);
+const t2 = JSON.parse((await api(L, '/api/fitness/garmin-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } })).body);
+const pushedAfter = readFileSync(`${S}/pushbox.jsonl`, 'utf8').split('\n').filter((l) => l.includes('fitness-laptop')).length;
+ok(t1.morning?.sent === 1 && t2.morning?.sent === 0 && pushedAfter === pushedBefore + 1, 'its time come: sent once, and not again that day', `${JSON.stringify(t1.morning)} ${JSON.stringify(t2.morning)} ${pushedBefore}→${pushedAfter}`);
+
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);
 const wide = [];

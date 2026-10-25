@@ -15,7 +15,11 @@
 //   POST   /api/fitness/garmin/fetch  what's new asked for now (as the app opens; force, for Check now) → as GET
 //   GET    /api/fitness/garmin/new/<id>  a waiting activity's file, as Garmin gave it (a zip of its FIT file)
 //   DELETE /api/fitness/garmin/new/<id>  read, and not to be kept (one you have already, or that can't be read)
-//   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret
+//   GET    /api/fitness/push-key     the key push subscriptions are made with
+//   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
+//   DELETE /api/fitness/push         and off again: { endpoint }
+//   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret: Garmin's look for
+//                                    what's new, and the morning notifications that are due
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
@@ -26,6 +30,7 @@ import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
+import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, routeActivity, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
@@ -129,7 +134,23 @@ const ROUTES = {
     await done(env, u.id, id);
     return json({ ok: true });
   },
-  "POST garmin-tick": async ({ request, env }) => { tickAuthOk(request, env); return json(await garminTick(env)); },
+  "GET push-key": async ({ env }) => json({ key: await pushKey(env) }),
+  "POST push": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    return json(await setMorning(env, u.id, await body(request, 16 * 1024)));
+  },
+  "DELETE push": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request);
+    await stopMorning(env, u.id, b.endpoint);
+    return json({ on: false });
+  },
+  "POST garmin-tick": async ({ request, env }) => {
+    tickAuthOk(request, env);
+    const [garmin, morning] = await Promise.all([garminTick(env), morningTick(env)]);
+    return json({ ...garmin, morning });
+  },
   // Signed in on the account's page, for Fitness (functions/_handback.js): the code it was handed back with, and the
   // word Fitness kept for it; where the browser shares the site's sign-in, it's the one the page just made, and that's
   // all; where it doesn't (a Home Screen app, or a test server's separate addresses), Fitness's own, given to the browser

@@ -246,4 +246,6 @@ export async function dropFitness(env, userId) {
   await D.batch([D.prepare("DELETE FROM fx_acts WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_state WHERE user_id = ?").bind(userId)]);
   // (and Garmin's key, where one was added: functions/_garmin.js)
   await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId)]).catch(() => {});
+  // (and the morning notification's phones: functions/_fitpush.js)
+  await D.prepare("DELETE FROM fx_push WHERE user_id = ?").bind(userId).run().catch(() => {});
 }

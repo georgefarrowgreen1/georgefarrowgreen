@@ -804,3 +804,9 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .done-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .done-figs small { display: block; font-size: 12px; color: var(--text-3); }
 .done-figs b { font-size: 19px; font-variant-numeric: tabular-nums; }
+/* the morning reminder: what it'll say, and when */
+.note-preview { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; padding: 12px 14px; border-radius: 18px; background: var(--glass-strong); box-shadow: var(--edge); }
+.note-preview .ic { flex: none; width: 34px; height: 34px; border-radius: 9px; overflow: hidden; display: grid; place-items: center; }
+.note-preview .ic img { width: 34px; height: 34px; }
+.note-preview .tx { display: grid; gap: 2px; min-width: 0; } .note-preview b { font-size: 15px; font-weight: 600; } .note-preview small { font-size: 14px; color: var(--text-2); line-height: 1.35; }
+.times { display: flex; flex-wrap: wrap; gap: 8px; }
