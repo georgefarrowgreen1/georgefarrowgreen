@@ -600,10 +600,10 @@ function actView(a) {
   const ftp = P().ftp;
   body.push(card(null, null, h("div.stats", {},
     s.dist > 100 && stat("Distance", ...distNum(s.dist)), stat("Moving time", clock(s.moving)), s.ascent > 0 && stat("Climbing", ...height(s.ascent)),
-    a.sport === "ride" && s.avgSpd && stat("Average speed", ...speed(s.avgSpd)), a.sport === "run" && s.avgSpd && stat("Average pace", pace(paceOfSpeed(s.avgSpd)).split(" ")[0], U.metric ? "/km" : "/mi"),
+    a.sport === "ride" && s.avgSpd > 0 && stat("Average speed", ...speed(s.avgSpd)), a.sport === "run" && s.avgSpd > 0 && stat("Average pace", pace(paceOfSpeed(s.avgSpd)).split(" ")[0], U.metric ? "/km" : "/mi"),
     s.avgPwr != null && stat("Average power", s.avgPwr, "W"), s.np != null && stat("Normalized Power", s.np, "W"), s.iF != null && stat("Intensity", s.iF.toFixed(2)),
-    s.tss != null && stat({ hr: "TSS (heart rate)", pace: "TSS (pace)" }[s.kind] || "Training stress", s.tss), s.avgHr && stat("Average heart rate", s.avgHr, "bpm"), s.maxHr && stat("Max heart rate", s.maxHr, "bpm"),
-    s.avgCad && stat("Cadence", s.avgCad, a.sport === "run" ? "spm" : "rpm"), s.kj != null ? stat("Work", s.kj.toLocaleString("en-GB"), "kJ") : stat("Energy", s.kcal, "kcal"))));
+    s.tss != null && stat({ hr: "TSS (heart rate)", pace: "TSS (pace)" }[s.kind] || "Training stress", s.tss), s.avgHr > 0 && stat("Average heart rate", s.avgHr, "bpm"), s.maxHr > 0 && stat("Max heart rate", s.maxHr, "bpm"),
+    s.avgCad > 0 && stat("Cadence", s.avgCad, a.sport === "run" ? "spm" : "rpm"), s.kj != null ? stat("Work", s.kj.toLocaleString("en-GB"), "kJ") : stat("Energy", s.kcal, "kcal"))));
   // power, heart rate and height, with a cursor that says what each was there (and moves a marker on the map)
   if (ps.moving.length > 60) {
     const cw = sheetW(), pic = C.streams(ps, s.secs, cw), cur = pic.querySelector(".cursor"), read = h("p.readout", { text: "Touch the chart to see each moment." });
@@ -625,7 +625,7 @@ function actView(a) {
   if (s.curve && Object.keys(s.curve).length > 2) {
     // (an FTP read from the best 20 minutes only where they were ridden hard: an easy ride's says nothing about it)
     const best20 = s.curve[1200], est = best20 ? Math.round(best20 * 0.95) : 0;
-    body.push(card(null, "Best efforts", C.curve(s.curve, ftp, sheetW()), best20 && h("p.line-said", { text: `Your best 20 minutes: ${best20} W, ${pct(best20 / ftp)} of your FTP.${est > ftp + 4 ? ` That’s an FTP of about ${est} W, above your ${ftp} W: worth a test.` : ""}` })));
+    body.push(card(null, "Best efforts", C.curve(s.curve, ftp, sheetW()), best20 > 0 && h("p.line-said", { text: `Your best 20 minutes: ${best20} W, ${pct(best20 / ftp)} of your FTP.${est > ftp + 4 ? ` That’s an FTP of about ${est} W, above your ${ftp} W: worth a test.` : ""}` })));
   }
   if (x.laps.length > 1 && x.laps.length <= 30) {
     body.push(section(`Laps (${x.laps.length})`, h("div.group", {}, x.laps.map((l, i) => {
@@ -851,9 +851,9 @@ async function importFiles(files) {
     title: "Imported",
     body: [h("div.sheet-top", {}, h("h1", { text: got.acts.length || got.workouts.length ? "Imported" : "Nothing imported" }),
       h("div.sub", { text: [got.acts.length && plural(got.acts.length, "activity", "activities"), got.workouts.length && plural(got.workouts.length, "workout"), got.dupes && `${got.dupes} already here`].filter(Boolean).join(" · ") || "" })),
-      got.acts.length && section("Activities", h("div.group", {}, got.acts.map(actRow))),
-      got.workouts.length && section("Workouts", h("div.group", {}, got.workouts.map(workoutRow))),
-      got.skipped.length && section("Not read", h("div.group", {}, got.skipped.map((s) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: s }))))))],
+      got.acts.length > 0 && section("Activities", h("div.group", {}, got.acts.map(actRow))),
+      got.workouts.length > 0 && section("Workouts", h("div.group", {}, got.workouts.map(workoutRow))),
+      got.skipped.length > 0 && section("Not read", h("div.group", {}, got.skipped.map((s) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: s }))))))],
   }));
 }
 
