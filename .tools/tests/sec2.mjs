@@ -12,9 +12,10 @@ const mails = () => readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n'
 const gKeys = await K.makeKeys();
 const G = await K.phone('george', gKeys);
 await G.p.goto(`${accountUrl(K.URL)}#join`); await G.p.waitForSelector('main input[name=name]', { timeout: 20000 });
+// (counted from before it's typed: what's asked as it's typed is the answer the button takes, not asked again)
+const before = plog().length;
 await fillJoin(G.p, { name: 'George Farrow-Green', handle: 'geo', email: 'george@example.com', password: 'password1234' }, { send: false });
 await G.p.waitForTimeout(1200);           // (what it says as it's typed, asked and answered, before what's sent)
-const before = plog().length;
 await G.p.click('main .signin form .btn');
 const err = await G.p.waitForSelector('main .said.bad', { timeout: 15000 }).then((e) => e.innerText(), () => '');
 ok(/123,456 data breaches/.test(err) && !one("SELECT COUNT(*) AS n FROM pg_users")[0].n, 'a leaked password is refused before any account is made', err);
