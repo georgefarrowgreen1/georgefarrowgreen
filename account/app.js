@@ -542,7 +542,7 @@ function signedIn(r) {
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
     app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
-      fx.plan ? "On a plan" : "Training, riding first")))));
+      fx.plan ? "On a plan" : "Training, using AI")))));
   const top = [
     sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
@@ -744,7 +744,7 @@ function fitnessView() {
   const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
   return { title: "Fitness", quiet: true, body: [
-    h("div.app-head", {}, h("img", { src: "/apps/fitness.png", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, riding first" })),
+    h("div.app-head", {}, h("img", { src: "/apps/fitness.png", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, using AI" })),
     h("div.group", {}, row("Activities", String(x.activities || 0)), x.last && row("Latest", day(x.last)),
       row("Files", mb < 0.1 ? "None" : mb < 1000 ? `${mb.toFixed(mb < 10 ? 1 : 0)} MB` : `${(mb / 1024).toFixed(1)} GB`),
       row("Plan", x.plan ? "On a plan" : "None"), row("Your workouts", String(x.workouts || 0))),
