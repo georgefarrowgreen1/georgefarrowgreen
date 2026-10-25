@@ -14,7 +14,8 @@
   --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.56);
   --glass: rgba(34, 38, 62, 0.5); --glass-strong: rgba(28, 31, 52, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
-  --tint: #ff7a4d; --tint-deep: #ee4b2f; --tint-text: #ffa07c; --on-tint: #fff;
+  /* (buttons and links in the site's blue, as the account page's, InFlight's and Weather's; coral is Fitness's own, for its icon and rides) */
+  --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --on-tint: #fff;
   --danger: #ff6a5f; --good: #4fdc8e; --good-text: #4fdc8e; --warn: #ffbd4a;
   /* effort, by zone (a share of FTP: workouts.js ZONES), and the lines of fitness, fatigue and form */
   --z1: #a3abc0; --z2: #4aa3ff; --z3: #3fd08f; --z4: #ffd23f; --z5: #ff9440; --z6: #ff5a5a; --z7: #c07bff;
@@ -50,7 +51,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #f0582f; --tint-deep: #d9441d; --tint-text: #b63a12;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
@@ -68,7 +69,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #f0582f; --tint-deep: #d9441d; --tint-text: #b63a12;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
@@ -295,7 +296,7 @@ button.row:active, a.row:active { background-color: var(--press); }
 
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
-  color: var(--on-tint); background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
+  color: var(--on-tint); background: linear-gradient(180deg, #5aa2ff, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
   transition: transform var(--dur-release) var(--ease-spring), filter var(--dur-fast); }
 .btn:active { transform: scale(0.97); transition-duration: var(--dur-press); }
 .btn.quiet { color: var(--text); background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line); }
