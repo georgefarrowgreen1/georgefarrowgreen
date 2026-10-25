@@ -156,7 +156,7 @@ export async function nearViews(D, me, ids, t) {
     for (const r of results) {
       if (![r.a_from, r.a_to].includes(me) || ![r.b_from, r.b_to].includes(me)) continue;
       const side = (x) => ({ id: r[x], from: r[x + "_from"], to: r[x + "_to"], pigeon: r[x + "_kind"] || (r[x + "_swift"] ? "swift" : "standard") });
-      // flying together: when they part, its next "f" point (the points themselves go to no one: functions/_pigeon.js msgView)
+      // flying together: when they part, its next "f" point (phones get the points only as plain ones: functions/_pigeon.js msgView)
       const until = (x) => { try { return JSON.parse(r[x + "_legs"] || "[]").find((l) => l[3] === "f" && l[2] > r.at)?.[2] ?? r.at; } catch (_) { return r.at; } };
       for (const [mine, other] of [["a", "b"], ["b", "a"]]) {
         if (!part.has(r[mine])) continue;

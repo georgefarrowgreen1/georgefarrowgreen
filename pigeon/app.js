@@ -2624,6 +2624,7 @@ const KEEP_MS = 30 * DAY, KEEP_SAY = "Messages are kept for 30 days after they l
 const kept = (m, t = now()) => { const end = m.lost ? m.lostAt || m.deliverAt : m.deliverAt; return !!end && end + KEEP_MS < t && !(m.flock || []).some((x) => !x.lost && x.deliverAt + KEEP_MS >= t); };
 function vanished(m, t = now()) {
   if (!m?.vanish) return false;
+  if (m.vanishAt) return m.vanishAt <= t;          // (read receipts off: the server says when, read or not)
   if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
   return !!m.readAt && m.readAt + m.vanish <= t;
 }

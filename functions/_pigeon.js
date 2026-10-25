@@ -330,6 +330,10 @@ const MIGRATIONS = [
   // or recall), so not the month of your others; the unread count and marking read keep pg_msgs_to
   "CREATE INDEX IF NOT EXISTS pg_msgs_air_from ON pg_msgs(sender, deliver_at) WHERE notified_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_msgs_air_to ON pg_msgs(recipient, deliver_at) WHERE notified_at IS NULL",
+  // since when read receipts have been off (null: on), so turning them off doesn't wipe a chat's disappearing messages
+  // that landed long before, unread (functions/_vanish.js: from landing, or from then); those already off: from now
+  "ALTER TABLE pg_users ADD COLUMN no_receipts_at INTEGER",
+  "UPDATE pg_users SET no_receipts_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000 WHERE no_receipts = 1 AND no_receipts_at IS NULL",
   // the Moon (functions/_moon.js): where on it you are (JSON; null: on Earth), your lunar lofts, and a flight's two ends
   "ALTER TABLE pg_users ADD COLUMN moon TEXT",
   "ALTER TABLE pg_users ADD COLUMN lunar INTEGER", "ALTER TABLE pg_users ADD COLUMN lunar_at INTEGER",
@@ -712,10 +716,10 @@ export function msgView(me, m, t) {
     ...(m.moon ? { moon: JSON.parse(m.moon) } : {}),       // to, from or on the Moon: its two ends (functions/_moon.js)
     style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
     liveAt: flying ? m.live_at ?? null : null,   // when the weather ahead was last looked at (_live.js)
-    // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"]); not where it flew with
-    // another ("f"), which can be a pigeon this person can't see (who can see both is told where they part with the
-    // moment: functions/_moments.js nearViews)
-    legs: (m.legs ? JSON.parse(m.legs) : []).filter((l) => l[3] !== "f"),
+    // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"]); where it met and
+    // parted from another it flew with ("f") go as just points where it sped up, so the map keeps its pace without saying
+    // so (the other can be a pigeon this person can't see; who sees both is told with the moment: _moments.js nearViews)
+    legs: (m.legs ? JSON.parse(m.legs) : []).map((l) => (l[3] === "f" ? [l[0], l[1], l[2], "c"] : l)),
     ...cheerView(m, me), ...birdOn(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,
     ct: (flying || lost) && m.recipient === me ? null : m.ct,

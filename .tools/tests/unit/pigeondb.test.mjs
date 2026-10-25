@@ -9,7 +9,7 @@ import { noteSeason } from '../../../functions/_seasons.js';
 import { vanishSweep } from '../../../functions/_vanish.js';
 import { reactsFor } from '../../../functions/_reacts.js';
 import { nearViews } from '../../../functions/_moments.js';
-import { stampPassports } from '../../../functions/_passport.js';
+import { stampPassports, restampPair } from '../../../functions/_passport.js';
 import { settleBirds } from '../../../functions/_birds.js';
 
 const sql = new DatabaseSync(':memory:'), asked = [];
@@ -40,7 +40,8 @@ test('a seasonal look is kept at ten, counting the pigeons whose messages have s
 });
 
 test('disappearing messages: timed from landing, read or not, where read receipts are off (one to one and in a group)', async () => {
-  user('quiet', { no_receipts: 1 });
+  user('quiet', { no_receipts: 1, no_receipts_at: now - 30 * DAY });
+  user('newly', { no_receipts: 1, no_receipts_at: now - 3600e3 });                      // (turned them off an hour ago)
   const due = { vanish: DAY, deliver_at: now - DAY - 5000 };
   msg('v-off', { sender: 'ann', recipient: 'quiet', ...due });                         // unread, receipts off: goes
   msg('v-on', { sender: 'ann', recipient: 'cy', ...due });                             // unread, receipts on: stays
@@ -48,10 +49,16 @@ test('disappearing messages: timed from landing, read or not, where read receipt
   gmsg('gv-off', { sender: 'ann', vanish: 7 * DAY }); gdel('gv-off', 'quiet'); gdel('gv-off', 'cy');
   gmsg('gv-on', { sender: 'ann', vanish: 7 * DAY }); gdel('gv-on', 'cy'); gdel('gv-on', 'di');
   gmsg('gv-read', { sender: 'ann', vanish: 7 * DAY }); gdel('gv-read', 'cy', { read_at: now - 8 * DAY }); gdel('gv-read', 'di', { read_at: now - 8 * DAY });
+  // (landed before receipts went off: its time counts from then, so turning them off wipes nothing at once)
+  msg('v-new', { sender: 'ann', recipient: 'newly', ...due });
+  gmsg('gv-new', { sender: 'ann', vanish: 7 * DAY }); gdel('gv-new', 'newly'); gdel('gv-new', 'cy');
   await vanishSweep(env);
   const gone = (t, id) => !!sql.prepare(`SELECT gone_at FROM ${t} WHERE id = ?`).get(id).gone_at;
-  assert.deepEqual(['v-off', 'v-on', 'v-read'].map((id) => gone('pg_msgs', id)), [true, false, true]);
-  assert.deepEqual(['gv-off', 'gv-on', 'gv-read'].map((id) => gone('pg_gmsgs', id)), [true, false, true]);
+  assert.deepEqual(['v-off', 'v-on', 'v-read', 'v-new'].map((id) => gone('pg_msgs', id)), [true, false, true, false]);
+  assert.deepEqual(['gv-off', 'gv-on', 'gv-read', 'gv-new'].map((id) => gone('pg_gmsgs', id)), [true, false, true, false]);
+  sql.exec(`UPDATE pg_users SET no_receipts_at = ${now - 8 * DAY} WHERE id = 'newly'`);
+  await vanishSweep(env);
+  assert.deepEqual([gone('pg_msgs', 'v-new'), gone('pg_gmsgs', 'gv-new')], [true, true], 'and its time after that');
   assert.equal(sql.prepare("SELECT ct FROM pg_msgs WHERE id = 'v-off'").get().ct, '', 'what was said is wiped');
 });
 
@@ -63,13 +70,13 @@ test('reactions: none from, or flying to, someone either of you has blocked; you
   assert.equal((await reactsFor(env, 'di', ['m-r'])).length, 4, 'someone with no block sees them all');
 });
 
-test('flying together: its meet and part points go to no one; who sees both pigeons is told when they part', async () => {
+test('flying together: its meet and part points go to everyone as plain timing points; who sees both pigeons is told when they part', async () => {
   const meet = now - 6 * 3600e3, part = now - 5 * 3600e3, legs = JSON.stringify([[50, 0, meet, 'f'], [49.5, 1, part, 'f'], [49, 2, now - 4 * 3600e3, 'c']]);
   msg('fl-a', { sender: 'ann', recipient: 'bo', sent_at: now - 8 * 3600e3, deliver_at: now - 3600e3, legs });
   msg('fl-b', { sender: 'ann', recipient: 'cy', sent_at: now - 8 * 3600e3, deliver_at: now - 3600e3, legs });
   put('pg_near', { a: 'fl-a', b: 'fl-b', at: meet, lat: 50, lon: 0, km: 80, place: 'France', kind: 'flock' });
   const v = msgView('bo', sql.prepare("SELECT * FROM pg_msgs WHERE id = 'fl-a'").get(), now);
-  assert.deepEqual(v.legs.map((l) => l[3]), ['c'], 'no "f" points, the rest kept');
+  assert.deepEqual(v.legs.map((l) => [l[2], l[3]]), [[meet, 'c'], [part, 'c'], [now - 4 * 3600e3, 'c']], 'no "f" points, but each kept, at its time (the map keeps pace)');
   const seen = await nearViews(D, 'ann', ['fl-a'], now);
   assert.equal(seen.get('fl-a')?.[0]?.until, part, 'the sender of both: when they part');
   assert.equal((await nearViews(D, 'bo', ['fl-a'], now)).size, 0, 'the recipient of one hears nothing of it');
@@ -79,8 +86,9 @@ test('the minute tick: flights to stamp and named pigeons to settle found by ind
   for (let i = 0; i < 3; i++) msg(`st${i}`, { sender: 'ann', recipient: 'cy', deliver_at: now - (i + 1) * 3600e3 });
   gmsg('gst', { sender: 'ann' }); gdel('gst', 'cy');
   sql.exec("UPDATE pg_msgs SET stamped = 1 WHERE id NOT LIKE 'st%'"); sql.exec("UPDATE pg_gdeliv SET stamped = 1 WHERE msg_id != 'gst'");   // (the others' flights: done)
+  gmsg('gnf', { sender: 'ann' }); gdel('gnf', 'di', { deliver_at: now - 9 * DAY });   // (to someone who isn't ann's friend: waits for that)
   asked.length = 0;
-  assert.equal(await stampPassports(D, now), 4);
+  assert.equal(await stampPassports(D, now), 5);
   await settleBirds(D, now);
   assert.equal(sql.prepare("SELECT COUNT(*) AS n FROM pg_msgs WHERE id LIKE 'st%' AND stamped = 1").get().n, 3, 'one to one: marked');
   assert.equal(sql.prepare("SELECT stamped FROM pg_gdeliv WHERE msg_id = 'gst' AND user_id = 'cy'").get().stamped, 1, 'in a group: marked');
@@ -91,4 +99,12 @@ test('the minute tick: flights to stamp and named pigeons to settle found by ind
     assert.deepEqual(scans, [], q.replace(/\s+/g, ' ').slice(0, 120));
   }
   assert.equal(await stampPassports(D, now), 0, 'nothing left to stamp');
+  // (the one to someone who isn't a friend: left out of the look, not read again every minute; stamped once they're friends)
+  const looked = () => sql.prepare("SELECT COUNT(*) AS n FROM pg_gdeliv INDEXED BY pg_gdeliv_unstamped WHERE stamped IS NULL AND lost_at IS NULL AND deliver_at <= ?").get(now).n;
+  assert.equal(looked(), 0, 'out of the index');
+  assert.ok(!sql.prepare("SELECT 1 FROM pg_stamped WHERE id = 'gnf:di'").get(), 'and not stamped');
+  link('ann', 'di'); await restampPair(D, 'di', 'ann').run();
+  assert.equal(looked(), 1, 'friends now: back in it');
+  assert.equal(await stampPassports(D, now), 1);
+  assert.ok(sql.prepare("SELECT 1 FROM pg_stamped WHERE id = 'gnf:di'").get(), 'and stamped');
 });

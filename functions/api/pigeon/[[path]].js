@@ -15,7 +15,7 @@ import { findNear, flockUp, dropNear, renear, nearViews, stopsOf, posAt } from "
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
-import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
+import { PASSPORT_ROUTES, newStamps, restampPair } from "../../_passport.js";
 import { bumpStreak, streakBetween, streakView, ensureStreaks } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
@@ -486,7 +486,7 @@ async function addFriend({ request, env, waitUntil }) {
       if (l.status === "blocked") return json({ message: `You blocked @${t.handle}. Unblock them in Privacy & Security first.` });
       // you said no, then changed your mind: if they still want to, you're friends; if not, it's your request now
       if (l.asked_at) {
-        await D.prepare("UPDATE pg_links SET status = 'ok', asked_at = NULL WHERE a = ? AND b = ?").bind(u.id, t.id).run();
+        await D.batch([D.prepare("UPDATE pg_links SET status = 'ok', asked_at = NULL WHERE a = ? AND b = ?").bind(u.id, t.id), restampPair(D, u.id, t.id)]);
         waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
         return json({ message: `@${t.handle} joined your flock.` });
       }
@@ -502,7 +502,7 @@ async function addFriend({ request, env, waitUntil }) {
   }
   if (l && l.a === u.id) return json({ message: `Your request to @${t.handle} is still waiting.` });
   if (l) {
-    await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id).run();
+    await D.batch([D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id), restampPair(D, u.id, t.id)]);
     waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
     return json({ message: `@${t.handle} joined your flock.` });
   }
@@ -520,7 +520,7 @@ async function respondFriend({ request, env, waitUntil }) {
   const b = await body(request), D = await db(env);
   if (b.accept) {
     const r = await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
-    if (r.meta.changes) waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {}));
+    if (r.meta.changes) { await restampPair(D, u.id, String(b.id)).run(); waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {})); }
   }
   // Declining: they aren't told, and can't ask again for 30 days (their request just keeps waiting)
   else await D.batch([
@@ -567,7 +567,9 @@ async function refundGrounded(D, res) {
 // (PATCH me) and from its settings on the account's page (functions/api/account), by the same rules.
 export async function setPrivacy(D, u, b) {
   if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
-  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
+  // (and since when they've been off: a disappearing message that landed before goes its time after that, functions/_vanish.js)
+  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ?1, no_receipts_at = CASE WHEN ?1 = 0 THEN NULL ELSE COALESCE(no_receipts_at, ?2) END WHERE id = ?3")
+    .bind(b.receipts ? 0 : 1, Date.now(), u.id).run();
   if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
   if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
   if (b.approxLocation !== undefined) {
@@ -620,8 +622,13 @@ const lastBetweenQ = (D, a, b, t) => D.prepare(
 const lastBetween = (D, a, b, t) => lastBetweenQ(D, a, b, t).first();
 
 // Read receipts go both ways: if either of you has them off, neither sees them.
-// read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none
-const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null, viewedAt: null } : v);
+// read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none (and a
+// disappearing one says when it goes, as functions/_vanish.js times it then, so a phone hides it from its saved copy too)
+const receipts = (me, other, v) => {
+  const off = me.no_receipts || other?.no_receipts;
+  if (off && v.vanish) v = { ...v, vanishAt: (v.lost ? v.lostAt : Math.max(v.deliverAt, me.no_receipts_at || 0, other?.no_receipts_at || 0)) + v.vanish };
+  return v.from === me.id && off ? { ...v, readAt: null, viewedAt: null } : v;
+};
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
@@ -636,7 +643,7 @@ async function sync({ request, env }) {
   // passkeys, streaks, feathers, named pigeons, and your groups (a fixed set of questions however many)
   const res = await D.batch([
     D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
-    D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
+    D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.no_receipts_at, p.notify_prefs
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id),
     D.prepare(`
       WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
@@ -705,7 +712,7 @@ async function listMessages({ request, env }) {
   // with you, and the last pigeon between you (whose turn), in one trip; nothing is sent unless you're friends)
   const [{ results: fr }, { results: [them] }, { results }, { results: stops }, { results: [lastOne] }] = await D.batch([
     D.prepare("SELECT 1 AS x FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, other),
-    D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other),
+    D.prepare("SELECT no_receipts, no_receipts_at FROM pg_users WHERE id = ?").bind(other),
     // yours waiting to take off show (to you only); theirs only once they're in the air
     D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3) AND gone_at IS NULL
       ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t),

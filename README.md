@@ -1430,9 +1430,11 @@ that stretch, taking turns at the front: each goes 10% faster for it
 from there are squeezed, with a point ("f") where they meet and where they
 part; it's kept as a moment like a near miss, so both people are told ("Your
 pigeon to Reuben and your pigeon to Nia are flying together over France"), the
-chat says so, and the card's timeline has it. The points stay on the server
-(the other pigeon may be one a person can't see): only someone who can see both
-pigeons hears of it, with the moment saying when they part.
+chat says so, and the card's timeline has it. The points go to phones only as
+places where it sped up ("c", as a cheer's does), so the map keeps its pace but
+nothing says it flew with another (that pigeon may be one a person can't see):
+only someone who can see both pigeons hears of it, with the moment saying when
+they part.
 
 **How sure the landing time is.** While a landing is a way off, the card,
 How It Flies and The Way give it as a range ("lands 21:10–21:40", "likely Fri
@@ -2175,8 +2177,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   it flew to has read it), and phones stop showing it at once, even from their
   saved copy. Where read receipts are off (either friend's, or the sender's or
   anyone's it flew to in a group), the time counts from landing instead, read or
-  not, so its going can't tell anyone when it was read. The flight itself stays
-  for the Flight Log (`functions/_vanish.js`).
+  not, so its going can't tell anyone when it was read; for one that landed
+  before they were turned off, from then, so turning them off wipes nothing at
+  once (`pg_users.no_receipts_at`). The server says when that is with the
+  message (`vanishAt`), so a phone's saved copy hides it on time too. The flight
+  itself stays for the Flight Log (`functions/_vanish.js`).
 - **Nothing is kept for long**: every message is deleted for everyone 30 days
   after it lands, whatever its chat's setting; only a line of what its pigeon
   did is kept, for the Flight Log (`functions/_retention.js`). An account
