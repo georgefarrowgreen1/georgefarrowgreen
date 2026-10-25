@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Cadence",
+  "short_name": "Cadence",
+  "description": "Training for riding first, and running, swimming and strength alongside.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["health", "fitness", "sports"],
+  "background_color": "#0d0f28",
+  "theme_color": "#24224f",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

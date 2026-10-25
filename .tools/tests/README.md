@@ -37,6 +37,11 @@ reports). It turns notifications on with a push subscription whose keys it holds
 arrives in the push stand-in's box. The app's reasoning has unit tests of its own (`unit/wxinsights.test.mjs`,
 `unit/wxnext.test.mjs`).
 
+`cadence.mjs` is Cadence's (train/, the training app's demo), at `/train/` on the site's own address: on a fixed Tuesday,
+the page, every device's workout file downloaded and read back, files imported (a Wahoo's FIT, a GPX, a ZWO, a Garmin
+Connect zip), a ride exported, a session swapped, a workout built and a plan started. Its files' unit tests are
+`unit/train.test.mjs`.
+
 `acctjoin.mjs` runs the site as the real one is, new accounts by invite only (`OPEN_SIGNUP=0` to `server.sh`; every
 other test has open sign-up), for joining with an invite, a forgotten password and its reset link, and each app's
 sign-in.

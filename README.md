@@ -1,7 +1,7 @@
 # George Farrow-Green — georgefarrowgreen.com
 
 The site's home page, and the apps beside it: InFlight (chat.), Weather (weather.) and the account's own page
-(account.), each below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
+(account.), each below, with Cadence, a training app, as a demo (`train/`). The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
 look: my name, a line above it and one under it, then **Apps** (InFlight and Weather) and **Get in touch** (a message,
 or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
 behind it (`functions/`), the words in **KV**, the photos in **R2**.
@@ -1111,6 +1111,82 @@ hours, and the sea in a swim's and a sail's score) and `.tools/tests/wxapp.mjs`
 tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
+
+## Cadence (a demo, in `train/`)
+
+Training, riding first and running, swimming and strength alongside, proposed as the site's next app and here as a
+working demo. It isn't on any address of its own yet: a preview (`*.pages.dev`) or a local copy serves it at `/train/`,
+as it does Weather at `/weather/`. Everything in it is made-up example data for a rider five weeks into a 16-week plan
+for a 160 km sportive, dated from today so it always reads as now; files you import sit alongside. No build step, no
+keys, no database: like Weather, it works everything out on the phone.
+
+**What it does**
+
+- **Today**: today's session from your plan (its shape in zone colours, its length and stress), **Send to device**, the
+  best time for it from Weather (an example day in the demo: signed in, it would be Weather's own Best times for a ride
+  that long), **fitness, fatigue and form** (your training stress averaged over six weeks and over one; form the gap,
+  said in words: fresh, neutral, productive, overreaching), the week so far against the plan, day by day, and **How do
+  you feel?** (sleep, legs, motivation): tired legs on a hard day offer an easier session, swapped in with a tap.
+- **Plan**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
+  asks, what's done), this week's and next week's days (each a tap from its workout), this week's workouts as one zip
+  of FIT files, both weeks as calendar events (.ics), and other plans: FTP builder, winter base, a first 10k, a sprint
+  triathlon (each laid out from next Monday, an easier week every fourth).
+- **Workouts**: 22 to start with (endurance, tempo, sweet spot, threshold, over-unders, hill repeats at low cadence,
+  VO₂ max, 30/30s, sprints, a ramp test and a 20-minute FTP test; runs, swims, and core work), each with its shape at
+  your FTP, its steps in watts (or pace), and its files; yours, built step by step (warm up, intervals, repeats, cool
+  down, each a length and a share of FTP, the shape and stress drawn as you go) or imported.
+- **Activities**: your rides, runs and swims by week, each with its route (coloured by the power zone it was ridden in),
+  its figures (distance, moving time, climbing, average power, Normalized Power, intensity, TSS, heart rate, cadence,
+  work), power and heart rate and height through the ride with a cursor that moves a marker round the route, time in
+  power and heart rate zones, best efforts from 5 seconds to an hour (an FTP worth testing said, where one was ridden),
+  laps, and the ride out again as FIT, GPX or TCX.
+- **You** (the round button at the top): FTP (and W/kg), weight, threshold and max heart rate, threshold pace and CSS,
+  each a stepper (an FTP from your best 20 minutes offered); the seven power zones in watts; the devices seen in your
+  files; Light or Dark; kilometres or miles; import, and **Export everything** (a zip).
+
+**Files, in and out** (`train/fit.js`, `train/formats.js`). Garmin's and Wahoo's devices record a ride as FIT and read a
+workout from a FIT file, so FIT is written and read here with no library, as the account page writes its own PDF; checked
+while it was written against Garmin's own FIT SDK (its decoder reads every workout and ride written here whole, CRCs and
+all, and this reads what the SDK writes; the SDK's licence keeps it out of the site, so the tests don't use it).
+
+| | Workouts out | Rides out | In |
+|---|---|---|---|
+| Garmin Edge or watch | FIT workout, copied over USB into `Garmin/NewFiles` (power as a share of FTP; a run's pace as speed; a swim's distance in a 25 m pool; a cadence held alongside) | | FIT, from the device or Garmin Connect's Export Original (a zip, opened here) |
+| Wahoo ELEMNT ACE, BOLT 3, ROAM 3 | FIT workout, into the `plans` folder (USB access on in the Wahoo app) | | FIT, from the Wahoo app's Download .fit or the `exports` folder |
+| An earlier ELEMNT, BOLT or ROAM | `.plan` (Wahoo's own, never published: repeats written out in full) | | FIT |
+| Zwift | ZWO (`Documents/Zwift/Workouts/<your ID>`) | | ZWO |
+| TrainerRoad, Golden Cheetah and others | ERG (watts at your FTP) and MRC (shares of FTP) | | ERG, MRC |
+| Garmin Connect, Strava, TrainingPeaks, intervals.icu, the Wahoo app | | FIT, GPX (with heart rate, cadence and power), TCX | GPX, TCX |
+
+Garmin Connect can't take a workout file (only Garmin's partner programme can send one to it), and a newer Edge (the
+1050, or a 540, 840 or 1040 since late 2024) mounts as a phone does rather than a drive, so on a Mac it's OpenMTP: the
+Send sheet says so. Workouts go as shares of FTP, so the device's own FTP sets the watts; a ramp, which FIT can't say,
+goes as its range (which ERG mode holds the middle of). File names are plain letters (a browser drops a name it doesn't
+like, and a device's card may show nothing else).
+
+**The look**, in keeping: the account page's sky with one of its three lights warmer, Liquid Glass panes and the
+stronger glass for the tab bar, the buttons and sheets; grouped rows; sheets that come up from below, dragged down by
+their top; a large title. Its own colour is coral (`train/icon.svg`: a flat coral sky, a warm sun, a frosted glass
+wheel, made as Weather's sun and cloud are). Effort is in the seven zone colours riders know from Zwift and TrainerRoad.
+Two columns of cards on Today on a wide screen. The page's rules allow no style written in it, so every chart is SVG
+coloured by its classes, and sized from script.
+
+**What's next (the proposal).** 1. Its own address, `train.georgefarrowgreen.com` (`functions/_trainapp.js`, as
+`_wxapp.js`), on the home page's Apps and the account's Your apps; signing in on the account's page (as Weather does),
+your plan, workouts and numbers kept with the account in D1, and the rides' files in R2 (a FIT file is the record; the
+figures are worked out from it). 2. Weather's Best times for each day's session, from your place. 3. Without a cable:
+Garmin's Connect Developer Program (the Training API sends workouts to the device's calendar, the Activity API brings
+rides back) and Wahoo's Cloud API (plans to an ELEMNT or a KICKR, rides back), both by application, with a secret each in
+Pages; then Strava. 4. The plan adapting to what you did (a missed session moved, the week's load kept), and a weekly
+email in the site's email look (a `cadence` brand). 5. Health: resting heart rate, HRV, sleep and weight, from the same
+programmes, into readiness.
+
+**Tests.** `.tools/tests/unit/train.test.mjs` (in CI: FIT byte for byte, cut short and damaged files, compressed
+timestamps, a ride round FIT, GPX and TCX with the same figures, workouts out to every format and back, zips, the
+training-load maths) and `.tools/tests/cadence.mjs` (end to end on a fixed Tuesday: today's session and form, each
+device's file downloaded and read back, five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and
+one it can't read, a ride out as FIT with every sample, kept after a reload, a hard day swapped, a workout built, a plan
+started, and no screen wider than a 320 px phone).
 
 ## InFlight (chat.georgefarrowgreen.com) — 1.3.5
 
