@@ -695,7 +695,8 @@ so there's nothing to set up beyond the address.
   airport, so each day's high and low, and its hours (temperature, dew point,
   wind, gusts), are kept in
   D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
-  only reports just fetched are written), and the phone compares them with what each of
+  only reports just fetched are written, a day kept already only where they have
+  more of it, as an answer's oldest day is cut short), and the phone compares them with what each of
   the seven models forecast a day and three days ahead (Open-Meteo's archive of
   past forecasts). The card shows each model's average error and lean ("±0.8°,
   runs 1.2° warm") and which is most accurate here. From 7 days of record, the
@@ -785,9 +786,13 @@ so there's nothing to set up beyond the address.
   next tick. An address not confirmed yet, or an account being deleted, gets
   nothing (and nothing's held for it). Rain checks ask
   Open-Meteo only for the next four hours' rain; the whole forecast only where
-  a briefing is due; and each tick asks no more than Open-Meteo's free
-  allowance spread over a day (briefings first; places left over wait ten
-  minutes, in a different order each time). Each connection can only ask the
+  a briefing is due; and the ticks ask no more than Open-Meteo's free
+  allowance spread over a day, however often they come (briefings first; places
+  left over wait for a later tick, in a different order each time; what the quiet
+  hours don't use is kept, up to an hour and a half's, for the morning's
+  briefings). Official warnings are asked for at most 150 places a tick, a few at
+  a time, for 20 seconds of the tick or 10 of their own, whichever's later (the
+  rest likewise wait, in a different order each time). Each connection can only ask the
   API so often. Each device's notifications are a row a place
   (`functions/_wxpush.js`: wx_devs, the device; wx_subs, its places, each with
   what's been told there), at most 12 places a device; an app from before (one

@@ -330,6 +330,25 @@ ok(atSite === 404, 'the account isn\'t answered at the site\'s own address', Str
 const old = await call('POST', '/api/weather/subscribe', { sub: { endpoint: 'https://fcm.googleapis.com/fcm/send/acct-before', keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }, place: { lat: 52.2, lon: 0.12, name: 'Cambridge' }, rain: true, brief: true });
 const cam = rows("SELECT name, rain, brief FROM wx_subs WHERE name = 'Cambridge'");
 ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief === 1, 'the app from before (one place) still turns them on', `${old.status} ${JSON.stringify(cam)}`);
+// (asked again where the server let the connection go while the database was being read)
+const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') throw e; return call(...a); });
+// a page not signed in to Weather, in a browser with the site's sign-in (asking whether its places go to the account):
+// its notifications its own, and the device not the account's
+{
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/acct-asked';
+  const own = await again('POST', '/api/weather/subscribe', { sub: { endpoint, keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }, account: false, places: [{ lat: 51.75, lon: -1.26, name: 'Oxford', rain: true }] }, { cookie: `account=${lc.value}` });
+  const d = rows(`SELECT d.user_id, s.name FROM wx_devs d JOIN wx_subs s ON s.dev = d.dev WHERE d.endpoint = '${endpoint}'`);
+  ok(own.status === 200 && d.length === 1 && !d[0].user_id && d[0].name === 'Oxford', 'signed out of Weather, though the browser has the site\'s sign-in: the device\'s own notifications, not the account\'s', `${own.status} ${JSON.stringify(d)}`);
+  await again('POST', '/api/weather/unsubscribe', { endpoint });
+}
+// units changed in Weather on one device: every device's notifications say them at once, not only that one's
+{
+  const me = JSON.parse((await again('GET', '/api/weather/me', null, { cookie: `account=${lc.value}` })).body);
+  const units = () => rows(`SELECT DISTINCT s.units FROM wx_subs s JOIN wx_devs d ON d.dev = s.dev WHERE d.user_id = '${me.id}' AND d.dev NOT LIKE 'mail:%'`).map((r) => r.units);
+  const was = units(), put = await again('PUT', '/api/weather/me', { base: me.ver, data: { ...me.data, settings: { ...me.data.settings, temp: 'c' } } }, { cookie: `account=${lc.value}` }), now = units();
+  ok(put.status === 200 && was.length && was.every((u) => /"temp":"f"/.test(u)) && now.length && now.every((u) => /"temp":"c"/.test(u)), 'units changed in Weather: the notifications of every device of the account say them', JSON.stringify({ status: put.status, was, now }));
+  await again('PUT', '/api/weather/me', { base: me.ver + 1, data: me.data }, { cookie: `account=${lc.value}` });
+}
 
 // ---- 8. The tick: Edinburgh's rain to both devices of the account ----
 {

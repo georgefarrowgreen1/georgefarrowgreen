@@ -58,9 +58,10 @@ export function briefing(wx, now, f) {
 // the place's, in seconds
 export function warningAlert(list, told, now, real, f, offset = 0, name = "") {
   const live = inForce(list, real), next = {};
-  // (what's told of is kept while it's in force, or half a day for one with no end that's no longer listed)
+  // (what's told of is kept while it's in force, or at least half a day for one with no end that's no longer listed: to
+  // the next 6 hours, so what's kept isn't rewritten every tick)
   for (const [id, v] of Object.entries(told || {})) if (Array.isArray(v) && v[2] > real) next[id] = v;
-  const until = (w) => (w.open ? real + 12 * HOUR : Date.parse(w.expires));
+  const until = (w) => (w.open ? Math.ceil((real + 12 * HOUR) / (6 * HOUR)) * 6 * HOUR : Date.parse(w.expires));
   if (!told) { for (const w of live) next[w.id] = [w.level, glyphOf(w), until(w)]; return { alert: null, told: next, fresh: [] }; }
   const fresh = [];
   for (const w of live) {

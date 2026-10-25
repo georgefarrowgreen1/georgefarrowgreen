@@ -62,6 +62,8 @@ test("what's kept with the account, made safe", () => {
   assert.deepEqual(d.notify.places.map((p) => [p.name, p.lat, p.lon, p.rain, p.warn]), [["London", 51.51, -0.13, true, false]]);
   assert.equal(d.notify.brief.name, "London"); assert.equal(d.notify.briefAt, "07:00");
   assert.throws(() => cleanData({ places: Array.from({ length: 51 }, (_, i) => P(`P${i}`, i, i)) }), /50 places at most/);
+  // (notifications for more places than a device can have: refused, not cut short, so the app knows; it keeps to them)
+  assert.throws(() => cleanData({ notify: { places: Array.from({ length: 13 }, (_, i) => ({ lat: i, lon: i, rain: true })) } }), /12 places at most/);
   assert.throws(() => cleanData([]), /Bad request/);
 });
 
