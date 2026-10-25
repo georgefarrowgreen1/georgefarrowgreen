@@ -329,20 +329,22 @@ Motion, solid with Reduce Transparency.
   (`PUT me/photo?at=…&focus=…`), the poster kept as it is (refused, 409, if another app's new photo has replaced it, and the page then shows that one). The photo drifts a little slower than the page as it scrolls away, and stretches as it's
   pulled down at the top (both off with Reduce Motion); the light page has its own colours for the card. **Your apps**
   (a card for each); **Account**, two rows: **Sign-in and security** (saying how it stands by the **Security check-up**,
-  below: "All done", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
-  then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the downloads, and
+  below: "Secure", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
+  then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the download, and
   **Delete account…** at its foot, apart, asked again in its own sheet; **Preferences**; **Sign out** (of every app on
   the site, in this browser; not when an app opened the page in its own window: signing out is the app's own). Each row says how things are, not what to do: the check-up "2 to do" and an
   unconfirmed email in amber, the password "Set today" or "Changed 3 Oct" (`pg_users.pw_at`, kept from now on, and for
   accounts from before as far back as recent activity goes), passkeys **Add one** where there are none, devices "This
   iPhone" where it's the only one, recent activity when the latest was. Once the profile's scrolled away, a bar of
   glass at the top keeps your photo and name in sight (a tap goes back up). On a wide screen (1000 pixels and up), two
-  even columns: your profile, your apps and your data on the left, sign-in and security and preferences on the right.
-- **Security check-up:** a row at the top of Sign-in and security that says how it stands ("All done", or "2 to do"
-  with an amber icon), kept off the page itself. Tapped, a sheet: a ring for how far along, then four checks (email
-  confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one
-  left with its fix, which opens over the check-up (Back returns to it). A password found in a data breach is the one
-  check also said up top, in a banner with **Change**, as an unconfirmed email is.
+  even columns: your profile and your apps on the left, the account (sign-in and security, your data) and preferences on
+  the right.
+- **Security check-up:** at the head of Sign-in and security's sheet, kept off the page itself (the row there says how
+  it stands: "Secure", or "2 to do" with an amber icon): a ring for how far along, then four checks (email confirmed, a
+  passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one left with its
+  fix, which opens over the sheet (Back returns to it); all done, just that it's well protected, not the list. A
+  password found in a data breach is the one check also said up top, in a banner with **Change**, as an unconfirmed
+  email is.
 - **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
   shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
 - **Your apps:** each card says what you have there ("4 friends · 9 sent", "6 places in your passport"; "4 places",
@@ -433,15 +435,15 @@ Motion, solid with Reduce Transparency.
   `argon2.js`) and the apps' icons.
 - Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
   yes to), with the way back to the app.
-- Tests: `.tools/tests/acctpage.mjs` (71 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
+- Tests: `.tools/tests/acctpage.mjs` (79 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (68 checks: the photo from its badge (moved, only the circle sent again, and once it's changed elsewhere), your code and its link, each app's sheet and its
+  `.tools/tests/acctmore.mjs` (75 checks: the photo from its badge (moved, only the circle sent again, and once it's changed elsewhere), your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
-  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (41 checks: accounts by invite only: none without one,
+  back by poppler and pypdf, and the export it's written from), `.tools/tests/acctjoin.mjs` (41 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
   Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
   password only here; a reset link by email,
