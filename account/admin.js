@@ -1,7 +1,7 @@
 // The site's admin, on its admin's account page (account/app.js): its own file, fetched only for the account that's the
 // site's admin, so no one else's page carries it. The page hands over what it draws with (setup), and gets back the
 // Admin row for the page and the Admin sheet.
-export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
+export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----

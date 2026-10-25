@@ -82,7 +82,7 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body { margin: 0; min-height: 100vh; min-height: 100svh; font: 17px/1.35 var(--font); letter-spacing: -0.2px; color: var(--text); background: var(--sky-top);
+body { margin: 0; min-height: 100vh; min-height: 100svh; font: 17px/1.35 var(--font); letter-spacing: -0.2px; color: var(--text); background: var(--sky-c);
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 button, input { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; }
@@ -94,7 +94,13 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
 /* ---- the sky: three slow lights drifting over the gradient ---- */
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }   /* (its colour under the gradient: what Safari tints its status bar with) */
+.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }   /* (its colour under the gradient, as the page loads: what an iPhone tints the strip behind its status bar with) */
+/* (on a phone or a tablet, the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at
+   its foot, so the page carries on under the bar: with a layer fixed down to the foot of the screen, Safari fills under
+   its bar solid) */
+@media (hover: none) {
+  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+}
 /* (each light soft at its edge by its own gradient, eased as a blur would ease it, not by blurring it: a blur of 70px
    redone every frame, as they drift, was the most work anything on the page did, and every pane of glass blurred it
    again. Measured against the blurred ones, a difference of about 1 in 255. And moved on in small steps, twice a second,
