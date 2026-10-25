@@ -779,7 +779,7 @@ function sendView(w, day = TODAY) {
   const name = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
   const file = (title, cls) => row({ tile: h("span.ic." + cls, {}, icon("device", 18, 2)), title, sub: ".fit workout file", chev: false,
     extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(`${name}.fit`, fit()) });
-  return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: w.name })), h("div.group", {}, file("Garmin", "brand.garmin"), file("Wahoo", "brand.wahoo"))] };
+  return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: name })), h("div.group", {}, file("Garmin", "brand.garmin"), file("Wahoo", "brand.wahoo"))] };
 }
 
 // ---- Activities ----
