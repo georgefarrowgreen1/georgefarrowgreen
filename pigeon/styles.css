@@ -2323,9 +2323,9 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 /* how protected you are, at a glance: a shield in a ring that fills as each thing is done */
 .keyart{display:block;flex:none}
 .keyart.tile{width:30px;height:30px;padding:0;background:none;box-shadow:none;border-radius:9px}
-.keyart.big{width:52px;height:52px}
-.keycell .csub{line-height:19px;margin-top:2px}
-.keycell .val{color:var(--tint)}
+.keyart.keyhuge{width:96px;height:96px;margin-bottom:8px}
+.keyhero .mono{font-family:var(--mono);font-size:15px;line-height:22px;letter-spacing:.4px;margin-top:2px}
+.keyhero .btn{margin-top:6px}
 details.learn{margin:10px 36px 0;font-size:13px;line-height:18px;color:var(--label-2)}
 details.learn summary{cursor:pointer;color:var(--tint);list-style:none;font-weight:500}
 details.learn summary::-webkit-details-marker{display:none}
@@ -2335,10 +2335,7 @@ details.learn p{margin:6px 0 0}
 details.learn[open] p{animation:fc-in .3s var(--snappy)}
 
 /* Encryption: three steps, your key, and each friend's standing */
-.enchero .wnlogo{background:linear-gradient(160deg,color-mix(in srgb,var(--green) 65%,#fff),var(--green));box-shadow:0 8px 22px color-mix(in srgb,var(--green) 35%,transparent)}
-.enchero p,.pkhero p{max-width:30ch;text-wrap:balance}
-.encsteps .wnlist{padding:18px 18px}
-.encsteps .wnrow .tile{width:36px;height:36px;font-size:19px}
+.pkhero p{max-width:30ch;text-wrap:balance}
 .spill{flex:none;display:inline-flex;white-space:nowrap;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:13px;font-weight:600;color:var(--label-2);background:var(--cell-2,rgba(120,120,128,.12))}
 .spill .ico{flex:none;width:13px;height:13px;stroke-width:2.6}
 .spill.ok{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}

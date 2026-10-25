@@ -2244,6 +2244,12 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   BarcodeDetector or vendored jsQR 1.4.0, Apache-2.0, integrity-checked) or
   compare the digits and Mark as Verified. It's kept, sealed, with your trusted
   keys; if a verified friend's key changes, the chat warns more strongly.
+  Encryption (Privacy & Security, or This Phone) opens on your key, its pattern
+  (`keyArt`) and its digits, with Copy; **Verify a Friend** opens the camera and
+  works out whose code it is from your safety number with each friend, so you
+  needn't find them first (a changed key opens their Safety Number to trust it
+  there); then your friends, where you stand with each, a changed key first. What
+  it all means folds away under **How it works**.
 - **Disappearing messages** (a chat's or group's info sheet: 1, 7 or 30 days
   after reading; someone else's in a group goes from your phone when the server
   wipes it, as only the server knows when everyone has read it): when the time's

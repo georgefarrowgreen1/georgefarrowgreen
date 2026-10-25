@@ -326,6 +326,7 @@ const I = {
   minusp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3s5.7 1.9 6.5 5.3"/><path d="M16 12h6"/>`),
   share: ico(`<path d="M12 3.5v11M8 7l4-4 4 4"/><path d="M6 11H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 20h14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 19 11h-1"/>`),
   photo: ico(`<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m4 17 5-4.5 3.5 3 3-2.5L20 17"/>`),
+  qr: ico(`<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>`),
   camera: ico(`<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5Z"/><circle cx="12" cy="12.5" r="3.5"/>`),
   trash: ico(`<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/>`),
   up: ico(`<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>`),
@@ -2541,6 +2542,15 @@ async function startScan(p, want) {
     }
     if (text?.startsWith("inflight-safety:")) {
       stopScan();
+      // (Verify a Friend: whichever friend's safety number it is, opened at theirs; a changed key is only trusted there)
+      if (want instanceof Map) {
+        const hit = want.get(text);
+        if (!hit) { haptic("heavy"); S.sheet = { ...S.sheet, bad: true }; return renderSheet(); }
+        const at = { type: "safety", id: hit.f.id, digits: hit.digits, from: "encryptionsheet" };
+        if (hit.f.keyChanged) { S.sheet = at; return renderSheet(); }
+        setVerified(hit.f, true); haptic("success"); toast(`Verified. Your safety numbers match, so only you and ${esc(first(hit.f.name))} can read your messages.`);
+        S.sheet = { ...at, won: performance.now() }; return renderSheet();
+      }
       if (text === want) { setVerified(p, true); haptic("success"); toast(`Verified. Your safety numbers match, so only you and ${esc(first(p.name))} can read your messages.`); S.sheet = { ...S.sheet.back, won: performance.now() }; return renderSheet(); }
       haptic("heavy"); S.sheet = { ...S.sheet, bad: true }; return renderSheet();
     }
@@ -6073,12 +6083,12 @@ function drawSheet(refresh) {
       return;
     }
     case "scan": {
-      const p = personById(s.id);
+      const p = s.any ? null : personById(s.id), who = s.any ? "your friend" : first(p?.name || "your friend");
       if (!s.bad && S.scan?.on && S.scan.sheet === s && $(".scanbox video", $layer)) return;   // already scanning: a redraw leaves the camera be
       $layer.innerHTML = sheetHtml("Scan Their Code", `<div class="scanbox"><video playsinline muted autoplay aria-label="Camera"></video><span class="scanframe" aria-hidden="true"></span></div>
-        <p class="gfoot scanmsg" aria-live="polite">${s.bad ? `This isn’t the same safety number. Don’t trust this chat with ${esc(first(p?.name || "them"))} until your codes match.` : `Point your camera at ${esc(first(p?.name || "your friend"))}’s code: Safety Number on their phone.`}</p>
-        ${s.bad ? `<div class="group mt">${cell({ act: "scansafe", id: s.id, label: "Try Again", cls: "center action" })}</div>` : ""}`, { left: { label: "Back", act: "scanback" } });
-      if (!s.bad) startScan(p, safetyCode(s.back?.digits));
+        <p class="gfoot scanmsg" aria-live="polite">${s.bad ? (s.any ? "That code isn’t your safety number with any of your friends. On their phone, they open Safety Number from your name." : `This isn’t the same safety number. Don’t trust this chat with ${esc(who)} until your codes match.`) : `Point your camera at ${esc(who)}’s code: ${s.any ? "Safety Number, from your name, on their phone" : "Safety Number on their phone"}.`}</p>
+        ${s.bad ? `<div class="group mt">${cell({ act: s.any ? "scanany" : "scansafe", id: s.id, label: "Try Again", cls: "center action" })}</div>` : ""}`, { left: { label: "Back", act: "scanback" } });
+      if (!s.bad) startScan(p, s.any ? s.codes : safetyCode(s.back?.digits));
       return;
     }
     case "security": {
@@ -6117,28 +6127,21 @@ function drawSheet(refresh) {
       return;
     }
     case "encryption": {
-      // What end-to-end encryption means here, in three steps; your key as a pattern you'd know; and where you
-      // stand with each friend, a tap from their safety number
+      // Your key, as the pattern you'd know and its digits; a way straight to verifying a friend (scan their code, and
+      // whichever friend it is is found); and where you stand with each one, a tap from their safety number. What it
+      // all means is folded away at the foot.
       const st = (f) => safeState(f), order = { warn: 0, none: 1, ok: 2 };
       const fr = [...S.friends].sort((a, b) => order[st(a)] - order[st(b)] || a.name.localeCompare(b.name)), ver = fr.filter((f) => st(f) === "ok").length;
       const pill = { ok: `<span class="spill ok">${I.check}Verified</span>`, warn: `<span class="spill bad">${I.warn}Key changed</span>`, none: `<span class="spill">Not checked</span>` };
-      const step = ([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${title}</b><small>${sub}</small></span></div>`;
+      const fp = S.fp.split(" ");
       $layer.innerHTML = sheetHtml("Encryption", `
-        <div class="wnhero enchero"><span class="wnlogo" aria-hidden="true">${I.lock}</span><h2>End-to-End Encrypted</h2><p>Only you and the people you write to can read your pigeons. Not InFlight, and no one in between.</p></div>
-        <div class="ghead">How It Works</div>
-        <div class="group encsteps"><div class="wnlist">${[
-          ["key", "indigo", "Your key is made on your phone", "A locked copy lets you sign in on a new phone. Only your password or passkey opens it."],
-          ["lock", "green", "Every pigeon is sealed before it flies", "Messages, photos, voice and reactions. The server only carries sealed scrolls it can’t open."],
-          ["shield", "teal", "Safety numbers prove it’s them", "Compare yours with a friend’s, and no one could have swapped in a different key."],
-        ].map(step).join("")}</div></div>
-        <div class="ghead">Your Key</div>
-        <div class="group"><button type="button" class="cell keycell" data-act="copyfp">${keyArt(S.fp, "big")}<span class="ctext"><span>This account’s key</span><span class="csub mono">${S.fp.split(" ").slice(0, 4).join(" ")}<br>${S.fp.split(" ").slice(4).join(" ")}</span></span><span class="val">Copy</span></button></div>
-        <div class="gfoot">It changes only if you reset your password without a passkey, or make a new account. Your friends are told if it does.</div>
-        ${fr.length ? `<div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
-          <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>
-          <div class="gfoot">Verify a friend together, in person or on a video call: tap them, then scan their code or compare the digits.</div>`
-        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: toSecurity() });
-      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
+        <div class="wnhero keyhero">${keyArt(S.fp, "keyhuge")}<h2>Sealed with your key</h2><p class="mono">${fp.slice(0, 4).join(" ")}<br>${fp.slice(4).join(" ")}</p>
+          <button type="button" class="btn small plain" data-act="copyfp">Copy</button></div>
+        ${fr.length ? `<div class="group">${cell({ act: "scanany", icon: I.qr, tile: "blue", label: "Verify a Friend", cls: "action" })}</div>
+          <div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
+          <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>`
+        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}
+        <details class="learn"><summary>How it works</summary><p>Only you and the people you write to can read your pigeons: not InFlight, and no one in between. Your key is made on this phone; a locked copy lets you sign in on a new one, and only your password or passkey opens it. Every pigeon (its words, photos, voice and reactions) is sealed before it flies, so the server only carries sealed scrolls it can’t open. Your safety number with a friend is your two keys together: the same on both phones, and no one could have swapped in a different key. Your key changes only if you reset your password without a passkey, or make a new account, and your friends are told if it does.</p></details>`, { left: toSecurity() });
       return;
     }
     case "safetylist":
@@ -8238,6 +8241,12 @@ async function onClick1(e, t) {
         if (S.sheet) renderSheet(); render();
       } catch (err) { toast(esc(err.message)); }
       return;
+    }
+    case "scanany": {
+      // (each friend's safety number, so the one scanned is known whoever's it is)
+      const codes = new Map(await Promise.all(S.friends.map(async (f) => { const digits = await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub); return [safetyCode(digits), { f, digits }]; })));
+      const back = S.sheet?.type === "scan" ? S.sheet.back : S.sheet;
+      S.sheet = { type: "scan", any: true, codes, back }; return renderSheet();
     }
     case "scansafe": { const back = S.sheet?.type === "scan" ? S.sheet.back : S.sheet; S.sheet = { type: "scan", id, back }; return renderSheet(); }
     case "scanback": { stopScan(); S.sheet = S.sheet?.back ? { ...S.sheet.back } : null; return renderSheet(); }
