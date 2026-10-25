@@ -69,7 +69,7 @@ svg { display: block; flex: none; }
 }
 
 /* ---------------- the photos, fixed behind everything ---------------- */
-.bg { position: fixed; inset: 0; overflow: hidden; background: #0b0d12; }
+.bg { position: fixed; inset: 0; overflow: hidden; background: #0b0d12; transition: background-color 1.2s ease; }
 .bg::after {
   content: ""; position: absolute; inset: 0; z-index: 2;     /* (over the photos: the one showing is z-index 1) */
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);

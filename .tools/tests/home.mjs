@@ -267,6 +267,8 @@ await G.p.waitForFunction(() => document.querySelectorAll('#tiles .tile:not(.pen
 ok(await G.p.evaluate(() => document.querySelectorAll('#tiles .tile:not(.pending)').length === 2 && document.querySelectorAll('#thumbs i').length === 2 && document.querySelectorAll('#bg .slide').length === 2),
   'two photos added: in the sheet, the bar and the slideshow');
 let list = (await req(null, `${SITE}/api/background`)).json.images;
+// (measured once the sheet and its tiles have stopped moving: a tile still growing in is tapped a little off where it's measured)
+await G.p.waitForFunction(() => !document.querySelector('#photos-sheet').getAnimations({ subtree: true }).some((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations !== Infinity), null, { timeout: 5000 }).catch(() => {});
 const box = await G.p.locator('#tiles .tile img').first().boundingBox();
 await G.p.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.3); await settle(G, 800);
 list = (await req(null, `${SITE}/api/background`)).json.images;

@@ -303,9 +303,10 @@ async function soften(img, p) {
   el.style.setProperty("--soft-pos", p.focus || "50% 50%");
   el.style.setProperty("--soft-on", url ? "1" : "0");
 }
-// The strip behind a phone's status bar, in the photo's own colour at its top (a phone tints it with the page's colour,
-// and the page is the photo): the top row of the photo made small, under the shade the page lays over its top
-// (styles.css .bg::after); scrolled down, under the bar's frosted band, that band's colour. Faded from one to the next.
+// The strip behind a phone's status bar, in the photo's own colour at its top: the top row of the photo made small,
+// under the shade the page lays over its top (styles.css .bg::after); scrolled down, under the bar's frosted band, that
+// band's colour. Faded from one to the next. (Safari takes it from the colour of what's fixed at the top of the screen,
+// the photos' own layer, not the page's colour or its theme-color: so that layer's colour, under the photo, is it too.)
 const themeMeta = $('meta[name="theme-color"]');
 let tops = null, tinted = "";
 function topOf(px, w) {
@@ -321,7 +322,7 @@ function tint() {
   if (!tops) return;
   const c = scrollY > 350 ? tops.band : tops.photo;
   if (c === tinted) return;
-  tinted = c; themeMeta?.setAttribute("content", c); body.style.backgroundColor = c;
+  tinted = c; themeMeta?.setAttribute("content", c); body.style.backgroundColor = c; bgEl.style.backgroundColor = tops.photo;
 }
 // (each pixel the average of those within r of it, across then down; the edges held)
 function boxBlur(px, w, h, r) {

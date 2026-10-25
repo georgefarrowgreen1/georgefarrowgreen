@@ -94,7 +94,7 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
 /* ---- the sky: three slow lights drifting over the gradient ---- */
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)); }
+.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }   /* (its colour under the gradient: what Safari tints its status bar with) */
 /* (each light soft at its edge by its own gradient, eased as a blur would ease it, not by blurring it: a blur of 70px
    redone every frame, as they drift, was the most work anything on the page did, and every pane of glass blurred it
    again. Measured against the blurred ones, a difference of about 1 in 255. And moved on in small steps, twice a second,
