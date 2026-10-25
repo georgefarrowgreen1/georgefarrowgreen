@@ -7034,7 +7034,9 @@ function fcDrag(card) {
     e.preventDefault();
     const now = performance.now(); st.v = (dy - st.dy) / Math.max(1, now - st.t); st.t = now; st.dy = dy;
     const open = !card.classList.contains("fold"), way = open ? dy > 0 : dy < 0;
-    card.style.transform = `translateY(${(way ? dy * 0.5 : dy * 0.15).toFixed(1)}px)`;
+    // (pulled up when it's already up, it gives only as far as the gap under the sheet's title, never under it)
+    const y = way ? dy * 0.5 : open ? Math.max(dy * 0.15, -Math.max(0, card.offsetTop - 4)) : dy * 0.15;
+    card.style.transform = `translateY(${y.toFixed(1)}px)`;
   }, { passive: false });
   const end = () => {
     if (!st?.dir) { st = null; return; }
