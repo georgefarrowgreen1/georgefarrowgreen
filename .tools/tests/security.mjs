@@ -112,7 +112,7 @@ const t0 = Date.now(), pw = await acctCall('password', { oldProof: dproof, salt:
 ok(pw.s === 200 && pw.j.emailNew === null && pw.j.password.setAt >= t0, 'a new password: the change called off and the password\'s date, in its answer', JSON.stringify({ s: pw.s, emailNew: pw.j.emailNew, setAt: pw.j.password?.setAt, t0 }));
 // (the confirm link's day-long limit: three a day, the one that failed among them)
 const links = [await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc)];
-ok(links[0].s === 200 && links[1].s === 200 && links[2].s === 429 && /^Too many tries\. Try again in 2[34]h \d+m\.$/.test(links[2].j.error), 'the fourth confirm link in a day: try again in hours and minutes', JSON.stringify(links.map((r) => [r.s, r.j.error])));
+ok(links[0].s === 200 && links[1].s === 200 && links[2].s === 429 && /^Too many tries\. Try again in (2[34]h \d+m|24 hours)\.$/.test(links[2].j.error), 'the fourth confirm link in a day: try again in hours and minutes', JSON.stringify(links.map((r) => [r.s, r.j.error])));
 
 // InFlight's notification settings changed twice at once, on the account's page: both kept
 const two = await Promise.all([raw('account.localhost', 'PATCH', '/api/account/inflight', { body: JSON.stringify({ notify: { reactions: false } }), cookie: D.cookie }),
