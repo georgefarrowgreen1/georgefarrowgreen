@@ -140,6 +140,30 @@ await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-shee
 ok(await text(P, '#from') === 'P Pat Reed pat@example.com' && await P.p.isHidden('#c-name'), 'shown as one From row', await text(P, '#from'));
 await P.p.click('#from-change');
 ok(await P.p.isVisible('#c-name') && await P.p.isVisible('#c-email') && await P.p.isHidden('#from'), 'Change: the name and email to change');
+await P.p.fill('#c-message', 'Half a thought about the climb');
+await P.p.keyboard.press('Escape'); await settle(P, 500);
+// back by the browser's Back to the page as it was kept (as a phone's browser can, though not this one: its pageshow, as
+// it would come), their name changed on the account's page meanwhile: the same person, so nothing typed is lost
+sql(`UPDATE pg_users SET name = 'Pat Reid' WHERE id = '${pat}'`);
+await P.p.evaluate(() => { window.stayed = true; dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+await P.p.waitForFunction(() => /Pat Reid/.test(document.querySelector('#me').getAttribute('aria-label')), null, { timeout: 5000 }).catch(() => {});
+ok(await P.p.evaluate(() => window.stayed && document.querySelector('#c-message').value === 'Half a thought about the climb' && document.querySelector('#c-name').value === 'Pat Reid'),
+  'back to the page kept, their name changed: the message half written kept, from their name as it is now', await P.p.evaluate(() => `${!!window.stayed} ${document.querySelector('#c-name').value}`));
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+ok(await text(P, '#from') === 'P Pat Reid pat@example.com', 'shown as their From row', await text(P, '#from'));
+// sending as someone else (Change), and back again from a change of name there: what they put in kept; and once it's
+// theirs again, the From row theirs as they are now, not as it was last filled
+await P.p.click('#from-change'); await P.p.fill('#c-name', 'Sam Okoro');
+await P.p.keyboard.press('Escape'); await settle(P, 500);
+sql(`UPDATE pg_users SET name = 'Pat Reed' WHERE id = '${pat}'`);
+await P.p.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+await P.p.waitForFunction(() => /Pat Reed/.test(document.querySelector('#me').getAttribute('aria-label')), null, { timeout: 5000 }).catch(() => {});
+ok(await P.p.evaluate(() => document.querySelector('#c-name').value === 'Sam Okoro'), 'back, sending as someone else: their details kept', await P.p.evaluate(() => document.querySelector('#c-name').value));
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+await P.p.fill('#c-name', 'Pat Reed');
+await P.p.keyboard.press('Escape'); await settle(P, 500);
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+ok(await text(P, '#from') === 'P Pat Reed pat@example.com' && await P.p.isHidden('#c-name'), 'their own again: their From row, as they are now', await text(P, '#from'));
 await P.p.keyboard.press('Escape'); await settle(P, 500);
 
 // their figures in each app: a friend, and a place with alerts
@@ -212,6 +236,25 @@ r = await put(G, '/api/content', { ...(await req(null, `${SITE}/api/content`)).j
 await G.p.goBack(); await G.p.waitForSelector('body.known', { timeout: 20000 }); await settle(G);
 ok(r.status === 200 && await G.p.evaluate(() => performance.getEntriesByType('navigation')[0]?.type) === 'back_forward' && /^Photos · Rides · Apps$/i.test(await text(G, '.eyebrow')),
   'back by the browser’s Back: the words as they are now, not as the page it kept had them', `${r.status} ${await text(G, '.eyebrow')}`);
+// and the page kept whole (as a phone's or a computer's browser can, though not this one: its pageshow, as it would come)
+r = await put(G, '/api/content', { ...(await req(null, `${SITE}/api/content`)).json, role: 'Rides · Photos · Apps' });
+await G.p.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+await G.p.waitForFunction(() => /^Rides · Photos · Apps$/i.test(document.querySelector('.eyebrow').innerText.trim()), null, { timeout: 5000 }).catch(() => {});
+ok(r.status === 200 && /^Rides · Photos · Apps$/i.test(await text(G, '.eyebrow')), 'kept whole by the browser: the words asked for again as it comes back', await text(G, '.eyebrow'));
+// the page as it's sent says the words are in it; sent without them (the server couldn't read them), it asks for them,
+// and Edit starts from those, not from the defaults it's written with; and if they can't be had, it doesn't start
+ok(/<html[^>]* data-words/.test((await req(null, `${SITE}/`)).body), 'the page as it’s sent says the words are in it');
+await G.p.route(`${SITE}/`, async (rt) => { const res = await req(G, `${SITE}/`); await rt.fulfill({ status: res.status, contentType: 'text/html', body: res.body.replace(/ data-words(="")?/, '').replace(/(data-c="role" data-edit>)[^<]*/, '$1Photography · Cycling · Apps') }); });
+await home(G);
+await G.p.click('#edit'); await settle(G, 600);
+ok(await G.p.evaluate(() => document.body.classList.contains('edit')) && /^Rides · Photos · Apps$/i.test(await text(G, '.eyebrow')), 'sent without the words: asked for, and edited from them', await text(G, '.eyebrow'));
+await G.p.keyboard.press('Escape'); await settle(G, 500);
+await G.p.route('**/api/content', (rt) => rt.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+await home(G);
+await G.p.click('#edit'); await settle(G, 600);
+ok(!(await G.p.evaluate(() => document.body.classList.contains('edit'))) && /Couldn’t load the words/.test(await text(G, '#toast')), 'and not to be had: not edited from the defaults', await text(G, '#toast'));
+await G.p.unroute('**/api/content'); await G.p.unroute(`${SITE}/`);
+await home(G);
 
 // ---- 5. The photos: added, their focus and screens chosen, one removed ----
 await G.p.click('#edit'); await settle(G, 400);
@@ -242,6 +285,20 @@ ok(await text(G, '#tiles .tile .where') === 'Phone' && (await req(null, `${SITE}
 await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
 await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
 ok((await req(null, `${SITE}/api/background`)).json.images[1].device === 'desktop', 'then Computer');
+// a photo's change on its way (held back here), and another photo's answer back first, with the list from before that
+// change: the photo stays where the keys put it, and the keys wait for it, so the two can't cross
+const held = list[0].id;
+await G.p.route('**/api/background', async (rt) => { if (rt.request().method() === 'POST' && JSON.parse(rt.request().postData() || '{}').id === held) await new Promise((w) => setTimeout(w, 2500)); await rt.continue(); });
+await G.p.locator('#tiles .tile img').first().focus(); await G.p.keyboard.press('ArrowDown'); await settle(G, 800);
+const box1 = await G.p.locator('#tiles .tile img').nth(1).boundingBox();
+await G.p.mouse.click(box1.x + box1.width * 0.5, box1.y + box1.height * 0.5); await settle(G, 700);
+await G.p.locator('#tiles .tile img').first().focus(); await G.p.keyboard.press('ArrowRight'); await settle(G, 100);
+const tile0 = () => G.p.evaluate(() => { const t = document.querySelector('#tiles .tile'); return `${t.querySelector('img').style.objectPosition} ${t.classList.contains('busy') ? 'busy' : ''}`.trim(); });
+ok(await tile0() === '35% 40% busy', 'another photo’s answer first: this one where the keys put it, still on its way, the keys waiting', await tile0());
+await G.p.waitForFunction(() => !document.querySelector('#tiles .tile').classList.contains('busy'), null, { timeout: 8000 }).catch(() => {});
+await settle(G, 300);
+ok(await tile0() === '35% 40%' && (await req(null, `${SITE}/api/background`)).json.images[0].focus === '35% 40%', 'and kept there', `${await tile0()} ${(await req(null, `${SITE}/api/background`)).json.images[0].focus}`);
+await G.p.unroute('**/api/background');
 r = await req(null, `${SITE}/api/background?id=${list[0].id}`);
 ok(r.status === 200 && /immutable/.test(r.headers['cache-control']), 'a photo is kept by browsers for good', r.headers['cache-control']);
 {

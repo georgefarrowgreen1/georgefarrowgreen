@@ -1,8 +1,8 @@
 // The site's home page (index.html, app.js) as it's sent: its words (functions/_content.js) already in it, so search
 // engines and link previews read what the page says, not the defaults it's written with. The page takes them from
-// there (asking again only when it's come back from the browser's history, which may keep an older copy), and its
-// owner edits them there. Its scripts and styles are stamped with what's in them (?v=),
-// so a browser never runs a new page with an old copy of any.
+// there (asking again only when it's come back from the browser's history, which may keep an older copy, or when they
+// couldn't be read here: the page is marked data-words only when they're in it), and its owner edits them there. Its
+// scripts and styles are stamped with what's in them (?v=), so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
 
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
@@ -47,6 +47,7 @@ export async function homePage(ctx, url, res) {
   const attr = (k) => ({ element: (el) => { if (c) el.setAttribute("content", c[k]); } });
   const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0]; if (v[f]) el.setAttribute(name, `${f}?v=${v[f]}`); } });
   const out = new HTMLRewriter()
+    .on("html", { element: (el) => { if (c) el.setAttribute("data-words", ""); } })
     .on("[data-c=role]", text("role")).on("[data-c=name]", text("name")).on("[data-c=bio]", text("bio"))
     .on("title", { element: (el) => { if (c) el.setInnerContent(c.name); } })
     // (the Person block, as the page writes it too: put in as it is, being a script's, with each "<" written as \u003c

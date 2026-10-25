@@ -24,7 +24,8 @@ function fadeText(el, t) {
 }
 
 // (the words as the page came with them: the server writes them in as it sends it (functions/_home.js), so they're
-// not asked for again, and a request that didn't come back can't put the defaults in their place, for the owner to save)
+// not asked for again, and a request that didn't come back can't put the defaults in their place, for the owner to save;
+// asked for only when they may not be these: wordsDue, at the end)
 const fromPage = (k) => $(`[data-c=${k}][data-edit]`).textContent;
 let content = { role: fromPage("role"), name: fromPage("name"), bio: fromPage("bio") };
 let me = null;           // /api/me, once it's known
@@ -360,18 +361,26 @@ function showMe() {
   $("#me").setAttribute("aria-label", me.signedIn ? `Your account (${me.name})` : "Your account");
   // (each app's line, theirs: once their photo's landed, if it's on its way)
   if (!welcome) showLines();
-  // a message from them is from them: their name and email filled in, shown as one From row
+  // a message from them is from them: their name and email filled in, shown as one From row (only while the fields
+  // still hold theirs: not over others put in for this message, when it's shown again back from the account's page)
   if (me.signedIn && me.name && me.email) {
     if (!$("#c-name").value) $("#c-name").value = me.name;
     if (!$("#c-email").value) $("#c-email").value = me.email;
-    $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
-    $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
-    for (const img of $$("img", $("#from-face"))) fadeOnLoad(img);
-    if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
-    $("#from").hidden = false; $("#sender").classList.add("known");
   }
+  fromMe();
   // (back, signed in: the photo on its way; back, but not signed in after all: the picture fades, the page as ever)
   if (welcome) arrive(back, pill); else if (back) arriveEnd(back, true);
+}
+// (their own details, if those are what the fields hold: the From row, filled from them as they are now, its photo the
+// bar's; filled each time it's shown, as it may last have been someone else's, or theirs before a change)
+function fromMe() {
+  if (!(me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email)) return;
+  const face = $("#face");
+  $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
+  $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+  for (const img of $$("img", $("#from-face"))) fadeOnLoad(img);
+  if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
+  $("#from").hidden = false; $("#sender").classList.add("known");
 }
 // each app's line: theirs when they use it, what it is otherwise
 function showLines() {
@@ -420,13 +429,15 @@ function handOff(url) {
   sky.then(go, go);
   setTimeout(go, 700);
 }
-// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went; and who's
-// signed in asked again: the same, their figures brought up to date; someone else, or no one now (signed out there),
-// the page opened afresh, rather than still showing the one before, their name and email in Get in touch)
-const who = (m) => (m?.signedIn ? [m.email, m.name, m.photoAt, !!m.owner].join("\n") : "");
+// (back from the account's page by the browser's Back, the page as it was kept: as it was before it went, its words
+// asked for again (they may have been changed meanwhile); and who's signed in asked again: the same, their figures
+// brought up to date, and their photo and name if they've changed them there; someone else, or no one now (signed out
+// there), the page opened afresh, rather than still showing the one before, their name and email in Get in touch)
+const who = (m) => (m?.signedIn ? [m.email, !!m.owner].join("\n") : "");
 addEventListener("pageshow", async (e) => {
   if (!e.persisted) return;
   handing?.undo();
+  wordsDue = askWords();                            // (before anything else: Edit waits for them, whoever's here)
   if (!me) return;                                  // (still being asked: loadMe shows it)
   let now; try { now = await api("/api/me"); } catch (_) { return; }
   if (who(now) !== who(me)) {
@@ -435,7 +446,11 @@ addEventListener("pageshow", async (e) => {
     location.reload();
     return;
   }
-  me = now; showLines();
+  // (the same person, a message half written kept as it is: their name in it moved on with them, if it was theirs)
+  const was = me;
+  if ($("#c-name").value === was.name) $("#c-name").value = now.name;
+  me = now;
+  if (now.name !== was.name || now.photoAt !== was.photoAt) showMe(); else showLines();
 });
 
 // Back from the account's page signed in: its picture (index.html #signedin) taken on, with what's to happen to it.
@@ -825,8 +840,8 @@ function hideToast() {
 const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
-  // (their own details, if those are still what the From row says: that row again, rather than the two fields)
-  if (me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email) { $("#from").hidden = false; $("#sender").classList.add("known"); }
+  // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
+  fromMe();
   ready();
   openSheet(contact.sheet);
   grow(); fit();
@@ -1009,6 +1024,8 @@ const guard = (e) => e.preventDefault();      // (leaving with the words half ch
 function startEdit() {
   if (editing || !me?.owner) return;
   if (wordsDue) { wordsDue.then(startEdit); return; }     // (the words asked for again, back from history: start from them)
+  // (and not from the defaults, the words not in the page as it came and not come since: asked for again, to start then)
+  if (!wordsKnown) { wordsDue = askWords(); wordsDue.then(() => (wordsKnown ? startEdit() : toast("Couldn’t load the words. Try again in a moment."))); return; }
   // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
   if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
   // (and what was typed before a save that didn't go, back where it was)
@@ -1142,31 +1159,32 @@ function makeTile(p, src) {
     change(tile, "POST", { focus: `${x}% ${y}%` });
   });
   // (or the arrow keys on it, a step at a time: moved at once, and kept once they've been let be for a moment, not
-  // sent for every press)
-  let keyed = null;
+  // sent for every press; tile._keyed meanwhile, so another photo's answer doesn't move it back)
   img.addEventListener("keydown", (e) => {
     const d = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key];
     if (!d || $(".ask", tile)) return;
     e.preventDefault();
     // (not while its last change is on its way, as a tap isn't: the answer would move it back, or the two cross)
-    if (tile.classList.contains("busy")) return;
+    if (tile._inflight) return;
     const [fx, fy] = (img.style.objectPosition || "50% 50%").split(" ").map(parseFloat);
     const x = Math.round(clamp((fx + d[0]) / 100) * 100), y = Math.round(clamp((fy + d[1]) / 100) * 100);
     aim(x, y);
-    clearTimeout(keyed); keyed = setTimeout(() => change(tile, "POST", { focus: `${x}% ${y}%` }), 500);
+    clearTimeout(tile._keyed); tile._keyed = setTimeout(() => { tile._keyed = null; change(tile, "POST", { focus: `${x}% ${y}%` }); }, 500);
   });
   where.addEventListener("click", () => { const q = now(); if (q) change(tile, "POST", { device: NEXT[q.device || "both"] }); });
   rm.addEventListener("click", () => askRemove(tile));
   tile.append(img, dot, where, rm);
   return tile;
 }
+// (a tile with a change of its own on its way, or arrow keys about to send one, keeps its point and stays busy: the list
+// another photo's answer brings may be from before that change)
 function updateTile(tile, p) {
   const img = $("img", tile), dot = $(".dot", tile), where = $(".where", tile);
   const focus = p.focus || "50% 50%", [fx, fy] = focus.split(" "), w = WHERE[p.device || "both"];
-  img.style.objectPosition = focus; dot.style.left = fx; dot.style.top = fy; img.alt = inView(parseFloat(fx), parseFloat(fy));
+  if (!tile._inflight && !tile._keyed) { img.style.objectPosition = focus; dot.style.left = fx; dot.style.top = fy; img.alt = inView(parseFloat(fx), parseFloat(fy)); }
   if (where.textContent) fadeText(where, w); else where.textContent = w;
   where.setAttribute("aria-label", `Shows on: ${w}. Change`);
-  tile.classList.remove("busy");
+  if (!tile._inflight) tile.classList.remove("busy");
 }
 // (taking one out is asked on the photo itself: Remove, or Keep)
 function askRemove(tile) {
@@ -1185,8 +1203,10 @@ function askRemove(tile) {
 }
 async function change(tile, method, data) {
   tile.classList.add("busy"); photosSaid("");
+  tile._inflight = (tile._inflight || 0) + 1;
   try { photos = (await api("/api/background", { method, body: { id: tile.dataset.id, ...data } })).images || []; }
   catch (err) { photosSaid(err.message); }
+  finally { tile._inflight--; }        // (before the redraw: its own answer is the one to show)
   photosChanged();
 }
 // (one on its way up: shown at once, dimmed, until it's in)
@@ -1333,8 +1353,11 @@ for (const ev of ["copy", "cut"]) document.addEventListener(ev, (e) => { if (!in
 $("#year").textContent = new Date().getFullYear();
 showContent();      // (the Person block for search made from the words: index.html has it with the defaults)
 // (back by the browser's Back or Forward, the page can be the copy the browser kept, not asked for again, with the
-// words as they were then: asked for, so they're not edited from older ones; taken only if they come, and Edit waits)
-let wordsDue = performance.getEntriesByType?.("navigation")[0]?.type === "back_forward"
-  ? api("/api/content").then((c) => { content = c; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; }) : null;
+// words as they were then: asked for, so they're not edited from older ones; taken only if they come, and Edit waits.
+// The same when the server couldn't read them as it sent the page (it marks it data-words when they're in it), so the
+// defaults it's written with aren't edited, to be saved over the real ones; and for the page kept whole: pageshow)
+let wordsKnown = root.hasAttribute("data-words");
+const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown = true; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; });
+let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
 loadPhotos();
 loadMe();

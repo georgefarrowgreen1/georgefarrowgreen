@@ -1,15 +1,15 @@
 // The home page's server: Get in touch (functions/api/contact.js) taking no message from another site's page, holding a
 // network to 5 an hour and a wider one to 10 a day, and past 60 a day keeping a message rather than refusing it (only 150
 // a day kept); Admin's count of new messages being of the 200 it shows (functions/_messages.js); the words refused, not
-// cut, when too long (functions/_content.js); and the photos' list changed one change at a time
-// (functions/api/background.js updateList).
+// cut, when too long (functions/_content.js); and the photos' list changed one change at a time, never past 50 however
+// two adds cross (functions/api/background.js updateList, addPhoto).
 // (The database is SQLite in memory, as D1 is SQLite: node:sqlite, so skipped where Node hasn't it.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequestPost as contact } from '../../../functions/api/contact.js';
 import { saveMessage, listMessages, markRead, messageCounts } from '../../../functions/_messages.js';
 import { sanitize, tooLong, LIMITS } from '../../../functions/_content.js';
-import { updateList } from '../../../functions/api/background.js';
+import { updateList, addPhoto } from '../../../functions/api/background.js';
 
 const sqlite = await import('node:sqlite').catch(() => null);
 // D1, as the server asks it
@@ -120,6 +120,28 @@ test('the photos: a change that comes too soon after another waits, and both are
   assert.equal(puts, 2);
   last = Date.now() + 1e6;                                       // (and one refused again: an error, for the page to say)
   await assert.rejects(updateList({ BIO_KV }, tag('a', 'both'), 10), /429/);
+});
+
+test('the photos: two adds at 49, the second waiting on the first, make 50, not 51 cut to 50 as it\'s saved', async () => {
+  // (both read the list at 49; the first's write takes a moment, and the second's, coming within its second, is refused)
+  const kv = new Map([['bg_list', JSON.stringify(Array.from({ length: 49 }, (_, i) => ({ id: `p${i}` })))]]);
+  let last = 0, puts = 0, refused = 0;
+  const BIO_KV = {
+    async get(k) { await new Promise((r) => setTimeout(r, 5)); return kv.get(k) ?? null; },
+    async put(k, v) {
+      if (Date.now() - last < 40) { refused++; throw new Error('KV PUT failed: 429 Too Many Requests'); }
+      last = Date.now(); await new Promise((r) => setTimeout(r, 5)); puts++; kv.set(k, v);
+    },
+  };
+  const add = (id) => updateList({ BIO_KV }, addPhoto({ id, focus: '50% 50%', device: 'both' }), 60);
+  const [a, b] = await Promise.all([add('a'), add('b')]);
+  assert.equal(refused, 1, 'the second waited');
+  assert.equal(a.length, 50, 'the first: in, the 50th');
+  assert.equal(b, null, 'the second, made again to the list as it is after its wait: refused, for its files to be taken away');
+  const kept = JSON.parse(kv.get('bg_list'));
+  assert.equal(kept.length, 50);
+  assert.deepEqual(kept.filter((e) => e.id === 'a' || e.id === 'b').map((e) => e.id), ['a']);
+  assert.equal(puts, 1, 'and nothing written for it');
 });
 
 test.after(() => { globalThis.fetch = real; });
