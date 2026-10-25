@@ -72,6 +72,13 @@ export function json(body, status = 200, headers = {}) {
   });
 }
 
+// An open chat is asked for every 15 s: each answer carries a tag (a hash of what it says, but not when), and a phone
+// that sends back the tag of the copy it has is told only that nothing has changed, not sent it all again.
+export async function chatJson(request, t, out) {
+  const tag = hex(await sha256(JSON.stringify(out))).slice(0, 16);
+  return json(new URL(request.url).searchParams.get("tag") === tag ? { now: t, tag, same: true } : { now: t, tag, ...out });
+}
+
 // D1 binds at most 100 parameters a statement: lists for IN (...) go in slices.
 export const chunks = (a, n = 90) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 

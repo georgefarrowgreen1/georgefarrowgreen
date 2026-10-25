@@ -43,10 +43,12 @@ export function nearestPlace(lat, lon) {
 
 // Locations are snapped to a 1-mile grid (about 1.6 km each way, anywhere on
 // Earth): plenty for flight times, too coarse to find someone's street.
-const MILE_DEG = 1.609344 / 111.32;            // degrees of latitude in a mile
-export function snapToMile(lat, lon) {
-  const la = Math.max(-90, Math.min(90, Math.round(lat / MILE_DEG) * MILE_DEG));
-  const step = MILE_DEG / Math.max(Math.cos(la * Math.PI / 180), 0.01);
+// (Approximate Location's 10 km grid is the same maths: functions/_pigeon.js snapTo.)
+export const snapToMile = (lat, lon) => snapTo(lat, lon, 1.609344);
+export function snapTo(lat, lon, km) {
+  const deg = km / 111.32;                     // degrees of latitude in that many km
+  const la = Math.max(-90, Math.min(90, Math.round(lat / deg) * deg));
+  const step = deg / Math.max(Math.cos(la * Math.PI / 180), 0.01);
   let lo = Math.round(lon / step) * step; if (lo > 180) lo -= 360; if (lo < -180) lo += 360;
   return { lat: Math.round(la * 1e5) / 1e5, lon: Math.round(lo * 1e5) / 1e5 };
 }

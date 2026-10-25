@@ -2,7 +2,7 @@
 // here; the server (functions/api/pigeon) only ever sees ciphertext.
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
-import { PLACES, nearestPlace, snapToMile } from "./places.js";
+import { PLACES, nearestPlace, snapToMile, snapTo } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
@@ -2387,10 +2387,12 @@ async function sync() {
       if (!Number.isFinite(d.now) || !d.me || !Array.isArray(d.friends)) throw new Error("A sync came back incomplete.");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
+      const caught = S.pinsUnread && await pinsCatchUp();      // (trusted keys it couldn't fetch at the start: now, before it trusts any shown here)
+      if (S.token !== tok) return;                // (signed out while it asked: as above)
       // nothing new since last time: no redraw, no re-saving (an open app asks every 15 s)
       // (a friend's last-seen time moves once a minute while they're about: that alone is taken in quietly, and only
       // a change of who's online now redraws)
-      const sig = JSON.stringify({ ...d, now: 0 }, (k, v) => (k === "seenAt" ? undefined : v)), same = sig === S.syncSig && S.synced;
+      const sig = JSON.stringify({ ...d, now: 0 }, (k, v) => (k === "seenAt" ? undefined : v)), same = sig === S.syncSig && S.synced && !caught;
       const onSig = d.friends.map((f) => (isOnline(f) ? f.id : "")).join(), seen = JSON.stringify(d.friends.map((f) => f.seenAt));
       const onlineMoved = onSig !== S.onSig, seenMoved = seen !== S.seenSig;
       S.syncSig = sig; S.onSig = onSig; S.seenSig = seen; S.syncFails = 0; S.lastSync = Date.now();
@@ -2399,7 +2401,9 @@ async function sync() {
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
-      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
+      // (the open Skies map keeps up every time; on Messages the strip does whenever the sync changed, a new landing
+      // time say, and past that every couple of minutes, for what no sync shows)
+      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || (S.view === "messages" && (!same || Date.now() - (S.skiesAt || 0) > 120e3))) loadSkies();
       const wasCache = S.fromCache; S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged || onlineMoved)) calmRender();
       S.chatChanged = false;
@@ -2427,28 +2431,67 @@ const keyId = (pub) => `${pub.x}.${pub.y}`;
 const pubFromId = (k) => { const [x, y] = k.split("."); return { kty: "EC", crv: "P-256", x, y }; };
 // The keys you've trusted also go to the server, sealed so only your own key can
 // open them: on a new phone (or after this one forgets), they come back, and a
-// key the server swapped in while you weren't looking is still caught.
+// key the server swapped in while you weren't looking is still caught, as long as
+// the server hands the copy back (it can always say there's none). Each save adds
+// to the copy there rather than replacing it, so one phone's Verified marks and old
+// keys aren't lost to another's; and a phone that couldn't fetch it saves nothing
+// over it until it has.
 const pinsMeta = () => ({ type: "pins", id: "pins", from: S.me.id, to: S.me.id });
+// Two sets of trusted keys as one: `mine` wins wherever both have something (a Verified
+// mark turned off is kept as "", so it stays off); keys trusted before and a group's
+// members seen are kept from both; a Verified mark only `theirs` has, only for the key
+// trusted now.
+function mergePins(mine, theirs) {
+  const out = { ...theirs, ...mine };
+  for (const [k, v] of Object.entries(theirs)) {
+    if (/^(old|g):/.test(k) && Array.isArray(v) && Array.isArray(mine[k])) out[k] = [...new Set([...mine[k], ...v])];
+    else if (k.startsWith("v:") && !(k in mine) && v && v !== out[k.slice(2)]) delete out[k];
+  }
+  return out;
+}
+// the copy on the server, opened (null: there's none, or it won't open, which asking again won't change; no answer throws)
+async function serverPins() {
+  const r = await api("pins");
+  const p = r.pins ? await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins).catch(() => null) : null;
+  return p?.pins && typeof p.pins === "object" ? p.pins : null;
+}
 let pinsTimer = 0;
 function savePins() {
   if (!S.me) return;
   idb.set("pins:" + S.me.id, S.pins);
   clearTimeout(pinsTimer);
   pinsTimer = setTimeout(async () => {
+    if (S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
     try {
+      const had = await serverPins();            // (what another of your phones saved since stays)
+      if (had) { S.pins = mergePins(S.pins, had); await idb.set("pins:" + S.me.id, S.pins); }
       const ct = await E2E.seal(await pairFor(S.myPub), pinsMeta(), { pins: S.pins, at: Date.now() });
       await api("pins", { method: "POST", body: { pins: ct } }); await idb.set("pinsup:" + S.me.id, Date.now());
     } catch (_) {}
   }, 1500);
 }
 // Nothing trusted on this phone yet (a new phone, a reinstall): bring back what was saved
+// (no answer: the next sync asks again, before it trusts anything it shows; noted on the
+// phone, so a restart before then still does)
 async function restorePins() {
+  const tok = S.token, id = S.me.id;
+  S.pinsUnread = !!(await idb.get("pinsunread:" + id).catch(() => null));
   if (Object.keys(S.pins).length) return;
-  try {
-    const r = await api("pins"); if (!r.pins) return;
-    const p = await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins);
-    if (p?.pins && typeof p.pins === "object") { S.pins = p.pins; await idb.set("pins:" + S.me.id, S.pins); await idb.set("pinsup:" + S.me.id, Date.now()); }
-  } catch (_) {}
+  let p;
+  // (a sign-in that had ended signs out as it's asked: that's not "no answer", and start carries on to the welcome)
+  try { p = await serverPins(); } catch (_) { if (S.token === tok) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
+  if (p && S.token === tok) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
+}
+// ...and once it answers, the server's copy wins for each friend's key, so one that changed meanwhile is
+// flagged, with what this phone trusted meanwhile added. True once done.
+async function pinsCatchUp() {
+  const tok = S.token; let p;
+  try { p = await serverPins(); } catch (_) { return false; }
+  if (S.token !== tok) return false;
+  S.pinsUnread = false; await idb.del("pinsunread:" + S.me.id);
+  if (p) S.pins = mergePins(p, S.pins);
+  savePins();
+  return true;
 }
 // Verify in person: your safety number with a friend, as a QR code. Scanning theirs (or
 // comparing the digits and saying they match) marks them Verified, kept with the trusted
@@ -2456,7 +2499,7 @@ async function restorePins() {
 const safetyCode = (digits) => `inflight-safety:1:${(digits || []).join("")}`;
 const isVerified = (p) => !!p?.pub && !p.keyChanged && S.pins["v:" + p.id] === keyId(p.pub);
 const wasVerified = (p) => !!p?.keyChanged && !!S.pins["v:" + p.id];         // verified, and their key has changed since
-function setVerified(p, on) { if (on) S.pins["v:" + p.id] = keyId(p.pub); else delete S.pins["v:" + p.id]; savePins(); }
+function setVerified(p, on) { S.pins["v:" + p.id] = on ? keyId(p.pub) : ""; savePins(); }     // (off is kept, as "": mergePins)
 const safeState = (p) => p?.keyChanged ? "warn" : isVerified(p) ? "ok" : "none";
 // A key you can know at a glance: its fingerprint drawn as a 5×5 pattern, mirrored like a face, in two colours
 // of its own. A different key looks different, without reading 32 characters.
@@ -2543,10 +2586,11 @@ const base = (fid) => pairFor(trustedPub(friend(fid)));
 // A key the server says changed isn't used until you've checked it.
 const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
 // What a decrypted thing must look like, by what it is: a reaction is one of
-// the reactions and nothing else; a message (or a stopover's copy) has words.
+// the reactions (and the id of the message it's on: reactOf) and nothing else;
+// a message (or a stopover's copy) has words.
 // Anything else is treated as unreadable, whatever the server sent.
 const shapeOK = (kind, o) => !!o && typeof o === "object" && !Array.isArray(o) && (kind === "react"
-  ? Object.keys(o).length === 1 && REACTIONS.includes(o.r)
+  ? REACTIONS.includes(o.r) && (Object.keys(o).length === 1 || (Object.keys(o).length === 2 && typeof o.m === "string"))
   : typeof o.t === "string" && !("r" in o) && !("k" in o));
 // Each id belongs to one conversation (and one kind of thing): if the same id
 // turns up somewhere else, neither is shown as the other.
@@ -2602,10 +2646,14 @@ async function decryptGroup(g, m, kind = "msg") {
 }
 async function loadGroup(gid) { return loadChat(gid); }
 async function loadChat(fid) {
-  const g = group(fid), tok = S.token;
-  const d = await api(g ? "group-messages?id=" + encodeURIComponent(fid) : "messages?with=" + encodeURIComponent(fid));
+  const g = group(fid), tok = S.token, tags = (S.chatTags ||= new Map());
+  // (a chat that's here already says which copy it has: unchanged, the server just says so, rather than send it all again)
+  const tag = S.msgs.has(fid) && tags.get(fid);
+  const d = await api((g ? "group-messages?id=" : "messages?with=") + encodeURIComponent(fid) + (tag ? "&tag=" + encodeURIComponent(tag) : ""));
   if (S.token !== tok) return;                     // signed out meanwhile
   S.skew = d.now - Date.now();
+  if (d.same) { if (S.msgs.has(fid) && tags.get(fid) === d.tag) return; tags.delete(fid); return loadChat(fid); }
+  if (d.tag) tags.set(fid, d.tag); else tags.delete(fid);
   // the same as last time: nothing to open, draw or save again
   const sig = JSON.stringify({ ...d, now: 0 }), sigs = (S.chatSigs ||= new Map());
   if (sigs.get(fid) === sig && S.msgs.has(fid)) return;
@@ -2617,7 +2665,8 @@ async function loadChat(fid) {
 // fills in until the fresh one arrives, and never tells the server anything.
 // Disappearing messages (functions/_vanish.js): one whose time is up, after it was read
 // (in a group, by everyone it flew to). The server wipes it within a minute; this hides
-// it at once, even from a copy saved on the phone.
+// it at once, even from a copy saved on the phone: one to one, and your own in a group
+// (someone else's in a group goes when the server wipes it: only it knows when everyone has read it).
 const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
 // Messages are kept for 30 days after they land (or are lost), then go for everyone (functions/_retention.js)
 const KEEP_MS = 30 * DAY, KEEP_SAY = "Messages are kept for 30 days after they land, then deleted for everyone. Your Flight Log, passport and badges keep every flight.";
@@ -2625,6 +2674,7 @@ const kept = (m, t = now()) => { const end = m.lost ? m.lostAt || m.deliverAt : 
 function vanished(m, t = now()) {
   if (!m?.vanish) return false;
   if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
+  if (m.gid) return false;                         // (someone else's in a group: your own read isn't the rule)
   return !!m.readAt && m.readAt + m.vanish <= t;
 }
 async function applyChat(fid, d, live) {
@@ -2643,7 +2693,8 @@ async function applyChat(fid, d, live) {
     if (!g && m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
-  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
+  if (!live) S.chatTags?.delete(fid);              // (what's shown now isn't the copy the server last named: loadChat)
+  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn && { ...d.turn, at: d.now || 0 }); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
   if (g) { S.gevents.set(fid, d.events || []); if (live) (S.geventsLive ||= new Set()).add(fid); }
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
@@ -3542,8 +3593,8 @@ function go(view, chat) {
     if (view === "chat") S.backTo = ["messages", "friends", "account"].includes(S.view) ? S.view : "messages";
   }
   const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
-  // what you'd typed stays with its chat, for when you come back
-  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
+  // what you'd typed stays with its chat, for when you come back (not words going up with a photo or a voice pigeon)
+  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
   if (!same) newPill(false);
   S.chatWas = S.chat;
@@ -4965,17 +5016,20 @@ function quoteHtml(q, g) {
   else q = { id: String(q.id || ""), from: String(q.from || ""), t: String(q.t || "").slice(0, 90), p: ["gif", "voice", "photo"].includes(q.p) ? q.p : "" };
   return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
+// A reaction's emoji, only on the message it was sealed for: its id goes inside it, so the server can't move it
+// to another (one from before that has none: shown where the server says, until it goes after 30 days)
+const reactOf = (r) => { const p = S.plain.get(r.id); return p?.r && (p.m === undefined || p.m === r.msg) ? p.r : null; };
 // The reactions on a message: each once it has landed (yours straight away)
 function reactsHtml(m, mine) {
-  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && S.plain.get(r.id)?.r);
+  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && reactOf(r));
   if (!list.length) return "";
   const by = new Map();
-  for (const r of list) { const e = S.plain.get(r.id).r, x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
+  for (const r of list) { const e = reactOf(r), x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
   return `<div class="reacts${mine ? " me" : ""}" data-key="rx:${esc(m.id)}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" data-key="rp:${esc(m.id)}:${esc(e)}" data-sig="${x.n}${x.flying ? "f" : ""}" data-in="pop" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
 }
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
-  const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+  const cur = mineNow && reactOf(mineNow), m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
   const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   const words = m && S.plain.get(id)?.t;
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
@@ -4994,12 +5048,12 @@ async function sendReact(id, e) {
   const g = group(S.chat), chat = S.chat, list = S.reacts.get(chat) || [];
   const mineNow = list.find((r) => r.msg === id && r.from === S.me.id);
   try {
-    if (mineNow && S.plain.get(mineNow.id)?.r === e) {          // the same one again takes it back
+    if (mineNow && reactOf(mineNow) === e) {          // the same one again takes it back
       await api("react", { method: "DELETE", body: { msg: id } });
       S.reacts.set(chat, list.filter((r) => r !== mineNow)); return render();
     }
     const m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m) return;
-    const rid = uuid(), payload = { r: e };
+    const rid = uuid(), payload = { r: e, m: id };
     let body;
     if (g) {
       const { body: sealed, key, h } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id, type: "react" }, payload);
@@ -5358,7 +5412,8 @@ function composeState() {
   // a group stands in for a friend here: its turn, and any member's changed key
   const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat);
   if (!f) return null;
-  const t = S.turns.get(f.id) || f.turn;
+  // (whose turn: the chat's, unless a sync since knows better; both say when, by the server's clock)
+  const ct = S.turns.get(f.id), t = ct && ct.at >= (S.raw?.now || 0) ? ct : f.turn;
   // off the Earth: space pigeons only (lunar to the Moon, laser to Mars), any time, straight there
   if (!g && moonChat(f)) {
     const ks = kindsFor(f), can = Object.fromEntries(ks.map((k) => [k, (S.me[k] || 0) > 0]));
@@ -7296,7 +7351,9 @@ function airTick() {
       continue;
     }
     const at = +c.dataset.at, from = +c.dataset.from, f = Math.min(1, Math.max(0, (t - from) / Math.max(1, at - from)));
-    c.style.setProperty("--f", f.toFixed(4));
+    // (moved only by as much as shows, a thousandth of the track: on a long flight that's every few seconds or more,
+    // rather than a fresh second-long glide, and a redraw, every second for each card)
+    const fv = f.toFixed(3); if (c._f !== fv) { c._f = fv; c.style.setProperty("--f", fv); }
     if (c.classList.contains("landed") || c.classList.contains("lost")) continue;
     if (at <= t) { airLand(c); continue; }
     n++;
@@ -8064,7 +8121,15 @@ async function onClick1(e, t) {
       const o = S.outbox.find((x) => x.id === id); if (!o) return;
       return openMenu(t, [{ label: o.err ? "Try Again" : "Send Now", icon: I.up, act: "outretry", id }, { label: "Delete", icon: I.trash, act: "outdel", id, destructive: true }]);
     }
-    case "outretry": { closePop(); const o = S.outbox.find((x) => x.id === id); if (o) { o.err = null; await outboxSave(); render(); } return outboxFlush(true); }
+    case "outretry": {
+      closePop(); const o = S.outbox.find((x) => x.id === id);
+      if (o) {
+        try { if (o.err) await outboxRetry(o); o.err = null; }
+        catch (e) { o.err = e.message || "This pigeon couldn’t be sealed again. Delete it and send it again."; await outboxSave(); return render(); }
+        await outboxSave(); render();
+      }
+      return outboxFlush(true);
+    }
     case "outdel": { closePop(); S.outbox = S.outbox.filter((x) => x.id !== id); await outboxSave(); haptic("tick"); return render(); }
     case "whohas": haptic("tick"); S.sheet = { type: "whohas", id }; return renderSheet();
     case "flymenu": {
@@ -8365,8 +8430,9 @@ const agoText = (at) => {
 // look in the background), so pigeons on their way can follow you. It never
 // asks for permission by itself (only when you turn it on). It checks every
 // minute, saves when you've moved to a new square mile, and otherwise just
-// notes every few minutes that you're still there.
-const AUTO_EVERY = MIN, AUTO_KM = 1, AUTO_FRESH = 3 * MIN;
+// says every ten minutes that you're still there (so a pigeon the server held
+// back from turning, as it turns one at most every ten minutes, still turns).
+const AUTO_EVERY = MIN, AUTO_KM = 1, AUTO_FRESH = 10 * MIN;
 async function setRisky(on) {
   S.me = { ...S.me, risky: on }; render();             // the switch moves straight away
   try { const r = await api("me", { method: "PATCH", body: { risky: on } }); const same = !!r.me.risky === on; S.me = r.me; if (!same) render(); }
@@ -8381,7 +8447,8 @@ async function setAutoLocation(on, btn) {
 // While InFlight is open (and you've turned it on) the phone watches your
 // location: iPhone asks once a session, then reports as you move. The minute
 // timer saves what it last heard (a new square mile at once; otherwise a
-// "still here" every few minutes), and asks directly if the watch goes quiet.
+// "still here" every ten minutes, timed on this phone: the server's "Updated"
+// moves only when you do), and asks directly if the watch goes quiet.
 // (Safari often says permission is only "prompt" even once allowed, so only a
 // clear "denied" stops it.)
 let locWatch = null, lastFix = null, lastFixAt = 0, lastSave = 0, saving = false;
@@ -8400,15 +8467,18 @@ async function autoLocate(ask) {
 async function saveFix(force) {
   if (!lastFix || !S.me?.autoLocation || S.me.moon || saving) return;
   const { lat, lon } = snapToMile(lastFix.coords.latitude, lastFix.coords.longitude);     // the exact spot never leaves the phone
-  const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, lat, lon) >= AUTO_KM;
-  if (!moved && now() - (S.me.locAt || 0) < AUTO_FRESH) return;
+  // (with Approximate Location the server keeps the 10 km square it's in: that's what's compared, like with like)
+  const at = S.me.approxLocation ? snapTo(lat, lon, 10) : { lat, lon };
+  const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, at.lat, at.lon) >= AUTO_KM;
+  if (!moved && Date.now() - lastSave < AUTO_FRESH) return;
   if (!force && Date.now() - lastSave < 20e3) return;                                       // a burst of fixes saves once
-  // still here: keep the spot (and its name) and just refresh when it was checked
+  // still here: keep the spot (and its name), so a pigeon held back from turning can catch up
   const body = moved ? { lat, lon, place: nearestPlace(lat, lon) } : { lat: S.me.lat, lon: S.me.lon, place: S.me.place };
-  const before = S.me.place;
+  const before = S.me.place, was = JSON.stringify(S.me);
   saving = true; lastSave = Date.now();
   try {
-    const r = await api("me", { method: "PATCH", body }); S.me = r.me; render(); refreshProfile();
+    // (redrawn only if something changed, and calmly: never under a scroll or a tap)
+    const r = await api("me", { method: "PATCH", body }); S.me = r.me; if (moved || JSON.stringify(r.me) !== was) { calmRender(); refreshProfile(); }
     if (moved && r.me.place !== before) toast(`Location updated to ${esc(r.me.place)}.`);
   } catch (_) { /* try again next time */ }
   saving = false;
@@ -8880,6 +8950,19 @@ async function outboxOpen(o) {
     } catch (_) {}
   }
 }
+// Try Again, on one the server turned down: a group's may have changed since it was sealed, so the same key is
+// wrapped again for whoever's in it now (the sealed words and photo stay as they are); one told when to land can't
+// land in the past. (Only once you've seen why it didn't go: nothing is ever re-addressed by itself.)
+async function outboxRetry(o) {
+  if (o.meta?.landAt && o.meta.landAt <= now()) throw new Error("Its landing time has passed. Delete it and send it again.");
+  const g = group(o.to); if (!g || !o.meta?.keys) return;
+  const mine = { id: S.me.id, pub: S.myPub || S.me.pub };
+  const w = await E2E.open(await pairFor(mine.pub), { id: o.id, from: S.me.id, to: S.me.id, type: "wrap" }, o.meta.keys[S.me.id]).catch(() => null);
+  if (!w?.k) throw new Error("This pigeon couldn’t be sealed again. Delete it and send it again.");
+  const keys = {};
+  for (const p of [mine, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id: o.id, from: S.me.id, to: p.id, type: "wrap" }, { k: w.k, h: w.h });
+  o.meta = { ...o.meta, keys };
+}
 let flushing = null;
 async function outboxFlush(force) {
   if (!S.me || !S.outbox.length || flushing) return flushing;
@@ -8939,7 +9022,8 @@ async function send() {
     S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; S.glideDown = true; render();
   }
   const tidy = () => {
-    if (att) { if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null; }
+    if (!att) return;              // (words alone left the box as they went up: what's in it now is the next one)
+    if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null;
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
   };
   try {
@@ -9029,7 +9113,8 @@ async function send() {
     // words that were up already come back down into the box (or its draft), with what they replied to
     if (!att && S.pending?.id === id) {
       S.pending = null;
-      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); } else if (!S.drafts.get(to)?.trim()) S.drafts.set(to, raw);
+      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); }
+      else { const d = S.drafts.get(to); S.drafts.set(to, d?.trim() ? `${raw}\n${d}` : raw); }     // (with anything typed after, kept as its draft)
       if (rt && !S.replyTo) S.replyTo = rt;
       if (here()) render();
     }
@@ -9324,8 +9409,8 @@ async function start() {
     if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
-    if (!Object.keys(S.pins).length) await restorePins();
-    else if (!(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
+    const had = Object.keys(S.pins).length; await restorePins();
+    if (had && !S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
@@ -9416,7 +9501,9 @@ function flightCheck() {
   const t = now();
   const lands = [];
   for (const f of S.friends) if (f.last?.flying) lands.push(f.last.deliverAt);
-  for (const list of S.msgs.values()) for (const m of list) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
+  // (only the chat on screen: sync fetches no other, so a chat you've left keeps the copy it had, its pigeons still "flying")
+  const open = S.view === "chat" && S.chat && !S.locked ? S.msgs.get(S.chat) : null;
+  for (const m of open || []) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
   const due = lands.filter((x) => x <= t);
   if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
 }
