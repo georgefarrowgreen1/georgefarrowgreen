@@ -1,4 +1,4 @@
-// Cadence: training for riding first, and running, swimming and strength alongside. Four screens on a tab bar:
+// Fitness: training for riding first, and running, swimming and strength alongside. Four screens on a tab bar:
 //
 // - Today: today's session (or rest), the best time for it from Weather, your fitness, fatigue and form, the week so
 //   far, and how you feel (which can swap a hard day for an easy one).
@@ -8,16 +8,21 @@
 //   zones and best efforts, and out again as FIT, GPX or TCX.
 //
 // Files come in from anywhere on the page (Import, or dropped on it): FIT from a Garmin or a Wahoo, GPX, TCX, ZWO, ERG,
-// MRC, or a zip of them. Workouts go out as each device and app takes them (formats.js). Everything's read and made on
-// this device; in the demo, nothing's sent anywhere. (Signed in with the site's account, your rides would be kept with it:
-// the proposal's next step.)
+// MRC, or a zip of them. Workouts go out as each device and app takes them (formats.js). Files are read and made on this
+// device.
+//
+// Signed in only: with your georgefarrowgreen.com account, the one every app on the site uses, signed in on the
+// account's own page (account.js). Your rides (each file as you imported it, and its figures), your plan, your numbers
+// and your workouts are kept with the account, so they're the same on every phone and computer you sign in on; a change
+// here goes to it a moment later, put together with any another device made meanwhile (account.js merge).
 
 import { h, icon, sportIcon, U, dur, hm, clock, stepLen, dist, distNum, height, speed, pace, paceOf, weight, dayLong, dayShort, dayName, dayLetter, dateShort, timeOf, plural, pct } from "./ui.js";
 import { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, measure, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "./workouts.js";
-import { summarise, fitness, formSaid, perSecond } from "./load.js";
+import { summarise, fitness, formSaid, perSecond, rescale } from "./load.js";
 import { demo, samples, PROFILE, rng } from "./sample.js";
 import * as F from "./formats.js";
 import * as C from "./charts.js";
+import * as A from "./account.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -25,48 +30,83 @@ const still = matchMedia("(prefers-reduced-motion: reduce)");
 
 // ---- kept in this browser ----
 const store = {
-  get(k, d) { try { const v = localStorage.getItem("cadence:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
-  set(k, v) { try { localStorage.setItem("cadence:" + k, JSON.stringify(v)); } catch (_) {} },
+  get(k, d) { try { const v = localStorage.getItem("fitness:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem("fitness:" + k, JSON.stringify(v)); } catch (_) {} },
 };
-// rides you've imported, whole, in IndexedDB (they're too big for anywhere else); in memory alone where it can't be had
+// each activity's file as this device last fetched it (IndexedDB), so a ride opened again doesn't come over the network
+// again: by account and activity, and cleared on signing out
 const idb = (() => {
   let p = null;
   const open = () => (p ||= new Promise((res, rej) => {
-    const r = indexedDB.open("cadence", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("acts", { keyPath: "id" });
+    const r = indexedDB.open("fitness", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("files");
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
   const run = async (mode, fn) => {
     const db = await open();
-    return new Promise((res, rej) => { const t = db.transaction("acts", mode), q = fn(t.objectStore("acts")); t.oncomplete = () => res(q.result); t.onerror = () => rej(t.error); });
+    return new Promise((res, rej) => { const t = db.transaction("files", mode), q = fn(t.objectStore("files")); t.oncomplete = () => res(q.result); t.onerror = () => rej(t.error); });
   };
-  return { all: () => run("readonly", (s) => s.getAll()), put: (a) => run("readwrite", (s) => s.put(a)), del: (id) => run("readwrite", (s) => s.delete(id)) };
+  return { get: (k) => run("readonly", (s) => s.get(k)), put: (k, v) => run("readwrite", (s) => s.put(v, k)), del: (k) => run("readwrite", (s) => s.delete(k)), clear: () => run("readwrite", (s) => s.clear()) };
 })();
 
 const TODAY = startOfDay(Date.now());
 const D = demo(Date.now());
-// The example rides (the demo's) are shown until you turn them off (You › Example rides); your own, imported, always.
-// The plan's the one you chose (and when it starts), or with the examples on and none chosen, theirs.
+// Your record (kept with the account: adopt), your own activities (S.own, their rows from the account), and the example
+// rides, shown only if you turn them on (You › Example rides). The plan's the one you chose (and when it starts), or with
+// the examples on and none chosen, theirs.
 const S = {
-  tab: "today",
-  profile: { ...PROFILE, ...store.get("profile", {}) },
-  examples: store.get("examples", true), chosen: chosenPlan(),
-  swaps: store.get("swaps", {}), feel: store.get("feel", {}), mine: store.get("workouts", []),
+  tab: "today", me: null, ver: 0, dirty: new Set(), inStepWorkouts: [], pulledAt: 0,
+  profile: { ...PROFILE }, examples: false, chosen: null, swaps: {}, feel: {}, mine: [],
   sport: "ride", actSport: "all", formDays: 42,
   own: [], acts: [],
   sums: new Map(), summed: false,
 };
-// (a plan chosen before it said when it started kept its start apart: taken as it was)
-function chosenPlan() {
-  const c = store.get("plan", null);
-  if (typeof c === "string") return { id: c, start: store.get("planStart", D.start) };
-  return c && PLANS.some((p) => p.id === c.id) && Number.isFinite(c.start) ? c : null;
+// Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
+function adopt(d) {
+  const ok = (o) => o && typeof o === "object" && !Array.isArray(o), was = numbers();
+  S.profile = { ...PROFILE, ...(ok(d?.profile) ? d.profile : {}) };
+  S.chosen = ok(d?.plan) && PLANS.some((p) => p.id === d.plan.id) && Number.isFinite(d.plan.start) ? d.plan : null;
+  S.swaps = ok(d?.swaps) ? d.swaps : {}; S.feel = ok(d?.feel) ? d.feel : {};
+  S.mine = Array.isArray(d?.workouts) ? d.workouts : [];
+  U.metric = d?.prefs?.units !== "imperial"; S.examples = !!d?.prefs?.examples;
+  setActs();
+  // (new numbers, from another device: every ride's stress worked out again for them)
+  if (numbers() !== was) resum();
+}
+const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
+// what's kept with the account, as this device has it now
+const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, swaps: S.swaps, feel: S.feel, workouts: S.mine, prefs: { units: U.metric ? "metric" : "imperial", examples: S.examples } });
+// A change to your record: kept with your account a moment later (a few changes go as one), from the version this
+// device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
+// its own, the days and workouts joined) and sent again.
+let saveT = null;
+function keep(...parts) { if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); }
+async function inStep() {
+  if (!S.me || !S.dirty.size || inStep.busy) return;
+  inStep.busy = true;
+  const dirty = new Set(S.dirty); S.dirty.clear();
+  let again = 700;
+  try {
+    let mine = record(), r = await A.save(S.ver, mine), merged = false;
+    for (let i = 0; r.conflict && i < 3; i++) {
+      mine = A.merge(r.data, mine, dirty, S.inStepWorkouts); S.inStepWorkouts = A.workoutIds(r.data);
+      adopt(mine); merged = true; r = await A.save(r.ver, mine);
+    }
+    if (r.conflict) throw new Error("Your changes didn’t save. Try again.");
+    S.ver = r.ver; S.inStepWorkouts = A.workoutIds(r.data || mine);
+    if (merged) redraw();
+  } catch (e) {
+    for (const x of dirty) S.dirty.add(x);
+    if (e.status === 401) { inStep.busy = false; return signedOutHere(true); }
+    toast(e.offline ? "You’re offline: your changes will be saved when you’re back" : e.message, true);
+    again = e.offline ? 15000 : 30000;
+  } finally { inStep.busy = false; }
+  // (changes made while that was on its way, or that didn't go: next)
+  if (S.dirty.size) { clearTimeout(saveT); saveT = setTimeout(inStep, again); }
 }
 function setActs() {
   S.acts = [...(S.examples ? D.history.map((x) => ({ ...x, sample: true })) : []), ...S.own].sort((a, b) => b.start - a.start);
 }
-setActs();
-U.metric = store.get("units", "metric") === "metric";
 const P = () => S.profile;
 const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v));
 const runSpeed = () => 1000 / P().runPace, swimSpeed = () => 100 / P().css;
@@ -87,7 +127,7 @@ function weeks() {
   return weeksCache.v;
 }
 // (a plan's chosen on a day: the days before it, in a plan that starts partway, aren't missed, as you weren't on it)
-function choosePlan(c) { S.chosen = { ...c, at: TODAY }; S.swaps = {}; store.set("plan", S.chosen); store.set("planStart", null); store.set("swaps", {}); }
+function choosePlan(c) { S.chosen = { ...c, at: TODAY }; S.swaps = {}; keep("plan", "swaps"); }
 const missed = (day, wk) => wk && day < TODAY && day >= (myPlan()?.at ?? -Infinity) && !actsOn(day).length;
 // what's planned on a day (a swap you've made, or the plan's): a workout id, "event", or null for rest
 function plannedOn(day) {
@@ -102,21 +142,30 @@ const eventDay = () => weeks().at(-1)?.days.at(-1).date ?? null;
 // ---- each ride's figures: worked out a few at a time once the page is up, newest first, and kept for next time ----
 const sumKey = () => `${P().ftp}/${P().lthr}`;
 const sumOf = (a) => S.sums.get(a.id);
-// a ride's samples (a sample ride's made up afresh each time it's needed; the last few kept)
-const full = (() => {
-  const keep = new Map();
-  return (a) => {
-    if (!a.sample) return a.data;
-    if (keep.has(a.id)) return keep.get(a.id);
-    const x = samples(a, P());
-    keep.set(a.id, x); if (keep.size > 4) keep.delete(keep.keys().next().value);
-    return x;
-  };
-})();
+// A ride's samples, the last few kept: a sample ride's made up afresh each time it's needed; one of yours read from its
+// file (load), which comes from this device's copy of it, or the account's
+const held = new Map();
+const remember = (id, x) => { held.delete(id); held.set(id, x); if (held.size > 6) held.delete(held.keys().next().value); return x; };
+function full(a) {
+  if (held.has(a.id)) return held.get(a.id);
+  return a.sample ? remember(a.id, samples(a, P())) : null;
+}
+const fileKey = (a) => `${S.me?.id}:${a.id}`;
+async function load(a) {
+  if (full(a)) return full(a);
+  let bytes = await idb.get(fileKey(a)).catch(() => null);
+  if (!bytes) { bytes = await A.fileOf(a.id); idb.put(fileKey(a), bytes).catch(() => {}); }
+  const r = await F.readAny(a.file || `activity.${a.type}`, bytes);
+  // (a file of several parts, a triathlon's: the part that's this one, by when it started)
+  const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
+  if (!x) throw new Error("That file has no activity in it any more.");
+  Object.assign(x, { id: a.id, name: a.name });
+  return remember(a.id, x);
+}
 function sumUp() {
   const cached = store.get("sums", null);
   if (cached?.key === sumKey() + "@" + TODAY) for (const [id, s] of Object.entries(cached.v)) S.sums.set(id, s);
-  const todo = S.acts.filter((a) => !S.sums.has(a.id));
+  const todo = S.acts.filter((a) => a.sample && !S.sums.has(a.id));
   S.summed = !todo.length;
   if (S.summed) return;
   let i = 0;
@@ -130,7 +179,12 @@ function sumUp() {
   };
   setTimeout(step, 30);
 }
-function resum() { S.sums.clear(); store.set("sums", null); sumUp(); }
+// (your numbers changed: the example rides' figures worked out again, and yours from what they were worked out with)
+function resum() {
+  for (const id of [...S.sums.keys()]) if (id.startsWith("x")) S.sums.delete(id);
+  for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
+  store.set("sums", null); sumUp();
+}
 
 // fitness, day by day, from every ride's stress
 function fitnessSeries() {
@@ -160,13 +214,15 @@ function render(fresh = false) {
   const screen = h("div.screen" + (fresh ? ".in" : ""), {}, views[S.tab]());
   main.replaceChildren(screen);
   main.removeAttribute("aria-busy");
-  document.title = { today: "Cadence", plan: "Plan · Cadence", workouts: "Workouts · Cadence", activities: "Activities · Cadence" }[S.tab];
+  document.title = { today: "Fitness", plan: "Plan · Fitness", workouts: "Workouts · Fitness", activities: "Activities · Fitness" }[S.tab];
 }
 // drawn again in place (what changed behind the scenes), keeping where you'd scrolled to; a sheet that's up stays as it
 // is unless it's asked for too (what's in it is drawn afresh, charts and all)
 function redraw(sheetToo = false) { const y = scrollY; render(false); scrollTo(0, y); if (sheetToo && sheetEl.open && Sheet.redraw) Sheet.redraw(); }
 const head = (title, sub, ...right) => h("div.head", {}, h("div.t", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub })), ...right,
-  h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, (P().name || "Y").slice(0, 1).toUpperCase()));
+  h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, face()));
+// you, as the account has you: your photo, or your initial
+const face = () => (S.me?.photoAt ? h("img", { src: A.photoUrl(S.me.photoAt), alt: "", width: 44, height: 44 }) : (S.me?.name || "Y").trim().slice(0, 1).toUpperCase());
 const section = (title, ...kids) => h("section.section", {}, title && h("h3", {}, title), ...kids);
 const card = (cls, title, ...kids) => h("div.card.glass" + (cls ? "." + cls : ""), {}, title && h("h3", {}, ...[].concat(title)), ...kids);
 function row({ icon: ic, tint, tile, title, sub, value, onclick, chev = true, cls = "", extra = null, href = null }) {
@@ -194,7 +250,7 @@ function todayView() {
   }
   const left = [], right = [];
   left.push(sessionCard(w, id, done));
-  // (the best time to ride: Weather's, once Cadence has its own address and your place; till then, the examples' alone)
+  // (the best time to ride: Weather's, once Fitness has your place; till then, the examples' alone)
   if (S.examples && w && (w.sport === "ride" || w.sport === "run") && !done.length) left.push(weatherCard(w));
   right.push(formCard());
   right.push(weekCard());
@@ -248,7 +304,7 @@ function sessionCard(w, id, done) {
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("upload", 17, 2.2), "Send to device"),
       h("button.pill", { type: "button", onclick: () => openWorkout(w) }, "Details"),
-      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; store.set("swaps", S.swaps); redraw(); } }, "Undo swap")));
+      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")));
 }
 // The best time for it today, as Weather would say it (its Best times, for a ride as long as this one). In the demo, a
 // made-up day; signed in, Weather's own forecast for your place.
@@ -297,7 +353,7 @@ function weekCard() {
 // How you feel: sleep, legs and mood, said in a tap each, and what to do about it with your form. Tired legs on a hard
 // day: an easier session, swapped in with a tap (and back again).
 function feelCard(w) {
-  const f = S.feel[TODAY] || {}, set = (k, v) => { S.feel[TODAY] = { ...f, [k]: v }; store.set("feel", S.feel); redraw(); };
+  const f = S.feel[TODAY] || {}, set = (k, v) => { S.feel[TODAY] = { ...f, [k]: v }; keep("feel"); redraw(); };
   const seg = (k, opts) => {
     const at = opts.findIndex(([v]) => v === f[k]);
     return h("div.seg.small" + (at < 0 ? ".none" : ""), { vars: { "--n": opts.length, "--at": Math.max(0, at) }, role: "group", "aria-label": k },
@@ -310,7 +366,7 @@ function feelCard(w) {
     if (score <= 2 || (f.legs === 0 && tsb < -20)) {
       verdict = h("div.verdict", {}, h("span.ic.amber", {}, icon("swap", 16, 2.2)), h("div", {}, h("b", { text: hard ? "Swap today for something easy" : "Take it easy today" }),
         h("p", { text: hard ? `Tired legs and form of ${Math.round(tsb)}: ${w.name} would cost more than it gives. An easy spin keeps the legs turning.` : "Keep it short and easy, or rest. Tomorrow will go better for it." }),
-        hard && h("button.pill.small", { type: "button", onclick: () => { S.swaps[TODAY] = "recovery-45"; store.set("swaps", S.swaps); toast("Swapped for a recovery spin"); redraw(); } }, "Swap for a recovery spin")));
+        hard && h("button.pill.small", { type: "button", onclick: () => { S.swaps[TODAY] = "recovery-45"; keep("swaps"); toast("Swapped for a recovery spin"); redraw(); } }, "Swap for a recovery spin")));
     } else verdict = h("div.verdict", {}, h("span.ic.green", {}, icon("check", 16, 2.6)), h("div", {}, h("b", { text: score >= 5 ? "Ready for it" : "Good to go" }),
       h("p", { text: w ? `Ride ${w.name} as planned.` : myPlan() ? "Enjoy the rest day." : "Ride as you feel." })));
   }
@@ -350,7 +406,7 @@ function planView() {
     row({ icon: "zip", tint: "coral", title: started ? "Send this week’s workouts" : "Send week 1’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip(ws[now]) }),
     row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "This week and next as events (.ics), with each workout in its notes", onclick: () => calendar([ws[now], ws[now + 1]].filter(Boolean)) }))));
   out.push(plansList(p.id));
-  if (S.chosen) out.push(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => { S.chosen = null; S.swaps = {}; store.set("plan", null); store.set("swaps", {}); toast("Plan stopped"); redraw(); } }, "Stop this plan"))));
+  if (S.chosen) out.push(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); toast("Plan stopped"); redraw(); } }, "Stop this plan"))));
   return out;
 }
 const plansList = (current) => section("Plans", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
@@ -447,7 +503,7 @@ function workoutView(w) {
       w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, icon("upload", 19, 2.2), "Send to your devices"),
       h("div.group", {},
         row({ icon: "edit", tint: "coral", title: mine ? "Edit" : "Edit a copy", onclick: () => pushSheet(() => builderView(mine ? w : { ...structuredClone(w), id: `w${Date.now()}`, name: `${w.name} (mine)`, kind: "Yours", imported: false })) }),
-        mine && h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); store.set("workouts", S.mine); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
+        mine && h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
     ],
   };
 }
@@ -536,7 +592,7 @@ function builderView(base) {
       if (!B.steps.length) return toast("Add a step first", true);
       const i = S.mine.findIndex((x) => x.id === B.id);
       if (i >= 0) S.mine[i] = B; else S.mine.unshift(B);
-      store.set("workouts", S.mine); S.sport = B.sport; closeSheet(); toast("Saved to your workouts"); redraw();
+      keep("workouts"); S.sport = B.sport; closeSheet(); toast("Saved to your workouts"); redraw();
     } }, "Save"),
     body: [
       h("input.field", { type: "text", value: B.name, "aria-label": "Name", maxlength: 40, oninput: (e) => { B.name = e.target.value.trim() || "My workout"; } }),
@@ -581,13 +637,24 @@ function actRow(a) {
     h("span.tx", {}, h("b", { text: a.name }), h("small", { text: `${dayShort(a.start)} · ${a.device || (a.sample ? "Example" : "Imported")}` })),
     h("span.val", {}, s ? (s.dist > 100 ? dist(s.dist) : hm(s.moving)) : "", h("small", { text: s ? [s.dist > 100 ? hm(s.moving) : null, s.tss != null ? `TSS ${s.tss}` : null].filter(Boolean).join(" · ") : "" })));
 }
-function openAct(a) { openSheet(() => actView(a), { tall: true }); }
+// an activity, opened: its file read first, where it isn't here yet (from this device's copy, or the account's)
+async function openAct(a) {
+  if (full(a)) return openSheet(() => actView(a), { tall: true });
+  openSheet(() => ({ title: a.name, body: [h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
+    h("div.sub", { text: "Opening its file…" })), wait(220), wait(160)] }), { tall: true });
+  try {
+    await load(a);
+    if (sheetEl.open && !sheetEl.classList.contains("closing")) { Sheet.stack = [() => actView(a)]; drawSheet(); }
+  } catch (e) { if (e.status === 401) return signedOutHere(); closeSheet(); toast(e.message, true); }
+}
 function actView(a) {
-  const x = full(a), s = sumOf(a) || summarise(x, P()), ps = perSecond(x), w = a.workout ? wkById(a.workout) : null, plannedId = plannedOn(startOfDay(a.start));
+  // (one of yours worked out afresh from its file, its zones and all, for your numbers now)
+  const x = full(a), s = a.sample ? sumOf(a) || summarise(x, P()) : summarise(x, P()), ps = perSecond(x), w = a.workout ? wkById(a.workout) : null, plannedId = plannedOn(startOfDay(a.start));
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
     h("div.sub", { text: [a.device, a.sample ? "example ride" : a.file].filter(Boolean).join(" · ") }),
+    !a.sample && h("div.sub", {}, h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
   let mapAt = null;
@@ -640,10 +707,28 @@ function actView(a) {
     x.s.lat && row({ tile: h("span.ic.blue", {}, icon("file", 18, 2)), title: "GPX", sub: "For maps and route apps (Komoot, RideWithGPS), with heart rate, cadence and power", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "gpx"), F.gpxFromActivity(x)) }),
     row({ tile: h("span.ic.grey", {}, icon("file", 18, 2)), title: "TCX", sub: "Garmin’s older format, for tools that want it", chev: false, extra: h("span.get", {}, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(stem, "tcx"), F.tcxFromActivity(x, s)) })),
     h("p.foot", { text: "Garmin Connect: Import Data takes any of these. The Wahoo app: History, then + and Upload, takes the FIT file." })));
-  if (!a.sample) body.push(h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async () => {
-    S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); try { await idb.del(a.id); } catch (_) {} closeSheet(); toast("Deleted"); redraw();
+  if (!a.sample) body.push(h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Delete it, and its file, for good"; return; }
+    try { await A.remove(a.id); } catch (err) { if (err.status === 401) return signedOutHere(); return toast(err.message, true); }
+    S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); held.delete(a.id); idb.del(fileKey(a)).catch(() => {});
+    closeSheet(); toast("Deleted"); redraw();
   } }, "Delete this activity")));
   return { title: a.name, body };
+}
+// a new name for one of yours
+function renameView(a) {
+  const field = h("input.field", { type: "text", id: "act-name", value: a.name, maxlength: 80, "aria-label": "Name" });
+  const save = async () => {
+    const name = field.value.trim() || a.name;
+    try { await A.rename(a.id, name); } catch (e) { return toast(e.message, true); }
+    a.name = name; const x = held.get(a.id); if (x) x.name = name;
+    for (const y of S.own) if (y.id === a.id) y.name = name;
+    setActs(); redraw(); sheetBack(); toast("Renamed");
+  };
+  setTimeout(() => field.focus(), 350);
+  field.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
+  return { title: "Rename", right: h("button.link.done.r", { type: "button", onclick: save }, "Save"), body: [field] };
 }
 function zoneBars(secs, labels, cls) {
   const total = secs.reduce((a, b) => a + b, 0) || 1, max = Math.max(...secs);
@@ -686,8 +771,10 @@ function settingsView() {
   return {
     title: "You",
     body: [
-      card(null, null, h("div.wx", {}, h("div.round.me", { "aria-hidden": "true" }, (p.name || "Y").slice(0, 1)), h("div", {}, h("b", { text: p.name || "You" }),
-        h("span", { text: "Demo: not signed in. Signed in with your georgefarrowgreen.com account, your rides and plan would be kept with it, on every device." })))),
+      // (your account's card: its page, opened signed in as you, for your photo, name and the rest)
+      h("button.card.glass.acct", { type: "button", onclick: openAccount, "aria-label": "Your account" },
+        h("div.wx", {}, h("div.round.me", { "aria-hidden": "true" }, face()), h("div", {}, h("b", { text: S.me?.name || "You" }), h("span", { text: `@${S.me?.handle} · georgefarrowgreen.com` })),
+          h("span.chev", {}, icon("chev", 17, 2.4)))),
       section("Your numbers", h("div.group", {},
         row({ icon: "bolt", tint: "coral", title: "FTP", value: [`${p.ftp} W`, h("small", { text: `${wkg} W/kg` })], onclick: () => pushSheet(numbersView) }),
         row({ icon: "scale", tint: "indigo", title: "Weight", value: weight(p.weight), onclick: () => pushSheet(numbersView) }),
@@ -707,13 +794,21 @@ function settingsView() {
         h("p.foot", { text: "Off, your fitness, the week and the plan go by your own rides alone. Your rides and workouts stay either way." })),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
-        row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; store.set("units", U.metric ? "metric" : "imperial"); redraw(true); } }))),
+        row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; keep("prefs"); redraw(true); } }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Import files", sub: "FIT, GPX, TCX, ZWO, ERG, MRC, or a zip of them", onclick: () => { closeSheet(); chooseFiles(); } }),
-        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity as FIT, and your workouts as FIT and ZWO, in one zip", onclick: exportAll })),
-        h("p.foot", { text: "Files are read and made on this device. Imported rides are kept in this browser." })),
+        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity's own file, and your workouts as FIT and ZWO, in one zip", onclick: exportAll })),
+        h("p.foot", { text: "Your rides are kept with your georgefarrowgreen.com account (each file as you imported it, and its figures), with your plan, numbers and workouts, on every device you sign in on. Deleting the account deletes them." })),
+      section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
     ],
   };
+}
+// Your account's page, opened signed in as you (a code good once, for a minute), with the way back here
+async function openAccount() {
+  const page = A.accountPage();
+  if (!page) return toast("Your account is at account.georgefarrowgreen.com");
+  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness" })}`); }
+  catch (e) { if (e.status === 401) return signedOutHere(); toast(e.message, true); }
 }
 function numbersView() {
   const p = P(), field = (label, key, show, by, lo, hi) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: label })),
@@ -721,7 +816,7 @@ function numbersView() {
       h("button", { type: "button", "aria-label": `Less ${label}`, onclick: () => change(key, -by, lo, hi) }, icon("minus", 16, 2.4)),
       h("output", { text: show(p[key]) }),
       h("button", { type: "button", "aria-label": `More ${label}`, onclick: () => change(key, by, lo, hi) }, icon("plus", 16, 2.4))));
-  const change = (k, d, lo, hi) => { S.profile = { ...P(), [k]: Math.max(lo, Math.min(hi, Math.round((P()[k] + d) * 10) / 10)) }; store.set("profile", S.profile); Sheet.redraw(); clearTimeout(change.t); change.t = setTimeout(() => { resum(); redraw(); }, 600); };
+  const change = (k, d, lo, hi) => { S.profile = { ...P(), [k]: Math.max(lo, Math.min(hi, Math.round((P()[k] + d) * 10) / 10)) }; keep("profile"); Sheet.redraw(); clearTimeout(change.t); change.t = setTimeout(() => { resum(); redraw(); }, 600); };
   // (your best 20 minutes of the last six weeks, for an FTP to try)
   const since = addDays(TODAY, -42), best20 = Math.max(0, ...S.acts.filter((a) => a.start >= since).map((a) => sumOf(a)?.curve?.[1200] || 0));
   return {
@@ -731,8 +826,8 @@ function numbersView() {
         field("Threshold heart rate", "lthr", (v) => `${v} bpm`, 1, 100, 210), field("Max heart rate", "maxHr", (v) => `${v} bpm`, 1, 120, 230),
         field("Threshold pace", "runPace", (v) => pace(paceOf(v)), 5, 150, 600), field("CSS", "css", (v) => pace(v, "/100 m"), 1, 50, 240)),
       best20 > 0 && card(null, "From your rides", h("p.line-said", { text: `Your best 20 minutes in the last six weeks: ${best20} W, an FTP of about ${Math.round(best20 * 0.95)} W.` }),
-        Math.abs(Math.round(best20 * 0.95) - p.ftp) >= 5 && h("button.pill.small", { type: "button", onclick: () => { S.profile = { ...P(), ftp: Math.round(best20 * 0.95) }; store.set("profile", S.profile); Sheet.redraw(); resum(); redraw(); toast(`FTP set to ${S.profile.ftp} W`); } }, `Use ${Math.round(best20 * 0.95)} W`)),
-      h("p", { text: "FTP is the power you could hold for about an hour. The ramp test or the 20-minute test in Workouts will find it; or ride hard and Cadence will notice." }),
+        Math.abs(Math.round(best20 * 0.95) - p.ftp) >= 5 && h("button.pill.small", { type: "button", onclick: () => { S.profile = { ...P(), ftp: Math.round(best20 * 0.95) }; keep("profile"); Sheet.redraw(); resum(); redraw(); toast(`FTP set to ${S.profile.ftp} W`); } }, `Use ${Math.round(best20 * 0.95)} W`)),
+      h("p", { text: "FTP is the power you could hold for about an hour. The ramp test or the 20-minute test in Workouts will find it; or ride hard and Fitness will notice." }),
     ],
   };
 }
@@ -740,7 +835,7 @@ function appearanceView() {
   const now = store.get("appearance", "auto"), set = (v) => {
     store.set("appearance", v);
     if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
-    try { localStorage.setItem("cadence:appearance", v); } catch (_) {}
+    try { localStorage.setItem("fitness:appearance", v); } catch (_) {}
     Sheet.redraw();
   };
   return { title: "Appearance", body: [h("div.group", {}, [["auto", "Automatic", "As your device is set"], ["light", "Light", "Dawn"], ["dark", "Dark", "Night"]].map(([v, l, sub]) =>
@@ -749,7 +844,7 @@ function appearanceView() {
 
 // the example rides on or off (and with them, the example plan, where you haven't chosen one)
 function setExamples(on) {
-  S.examples = on; store.set("examples", on); setActs();
+  S.examples = on; keep("prefs"); setActs(); if (on) sumUp();
   if (!on && S.tab === "today") scrollTo(0, 0);
   toast(on ? "Example rides on" : "Only your rides now");
   redraw();
@@ -782,7 +877,7 @@ function weekZip(wk) {
     const id = S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id, w = id && id !== "event" ? wkById(id) : null;
     if (w && w.sport !== "strength") files.push({ name: F.fileName(`${new Date(d.date).toISOString().slice(0, 10)} ${w.name}`, "fit"), data: F.fitFromWorkout(w, { pace: paceFor(w.sport) }) });
   }
-  saveFile(F.fileName(`Cadence week ${wk.week}`, "zip"), F.zip(files));
+  saveFile(F.fileName(`Fitness week ${wk.week}`, "zip"), F.zip(files));
 }
 // a week or two as calendar events (iCalendar), each workout at 7:00 for its length, its steps in the notes
 function calendar(wks) {
@@ -794,24 +889,35 @@ function calendar(wks) {
     if (!w) continue;
     const m = measure(w, paceFor(w.sport)), start = d.date + 7 * 3600e3;
     const notes = `${w.about}\n\n` + flatten(w, paceFor(w.sport)).map((s) => `${stepLen(s)} ${s.name || s.kind}${w.sport === "ride" && s.kind !== "free" ? ` at ${pct(s.from)}${s.to !== s.from ? `–${pct(s.to)}` : ""}` : ""}`).join("\n");
-    ev.push(["BEGIN:VEVENT", `UID:${w.id}-${d.date}@cadence.georgefarrowgreen.com`, `DTSTAMP:${stamp(Date.now())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(start + m.secs * 1000)}`,
+    ev.push(["BEGIN:VEVENT", `UID:${w.id}-${d.date}@fitness.georgefarrowgreen.com`, `DTSTAMP:${stamp(Date.now())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(start + m.secs * 1000)}`,
       `SUMMARY:${fold(`${w.name} (${SPORTS[w.sport].name})`)}`, `DESCRIPTION:${fold(notes)}`, "END:VEVENT"].join("\r\n"));
   }
-  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//georgefarrowgreen.com//Cadence//EN", "CALSCALE:GREGORIAN", ...ev, "END:VCALENDAR", ""].join("\r\n");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//georgefarrowgreen.com//Fitness//EN", "CALSCALE:GREGORIAN", ...ev, "END:VCALENDAR", ""].join("\r\n");
   // (iCalendar files aren't among the kinds claude.ai's viewer hands over: there, it goes in a zip like the rest)
-  saveFile(F.fileName(`Cadence week ${wks[0].week}`, "ics"), ics);
+  saveFile(F.fileName(`Fitness week ${wks[0].week}`, "ics"), ics);
 }
-function exportAll() {
-  const files = [];
-  for (const a of S.acts) {
-    const x = full(a), s = sumOf(a) || summarise(x, P());
-    files.push({ name: F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, "fit"), data: F.fitFromActivity(x, s) });
+// Everything: each of your activities as its file came (fetched from the account where this device hasn't it), and your
+// workouts as FIT and ZWO
+async function exportAll() {
+  const files = [], seen = new Set(), own = S.own;
+  for (let i = 0; i < own.length; i++) {
+    const a = own[i];
+    toast(`Gathering ${i + 1} of ${own.length}…`, false, 60000);
+    try {
+      let bytes = await idb.get(fileKey(a)).catch(() => null);
+      if (!bytes) { bytes = await A.fileOf(a.id); idb.put(fileKey(a), bytes).catch(() => {}); }
+      // (a file of several parts, kept once)
+      const name = `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`;
+      if (!seen.has(a.file + bytes.length)) { seen.add(a.file + bytes.length); files.push({ name, data: bytes }); }
+    } catch (e) { if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
   }
   for (const w of S.mine) {
     files.push({ name: `workouts/${F.fileName(w.name, "fit")}`, data: F.fitFromWorkout(w, { pace: paceFor(w.sport) }) });
     if (w.sport === "ride") files.push({ name: `workouts/${F.fileName(w.name, "zwo")}`, data: F.zwoFromWorkout(w) });
   }
-  saveFile("Cadence export.zip", F.zip(files));
+  toastEl.classList.remove("on");
+  if (!files.length) return toast("Nothing to export yet: import a ride first");
+  saveFile("Fitness export.zip", F.zip(files));
 }
 
 // Importing: chosen, or dropped anywhere on the page
@@ -819,13 +925,14 @@ function chooseFiles() { filesEl.value = ""; filesEl.click(); }
 filesEl.addEventListener("change", () => { if (filesEl.files.length) importFiles([...filesEl.files]); });
 let dragDepth = 0;
 const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
-addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; dropEl.classList.add("on"); });
+addEventListener("dragenter", (e) => { if (!hasFiles(e) || !S.me) return; e.preventDefault(); dragDepth++; dropEl.classList.add("on"); });
 addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
 addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; dropEl.classList.remove("on"); } });
-addEventListener("drop", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; dropEl.classList.remove("on"); importFiles([...e.dataTransfer.files]); });
+addEventListener("drop", (e) => { if (!hasFiles(e) || !S.me) return; e.preventDefault(); dragDepth = 0; dropEl.classList.remove("on"); importFiles([...e.dataTransfer.files]); });
 dropEl.append(h("div", {}, icon("inbox", 40, 1.8), h("b", { text: "Drop to import" }), h("span", { text: "Rides and runs as FIT, GPX or TCX (from a Garmin, a Wahoo, Strava…), workouts as FIT, ZWO, ERG or MRC" })));
 
 async function importFiles(files) {
+  if (!S.me) return;
   const got = { acts: [], workouts: [], skipped: [], dupes: 0 };
   toast(`Reading ${plural(files.length, "file")}…`);
   for (const f of files) {
@@ -833,16 +940,27 @@ async function importFiles(files) {
       const r = await F.readAny(f.name, await f.arrayBuffer());
       for (const a of r.activities) {
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3 && x.sport === a.sport)) { got.dupes++; continue; }
-        const entry = { id: `i${a.start}`, sport: a.sport, start: a.start, name: a.name, device: a.device, indoor: a.indoor, sample: false, file: a.file, data: a };
-        S.own.push(entry); S.sums.set(entry.id, summarise(a, P())); got.acts.push(entry);
-        try { await idb.put(entry); } catch (_) {}
+        // (kept with your account: its file as it came, and its figures as worked out here)
+        const sum = summarise(a, P()), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
+        toast(`Saving ${a.name}, ${dayShort(a.start)}…`, false, 120000);
+        try {
+          const kept = await A.upload(meta, a.raw.name, a.raw.bytes);
+          if (kept.already) { got.dupes++; continue; }
+        } catch (e) {
+          if (e.status === 401) return signedOutHere();
+          got.skipped.push(`${a.raw.name}${r.activities.length > 1 ? ` (${a.sport})` : ""}: not saved. ${e.message}`); continue;
+        }
+        const entry = { ...meta, sample: false };
+        S.own.push(entry); S.sums.set(entry.id, sum); got.acts.push(entry);
+        remember(entry.id, Object.assign(a, { id: entry.id }));
+        idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
       }
       for (const w of r.workouts) { S.mine.unshift(w); got.workouts.push(w); }
       got.skipped.push(...(r.skipped || []));
     } catch (e) { got.skipped.push(`${f.name}: ${e.message}`); }
   }
   setActs();
-  if (got.workouts.length) store.set("workouts", S.mine);
+  if (got.workouts.length) keep("workouts");
   toastEl.classList.remove("on");
   redraw();
   if (got.acts.length === 1 && !got.workouts.length && !got.skipped.length) return openAct(got.acts[0]);
@@ -928,18 +1046,101 @@ addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout((
 // ---- the status bar's glass, once the page is under it ----
 addEventListener("scroll", () => document.documentElement.style.setProperty("--bar", scrollY > 8 ? 1 : 0), { passive: true });
 
-// ---- starting ----
-(async () => {
-  const want = location.hash.slice(1);
-  if (TABS.some(([id]) => id === want)) S.tab = want;
+// ---- signing in, and out ----
+// Fitness is used signed in, and only signed in: signed out, this, and Sign in, which is on the account's own page
+// (account.<site>, beside fitness.<site>), where every app on the site signs in: there with a word for the sign-in (kept
+// on this device for half an hour, or until it's used), and back with a code for it (signedBack)
+function welcome(note = null) {
+  S.me = null;
+  document.body.classList.add("out");
+  const page = A.accountPage();
+  const feature = (ic, b, t) => h("li", {}, h("span.ic.coral", {}, icon(ic, 17, 2.1)), h("div", {}, h("b", { text: b }), h("span", { text: t })));
+  main.replaceChildren(h("div.welcome.screen.in", {},
+    h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 }),
+    h("h1", { text: "Fitness" }),
+    h("p.lead", { text: "Training, riding first: a plan to your goal, workouts for your Garmin or Wahoo, and every ride, run and swim." }),
+    h("ul.features", {}, feature("plan", "Plans", "Week by week to your event, with an easier week every fourth"), feature("upload", "To your devices", "Workouts for Garmin, Wahoo, Zwift and TrainerRoad"),
+      feature("list", "Your rides", "From the files your devices record: power, heart rate, zones and form")),
+    h("button.btn", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
+    h("p.small", { text: page ? "With your georgefarrowgreen.com account, the one you use for InFlight and Weather." : "Signing in is at fitness.georgefarrowgreen.com." }),
+    note && h("p.small.said", { role: "status", text: note })));
+  main.removeAttribute("aria-busy");
+  document.title = "Fitness";
+}
+async function toAccountSignIn(e) {
+  const page = A.accountPage(), b = e?.currentTarget;
+  if (!page) return;
+  if (b) { b.disabled = true; b.textContent = "Signing in…"; }
+  try {
+    const { word, ask } = await A.signInWord();
+    localStorage.setItem("fitness:signin", JSON.stringify({ word, at: Date.now() }));
+    location.assign(`${page}#${new URLSearchParams({ signin: "fitness", ask, back: `${location.origin}/` })}`);
+  } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
+}
+// Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the sign-in
+// (the site's: Fitness keeps none of its own). A code from anywhere else, or one that's run out, is used up and goes no
+// further. → the account, as me() has it, or null
+async function signedBack(code) {
+  let k = null;
+  try { k = JSON.parse(localStorage.getItem("fitness:signin") || "null"); localStorage.removeItem("fitness:signin"); } catch (_) {}
+  if (!k || Date.now() - k.at > 30 * 60e3) { A.handback(code, "").catch(() => {}); toast("That sign-in was started somewhere else. Sign in again here.", true); return null; }
+  try { const m = await A.handback(code, k.word); toast(`Signed in as ${String(m.name).trim().split(/\s+/)[0]}`); return m; }
+  catch (e) { toast(e.message, true); return null; }
+}
+// Signed in: your record and your activities, from the account
+function arrive(m) {
+  S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
+  S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
+  S.sums.clear();
+  adopt(m.data);
+  for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
+  document.body.classList.remove("out");
   drawTabs();
   render(true);
-  // (your imported rides, from this browser, then each ride's figures)
-  try {
-    const mine = await idb.all();
-    for (const a of mine || []) { if (!S.own.some((x) => x.id === a.id)) { S.own.push(a); S.sums.set(a.id, summarise(a.data, P())); } }
-    setActs();
-  } catch (_) {}
   sumUp();
   if (S.summed) redraw();
+}
+// What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
+// winning, as when they're sent)
+async function pull() {
+  if (!S.me || pull.busy) return;
+  pull.busy = true;
+  try {
+    const m = await A.me();
+    if (!m.signedIn || m.id !== S.me.id) return signedOutHere(true);
+    S.me = { ...S.me, name: m.name, handle: m.handle, photoAt: m.photoAt }; S.ver = m.ver; S.pulledAt = Date.now();
+    adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
+    S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
+    for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
+    setActs(); redraw();
+  } catch (_) {} finally { pull.busy = false; }
+}
+addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); });
+addEventListener("pageshow", (e) => { if (e.persisted && S.me) pull(); });
+// Signing out, here (everywhere on the site, in this browser), or found to be signed out (elsewhere): this device's
+// copies of your files go too
+async function signOutHere(already = false) {
+  if (already !== true) { try { await A.signOut(); } catch (e) { if (e.status !== 401) return toast(e.message, true); } }
+  if (sheetEl.open) await closeSheet();
+  held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
+  idb.clear().catch(() => {});
+  welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.");
+}
+
+// ---- starting ----
+(async () => {
+  // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
+  const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  if (code) history.replaceState(null, "", location.pathname + location.search);
+  const want = location.hash.slice(1);
+  if (TABS.some(([id]) => id === want)) S.tab = want;
+  let m = null;
+  try {
+    if (code) m = await signedBack(code);
+    if (!m) m = await A.me();
+  } catch (e) {
+    return welcome(e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
+  }
+  if (!m.signedIn) return welcome();
+  arrive(m);
 })();

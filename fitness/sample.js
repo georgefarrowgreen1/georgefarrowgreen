@@ -20,7 +20,7 @@ const OUTDOOR = ["Chew Valley loop", "Mendips climbs", "Café ride to Wells", "C
 // The plan, the days done and the rides before it: { plan, weeks, history: [{ id, day, sport, workout, name, … }] }
 export function demo(now = Date.now()) {
   const today = startOfDay(now), monday = mondayOf(today), start = addDays(monday, -28);
-  const plan = PLANS.find((p) => p.id === "sportive"), weeks = layOut(plan, start), r = rng("cadence-demo");
+  const plan = PLANS.find((p) => p.id === "sportive"), weeks = layOut(plan, start), r = rng("fitness-demo");
   const history = [];
   const add = (day, w, extra = {}) => {
     const hour = w.sport === "ride" && w.id !== "long-3h" && new Date(day).getDay() % 6 ? 18 : 9;

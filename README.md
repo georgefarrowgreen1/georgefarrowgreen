@@ -1,8 +1,8 @@
 # George Farrow-Green — georgefarrowgreen.com
 
-The site's home page, and the apps beside it: InFlight (chat.), Weather (weather.) and the account's own page
-(account.), each below, with Cadence, a training app, as a demo (`train/`). The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
-look: my name, a line above it and one under it, then **Apps** (InFlight and Weather) and **Get in touch** (a message,
+The site's home page, and the apps beside it: InFlight (chat.), Weather (weather.), Fitness (fitness.) and the account's
+own page (account.), each below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
+look: my name, a line above it and one under it, then **Apps** (InFlight, Weather and Fitness) and **Get in touch** (a message,
 or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
 behind it (`functions/`), the words in **KV**, the photos in **R2**.
 
@@ -26,8 +26,9 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
   name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and
   the page is opened afresh.
-- **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
-  Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
+- **Apps:** InFlight, Weather and Fitness, each with its icon (served here at `/apps/`, from each app), what it is, and
+  **Open**. Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on", "12
+  activities · On a plan" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
   press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
   tick and a thank-you. One that's slow to be answered says it may have gone all the same (not that you're offline),
@@ -238,7 +239,7 @@ Motion, solid with Reduce Transparency.
   is: a flat indigo sky (the page's own night sky, at dusk), a flat warm head where Weather has its sun, and frosted
   glass shoulders where Weather has its cloud, the head showing softly through them, with the same fine light rim and
   faint shadow. It's the mark at the top of the page where you sign in, join, or carry on from an app.
-- **Signed out:** under "Your account" (and "One sign-in for InFlight and Weather", with their icons), sign in with a
+- **Signed out:** under "Your account" (and "One sign-in for InFlight, Weather and Fitness", with their icons), sign in with a
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
@@ -274,15 +275,15 @@ Motion, solid with Reduce Transparency.
   time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
   that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
 - **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
-  and **Create your account**), Weather's Settings row and the home page's pill open this page with `#signin=<app>` (or
+  and **Create your account**), Weather's Settings row, Fitness's **Sign in** and the home page's pill open this page with `#signin=<app>` (or
   `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
   password; or a new account made), you're sent straight back, the sign-in handed back with a code in the address's
   `#` that's good once, for two minutes, and only for the app that asked: it keeps a secret for it (on the device, for
   half an hour or until it's used: not just in the tab, as a Home Screen app can open this page in a view of its own),
   sends only its hash (`ask`), and swaps the code with the secret itself (`POST /api/pigeon/handback`, `POST
-  /api/weather/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
+  /api/weather/handback`, `POST /api/fitness/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
   The sign-in an app gets is no fresher than the one here (it counts as having shown it's you only if that one does).
-  Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, <site>/, or
+  Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, fitness.<site>/, <site>/, or
   InFlight's old <site>/pigeon/). For InFlight it brings what unlocks the key there: the password's first half, or the
   PRF secret of a passkey with its own copy of the key (asked for with the sign-in), sealed on this page to a key pair
   InFlight made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
@@ -1112,23 +1113,43 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## Cadence (a demo, in `train/`)
+## Fitness (fitness.georgefarrowgreen.com)
 
-Training, riding first and running, swimming and strength alongside, proposed as the site's next app and here as a
-working app to try. It isn't on any address of its own yet: a preview (`*.pages.dev`) or a local copy serves it at
-`/train/`, as it does Weather at `/weather/`. It opens with example rides (made up, for a rider five weeks into a 16-week
-plan for a 160 km sportive, dated from today so they always read as now); your own files sit alongside, and **Use only my
-rides** (or You › Example rides) turns the examples off, so your fitness, the week and the plan go by your rides alone.
-No build step, no keys, no database: like Weather, it works everything out on the phone, and keeps your rides (the files
-as read), workouts, plan and numbers in this browser (IndexedDB and local storage). Signing in, to keep them with the
-account on every device, comes with its own address: a preview has no account to sign in to (the account's API answers
-only at account.georgefarrowgreen.com).
+Training, riding first and running, swimming and strength alongside, in `fitness/`: no build step, no keys. Like
+Weather, it works everything out on the phone (each file read, every figure and chart); unlike Weather, it's used
+**signed in, and only signed in**, with the site's one account. Signed out it's just what it is and **Sign in**, which
+is on the account's own page, as every app on the site signs in (`#signin=fitness`, handed back with a code:
+`functions/_handback.js`, `POST /api/fitness/handback`); signed in anywhere on the site in that browser, it's signed in
+already. Fitness never holds the sign-in itself: the site's cookie goes with each of its requests to its own API.
+
+**Kept with your account** (`functions/_fitness.js`, `functions/api/fitness/[[path]].js`, answered only at Fitness's
+own address and only signed in), so it's the same on every phone and computer you sign in on:
+
+- **Your record** (D1 `fx_state`): your numbers (FTP, weight, heart rates, threshold pace, CSS), the plan you're on and
+  when it starts, the days you swapped, how you felt, your own workouts and your choices (units, the example rides), as
+  one record with a version. A change goes up a moment after it's made (a few as one), from the version it was made
+  from (`PUT /api/fitness/me`); where another device changed it meanwhile (409, with the record as it is now), the two
+  are put together and sent again (`fitness/account.js` merge: each part changed here this device's, the rest the
+  account's; the days joined; your workouts joined, one added on either kept and one deleted on either gone, by what
+  they were last in step; a plan chosen here starting its swaps afresh). Coming back to the app (after a minute away)
+  takes up what changed elsewhere.
+- **Your rides, runs and swims** (D1 `fx_acts`, R2 `fitness/<account>/<id>`): each file as you imported it (a FIT file
+  is the record; a GPX or TCX as it came; from a zip, the file in it), checked to be what it says it is, and its figures
+  as the phone worked them out from it (for the lists, fitness and form without fetching every file). A ride is fetched
+  as you open it (`GET /api/fitness/acts/<id>`, kept by the browser for good, as the same address only ever has the
+  same file) and kept on the phone too (IndexedDB, by account; cleared on signing out). Renamed (`PATCH`) or deleted
+  (`DELETE`) on any device, it's so on all of them. Limits: 25 MB a file, 5,000 activities, 2 GB in all, 256 KB of
+  record.
+
+Deleting the account deletes all of it, files too (`dropFitness`, from `functions/_accounts.js`); the account's page
+counts it under Your apps ("12 activities · On a plan") and puts it in Your data's export; the home page's Apps say
+the same. It opens with none of the example rides: they're there to turn on (You › Example rides), made up for a rider
+five weeks into a 16-week sportive plan, dated from today.
 
 **What it does**
 
 - **Today**: today's session from your plan (its shape in zone colours, its length and stress), **Send to device**, the
-  best time for it from Weather (an example day in the demo: signed in, it would be Weather's own Best times for a ride
-  that long), **fitness, fatigue and form** (your training stress averaged over six weeks and over one; form the gap,
+  best time for it from Weather (with the example rides on, an example day), **fitness, fatigue and form** (your training stress averaged over six weeks and over one; form the gap,
   said in words: fresh, neutral, productive, overreaching), the week so far against the plan, day by day, and **How do
   you feel?** (sleep, legs, motivation): tired legs on a hard day offer an easier session, swapped in with a tap.
 - **Plan**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
@@ -1147,9 +1168,11 @@ only at account.georgefarrowgreen.com).
   laps, and the ride out again as FIT, GPX or TCX.
 - **You** (the round button at the top): FTP (and W/kg), weight, threshold and max heart rate, threshold pace and CSS,
   each a stepper (an FTP from your best 20 minutes offered); the seven power zones in watts; the devices seen in your
-  files; Light or Dark; kilometres or miles; import, and **Export everything** (a zip).
+  files; Light or Dark; kilometres or miles; the example rides on or off; import, and **Export everything** (a zip, each
+  ride's own file in it); your account's card (its page, opened signed in as you: a code good once, for a minute, `POST
+  /api/fitness/account-link`); and **Sign out** (of the site, in this browser).
 
-**Files, in and out** (`train/fit.js`, `train/formats.js`). Garmin's and Wahoo's devices record a ride as FIT and read a
+**Files, in and out** (`fitness/fit.js`, `fitness/formats.js`). Garmin's and Wahoo's devices record a ride as FIT and read a
 workout from a FIT file, so FIT is written and read here with no library, as the account page writes its own PDF; checked
 while it was written against Garmin's own FIT SDK (its decoder reads every workout and ride written here whole, CRCs and
 all, and this reads what the SDK writes; the SDK's licence keeps it out of the site, so the tests don't use it).
@@ -1178,27 +1201,48 @@ like, and a device's card may show nothing else).
 
 **The look**, in keeping: the account page's sky with one of its three lights warmer, Liquid Glass panes and the
 stronger glass for the tab bar, the buttons and sheets; grouped rows; sheets that come up from below, dragged down by
-their top; a large title. Its own colour is coral (`train/icon.svg`: a flat coral sky, a warm sun, a frosted glass
+their top; a large title. Its own colour is coral (`fitness/icon.svg`: a flat coral sky, a warm sun, a frosted glass
 wheel, made as Weather's sun and cloud are). Effort is in the seven zone colours riders know from Zwift and TrainerRoad.
 Two columns of cards on Today on a wide screen. The page's rules allow no style written in it, so every chart is SVG
 coloured by its classes, and sized from script.
 
-**What's next (the proposal).** 1. Its own address, `train.georgefarrowgreen.com` (`functions/_trainapp.js`, as
-`_wxapp.js`), on the home page's Apps and the account's Your apps; signing in on the account's page (as Weather does),
-your plan, workouts and numbers kept with the account in D1, and the rides' files in R2 (a FIT file is the record; the
-figures are worked out from it). 2. Weather's Best times for each day's session, from your place. 3. Without a cable:
-Garmin's Connect Developer Program (the Training API sends workouts to the device's calendar, the Activity API brings
-rides back) and Wahoo's Cloud API (plans to an ELEMNT or a KICKR, rides back), both by application, with a secret each in
-Pages; then Strava. 4. The plan adapting to what you did (a missed session moved, the week's load kept), and a weekly
-email in the site's email look (a `cadence` brand). 5. Health: resting heart rate, HRV, sleep and weight, from the same
-programmes, into readiness.
+**Its own address.** At fitness.georgefarrowgreen.com only the app and its own API answer (`functions/_fitapp.js`:
+anything else is "Not found"; `/fitness/…` there goes to the root). Its Content-Security-Policy runs only its own
+scripts and lets it fetch only from its own address: nothing goes anywhere else, your files included. On the site's own
+address, `/fitness/` sends you there; a preview (`*.pages.dev/fitness/`) or a local copy serves the app directly, but
+can't sign in (the account's API answers only at its own address), so it shows Sign in, off, and where it is.
 
-**Tests.** `.tools/tests/unit/train.test.mjs` (in CI: FIT byte for byte, cut short and damaged files, compressed
+**Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen` project → Custom domains → Set up a custom
+domain → `fitness.georgefarrowgreen.com`. The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
+else: it uses the site's D1 database (its tables made as they're first wanted) and R2 bucket (`BIO_R2`).
+
+**What's next.** 1. Weather's Best times for each day's session, from your place. 2. Without a cable: Garmin's Connect
+Developer Program (the Training API sends workouts to the device's calendar, the Activity API brings rides back) and
+Wahoo's Cloud API (plans to an ELEMNT or a KICKR, rides back), both by application, with a secret each in Pages; then
+Strava. 3. The plan adapting to what you did (a missed session moved, the week's load kept), and a weekly email in the
+site's email look (a `fitness` brand). 4. Health: resting heart rate, HRV, sleep and weight, from the same programmes,
+into readiness.
+
+| | |
+|---|---|
+| Page, styles | `fitness/index.html`, `fitness/styles.css`, `fitness/theme.js` (Light or Dark before the page is drawn) |
+| The app | `fitness/app.js` (the four tabs, the sheets, importing, signing in and keeping in step), `fitness/ui.js`, `fitness/charts.js` |
+| Thinking | `fitness/load.js` (NP, IF, TSS, heart rate and pace stress, fitness and form), `fitness/workouts.js` (the library and the plans), `fitness/sample.js` (the example rides) |
+| Files | `fitness/fit.js` (FIT, read and written), `fitness/formats.js` (GPX, TCX, ZWO, ERG, MRC, .plan, zips) |
+| The account | `fitness/account.js` (its API, signing in, merge), `functions/_fitness.js` (what's kept, made safe), `functions/api/fitness/[[path]].js` |
+| Serving | `functions/_fitapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/fitness/_middleware.js` |
+
+**Tests.** `.tools/tests/unit/fitness.test.mjs` (in CI: FIT byte for byte, cut short and damaged files, compressed
 timestamps, a ride round FIT, GPX and TCX with the same figures, real devices' quirks, workouts out to every format and
-back, zips, the training-load maths) and `.tools/tests/cadence.mjs` (end to end on a fixed Tuesday: today's session and form, each
-device's file downloaded and read back, five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and
-one it can't read, a ride out as FIT with every sample, kept after a reload, a hard day swapped, a workout built, a plan
-started, the examples turned off and a plan set to end on an event's day, and no screen wider than a 320 px phone).
+back, zips, the training-load maths; the record and an activity's figures made safe, a file checked to be what it says,
+and two devices' records put together) and `.tools/tests/fitness.mjs` (end to end, at fitness.gfg.test: signed out,
+only Sign in, and the API closed; away from its own address, no sign-in; signed up to InFlight, Fitness signed in
+already; five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and one it can't read, each
+ride's file kept with the account, the same ride again not kept twice; a phone signing in on the account's page and
+handed back, with the laptop's rides, one opened from its file and out as FIT with every sample; a plan chosen on one
+and a workout built on the other from the version before, both kept; miles on one, miles on the other; a ride renamed
+and another deleted, on both; Fitness on the account's page; signing out, the phone's copies gone; and no screen wider
+than a 320 px phone).
 
 ## InFlight (chat.georgefarrowgreen.com) — 1.3.5
 

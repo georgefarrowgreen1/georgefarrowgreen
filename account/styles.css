@@ -219,6 +219,8 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 /* ---- your apps: a tile each ---- */
 .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 360px) { .apps { grid-template-columns: 1fr; } }
+/* (an odd one out at the end: across the row) */
+.apps > .app:last-child:nth-child(odd) { grid-column: 1 / -1; }
 /* each app: its icon (and ⓘ, for what it keeps of yours), what you have there, and Open */
 .app { display: flex; flex-direction: column; padding: 16px 16px 14px; border-radius: var(--r-group); color: var(--text); min-width: 0; }
 .app-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }

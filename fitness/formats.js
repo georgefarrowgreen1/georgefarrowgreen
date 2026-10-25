@@ -1,4 +1,4 @@
-// Every file Cadence reads and writes, and what's in each, as Cadence keeps it.
+// Every file Fitness reads and writes, and what's in each, as Fitness keeps it.
 //
 // A ride (or run, or swim) is an activity: when it started, the sport, the device it came from, and its samples
 // (seconds from the start, and at each the place, height, heart rate, cadence, power, speed and distance, any of which
@@ -68,7 +68,7 @@ export function metresBetween(a1, o1, a2, o2) {
 export function activityFromFit(bytes, file) {
   const fit = readFit(bytes), M = fit.messages;
   if (M.fileId[0].type === FILE.workout) throw Object.assign(new Error("That’s a workout, not a ride."), { workout: true });
-  if (M.fileId[0].type === FILE.course) throw new Error("That’s a course (a route to follow). Cadence takes rides, runs and workouts.");
+  if (M.fileId[0].type === FILE.course) throw new Error("That’s a course (a route to follow). Fitness takes rides, runs and workouts.");
   if (M.fileId[0].type != null && M.fileId[0].type !== FILE.activity && !(M.record || []).length) throw new Error("That FIT file isn’t an activity (it’s settings or health data from the device).");
   const recs = (M.record || []).filter((r) => r.timestamp != null);
   if (!recs.length) throw new Error("That FIT file has no samples in it.");
@@ -107,7 +107,7 @@ export function activityFromFit(bytes, file) {
 // write it (file id, start, the samples, stop, its laps, the session and the activity).
 export function fitFromActivity(a, sum) {
   const s = a.s, t0 = Math.round(a.start / 1000), end = t0 + Math.round(s.t[s.t.length - 1] || 0), out = [];
-  out.push(["fileId", { type: FILE.activity, manufacturer: 255, product: 0, serial: t0, created: t0, productName: "Cadence" }]);
+  out.push(["fileId", { type: FILE.activity, manufacturer: 255, product: 0, serial: t0, created: t0, productName: "Fitness" }]);
   out.push(["event", { timestamp: t0, event: 0, eventType: 0 }]);
   for (let i = 0; i < s.t.length; i++) {
     out.push(["record", {
@@ -168,7 +168,7 @@ export function gpxFromActivity(a) {
       (ext || s.pwr?.[i] != null ? `<extensions>${s.pwr?.[i] != null ? `<power>${s.pwr[i]}</power>` : ""}${ext ? `<gpxtpx:TrackPointExtension>${ext}</gpxtpx:TrackPointExtension>` : ""}</extensions>` : "") + `</trkpt>`);
   }
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Cadence" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+<gpx version="1.1" creator="Fitness" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
  <metadata><name>${esc(a.name)}</name><time>${iso(a.start)}</time></metadata>
  <trk><name>${esc(a.name)}</name><type>${{ ride: "cycling", run: "running", swim: "swimming", walk: "walking" }[a.sport] || a.sport}</type><trkseg>
 ${rows.join("\n")}
@@ -181,7 +181,7 @@ const iso = (ms) => new Date(Math.round(ms / 1000) * 1000).toISOString().replace
 export function activityFromTcx(text, file) {
   const acts = blocks(text, "Activity");
   if (!acts.length) {
-    if (/<(\w+:)?Workouts?\b/i.test(text)) throw Object.assign(new Error("That TCX is a workout plan; Cadence reads workouts as FIT, ZWO, ERG or MRC."), { workout: true });
+    if (/<(\w+:)?Workouts?\b/i.test(text)) throw Object.assign(new Error("That TCX is a workout plan; Fitness reads workouts as FIT, ZWO, ERG or MRC."), { workout: true });
     throw new Error("That TCX file has no activity in it.");
   }
   const act = acts[0], pts = blocks(act, "Trackpoint"), head = act.slice(0, 200);
@@ -224,7 +224,7 @@ ${pts.join("\n")}
   <Activity Sport="${a.sport === "run" ? "Running" : a.sport === "ride" ? "Biking" : "Other"}">
    <Id>${iso(a.start)}</Id>
 ${lapXml.join("\n")}
-   <Creator xsi:type="Device_t" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>Cadence</Name><UnitId>0</UnitId><ProductID>0</ProductID></Creator>
+   <Creator xsi:type="Device_t" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>Fitness</Name><UnitId>0</UnitId><ProductID>0</ProductID></Creator>
   </Activity>
  </Activities>
 </TrainingCenterDatabase>
@@ -322,7 +322,7 @@ export function zwoFromWorkout(w) {
     } else for (let i = 0; i < s.repeat; i++) s.steps.forEach(step);
   }
   return `<workout_file>
-  <author>Cadence</author>
+  <author>Fitness</author>
   <name>${esc(w.name)}</name>
   <description>${esc(w.about || "")}</description>
   <sportType>${w.sport === "run" ? "run" : "bike"}</sportType>
@@ -351,7 +351,7 @@ export function workoutFromZwo(text, file) {
       steps.push({ kind: kind === "ramp" ? "work" : kind, secs: n("Duration"), from: n("PowerLow") ?? 0.5, to: n("PowerHigh") ?? 0.75, cad });
     }
   }
-  if (!steps.length) throw new Error("That ZWO file has no steps Cadence can read.");
+  if (!steps.length) throw new Error("That ZWO file has no steps Fitness can read.");
   return { id: `w${Date.now()}`, sport: /run/i.test(tag(text, "sportType") || "") ? "run" : "ride", kind: "Imported", name: tag(text, "name") || stem(file) || "Imported workout",
     about: tag(text, "description") || `From ${file || "a ZWO file"}.`, steps, imported: true };
 }
@@ -410,7 +410,7 @@ export function workoutFromCourse(text, file, ftp = 250) {
     const a = pct ? v0 / 100 : v0 / fileFtp, b = pct ? v1 / 100 : v1 / fileFtp;
     steps.push({ kind: a < 0.6 && b < 0.6 ? "rest" : "work", secs, from: round(a, 3), to: Math.abs(a - b) > 0.005 ? round(b, 3) : undefined });
   }
-  if (!steps.length) throw new Error("That file has no steps Cadence can read.");
+  if (!steps.length) throw new Error("That file has no steps Fitness can read.");
   const name = (/FILE NAME\s*=\s*(.+)/i.exec(text) || [])[1]?.trim();
   return { id: `w${Date.now()}`, sport: "ride", kind: "Imported", name: name || stem(file) || "Imported workout", about: (/DESCRIPTION\s*=\s*(.+)/i.exec(text) || [])[1]?.trim() || `From ${file}.`, steps, imported: true };
 }
@@ -419,29 +419,35 @@ const stem = (file) => (file ? file.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " 
 // ---- a file, whatever it is ----
 // What's in a file you've chosen or dropped: { activities, workouts }, by its name and what it starts with. A zip (as
 // Garmin Connect's "Export original" gives you) is opened and each file in it read.
+// Each activity carries its file as it came (raw: its name, kind and bytes), to be kept as it is.
 export async function readAny(name, bytes) {
+  const out = await readFile(name, bytes);
+  return out;
+}
+async function readFile(name, bytes) {
   const lower = name.toLowerCase(), u8 = new Uint8Array(bytes), text = () => new TextDecoder().decode(u8);
+  const as = (type, acts) => acts.map((a) => Object.assign(a, { raw: { name, type, bytes: u8 } }));
   if (u8[0] === 0x50 && u8[1] === 0x4b) {
     const out = { activities: [], workouts: [], skipped: [] };
     for (const f of await unzip(u8)) {
-      try { const r = await readAny(f.name, f.data); out.activities.push(...r.activities); out.workouts.push(...r.workouts); }
+      try { const r = await readFile(f.name, f.data); out.activities.push(...r.activities); out.workouts.push(...r.workouts); }
       catch (e) { out.skipped.push(`${f.name}: ${e.message}`); }
     }
     return out;
   }
   if (lower.endsWith(".fit") || String.fromCharCode(u8[8], u8[9], u8[10], u8[11]) === ".FIT") {
-    try { return { activities: activityFromFit(u8, name), workouts: [] }; }
+    try { return { activities: as("fit", activityFromFit(u8, name)), workouts: [] }; }
     catch (e) { if (e.workout) return { activities: [], workouts: [workoutFromFit(u8, name)] }; throw e; }
   }
-  if (lower.endsWith(".gpx")) return { activities: [activityFromGpx(text(), name)], workouts: [] };
-  if (lower.endsWith(".tcx")) return { activities: [activityFromTcx(text(), name)], workouts: [] };
+  if (lower.endsWith(".gpx")) return { activities: as("gpx", [activityFromGpx(text(), name)]), workouts: [] };
+  if (lower.endsWith(".tcx")) return { activities: as("tcx", [activityFromTcx(text(), name)]), workouts: [] };
   if (lower.endsWith(".zwo")) return { activities: [], workouts: [workoutFromZwo(text(), name)] };
   if (lower.endsWith(".erg") || lower.endsWith(".mrc")) return { activities: [], workouts: [workoutFromCourse(text(), name)] };
   const t = text().slice(0, 400);
-  if (/<gpx\b/i.test(t)) return { activities: [activityFromGpx(text(), name)], workouts: [] };
-  if (/<TrainingCenterDatabase\b/i.test(t)) return { activities: [activityFromTcx(text(), name)], workouts: [] };
+  if (/<gpx\b/i.test(t)) return { activities: as("gpx", [activityFromGpx(text(), name)]), workouts: [] };
+  if (/<TrainingCenterDatabase\b/i.test(t)) return { activities: as("tcx", [activityFromTcx(text(), name)]), workouts: [] };
   if (/<workout_file\b/i.test(t)) return { activities: [], workouts: [workoutFromZwo(text(), name)] };
-  throw new Error("Cadence reads FIT, GPX, TCX, ZWO, ERG and MRC files (and zips of them).");
+  throw new Error("Fitness reads FIT, GPX, TCX, ZWO, ERG and MRC files (and zips of them).");
 }
 
 // ---- zip ----
@@ -497,4 +503,4 @@ export function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i
 // a file name for something, safe on every system and every device's card: plain letters ("2026-10-25 Sweet spot 3 x
 // 12.fit"), as browsers drop a name they don't like and some devices show only these
 export const fileName = (stemText, ext) => `${String(stemText).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/×/g, "x").replace(/[–—]/g, "-").replace(/₂/g, "2")
-  .replace(/[^\x20-\x7e]/g, "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "Cadence"}.${ext}`;
+  .replace(/[^\x20-\x7e]/g, "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "Fitness"}.${ext}`;

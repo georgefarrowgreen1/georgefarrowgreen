@@ -37,7 +37,7 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, home: { name: "Home", sub: "" } };
+const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -60,7 +60,7 @@ if (/^#from=home$/.test(location.hash)) {
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
 const SIGN_FOR = (() => {
-  const m = /^#(signin|join)=(inflight|weather|home)(&|$)/.exec(ARRIVED);
+  const m = /^#(signin|join)=(inflight|weather|fitness|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
       const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
@@ -249,13 +249,13 @@ function siteUrl(sub) {
 }
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
-// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, or <site>/ (beside this page's account.<site>, on the
+// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, fitness.<site>/, or <site>/ (beside this page's account.<site>, on the
 // same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^account\./, "");
-    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], home: [`${site}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${site}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -526,21 +526,23 @@ function signedIn(r) {
   const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
   // (InFlight's settings that are the account's, a tap from its card: inflightView)
-  const open = (id, name) => h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
+  const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
     id === "inflight" ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": "inflight-settings", onclick: () => openSheet(inflightView) },
       icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
-  const f = ap.inflight || {}, w = ap.weather || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
     app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
       f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
-      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts")))));
+      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
+    app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
+      fx.plan ? "On a plan" : "Training, riding first")))));
   const top = [
     sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
@@ -714,6 +716,7 @@ function codeView() {
 const notifySaid = (n) => [n?.places && `${n.places} ${n.places === 1 ? "place" : "places"}`, n?.brief && "morning brief"].filter(Boolean).join(" · ") || "Off";
 // An app: what it keeps of yours, in a word or two, and the way into it
 function appView(id) {
+  if (id === "fitness") return fitnessView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
     h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
@@ -734,6 +737,18 @@ function appView(id) {
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications" })), h("span.val", { text: notifySaid(w.notify) })),
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Units" })), h("span.val", { text: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }) }))),
     open] };
+}
+
+// What Fitness keeps of yours: your activities (each with its file), the space they take, your plan and your own workouts
+function fitnessView() {
+  const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
+  const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
+  return { title: "Fitness", quiet: true, body: [
+    h("div.app-head", {}, h("img", { src: "/apps/fitness.png", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, riding first" })),
+    h("div.group", {}, row("Activities", String(x.activities || 0)), x.last && row("Latest", day(x.last)),
+      row("Files", mb < 0.1 ? "None" : mb < 1000 ? `${mb.toFixed(mb < 10 ? 1 : 0)} MB` : `${(mb / 1024).toFixed(1)} GB`),
+      row("Plan", x.plan ? "On a plan" : "None"), row("Your workouts", String(x.workouts || 0))),
+    h("a.btn", { href: siteUrl("fitness") }, "Open Fitness", icon("open", 18, 2.4))] };
 }
 
 // (a confirm link sent this last week, as one is as the account's made: said so, rather than offered as if none had
@@ -890,7 +905,7 @@ function signedOut(r) {
     mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
       : last ? h("p.lead", { text: `@${last.handle}` })
       : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
-        " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
+        ", ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }), " and ", h("img", { src: "/apps/fitness.png", alt: "" }), h("b", { text: "Fitness" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard()),
     r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
@@ -2257,7 +2272,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? { inflight: "InFlight", weather: "Weather", account: "Account" }[d.app] : d.browser || d.label;
+    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
@@ -2315,7 +2330,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -2670,6 +2685,7 @@ function deleteView() {
   return { title: "Delete account", body: [
     h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
     h("ul.gone", {}, h("li", { text: "InFlight: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
+      h("li", { text: "Fitness: your activities and their files, your plan and your workouts" }),
       h("li", { text: "Your profile, password and passkeys" })),
     h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),
     h("form.form", { onsubmit: async (e) => {

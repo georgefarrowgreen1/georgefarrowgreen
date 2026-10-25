@@ -397,8 +397,9 @@ function showLines() {
   const line = {
     inflight: a.inflight && `${plural(a.inflight.friends, "friend")} · ${a.inflight.sent.toLocaleString("en-GB")} sent`,
     weather: a.weather && `${plural(a.weather.places, "place")} · Alerts ${a.weather.alerts ? "on" : "off"}`,
+    fitness: a.fitness && `${plural(a.fitness.activities, "activity", "activities")}${a.fitness.plan ? " · On a plan" : ""}`,
   };
-  for (const key of ["inflight", "weather"]) {
+  for (const key of ["inflight", "weather", "fitness"]) {
     const small = $(`#app-${key} small`);
     fadeText(small, line[key] || small.dataset.about);
     small.classList.toggle("mine", !!line[key]);
@@ -580,7 +581,7 @@ function land(a) {
   const host = location.hostname.replace(/^www\./, "");
   if (host !== "georgefarrowgreen.com") {
     const at = (sub) => `${location.protocol}//${sub}.${host}${location.port ? ":" + location.port : ""}/`;
-    $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather");
+    $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather"); $("#app-fitness").href = at("fitness");
   }
 }
 // Sign in: off to the account's page, its sky coming in as it goes (handOff)
@@ -591,7 +592,7 @@ $("#sign-in").addEventListener("click", (e) => {
 });
 // Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
 // steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
-for (const a of $$("#app-inflight, #app-weather, [data-account]")) a.addEventListener("click", (e) => {
+for (const a of $$("#app-inflight, #app-weather, #app-fitness, [data-account]")) a.addEventListener("click", (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   body.classList.add("leaving");
   setTimeout(() => body.classList.remove("leaving"), 4000);    // (in case it never goes)

@@ -42,6 +42,7 @@ import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
+import { fitnessOf, kept as fitnessKept, activities as fitnessActs } from "../../_fitness.js";
 import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
@@ -78,20 +79,22 @@ async function inflightOf(D, id) {
   return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
 }
 // What each app keeps of yours, in a line, for the site's home page (functions/api/me): InFlight's friends and pigeons
-// sent, Weather's places and whether it sends you anything (null for an app the account hasn't used)
+// sent, Weather's places and whether it sends you anything, Fitness's activities and whether you're on a plan (null for
+// an app the account hasn't used)
 export async function appFigures(env, id) {
-  const [inflight, wx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id)]);
+  const [inflight, wx, fx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id), fitnessOf(env, id)]);
   const places = Array.isArray(wx.data?.places) ? wx.data.places.length : 0, n = wx.data?.notify;
   return {
     inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent } : null,
     weather: places ? { places, alerts: !!((n?.places || []).length || n?.brief) } : null,
+    fitness: fx.activities || fx.plan ? { activities: fx.activities, plan: !!fx.plan } : null,
   };
 }
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight, last, admin] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
@@ -99,6 +102,7 @@ async function view(env, u) {
     inflightOf(D, u.id),
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
     adminOf(env).catch(() => null),
+    fitnessOf(env, u.id),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -120,7 +124,7 @@ async function view(env, u) {
     // sign-in an account page opened from an app came from)
     devices: ss.map((x) => {
       const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
-      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
@@ -136,6 +140,7 @@ async function view(env, u) {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
         notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
       inflight,
+      fitness,
     },
   };
 }
@@ -612,7 +617,7 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
@@ -623,6 +628,8 @@ const ROUTES = {
       all("SELECT name, created_at, km FROM pg_birds WHERE owner = ?", u.id),
       weatherOf(env, u.id),
       devicesOf(env, u.id).catch(() => []),
+      fitnessKept(env, u.id).catch(() => ({ data: null })),
+      fitnessActs(env, u.id).catch(() => []),
     ]);
     let photo = null;
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
@@ -648,6 +655,8 @@ const ROUTES = {
           shareNews: !u.hide_news, liveTracker: !u.hide_tracker, approximateLocation: !!u.loc_approx },
       },
       weather: { places: wx.data?.places || [], settings: wx.data?.settings || {}, notifications: wx.data?.notify || null, devices: wxDevices.map((d) => d.label) },
+      // (each activity's figures; its file, as imported, is in Fitness: Export everything)
+      fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })) },
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

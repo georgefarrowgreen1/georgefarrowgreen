@@ -1,9 +1,11 @@
 // chat.georgefarrowgreen.com: InFlight's new address, the app at the site's root.
 // weather.georgefarrowgreen.com: Weather, the same way (functions/_wxapp.js).
+// fitness.georgefarrowgreen.com: Fitness, the same way (functions/_fitapp.js).
 // account.georgefarrowgreen.com: the account's own page, the same way (functions/_acctapp.js).
 // Every other address carries straight on (the site, and InFlight at /pigeon/).
 import { serveApp, isChat, notFound } from "./_app.js";
 import { isWeather, weatherHost } from "./_wxapp.js";
+import { isFitness, fitnessHost } from "./_fitapp.js";
 import { isAccount, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
@@ -23,6 +25,7 @@ export async function onRequest(ctx) {
     if (plain !== url.pathname) return Response.redirect(new URL(plain + url.search, url).href, 301);
   }
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
+  if (isFitness(url, ctx.env)) return fitnessHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
@@ -59,7 +62,7 @@ export async function onRequest(ctx) {
   return serveApp(ctx, res, path, true);
 }
 
-const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
+const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png" };
 const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|readme\.md$|wrangler\.toml$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }

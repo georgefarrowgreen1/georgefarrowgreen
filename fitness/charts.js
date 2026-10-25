@@ -1,4 +1,4 @@
-// Cadence's charts, drawn as SVG with no library, their colours from the stylesheet's classes (the page's rules allow
+// Fitness's charts, drawn as SVG with no library, their colours from the stylesheet's classes (the page's rules allow
 // no style written in the markup): a workout's shape in zone colours, fitness and fatigue and form, the plan's weeks,
 // a ride's power and heart rate and height, its route, and its best efforts.
 

@@ -58,7 +58,8 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260
       else if (v - base >= 2) { ascent += v - base; base = v; }
     }
   }
-  const out = { secs: s.t[n - 1], moving, dist, ascent: Math.round(ascent), ftp, kind: s.pwr ? "power" : null };
+  // (and the numbers it was worked out with, so it can be worked out again for new ones without the file: rescale)
+  const out = { secs: s.t[n - 1], moving, dist, ascent: Math.round(ascent), ftp, lthr, runPace, css, kind: s.pwr ? "power" : null };
   const avg = (arr, onlyMoving) => { let t = 0, c = 0; for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i]) && (!onlyMoving || ps.moving[i])) { t += arr[i]; c++; } return c ? t / c : null; };
   const max = (arr) => { let m = -Infinity; for (const v of arr) if (Number.isFinite(v) && v > m) m = v; return m === -Infinity ? null : m; };
   if (ps.pwr) {
@@ -95,6 +96,24 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260
   if (ps.spd) out.maxSpd = max(ps.spd);
   out.avgSpd = moving ? dist / moving : null;
   out.kcal = out.kj != null ? out.kj : Math.round((moving / 3600) * 600);   // (a kilojoule of work is near enough a kilocalorie burned)
+  return out;
+}
+
+// A ride's figures for new numbers (a new FTP, threshold heart rate or pace), from the ones it was worked out with:
+// training stress goes with the square of intensity (a swim's with its cube), and intensity is power over FTP, heart
+// rate over threshold, or pace against threshold pace. (Its time in each zone waits for the ride to be opened.)
+export function rescale(sum, p, sport) {
+  if (!sum) return sum;
+  const out = { ...sum, ftp: p.ftp, lthr: p.lthr, runPace: p.runPace, css: p.css };
+  // (its time in zones, where the zones have moved: until it's opened again, none)
+  if (sum.ftp !== p.ftp) out.zones = null;
+  if (sum.lthr !== p.lthr) out.hrZones = null;
+  if (sum.tss == null) return out;
+  const [k, pow] = sum.kind === "power" ? [sum.ftp / p.ftp, 2] : sum.kind === "hr" ? [sum.lthr / p.lthr, 2]
+    : sum.kind === "pace" && sport === "swim" ? [p.css / sum.css, 3] : sum.kind === "pace" ? [p.runPace / sum.runPace, 2] : [1, 2];
+  if (!Number.isFinite(k) || k === 1) return out;
+  out.tss = Math.round(sum.tss * k ** pow);
+  if (sum.iF != null) out.iF = Math.round(sum.iF * k * 1000) / 1000;
   return out;
 }
 

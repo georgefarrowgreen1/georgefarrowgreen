@@ -1,4 +1,4 @@
-// Building the page, and saying numbers as people say them: the account page's h() and icons, and Cadence's own.
+// Building the page, and saying numbers as people say them: the account page's h() and icons, and Fitness's own.
 
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
 export function h(spec, props, ...kids) {

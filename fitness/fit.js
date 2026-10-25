@@ -1,6 +1,6 @@
 // FIT, the file Garmin's and Wahoo's devices record a ride in and read a workout from, written and read here with no
 // library (as the account page writes its own PDF). A FIT file is a 14-byte header, then messages, each laid out by a
-// definition sent before it (which fields, how big, which way round the bytes go), then a CRC. Only what Cadence needs
+// definition sent before it (which fields, how big, which way round the bytes go), then a CRC. Only what Fitness needs
 // is named here: a file's type and maker, a ride's records, laps and session, a device's name, and a workout and its
 // steps. Anything else in a file is read past.
 //
@@ -56,7 +56,7 @@ const MESGS = {
 };
 const BY_NUM = Object.fromEntries(Object.entries(MESGS).map(([name, [num, fields]]) => [num, { name, fields: Object.fromEntries(Object.entries(fields).map(([k, f]) => [f[0], [k, ...f.slice(1)]])) }]));
 
-// What's in a FIT file's enums that Cadence says in words
+// What's in a FIT file's enums that Fitness says in words
 export const FILE = { activity: 4, workout: 5, course: 6 };
 export const SPORT = { generic: 0, running: 1, cycling: 2, fitnessEquipment: 4, swimming: 5, training: 10, walking: 11, rowing: 15, hiking: 17, eBiking: 21 };
 export const SUB = { generic: 0, treadmill: 1, trail: 3, track: 4, indoorCycling: 6, road: 7, mountain: 8, lapSwimming: 17, openWater: 18, strength: 20, virtual: 58, gravel: 46 };
@@ -125,7 +125,7 @@ export function readFit(input) {
     out.truncated = true;
   }
   delete out._ts;
-  if (!out.messages.fileId) throw new Error("That FIT file has nothing in it Cadence can read.");
+  if (!out.messages.fileId) throw new Error("That FIT file has nothing in it Fitness can read.");
   return out;
 }
 function readData(b, dv, p, def, out, ts) {

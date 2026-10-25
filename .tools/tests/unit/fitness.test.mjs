@@ -1,18 +1,20 @@
-// Cadence's files (train/fit.js, train/formats.js): FIT read and written byte for byte as the protocol has it, a ride
+// Fitness's files (fitness/fit.js, fitness/formats.js): FIT read and written byte for byte as the protocol has it, a ride
 // round the three activity formats and back with the same figures, and a workout out to each device's file and back
 // with the same shape. (The FIT files were also checked against Garmin's own FIT SDK while they were written: its
 // decoder reads them whole, CRCs and all, and each field as written.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFit, writeFit, crc16, FIT_EPOCH } from '../../../train/fit.js';
+import { readFit, writeFit, crc16, FIT_EPOCH } from '../../../fitness/fit.js';
 import {
   fitFromActivity, gpxFromActivity, tcxFromActivity, fitFromWorkout, workoutFromFit, zwoFromWorkout, workoutFromZwo,
   ergFromWorkout, mrcFromWorkout, workoutFromCourse, planFromWorkout, readAny, zip, unzip, crc32,
-} from '../../../train/formats.js';
-import { WORKOUTS, workoutById, measure, layOut, PLANS, mondayOf } from '../../../train/workouts.js';
-import { activityFromFit } from '../../../train/formats.js';
-import { summarise, fitness, bestEfforts } from '../../../train/load.js';
-import { demo, samples, PROFILE } from '../../../train/sample.js';
+} from '../../../fitness/formats.js';
+import { WORKOUTS, workoutById, measure, layOut, PLANS, mondayOf } from '../../../fitness/workouts.js';
+import { activityFromFit } from '../../../fitness/formats.js';
+import { summarise, fitness, bestEfforts } from '../../../fitness/load.js';
+import { demo, samples, PROFILE } from '../../../fitness/sample.js';
+import { cleanState, cleanAct, fileIs } from '../../../functions/_fitness.js';
+import { merge, workoutIds } from '../../../fitness/account.js';
 
 const enc = (s) => new TextEncoder().encode(s);
 
@@ -188,4 +190,58 @@ test('training load: Normalized Power, best efforts, and fitness against a stead
   assert.equal(new Date(weeks[0].days[0].date).getDay(), 1);
   const load = (wk) => wk.days.reduce((a, d) => a + (d.id && workoutById(d.id) ? measure(workoutById(d.id)).tss : 0), 0);
   assert.ok(load(weeks[3]) < load(weeks[2]) * 0.7, 'week 4 is a recovery week');
+});
+
+// ---- kept with the account (functions/_fitness.js), and put together across devices (fitness/account.js) ----
+test('the record, made safe: numbers within what a person could be, days and workouts as they should be', () => {
+  const r = cleanState({ profile: { ftp: 265, weight: 9999, lthr: 'x', css: 105, sneaky: 1 }, plan: { id: 'ftp', start: 1792972800000, at: 1792886400000, extra: 1 },
+    swaps: { 1792972800000: 'recovery-45', 1793059200000: null, 'not a day': 'x', 1793145600000: '<b>' }, feel: { 1792972800000: { sleep: 0, legs: 9, mood: 2 } },
+    workouts: [{ id: 'w1', sport: 'ride', name: 'Tuesday threes', steps: [{ kind: 'warmup', secs: 600, from: 0.5, to: 0.7 }, { repeat: 3, steps: [{ kind: 'work', secs: 180, from: 1.1 }, { kind: 'rest', secs: 120, from: 0.5 }] }] }],
+    prefs: { units: 'imperial', examples: 'yes' }, goneWorkouts: ['w2'] });
+  assert.deepEqual(r.profile, { ftp: 265, css: 105 });
+  assert.deepEqual(r.plan, { id: 'ftp', start: 1792972800000, at: 1792886400000 });
+  assert.deepEqual(r.swaps, { 1792972800000: 'recovery-45', 1793059200000: null });
+  assert.deepEqual(r.feel, { 1792972800000: { sleep: 0, mood: 2 } });
+  assert.equal(r.workouts[0].steps[1].repeat, 3);
+  assert.deepEqual(r.prefs, { units: 'imperial', examples: false });
+  assert.ok(!('goneWorkouts' in r));
+  assert.throws(() => cleanState([]), /Bad request/);
+  assert.throws(() => cleanState({ workouts: [{ id: 'bad id!' }] }), /Bad request/);
+  assert.throws(() => cleanState({ workouts: Array.from({ length: 300 }, (_, i) => ({ id: `w${i}`, steps: Array(250).fill({ secs: 60, from: 0.6, note: 'x'.repeat(100) }) })) }), /more than can be kept/);
+});
+
+test('an activity\'s figures, made safe; and its file, what it says it is', () => {
+  const a = cleanAct({ id: 'i1792800000000', start: 1792800000000, sport: 'ride', indoor: 1, name: 'Morning\u0000 ride', device: 'Wahoo ELEMNT BOLT', file: 'ride.fit', type: 'fit',
+    sum: { secs: 5400, np: 184.4444, tss: 72, kind: 'power', curve: { 5: 600, 60: 400, x: 1 }, zones: [1, 2, 3], evil: '<script>' } });
+  assert.deepEqual([a.name, a.sport, a.indoor, a.type, a.sum.np, a.sum.kind, a.sum.curve, a.sum.zones, 'evil' in a.sum], ['Morning ride', 'ride', true, 'fit', 184.444, 'power', { 5: 600, 60: 400 }, [1, 2, 3], false]);
+  assert.equal(cleanAct({ id: 'x', start: 1792800000000, sport: 'jousting', type: 'exe' }).sport, 'other');
+  assert.equal(cleanAct({ id: 'x', start: 1792800000000, type: 'exe' }).type, null);
+  assert.throws(() => cleanAct({ id: 'x', start: Date.now() + 30 * 86400e3 }), /date can’t be right/);
+  assert.throws(() => cleanAct({ id: '../x', start: 1792800000000 }), /Bad request/);
+  const fit = writeFit([['fileId', { type: 4, manufacturer: 255, product: 0, serial: 1, created: 1e9 }]]);
+  assert.ok(fileIs('fit', fit) && !fileIs('gpx', fit) && !fileIs('fit', enc('<gpx></gpx>')));
+  assert.ok(fileIs('gpx', enc('﻿<?xml version="1.0"?>\n<gpx version="1.1">')) && !fileIs('gpx', enc('hello <gpx>')) && !fileIs('gpx', enc('<gpxx>')));
+  assert.ok(fileIs('tcx', enc('<?xml version="1.0"?><TrainingCenterDatabase xmlns="x">')) && !fileIs('tcx', enc('PK\u0003\u0004')));
+});
+
+test('two devices\' records put together: each part changed here this device\'s; days and workouts joined', () => {
+  const w = (id, name = id) => ({ id, name, steps: [] });
+  // last in step with [a, b]; since, this device deleted b, added c, edited a, and chose a plan (so its swaps afresh);
+  // the other renamed a, added d, swapped a day and felt tired on another
+  const base = ['a', 'b'];
+  const theirs = { profile: { ftp: 270 }, plan: null, swaps: { 1: 'recovery-45' }, feel: { 2: { legs: 0 } }, workouts: [w('a', 'theirs'), w('b'), w('d')], prefs: { units: 'imperial' } };
+  const mine = { profile: { ftp: 250 }, plan: { id: 'ftp', start: 5 }, swaps: {}, feel: { 3: { mood: 2 } }, workouts: [w('a', 'mine'), w('c')], prefs: { units: 'metric' } };
+  const m = merge(theirs, mine, new Set(['plan', 'swaps', 'feel', 'workouts']), base);
+  assert.deepEqual(m.plan, { id: 'ftp', start: 5 });
+  assert.deepEqual(m.swaps, {}, 'a plan chosen here: its swaps afresh');
+  assert.deepEqual(m.feel, { 2: { legs: 0 }, 3: { mood: 2 } });
+  assert.deepEqual(m.workouts.map((x) => `${x.id}:${x.name}`), ['a:mine', 'c:c', 'd:d'], 'b deleted here stays deleted; d added there kept');
+  assert.deepEqual([m.profile, m.prefs], [{ ftp: 270 }, { units: 'imperial' }], 'parts not changed here: the account\'s');
+  // a workout deleted on the other device, and nothing changed about it here: gone here too
+  const gone = merge({ workouts: [w('b')] }, { workouts: [w('a'), w('b'), w('e')] }, new Set(['workouts']), ['a', 'b']);
+  assert.deepEqual(gone.workouts.map((x) => x.id), ['b', 'e']);
+  // swaps alone changed here: joined, this device's winning
+  assert.deepEqual(merge({ swaps: { 1: 'a', 2: 'b' } }, { swaps: { 2: 'c' } }, new Set(['swaps'])).swaps, { 1: 'a', 2: 'c' });
+  assert.deepEqual(workoutIds({ workouts: [w('x'), w('y')] }), ['x', 'y']);
+  assert.deepEqual(workoutIds(null), []);
 });

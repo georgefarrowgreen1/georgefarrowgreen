@@ -255,6 +255,9 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app > * { position: relative; }
 .app.inflight { --glow: #2f7bff; }
 .app.weather { --glow: #ffb43a; }
+.app.fitness { --glow: #ff6a3d; }
+/* (an odd one out at the end: across the row) */
+.apps > .app:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .app img { width: 56px; height: 56px; border-radius: 13px; margin-bottom: 10px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app b { font-size: 19px; font-weight: 600; }
 .app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; transition: color var(--dur-fast) var(--ease-out); }

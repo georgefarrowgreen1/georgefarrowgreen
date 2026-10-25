@@ -10,7 +10,7 @@ import { db, deviceOf, placeOf, appKey, DAY, fromB64url } from "./_pigeon.js";
 
 export const KEEP_DAYS = 30;
 // which app a request came from, by its API, as a word for the list
-const appOf = (request) => ({ inflight: "InFlight", weather: "Weather", account: "Account" })[appKey(request)] || null;
+const appOf = (request) => ({ inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" })[appKey(request)] || null;
 export async function logEvent(env, userId, kind, request, detail = null) {
   try {
     const D = await db(env), t = Date.now();
