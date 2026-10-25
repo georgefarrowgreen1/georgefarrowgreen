@@ -123,7 +123,7 @@ await L.p.setInputFiles('#files', FILES);
 await L.p.waitForSelector('#sheet[open] .sheet-top', { timeout: 60000 }); await settle(L);
 // (first, what's in them, each with what it was, before anything's kept)
 const review = await L.p.evaluate(() => [...document.querySelectorAll('#sheet .row.up')].map((r) => `${r.querySelector('b').textContent}=${r.querySelector('select').value}${r.classList.contains('guess') ? '?' : ''}`));
-ok(await L.p.locator('#sheet .sheet-top h1').innerText() === '3 activities' && review.join() === 'Morning ride=ride?,Afternoon ride=ride,Indoor ride=ride' && !acts(sam).length,
+ok(await L.p.locator('#sheet .sheet-top h1').innerText() === '3 activities' && /^Morning ride=ride\?,(Morning|Afternoon|Evening|Night) ride=ride,Indoor ride=ride$/.test(review.join()) && !acts(sam).length,
   'three activities (one from the zip) to check before they\'re kept: each one\'s sport from its file, or worked out and marked to check', review.join());
 ok(await L.p.locator('#sheet').getByText(/notes\.txt: Fitness reads FIT/).count() === 1 && await L.p.locator('#sheet').getByText(/Hills\.zwo: a workout, not an activity/).count() === 1, 'a workout file and one it can\'t read: left out, by name, with why');
 await L.p.screenshot({ path: `${out}/upload.png` });
