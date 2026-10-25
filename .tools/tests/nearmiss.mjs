@@ -119,6 +119,9 @@ async function pushOn(ph) {
   }));
 }
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '201' });
+// still air, whatever the weather stand-in was left at: in its own steady westerly a pigeon flying into it rides the
+// wind round by Siberia (and one to New York by Greenland), so the two each way wouldn't fly the same way at one pace
+await fetch('http://127.0.0.1:8796/mode', { method: 'POST', body: JSON.stringify({ speed: 0, down: false, pattern: '' }) });
 const gKeys = await makeKeys(), rKeys = await makeKeys();
 const G = await phone('george', gKeys), R = await phone('reuben', rKeys), P = await phone('nia');
 await signup(G, 'George Farrow-Green', 'george', 'george@example.com', 'Norwich');
