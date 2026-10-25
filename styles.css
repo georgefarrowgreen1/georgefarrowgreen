@@ -46,7 +46,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   min-height: 100vh;
-  background: #07090d;
+  background: #2b2c2e;   /* (the colour as the page loads: Safari reads the status bar's from it then, not as it changes) */
   color: var(--text);
   touch-action: manipulation;     /* (pinching still zooms; a quick double tap on a button doesn't) */
   font: 17px/1.4 var(--font);
@@ -69,7 +69,7 @@ svg { display: block; flex: none; }
 }
 
 /* ---------------- the photos, fixed behind everything ---------------- */
-.bg { position: fixed; inset: 0; overflow: hidden; background: #0b0d12; transition: background-color 1.2s ease; }
+.bg { position: fixed; inset: 0; overflow: hidden; background: #2b2c2e; transition: background-color 1.2s ease; }
 .bg::after {
   content: ""; position: absolute; inset: 0; z-index: 2;     /* (over the photos: the one showing is z-index 1) */
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
@@ -89,7 +89,7 @@ svg { display: block; flex: none; }
 /* the photo's own colour at its top, solid along the top edge and fading out (app.js tint): Safari tints the strip behind
    the status bar with what's along the top of the page, only where that's one colour all the way across, and a photo's
    edge never is */
-@property --top-tint { syntax: "<color>"; inherits: true; initial-value: #07090d; }
+@property --top-tint { syntax: "<color>"; inherits: true; initial-value: #2b2c2e; }
 .toptint { position: fixed; z-index: 1; top: 0; left: 0; right: 0; height: 28px; pointer-events: none;
   background: linear-gradient(var(--top-tint), color-mix(in srgb, var(--top-tint) 0%, transparent)); transition: --top-tint 1.2s ease; }
 .soft {
