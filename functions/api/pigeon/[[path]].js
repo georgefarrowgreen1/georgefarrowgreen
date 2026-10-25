@@ -1,6 +1,6 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
-  db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
+  db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
@@ -41,7 +41,7 @@ import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { checkNewSecret, handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -256,8 +256,7 @@ async function updateMe({ request, env, waitUntil }) {
     if (!["light", "dark", "auto"].includes(b.appearance)) throw new HttpError(400, "Choose Light, Dark or Automatic.");
     await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
   }
-  if (b.notify && typeof b.notify === "object")
-    await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
+  if (b.notify && typeof b.notify === "object") await savePrefs(D, u.id, b.notify);
   if (b.notifyEmail !== undefined)
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
@@ -732,9 +731,9 @@ async function sendMessage({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
-  if (!(Number(request.headers.get("Content-Length")) <= MAX_PHOTO + MAX_CT + 4096)) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
-    const f = await request.formData();
+    const f = await new Response(await readCapped(request, MAX_PHOTO + MAX_CT + 4096, "That photo is too large. Try a smaller one."),
+      { headers: { "Content-Type": request.headers.get("Content-Type") } }).formData();
     try { meta = JSON.parse(f.get("meta")); } catch (_) { throw new HttpError(400, "That scroll was malformed."); }
     const p = f.get("photo");
     if (p && typeof p !== "string") photo = p;

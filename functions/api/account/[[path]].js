@@ -38,7 +38,7 @@ import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
-import { prefsOf, cleanPrefs } from "../../_notify.js";
+import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
@@ -156,13 +156,18 @@ const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) 
 const cleanLabel = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ").slice(0, 40);
 const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
 
-// A confirm link to the account's email (the same one InFlight sends, said as the account's)
+// A confirm link to the account's email (the same one InFlight sends, said as the account's). One that couldn't be sent
+// is said, so the page doesn't say it's on its way, and the link before it (if any) is still the one that works.
 async function sendConfirm(env, u, request) {
-  const token = randomToken(32);
-  await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
-  await tell(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
+  const token = randomToken(32), code = hex(await sha256(token)), D = await db(env);
+  await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(code, Date.now(), u.id).run();
+  await accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets and security notes go. If you didn’t ask for this, ignore it: nothing more will be sent.",
-    to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
+    to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request))
+    .catch(async (e) => {
+      await D.prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ? AND email_code = ?").bind(u.email_code ?? null, u.email_sent ?? null, u.id, code).run().catch(() => {});
+      throw e;
+    });
 }
 
 const ROUTES = {
@@ -306,7 +311,7 @@ const ROUTES = {
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
-    return json(await view(env, { ...u, salt: b.salt, pw_leaked: 0, pw_checked_at: t }));
+    return json(await view(env, { ...u, salt: b.salt, pw_at: t, pw_leaked: 0, pw_checked_at: t, email_new: null, email_new_at: null }));
   },
   // How the password did against data breaches, checked on the page (which has it as you type it): kept with its proof,
   // so only someone who knows it can say. (It's shown it's you, too.)
@@ -408,7 +413,7 @@ const ROUTES = {
       await D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).run();
       if (s) waitUntil(logEvent(env, u.id, "signout-device", request, s.label || "A phone or browser"));
     }
-    return json(await view(env, u));
+    return json(await view(env, b.others ? { ...u, email_new: null, email_new_at: null } : u));
   },
   "GET activity": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -450,10 +455,17 @@ const ROUTES = {
     await limit(env, "emailchange:" + u.id, 5, DAY);
     const D = await db(env);
     if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "That email is already used by another account.", "email");
-    const token = randomToken(32), t = Date.now();
-    await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, hex(await sha256(token)), t, u.id).run();
+    const token = randomToken(32), t = Date.now(), code = hex(await sha256(token));
+    await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, code, t, u.id).run();
     const origin = linkOrigin(request);
-    await tell(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
+    // (a link that couldn't be sent is said, and nothing else is done: a change that was waiting before is put back,
+    // unless a newer one has taken its place since)
+    const sendLink = (...a) => accountMail(...a).catch(async (e) => {
+      await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ? AND email_new_code = ?")
+        .bind(u.email_new ?? null, u.email_new_code ?? null, u.email_new_at ?? null, u.id, code).run().catch(() => {});
+      throw e;
+    });
+    await sendLink(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
       after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
     waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
       pill: ["mail", hide(email)] }, origin));
@@ -537,7 +549,7 @@ const ROUTES = {
     await limit(env, "prefs:" + u.id, 120, 3600e3);
     if (b.notify !== undefined) {
       if (!b.notify || typeof b.notify !== "object") throw new HttpError(400, "Bad request.");
-      await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
+      await savePrefs(D, u.id, b.notify);
     }
     if (b.email !== undefined) {
       if (typeof b.email !== "boolean") throw new HttpError(400, "Choose on or off.");

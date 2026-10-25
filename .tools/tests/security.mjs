@@ -1,5 +1,8 @@
 // Checks for the security and privacy fixes, straight against the API.
 import { madeIn, acctCall } from './handback.mjs';
+import http from 'http';
+import { writeFileSync } from 'fs';
+const [,, S] = process.argv;
 const BASE = 'http://localhost:8788/api/pigeon/';
 let fails = 0; const ok = (c, l, x = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${x !== '' ? ' — ' + x : ''}`); if (!c) fails++; };
 const b64u = (u) => Buffer.from(u).toString('base64url');
@@ -66,6 +69,56 @@ ok(okN + left === 9 && okN <= 9, 'parallel sends never spend more swift pigeons 
 const burst = await Promise.all(Array.from({ length: 25 }, () => acctCall('signin/password', { email: 'nobody@example.com', proof: b64u(rnd(32)) }, { ip: '10.9.9.9' })));
 const passed = burst.filter((r) => r.s === 401).length;
 ok(passed <= 10, 'a burst of 25 logins from one IP lets at most 10 through', passed);
+// a body sent in pieces with no Content-Length is still held to its cap (refused as it passes it, not read whole first)
+const PORT = Number(new URL(BASE).port);
+const raw = (host, method, path, { body, chunks, cookie } = {}) => new Promise((done) => {
+  const headers = { Host: `${host}:${PORT}`, Origin: `http://${host}:${PORT}`, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), 'CF-Connecting-IP': '10.0.7.7' };
+  if (body !== undefined) headers['Content-Length'] = Buffer.byteLength(body);
+  const q = http.request({ host: '127.0.0.1', port: PORT, path, method, headers }, (res) => {
+    const parts = []; res.on('data', (c) => parts.push(c));
+    res.on('end', () => { let j = {}; try { j = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {} done({ s: res.statusCode, j }); });
+  });
+  q.on('error', (e) => done({ s: 0, j: { error: e.message } }));
+  if (chunks) { (async () => { for (const c of chunks) { if (q.destroyed) return; q.write(c); await new Promise((r) => setTimeout(r, 2)); } q.end(); })(); } else q.end(body);
+});
+const piece = '{"email":"' + 'x'.repeat(16 * 1024);
+const salt1 = await raw('account.localhost', 'POST', '/api/account/signin/salt', { chunks: Array(8).fill(piece) });
+ok(salt1.s === 413, 'the account’s salt: a body past 64 KB sent in pieces, with no length, is refused', `${salt1.s} ${salt1.j.error}`);
+const salt2 = await raw('localhost', 'POST', '/api/pigeon/salt', { chunks: Array(40).fill(piece) });
+ok(salt2.s === 413, 'InFlight’s: one past 512 KB, the same', `${salt2.s} ${salt2.j.error}`);
+const salt3 = await raw('account.localhost', 'POST', '/api/account/signin/salt', { chunks: ['{"email":', '"alice@example.com"}'] });
+ok(salt3.s === 200 && salt3.j.salt, 'a small one sent in pieces is read as it was sent', `${salt3.s} ${JSON.stringify(salt3.j)}`);
+
+// a rate limit says how long to wait, in hours and minutes once it's more than an hour
+const held = burst.find((r) => r.s === 429)?.j.error;
+ok(/^Too many tries\. Try again in \d+ minutes?\.$/.test(held || ''), 'a limit says how many minutes are left', held);
+
+// The account's emails: one that can't be sent is said, not said to be on its way (and a new email asked for then
+// isn't left waiting); and after "Sign out everywhere else" or a new password the account is as it now is
+const dproof = b64u(rnd(32)), dkp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), dpub = await crypto.subtle.exportKey('jwk', dkp.publicKey);
+const D = await acctCall('signup', { name: 'Dana Wells', handle: 'dana', email: 'dana@example.com', salt: b64u(rnd(16)), proof: dproof, vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: dpub.x, y: dpub.y } }, { ip: '10.0.7.1' });
+const dc = { cookie: D.cookie, ip: '10.0.7.1' }, now = () => acctCall('password/checked', { proof: dproof, leaked: false }, dc).then((r) => r.j);
+const first = await acctCall('email/change', { email: 'dana.first@example.com' }, dc);
+ok(D.s === 201 && first.s === 200 && first.j.emailNew === 'dana.first@example.com', 'a new email asked for, its link sent', `${D.s} ${first.s} ${first.j.error || ''}`);
+writeFileSync(`${S}/mockmode`, 'fail');
+const unsent = [await acctCall('email/confirm-send', {}, dc), await acctCall('email/change', { email: 'dana.second@example.com' }, dc)];
+writeFileSync(`${S}/mockmode`, 'ok');
+ok(unsent.every((r) => r.s === 502 && /couldn’t be sent/.test(r.j.error)), 'with email failing: a confirm link and a new email\'s link each say they couldn’t be sent', JSON.stringify(unsent.map((r) => [r.s, r.j.error])));
+ok((await now()).emailNew === 'dana.first@example.com', 'and the new email waiting before is still the one waiting');
+const others = await acctCall('devices/end', { others: true }, dc);
+ok(others.s === 200 && others.j.emailNew === null, '"Sign out everywhere else" calls the change off, and says so in its answer', JSON.stringify(others.j.emailNew));
+await acctCall('email/change', { email: 'dana.third@example.com' }, dc);
+const t0 = Date.now(), pw = await acctCall('password', { oldProof: dproof, salt: b64u(rnd(16)), proof: b64u(rnd(32)), vault: 'y'.repeat(40) }, dc);
+ok(pw.s === 200 && pw.j.emailNew === null && pw.j.password.setAt >= t0, 'a new password: the change called off and the password\'s date, in its answer', JSON.stringify({ s: pw.s, emailNew: pw.j.emailNew, setAt: pw.j.password?.setAt, t0 }));
+// (the confirm link's day-long limit: three a day, the one that failed among them)
+const links = [await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc)];
+ok(links[0].s === 200 && links[1].s === 200 && links[2].s === 429 && /^Too many tries\. Try again in 2[34]h \d+m\.$/.test(links[2].j.error), 'the fourth confirm link in a day: try again in hours and minutes', JSON.stringify(links.map((r) => [r.s, r.j.error])));
+
+// InFlight's notification settings changed twice at once, on the account's page: both kept
+const two = await Promise.all([raw('account.localhost', 'PATCH', '/api/account/inflight', { body: JSON.stringify({ notify: { reactions: false } }), cookie: D.cookie }),
+  raw('account.localhost', 'PATCH', '/api/account/inflight', { body: JSON.stringify({ notify: { moments: false } }), cookie: D.cookie })]);
+const nset = (await raw('account.localhost', 'GET', '/api/account/inflight', { cookie: D.cookie })).j.notify || {};
+ok(two.every((r) => r.s === 200) && nset.reactions === false && nset.moments === false && nset.landed === true, 'two notification switches changed at once: both kept', JSON.stringify(nset));
 // (the home page's own owner password is gone: its owner is the admin account, home.mjs)
 // reset links point at the real site unless local
 console.log('FAILS', fails);

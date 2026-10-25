@@ -152,6 +152,9 @@ const SCHEMA = [
      from_lat REAL, from_lon REAL, from_place TEXT)`,
   `CREATE INDEX IF NOT EXISTS pg_gmsgs_group ON pg_gmsgs(group_id, sent_at)`,
   `CREATE INDEX IF NOT EXISTS pg_gmsgs_photo ON pg_gmsgs(photo, expires_at)`,
+  // (what someone's sent: counted for their account and their log without reading every group message; with the id, so
+  // a question that also names the messages still goes straight to them)
+  `CREATE INDEX IF NOT EXISTS pg_gmsgs_sender ON pg_gmsgs(sender, id)`,
   `CREATE TABLE IF NOT EXISTS pg_gdeliv (msg_id TEXT NOT NULL, user_id TEXT NOT NULL, wrap TEXT NOT NULL, km REAL NOT NULL, deliver_at INTEGER NOT NULL,
      lost_at INTEGER, read_at INTEGER, notified_at INTEGER, to_lat REAL, to_lon REAL, to_place TEXT, legs TEXT, PRIMARY KEY (msg_id, user_id))`,
   `CREATE INDEX IF NOT EXISTS pg_gdeliv_user ON pg_gdeliv(user_id, deliver_at)`,
@@ -435,10 +438,25 @@ async function setUp(env) {
 // JSON bodies are small (the biggest, a group message with a key for each of
 // up to 50 people, is well under this); anything bigger is refused unread.
 export const MAX_JSON = 512 * 1024;
+// A request's body, at most max bytes: refused unread if it says it's bigger, and as soon as it's past max if it doesn't
+// say (sent in pieces, with no Content-Length), so it's never held whole first
+export async function readCapped(request, max, msg = "That request is too large.") {
+  const said = request.headers.get("Content-Length");
+  if (said !== null && !(Number(said) <= max)) throw new HttpError(413, msg);
+  if (!request.body) return new Uint8Array(0);
+  const r = request.body.getReader(), parts = []; let n = 0;
+  for (;;) {
+    const { done, value } = await r.read();
+    if (done) break;
+    if ((n += value.byteLength) > max) { r.cancel().catch(() => {}); throw new HttpError(413, msg); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(n); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.byteLength; }
+  return out;
+}
 export async function body(request, max = MAX_JSON) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "That request is too large.");
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "That request is too large.");
+  const text = new TextDecoder().decode(await readCapped(request, max));
   try { return JSON.parse(text); } catch (_) { throw new HttpError(400, "That request wasn’t valid JSON."); }
 }
 export const clientIp = (request) => {
@@ -450,6 +468,11 @@ export const clientIp = (request) => {
   return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 };
 
+// "23h 5m", "12 minutes": how long until something's allowed again
+export function waitText(ms) {
+  const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
+  return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
+}
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
 // A network, as one asker: the address, or for IPv6 its whole /48 (as a provider hands them out). For limits where many
 // addresses from one place mustn't count as many askers.
@@ -462,7 +485,7 @@ export async function limit(env, key, max, windowMs, n = 1) {
     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ?3 THEN ?4 ELSE count + ?4 END,
       reset_at = CASE WHEN reset_at < ?3 THEN ?2 ELSE reset_at END
     RETURNING count, reset_at`).bind(key, t + windowMs, t, n).first();
-  if (row.count > max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((row.reset_at - t) / MIN)} minutes and try again.`);
+  if (row.count > max) throw new HttpError(429, `Too many tries. Try again in ${waitText(row.reset_at - t)}.`);
 }
 
 // A per-install random secret (used to fake salts for unknown emails).

@@ -4,7 +4,7 @@
 // functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
 // address (sameOrigin). view(env, u): the account as that page shows it.
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256 } from "./_pigeon.js";
+import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
@@ -13,9 +13,7 @@ import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, 
 export const json = (o, status = 200) => { const r = pjson(o, status); r.headers.set("Cross-Origin-Resource-Policy", "same-origin"); return r; };
 // a small JSON object
 export async function body(request, max = 64 * 1024) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "Too big.");
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "Too big.");
+  const text = new TextDecoder().decode(await readCapped(request, max, "Too big."));
   try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
   throw new HttpError(400, "Bad request.");
 }
