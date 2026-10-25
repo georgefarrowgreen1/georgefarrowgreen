@@ -680,9 +680,10 @@ so there's nothing to set up beyond the address.
   wind's from and how strong ("WSW 14 MPH"). Each has its legend in round values in the units chosen ("Wind (mph)",
   0 to 75) and its own timeline, a tick each hour. The wind's has a choice of **Wind or Gusts** beside its colours
   (kept as chosen): the colours, the flow, the bubble and the words all of the one chosen.
-  **The rain on to twelve hours ahead**: after the next two hours, the models' rain by the hour (Open-Meteo's, on the
-  radar's 9 × 9 grid, asked for once a half hour), the radar or the models' quarter hours faded into the first of
-  them, then hour into hour; the timeline a step a minute up to there and a step every three minutes after, so the
+  **The rain on to twelve hours ahead**: after the next two hours, the models' rain by the hour (Open-Meteo's, on a
+  13 × 13 grid some 550 km across, so it reaches the edges of the map, fading out towards its own; asked for once a
+  half hour), the radar carrying on along its track (or the models' quarter hours as they were) and fading out over
+  the first hour as the hours fade in under it, then hour into hour; the timeline a step a minute up to there and a step every three minutes after, so the
   radar's minutes keep their room on it (ticks each hour, the clock every few hours), played an hour every 0.6 s.
   **The other saved places** are on the map too, each a small bubble with the layer's say there (its temperature now,
   as the list of places has it, on the rain; the models' temperature or wind at the time on show on the others) and
