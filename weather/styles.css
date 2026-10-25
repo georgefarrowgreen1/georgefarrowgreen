@@ -182,10 +182,10 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
   --s1: #3f5670; --s2: #5d7189; --p2: 60%; --s3: #6c7f95; --p3: 80%; --s4: #7b8ca0;
   background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%);
   transition: --s1 1s var(--ease), --s2 1s var(--ease), --s3 1s var(--ease), --s4 1s var(--ease), --p2 1s var(--ease), --p3 1s var(--ease), --glow 1s var(--ease), --glow-2 1s var(--ease); }
-/* (on a phone or a tablet, the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at its
+/* (on a phone or a tablet, in Safari (not opened from the Home Screen, where there's no bar), the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at its
    foot (app.js SKY_FOOT), so the page carries on under the bar: with a layer fixed down to the foot of the screen, Safari
    fills under its bar solid) */
-@media (hover: none) {
+@media (hover: none) and (display-mode: browser) {
   .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
 }
 /* light in the sky for the glass to catch: a glow where the sun or moon would be */
@@ -1889,4 +1889,11 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   -webkit-text-fill-color: var(--text); caret-color: var(--text);
   transition: background-color 0s 600000s, color 0s 600000s;
   -webkit-background-clip: text; background-clip: text;
+}
+
+/* (in Safari on a phone or a tablet, with a sheet up: its dim ends above Safari's bar at the foot, fading out, as the sky
+   does, and the sheet sits over the bar rather than down by the foot; last, so it's over the sheet's own rules) */
+@media (hover: none) and (display-mode: browser) {
+  dialog.sheet::backdrop { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+  dialog.sheet { margin-bottom: 120px; max-height: calc(86svh - 112px); }
 }
