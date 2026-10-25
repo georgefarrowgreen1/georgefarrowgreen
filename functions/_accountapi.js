@@ -6,7 +6,7 @@
 
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
-import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
+import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
 
 // (answers about the account: never kept by anything in between, and for this page's own address alone)
@@ -28,11 +28,12 @@ export async function signedIn(request, env, { deleting = false } = {}) {
 export function accountRoutes(view, { onSignOut = null, deleting = false, signIn = true } = {}) {
   // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's,
   // or as the app's it's for, where an app sent you here to sign in (app: "inflight" or "weather")
-  // (the session's own token's never given out here: only the cookie's)
+  // (the session's own token's never given out here: only the cookie's; and the browser's word that it's signed in to
+  // this account before, so guessing elsewhere can't hold its password sign-in back: functions/_account.js withKnown)
   async function started(request, env, waitUntil, u, how, app) {
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", app === "weather" ? "weather" : null).catch(() => {}));
-    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash);
+    return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash), request, env, u);
   }
   const ins = {
     "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },

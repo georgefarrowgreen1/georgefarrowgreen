@@ -255,7 +255,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_at INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
   "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
-  "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // a one-off key a reset that keeps the old key proves it against
+  "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // the link's own key a reset that keeps the old key proves it against
   // declined and blocked links: a = who said no, b = who asked; asked_at = b still sees their request as waiting
   "ALTER TABLE pg_links ADD COLUMN asked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN email_ok INTEGER",        // when the email address was confirmed (a link sent to it)
@@ -364,6 +364,9 @@ const MIGRATIONS = [
   // same page in Safari is Safari)
   "ALTER TABLE pg_sessions ADD COLUMN home TEXT",
   "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
+  // (one handed over from an app to a browser signed in to nothing: the account's page's alone, until it's shown it's
+  // you there: functions/api/account handoff, reauth)
+  "ALTER TABLE pg_sessions ADD COLUMN handed INTEGER",
   // the home page's own owner sign-ins, from when it had a password of its own (it's the admin account's now: functions/_auth.js)
   "DROP TABLE IF EXISTS pg_owner_sessions",
   // the profile card's poster: a larger copy of your photo (functions/_profile.js putPoster), and the point of it that
@@ -579,7 +582,7 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home,
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
   // (a sign-in lasts while it's used, up to a year from when it was made: then it's asked for again, wherever it's in use)
@@ -589,13 +592,17 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
   // browser's own sign-in now, listed by itself)
   const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);
+  // (one handed over from an app to a browser signed in to nothing is the account's page's alone until it's shown it's
+  // you there: anywhere else the browser's signed out, so a code a page elsewhere sent it there with can't sign it in
+  // to that page's own account across the site)
+  if (u.s_handed && app !== "account") throw new HttpError(401, "Please sign in.", "session");
   const parent = learn && app !== "account" ? null : u.s_parent || null, home = homeOf(request) || u.s_home || null;
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
   if (learn || home !== (u.s_home || null) || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
     D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ?, home = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, home, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home;
-  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_made; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home; u.handed = !!u.s_handed;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_made; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held; delete u.s_handed;
   return u;
 }
 
@@ -938,13 +945,22 @@ export async function findReset(env, token) {
   return { reset: r, user: u };
 }
 // A reset that keeps the account's key must show it holds that key: the phone
-// signs the link with the secret its key shares with a one-off server key.
+// signs the link with the secret its key shares with a server key of the link's
+// own. It's made the first time the link's looked at and kept for its life, so
+// opening it again (another tab, another device) doesn't undo the first one.
 const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" };
-export async function resetKx(env, hash) {
-  const kp = await crypto.subtle.generateKey(ECDH_P256, true, ["deriveBits"]);
-  const priv = await crypto.subtle.exportKey("jwk", kp.privateKey), pub = await crypto.subtle.exportKey("jwk", kp.publicKey);
-  await (await db(env)).prepare("UPDATE pg_resets SET kx = ? WHERE hash = ?").bind(JSON.stringify(priv), hash).run();
-  return { kty: "EC", crv: "P-256", x: pub.x, y: pub.y };
+export async function resetKx(env, reset) {
+  let jwk = reset.kx ? JSON.parse(reset.kx) : null;
+  if (!jwk) {
+    const D = await db(env), kp = await crypto.subtle.generateKey(ECDH_P256, true, ["deriveBits"]);
+    await D.prepare("UPDATE pg_resets SET kx = ? WHERE hash = ? AND kx IS NULL")
+      .bind(JSON.stringify(await crypto.subtle.exportKey("jwk", kp.privateKey)), reset.hash).run();
+    // (two looks at once: both are given whichever key was kept first)
+    const row = await D.prepare("SELECT kx FROM pg_resets WHERE hash = ?").bind(reset.hash).first();
+    if (!row?.kx) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
+    jwk = JSON.parse(row.kx);
+  }
+  return { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
 }
 export async function keyProofOk(reset, pubJson, proof) {
   if (!reset.kx || !/^[A-Za-z0-9_-]{43}$/.test(String(proof || ""))) return false;

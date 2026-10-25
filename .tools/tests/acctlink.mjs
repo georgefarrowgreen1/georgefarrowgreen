@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { joinInFlight, makeAccount } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', WX = 'http://weather.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
@@ -81,6 +81,25 @@ await F1.p.waitForSelector('main .signin .btn', { timeout: 20000 });
 ok(rows(`SELECT COUNT(*) AS n FROM pg_handoff`)[0].n === 1, 'looked at, the code is still there: nothing\'s signed in until it\'s said yes to');
 await F1.p.click('main .signin .btn'); await F1.p.waitForSelector('#sheet[open]', { timeout: 20000 }).catch(() => {});
 ok(/Edit profile/.test(await text(F1.p, '#sheet')), 'a fresh browser: signed in by it, once said yes to');
+// (but on the account's page alone, as the name said yes to is anyone's to give their own account: the rest of the site
+// treats the browser as signed out, and no app's handed it, until it's shown it's you here)
+const meAt = async (x, url) => { const q = await x.ctx.newPage(); try { return await (await q.goto(url)).json(); } catch (_) { return {}; } finally { await q.close(); } };
+const handedHere = await F1.p.evaluate(async () => (await (await fetch('/api/account/me')).json()).handed);
+const wxSays = await meAt(F1, `${WX}/api/weather/me`);
+const handBack = await F1.p.evaluate(async () => (await fetch('/api/account/handback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: 'weather', ask: 'a'.repeat(43) }) })).status);
+ok(handedHere === true && wxSays.signedIn === false && handBack === 403, 'that sign-in is the account page\'s alone: Weather says signed out, and no app is handed it', `${handedHere} ${JSON.stringify(wxSays).slice(0, 60)} ${handBack}`);
+// (Weather's Sign in, from there: Continue to Weather asks it's you first, then it's the browser's own)
+await F1.ctx.route(/\/\/weather\.gfg\.test/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Weather</title>' }));
+await F1.p.goto('about:blank'); await F1.p.goto(`${ACCT}/#signin=weather&ask=${'b'.repeat(43)}&back=${encodeURIComponent(WX + '/')}`);
+await F1.p.waitForSelector('main .welcome .signin .btn', { timeout: 20000 }); await F1.p.waitForTimeout(600);
+await F1.p.click('main .welcome .signin .btn');
+const asks = await F1.p.waitForSelector('#sheet[open] input[type=password]', { timeout: 15000 }).then(() => true, () => false);
+const asked = await text(F1.p, '#sheet');
+await F1.p.fill('#sheet input[type=password]', PW); await F1.p.click('#sheet form .btn');
+const went = await F1.p.waitForURL(/^http:\/\/weather\.gfg\.test:\d+\/#signin=[A-Za-z0-9_-]{20,}/, { timeout: 20000 }).then(() => true, () => false);
+await F1.ctx.unroute(/\/\/weather\.gfg\.test/);
+ok(asks && /Confirm it’s you/.test(asked) && went && (await meAt(F1, `${WX}/api/weather/me`)).signedIn === true,
+  'Continue to Weather: it asks it\'s you first, then hands the sign-in on, and Weather has it too', `${asks} ${went} ${F1.p.url().slice(0, 60)}`);
 const F2 = await browser('fresh2'); await F2.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`); await F2.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await F2.p.waitForTimeout(900);
 ok(/Sign in/.test(await text(F2.p)) && /run out/.test(await text(F2.p, '#toast')), 'the same code again: refused, and the page asks you to sign in', await text(F2.p, '#toast'));
 const c2 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
