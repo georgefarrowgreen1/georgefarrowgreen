@@ -270,9 +270,6 @@ function todayView() {
   right.push(formCard());
   right.push(weekCard());
   left.push(feelCard(w));
-  const recent = S.acts.slice(0, 3);
-  right.push(recent.length ? section("Recent", h("div.group.glass", {}, recent.map(actRow)), h("p.foot", {}, h("button.link", { type: "button", onclick: () => go("activities") }, "All activities")))
-    : section("Recent", h("div.group.glass", {}, row({ icon: "inbox", tint: "blue", title: "Import your first ride", sub: "A FIT file from your Garmin or Wahoo, or GPX or TCX from anywhere", onclick: chooseFiles }))));
   out.push(h("div.cols", {}, h("div", {}, left), h("div", {}, right)));
   return out;
 }
