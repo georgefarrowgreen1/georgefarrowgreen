@@ -2286,7 +2286,7 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 let ADM = null, admComing = null;
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
