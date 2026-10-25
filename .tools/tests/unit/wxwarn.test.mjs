@@ -190,14 +190,23 @@ test("the briefing and a warning as emails", async () => {
   wx.official = shapeMeteoalarm(ukFeed(now), now).filter((w) => w.id === "brs-wind");
   const m = briefMail(wx, now, f);
   assert.equal(m.pill[1], "Bristol · Monday 19 October");
-  assert.match(m.subject, /^Bristol: .+, 15°$/);
+  assert.equal(m.subject, "Bristol: Yellow wind warning · 15°", "the subject: the warning first");
+  assert.deepEqual(m.lines, ["Rain from about 12:00 to 15:00, then sunny spells. High 15°."], "the rain by the clock");
+  assert.equal(m.asOf, "Forecast at 07:00");
   assert.deepEqual(m.notice, { tone: "yellow", lead: "Yellow wind warning", text: "until 15:00 · Met Office" });
-  assert.deepEqual(m.strip.map(([part, , , rain]) => `${part} ${rain}`), ["Morning 5% rain", "Afternoon 80% rain", "Evening 5% rain"]);
+  // each part its rain (when it starts, or dry), and its high (the evening its low)
+  assert.deepEqual(m.strip.map(([part, , temp, rain]) => `${part} ${temp} ${rain}`), ["Morning 14° Dry", "Afternoon 15° Rain 12:00", "Evening 15° Dry"]);
   assert.equal(m.strip[1][1], "rain", "the afternoon's picture: rain");
-  assert.deepEqual(m.rows.map(([k, v]) => `${k}: ${v}`), ["High, low: 15° · 7°", "Rain: 3 mm, mostly afternoon", "Wind: WSW 11, gusts 20 mph", "Sun: Up 07:31 · down 17:49"]);
+  assert.equal(m.bar.levels.join(""), "0".repeat(24) + "2".repeat(12) + "0".repeat(36), "the day's rain by the quarter hour from 06:00: light, 12:00 to 15:00");
+  assert.deepEqual(m.bar.labels, ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"]);
+  assert.deepEqual(m.rows.map(([k, v]) => `${k}: ${v}`), ["High, low: 15° · 7°", "Rain: 3 mm, mostly afternoon", "Wind: WSW 11, gusts 20 mph", "Sun: Up 07:31 · down 17:49", "Tomorrow: 15° · 7°, sunny spells"]);
   const { html, text } = emailBody({ brand: "weather", ...m, strip: m.strip.map(([p, i, t, r]) => [p, `wx-${i}`, t, r]) });
   assert.match(html, /mail\/g-warn-yellow\.png/); assert.match(html, /mail\/wx-rain\.png/); assert.match(html, /<b>Yellow wind warning<\/b> until 15:00 · Met Office/);
-  assert.match(text, /Yellow wind warning until 15:00 · Met Office/); assert.match(text, /Afternoon: \d+°, 80% rain/);
+  assert.equal((html.match(/class="ml-bar"/g) || []).length, 1); assert.match(html, /name="format-detection" content="telephone=no,date=no/);
+  assert.match(text, /Yellow wind warning until 15:00 · Met Office/); assert.match(text, /Afternoon: 15°, Rain 12:00/); assert.match(text, /Forecast at 07:00/);
+  // (a briefing's picture small, and no address under a button that only opens Weather)
+  const small = emailBody({ brand: "weather", ...m, compact: true, fallback: false, button: { label: "See the latest", url: "https://weather.georgefarrowgreen.com/" } }).html;
+  assert.match(small, /width="64" height="64"/); assert.doesNotMatch(small, /Button not working/);
   // a warning: raised from yellow, two more besides
   const w = (id, level, event, more = {}) => ({ id, level, event, via: "MeteoAlarm", issuer: "Met Office", type: 1, onset: iso(now - H), expires: iso(now + 12 * H), headline: "Gusts of 50 to 60 mph.", text: "Very strong winds. Some roads and bridges may close.", area: "South West England", ...more });
   const told = warningAlert([w("a", 2, "Yellow wind warning")], null, now, now, f, 0, "Bristol").told;

@@ -786,11 +786,19 @@ so there's nothing to set up beyond the address.
   devices to the server (wx_devs `mail:` and the account, its places the ones with
   warnings on, never rain), sent the same warnings and briefings as a phone, with
   the same claim first, but as an email (`functions/_email.js`): the briefing with
-  the day's look, the headline, any official warning in force as a notice in its
-  colour, the morning, afternoon and evening on Weather's blue, and the high and
-  low, rain, wind and sun; a warning with its tile in its colour, the issuer's
-  words, when and where, raised from which colour, and how many more
-  (`weather/alerts.js` briefMail, warningMail). Each has a link to turn them off
+  its rain told one way throughout, as the app tells it (`weather/agree.js`, the
+  radar leading the next hours where it was read): the subject saying when it rains
+  by the clock ("light rain 08:15–09:00, then mostly cloudy · 12°", a warning
+  first), the day's look, the rain by the clock and the high against yesterday's,
+  when the forecast was ("Forecast at 07:15, with the radar"), any official warning
+  in force as a notice in its colour, the morning, afternoon and evening on
+  Weather's blue (each its high, the evening its low, and its rain: "Rain 08:15",
+  "Drizzle 16:00", "Dry") over a bar of the day's rain a quarter hour from 06:00,
+  as tall as it's heavy, then the high and low, rain, wind, sun and tomorrow; a
+  smaller picture, and See the latest with no address under it. A warning with its
+  tile in its colour, the issuer's words, when and where, raised from which
+  colour, and how many more (`weather/alerts.js` briefMail, warningMail). Mail
+  apps are asked not to make times into links. Each has a link to turn them off
   (GET shows a button, POST turns them off: `/api/weather/email-off`, with the
   account's own token, as InFlight's emails have) and the mail app's own
   Unsubscribe (RFC 8058). The site's sending plan is shared by every app's email

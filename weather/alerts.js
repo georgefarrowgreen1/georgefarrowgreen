@@ -4,9 +4,9 @@
 // it's tested alone.
 // Times are the place's wall time (format.js), except `last`, below.
 
-import { nowcast, headline, insights, dayParts, phrase, hoursBetween } from "./insights.js";
+import { nowcast, headline, insights, dayParts, phrase, hoursBetween, isWet } from "./insights.js";
 import { HOUR, DAY, keyOf, dayStart, compass } from "./format.js";
-import { iconOf } from "./codes.js";
+import { iconOf, isWetCode, isSnowCode, HEAVY_MMH } from "./codes.js";
 import { inForce, covered, titleOf, badgeOf, spanOf, glyphOf, colourOf } from "./official.js";
 
 export const QUIET = { from: 22, to: 7 };          // no rain alerts overnight
@@ -93,33 +93,97 @@ const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 // (a long text cut at the end of a sentence)
 const clip = (s, n) => { s = String(s || "").trim(); if (s.length <= n) return s; const c = s.slice(0, n), end = Math.max(c.lastIndexOf(". "), c.lastIndexOf(".\n")); return end > n / 2 ? c.slice(0, end + 1) : `${c.replace(/\s+\S*$/, "")}…`; };
 
-// The morning briefing as an email: { subject, preheader, title (the day's look), pill (the place and date), lines (when
-// the rain comes, as the app's headline says), notice (an official warning in force or starting today: the worst, and
-// how many more), strip (the morning, afternoon and evening: [name, icon, temperature, chance of rain]), rows (the day in
-// figures, and the app's own warnings an official one doesn't say) } or null. now: the place's wall time
+// The day's rain by the quarter hour from a (wall time) to b: the next hours' quarter hours where there are any (the
+// radar's, where it sees), else each hour's rain spread over it (an hour's rain is the hour up to its time)
+const Q = 15 * 60e3;
+function quarters(wx, a, b) {
+  const by = new Map((wx.minutely || []).map((q) => [q.t, q])), out = [];
+  for (let t = a; t < b; t += Q) {
+    const q = by.get(t);
+    if (q) { out.push({ t, mmh: (q.precip || 0) * 4, code: q.code, fine: true }); continue; }
+    const h = wx.hourly.find((x) => x.t - HOUR <= t && t < x.t);
+    out.push({ t, mmh: h?.precip || 0, code: h?.code ?? 0 });
+  }
+  return out;
+}
+const wetQ = (q) => isWetCode(q.code) && q.mmh >= 0.05;
+// its wet spells (gaps of half an hour or less bridged): { start, end, peak (mm/h), kind ("light rain", "drizzle"...) }
+function wetSpells(qs) {
+  const out = [];
+  for (const q of qs) {
+    if (!wetQ(q)) continue;
+    const last = out[out.length - 1];
+    if (last && q.t - last.end <= 2 * Q) { last.end = q.t + Q; last.qs.push(q); } else out.push({ start: q.t, end: q.t + Q, qs: [q] });
+  }
+  return out.map((s) => {
+    const peak = Math.max(...s.qs.map((q) => q.mmh)), codes = s.qs.map((q) => q.code);
+    const kind = codes.some((c) => c >= 95) ? "thunderstorms" : codes.some(isSnowCode) ? "snow" : codes.every((c) => c >= 51 && c <= 57) ? "drizzle"
+      : codes.some((c) => c >= 80 && c <= 82) ? "showers" : peak < 1 ? "light rain" : peak >= 4 ? "heavy rain" : "rain";
+    return { start: s.start, end: s.end, peak, kind, fine: s.qs.some((q) => q.fine) };
+  });
+}
+// a spell in words, by the clock: "08:30–09:45", or around a time where it's short
+// (the hours' own rain is only as sure as its hour: a spell of one is around a time)
+const brief = (s) => s.end - s.start <= (s.fine ? 30 : 60) * 60e3;
+const spellTime = (s, f) => (brief(s) ? `around ${f.time(s.start)}` : `${f.time(s.start)}–${f.said(s.end)}`);
+// rain levels for the day's bar: 0 dry, 1 a trace or drizzle, 2 light, 3 moderate, 4 heavy
+const level = (q) => (!wetQ(q) ? 0 : q.mmh < 0.5 ? 1 : q.mmh < 2 ? 2 : q.mmh < HEAVY_MMH ? 3 : 4);
+
+// The morning briefing as an email: { subject, preheader, title (the day's look), pill (the place and date), lines (the
+// day's rain by the clock, the high against yesterday's, and when the forecast was), notice (an official warning in
+// force or starting today), strip (the morning, afternoon and evening: [name, icon, high, its rain]), bar (the day's
+// rain by the quarter hour, under the strip), rows (the day in figures, tomorrow) } or null. now: the place's wall time.
+// wx: one story already (agree.js oneRain), so each part's picture and its rain agree with the lines
 export function briefMail(wx, now, f) {
-  const d = wx.daily.find((x) => x.key === keyOf(now)), name = wx.place.name || "", off = wx.place.offset || 0, real = now - off * 1000;
+  const di = wx.daily.findIndex((x) => x.key === keyOf(now)), d = wx.daily[di], name = wx.place.name || "", off = wx.place.offset || 0, real = now - off * 1000;
   if (!d) return null;
   const look = phrase(hoursBetween(wx, d.date + 7 * HOUR, d.date + 21 * HOUR)) || "the day ahead";
   const official = inForce(wx.official, real).filter((w) => (w.level || 0) >= 2 && !(Date.parse(w.onset) + off * 1000 >= dayStart(now) + DAY)).sort((a, b) => (b.level || 0) - (a.level || 0));
   const w = official[0], said = covered(wx.official, real);
   const notice = w ? { tone: toneOf(w), lead: named(w), text: `${spanOf(w, now, f, off).replace(/^\w/, (c) => c.toLowerCase())} · ${w.issuer}${official.length > 1 ? ` (and ${official.length - 1} more)` : ""}` } : null;
+  // the day's rain, 06:00 to midnight, and its spells from now
+  const qs = quarters(wx, d.date + 6 * HOUR, d.date + DAY), spells = wetSpells(qs.filter((q) => q.t + Q > now));
   const parts = dayParts(wx, d.key).filter((p) => p.name !== "overnight");
-  const strip = parts.map((p) => [cap(p.name), iconOf(p.code, p.isDay), f.temp(p.hours[Math.floor(p.hours.length / 2)].temp), p.pop != null ? `${Math.round(p.pop)}% rain` : ""]);
-  const wettest = parts.reduce((x, p) => (p.precip > (x?.precip ?? 0) ? p : x), null), snow = (d.snow ?? 0) >= 0.5;
-  const rain = (d.precip ?? 0) >= 0.2 ? `${snow ? `${f.snow(d.snow)} of snow` : f.precip(d.precip)}${wettest && wettest.precip >= d.precip * 0.5 && parts.length > 1 ? `, mostly ${wettest.name}` : ""}`
-    : (d.popMax ?? 0) >= 20 ? `${Math.round(d.popMax)}% chance` : "None expected";
+  const strip = parts.map((p) => {
+    const a = p.hours[0].t - HOUR, b = p.hours[p.hours.length - 1].t, s = spells.find((x) => x.end > a && x.start < b), k = s && cap(s.kind.replace(/^light /, ""));
+    // (when it starts in this part; or, going on from before it, when it stops)
+    const rain = !s ? ((p.pop ?? 0) >= 20 ? `${Math.round(p.pop)}% rain` : "Dry") : s.start > Math.max(a, now) ? `${k} ${f.time(s.start)}` : s.end < b ? `${k} to ${f.said(s.end)}` : k;
+    return [cap(p.name), iconOf(p.code, p.isDay), f.temp(p.name === "evening" ? p.tmin : p.tmax), rain];
+  });
+  const bar = { levels: qs.map(level), labels: [6, 9, 12, 15, 18, 21].map((h) => f.time(d.date + h * HOUR)) };
+  // the rain in words: when, by the clock; then the high, against yesterday's
+  const mm = qs.filter((q) => q.t + Q > now).reduce((a, q) => a + (wetQ(q) ? q.mmh / 4 : 0), 0), snow = (d.snow ?? 0) >= 0.5;
+  const first = spells[0], next = spells[1], late = (s) => s.end >= d.date + DAY;
+  const sky = (s) => { const after = !late(s) && phrase(hoursBetween(wx, s.end, s.end + 4 * HOUR).filter((h) => !isWet(h))); return after ? `, then ${after}` : ""; };
+  // (a spell: going on now, until when; short, around a time; else from when to when, or on into the night)
+  const when = (s) => (s.start <= now ? (late(s) ? "through the day" : `until about ${f.said(s.end)}`) : brief(s) ? spellTime(s, f)
+    : late(s) ? `from about ${f.time(s.start)}` : `from about ${f.time(s.start)} to ${f.said(s.end)}`);
+  const rainLine = first ? `${cap(first.kind)} ${when(first)}${sky(first)}.` : "Dry all day.";
+  const nextLine = next ? ` ${next.kind === "drizzle" && next.peak < 0.5 ? "A little drizzle" : cap(next.kind)} ${spellTime(next, f)}.` : "";
+  const y = wx.daily[di - 1], dt = y?.tmax != null && d.tmax != null ? f.tempNum(d.tmax) - f.tempNum(y.tmax) : 0;
+  const vs = Math.abs(dt) >= 2 ? `, ${Math.abs(dt)}° ${dt < 0 ? "cooler" : "warmer"} than yesterday` : "";
+  const lead = `${rainLine}${nextLine} High ${f.temp(d.tmax)}${vs}.`;
+  const wettest = parts.reduce((x, p) => { const r = qs.filter((q) => q.t >= p.hours[0].t - HOUR && q.t < p.hours[p.hours.length - 1].t && wetQ(q)).reduce((a, q) => a + q.mmh / 4, 0); return r > (x?.r ?? 0) ? { p, r } : x; }, null);
+  // (dry so far as anyone can say: the parts still to come's best chance, where it's worth saying)
+  const odds = Math.max(0, ...parts.filter((p) => p.hours[p.hours.length - 1].t > now).map((p) => p.pop ?? 0));
+  const rain = mm >= 0.2 ? `${snow ? `${f.snow(d.snow)} of snow` : f.precip(Math.round(mm * 10) / 10)}${wettest && wettest.r >= mm * 0.5 ? `, mostly ${wettest.p.name}` : ""}`
+    : mm > 0 ? "A trace" : odds >= 20 ? `${Math.round(odds)}% chance` : "None expected";
   const own = insights(wx, now, f, {}).filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon)).slice(0, 2).map((c) => c.title);
+  const t = wx.daily[di + 1], tLook = t && phrase(hoursBetween(wx, t.date + 7 * HOUR, t.date + 21 * HOUR));
   const rows = [
     ["High, low", `${f.temp(d.tmax)} · ${f.temp(d.tmin)}`, "temp"],
     [snow ? "Snow" : "Rain", rain, "rain"],
     ...(d.windMax != null ? [["Wind", `${d.dir != null ? `${compass(d.dir)} ` : ""}${d.gustMax != null ? `${f.windNum(d.windMax)}, gusts ${f.wind(d.gustMax)}` : f.wind(d.windMax)}`, "wind"]] : []),
     ...(d.sunrise != null && d.sunset != null ? [["Sun", `Up ${f.time(d.sunrise)} · down ${f.time(d.sunset)}`, "sunrise"]] : []),
+    ...(t ? [["Tomorrow", `${f.temp(t.tmax)} · ${f.temp(t.tmin)}${tLook ? `, ${tLook}` : ""}`, "clock"]] : []),
     ...(own.length ? [["Watch for", own.join(" · "), "warn"]] : []),
   ];
-  const lead = headline(wx, now, f);
-  return { subject: `${name ? `${name}: ` : ""}${look}, ${f.temp(d.tmax)}`, preheader: lead, title: cap(look),
-    pill: ["pin", `${name ? `${name} · ` : ""}${f.dayName(now)} ${f.dateLong(now)}`], lines: lead ? [lead] : [], notice, strip, rows };
+  // the subject: a warning first; else when it rains, by the clock; else the day's look
+  const what = w ? named(w) : !first ? look
+    : `${first.kind} ${first.start <= now ? (late(first) ? "through the day" : `until ${f.said(first.end)}`) : late(first) && !brief(first) ? `from ${f.time(first.start)}` : spellTime(first, f)}${sky(first)}`;
+  return { subject: `${name ? `${name}: ` : ""}${what} · ${f.temp(d.tmax)}`, preheader: lead, title: cap(look),
+    pill: ["pin", `${name ? `${name} · ` : ""}${f.dayName(now)} ${f.dateLong(now)}`], lines: [lead], asOf: `Forecast at ${f.time(now)}${(wx.minutely || []).some((q) => q.radar) ? ", with the radar" : ""}`,
+    notice, strip, bar, rows };
 }
 
 // An official warning as an email (fresh: warningAlert's, worst first): the worst, in its issuer's own words, when and
