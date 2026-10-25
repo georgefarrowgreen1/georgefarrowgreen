@@ -531,7 +531,7 @@ function rhythmView() {
     return h("button.row", { type: "button", onclick: () => openDay(d.date) }, h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: dayName(d.date).slice(0, 3) })),
       h("span.tx", {}, h("b", { text: w ? `${w.name}${d.strength ? " + strength" : ""}` : "Rest" }), h("small", { text: w ? `${dur(d.mins * 60)} · ${d.hard ? "hard" : "easy"}${d.moved ? " · rest day moved" : ""}` : d.why })),
       w && h("span.mini", {}, C.profile(w, { mini: true, pace: paceFor(w.sport) }))); };
-  out.push(section("Coming up", h("div.group.glass", {}, shown.map(rowOf),
+  out.push(section(null, h("div.group.glass.rh-coming", {}, h("div.rh-week-head", {}, h("b", { text: "Coming up" })), shown.map(rowOf),
     ahead.length > 3 && h("button.row.action", { type: "button", onclick: () => { S.planMore = !S.planMore; redraw(); } }, S.planMore ? "Show fewer" : `Show the next ${ahead.length - 3} days`))));
   // where it's heading: the block's four weeks, and your fitness, with the week ahead as planned
   const line = r.line, lo = Math.min(...line.map((x) => x.ctl)), hi = Math.max(...line.map((x) => x.ctl)), span = Math.max(8, hi - lo), W = 320, H = 70;

@@ -702,6 +702,8 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .rh-today .extras span { display: inline-flex; align-items: center; gap: 6px; }
 .rh-today .acts { display: flex; gap: 8px; }
 .rh-heading { display: grid; gap: 12px; }
+/* coming up: its title inside the card, as where it's heading has */
+.rh-coming > .rh-week-head { padding: 20px 22px 6px; }
 .rh-heading .rb-weeks { margin: 0; }
 .rh-heading svg { width: 100%; height: 70px; }
 .rh-line.ahead { stroke-dasharray: 2 7; }
