@@ -292,7 +292,7 @@ function theme(pref, fade) {
     try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
     // (the browser's bar: Light or Dark, both its tags that one's colour; Automatic, each its own scheme's, so the bar
     // still follows the device as it changes)
-    const top = (d) => (d ? "#0b1024" : "#eef1fb");
+    const top = (d) => (d ? "#1b2860" : "#dde3fb");   // (the top of the sky: styles.css --sky-top)
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top(root.dataset.theme ? isDark() : (m.getAttribute("media") || "").includes("dark")));
   };
   const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;
