@@ -301,7 +301,8 @@ Motion, solid with Reduce Transparency.
   link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
   and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working;
-  one that couldn't be sent isn't said to be on its way, and **Send link** tries again, saying why if it still can't);
+  one that couldn't be sent, Resend refusing it or not answering in 10 seconds, isn't said to be on its way, and
+  **Send link** tries again, saying why if it still can't);
   InFlight then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
   there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
@@ -453,7 +454,10 @@ Motion, solid with Reduce Transparency.
   Latin 1, Helvetica's widths, wrapping, every object where the cross-reference table says), `unit/activity.test.mjs`
   (passkey providers) and `unit/acctsec.test.mjs` (a reset link's key kept for its life, a handed-over sign-in kept to
   this page, and the password sign-in hold, with a device's word that it's signed in before: one for each account, given
-  as an account's made too, and no use once the password's changed; against Node's own SQLite standing in for D1).
+  as an account's made too, and when its password's changed or a new email's confirmed there, and no use once the
+  password's changed; a new password kept as checked against data breaches only when the check got an answer; and a new
+  account's confirm link said to be on its way only when it went, Resend refusing it or not answering in time; against
+  Node's own SQLite standing in for D1).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.
@@ -2291,11 +2295,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   signs a phone out; a wrong password never does. Wrong passwords hold back the
   address they come from (30 an hour), and only guessing from many at once (300
   an hour) the account itself, and then not on a device that's signed in to it
-  before (or made it, or changed or reset its password there): that keeps a
-  word saying so (a cookie of the account page's own, one for each account, a
-  MAC of the email's hash, the account and when its password was set, so a new
-  password or a reset ends every word given before) and counts its own wrong
-  tries instead (10 an hour).
+  before (or made it, or changed or reset its password there, or confirmed a
+  new email there): that keeps a word saying so (a cookie of the account page's
+  own, one for each account, a MAC of the email's hash, the account and when its
+  password was set, so a new password, a reset or a new email ends every word
+  given before) and counts its own wrong tries instead (10 an hour).
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
   days; the account's page can send another). Until then the address gets
   nothing but that link, password resets and word of the email being changed, so no one can sign up with

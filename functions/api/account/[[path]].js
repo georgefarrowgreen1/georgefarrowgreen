@@ -237,8 +237,9 @@ const ROUTES = {
   "POST signup": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const u = await makeAccount(env, request, await body(request));
-    // (the confirm link, sent as it's made, and said in what the page's shown only if it went: one that couldn't be sent
-    // is offered again there, which says why if it still can't)
+    // (the confirm link, sent as it's made, and said in what the page's shown only if it went: one that couldn't be sent,
+    // Resend not answering in time among them (functions/_email.js sendEmail), is offered again there, which says why if
+    // it still can't)
     const sent = emailReady(env) ? await sendConfirm(env, u, request).catch((e) => { console.error("confirm mail", e.message); return null; }) : null;
     waitUntil(logEvent(env, u.id, "signup", request));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));

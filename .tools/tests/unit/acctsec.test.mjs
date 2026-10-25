@@ -4,7 +4,8 @@
 // it's you; guessing a password from many networks at once holds the account back, but not on a device that's signed
 // in to it before (or made it, or changed its password or email there), for each account it has, while its password is
 // the one it was given with; a new password's kept as checked against data breaches only if the check got an answer;
-// and a new account's said to have been sent its confirm link only if it went.
+// and a new account's said to have been sent its confirm link only if it went (not if Resend refused it or didn't
+// answer in time).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -200,18 +201,24 @@ test('a new email confirmed in a browser signed in to the account: a word for th
 });
 
 test('an account made here: said to have been sent its confirm link only if it went', async () => {
-  const id = await E2E.newIdentity(), RESEND = 'http://resend.test/emails', real = globalThis.fetch;
-  let refuse = true;
-  globalThis.fetch = async (url, o) => (String(url) === RESEND ? new Response(refuse ? '{"message":"Refused"}' : '{"id":"1"}', { status: refuse ? 422 : 200 }) : real(url, o));
+  const id = await E2E.newIdentity(), RESEND = 'http://resend.test/emails', real = globalThis.fetch, timeout = AbortSignal.timeout;
+  let how, limit;
+  globalThis.fetch = async (url, o) => (String(url) !== RESEND ? real(url, o) : how === 'stall'
+    // (Resend not answering at all: only the send's own time limit ends it)
+    ? new Promise((_, no) => o.signal?.addEventListener('abort', () => no(o.signal.reason)))
+    : new Response(how === 'refuse' ? '{"message":"Refused"}' : '{"id":"1"}', { status: how === 'refuse' ? 422 : 200 }));
+  // (that limit cut short here, so the test doesn't wait it out; by hand, as Node's own timer wouldn't keep it running)
+  AbortSignal.timeout = (ms) => { limit = ms; const c = new AbortController(); setTimeout(() => c.abort(new DOMException('Timed out', 'TimeoutError')), 10); return c.signal; };
   try {
-    for (const [handle, no] of [['xan', true], ['yew', false]]) {
-      refuse = no;
+    for (const [handle, ip, h] of [['xan', 60, 'refuse'], ['yew', 61, 'send'], ['zed', 62, 'stall']]) {
+      how = h;
       const res = await onPage('signup', { name: handle, handle, email: `${handle}@example.com`, salt: E2E.newSalt(), proof: proofOf('a long test password'), vault: 'v'.repeat(40), pub: id.pub },
-        { ip: `198.51.100.${no ? 60 : 61}`, e: { ...PAGE_ENV, PIGEON_OPEN_SIGNUP: '1', RESEND_API_KEY: 'test', RESEND_API_URL: RESEND } });
+        { ip: `198.51.100.${ip}`, e: { ...PAGE_ENV, PIGEON_OPEN_SIGNUP: '1', RESEND_API_KEY: 'test', RESEND_API_URL: RESEND } });
       assert.equal(res.status, 201, await res.clone().text());
       const m = await res.json(), row = await D.prepare('SELECT email_sent, email_code FROM pg_users WHERE handle = ?').bind(handle).first();
-      if (no) assert.ok(m.emailSentAt === null && row.email_sent === null && row.email_code === null, 'refused: not said to be on its way (so the page offers it again)');
+      if (how !== 'send') assert.ok(m.emailSentAt === null && row.email_sent === null && row.email_code === null, `${how}: not said to be on its way (so the page offers it again)`);
       else assert.ok(m.emailSentAt && m.emailSentAt === row.email_sent && row.email_code, 'sent: said, as when it went');
     }
-  } finally { globalThis.fetch = real; }
+    assert.ok(limit > 0 && limit < 30000, 'given up on before the page gives up on the reply (30 seconds)');
+  } finally { globalThis.fetch = real; AbortSignal.timeout = timeout; }
 });
