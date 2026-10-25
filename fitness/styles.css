@@ -396,22 +396,11 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .repeat { margin: 6px 0; padding: 4px 12px; border-radius: 16px; background: var(--glass-ctl); }
 .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--tint-text); letter-spacing: 0.3px; }
 
-/* the builder */
-.bstep { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-radius: 18px; background: var(--glass-ctl); }
-.bstep > i { border-radius: 4px; }
-.bstep .top { display: flex; align-items: center; gap: 8px; }
-.bstep .top select { flex: 1; min-width: 0; border: 0; background: none; font-weight: 600; font-size: 16px; padding: 2px 0; }
-.bstep .top .x { border: 0; background: none; color: var(--text-3); padding: 4px; display: grid; }
-.bstep .ctl { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; }
 .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
 .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
 .stepper button:active { background: var(--press); }
 .stepper output { min-width: 64px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stepper label { display: none; }
-.bgroup { display: grid; gap: 8px; }
-.brepeat { display: grid; gap: 8px; padding: 10px; border-radius: 22px; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tint) 45%, transparent); }
-.brepeat > .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; color: var(--tint-text); }
-.adds { display: flex; flex-wrap: wrap; gap: 8px; }
 .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
 .field:focus { outline: 2px solid var(--tint); outline-offset: 0; }
 

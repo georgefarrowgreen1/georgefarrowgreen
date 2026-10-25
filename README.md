@@ -1159,8 +1159,7 @@ five weeks into a 16-week sportive plan, dated from today.
   weeks before not counted as missed), an easier week every fourth; or none, and Today says so.
 - **Workouts**: 22 to start with (endurance, tempo, sweet spot, threshold, over-unders, hill repeats at low cadence,
   VO₂ max, 30/30s, sprints, a ramp test and a 20-minute FTP test; runs, swims, and core work), each with its shape at
-  your FTP, its steps in watts (or pace), and its files; yours, built step by step (warm up, intervals, repeats, cool
-  down, each a length and a share of FTP, the shape and stress drawn as you go) or imported.
+  your FTP, its steps in watts (or pace), and its files to send to your devices. (No building or importing your own.)
 - **Activities**: your rides, runs and swims by week, each with its route (coloured by the power zone it was ridden in),
   its figures (distance, moving time, climbing, average power, Normalized Power, intensity, TSS, heart rate, cadence,
   work), power and heart rate and height through the ride with a cursor that moves a marker round the route, time in
@@ -1182,8 +1181,8 @@ all, and this reads what the SDK writes; the SDK's licence keeps it out of the s
 | Garmin Edge or watch | FIT workout, copied over USB into `Garmin/NewFiles` (power as a share of FTP; a run's pace as speed; a swim's distance in a 25 m pool; a cadence held alongside) | | FIT, from the device or Garmin Connect's Export Original (a zip, opened here) |
 | Wahoo ELEMNT ACE, BOLT 3, ROAM 3 | FIT workout, into the `plans` folder (USB access on in the Wahoo app) | | FIT, from the Wahoo app's Download .fit or the `exports` folder |
 | An earlier ELEMNT, BOLT or ROAM | `.plan` (Wahoo's own, never published: repeats written out in full) | | FIT |
-| Zwift | ZWO (`Documents/Zwift/Workouts/<your ID>`) | | ZWO |
-| TrainerRoad, Golden Cheetah and others | ERG (watts at your FTP) and MRC (shares of FTP) | | ERG, MRC |
+| Zwift | ZWO (`Documents/Zwift/Workouts/<your ID>`) | | |
+| TrainerRoad, Golden Cheetah and others | ERG (watts at your FTP) and MRC (shares of FTP) | | |
 | Garmin Connect, Strava, TrainingPeaks, intervals.icu, the Wahoo app | | FIT, GPX (with heart rate, cadence and power), TCX | GPX, TCX |
 
 Read against real devices' files (the python-fitparse project's samples: Edges 500, 810 and 820, fenix watches, two
@@ -1240,7 +1239,7 @@ only Sign in, and the API closed; away from its own address, no sign-in; signed 
 already; five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and one it can't read, each
 ride's file kept with the account, the same ride again not kept twice; a phone signing in on the account's page and
 handed back, with the laptop's rides, one opened from its file and out as FIT with every sample; a plan chosen on one
-and a workout built on the other from the version before, both kept; miles on one, miles on the other; a ride renamed
+and a new FTP on the other from the version before, both kept; miles on one, miles on the other; a ride renamed
 and another deleted, on both; Fitness on the account's page; signing out, the phone's copies gone; and no screen wider
 than a 320 px phone).
 

@@ -15,7 +15,7 @@ import { deflateRawSync } from 'node:zlib';
 import { readFit, writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
-import { demo, samples } from '../../fitness/sample.js';
+import { demo, samples, PROFILE } from '../../fitness/sample.js';
 import { joinInFlight, onAccountPage } from './join.mjs';
 
 const [,, S, out] = process.argv;
@@ -125,7 +125,7 @@ await L.p.waitForSelector('#sheet[open] .sheet-top', { timeout: 60000 }); await 
 const review = await L.p.evaluate(() => [...document.querySelectorAll('#sheet .row.up')].map((r) => `${r.querySelector('b').textContent}=${r.querySelector('select').value}${r.classList.contains('guess') ? '?' : ''}`));
 ok(await L.p.locator('#sheet .sheet-top h1').innerText() === '3 activities' && review.join() === 'Morning ride=ride?,Afternoon ride=ride,Indoor ride=ride' && !acts(sam).length,
   'three activities (one from the zip) to check before they\'re kept: each one\'s sport from its file, or worked out and marked to check', review.join());
-ok(await L.p.locator('#sheet').getByText(/notes\.txt: Fitness reads FIT/).count() === 1 && await L.p.locator('#sheet').getByText('Hills from Zwift').count() === 1, 'the workout too, and a file it can\'t read: said, by name, with why');
+ok(await L.p.locator('#sheet').getByText(/notes\.txt: Fitness reads FIT/).count() === 1 && await L.p.locator('#sheet').getByText(/Hills\.zwo: a workout, not an activity/).count() === 1, 'a workout file and one it can\'t read: left out, by name, with why');
 await L.p.screenshot({ path: `${out}/upload.png` });
 await L.p.selectOption('#sheet .row.up.guess select', 'run');
 await L.p.locator('#sheet .btn', { hasText: 'Upload 3 activities' }).click();
@@ -135,8 +135,6 @@ const kept = acts(sam);
 ok(kept.find((a) => a.name === 'Morning ride')?.sport === 'run', 'the one changed: kept as a run', JSON.stringify(kept.map((a) => [a.name, a.sport])));
 ok(kept.length === 3 && kept.map((a) => a.type).join() === 'fit,fit,gpx' && kept.find((a) => a.type === 'gpx')?.size === Buffer.byteLength(gpx) && kept.find((a) => a.file === 'wahoo.fit')?.size === wahoo.length,
   'each ride kept with the account: its file as it came (the zip\'s ride as its FIT)', JSON.stringify(kept.map((a) => [a.file, a.type, a.size])));
-const st1 = await waitFor(() => { const s = state(sam); return s?.workouts?.length ? s : null; });
-ok(st1?.workouts?.map((w) => w.name).join() === 'Hills from Zwift', 'and the workout with your record', JSON.stringify(st1?.workouts?.map((w) => w.name)));
 await L.p.screenshot({ path: `${out}/imported.png` });
 await done(L);
 await L.p.setInputFiles('#files', FILES.slice(0, 1));
@@ -164,7 +162,6 @@ const back = await download(P, () => P.p.locator('#sheet .row', { hasText: /^FIT
 ok(readFit(back.bytes).messages.record.length === ride.s.t.length, 'and out again as FIT: every sample', `${readFit(back.bytes).messages.record.length} of ${ride.s.t.length}`);
 await done(P);
 await tab(P, 3);
-ok(await P.p.locator('.section', { hasText: 'Yours' }).getByText('Hills from Zwift').count() === 1, 'and the laptop\'s imported workout, with yours');
 
 // ---- 5. A plan chosen on the phone, and a workout built on the laptop from the version before it: put together ----
 await tab(P, 2);
@@ -172,14 +169,14 @@ await P.p.getByRole('button', { name: /^FTP builder/ }).click(); await settle(P)
 await P.p.getByRole('button', { name: /^Start next Monday/ }).click(); await settle(P, 800);
 const planSub = await P.p.locator('.head .sub').innerText();
 const st2 = await waitFor(() => { const s = state(sam); return s?.plan ? s : null; });
-ok(/^FTP builder · starts /.test(planSub) && st2?.plan?.id === 'ftp' && st2.ver === st1.ver + 1, 'a plan chosen on the phone: kept with the account', `${planSub} | ${JSON.stringify(st2?.plan)} v${st2?.ver}`);
-await tab(L, 3);
-await L.p.locator('.row', { hasText: 'Build a workout' }).click(); await settle(L, 800);
-await L.p.fill('#sheet input.field', 'Tuesday threes');
-await L.p.getByRole('button', { name: /Repeat$/ }).click();
-await L.p.getByRole('button', { name: 'Save' }).click(); await settle(L, 800);
-const st3 = await waitFor(() => { const s = state(sam); return s?.workouts?.length === 2 ? s : null; });
-ok(st3?.plan?.id === 'ftp' && st3.workouts.map((w) => w.name).sort().join() === 'Hills from Zwift,Tuesday threes', 'a workout built on the laptop, which hadn\'t heard of the plan: both kept', JSON.stringify(st3 && { plan: st3.plan?.id, w: st3.workouts.map((w) => w.name) }));
+ok(/^FTP builder · starts /.test(planSub) && st2?.plan?.id === 'ftp', 'a plan chosen on the phone: kept with the account', `${planSub} | ${JSON.stringify(st2?.plan)} v${st2?.ver}`);
+await you(L);
+await L.p.locator('#sheet .row', { hasText: 'FTP' }).first().click(); await settle(L, 600);
+await L.p.getByRole('button', { name: 'More FTP' }).click(); await settle(L, 300);
+await L.p.getByRole('button', { name: 'More FTP' }).click();
+const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp ? s : null; });
+ok(st3?.plan?.id === 'ftp' && st3.profile.ftp === PROFILE.ftp + 10, 'a new FTP on the laptop, which hadn\'t heard of the plan: both kept', JSON.stringify(st3 && { plan: st3.plan?.id, ftp: st3.profile.ftp }));
+await done(L); await done(L);
 await tab(L, 2);
 ok(/^FTP builder · starts /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s plan now', await L.p.locator('.head .sub').innerText());
 // (miles, chosen on the phone: the laptop's in miles too, next it's opened)

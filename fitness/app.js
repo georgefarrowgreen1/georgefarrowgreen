@@ -465,9 +465,6 @@ function workoutsView() {
   if (mine.length) out.push(section("Yours", h("div.group.glass", {}, mine.map(workoutRow))));
   const kinds = [...new Set(WORKOUTS.filter((w) => w.sport === S.sport).map((w) => w.kind))];
   for (const k of kinds) out.push(section(k, h("div.group.glass", {}, WORKOUTS.filter((w) => w.sport === S.sport && w.kind === k).map(workoutRow))));
-  out.push(section(null, h("div.group.glass", {},
-    row({ icon: "edit", tint: "coral", title: "Build a workout", sub: "Steps, repeats, power and cadence", onclick: () => openSheet(() => builderView()) }),
-    row({ icon: "inbox", tint: "blue", title: "Import a workout", sub: "FIT, ZWO, ERG or MRC (from Zwift, TrainerRoad, TrainingPeaks…)", onclick: chooseFiles }))));
   return out;
 }
 function workoutRow(w) {
@@ -501,9 +498,8 @@ function workoutView(w) {
       w.about && h("p", { text: w.about }),
       card(null, "Steps", h("div.steps", {}, steps)),
       w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, icon("upload", 19, 2.2), "Send to your devices"),
-      h("div.group", {},
-        row({ icon: "edit", tint: "coral", title: mine ? "Edit" : "Edit a copy", onclick: () => pushSheet(() => builderView(mine ? w : { ...structuredClone(w), id: `w${Date.now()}`, name: `${w.name} (mine)`, kind: "Yours", imported: false })) }),
-        mine && h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
+      mine && h("div.group", {},
+        h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
     ],
   };
 }
@@ -541,65 +537,6 @@ function sendView(w) {
       h("button.btn.quiet", { type: "button", onclick: () => saveFile(F.fileName(name, "zip"), F.zip([
         { name: F.fileName(name, "fit"), data: fit() }, ...(ride ? [{ name: F.fileName(name, "plan"), data: F.planFromWorkout(w) }, { name: F.fileName(name, "zwo"), data: F.zwoFromWorkout(w) },
           { name: F.fileName(name, "erg"), data: F.ergFromWorkout(w, P().ftp) }, { name: F.fileName(name, "mrc"), data: F.mrcFromWorkout(w) }] : [])])) }, icon("zip", 19, 2), "All of them, in one zip"),
-    ],
-  };
-}
-
-// The workout builder: steps (warm up, intervals, recoveries, cool down) and repeats, each its length and how hard,
-// the shape and its stress drawn as you go
-function builderView(base) {
-  const B = base ? structuredClone(base) : { id: `w${Date.now()}`, sport: "ride", kind: "Yours", name: "My workout", about: "", steps: [{ kind: "warmup", secs: 600, from: 0.5, to: 0.75, name: "Warm up" }, { repeat: 4, steps: [{ kind: "work", secs: 300, from: 1.05, name: "Hard" }, { kind: "rest", secs: 180, from: 0.55, name: "Easy" }] }, { kind: "cooldown", secs: 600, from: 0.65, to: 0.45, name: "Cool down" }] };
-  let picture = h("div"), figs = h("div.sub.num");
-  const redrawShape = () => {
-    const m = measure(B, paceFor(B.sport));
-    picture.replaceChildren(C.profile(B, { ftp: B.sport === "ride" ? P().ftp : null, pace: paceFor(B.sport), label: "The workout so far", W: sheetW() }));
-    figs.textContent = `${dur(m.secs)} · TSS ${Math.round(m.tss)}${B.sport === "ride" ? ` · IF ${m.iF.toFixed(2)}` : ""}`;
-  };
-  const stepper = (label, get, set, show, by) => h("span.stepper", { role: "group", "aria-label": label },
-    h("button", { type: "button", "aria-label": `Less ${label}`, onclick: (e) => { set(-by); e.currentTarget.parentNode.querySelector("output").textContent = show(get()); redrawShape(); } }, icon("minus", 16, 2.4)),
-    h("output", { text: show(get()) }),
-    h("button", { type: "button", "aria-label": `More ${label}`, onclick: (e) => { set(by); e.currentTarget.parentNode.querySelector("output").textContent = show(get()); redrawShape(); } }, icon("plus", 16, 2.4)));
-  let list = h("div.bgroup");
-  const stepCtl = (s, arr, i) => {
-    const zone = () => zoneOf((s.from + (s.to ?? s.from)) / 2).c, bar = h("i.bg-" + zone());
-    const kind = h("select", { "aria-label": "Kind of step", onchange: (e) => { s.kind = e.target.value; s.name = { warmup: "Warm up", cooldown: "Cool down", work: "Interval", rest: "Easy", steady: "Steady" }[s.kind]; if ((s.kind === "warmup" || s.kind === "cooldown") && s.to == null) s.to = s.kind === "warmup" ? s.from + 0.2 : Math.max(0.3, s.from - 0.2); if (s.kind !== "warmup" && s.kind !== "cooldown") delete s.to; drawList(); redrawShape(); } },
-      [["warmup", "Warm up"], ["work", "Interval"], ["steady", "Steady"], ["rest", "Recovery"], ["cooldown", "Cool down"]].map(([v, l]) => h("option", { value: v, selected: s.kind === v ? true : null }, l)));
-    const clamp = (v) => Math.max(0.3, Math.min(2.5, Math.round(v * 100) / 100));
-    return h("div.bstep", {}, bar, h("div", {},
-      h("div.top", {}, kind, h("button.x", { type: "button", "aria-label": "Remove step", onclick: () => { arr.splice(i, 1); drawList(); redrawShape(); } }, icon("x", 16, 2.4))),
-      h("div.ctl", {},
-        stepper("time", () => s.secs, (d) => { s.secs = Math.max(15, s.secs + d * (s.secs < 120 ? 15 : 60)); }, clock, 1),
-        stepper(s.to != null ? "start" : "power", () => s.from, (d) => { s.from = clamp(s.from + d * 0.05); bar.className = "bg-" + zone(); }, (v) => (B.sport === "ride" ? `${pct(v)} · ${Math.round(v * P().ftp)} W` : pct(v)), 1),
-        s.to != null && stepper("end", () => s.to, (d) => { s.to = clamp(s.to + d * 0.05); bar.className = "bg-" + zone(); }, (v) => (B.sport === "ride" ? `to ${pct(v)}` : pct(v)), 1))));
-  };
-  const drawList = () => {
-    list.replaceChildren(...B.steps.map((s, i) => s.repeat
-      ? h("div.brepeat", {}, h("div.top", {}, h("span", { text: "Repeat" }), stepper("repeats", () => s.repeat, (d) => { s.repeat = Math.max(1, Math.min(30, s.repeat + d)); }, (v) => `${v} times`, 1),
-        h("button.x.link", { type: "button", "aria-label": "Remove repeat", onclick: () => { B.steps.splice(i, 1); drawList(); redrawShape(); } }, icon("x", 16, 2.4))), s.steps.map((x, j) => stepCtl(x, s.steps, j)))
-      : stepCtl(s, B.steps, i)));
-  };
-  drawList(); redrawShape();
-  const add = (what) => {
-    const at = B.steps.findIndex((s) => s.kind === "cooldown"), pos = at < 0 ? B.steps.length : at;
-    const step = { warmup: { kind: "warmup", secs: 600, from: 0.5, to: 0.75, name: "Warm up" }, work: { kind: "work", secs: 300, from: 1.0, name: "Interval" }, rest: { kind: "rest", secs: 180, from: 0.55, name: "Easy" },
-      repeat: { repeat: 3, steps: [{ kind: "work", secs: 240, from: 1.1, name: "Hard" }, { kind: "rest", secs: 120, from: 0.55, name: "Easy" }] }, cooldown: { kind: "cooldown", secs: 600, from: 0.65, to: 0.45, name: "Cool down" } }[what];
-    if (what === "warmup") B.steps.unshift(step); else if (what === "cooldown") B.steps.push(step); else B.steps.splice(pos, 0, step);
-    drawList(); redrawShape();
-  };
-  return {
-    title: base ? "Edit workout" : "New workout",
-    right: h("button.link.done", { type: "button", onclick: () => {
-      if (!B.steps.length) return toast("Add a step first", true);
-      const i = S.mine.findIndex((x) => x.id === B.id);
-      if (i >= 0) S.mine[i] = B; else S.mine.unshift(B);
-      keep("workouts"); S.sport = B.sport; closeSheet(); toast("Saved to your workouts"); redraw();
-    } }, "Save"),
-    body: [
-      h("input.field", { type: "text", value: B.name, "aria-label": "Name", maxlength: 40, oninput: (e) => { B.name = e.target.value.trim() || "My workout"; } }),
-      card(null, null, picture, figs),
-      list,
-      h("div.adds", {}, [["warmup", "Warm up"], ["work", "Interval"], ["rest", "Recovery"], ["repeat", "Repeat"], ["cooldown", "Cool down"]].map(([k, l]) => h("button.pill.small", { type: "button", onclick: () => add(k) }, icon("plus", 14, 2.6), l))),
-      h("p", { text: "Power is a share of your FTP, so the workout follows your fitness as it changes. Saved here, it can go to your Garmin, Wahoo, Zwift or TrainerRoad like any other." }),
     ],
   };
 }
@@ -958,7 +895,7 @@ async function importFiles(files) {
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3) || got.acts.some((x) => x.start === a.start)) { got.dupes++; continue; }
         got.acts.push(a);
       }
-      got.workouts.push(...r.workouts);
+      if (r.workouts.length) got.skipped.push(`${f.name}: a workout, not an activity. Fitness takes the rides, runs and swims your devices record.`);
       got.skipped.push(...(r.skipped || []));
     } catch (e) { got.skipped.push(`${f.name}: ${e.message}`); }
   }
