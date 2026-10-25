@@ -403,10 +403,23 @@ const t2 = JSON.parse((await api(L, '/api/fitness/garmin-tick', { method: 'POST'
 const pushedAfter = readFileSync(`${S}/pushbox.jsonl`, 'utf8').split('\n').filter((l) => l.includes('fitness-laptop')).length;
 ok(t1.morning?.sent === 1 && t2.morning?.sent === 0 && pushedAfter === pushedBefore + 1, 'its time come: sent once, and not again that day', `${JSON.stringify(t1.morning)} ${JSON.stringify(t2.morning)} ${pushedBefore}→${pushedAfter}`);
 
+// ---- 8f. Progress on the laptop: the story (fitness, tiles), and Power's records from the rides ----
+await tab(L, 4);
+await L.p.waitForSelector('.p-hero', { timeout: 20000 }); await settle(L, 800);
+const prog = await L.p.locator('main').innerText();
+ok(/Progress/.test(prog) && /\d+\s*fitness/.test(prog) && /FTP/.test(prog) && /Form/.test(prog) && await L.p.locator('.p-cal-grid i').count() === 182, 'Progress: fitness and where it\'s heading, the tiles, and every day', prog.replace(/\s+/g, ' ').slice(0, 140));
+await L.p.screenshot({ path: `${out}/progress.png` });
+await L.p.locator('main .row', { hasText: 'Power' }).first().click(); await L.p.waitForSelector('#sheet[open] .p-curve'); await settle(L, 600);
+const recs = await L.p.locator('#sheet .p-record').count();
+await L.p.locator('#sheet .p-lens button', { hasText: '20 min' }).click(); await settle(L, 300);
+ok(recs >= 3 && /Your best for 20 minutes/i.test(await L.p.locator('#sheet .p-kick').first().innerText()), 'Power: records from the rides, and a length tapped', String(recs));
+await done(L);
+for (const t of ['Training', 'Engine']) { await L.p.locator('main .row', { hasText: t }).click(); await L.p.waitForSelector('#sheet[open] .card'); await settle(L, 500); await done(L); }
+
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);
 const wide = [];
-for (const i of [1, 2, 3]) { await tab(L, i); if (await L.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push(i); }
+for (const i of [1, 2, 3, 4]) { await tab(L, i); if (await L.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push(i); }
 await P.p.setViewportSize({ width: 320, height: 640 }); await settle(P);
 if (await P.p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) wide.push('welcome');
 ok(!wide.length, 'at 320 px wide, no screen scrolls sideways', wide.join(','));

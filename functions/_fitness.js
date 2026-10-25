@@ -85,6 +85,8 @@ export function cleanState(d) {
   if (d.profile?.name) profile.name = text(d.profile.name, 60);
   // (the ones you set yourself: the rest are worked out from your rides)
   if (Array.isArray(d.profile?.set)) profile.set = [...new Set(d.profile.set.filter((k) => k in PROFILE))];
+  // (FTP as it's changed: [day, watts, set by you (1) or worked out (0)], for Progress)
+  if (Array.isArray(d.profile?.ftpLog)) profile.ftpLog = d.profile.ftpLog.filter((x) => Array.isArray(x) && num(x[0], 0, 9e12) != null && num(x[1], 50, 600) != null).slice(-120).map((x) => [x[0], Math.round(x[1]), x[2] ? 1 : 0]);
   const p = d.plan, plan = obj(p) && /^[a-z0-9-]{1,20}$/.test(String(p.id || "")) && num(p.start, 0, 9e12) != null ? { id: p.id, start: p.start, ...(num(p.at, 0, 9e12) != null ? { at: p.at } : {}) } : null;
   const swaps = {}, feel = {};
   for (const [k, v] of Object.entries(obj(d.swaps) ? d.swaps : {}).slice(-400)) if (DAYKEY.test(k) && (v === null || /^[A-Za-z0-9_:-]{1,40}$/.test(String(v)))) swaps[k] = v;
@@ -105,7 +107,9 @@ export function cleanState(d) {
   return out;
 }
 // An activity's own words and figures, as the phone sends them with its file
-const SUM_NUMS = ["secs", "moving", "dist", "ascent", "ftp", "lthr", "runPace", "css", "avgPwr", "maxPwr", "kj", "np", "iF", "tss", "avgHr", "maxHr", "avgCad", "maxSpd", "avgSpd", "kcal"];
+// (drift: heart rate's drift against power, second half on first, in %; late20: the best 20 minutes after two hours;
+// xv: which version of those figures the phone worked out)
+const SUM_NUMS = ["secs", "moving", "dist", "ascent", "ftp", "lthr", "runPace", "css", "avgPwr", "maxPwr", "kj", "np", "iF", "tss", "avgHr", "maxHr", "avgCad", "maxSpd", "avgSpd", "kcal", "drift", "late20", "xv"];
 export function cleanAct(m) {
   if (!obj(m) || !/^[A-Za-z0-9_-]{1,40}$/.test(String(m.id || ""))) throw new HttpError(400, "Bad request.");
   const start = num(m.start, Date.UTC(1990, 0, 1), Date.now() + 2 * 86400e3);
@@ -210,14 +214,16 @@ export async function renameActivity(env, userId, id, name) {
   const r = await (await fitdb(env)).prepare("UPDATE fx_acts SET name = ? WHERE user_id = ? AND id = ?").bind(text(name, 80) || "Activity", userId, id).run();
   if (!r.meta?.changes) throw new HttpError(404, "That activity isn’t here any more.");
 }
-// its route's shape, worked out by the phone for one kept before rows had it
-export async function routeActivity(env, userId, id, route) {
-  const D = await fitdb(env), clean = cleanRoute(route);
-  if (!clean) throw new HttpError(400, "Bad request.");
+// figures worked out by the phone for one kept before rows had them: its route's shape, its staying power
+export async function addFigures(env, userId, id, b) {
+  const D = await fitdb(env), add = {};
+  if (b.route !== undefined) { const r = cleanRoute(b.route); if (!r) throw new HttpError(400, "Bad request."); add.route = r; }
+  for (const [k, lo, hi] of [["drift", -50, 100], ["late20", 0, 2000], ["xv", 0, 100]]) if (b[k] !== undefined) { const v = num(b[k], lo, hi); if (v == null) throw new HttpError(400, "Bad request."); add[k] = Math.round(v * 10) / 10; }
+  if (!Object.keys(add).length) throw new HttpError(400, "Bad request.");
   const row = await D.prepare("SELECT sum FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
   let sum = {}; try { sum = JSON.parse(row.sum || "{}") || {}; } catch (_) {}
-  await D.prepare("UPDATE fx_acts SET sum = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, route: clean }), userId, id).run();
+  await D.prepare("UPDATE fx_acts SET sum = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, ...add }), userId, id).run();
 }
 export async function deleteActivity(env, userId, id) {
   await (await fitdb(env)).prepare("DELETE FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).run();

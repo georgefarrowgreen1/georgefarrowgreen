@@ -39,6 +39,8 @@ const ICONS = {
   today: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   plan: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17.2h3"/>',
   bolt: '<path d="M13 3 5.5 13.2h5.6L10 21l8.5-11h-5.8z"/>',
+  trend: '<path d="M3.5 17 9.5 11l4 4 7-7.5"/><path d="M15 7.5h5.5V13"/>',
+  medal: '<circle cx="12" cy="9" r="5.5"/><path d="M8.8 13.6 7.5 21l4.5-2.6 4.5 2.6-1.3-7.4"/>',
   list: '<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11"/><circle cx="4.6" cy="6.5" r="1"/><circle cx="4.6" cy="12" r="1"/><circle cx="4.6" cy="17.5" r="1"/>',
   ride: '<circle cx="6" cy="16" r="3.6"/><circle cx="18" cy="16" r="3.6"/><path d="M6 16l3.7-7h6.1L18 16M9.7 9 12.4 16H6M14.3 6.4h2.4"/>',
   run: '<circle cx="14.5" cy="4.6" r="1.8"/><path d="M8.5 10.2 11.6 8l3.1 1 1.8 3.2 2.6.6M11.6 8l-1.7 5.2 3.2 2.6-1.3 4.7M9.9 13.2l-2.3 3.1-3.3.3"/>',

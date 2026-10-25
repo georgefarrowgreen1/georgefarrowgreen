@@ -7,7 +7,7 @@
 //   GET    /api/fitness/acts/<id>     an activity's file
 //   PUT    /api/fitness/acts/<id>     its file again, made smaller by the phone (as FIT, gzipped): a form, meta ({ type,
 //                                    file }) and file
-//   PATCH  /api/fitness/acts/<id>     renamed ({ name }), or its route's shape added ({ route })
+//   PATCH  /api/fitness/acts/<id>     renamed ({ name }), or figures added ({ route, drift, late20, xv })
 //   DELETE /api/fitness/acts/<id>
 //   GET    /api/fitness/garmin        Garmin Connect (functions/_garmin.js): connected or not, and the activities waiting
 //   POST   /api/fitness/garmin        your Personal API key, tried and kept → as GET
@@ -31,7 +31,7 @@ import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
-import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, routeActivity, MAX_FILE } from "../../_fitness.js";
+import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 async function view(env, u) {
@@ -95,7 +95,7 @@ const ROUTES = {
   "PATCH acts/:id": async ({ request, env, id }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
-    if (b.route !== undefined) await routeActivity(env, u.id, id, b.route);
+    if (b.name === undefined) await addFigures(env, u.id, id, b);
     else await renameActivity(env, u.id, id, b.name);
     return json({ ok: true });
   },
