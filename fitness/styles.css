@@ -918,9 +918,17 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-mini b { font-size: 16px; } .p-mini small { font-size: 13px; line-height: 1.35; }
 .p-mini.green { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; } .p-mini.green small { color: rgba(10, 60, 30, 0.72); }
 .p-mini.green .p-ring .bg { stroke: rgba(20, 120, 60, 0.15); } .p-mini.green .p-ring text { fill: #0f5a31; }
-.p-mini.orange { background: linear-gradient(160deg, #fff1e6, #ffd9bd); color: #0d1020; } .p-mini.orange small { color: rgba(90, 40, 0, 0.72); }
+/* (the run of weeks: in Progress's indigo, as new records are, by night and by day) */
+.p-mini.orange { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
+.p-mini.orange small { color: var(--text-2); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .p-mini.orange { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+  :root:not([data-theme="dark"]) .p-mini.orange small { color: rgba(30, 28, 80, 0.65); }
+}
+:root[data-theme="light"] .p-mini.orange { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+:root[data-theme="light"] .p-mini.orange small { color: rgba(30, 28, 80, 0.65); }
 .p-steps { display: flex; gap: 4px; align-items: flex-end; height: 56px; }
-.p-steps i { width: 12px; height: var(--h); border-radius: 4px; background: linear-gradient(180deg, #ffb347, #e8590c); opacity: var(--o); }
+.p-steps i { width: 12px; height: var(--h); border-radius: 4px; background: linear-gradient(180deg, #a9a4ff, #5e5ce6); opacity: var(--o); }
 .p-mix { display: flex; align-items: center; gap: 16px; padding: 18px; }
 .p-mix .tx { flex: 1; display: grid; gap: 8px; } .p-mix .tx small { font-size: 12px; line-height: 1.4; color: var(--text-2); }
 .p-key { display: flex; align-items: center; gap: 8px; font-size: 14px; } .p-key span { flex: 1; } .p-key i { width: 10px; height: 10px; border-radius: 3px; }
