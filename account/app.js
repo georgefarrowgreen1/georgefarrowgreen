@@ -315,7 +315,10 @@ async function load() {
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
       else if (now.signedIn) { S.me = now; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
       else S.handoff = who;
-    } catch (e) { setTimeout(() => toast(e.message, true), 400); }
+    } catch (e) {
+      // (whose code it was not known: what it was to open isn't opened for whoever's signed in here)
+      HANDOFF.open = null; setTimeout(() => toast(e.message, true), 400);
+    }
   }
   try { if (!S.me?.signedIn) S.me = await call("me"); S.pulled = Date.now(); }
   catch (e) {
@@ -2698,14 +2701,22 @@ function emailView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const input = h("input", { type: "email", autocomplete: "email", inputmode: "email", autocapitalize: "none", spellcheck: "false", placeholder: "you@example.com" });
   const go = h("button.btn", { type: "submit" }, "Send a link to it");
+  const sentSay = "We sent a link to it. Open it to confirm.";
+  const hint = !m.emailOk && h("p.hint", { text: linkSent(m) ? sentSay : "Not confirmed yet: open the link we send to it." });
   const status = h("div.group", {},
     h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: m.email })),
       m.emailOk ? h("span.badge", {}, "Confirmed") : h("button.mini.go", { type: "button", onclick: async (e) => {
-        try { confirmSent(await busy(e.currentTarget, "", () => post("email/confirm-send"))); toast(`A link is on its way to ${m.email}.`); } catch (err) { say(said, err.message); }
+        const b = e.currentTarget;
+        try {
+          const r = await busy(b, "", () => post("email/confirm-send")); confirmSent(r);
+          // (said here in place, not drawn again, so a new email half typed below stays)
+          if (!r.already) { b.textContent = "Send again"; hint.textContent = sentSay; }
+          toast(`A link is on its way to ${m.email}.`);
+        } catch (err) { say(said, err.message); }
       } }, linkSent(m) ? "Send again" : "Send link")));
   return { title: "Email", body: [
     status,
-    !m.emailOk && h("p.hint", { text: linkSent(m) ? "We sent a link to it. Open it to confirm." : "Not confirmed yet: open the link we send to it." }),
+    hint,
     m.emailNew && h("div.pending.glass", {}, h("span.ic.blue", {}, icon("mail", 18)),
       h("span.tx", {}, h("b", { text: `Waiting for ${m.emailNew}` }), h("small", { text: "Open the link we sent there (it lasts 2 days). Until then, nothing changes." })),
       h("button.mini", { type: "button", onclick: async (e) => {
@@ -2751,20 +2762,26 @@ function checkView() {
 
 // ---- preferences, for every app on the site that has them ----
 const APPEAR = [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]];
-// (→ whether it was kept: S.me is only ever what was, so a choice that wasn't is put back from it, and said why)
-async function setPrefs(changes) {
-  try { S.me = await call("prefs", { method: "PUT", body: changes }); patch(); return true; }
-  catch (e) { toast(e.message, true); return false; }
+// (S.me is only ever what was kept, so a choice that wasn't is put back from it, and said why: once the last of that
+// sheet's saves is back, not as each fails, so replies that come back in another order than they were asked for still
+// end on what's kept. out: that sheet's saves on their way, and whether one of them wasn't kept)
+const prefsOut = { appearance: { n: 0 }, units: { n: 0 } };
+async function setPrefs(changes, out, putBack) {
+  out.n++;
+  try { S.me = await call("prefs", { method: "PUT", body: changes }); patch(); }
+  catch (e) { toast(e.message, true); out.missed = true; }
+  if (--out.n || !out.missed) return;
+  out.missed = false; putBack();
 }
 function appearanceView() {
   const m = S.me;
-  const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: async () => {
+  const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: () => {
     theme(k, true);
     for (const b of sheetEl.querySelectorAll(".appear")) { const on = b === opts[APPEAR.findIndex(([x]) => x === k)]; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
-    if (!(await setPrefs({ appearance: k }))) {
+    setPrefs({ appearance: k }, prefsOut.appearance, () => {
       theme(S.me.prefs.appearance, true);
       if (Sheet.stack.at(-1) === appearanceView) redraw();
-    }
+    });
   } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
   return { title: "Appearance", body: [
     h("div.appears", {}, opts)] };
@@ -2802,7 +2819,7 @@ function unitsView() {
   const m = S.me, u = { ...unitsHere(), ...(m.prefs.units || {}) };
   return { title: "Units", body: [
     h("p", { text: "For Weather, on every device it’s signed in on: forecasts, the map and notifications." }),
-    h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], async (v) => { if (!(await setPrefs({ units: { [k]: v } })) && Sheet.stack.at(-1) === unitsView) redraw(); })))),
+    h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], (v) => setPrefs({ units: { [k]: v } }, prefsOut.units, () => Sheet.stack.at(-1) === unitsView && redraw()))))),
   ] };
 }
 
@@ -2853,8 +2870,12 @@ function emailsView() {
 // ---- InFlight's settings that are the account's (functions/api/account inflight): which notifications, how they read
 // on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
 // (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
-// (ifFor: whose they are; ifSeq, ifBusy: what's been asked for, and the changes on their way)
-let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0;
+// (ifFor: whose they are; ifSeq, ifBusy: what's been asked for, and the changes on their way; ifStale: a fetch dropped
+// for one of those)
+let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0, ifStale = false;
+// (a fetch dropped for a change: the sheet drawn again once the last change is back, from what that gave back, so the
+// rows it didn't touch don't stay as they were cached; and, if one couldn't be kept, fetched again as it's drawn)
+const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (Sheet.stack.at(-1) === inflightView) redraw(); };
 const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off", "When a friend sends you one"], ["rerouted", "A pigeon changes course", "When a friend moves while yours is flying"],
   ["lost", "A pigeon is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
   ["accepted", "Request accepted"], ["reactions", "Reactions", "When someone reacts to your message"], ["moments", "Mid-air moments", "Near misses, cheers, ships, and friends’ pigeons flying over you"],
@@ -2870,8 +2891,10 @@ function inflightView() {
   if (!IF || Date.now() - ifAt > 5000) {
     ifAt = Date.now();
     const s = ++ifSeq, who = S.me.id;
-    call("inflight").then((r) => { if (who === S.me?.id && s === ifSeq && !ifBusy) { IF = r; redraw(); } },
-      (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
+    call("inflight").then((r) => {
+      if (who !== S.me?.id) return;
+      if (s === ifSeq && !ifBusy) { IF = r; redraw(); } else { ifStale = true; ifCaughtUp(); }
+    }, (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
   }
   const back = HANDOFF?.open === "inflight" && fromApp() === "inflight"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
@@ -2883,8 +2906,8 @@ function inflightView() {
   const change = async (input, patch, after) => {
     input.disabled = true; ifSeq++; ifBusy++;
     try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
-    catch (e) { if (input.type === "checkbox") input.checked = !input.checked; else if (Sheet.stack.at(-1) === inflightView) redraw(); toast(e.message, true); }
-    finally { ifBusy--; input.disabled = false; }
+    catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (Sheet.stack.at(-1) === inflightView) redraw(); toast(e.message, true); }
+    finally { ifBusy--; input.disabled = false; ifCaughtUp(); }
   };
   const sw = (key, title, sub, on, patch, { after, disabled } = {}) => {
     const input = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });

@@ -297,7 +297,8 @@ Motion, solid with Reduce Transparency.
 - **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
-  server too, 409).
+  server too, 409), and what the app's link was to open (Edit profile, InFlight's settings) isn't opened for that one;
+  nor is it where the code can't be checked (run out, or refused), as whose it was isn't known.
 - **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
   the buttons, with your name and handle on it in large type (your email's in Edit profile, and Sign-in and security);
   **Edit profile** (your name and handle) and **Your code** under it. Its camera opens **Your photo** (the one place to change it): drag the photo (or use the arrow keys) to choose what shows, with the circle every
@@ -422,7 +423,7 @@ Motion, solid with Reduce Transparency.
   Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
   password only here; a reset link by email,
   passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
-  refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
+  refused), `.tools/tests/acctlink.mjs` (24 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
   over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
   wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
 
