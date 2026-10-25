@@ -930,6 +930,11 @@ await p.selectOption('#act-add', 'golf');
 ok((await p.locator('#acts-list .act').count()) === 4, 'golf added to the list');
 await p.locator('#acts-list .act').first().locator('button').click();
 ok(await p.textContent('#settings-title') === 'Run' && await p.getAttribute('#set-back', 'aria-label') === 'Back to Best times', 'an activity has a page of its own, in Best times');
+{
+  // (the temperatures with a keyboard that has a minus, below zero being one: an iPhone's numeric keypad hasn't; the rest the keypad)
+  const modes = await p.evaluate(() => Object.fromEntries([...document.querySelectorAll('.act-edit input[type="number"]')].map((x) => [x.name, x.getAttribute('inputmode')])));
+  ok(modes.tmin === null && modes.tmax === null && modes.windMax === 'numeric' && modes.hours === 'numeric', 'its temperatures can be typed below zero (no digits-only keypad)', JSON.stringify(modes));
+}
 await p.fill('.act-edit input[name="tmax"]', '20');
 await p.click('.act-edit .pill-btn');
 ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()) && await p.textContent('#settings-title') === 'Best times', 'a run\'s limits changed, and back in Best times', await p.locator('#acts-list .act-lim').first().textContent());
@@ -1153,6 +1158,26 @@ await ctx.close();
   const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, charts: document.querySelectorAll('#detail-body .chart svg').length, sections: [...document.querySelectorAll('#detail-body .day-section')].map((x) => x.textContent), tides: document.querySelectorAll('#detail .kv.tides dt').length, labels: document.querySelectorAll('#detail-body .chart .c-label').length, about: document.querySelector('#detail .detail-about')?.textContent || '', dots: document.querySelectorAll('#detail-dots i').length }));
   ok(sheet.title === 'Sea' && sheet.charts === 2 && sheet.sections.join('|') === 'Tide, next 48 hours (m)|Waves, next 48 hours (m)' && sheet.tides >= 2 && sheet.labels >= 7 && /not for navigation/.test(sheet.about) && /(10 km|6\.2 mi) offshore/.test(sheet.about) && sheet.dots === 11,
     'its sheet: two days of the tide (its turns marked and listed) and of the waves, and what it is: a model, not a tide table', JSON.stringify(sheet).slice(0, 260));
+  await ctx.close();
+}
+// a notification for My Location tapped (its link is just where it was, to two decimal places): My Location shown, not
+// offered as a place to add; a link to near there from someone else still asked about
+{
+  const { ctx, p } = await open({}, { settle: false });
+  let asked = 0; p.on('dialog', () => asked++);
+  const soho = { name: 'Soho', region: 'London, England', lat: 51.5136, lon: -0.1357, gps: true };
+  const seed = (notify) => p.evaluate(([soho, notify]) => {
+    localStorage.setItem('wx:places', JSON.stringify([soho, { name: 'Paris', region: 'France', lat: 48.8566, lon: 2.3522 }]));
+    localStorage.setItem('wx:cur', '1');
+    localStorage.setItem('wx:settings', JSON.stringify({ notify }));
+  }, [soho, notify]);
+  await seed({ places: [{ ...soho, rain: true, warn: false }], brief: null });
+  await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 }); await p.waitForTimeout(500);
+  const shown = await p.evaluate(() => ({ name: document.getElementById('place-name').textContent, places: JSON.parse(localStorage.getItem('wx:places')).length, cur: JSON.parse(localStorage.getItem('wx:cur')) }));
+  ok(!asked && shown.name === 'Soho' && shown.places === 2 && shown.cur === 0, 'a notification for My Location, tapped: My Location shown, and nothing asked or added', JSON.stringify({ asked, ...shown }));
+  await seed({ places: [], brief: null });
+  await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 });
+  ok(asked === 1, 'a link to near there that isn\'t one of its own notifications: asked about, as any shared link is', `${asked} asked`);
   await ctx.close();
 }
 // fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a

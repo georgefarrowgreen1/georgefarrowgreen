@@ -6,11 +6,14 @@
 (() => {
   try {
     const read = (k) => JSON.parse(localStorage.getItem(k) || "null");
-    const k = read("wx:hero"), places = read("wx:places"), cur = read("wx:cur");
+    const k = read("wx:hero"), places = read("wx:places"), cur = read("wx:cur"), nn = read("wx:settings")?.notify || {};
     if (!k || !(Date.now() - k.at < 3 * 3600e3) || !Array.isArray(places) || !places.length) return;
-    // (the place a shared link names, if it's opened from one: app.js start; else the one you were last on)
+    // (the place a shared link names, if it's opened from one, or My Location for one of its own notifications: app.js
+    // start; else the one you were last on)
     const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
-    const p = Number.isFinite(lat) && Number.isFinite(lon) ? places.find((x) => !x.gps && Math.abs(x.lat - lat) < 0.02 && Math.abs(x.lon - lon) < 0.02)
+    const near = (x, d = 0.02) => Math.abs(x.lat - lat) < d && Math.abs(x.lon - lon) < d;
+    const own = [...(Array.isArray(nn.places) ? nn.places : []), nn.brief].some((x) => x?.gps && near(x));
+    const p = Number.isFinite(lat) && Number.isFinite(lon) ? places.find((x) => !x.gps && near(x)) || (own ? places.find((x) => x.gps && near(x, 0.2)) : null)
       : places[Math.min(Number.isInteger(cur) && cur > 0 ? cur : 0, places.length - 1)];
     if (!p || Math.abs(p.lat - k.lat) > 0.01 || Math.abs(p.lon - k.lon) > 0.01) return;
     const $ = (id) => document.getElementById(id);

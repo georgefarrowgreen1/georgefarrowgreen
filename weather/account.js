@@ -50,6 +50,13 @@ export function mergePlaces(theirs, mine, base) {
   for (const p of mine) { const k = keyOf(p); if (seen.has(k) || was.has(k)) continue; seen.add(k); out.push(p); }
   return out;
 }
+// The settings, the same way, setting by setting: each one this device has changed since they were last in step (base:
+// the settings then) this device's, the rest the account's (keys: the settings kept with it; canon: one as words, its
+// keys in order, so the same setting always reads the same)
+export function mergeSettings(theirs, mine, base, keys, canon) {
+  const b = base || {};
+  return Object.fromEntries(keys.map((k) => [k, canon(mine[k]) !== canon(b[k]) ? mine[k] : (theirs?.[k] ?? mine[k])]));
+}
 // A place as notifications know it: My Location is "gps", wherever it is on whichever device last moved it
 export const nkeyOf = (p) => (p.gps ? "gps" : keyOf(p));
 // What's changed between two lots of notification choices: the places (by nkeyOf) whose choice differs, "brief", and
