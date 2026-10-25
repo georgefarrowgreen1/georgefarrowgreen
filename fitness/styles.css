@@ -695,3 +695,17 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .ss-feeds { display: flex; flex-wrap: wrap; gap: 8px; }
 .ss-feeds span { display: grid; gap: 1px; padding: 8px 12px; border-radius: 14px; background: var(--glass-ctl); font-size: 13px; color: var(--text-2); text-align: center; }
 .ss-feeds b { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---- the day's check-in ---- */
+.checkin { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.checkin > div:first-child { display: grid; gap: 3px; }
+.checkin b { font-size: 16px; font-weight: 600; }
+.checkin small { font-size: 13px; color: var(--text-2); line-height: 1.35; }
+.checkin.done { display: grid; gap: 10px; }
+.checkin-said { display: flex; gap: 12px; align-items: flex-start; }
+.checkin-said .ic { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.checkin-said > div { display: grid; gap: 2px; }
+.checkin-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 8px; border-top: 0.5px solid var(--line); font-size: 13px; color: var(--text-3); }
+.checkin-q { display: grid; gap: 10px; }
+.checkin-q b { font-size: 16px; font-weight: 600; }
+.rh-today .acts { flex-wrap: wrap; }

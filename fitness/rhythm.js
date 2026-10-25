@@ -225,7 +225,9 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     const target = absorb ? ctl * 7 * (hold ? 0.8 : 0.6) : (ctl + 6 * ramp) * 7;
     const daysLeft = P.days.slice(dow).filter((x) => x > 0).length || 1, share = Math.max(0, (target - week.tss) / daysLeft);
     const maxHard = absorb ? 1 : hours >= 12 ? 3 : 2, longest = avail === Math.max(...P.days) && avail >= 90;
-    const canHard = tsb > -20 && day - lastHard >= 2 * DAY - 3600e3 && week.hard < maxHard && f === "good" && avail >= 50;
+    // (heavy legs, or a poor day, carry over: the day after is easy too)
+    const fy = feel[addDays(day, -1)], yesterday = fy && addDays(day, -1) <= today ? (feelOf(fy) === "poor" ? "you weren't feeling good yesterday" : fy.legs === 0 ? "your legs were heavy yesterday" : null) : null;
+    const canHard = tsb > -20 && day - lastHard >= 2 * DAY - 3600e3 && week.hard < maxHard && f === "good" && !yesterday && avail >= 50;
     // what's needed most: each kind's days since, against how often this block (and your lean, and your hours) wants it
     const sp = { ...SPACING[theme] };
     if (P.lean === "endurance") { sp.tempo *= 0.7; sp.sweet *= 0.8; sp.vo2 *= 1.4; sp.sprint *= 1.6; }
@@ -242,7 +244,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       why = `${ago} since your last ${WORDS[k]} session${theme === (k === "vo2" || k === "sprint" ? "topend" : k === "tempo" ? "aerobic" : "threshold") ? `, and you're in ${/^[aeiou]/.test(block) ? "an" : "a"} ${block} block` : ": keeping it sharp"}`;
     } else if (longest) { kind = "long"; why = "Your longest day: the week's long ride"; }
     else if (tsb < -15) { kind = "recovery"; why = `Easy: your form is ${Math.round(tsb)}`; }
-    else { kind = "endurance"; why = f === "tired" ? "Steady, not hard: a poor night or heavy legs" : "Aerobic riding between the harder days"; }
+    else { kind = "endurance"; why = f === "tired" ? "Steady, not hard: a poor night or heavy legs" : yesterday ? `Steady, not hard: ${yesterday}` : "Aerobic riding between the harder days"; }
     // a run and a swim a week, where you do them, in place of an easy ride on a shorter day
     let id = null, mins = avail;
     if ((kind === "endurance" || kind === "recovery") && !longest) {

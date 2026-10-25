@@ -63,6 +63,8 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebK
 const pages = [];
 async function browser(name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, acceptDownloads: true });
+  // (the day's check-in, asked as the app opens, left for the step that tests it: as if already asked today)
+  await ctx.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); } catch (_) {} });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`${name}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[13]|Cross-Origin-Opener-Policy header has been ignored/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
@@ -266,6 +268,13 @@ if (await L.p.locator('.session .pill', { hasText: 'Details' }).count()) {
   await L.p.screenshot({ path: `${out}/rhythm-session.png` });
   await done(L);
 }
+
+// (the day's check-in: heavy legs and a poor night ease today, and tomorrow too)
+await L.p.locator('.checkin .pill', { hasText: 'Check in' }).click(); await L.p.waitForSelector('#sheet[open] .checkin-q'); await settle(L, 400);
+for (const [k, v] of [['sleep', 'Poorly'], ['legs', 'Heavy'], ['mood', 'Low']]) await L.p.locator(`#sheet .seg[aria-label="${k}"] button`, { hasText: v }).click();
+await L.p.locator('#sheet .btn', { hasText: 'Done' }).click(); await settle(L, 900);
+const checked = await L.p.locator('.checkin.done').innerText().catch(() => '');
+ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly · Heavy legs · Low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

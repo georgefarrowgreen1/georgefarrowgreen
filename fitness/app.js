@@ -375,28 +375,54 @@ function weekCard() {
 // How you feel: sleep, legs and mood, said in a tap each, and what to do about it with your form. Tired legs on a hard
 // day: an easier session, swapped in with a tap (and back again).
 function feelCard(w) {
-  const f = S.feel[TODAY] || {}, set = (k, v) => { S.feel[TODAY] = { ...f, [k]: v }; keep("feel"); redraw(); };
-  const seg = (k, opts) => {
-    const at = opts.findIndex(([v]) => v === f[k]);
-    return h("div.seg.small" + (at < 0 ? ".none" : ""), { vars: { "--n": opts.length, "--at": Math.max(0, at) }, role: "group", "aria-label": k },
-      opts.map(([v, label]) => h("button", { type: "button", "aria-pressed": String(f[k] === v), onclick: () => set(k, v) }, label)));
-  };
-  const rows = [["sleep", "Sleep", [[0, "Poor"], [1, "OK"], [2, "Good"]]], ["legs", "Legs", [[0, "Heavy"], [1, "Normal"], [2, "Fresh"]]], ["mood", "Motivation", [[0, "Low"], [1, "OK"], [2, "High"]]]];
-  let verdict = null;
-  const rd = rhythmOn() ? rhDay(TODAY) : null;
-  if (rd && ["sleep", "legs", "mood"].some((k) => f[k] != null)) {
-    verdict = rd.feel === "good" ? h("div.verdict", {}, h("span.ic.green", {}, icon("check", 16, 2.6)), h("div", {}, h("b", { text: "Ready for it" }), h("p", { text: rd.id ? "Today’s session stands." : "Enjoy the rest day." })))
-      : h("div.verdict", {}, h("span.ic.amber", {}, icon("swap", 16, 2.2)), h("div", {}, h("b", { text: "Rhythm has eased today" }), h("p", { text: rd.why })));
-  } else if (!rd && ["sleep", "legs", "mood"].every((k) => f[k] != null)) {
-    const score = f.sleep + f.legs + f.mood, tsb = S.summed ? fitnessSeries().at(-1).tsb : 0, hard = w && measure(w).iF > 0.8;
-    if (score <= 2 || (f.legs === 0 && tsb < -20)) {
-      verdict = h("div.verdict", {}, h("span.ic.amber", {}, icon("swap", 16, 2.2)), h("div", {}, h("b", { text: hard ? "Swap today for something easy" : "Take it easy today" }),
-        h("p", { text: hard ? `Tired legs and form of ${Math.round(tsb)}: ${w.name} would cost more than it gives. An easy spin keeps the legs turning.` : "Keep it short and easy, or rest. Tomorrow will go better for it." }),
-        hard && h("button.pill.small", { type: "button", onclick: () => { S.swaps[TODAY] = "recovery-45"; keep("swaps"); toast("Swapped for a recovery spin"); redraw(); } }, "Swap for a recovery spin")));
-    } else verdict = h("div.verdict", {}, h("span.ic.green", {}, icon("check", 16, 2.6)), h("div", {}, h("b", { text: score >= 5 ? "Ready for it" : "Good to go" }),
-      h("p", { text: w ? `Ride ${w.name} as planned.` : myPlan() ? "Enjoy the rest day." : "Ride as you feel." })));
+  const f = S.feel[TODAY] || {}, done = ["sleep", "legs", "mood"].every((k) => f[k] != null);
+  // (not yet today: a check-in, a tap away; with Rhythm it's asked as the app opens, once a day)
+  if (!done) return h("div.card.glass.checkin", {}, h("div", {}, h("b", { text: "How are you today?" }), h("small", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps: sleep, legs and motivation." })),
+    h("button.pill.primary", { type: "button", onclick: () => openCheckIn() }, "Check in"));
+  const said = [["sleep", ["Slept poorly", "Slept OK", "Slept well"]], ["legs", ["Heavy legs", "Normal legs", "Fresh legs"]], ["mood", ["Low motivation", "Motivation OK", "Motivated"]]].map(([k, xs]) => xs[f[k]]).join(" · ");
+  const rd = rhythmOn() ? rhDay(TODAY) : null, tm = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null;
+  let verdict;
+  if (rd) {
+    const eased = rd.feel !== "good", carry = tm && /yesterday/.test(tm.why || "");
+    verdict = !eased && !carry ? ["green", "check", "Ready for it", rd.id ? "Today’s session stands." : "Enjoy the rest day."]
+      : ["amber", "swap", eased ? "Rhythm has eased today" : "Tomorrow eased", [eased && rd.why, carry && `Tomorrow: ${tm.why.charAt(0).toLowerCase()}${tm.why.slice(1)}.`].filter(Boolean).join(". ")];
+  } else {
+    const score = f.sleep + f.legs + f.mood, hard = w && measure(w).iF > 0.8;
+    verdict = score <= 2 && hard ? ["amber", "swap", "Take it easy today", `${w.name} would cost more than it gives today.`] : ["green", "check", score >= 5 ? "Ready for it" : "Good to go", w ? `${w.name} as planned.` : "Ride as you feel."];
   }
-  return card(null, "How do you feel?", h("div.feel", {}, rows.map(([k, label, opts]) => h("div.feel-row", {}, h("span", { text: label }), seg(k, opts))), verdict));
+  return h("div.card.glass.checkin.done", {},
+    h("div.checkin-said", {}, h("span.ic." + verdict[0], {}, icon(verdict[1], 16, 2.4)), h("div", {}, h("b", { text: verdict[2] }), h("small", { text: verdict[3] }))),
+    h("div.checkin-foot", {}, h("span", { text: said }), h("button.link.small", { type: "button", onclick: () => openCheckIn() }, "Change")));
+}
+// The day's check-in: sleep, legs and motivation, a tap each; with Rhythm, today and the days after follow it
+function openCheckIn() {
+  const f = { ...(S.feel[TODAY] || {}) };
+  try { localStorage.setItem("fitness:asked", String(TODAY)); } catch (_) {}
+  const before = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
+  const view = () => {
+    const seg = (k, opts) => { const at = opts.findIndex(([v]) => v === f[k]);
+      return h("div.seg" + (at < 0 ? ".none" : ""), { vars: { "--n": opts.length, "--at": Math.max(0, at) }, role: "group", "aria-label": k },
+        opts.map(([v, label]) => h("button", { type: "button", "aria-pressed": String(f[k] === v), onclick: () => { f[k] = v; Sheet.redraw(); } }, label))); };
+    const all = ["sleep", "legs", "mood"].every((k) => f[k] != null);
+    const save = () => {
+      S.feel[TODAY] = { ...f }; keep("feel"); closeSheet(); redraw();
+      const after = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
+      toast(before && after !== before ? "Rhythm has changed your plan to suit" : "Thanks: today stands");
+    };
+    return { title: dayLong(TODAY), right: h("button.link.r", { type: "button", onclick: closeSheet }, "Not now"), body: [
+      h("div.sheet-top", {}, h("h1", { text: "How are you today?" }), h("div.sub", { text: rhythmOn() ? "Today’s session, and the next days, follow what you say." : "So today’s riding suits how you are." })),
+      h("div.checkin-q", {}, h("b", { text: "How did you sleep?" }), seg("sleep", [[0, "Poorly"], [1, "OK"], [2, "Well"]])),
+      h("div.checkin-q", {}, h("b", { text: "How are your legs?" }), seg("legs", [[0, "Heavy"], [1, "Normal"], [2, "Fresh"]])),
+      h("div.checkin-q", {}, h("b", { text: "How motivated are you?" }), seg("mood", [[0, "Low"], [1, "OK"], [2, "High"]])),
+      h("button.btn", { type: "button", disabled: !all, onclick: save }, "Done")] };
+  };
+  openSheet(view);
+}
+// (asked once a day, as the app opens or comes back, while you're on Rhythm and haven't said)
+function askToday() {
+  if (!rhythmOn() || S.feel[TODAY] || sheetEl.open) return;
+  try { if (localStorage.getItem("fitness:asked") === String(TODAY)) return; } catch (_) {}
+  setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
 
 // ---- Plan ----
@@ -1336,6 +1362,7 @@ function arrive(m) {
   render(true);
   sumUp();
   if (S.summed) redraw();
+  askToday();
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
@@ -1352,7 +1379,7 @@ async function pull() {
     setActs(); redraw();
   } catch (_) {} finally { pull.busy = false; }
 }
-addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); });
+addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you

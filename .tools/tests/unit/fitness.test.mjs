@@ -316,3 +316,9 @@ test('Rhythm: a run and a swim a week where you do them; intervals from critical
   assert.ok(w.steps.some((s) => s.repeat === 5 && s.steps[0].from === t.vo2), 'VO₂ max intervals at the CP-set target');
   assert.equal(RH.session('rh:endurance:90', t).steps.reduce((a, s) => a + s.secs, 0), 90 * 60, 'an endurance ride the length of the day');
 });
+
+test('Rhythm: heavy legs today make tomorrow easy too', () => {
+  const base = { prefs: { start: add(monOf(rhToday), -7), days: [60, 60, 60, 60, 60, 120, 90] }, acts: steady(6), today: rhToday, ftp: 260 };
+  const r = RH.plan({ ...base, feel: { [rhToday]: { sleep: 2, legs: 0, mood: 2 } } }), tm = r.days.find((d) => d.date === add(rhToday, 1));
+  assert.ok(!tm.hard && /legs were heavy yesterday/.test(tm.why), JSON.stringify(tm));
+});
