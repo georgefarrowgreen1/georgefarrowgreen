@@ -254,3 +254,65 @@ test('an activity whose file doesn\'t say what it was: worked out from power, or
   const gpx = gpxFromActivity({ ...samples(demo(Date.now()).history.find((x) => x.workout === 'endurance-90' && !x.indoor)), start: Date.UTC(2026, 9, 20), name: 'x' }).replace(/<type>[^<]*<\/type>/, '');
   return readAny('x.gpx', new TextEncoder().encode(gpx)).then((r) => assert.ok(r.activities[0].guessed && r.activities[0].sport === 'ride'));
 });
+
+// ---- Rhythm (fitness/rhythm.js): the plan that never ends ----
+import * as RH from '../../../fitness/rhythm.js';
+import { startOfDay as sod, addDays as add, mondayOf as monOf } from '../../../fitness/workouts.js';
+const rhToday = sod(new Date(2026, 9, 21, 12).getTime());   // a Wednesday
+const steady = (weeks, { tss = 55, long = 110 } = {}) => {
+  const acts = [];
+  for (let i = weeks * 7; i > 0; i--) { const d = add(rhToday, -i), dow = (new Date(d).getDay() + 6) % 7; if (dow === 0 || dow === 4) continue;
+    acts.push({ start: d + 9 * 3600e3, sport: 'ride', sum: { tss: dow === 5 ? long : tss, moving: dow === 5 ? 9000 : 3600, iF: 0.7, curve: { 120: 380, 300: 320, 600: 290, 1200: 270, 3600: 240 } } }); }
+  return acts;
+};
+const days = (r) => r.days.filter((d) => d.date >= rhToday);
+
+test('Rhythm: never two hard days running, at most two a week, mostly easy, and rest on rest days', () => {
+  const r = RH.plan({ prefs: { start: add(monOf(rhToday), -7) }, acts: steady(8), today: rhToday, ftp: 260 });
+  const ds = days(r);
+  for (let i = 1; i < ds.length; i++) assert.ok(!(ds[i].hard && ds[i - 1].hard), `no hard days back to back (${ds[i - 1].kind}, ${ds[i].kind})`);
+  for (const mon of [...new Set(r.days.map((d) => monOf(d.date)))]) assert.ok(r.days.filter((d) => monOf(d.date) === mon && d.hard).length <= 2);
+  for (const d of ds) if ([0, 4].includes((new Date(d.date).getDay() + 6) % 7)) assert.equal(d.kind, 'rest');
+  assert.ok(ds.every((d) => d.why && (d.kind === 'rest' ? d.id === null : !!RH.workoutOf(d.id, r.targets))), 'each day has its reason and its workout');
+});
+
+test('Rhythm: a tired morning loses the intensity, not the ride; feeling poor twice, rest', () => {
+  const base = { prefs: { start: add(monOf(rhToday), -7), days: [60, 60, 60, 60, 60, 120, 90] }, acts: steady(6), today: rhToday, ftp: 260 };
+  const fresh = RH.plan(base).today, tired = RH.plan({ ...base, feel: { [rhToday]: { sleep: 0, legs: 1, mood: 2 } } }).today;
+  assert.ok(!tired.hard && tired.kind !== 'rest' && tired.mins >= 40, `tired: ${tired.kind}, ${tired.mins} min (fresh: ${fresh.kind})`);
+  const poor = { sleep: 0, legs: 0, mood: 0 };
+  assert.equal(RH.plan({ ...base, feel: { [add(rhToday, -1)]: poor, [rhToday]: poor } }).today.kind, 'rest');
+});
+
+test('Rhythm: deep in fatigue, rest; holding asks less than building; the fourth week lighter', () => {
+  const hard = steady(6, { tss: 160, long: 260 });
+  assert.equal(RH.plan({ prefs: { start: monOf(rhToday) }, acts: hard, today: rhToday, ftp: 260 }).today.kind, 'rest');
+  // (with time to spare: holding uses less of it)
+  const load = (prefs) => days(RH.plan({ prefs: { ...prefs, days: [0, 120, 120, 120, 0, 240, 180] }, acts: steady(8), today: rhToday, ftp: 260 })).reduce((a, d) => a + d.tss, 0);
+  assert.ok(load({ start: monOf(rhToday), mode: 'hold' }) < load({ start: monOf(rhToday), mode: 'build' }), 'hold < build');
+  const wk4 = RH.plan({ prefs: { start: add(monOf(rhToday), -21) }, acts: steady(8), today: rhToday, ftp: 260 });
+  assert.ok(wk4.block.absorb && wk4.days.filter((d) => d.hard && monOf(d.date) === monOf(rhToday)).length <= 1);
+});
+
+test('Rhythm: a missed session moves the next rest day, if another is to come', () => {
+  const start = add(monOf(rhToday), -7), acts = steady(6).filter((a) => sod(a.start) < monOf(rhToday));
+  // Monday and Tuesday this week ridden as planned? none: both missed; Thursday's rest moves, Sunday's doesn't
+  const r = RH.plan({ prefs: { start, days: [60, 60, 60, 0, 60, 120, 0] }, acts, today: rhToday, ftp: 260 });
+  const thu = r.days.find((d) => d.date === add(rhToday, 1));
+  assert.ok(r.days.some((d) => d.missed), 'missed sessions seen');
+  assert.ok(thu.moved && thu.kind !== 'rest' && /missed/.test(thu.why), JSON.stringify(thu));
+  assert.equal(r.days.find((d) => d.date === add(rhToday, 4)).kind, 'rest');
+});
+
+test('Rhythm: a run and a swim a week where you do them; intervals from critical power', () => {
+  const r = RH.plan({ prefs: { start: monOf(rhToday), run: true, swim: true, days: [60, 60, 60, 60, 60, 150, 60] }, acts: steady(6), today: rhToday, ftp: 260 });
+  const next7 = r.days.filter((d) => d.date >= rhToday && d.date < add(monOf(rhToday), 7));
+  assert.ok(r.days.some((d) => d.kind.startsWith('run')) && r.days.some((d) => d.kind.startsWith('swim')));
+  assert.ok(next7.filter((d) => d.kind.startsWith('run')).length <= 1);
+  const cpw = RH.criticalPower({ 120: 380, 300: 320, 600: 290, 1200: 270 }, 260);
+  assert.ok(cpw && cpw.cp > 240 && cpw.cp < 275 && cpw.w > 10000 && cpw.w < 25000, JSON.stringify(cpw));
+  assert.equal(RH.criticalPower({ 300: 320 }, 260), null);
+  const t = RH.targets(cpw, 260), w = RH.session('rh:vo2:65', t);
+  assert.ok(w.steps.some((s) => s.repeat === 5 && s.steps[0].from === t.vo2), 'VO₂ max intervals at the CP-set target');
+  assert.equal(RH.session('rh:endurance:90', t).steps.reduce((a, s) => a + s.secs, 0), 90 * 60, 'an endurance ride the length of the day');
+});

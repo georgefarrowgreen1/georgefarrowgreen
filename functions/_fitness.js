@@ -73,8 +73,8 @@ export function cleanWorkout(w) {
   return { id: w.id, sport: SPORTS.includes(w.sport) ? w.sport : "ride", kind: text(w.kind, 30) || "Yours", name: text(w.name, 60) || "My workout", about: text(w.about, 500),
     steps: steps(w.steps), ...(w.imported ? { imported: true } : {}) };
 }
-// The record: { profile, plan: { id, start, at } or null, swaps: { day: workout id or null }, feel: { day: { sleep, legs,
-// mood } }, workouts: [...], prefs: { units, examples } }
+// The record: { profile, plan: { id, start, at } or null (an event's), rhythm: Rhythm's settings or null, swaps: { day:
+// workout id or null }, feel: { day: { sleep, legs, mood } }, workouts: [...], prefs: { units, examples } }
 export function cleanState(d) {
   if (!obj(d)) throw new HttpError(400, "Bad request.");
   const profile = {};
@@ -90,7 +90,11 @@ export function cleanState(d) {
   }
   const workouts = Array.isArray(d.workouts) ? d.workouts.slice(0, 300).map(cleanWorkout) : [];
   const prefs = { units: d.prefs?.units === "imperial" ? "imperial" : "metric", examples: d.prefs?.examples === true };
-  const out = { profile, plan, swaps, feel, workouts, prefs };
+  // Rhythm: minutes each day of the week (Monday first, none a rest day), a run and a swim, its lean, build or hold, the
+  // Monday it began and the day it was set up
+  const r = d.rhythm, rhythm = obj(r) && Array.isArray(r.days) && r.days.length === 7 ? { days: r.days.map((x) => Math.round(num(x, 0, 600) ?? 0)), run: r.run === true, swim: r.swim === true,
+    lean: ["balanced", "endurance", "punch"].includes(r.lean) ? r.lean : "balanced", mode: r.mode === "hold" ? "hold" : "build", ...(num(r.start, 0, 9e12) != null ? { start: r.start } : {}), ...(num(r.at, 0, 9e12) != null ? { at: r.at } : {}) } : null;
+  const out = { profile, plan, rhythm, swaps, feel, workouts, prefs };
   if (JSON.stringify(out).length > MAX_STATE) throw new HttpError(413, "That’s more than can be kept. Delete a few of your own workouts.");
   return out;
 }

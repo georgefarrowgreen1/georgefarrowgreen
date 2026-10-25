@@ -119,6 +119,8 @@ export const WORKOUTS = [
   { id: "swim-endurance", sport: "swim", kind: "Endurance", name: "Endurance 2 km", about: "Long, smooth swimming at a steady pace, with a little rest between blocks.",
     steps: [{ kind: "warmup", metres: 300, from: 0.8, name: "Warm up" }, rep(3, { kind: "steady", metres: 400, from: 0.88, name: "Steady" }, { kind: "rest", secs: 30, from: 0, name: "Rest" }), { kind: "cooldown", metres: 200, from: 0.75, name: "Easy" }] },
   // strength (no intensity: the steps say what to do)
+  { id: "strength-heavy", sport: "strength", kind: "Strength", name: "Heavy strength", about: "Heavy and few: three sets of four to six reps, two or three minutes' rest, never to failure. After a hard ride, so easy days stay easy.",
+    steps: [at(6, 0.4, "Warm up: mobility, then two light sets"), rep(3, at(1, 0.85, "Back squat × 5"), at(2.5, 0.3, "Rest"), at(1, 0.85, "Romanian deadlift × 5"), at(2.5, 0.3, "Rest"), at(1, 0.8, "Step-ups × 6 each leg"), at(2, 0.3, "Rest")), at(3, 0.3, "Stretch")] },
   { id: "core-25", sport: "strength", kind: "Strength", name: "Core for cyclists", about: "Twenty minutes for the muscles that hold you steady on the bike. Three rounds.",
     steps: [at(4, 0.4, "Mobility"), rep(3, at(0.75, 0.6, "Plank"), at(0.75, 0.6, "Glute bridge"), at(0.75, 0.6, "Dead bug"), at(0.75, 0.6, "Side plank"), at(0.75, 0.6, "Bird dog"), at(1, 0.3, "Rest")), at(3, 0.3, "Stretch")] },
 ];

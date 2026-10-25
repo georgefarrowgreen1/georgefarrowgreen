@@ -158,8 +158,7 @@ await P.p.locator('.row', { hasText: 'Wahoo ELEMNT BOLT' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P, 1200);
 const stats = await P.p.locator('#sheet .stat').allInnerTexts();
 ok(stats.some((s) => /Normalized Power/.test(s)) && stats.some((s) => /Distance/.test(s)) && await P.p.locator('#sheet .map svg .route').count() > 0, 'opened on the phone, from its file: its figures and its route', `${stats.length} figures`);
-const back = await download(P, () => P.p.locator('#sheet .row', { hasText: /^FIT/ }).click());
-ok(readFit(back.bytes).messages.record.length === ride.s.t.length, 'and out again as FIT: every sample', `${readFit(back.bytes).messages.record.length} of ${ride.s.t.length}`);
+ok(!(await P.p.locator('#sheet .section', { hasText: 'Export' }).count()), 'no export on a ride you uploaded: it\'s kept as it came');
 await done(P);
 await tab(P, 3);
 
@@ -223,6 +222,23 @@ await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
 await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
+
+// ---- 8b. Rhythm, in place of the event's plan: your week, then a session or rest each day, with its reason ----
+await tab(L, 2);
+await L.p.locator('.row', { hasText: 'Switch to Rhythm' }).click(); await settle(L, 800);
+await L.p.getByRole('button', { name: 'More on Monday' }).click();
+await L.p.locator('#sheet .seg[aria-label="A run a week"] button', { hasText: 'Yes' }).click();
+await L.p.locator('#sheet .btn', { hasText: 'Save' }).click(); await settle(L, 900);
+const rSub = await L.p.locator('.head .sub').innerText();
+const st4 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : null; });
+ok(/^Rhythm · Aerobic block · week 1 of 4/.test(rSub) && st4?.rhythm?.days?.[0] === 45 && st4.rhythm.run === true && st4.plan === null, 'Rhythm set up: the event plan gives way, your week kept with the account', `${rSub} | ${JSON.stringify(st4?.rhythm)}`);
+const weekRows = await L.p.locator('.section', { hasText: 'This week' }).first().locator('.row').count();
+ok(weekRows === 7 && await L.p.locator('.section', { hasText: 'Coming up' }).count() === 1, 'this week day by day, and the days coming up', String(weekRows));
+await L.p.screenshot({ path: `${out}/rhythm-plan.png`, fullPage: true });
+await tab(L, 1);
+const todayCard = await L.p.locator('.session').first().innerText();
+ok(/Why today:|Rest, and let it sink in/.test(todayCard), 'Today: the session Rhythm chose, and why (or rest, and why)', todayCard.replace(/\s+/g, ' ').slice(0, 160));
+await L.p.screenshot({ path: `${out}/rhythm-today.png` });
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

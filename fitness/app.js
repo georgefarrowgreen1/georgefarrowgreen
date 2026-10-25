@@ -23,6 +23,7 @@ import { demo, samples, PROFILE, rng } from "./sample.js";
 import * as F from "./formats.js";
 import * as C from "./charts.js";
 import * as A from "./account.js";
+import * as R from "./rhythm.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -56,7 +57,7 @@ const D = demo(Date.now());
 // the examples on and none chosen, theirs.
 const S = {
   tab: "today", me: null, ver: 0, dirty: new Set(), inStepWorkouts: [], pulledAt: 0,
-  profile: { ...PROFILE }, examples: false, chosen: null, swaps: {}, feel: {}, mine: [],
+  profile: { ...PROFILE }, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [],
   sport: "ride", actSport: "all", formDays: 42,
   own: [], acts: [],
   sums: new Map(), summed: false,
@@ -66,6 +67,7 @@ function adopt(d) {
   const ok = (o) => o && typeof o === "object" && !Array.isArray(o), was = numbers();
   S.profile = { ...PROFILE, ...(ok(d?.profile) ? d.profile : {}) };
   S.chosen = ok(d?.plan) && PLANS.some((p) => p.id === d.plan.id) && Number.isFinite(d.plan.start) ? d.plan : null;
+  S.rhythm = ok(d?.rhythm) && Array.isArray(d.rhythm.days) ? d.rhythm : null;
   S.swaps = ok(d?.swaps) ? d.swaps : {}; S.feel = ok(d?.feel) ? d.feel : {};
   S.mine = Array.isArray(d?.workouts) ? d.workouts : [];
   U.metric = d?.prefs?.units !== "imperial"; S.examples = !!d?.prefs?.examples;
@@ -75,7 +77,7 @@ function adopt(d) {
 }
 const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
 // what's kept with the account, as this device has it now
-const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, swaps: S.swaps, feel: S.feel, workouts: S.mine, prefs: { units: U.metric ? "metric" : "imperial", examples: S.examples } });
+const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine, prefs: { units: U.metric ? "metric" : "imperial", examples: S.examples } });
 // A change to your record: kept with your account a moment later (a few changes go as one), from the version this
 // device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
 // its own, the days and workouts joined) and sent again.
@@ -112,10 +114,22 @@ const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "")
 const runSpeed = () => 1000 / P().runPace, swimSpeed = () => 100 / P().css;
 const paceFor = (sport) => (sport === "run" ? runSpeed() : sport === "swim" ? swimSpeed() : 4);
 const allWorkouts = () => [...S.mine, ...WORKOUTS];
-const wkById = (id) => S.mine.find((w) => w.id === id) || workoutById(id);
+const wkById = (id) => S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
+
+// ---- Rhythm: the plan that never ends (rhythm.js), unless you've chosen an event's plan ----
+const rhythmOn = () => !!S.rhythm && !S.chosen;
+let rhCache = null;
+function rh() {
+  if (!rhythmOn()) return null;
+  const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
+  const key = JSON.stringify([S.rhythm, S.feel, P().ftp, P().runPace, P().css, acts.map((a) => [a.start, a.sum?.tss])]);
+  if (rhCache?.key !== key) rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
+  return rhCache.v;
+}
+const rhDay = (d) => rh()?.days.find((x) => x.date === d) || null;
 
 // ---- the plan, as days ----
-const myPlan = () => S.chosen || (S.examples ? { id: "sportive", start: D.start } : null);
+const myPlan = () => S.chosen || (S.examples && !S.rhythm ? { id: "sportive", start: D.start } : null);
 const plan = () => (myPlan() ? PLANS.find((p) => p.id === myPlan().id) : null);
 const planStart = () => myPlan()?.start ?? Infinity;
 let weeksCache = null;
@@ -128,10 +142,11 @@ function weeks() {
 }
 // (a plan's chosen on a day: the days before it, in a plan that starts partway, aren't missed, as you weren't on it)
 function choosePlan(c) { S.chosen = { ...c, at: TODAY }; S.swaps = {}; keep("plan", "swaps"); }
-const missed = (day, wk) => wk && day < TODAY && day >= (myPlan()?.at ?? -Infinity) && !actsOn(day).length;
+const missed = (day, wk) => (rhythmOn() ? !!rhDay(day)?.missed : wk && day < TODAY && day >= (myPlan()?.at ?? -Infinity) && !actsOn(day).length);
 // what's planned on a day (a swap you've made, or the plan's): a workout id, "event", or null for rest
 function plannedOn(day) {
   if (S.swaps[day] !== undefined) return S.swaps[day];
+  if (rhythmOn()) { const r = rhDay(day); return r ? r.id : undefined; }
   for (const w of weeks()) for (const d of w.days) if (d.date === day) return d.id;
   return undefined;
 }
@@ -273,13 +288,20 @@ function sessionCard(w, id, done) {
     return h("div.card.hero.glass.session", {}, h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"),
       h("h2", { text: plan().name }), h("p.about", { text: "This is what the weeks were for. Start steady, eat early, and enjoy it." }));
   }
-  if (!myPlan()) {
+  if (!myPlan() && !rhythmOn()) {
     return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "No plan yet"),
-      h("h2", { text: "Choose a plan, or ride as you like" }),
-      h("p.about", { text: "A plan lays out every week to your goal: base, build, peak and taper, an easier week every fourth. Or pick any workout and send it to your device." }),
-      h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => go("plan") }, "Choose a plan"), h("button.pill", { type: "button", onclick: () => go("workouts") }, "Workouts")));
+      h("h2", { text: "Fit all year, a day at a time" }),
+      h("p.about", { text: "Rhythm decides each day’s session, or rest, from the days you ride, what you’ve done and how you feel. No event needed." }),
+      h("div.acts", {}, h("button.pill.primary", { type: "button", onclick: () => openSheet(rhythmSetup) }, "Set up Rhythm"), h("button.pill", { type: "button", onclick: () => go("workouts") }, "Workouts")));
   }
-  if (!w && TODAY < planStart()) {
+  const rd = rhythmOn() && S.swaps[TODAY] === undefined ? rhDay(TODAY) : null;
+  if (!w && rd) {
+    const next = [1, 2, 3].map((n) => rhDay(addDays(TODAY, n))).find((x) => x?.id), nw = next && wkById(next.id);
+    return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day"),
+      h("h2", { text: "Rest, and let it sink in" }), h("p.why", { text: rd.why }),
+      nw && h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openWorkout(nw) }, `${dayName(next.date)}: ${nw.name}`, icon("chev", 15, 2.4))));
+  }
+  if (!w && myPlan() && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
     return h("div.card.hero.glass.session.rest", {}, h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"),
       h("h2", { text: `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}` }),
@@ -300,7 +322,10 @@ function sessionCard(w, id, done) {
     h("h2", { text: w.name }),
     h("div.meta", { text: [dur(m.secs), w.sport !== "strength" ? `TSS ${Math.round(m.tss)}` : null, w.sport === "ride" ? `IF ${m.iF.toFixed(2)}` : null].filter(Boolean).join(" · ") }),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
-    h("p.about", { text: w.about }),
+    rd ? h("p.why", {}, h("b", { text: "Why today: " }), rd.why) : h("p.about", { text: w.about }),
+    rd && (rd.fuel || rd.strength) && h("div.extras", {},
+      rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
+      rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("upload", 17, 2.2), "Send to device"),
       h("button.pill", { type: "button", onclick: () => openWorkout(w) }, "Details"),
@@ -348,7 +373,7 @@ function weekCard() {
   return card(null, ["This week", h("span.more", { text: S.summed ? `${Math.round(totDone)} of ${Math.round(totPlan)} TSS` : "" })],
     h("div.week", {}, cols),
     h("div.week-sum", {}, h("span", {}, h("b", { text: dur(secsDone) }), ` of ${dur(secsPlan)}`),
-      h("span", { text: !myPlan() ? "No plan" : TODAY < planStart() ? `Starts ${dayShort(planStart())}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}` })));
+      h("span", { text: rhythmOn() ? rhythmSaid() : !myPlan() ? "No plan" : TODAY < planStart() ? `Starts ${dayShort(planStart())}` : weekIndex(TODAY) >= weeks().length ? "Plan done" : `Week ${weekIndex(TODAY) + 1} of ${plan().weeks} · ${weeks()[weekIndex(TODAY)].phase}` })));
 }
 // How you feel: sleep, legs and mood, said in a tap each, and what to do about it with your form. Tired legs on a hard
 // day: an easier session, swapped in with a tap (and back again).
@@ -361,7 +386,11 @@ function feelCard(w) {
   };
   const rows = [["sleep", "Sleep", [[0, "Poor"], [1, "OK"], [2, "Good"]]], ["legs", "Legs", [[0, "Heavy"], [1, "Normal"], [2, "Fresh"]]], ["mood", "Motivation", [[0, "Low"], [1, "OK"], [2, "High"]]]];
   let verdict = null;
-  if (["sleep", "legs", "mood"].every((k) => f[k] != null)) {
+  const rd = rhythmOn() ? rhDay(TODAY) : null;
+  if (rd && ["sleep", "legs", "mood"].some((k) => f[k] != null)) {
+    verdict = rd.feel === "good" ? h("div.verdict", {}, h("span.ic.green", {}, icon("check", 16, 2.6)), h("div", {}, h("b", { text: "Ready for it" }), h("p", { text: rd.id ? "Today’s session stands." : "Enjoy the rest day." })))
+      : h("div.verdict", {}, h("span.ic.amber", {}, icon("swap", 16, 2.2)), h("div", {}, h("b", { text: "Rhythm has eased today" }), h("p", { text: rd.why })));
+  } else if (!rd && ["sleep", "legs", "mood"].every((k) => f[k] != null)) {
     const score = f.sleep + f.legs + f.mood, tsb = S.summed ? fitnessSeries().at(-1).tsb : 0, hard = w && measure(w).iF > 0.8;
     if (score <= 2 || (f.legs === 0 && tsb < -20)) {
       verdict = h("div.verdict", {}, h("span.ic.amber", {}, icon("swap", 16, 2.2)), h("div", {}, h("b", { text: hard ? "Swap today for something easy" : "Take it easy today" }),
@@ -375,6 +404,7 @@ function feelCard(w) {
 
 // ---- Plan ----
 function planView() {
+  if (rhythmOn()) return rhythmView();
   if (!myPlan()) return noPlanView();
   const p = plan(), ws = weeks(), now = Math.max(0, Math.min(ws.length - 1, weekIndex(TODAY))), ev = eventDay(), left = Math.round((ev - TODAY) / DAY);
   const planWeekTss = ws.map((w) => ({ phase: w.phase, tss: w.days.reduce((a, d) => a + (d.id && d.id !== "event" ? measure(wkById(d.id), paceFor(wkById(d.id).sport)).tss : 0), 0) }));
@@ -406,17 +436,98 @@ function planView() {
     row({ icon: "zip", tint: "coral", title: started ? "Send this week’s workouts" : "Send week 1’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip(ws[now]) }),
     row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "This week and next as events (.ics), with each workout in its notes", onclick: () => calendar([ws[now], ws[now + 1]].filter(Boolean)) }))));
   out.push(plansList(p.id));
-  if (S.chosen) out.push(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); toast("Plan stopped"); redraw(); } }, "Stop this plan"))));
+  if (S.chosen) out.push(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); toast(S.rhythm ? "Back to Rhythm" : "Plan stopped"); redraw(); } }, S.rhythm ? "Stop, and go back to Rhythm" : "Stop this plan"))));
+  if (!S.rhythm) out.push(section(null, h("div.group.glass", {}, row({ icon: "calendar", tint: "blue", title: "Switch to Rhythm", sub: "No event: a session or rest each day, all year", onclick: () => openSheet(rhythmSetup) }))));
   return out;
 }
 const plansList = (current) => section("Plans", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
   title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === current ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) }))));
-// no plan: what one is, and the plans to choose from
+// no plan yet: Rhythm, and the event plans as the other way
 function noPlanView() {
   return [head("Plan", "No plan yet"),
-    h("div.card.hero.glass", {}, h("h3", {}, "A plan for your goal"),
-      h("p.line-said", { text: "Each plan lays out every week to a goal: base miles first, then the harder work, then fresh for the day, an easier week every fourth. Today shows each day’s session, ready to send to your Garmin or Wahoo; done when a ride from that day is imported." })),
-    plansList(null)];
+    h("div.card.hero.glass.rhythm-intro", {}, h("h3", {}, "Rhythm"),
+      h("h2", { text: "Fit and sharp all year, a day at a time" }),
+      h("p.line-said", { text: "Tell Rhythm the days you ride and for how long. Each morning it decides the session, or rest, from what you’ve actually done, how fresh you are and how you feel: mostly easy riding, two hard sessions a week, a lighter week every fourth, and every kind of effort kept sharp." }),
+      h("button.btn", { type: "button", onclick: () => openSheet(rhythmSetup) }, "Set up Rhythm")),
+    eventPlans(null)];
+}
+const eventPlans = (current) => section("Or train for an event", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
+  title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === current ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) }))),
+  h("p.foot", { text: "An event’s plan takes over from Rhythm until you stop it." }));
+
+// ---- Rhythm, on the Plan tab: where you are in the block, the days ahead, and your week ----
+const rhythmSaid = () => { const b = rh().block; return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`; };
+function rhythmView() {
+  const r = rh(), b = r.block, prefs = { ...R.DEFAULTS, ...S.rhythm }, mon = mondayOf(TODAY);
+  const out = [head("Plan", `Rhythm · ${rhythmSaid()}`)];
+  const cells = [0, 1, 2, 3].map((i) => h("div.rb-week" + (i === b.week ? ".now" : "") + (i < b.week ? ".past" : ""), {}, h("i.bg-" + (i === 3 ? "z1" : { aerobic: "z2", threshold: "z4", topend: "z6" }[b.theme])), h("small", { text: i === 3 ? "Lighter" : `Week ${i + 1}` })));
+  const about = { aerobic: "Long steady riding and tempo, with a little of everything else so nothing fades.", threshold: "Sweet spot and threshold work, the long ride, and short sprints to stay sharp.", topend: "VO₂ max (30/15s first) and sprints, with endurance between." }[b.theme];
+  const fitNow = Math.round(r.ctl);
+  out.push(h("div.card.hero.glass", {},
+    h("h3", {}, `${R.THEMES[b.theme]} block`),
+    h("div.rb-weeks", {}, cells),
+    h("p.line-said", { text: `${about} ${b.absorb ? "This week is lighter, so it all sinks in." : `${prefs.mode === "hold" ? (r.seeded ? "Holding your fitness where it is" : `Holding your fitness around ${fitNow}`) : r.seeded ? "Building your fitness a few points a week" : `Building your fitness from ${fitNow}, a few points a week`}.`} The next block is chosen by how this one goes.` }),
+    r.cpw && h("p.line-said.small", { text: `Intervals set from your critical power, ${r.cpw.cp} W, and W′, ${(r.cpw.w / 1000).toFixed(1)} kJ.` })));
+  const rowOf = (d) => {
+    const id = S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id, wk = id ? wkById(id) : null, did = actsOn(d.date), past = d.date < TODAY;
+    return h("button.row" + (d.date === TODAY ? ".today" : "") + (past ? ".past" : ""), { type: "button", onclick: () => openDay(d.date) },
+      h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: d.date === TODAY ? "Today" : dayName(d.date).slice(0, 3) })),
+      // (a day gone by: what you did; the days to come: what Rhythm has in mind, and why)
+      past && did.length ? h("span.tx", {}, h("b", { text: did.map((x) => x.name).join(", ") }), h("small", { text: did.map((x) => { const sm = sumOf(x); return sm ? [hm(sm.moving), sm.tss != null ? `TSS ${sm.tss}` : null].filter(Boolean).join(" · ") : ""; }).join(", ") }))
+      : h("span.tx", {}, h("b", { text: wk ? `${wk.name}${d.strength && S.swaps[d.date] === undefined ? " + strength" : ""}` : "Rest" }),
+        h("small", { text: wk ? `${dur(d.mins * 60)}${wk.sport !== "strength" ? ` · TSS ${d.tss}` : ""}${S.swaps[d.date] !== undefined ? " · swapped" : d.date >= TODAY ? ` · ${d.why}` : ""}` : d.date >= TODAY ? d.why : "Recover" })),
+      wk && !(past && did.length) && h("span.mini", {}, C.profile(wk, { mini: true, pace: paceFor(wk.sport) })),
+      did.length ? h("span.badge", {}, "Done") : d.missed ? h("span.badge.plan", {}, "Missed") : d.moved ? h("span.badge.plan", {}, "Moved") : null);
+  };
+  const thisWeek = r.days.filter((d) => mondayOf(d.date) === mon), ahead = r.days.filter((d) => mondayOf(d.date) !== mon);
+  out.push(section(["This week", h("span.aside", { text: `${dateShort(mon)} – ${dateShort(addDays(mon, 6))}` })], h("div.group.glass", {}, thisWeek.map(rowOf)),
+    h("p.foot", {}, "The days ahead firm up each morning, from what you’ve done and how you feel. Tap a day for its workout.")));
+  if (ahead.length) out.push(section("Coming up", h("div.group.glass", {}, ahead.map(rowOf))));
+  const days = prefs.days.filter((x) => x > 0), hours = prefs.days.reduce((a, x) => a + x, 0);
+  out.push(section("Your Rhythm", h("div.group.glass", {},
+    row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(days.length, "day")}, ${dur(hours * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, value: prefs.mode === "hold" ? "Holding" : "Building", onclick: () => openSheet(rhythmSetup) }),
+    row({ icon: "zip", tint: "coral", title: "Send this week’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip({ week: "Rhythm", days: [...thisWeek, ...ahead].filter((d) => d.date >= TODAY) }) }),
+    row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "The next seven days as events (.ics)", onclick: () => calendar([{ days: r.days.filter((d) => d.date >= TODAY) }]) }))));
+  out.push(eventPlans(null));
+  return out;
+}
+// Your week, for Rhythm: minutes each day (none: a rest day), a run and a swim, what to lean towards, build or hold
+function rhythmSetup() {
+  const draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
+  draft.days = [...draft.days];
+  const names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], said = (v) => (v ? dur(v * 60) : "Rest");
+  const dayRow = (i) => {
+    const out = h("output", { text: said(draft.days[i]) });
+    const set = (dv) => { draft.days[i] = Math.max(0, Math.min(360, draft.days[i] + dv)); out.textContent = said(draft.days[i]); total.textContent = summary(); };
+    return h("div.row.plain", {}, h("span.tx", {}, h("b", { text: names[i] })), h("span.stepper", { role: "group", "aria-label": names[i] },
+      h("button", { type: "button", "aria-label": `Less on ${names[i]}`, onclick: () => set(draft.days[i] > 45 ? -15 : -draft.days[i]) }, icon("minus", 16, 2.4)), out,
+      h("button", { type: "button", "aria-label": `More on ${names[i]}`, onclick: () => set(draft.days[i] ? 15 : 45) }, icon("plus", 16, 2.4))));
+  };
+  const summary = () => { const n = draft.days.filter((x) => x).length, t = draft.days.reduce((a, x) => a + x, 0); return n ? `${plural(n, "day")}, ${dur(t * 60)} a week` : "Choose at least one day"; };
+  const total = h("span", { text: summary() });
+  const seg = (k, opts, label) => {
+    const el = h("div.seg.small", { vars: { "--n": opts.length, "--at": Math.max(0, opts.findIndex(([v]) => v === draft[k])) }, role: "group", "aria-label": label },
+      opts.map(([v, l]) => h("button", { type: "button", "aria-pressed": String(draft[k] === v), onclick: (e) => { draft[k] = v; el.style.setProperty("--at", opts.findIndex(([x]) => x === v)); for (const b of el.children) b.setAttribute("aria-pressed", String(b === e.currentTarget)); } }, l)));
+    return el;
+  };
+  const save = () => {
+    if (!draft.days.some((x) => x)) return toast("Choose at least one day to ride", true);
+    S.rhythm = { ...draft, start: S.rhythm?.start ?? mondayOf(TODAY), at: S.rhythm?.at ?? TODAY };
+    if (S.chosen) { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); }
+    keep("rhythm"); closeSheet(); toast("Rhythm is set"); redraw();
+  };
+  return { title: "Rhythm", right: h("button.link.done.r", { type: "button", onclick: save }, "Save"), body: [
+    h("div.sheet-top", {}, h("h1", { text: "Your week" }), h("div.sub", {}, total)),
+    h("p", { text: "When you can ride, and roughly how long. Leave a day at Rest for a rest day: Rhythm may move one if you’ve missed a session." }),
+    h("div.group", {}, [0, 1, 2, 3, 4, 5, 6].map(dayRow)),
+    section("Running and swimming", h("div.group", {},
+      h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "A run a week" })), seg("run", [[false, "No"], [true, "Yes"]], "A run a week")),
+      h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "A swim a week" })), seg("swim", [[false, "No"], [true, "Yes"]], "A swim a week")))),
+    section("Lean towards", seg("lean", Object.entries(R.LEANS), "Lean towards")),
+    section("Your fitness", seg("mode", [["build", "Keep building"], ["hold", "Hold it"]], "Build or hold"),
+      h("p.foot", { text: "Building raises your fitness a few points a week, never faster. Holding keeps it where it is with less riding." })),
+    h("button.btn", { type: "button", onclick: save }, "Save"),
+  ] };
 }
 // A plan: what a week of it looks like, and when to start it: next Monday, or so it ends on your event's day (a plan of
 // 16 weeks to an event 10 weeks off starts six weeks in)

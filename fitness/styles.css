@@ -537,3 +537,19 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-body > .btn { margin-top: 6px; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .row.up.guess .tx small.said { color: #a85f00; } }
 :root[data-theme="light"] .row.up.guess .tx small.said { color: #a85f00; }
+
+/* ---- Rhythm ---- */
+.session .why, .session.rest .why { margin: 4px 0 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
+.session .why b { color: var(--text); font-weight: 600; }
+.session .extras { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 14px; color: var(--text-2); }
+.session .extras > * { display: inline-flex; align-items: center; gap: 6px; }
+.rhythm-intro h2 { margin: 0 0 8px; font: 700 24px/1.15 var(--font-d); text-wrap: balance; }
+.rhythm-intro .btn { margin-top: 16px; }
+.rb-weeks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 4px 0 12px; }
+.rb-week { display: grid; gap: 6px; }
+.rb-week i { height: 8px; border-radius: 4px; opacity: 0.35; }
+.rb-week.past i { opacity: 0.6; }
+.rb-week.now i { opacity: 1; box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 25%, transparent); }
+.rb-week small { font-size: 12px; color: var(--text-3); }
+.rb-week.now small { color: var(--text); font-weight: 600; }
+.line-said.small { font-size: 13px; margin-top: 6px; }

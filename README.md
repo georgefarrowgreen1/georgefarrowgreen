@@ -1152,7 +1152,20 @@ five weeks into a 16-week sportive plan, dated from today.
   best time for it from Weather (with the example rides on, an example day), **fitness, fatigue and form** (your training stress averaged over six weeks and over one; form the gap,
   said in words: fresh, neutral, productive, overreaching), the week so far against the plan, day by day, and **How do
   you feel?** (sleep, legs, motivation): tired legs on a hard day offer an easier session, swapped in with a tap.
-- **Plan**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
+- **Plan: Rhythm** (`fitness/rhythm.js`), the plan that never ends, and the default: you say which days you ride and
+  for how long (none: a rest day), a run and a swim a week or not, what to lean towards (long days or punchy rides), and
+  whether to keep building or hold. Each morning it decides the day's session, or rest, from your activities' training
+  stress (fitness, fatigue, form), days since each kind of hard session, your power curve (critical power and W′, which
+  set the intervals' watts) and How do you feel?, and says why on Today. Its rules: mostly easy, at most two hard
+  sessions a week (three from 12 hours) and never two days running; pyramidal under 6 hours a week, polarised from 9;
+  four-week blocks (aerobic, threshold, top end; the fourth week lighter), the next chosen by which ability moved least;
+  30/15s first for VO₂ max; every other week in aerobic and threshold blocks a long ride with a hard finish
+  (durability); heavy strength on hard days; fuel for each ride; a poor night keeps the time and drops the intensity;
+  rest when form passes −25; a missed session moves the next rest day (if another's to come). It plans this week and
+  the next seven days but commits only to today. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
+  the same on every device). Its settings are kept with your record (`rhythm`). An event's plan (below) takes over
+  until it's stopped. The research behind it is in the proposal it was built from.
+- **Plan, for an event**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
   asks, what's done), this week's and next week's days (each a tap from its workout), this week's workouts as one zip
   of FIT files, both weeks as calendar events (.ics), and other plans: FTP builder, winter base, a first 10k, a sprint
   triathlon, each started next Monday or so it ends on your event's day (one too near for all its weeks starts partway, the
