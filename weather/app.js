@@ -1122,12 +1122,16 @@ function skyFor(wx, now) {
   else s = day ? "cloudy-day" : "cloudy-night";
   return s;
 }
+let tintKept = null;
 function sky(wx, now) {
   const s = skyFor(wx, now);
   // (a new sky eases in over the last: styles.css)
   document.body.dataset.sky = s;
   const top = SKY_TOP[s] || "#2b5d96";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
+  // (kept for the page to arrive with, next time, as its theme-color (sw.js tinted): an iPhone tints the strip behind its
+  // status bar with that, as the page arrives, and takes no notice of it changed after)
+  if (top !== tintKept && "caches" in window) { tintKept = top; caches.open("wx-tint").then((c) => c.put(new URL("./tint", location.href), new Response(top))).catch(() => {}); }
   // (what shows when the page is pulled past its ends; on a phone or a tablet, under Safari's bar at the foot too, so the
   // sky's colour at its foot there)
   document.documentElement.style.backgroundColor = footed.matches ? SKY_FOOT[s] || top : top;

@@ -1210,6 +1210,19 @@ await ctx.close();
   ok(asked === 1, 'a link to near there that isn\'t one of its own notifications: asked about, as any shared link is', `${asked} asked`);
   await ctx.close();
 }
+// the strip behind an iPhone's status bar: it takes the page's theme-color as the page arrives, and no notice of it changed
+// after; so the sky's colour is kept, and the app's own worker writes it into the page as it gives it (sw.js tinted)
+{
+  const { ctx, p } = await open({}, { sw: true, settle: false });
+  await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 }).catch(() => {});
+  await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
+  await p.waitForFunction(async () => !!(await (await caches.open('wx-tint')).match(new URL('./tint', location.href))), null, { timeout: 10000, polling: 200 }).catch(() => {});
+  const top = await p.evaluate(() => document.querySelector('meta[name="theme-color"]').content);
+  const r = await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
+  const sent = /<meta name="theme-color" content="([^"]*)"/.exec(await r.text())?.[1];
+  ok(r.fromServiceWorker() && sent === top && top !== '#2b5d96', 'the page arrives with the sky\'s colour as its theme-color, written in by its worker', `${sent} (the sky's ${top})`);
+  await ctx.close();
+}
 // fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a
 // new version of the app, starting on it straight away (or, if it came while a sheet was open, the next time it's opened)
 {
