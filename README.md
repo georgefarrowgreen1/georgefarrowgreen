@@ -291,8 +291,8 @@ Motion, solid with Reduce Transparency.
   the server can't tell it's the same password, that's in Recent activity ("Password protection strengthened") and
   emailed (if it wasn't you, a reset link is the way back, as the password may be someone else's by then).
   The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
-  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
-  has none.
+  `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in, as does
+  its old password change (`POST /api/pigeon/password`); Weather has none.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
   No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
@@ -363,7 +363,7 @@ Motion, solid with Reduce Transparency.
   check-up, or quietly whenever it's typed here (signing in, showing it's you): how it went is kept with its proof
   (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say; if Pwned Passwords can't be reached,
   nothing's kept (and the check-up's Check says so). One password's asked about once a visit, however often it's
-  typed or sent. A password changed in InFlight counts as checked (InFlight won't take one from a breach).
+  typed or sent.
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
   `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
@@ -1473,7 +1473,11 @@ that stretch, taking turns at the front: each goes 10% faster for it
 from there are squeezed, with a point ("f") where they meet and where they
 part; it's kept as a moment like a near miss, so both people are told ("Your
 pigeon to Reuben and your pigeon to Nia are flying together over France"), the
-chat says so, and the card's timeline has it.
+chat says so, and the card's timeline has it. The points go to phones only as
+places where it sped up ("c", as a cheer's does), so the map keeps its pace but
+nothing says it flew with another (that pigeon may be one a person can't see):
+only someone who can see both pigeons hears of it, with the moment saying when
+they part.
 
 **How sure the landing time is.** While a landing is a way off, the card,
 How It Flies and The Way give it as a range ("lands 21:10–21:40", "likely Fri
@@ -2227,7 +2231,13 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   up, the server wipes the sealed message, its
   photo or voice pigeon, stopover note and reactions (in a group, once everyone
   it flew to has read it), and phones stop showing it at once, even from their
-  saved copy. The flight itself stays for the Flight Log (`functions/_vanish.js`).
+  saved copy. Where read receipts are off (either friend's, or the sender's or
+  anyone's it flew to in a group), the time counts from landing instead, read or
+  not, so its going can't tell anyone when it was read; for one that landed
+  before they were turned off, from then, so turning them off wipes nothing at
+  once (`pg_users.no_receipts_at`). The server says when that is with the
+  message (`vanishAt`), so a phone's saved copy hides it on time too. The flight
+  itself stays for the Flight Log (`functions/_vanish.js`).
 - **Nothing is kept for long**: every message is deleted for everyone 30 days
   after it lands, whatever its chat's setting; only a line of what its pigeon
   did is kept, for the Flight Log (`functions/_retention.js`). An account
@@ -2304,7 +2314,8 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   request just keeps looking like it's waiting, and asking again reaches no one
   for 30 days. **Blocking** (from a request, a chat's menu or contact info)
   ends the friendship and stops their requests, pigeons, and access to your
-  picture and place; they aren't told, and InFlight Settings (on the account's page) lists them under Blocked, to
+  picture and place (in a group you're both still in, neither sees the other's
+  reactions, whose flight times would say how far away they are); they aren't told, and InFlight Settings (on the account's page) lists them under Blocked, to
   unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
   only friends see it. A month after a pigeon lands, its route's ends are

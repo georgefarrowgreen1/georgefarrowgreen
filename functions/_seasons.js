@@ -41,10 +41,12 @@ export function seasonCounts(times) {
   return { best, per };
 }
 // Sent one during a season: at ten, its look is yours for good
+// (seasons outlast the month a message is kept, so the lines kept for pigeons whose messages have gone count too, as for the badge)
 export async function noteSeason(D, uid, t) {
   const s = seasonAt(t); if (!s) return;
   const n = (await D.prepare(`SELECT (SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1 AND sent_at >= ?2 AND sent_at < ?3)
-    + (SELECT COUNT(*) FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id WHERE m.sender = ?1 AND m.sent_at >= ?2 AND m.sent_at < ?3) AS n`).bind(uid, s.from, Math.min(s.to, t + 1)).first()).n;
+    + (SELECT COUNT(*) FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id WHERE m.sender = ?1 AND m.sent_at >= ?2 AND m.sent_at < ?3)
+    + (SELECT COUNT(*) FROM pg_flights WHERE sender = ?1 AND sent_at >= ?2 AND sent_at < ?3) AS n`).bind(uid, s.from, Math.min(s.to, t + 1)).first()).n;
   if (n >= SEASON_GOAL) await D.prepare("INSERT OR IGNORE INTO pg_kit (user_id, item, at) VALUES (?, ?, ?)").bind(uid, "skin:" + s.id, t).run();
 }
 // A seasonal look: on now, or kept

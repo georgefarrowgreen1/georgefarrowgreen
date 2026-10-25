@@ -179,7 +179,7 @@ const gt = res.badges.find((b) => b.id === 'globetrotter');
 ok(st === 200 && res.passport?.places.length && gt && gt.n === res.passport.countries && gt.of === 25, 'the Flight Log has the passport, and Globetrotter counts countries towards 25', JSON.stringify(gt));
 // a flight that landed before the passport existed is stamped as you open it
 const old = one(`SELECT COUNT(*) AS n FROM pg_stamped`)[0].n;
-sql(`DELETE FROM pg_stamped WHERE id = '${m2}'`); sql(`UPDATE pg_passport SET n = n - 1 WHERE user_id = '${gs.me.id}' AND place = 'Kazakhstan'`);
+sql(`DELETE FROM pg_stamped WHERE id = '${m2}'`); sql(`UPDATE pg_msgs SET stamped = NULL WHERE id = '${m2}'`); sql(`UPDATE pg_passport SET n = n - 1 WHERE user_id = '${gs.me.id}' AND place = 'Kazakhstan'`);
 [st, res] = await api(gs.token, 'passport');
 ok(one(`SELECT COUNT(*) AS n FROM pg_stamped`)[0].n === old && res.places.find((p) => p.name === 'Kazakhstan').n === 2, 'older flights get stamped when you open your passport');
 // in the app

@@ -119,12 +119,12 @@ async function deliveriesOf(D, ids) {
 async function views(D, uid, rows, friends, t) {
   const mine = rows.filter((m) => m.sender === uid).map((m) => m.id);
   const dels = await deliveriesOf(D, mine);
-  // read receipts go both ways: anyone with them off (you included) shows none
+  // read receipts go both ways: anyone with them off (you included) shows none (off: since when)
   const ids = [...new Set([uid, ...[...dels.values()].flat().map((d) => d.user_id)])];
-  const off = new Set();
+  const off = new Map();
   for (let i = 0; i < ids.length; i += 90) {
     const part = ids.slice(i, i + 90);
-    for (const r of (await D.prepare(`SELECT id FROM pg_users WHERE no_receipts = 1 AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results) off.add(r.id);
+    for (const r of (await D.prepare(`SELECT id, no_receipts_at FROM pg_users WHERE no_receipts = 1 AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results) off.set(r.id, r.no_receipts_at || 0);
   }
   return viewsWith(uid, rows, friends, t, dels, off);
 }
@@ -133,6 +133,10 @@ function viewsWith(uid, rows, friends, t, dels, off) {
     if (m.sender !== uid) return theirView(m, m, friends, t);
     const v = ownView(m, dels.get(m.id), friends, t);
     for (const x of v.flock) if (off.has(uid) || off.has(x.to)) { x.readAt = null; x.viewedAt = null; }
+    // (yours, disappearing, with anyone's receipts off: when it goes, as functions/_vanish.js times it then, so your
+    // phone hides it from its saved copy too)
+    const offs = [uid, ...v.flock.map((x) => x.to)].filter((id) => off.has(id)).map((id) => off.get(id));
+    if (v.vanish && offs.length && v.flock.length) v.vanishAt = Math.max(...v.flock.map((x) => (x.lost ? x.lostAt : x.deliverAt)), ...offs) + v.vanish;
     return v;
   });
 }
@@ -186,11 +190,11 @@ export function groupQs(D, u, t) {
       FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
       WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id),
     D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
-      WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL GROUP BY m.group_id`).bind(u.id, t),
+      WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL AND m.gone_at IS NULL GROUP BY m.group_id`).bind(u.id, t),
     D.prepare(`SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.id IN (${lastIds})`).bind(u.id),
     D.prepare(`SELECT * FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?1 AND id IN (${lastIds}))`).bind(u.id),
-    D.prepare(`SELECT id FROM pg_users WHERE no_receipts = 1 AND (id = ?1 OR id IN (SELECT user_id FROM pg_gdeliv WHERE msg_id IN
+    D.prepare(`SELECT id, no_receipts_at FROM pg_users WHERE no_receipts = 1 AND (id = ?1 OR id IN (SELECT user_id FROM pg_gdeliv WHERE msg_id IN
       (SELECT id FROM pg_gmsgs WHERE sender = ?1 AND id IN (${lastIds}))))`).bind(u.id),
   ];
 }
@@ -202,7 +206,7 @@ export function groupsFrom(res, u, t) {
   // anyone either of you has blocked, in a group you share: their name stays (so you know who wrote), nothing else of them
   const blocked = new Set(links.filter((l) => l.status === "blocked").map((l) => l.id));
   const unreadIn = new Map(unreads.map((r) => [r.group_id, r.n])), turnOf = new Map(turns.map((r) => [r.group_id, r]));
-  const lastOf = new Map(lasts.map((m) => [m.group_id, m])), off = new Set(offRows.map((r) => r.id));
+  const lastOf = new Map(lasts.map((m) => [m.group_id, m])), off = new Map(offRows.map((r) => [r.id, r.no_receipts_at || 0]));
   const dels = new Map(lasts.filter((m) => m.sender === u.id).map((m) => [m.id, []]));
   for (const d of lastDels) dels.get(d.msg_id)?.push(d);
   return gs.map((g) => {

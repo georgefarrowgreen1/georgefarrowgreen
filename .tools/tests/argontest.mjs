@@ -61,4 +61,6 @@ const up = await acctCall('password/upgrade', { oldProof: 'x'.repeat(43), salt: 
 ok(signedIn.s === 200 && up.s === 200 && one("SELECT salt FROM pg_users WHERE handle = 'olive'")[0].salt === after.salt, 'once moved on, the upgrade does nothing more', `${signedIn.s} ${up.s}`);
 const [gone] = await api((await K.sess(O2)).token, 'password-upgrade', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
 ok(gone === 410, 'InFlight’s own upgrade is gone (it signs in on the account’s page)', String(gone));
+const [change] = await api((await K.sess(O2)).token, 'password', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
+ok(change === 410, 'and its own password change (that’s on the account’s page too)', String(change));
 console.log(`FAILS ${K.fails()}`); process.exit(0);
