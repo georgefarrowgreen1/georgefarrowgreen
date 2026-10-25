@@ -494,7 +494,7 @@ function rhythmView() {
       h("div.profile", {}, C.profile(tw, { ftp: tw.sport === "ride" ? P().ftp : null, pace: paceFor(tw.sport), label: `${tw.name}, step by step`, W: cardW(true) })),
       h("p", { text: td.why }),
       (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
-      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
+      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw, TODAY)) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
   } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
   // coming up: three days, the rest of the week ahead a tap away
   const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
@@ -560,7 +560,7 @@ function sessionView(day) {
       h("div.ss-feeds", {}, feeds.map((at) => h("span", {}, h("b", { text: clk(at) }), `${each} g`))))),
     !perHour && ride && h("p.rh-note", { text: "Under 75 minutes: water is enough." }),
     d?.strength && section("Afterwards", h("div.group.glass", {}, row({ icon: "strength", tint: "indigo", title: "Heavy strength, 20 minutes", sub: "Squats, Romanian deadlifts and step-ups: heavy, few, never to failure", onclick: () => pushSheet(() => workoutView(workoutById("strength-heavy"))) }))),
-    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Download"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
+    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w, day)) }, "Download"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
   ] };
 }
 // A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
@@ -581,7 +581,7 @@ function rhDayView(day) {
       tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
       opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
     S.swaps[day] !== undefined && future && h("button.btn.quiet", { type: "button", onclick: () => set(undefined, "Back to Rhythm’s plan") }, "Undo the change"),
-    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Download"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
+    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w, day)) }, "Download"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
   ] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
@@ -773,10 +773,12 @@ function workoutView(w) {
 const paceOfSpeed = (ms) => (U.metric ? 1000 / ms : 1609.344 / ms);
 
 // Sending a workout: a file for each device and app, and how to get it there
-function sendView(w) {
-  const fit = () => F.fitFromWorkout(w, { pace: paceFor(w.sport) });
+// (named by the day it's for: 2026-10-25.fit; a workout from the library, today)
+function sendView(w, day = TODAY) {
+  const fit = () => F.fitFromWorkout(w, { pace: paceFor(w.sport) }), dt = new Date(day);
+  const name = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
   const file = (title, cls) => row({ tile: h("span.ic." + cls, {}, icon("device", 18, 2)), title, sub: ".fit workout file", chev: false,
-    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(w.name, "fit"), fit()) });
+    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(`${name}.fit`, fit()) });
   return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: w.name })), h("div.group", {}, file("Garmin", "brand.garmin"), file("Wahoo", "brand.wahoo"))] };
 }
 
