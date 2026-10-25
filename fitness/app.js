@@ -866,7 +866,6 @@ function actView(a) {
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    h("div.sub", { text: [a.device, a.sample ? "example ride" : a.file].filter(Boolean).join(" · ") }),
     !a.sample && h("div.sub", {}, h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
