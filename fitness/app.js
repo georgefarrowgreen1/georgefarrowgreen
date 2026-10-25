@@ -324,7 +324,7 @@ function sessionCard(w, id, done) {
       rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
     h("div.acts", {},
-      w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("upload", 17, 2.2), "Send to device"),
+      w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
       swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")));
 }
@@ -494,7 +494,7 @@ function rhythmView() {
       h("div.profile", {}, C.profile(tw, { ftp: tw.sport === "ride" ? P().ftp : null, pace: paceFor(tw.sport), label: `${tw.name}, step by step`, W: cardW(true) })),
       h("p", { text: td.why }),
       (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
-      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Send to device"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
+      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
   } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
   // coming up: three days, the rest of the week ahead a tap away
   const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
@@ -560,7 +560,7 @@ function sessionView(day) {
       h("div.ss-feeds", {}, feeds.map((at) => h("span", {}, h("b", { text: clk(at) }), `${each} g`))))),
     !perHour && ride && h("p.rh-note", { text: "Under 75 minutes: water is enough." }),
     d?.strength && section("Afterwards", h("div.group.glass", {}, row({ icon: "strength", tint: "indigo", title: "Heavy strength, 20 minutes", sub: "Squats, Romanian deadlifts and step-ups: heavy, few, never to failure", onclick: () => pushSheet(() => workoutView(workoutById("strength-heavy"))) }))),
-    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
+    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Download"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
   ] };
 }
 // A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
@@ -581,7 +581,7 @@ function rhDayView(day) {
       tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
       opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
     S.swaps[day] !== undefined && future && h("button.btn.quiet", { type: "button", onclick: () => set(undefined, "Back to Rhythm’s plan") }, "Undo the change"),
-    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
+    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Download"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
   ] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
@@ -764,7 +764,7 @@ function workoutView(w) {
       card(null, w.sport === "ride" ? `Power, at your FTP of ${ftp} W` : w.sport === "run" ? "Effort, against your threshold pace" : "Effort", C.profile(w, { ftp: w.sport === "ride" ? ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: sheetW() })),
       w.about && h("p", { text: w.about }),
       card(null, "Steps", h("div.steps", {}, steps)),
-      w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, icon("upload", 19, 2.2), "Send to your devices"),
+      w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, icon("download", 19, 2.2), "Download"),
       mine && h("div.group", {},
         h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
     ],
@@ -774,38 +774,10 @@ const paceOfSpeed = (ms) => (U.metric ? 1000 / ms : 1609.344 / ms);
 
 // Sending a workout: a file for each device and app, and how to get it there
 function sendView(w) {
-  const name = w.name, ride = w.sport === "ride", viewer = inViewer();
-  const file = (title, sub, tileCls, ic, ext, make) => row({ tile: h("span.ic." + tileCls, {}, icon(ic, 18, 2)), title, sub, chev: false,
-    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(name, ext), make()) });
   const fit = () => F.fitFromWorkout(w, { pace: paceFor(w.sport) });
-  return {
-    title: "Send to your devices",
-    body: [
-      h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), `${SPORTS[w.sport].name} · ${dur(measure(w, paceFor(w.sport)).secs)}`), h("h1", { text: name })),
-      viewer && h("div.dl-note", {}, icon("info", 18, 2), h("span", { text: "In this preview, each file comes in a .zip (it only hands over some kinds of file). Open the zip, then copy the file across as below." })),
-      section("Garmin", h("div.group", {}, file("Edge or watch", ".fit workout file", "brand.garmin", "device", "fit", fit)),
-        h("ol.how", {}, h("li", {}, "Connect your Garmin to your computer with its cable."),
-          h("li", {}, "Copy the file into ", h("code", { text: "Garmin/NewFiles" }), " (some watches: ", h("code", { text: "Garmin/Workouts" }), ")."),
-          h("li", {}, "Unplug it. The workout is under ", h("b", { text: "Training › Workouts" }), " on an Edge, ", h("b", { text: "Training › My Workouts" }), " on a watch.")),
-        h("p.foot", { text: "A newer Edge (the 1050, or a 540, 840 or 1040 since late 2024) shows up as a phone does rather than a drive: on a Mac, open it with OpenMTP, and quit Garmin Express first. Garmin Connect can’t import workout files; sending straight to Connect needs Garmin’s partner programme (the plan’s next step)." })),
-      section("Wahoo ELEMNT", h("div.group", {},
-        ride && file("ACE, BOLT 3 or ROAM 3", ".fit workout file, into plans", "brand.wahoo", "device", "fit", fit),
-        ride && file("Earlier ELEMNT, BOLT or ROAM", ".plan file, into plans", "brand.wahoo", "device", "plan", () => F.planFromWorkout(w)),
-        !ride && file("ACE, BOLT 3 or ROAM 3", ".fit workout file, into plans", "brand.wahoo", "device", "fit", fit)),
-        h("ol.how", {}, h("li", {}, "In the Wahoo app, open your ELEMNT’s settings and turn on ", h("b", { text: "USB access" }), "."),
-          h("li", {}, "Connect it to your computer and copy the file into its ", h("code", { text: "plans" }), " folder."),
-          h("li", {}, "On the ELEMNT, open ", h("b", { text: "Planned Workouts" }), " and sync.")),
-        h("p.foot", { text: "Wahoo supports the .fit route on the 2024 models. The .plan file is the older ELEMNTs’ own format, which Wahoo never published: it works on most, but not every firmware." })),
-      ride && section("Indoor apps", h("div.group", {},
-        file("Zwift", ".zwo · Documents/Zwift/Workouts/<your ID>", "zwift", "trainer", "zwo", () => F.zwoFromWorkout(w)),
-        file("TrainerRoad, Golden Cheetah and others", `.erg, in watts at your FTP of ${P().ftp} W`, "tr", "trainer", "erg", () => F.ergFromWorkout(w, P().ftp)),
-        file("The same, as a share of FTP", ".mrc: follows whatever FTP the app has", "grey", "trainer", "mrc", () => F.mrcFromWorkout(w))),
-        h("p.foot", { text: "A Wahoo KICKR or any smart trainer follows these in ERG mode, from whichever app you ride in." })),
-      h("button.btn.quiet", { type: "button", onclick: () => saveFile(F.fileName(name, "zip"), F.zip([
-        { name: F.fileName(name, "fit"), data: fit() }, ...(ride ? [{ name: F.fileName(name, "plan"), data: F.planFromWorkout(w) }, { name: F.fileName(name, "zwo"), data: F.zwoFromWorkout(w) },
-          { name: F.fileName(name, "erg"), data: F.ergFromWorkout(w, P().ftp) }, { name: F.fileName(name, "mrc"), data: F.mrcFromWorkout(w) }] : [])])) }, icon("zip", 19, 2), "All of them, in one zip"),
-    ],
-  };
+  const file = (title, cls) => row({ tile: h("span.ic." + cls, {}, icon("device", 18, 2)), title, sub: ".fit workout file", chev: false,
+    extra: h("span.get", { "aria-hidden": "true" }, icon("download", 18, 2.2)), onclick: () => saveFile(F.fileName(w.name, "fit"), fit()) });
+  return { title: "Download", body: [h("div.sheet-top", {}, h("h1", { text: w.name })), h("div.group", {}, file("Garmin", "brand.garmin"), file("Wahoo", "brand.wahoo"))] };
 }
 
 // ---- Activities ----
