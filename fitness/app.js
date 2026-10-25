@@ -442,19 +442,14 @@ function planView() {
 }
 const plansList = (current) => section("Plans", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
   title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === current ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) }))));
-// no plan yet: Rhythm, and the event plans as the other way
+// no plan yet: Rhythm
 function noPlanView() {
   return [head("Plan", "No plan yet"),
     h("div.card.hero.glass.rhythm-intro", {}, h("h3", {}, "Rhythm"),
       h("h2", { text: "Fit and sharp all year, a day at a time" }),
       h("p.line-said", { text: "Tell Rhythm the days you ride and for how long. Each morning it decides the session, or rest, from what you’ve actually done, how fresh you are and how you feel: mostly easy riding, two hard sessions a week, a lighter week every fourth, and every kind of effort kept sharp." }),
-      h("button.btn", { type: "button", onclick: () => openSheet(rhythmSetup) }, "Set up Rhythm")),
-    eventPlans(null)];
+      h("button.btn", { type: "button", onclick: () => openSheet(rhythmSetup) }, "Set up Rhythm"))];
 }
-const eventPlans = (current) => section("Or train for an event", h("div.group.glass", {}, PLANS.map((x) => row({ icon: x.sport === "run" ? "run" : x.sport === "multi" ? "swim" : "ride", tint: x.id === current ? "coral" : "grey",
-  title: x.name, sub: `${x.weeks} weeks · ${x.phases.map(([n]) => n).join(", ")}`, value: x.id === current ? "Yours" : null, onclick: () => openSheet(() => planSheet(x)) }))),
-  h("p.foot", { text: "An event’s plan takes over from Rhythm until you stop it." }));
-
 // ---- Rhythm, on the Plan tab: where you are in the block, the days ahead, and your week ----
 const rhythmSaid = () => { const b = rh().block; return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`; };
 function rhythmView() {
@@ -488,7 +483,6 @@ function rhythmView() {
     row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(days.length, "day")}, ${dur(hours * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, value: prefs.mode === "hold" ? "Holding" : "Building", onclick: () => openSheet(rhythmSetup) }),
     row({ icon: "zip", tint: "coral", title: "Send this week’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip({ week: "Rhythm", days: [...thisWeek, ...ahead].filter((d) => d.date >= TODAY) }) }),
     row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "The next seven days as events (.ics)", onclick: () => calendar([{ days: r.days.filter((d) => d.date >= TODAY) }]) }))));
-  out.push(eventPlans(null));
   return out;
 }
 // Your week, for Rhythm: minutes each day (none: a rest day), a run and a swim, what to lean towards, build or hold
