@@ -2,12 +2,13 @@
 // memory, standing in for D1, with the site's schema): a reset link's server key stays the same however often the link's
 // opened; a sign-in an app handed over to a browser signed in to nothing is the account page's alone until it's shown
 // it's you; and guessing a password from many networks at once holds the account back, but not on a device that's
-// signed in to it before.
+// signed in to it before (or made it), for each account it has, while its password is the one it was given with.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession } from '../../../functions/_pigeon.js';
 import { passwordUser, cookieUser, withKnown } from '../../../functions/_account.js';
+import { onRequest as accountApi } from '../../../functions/api/account/[[path]].js';
 import { E2E } from '../../../pigeon/crypto.js';
 
 // D1, as much of it as the server uses: prepare, bind, first, all, run, and batch (all or nothing)
@@ -73,7 +74,7 @@ test('guessing from many networks holds the account back, but not on a device th
   // a device signs in, and keeps the word that it has
   const res = await withKnown(new Response('{}'), req('/api/account/signin/password'), env, u);
   const word = res.headers.get('Set-Cookie');
-  assert.match(word, /^known=[0-9a-f]{32}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+$/);
+  assert.match(word, /^known-[0-9a-f]{8}=[0-9a-f]{32}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+$/);
   const known = word.split(';')[0];
   // 300 wrong passwords, ten from each of 30 networks
   for (let n = 1; n <= 30; n++) for (let i = 0; i < 10; i++)
@@ -88,4 +89,51 @@ test('guessing from many networks holds the account back, but not on a device th
   const other = await account('ned', 'another test password'), theirs = (await withKnown(new Response('{}'), req('/'), env, other)).headers.get('Set-Cookie').split(';')[0];
   const forged = known.replace(/\.[^.]+$/, '.' + 'A'.repeat(32));
   for (const cookie of [forged, theirs]) await assert.rejects(passwordUser(env, req('/api/account/signin/password', { ip: '198.51.100.9', cookie }), right), { status: 429, message: /for this account/ });
+});
+
+// (the account's own hold filled, as by guessing from 30 networks at once)
+const heldBack = async (u) => D.prepare('INSERT OR REPLACE INTO pg_limits (key, count, reset_at) VALUES (?, 300, ?)')
+  .bind('loginacct:' + hex(await sha256(u.email)).slice(0, 32), Date.now() + 3600e3).run();
+const wordFor = async (u) => (await withKnown(new Response('{}'), req('/api/account/signin/password'), env, u)).headers.get('Set-Cookie').split(';')[0];
+const signIn = (u, pw, cookie, ip = '198.51.100.30') => passwordUser(env, req('/api/account/signin/password', { ip, cookie }), { email: u.email, proof: proofOf(pw) });
+
+test('a word for each account: signing in to another on the same device doesn’t take the first one’s place', async () => {
+  const a = await account('ola', 'a long test password'), b = await account('pip', 'another test password');
+  const wa = await wordFor(a), wb = await wordFor(b);
+  assert.notEqual(wa.split('=')[0], wb.split('=')[0], 'each under a name of its own');
+  await heldBack(a); await heldBack(b);
+  const both = `${wa}; ${wb}`;
+  assert.equal((await signIn(a, 'a long test password', both)).id, a.id);
+  assert.equal((await signIn(b, 'another test password', both)).id, b.id);
+});
+
+test('a word’s good only for the password it was given with, and the account it was given for', async () => {
+  const u = await account('rue', 'a long test password'), old = await wordFor(u);
+  await heldBack(u);
+  assert.equal((await signIn(u, 'a long test password', old)).id, u.id, 'known: in');
+  // a new password (or a reset): every word from before counts for nothing, and the next sign-in gives a new one
+  await D.prepare('UPDATE pg_users SET proof_hash = ?, pw_at = ? WHERE id = ?').bind(hex(await sha256(new Uint8Array(32).fill('a newer password'.length))), Date.now(), u.id).run();
+  const now = await D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(u.id).first();
+  await assert.rejects(signIn(u, 'a newer password', old), { status: 429, message: /for this account/ }, 'the old word, with the new password: held back');
+  assert.equal((await signIn(u, 'a newer password', await wordFor(now))).id, u.id, 'a word given since: in');
+  // the account deleted, and its email used for a new one: not that one's word either
+  const fresh = await wordFor(now);
+  await D.prepare('DELETE FROM pg_users WHERE id = ?').bind(u.id).run();
+  const again = await account('rue2', 'a newer password');
+  await D.prepare('UPDATE pg_users SET email = ?, pw_at = ? WHERE id = ?').bind(u.email, now.pw_at, again.id).run();
+  await assert.rejects(signIn({ email: u.email }, 'a newer password', fresh), { status: 429, message: /for this account/ });
+});
+
+test('an account made here: the device it was made on is known to it from the start', async () => {
+  const id = await E2E.newIdentity(), later = [], ACCT_ENV = { ...env, PIGEON_OPEN_SIGNUP: '1', ACCOUNT_HOST: 'account.localhost' };
+  const request = new Request(ACCT + '/api/account/signup', { method: 'POST', headers: { Origin: ACCT, 'CF-Connecting-IP': '198.51.100.40', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Sol', handle: 'sol', email: 'sol@example.com', salt: E2E.newSalt(), proof: proofOf('a long test password'), vault: 'v'.repeat(40), pub: id.pub }) });
+  const res = await accountApi({ request, env: ACCT_ENV, params: { path: ['signup'] }, waitUntil: (p) => later.push(p) });
+  await Promise.allSettled(later);
+  assert.equal(res.status, 201, await res.clone().text());
+  const word = res.headers.getSetCookie().find((c) => c.startsWith('known-'))?.split(';')[0];
+  assert.ok(word, 'given a word with its sign-in');
+  const u = await D.prepare('SELECT * FROM pg_users WHERE handle = ?').bind('sol').first();
+  await heldBack(u);
+  assert.equal((await signIn(u, 'a long test password', word)).id, u.id);
 });

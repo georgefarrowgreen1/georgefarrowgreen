@@ -231,7 +231,7 @@ const ROUTES = {
     if (emailReady(env)) waitUntil(sendConfirm(env, u, request).catch((e) => console.error("confirm mail", e.message)));
     waitUntil(logEvent(env, u.id, "signup", request));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash);
+    return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash), request, env, u);
   },
   // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
   "POST reset/request": async ({ request, env, waitUntil }) => {
@@ -299,7 +299,9 @@ const ROUTES = {
     if (r.meta?.changes) {
       waitUntil(logEvent(env, u.id, "upgrade", request));
       waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
-        line: "your account’s password is now kept with a stronger kind of protection.", after: "If you didn’t just sign in, change your password straight away, at account.georgefarrowgreen.com." }, linkOrigin(request)));
+        line: "your account’s password is now kept with a stronger kind of protection.",
+        // (not "change your password": that needs the password as it is now, which, if it wasn't them, someone else chose)
+        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.georgefarrowgreen.com. A reset signs out every other device." }, linkOrigin(request)));
     }
     return json({ ok: true, salt: b.salt });
   },

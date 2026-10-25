@@ -97,31 +97,35 @@ export async function saltFor(env, request, email) {
   return u ? u.salt : (fake[16] < 32 ? "" : "a2:") + b64url(fake.slice(0, 16));
 }
 // A device that's signed in to an account on its page before (its password or a passkey) keeps a word saying so: a
-// cookie of the page's own address alone, good only for that account's email (its hash, an id of the device's own, and
-// a MAC of both with the server's secret). Its wrong passwords count against it alone, not the account as a whole.
+// cookie of the page's own address alone, one for each account (named by its email's hash, so signing in to another
+// account on the same device doesn't take its place), good only for that account and its password as they are now (the
+// email's hash, an id of the device's own, and a MAC of both with the account's id and when its password was set, under
+// the server's secret: once the password's changed or reset, or the account's gone, every word given before counts for
+// nothing). Its wrong passwords count against it alone, not the account as a whole.
 const emailKey = async (email) => hex(await sha256(email)).slice(0, 32);
-function knownOf(request, env) {
+function knownOf(request, env, em) {
   const secure = cookieOf(request, env).name.startsWith("__Secure-");
-  return { name: secure ? "__Host-known" : "known", attrs: `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
+  return { name: `${secure ? "__Host-known" : "known"}-${em.slice(0, 8)}`, attrs: `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
 }
-async function knownMac(env, em, id) {
+async function knownMac(env, em, id, u) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(await serverSecret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`known-device|${em}|${id}`)))).slice(0, 32);
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`known-device|${em}|${id}|${u.id}|${u.pw_at || ""}`)))).slice(0, 32);
 }
-// (a response to a sign-in to the account u, with the word given to the browser: a new one each time, kept a year)
+// (a response to a sign-in to the account u, its row as it is now, with the word given to the browser: a new one each
+// time, kept a year)
 export async function withKnown(res, request, env, u) {
-  const em = await emailKey(u.email), id = randomToken(12), { name, attrs } = knownOf(request, env);
-  res.headers.append("Set-Cookie", `${name}=${em}.${id}.${await knownMac(env, em, id)}; ${attrs}; Max-Age=${Math.floor(SESSION_MAX / 1000)}`);
+  const em = await emailKey(u.email), id = randomToken(12), { name, attrs } = knownOf(request, env, em);
+  res.headers.append("Set-Cookie", `${name}=${em}.${id}.${await knownMac(env, em, id, u)}; ${attrs}; Max-Age=${Math.floor(SESSION_MAX / 1000)}`);
   return res;
 }
-// (the device's id, if the browser has the word for this email, em; else null)
-async function knownHere(request, env, em) {
-  const { name } = knownOf(request, env);
+// (the device's id, if the browser has the word for the account u, whose email's hash is em; else null)
+async function knownHere(request, env, em, u) {
+  const { name } = knownOf(request, env, em);
   for (const part of (request.headers.get("Cookie") || "").split(";")) {
     const i = part.indexOf("=");
     if (i < 0 || part.slice(0, i).trim() !== name) continue;
     const [e, id, mac] = part.slice(i + 1).trim().split(".");
-    if (e === em && /^[A-Za-z0-9_-]{16}$/.test(id || "") && safeEqual(mac || "", await knownMac(env, em, id))) return id;
+    if (e === em && /^[A-Za-z0-9_-]{16}$/.test(id || "") && safeEqual(mac || "", await knownMac(env, em, id, u))) return id;
   }
   return null;
 }
@@ -140,14 +144,15 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
   // 10 an hour, so guessing elsewhere can't lock you out there, and a word that's stolen is worth
   // no more than one more network. (A passkey's never held back by any of this.)
   const em = await emailKey(email), D = await db(env), now0 = Date.now();
-  const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em, dev = await knownHere(request, env, em);
+  // (the account first, as a word's good only for it as it is)
+  const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
+  const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em, dev = u && await knownHere(request, env, em, u);
   const holds = [[here, 30], dev ? ["loginacct:dev:" + em + ":" + dev, 10] : [acct, 300]];
   for (const [key, max] of holds) {
     const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
     const wait = held && Math.ceil((held.reset_at - now0) / 60e3);
     if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, key === acct ? `Too many tries for this account. Wait ${wait} minutes, or sign in with a passkey.` : `Too many tries. Wait ${wait} minutes and try again.`);
   }
-  const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
     for (const [key, max] of holds) await limit(env, key, max, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");

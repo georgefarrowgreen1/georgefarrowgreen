@@ -275,7 +275,7 @@ Motion, solid with Reduce Transparency.
   tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
   when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself; as
   the server can't tell it's the same password, that's in Recent activity ("Password protection strengthened") and
-  emailed.
+  emailed (if it wasn't you, a reset link is the way back, as the password may be someone else's by then).
   The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
   `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in; Weather
   has none.
@@ -431,7 +431,8 @@ Motion, solid with Reduce Transparency.
   a browser it signs in is this page's alone until it's shown it's you), `unit/pdf.test.mjs` (the PDF writer: Windows
   Latin 1, Helvetica's widths, wrapping, every object where the cross-reference table says), `unit/activity.test.mjs`
   (passkey providers) and `unit/acctsec.test.mjs` (a reset link's key kept for its life, a handed-over sign-in kept to
-  this page, and the password sign-in hold, against Node's own SQLite standing in for D1).
+  this page, and the password sign-in hold, with a device's word that it's signed in before: one for each account, given
+  as an account's made too, and no use once the password's changed; against Node's own SQLite standing in for D1).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.
@@ -2230,8 +2231,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   signs a phone out; a wrong password never does. Wrong passwords hold back the
   address they come from (30 an hour), and only guessing from many at once (300
   an hour) the account itself, and then not on a device that's signed in to it
-  before: that keeps a word saying so (a cookie of the account page's own, a MAC
-  of the email's hash) and counts its own wrong tries instead (10 an hour).
+  before (or made it, or reset its password there): that keeps a word saying so
+  (a cookie of the account page's own, one for each account, a MAC of the
+  email's hash, the account and when its password was set, so a new password or
+  a reset ends every word given before) and counts its own wrong tries instead
+  (10 an hour).
 - **Email addresses are confirmed** with a link sent at sign-up (good for 7
   days; the account's page can send another). Until then the address gets
   nothing but that link, password resets and word of the email being changed, so no one can sign up with
