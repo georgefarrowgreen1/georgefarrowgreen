@@ -22,8 +22,10 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
   in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
   app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
-  Back from the account's page by the browser's Back (the page as the browser kept it), it asks again who's signed in:
-  the same, and their figures are brought up to date; someone else, or no one now, and the page is opened afresh.
+  Back from the account's page by the browser's Back (the page as the browser kept it), it asks again for the words
+  (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
+  name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and
+  the page is opened afresh.
 - **Apps:** InFlight and Weather, each with its icon (served here at `/apps/`, from each app), what it is, and **Open**.
   Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
@@ -33,7 +35,9 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
   description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
   page takes them from there, rather than asking for them again (except back by the browser's Back or Forward, when it
-  may be the copy the browser kept: then it asks, and Edit waits for the answer).
+  may be the copy the browser kept, or when the server couldn't read them as it sent the page, which it marks
+  `data-words` only when they're in it: then it asks, and Edit waits for the answer; with no answer to such a page,
+  Edit says it couldn't load the words, rather than starting from the defaults it's written with).
 - **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
   glass redraw for no reason.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web

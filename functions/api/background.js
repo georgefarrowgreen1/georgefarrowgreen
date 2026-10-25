@@ -45,6 +45,9 @@ export async function updateList(env, apply, wait = 1100) {
   }
 }
 const unsaved = () => json({ error: "That couldn’t be saved just now. Try again." }, 503);
+// A photo added at the end of the list as it is (for updateList): false, for none to add, when there are as many as
+// there can be by then (another add, from another tab, say, saved while this one waited)
+export const addPhoto = (entry) => (l) => { if (l.length >= MAX) return false; l.push(entry); };
 
 function dataUrlToBytes(a) {
   const m = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(a || "");
@@ -128,7 +131,7 @@ export async function onRequestPut({ request, env }) {
     return json({ error: "Invalid or oversized image." }, 400);
   }
   // (refused before anything's stored: one past the most was cut from the list as it was saved, while the sheet showed
-  // it added and its files stayed with nothing pointing to them)
+  // it added and its files stayed with nothing pointing to them; and asked again of the list as it's saved: addPhoto)
   if ((await getList(env)).length >= MAX) return json({ error: `There can be ${MAX} photos at most. Remove one first.` }, 400);
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   // (and a phone-sized copy, made by the page as it's added: phones are sent that, about a third of the size)
@@ -141,12 +144,13 @@ export async function onRequestPut({ request, env }) {
     await env.BIO_KV.put(KV_IMG(id), a);
   }
   let list;
-  try { list = await updateList(env, (l) => { l.push({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) }); }); }
-  catch (_) {
+  try { list = await updateList(env, addPhoto({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) })); }
+  catch (_) { list = undefined; }
+  if (!list) {
     // (not in the list, so its files are taken away again: nothing would point to them, and nothing sweeps bg/)
     if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]).catch(() => {});
     else await env.BIO_KV.delete(KV_IMG(id)).catch(() => {});
-    return unsaved();
+    return list === null ? json({ error: `There can be ${MAX} photos at most. Remove one first.` }, 400) : unsaved();
   }
   return json({ ok: true, id, images: list });
 }
