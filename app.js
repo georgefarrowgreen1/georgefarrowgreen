@@ -787,8 +787,10 @@ function toast(text, undo) {
   const t = $("#toast"), b = $("#toast-undo"), tx = $("#toast-text");
   const up = !t.hidden && !t.classList.contains("out");
   if (up) fadeText(tx, text); else tx.textContent = text;
-  // (read out from a place that's always there, unseen: the toast itself, only just shown with it in, often isn't)
-  $("#toast-say").textContent = text;
+  // (read out from a place that's always there, unseen: the toast itself, only just shown with it in, often isn't; and
+  // only if it's there, as a page sent before it was can be running this script)
+  const say = $("#toast-say");
+  if (say) say.textContent = text;
   b.hidden = !undo;
   b.onclick = undo ? () => { toast("Undoing…"); undo(); } : null;
   if (!up) { t.classList.remove("out"); t.hidden = false; }
@@ -800,6 +802,9 @@ function hideToast() {
   const t = $("#toast");
   clearTimeout(toastTimer);
   if (t.hidden || t.classList.contains("out")) return;
+  // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+  const say = $("#toast-say");
+  if (say) say.textContent = "";
   t.classList.add("out");
   setTimeout(() => { if (t.classList.contains("out")) { t.hidden = true; t.classList.remove("out"); } }, 500);    // (should its animation not end)
 }
@@ -999,6 +1004,7 @@ let before = null, editOut = null;
 const guard = (e) => e.preventDefault();      // (leaving with the words half changed: the browser asks first)
 function startEdit() {
   if (editing || !me?.owner) return;
+  if (wordsDue) { wordsDue.then(startEdit); return; }     // (the words asked for again, back from history: start from them)
   // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
   if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
   // (and what was typed before a save that didn't go, back where it was)
@@ -1138,6 +1144,8 @@ function makeTile(p, src) {
     const d = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key];
     if (!d || $(".ask", tile)) return;
     e.preventDefault();
+    // (not while its last change is on its way, as a tap isn't: the answer would move it back, or the two cross)
+    if (tile.classList.contains("busy")) return;
     const [fx, fy] = (img.style.objectPosition || "50% 50%").split(" ").map(parseFloat);
     const x = Math.round(clamp((fx + d[0]) / 100) * 100), y = Math.round(clamp((fy + d[1]) / 100) * 100);
     aim(x, y);
@@ -1218,7 +1226,11 @@ function showTiles() {
   }
   let none = null;
   if (!photos.length && !pending.length) { none = $(".none", ph.tiles); if (!none) { none = document.createElement("p"); none.className = "none"; none.textContent = "No photos yet."; } }
+  // (a tile taken out and put back loses the focus, even in the same place: kept on what had it, a photo being moved by
+  // the arrow keys, say, if it's in one that stays)
+  const had = ph.tiles.contains(document.activeElement) ? document.activeElement : null;
   ph.tiles.replaceChildren(...els, ...pending, ...(none ? [none] : []), ...leaving, ...going);
+  if (had?.isConnected && !had.closest(".leaving") && document.activeElement !== had) had.focus({ preventScroll: true });
   if (!animate) return;
   for (const t of els) {
     const a = was.get(t); if (!a) continue;
@@ -1316,5 +1328,9 @@ for (const ev of ["copy", "cut"]) document.addEventListener(ev, (e) => { if (!in
 /* ---------------- start ---------------- */
 $("#year").textContent = new Date().getFullYear();
 showContent();      // (the Person block for search made from the words: index.html has it with the defaults)
+// (back by the browser's Back or Forward, the page can be the copy the browser kept, not asked for again, with the
+// words as they were then: asked for, so they're not edited from older ones; taken only if they come, and Edit waits)
+let wordsDue = performance.getEntriesByType?.("navigation")[0]?.type === "back_forward"
+  ? api("/api/content").then((c) => { content = c; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; }) : null;
 loadPhotos();
 loadMe();

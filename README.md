@@ -31,7 +31,8 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   so it isn't sent twice. See **Contact form** below.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
   description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
-  page takes them from there, rather than asking for them again.
+  page takes them from there, rather than asking for them again (except back by the browser's Back or Forward, when it
+  may be the copy the browser kept: then it asks, and Edit waits for the answer).
 - **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
   glass redraw for no reason.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web

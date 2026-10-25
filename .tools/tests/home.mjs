@@ -72,6 +72,12 @@ ok(r.status === 403, 'nor see the words before', String(r.status));
 r = await req(null, `${SITE}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, data: '{"password":"x"}' });
 ok(r.status >= 400 && !r.headers['set-cookie'], 'the page’s own password sign-in is gone', String(r.status));
 await shot(V, 'visitor-nophotos');
+// its words can't be selected (copying them is off, so there's no Copy that does nothing), what's typed into can; the
+// page for an address that isn't one, with the same styles, copies, so its words (the address among them) can be
+ok(await V.p.evaluate(() => getComputedStyle(document.body).userSelect === 'none' && getComputedStyle(document.querySelector('#c-message')).userSelect === 'text'), 'its words can’t be selected, what’s typed into can');
+await V.p.goto(`${SITE}/no-such-page`);
+ok(await V.p.evaluate(() => document.body.classList.contains('lost') && getComputedStyle(document.body).userSelect !== 'none'), 'the page for an address that isn’t one: its words can be selected');
+await home(V);
 
 // ---- 2. Get in touch: a message from a sheet, and a thank-you ----
 await V.p.click('.cta [data-contact]');
@@ -197,6 +203,15 @@ await G.p.click('#edit'); await settle(G, 400);
 await G.p.click('.hero h1'); await G.p.keyboard.press('ControlOrMeta+A'); await G.p.keyboard.type('Not This'); await G.p.keyboard.press('Escape'); await settle(G, 600);
 ok(await text(G, '.hero h1') === 'George Farrow-Green' && (await req(null, `${SITE}/api/content`)).json?.name === 'George Farrow-Green' && /Rides/i.test(await text(G, '.eyebrow')),
   'Escape leaves editing without saving', await text(G, '.hero h1'));
+await G.p.waitForFunction(() => document.querySelector('#toast').hidden, null, { timeout: 10000 }).catch(() => {});
+ok(await G.p.textContent('#toast-say') === '', 'the toast gone, what it said is too (so the same words next time are read out)', await G.p.textContent('#toast-say'));
+// back by the browser's Back, the page as the browser kept it (not asked for again): the words changed since are asked
+// for, so they're not edited from the ones it was sent with
+await G.p.goto(`${ACCT}/`); await G.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
+r = await put(G, '/api/content', { ...(await req(null, `${SITE}/api/content`)).json, role: 'Photos · Rides · Apps' });
+await G.p.goBack(); await G.p.waitForSelector('body.known', { timeout: 20000 }); await settle(G);
+ok(r.status === 200 && await G.p.evaluate(() => performance.getEntriesByType('navigation')[0]?.type) === 'back_forward' && /^Photos · Rides · Apps$/i.test(await text(G, '.eyebrow')),
+  'back by the browser’s Back: the words as they are now, not as the page it kept had them', `${r.status} ${await text(G, '.eyebrow')}`);
 
 // ---- 5. The photos: added, their focus and screens chosen, one removed ----
 await G.p.click('#edit'); await settle(G, 400);
@@ -218,6 +233,10 @@ for (const k of ['ArrowRight', 'ArrowRight', 'ArrowDown']) await G.p.keyboard.pr
 await settle(G, 1400);
 ok((await req(null, `${SITE}/api/background`)).json.images[0].focus === '30% 35%' && /30% across, 35% down/.test(await G.p.locator('#tiles .tile img').first().getAttribute('alt')),
   'or the arrow keys on it, kept once they’ve stopped', (await req(null, `${SITE}/api/background`)).json.images[0].focus);
+ok(await G.p.evaluate(() => document.activeElement === document.querySelector('#tiles .tile img')), 'the photo keeps the focus once it’s kept',
+  await G.p.evaluate(() => document.activeElement?.tagName));
+await G.p.keyboard.press('ArrowRight'); await settle(G, 1400);
+ok((await req(null, `${SITE}/api/background`)).json.images[0].focus === '35% 35%', 'so the arrow keys go on moving it', (await req(null, `${SITE}/api/background`)).json.images[0].focus);
 await G.p.locator('#tiles .tile .where').first().click(); await settle(G, 700);
 ok(await text(G, '#tiles .tile .where') === 'Phone' && (await req(null, `${SITE}/api/background`)).json.images[0].device === 'mobile', 'its screens: Both, then Phone');
 await G.p.locator('#tiles .tile .where').nth(1).click(); await settle(G, 700);
