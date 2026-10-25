@@ -73,7 +73,9 @@ export async function connect(env, userId, rawKey) {
   try { t = await swap(env, key); }
   catch (e) {
     if (e.status === 401 || e.status === 403 || e.status === 400) throw new HttpError(400, "Garmin didn’t take that key. Check it’s the whole key, and that it hasn’t been deleted or expired.", "key");
-    throw new HttpError(502, "Garmin Connect didn’t answer. Try again in a moment.");
+    // (what Garmin said, or why it didn't answer, in the words shown: a 502 of our own is taken over by Cloudflare's)
+    console.error("garmin token", e.status, e.message);
+    throw new HttpError(424, `Garmin Connect didn’t answer (${e.status || e.name || "no answer"}). Try again in a moment.`);
   }
   const now = Date.now();
   await D.prepare(`INSERT INTO fx_garmin (user_id, apikey, token, token_exp, since, seen, last, ok, said, added) VALUES (?1, ?2, ?3, ?4, ?5, '[]', NULL, 1, NULL, ?6)
