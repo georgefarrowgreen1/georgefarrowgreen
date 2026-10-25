@@ -297,6 +297,26 @@ const t5 = tDev();
 ok(t5 && !t5.user_id && t5.n > 0 && !rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess, 'signed out from elsewhere: by the next tick the tablet is no longer the account’s, and keeps its places as its own', JSON.stringify(t5));
 tSubs = t5?.n || 0;
 await closeSheet(T);
+// signed in again, then, with Weather not opened meanwhile, out of that account in this browser and in as someone else
+// (as if Weather were last in step with another account, the tablet cut loose from it when it signed out): asked before
+// the tablet's places go to the one signed in now, and till then nothing goes to it, nor do its notifications come here
+await weather(T); await settings(T); await T.p.waitForSelector('#acct-signin', { timeout: 15000 }).catch(() => {});
+await signInPage(T); await onAccountPage(T.p, { email: 'sam@example.com', password: PW }); await backInWeather(T);
+await waitFor(() => tDev()?.user_id, 20000); await T.p.waitForTimeout(1500);
+await T.p.evaluate(() => { const k = JSON.parse(localStorage.getItem('wx:acct')); localStorage.setItem('wx:acct', JSON.stringify({ ...k, id: 'someone-else', name: 'Pat Doe', handle: 'pat' })); });
+sql(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE dev = '${tId}'`);
+const ver0 = kept('sam')?.ver;
+await weather(T); await settings(T); await T.p.waitForSelector('#acct-keep', { timeout: 15000 }).catch(() => {});
+const tAsks = await acctSays(T);
+// (a unit changed meanwhile: kept here, and the tablet's notifications told it)
+const to = await T.p.evaluate(() => (JSON.parse(localStorage.getItem('wx:settings')).temp === 'f' ? 'c' : 'f')), t0 = Date.now();
+await folder(T, 'units'); await T.p.click(`input[name="temp"][value="${to}"]`);
+await waitFor(() => T.p.evaluate((t0) => (JSON.parse(localStorage.getItem('wx:settings')).notify?.syncedAt || 0) > t0, t0), 15000); await T.p.waitForTimeout(2000);
+const t6 = tDev();
+ok(/Keep them with @sam/.test(tAsks) && !/Pat|@pat/.test(tAsks) && !(await T.p.evaluate(() => localStorage.getItem('wx:acct'))) && t6 && !t6.user_id && t6.n > 0 && kept('sam')?.ver === ver0,
+  'signed in as someone else meanwhile: asked before the tablet\'s places go to them, and till then nothing goes to them, nor their notifications here', JSON.stringify({ tAsks, t6, ver: [ver0, kept('sam')?.ver] }));
+tSubs = t6?.n || 0;
+await closeSheet(T);
 
 // ---- 7. The account's own rules ----
 const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new Promise((done, fail) => {

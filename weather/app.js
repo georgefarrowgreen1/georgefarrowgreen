@@ -2361,7 +2361,13 @@ async function pull() {
 // here: signed in on this page just now (so this device's places are meant for the account)
 async function adopt(r, here = false) {
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle);
-  if (fresh && !here && mine().places.length) { S.ask = r; SE()?.drawAccount(); return; }
+  if (fresh && !here && mine().places.length) {
+    // (asked first; and the account this device was in step with till now, signed out of in this browser since, let go
+    // of meanwhile, so nothing here goes to the one signed in now, nor its notifications come here, till it's answered)
+    S.ask = r;
+    if (S.acct || k) signedOutElsewhere(); else SE()?.drawAccount();
+    return;
+  }
   S.ask = null;
   S.acct = { ...profileOf(r), devices: r.devices || [], state: S.acct?.state || "ok" };
   if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
