@@ -19,7 +19,7 @@ const round = (v, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** 
 
 // ---- activities ----
 // a new activity, from samples taken at times `t` (seconds from `start`, which is ms since 1970)
-function activity({ sport = "ride", indoor = false, start, name, device, file, t, lat, lon, ele, hr, cad, pwr, spd, dist, laps = [] }) {
+function activity({ sport = null, indoor = false, start, name, device, file, t, lat, lon, ele, hr, cad, pwr, spd, dist, laps = [] }) {
   // (samples without a time, or out of order, are left out; and the rest of a file from a jump of more than six hours on,
   // as a device that lost power mid-write leaves a last sample dated years away)
   const keep = [];
@@ -53,7 +53,23 @@ function activity({ sport = "ride", indoor = false, start, name, device, file, t
     s.spd = new Array(n).fill(null);
     for (let i = 1; i < n; i++) if (s.dist[i] != null && s.dist[i - 1] != null && t[i] > t[i - 1]) s.spd[i] = (s.dist[i] - s.dist[i - 1]) / (t[i] - t[i - 1]);
   }
-  return { id: `a${start}`, sport, indoor: indoor || !s.lat, start, name: name || defaultName(sport, start, indoor || !s.lat), device: device || null, file: file || null, s, laps };
+  // (a file that doesn't say what it was: worked out from how it went, and said to be a guess)
+  const guessed = !sport;
+  if (guessed) sport = guessSport(s);
+  return { id: `a${start}`, sport, guessed, indoor: indoor || !s.lat, start, name: name || defaultName(sport, start, indoor || !s.lat), device: device || null, file: file || null, s, laps };
+}
+// What an activity was, from its samples alone: power or a cyclist's cadence is a ride; otherwise by its moving speed
+// (a run from about 7 km/h to 20, a walk under it, a ride over it); nothing to go by, a ride
+export function guessSport(s) {
+  if (s.pwr) return "ride";
+  let moving = 0, metres = 0;
+  for (let i = 1; i < s.t.length; i++) {
+    const v = s.spd?.[i], dt = s.t[i] - s.t[i - 1];
+    if (v != null && v > 0.5 && dt > 0 && dt < 30) { moving += dt; metres += v * dt; }
+  }
+  if (moving < 60) return "ride";
+  const kmh = (metres / moving) * 3.6;
+  return kmh > 20 ? "ride" : kmh >= 7 ? "run" : "walk";
 }
 export function defaultName(sport, start, indoor) {
   const h = new Date(start).getHours(), part = h < 12 ? "Morning" : h < 17 ? "Afternoon" : h < 21 ? "Evening" : "Night";
@@ -94,7 +110,7 @@ export function activityFromFit(bytes, file) {
   return parts.map(({ ses, recs: rs }, k) => {
     const t0 = ses.startTime || rs[0].timestamp, pick = (key, alt) => rs.map((r) => r[key] ?? (alt ? r[alt] : null) ?? null);
     return activity({
-      sport: SPORT_OF[ses.sport] || (ses.sport == null ? "ride" : "other"), indoor: ses.subSport === SUB.indoorCycling || ses.subSport === SUB.virtual || ses.subSport === SUB.treadmill || ses.subSport === SUB.lapSwimming,
+      sport: SPORT_OF[ses.sport] || (ses.sport == null || ses.sport === 0 ? null : "other"), indoor: ses.subSport === SUB.indoorCycling || ses.subSport === SUB.virtual || ses.subSport === SUB.treadmill || ses.subSport === SUB.lapSwimming,
       start: t0 * 1000, device, file: parts.length > 1 ? `${file} (${k + 1} of ${parts.length})` : file,
       t: rs.map((r) => r.timestamp - t0), lat: pick("lat"), lon: pick("lon"), ele: pick("enhancedAltitude", "altitude").map((v) => round(v, 1)),
       hr: pick("heartRate"), cad: pick("cadence"), pwr: pick("power"), spd: pick("enhancedSpeed", "speed"), dist: pick("distance"),
@@ -146,7 +162,7 @@ export function activityFromGpx(text, file) {
   const times = pts.map((p) => Date.parse(tag(p, "time")));
   if (!Number.isFinite(times[0])) throw new Error("That GPX has no times in it, so it’s a route rather than a ride.");
   const t0 = times[0], type = (tag(text, "type") || "").toLowerCase();
-  const sport = /run/.test(type) ? "run" : /walk|hik/.test(type) ? "walk" : /swim/.test(type) ? "swim" : "ride";
+  const sport = /run/.test(type) ? "run" : /walk|hik/.test(type) ? "walk" : /swim/.test(type) ? "swim" : /cycl|bik|ride/.test(type) ? "ride" : null;
   return activity({
     sport, start: t0, file, name: tag(blocks(text, "trk")[0] || "", "name"), device: attr(text.slice(0, 600), "creator"),
     t: times.map((x) => (Number.isFinite(x) ? (x - t0) / 1000 : null)),
@@ -190,7 +206,7 @@ export function activityFromTcx(text, file) {
   if (!pts.length || !Number.isFinite(t0)) throw new Error("That TCX has no samples in it.");
   const sp = (attr(head, "Sport") || "").toLowerCase();
   return activity({
-    sport: sp === "running" ? "run" : sp === "biking" ? "ride" : "ride", start: t0, file, device: tag(blocks(act, "Creator")[0] || "", "Name"),
+    sport: sp === "running" ? "run" : sp === "biking" ? "ride" : null, start: t0, file, device: tag(blocks(act, "Creator")[0] || "", "Name"),
     t: times.map((x) => (Number.isFinite(x) ? (x - t0) / 1000 : null)), lat: pts.map((p) => num(tag(p, "LatitudeDegrees"))), lon: pts.map((p) => num(tag(p, "LongitudeDegrees"))),
     ele: pts.map((p) => num(tag(p, "AltitudeMeters"))), hr: pts.map((p) => num(tag(blocks(p, "HeartRateBpm")[0] || "", "Value"))),
     cad: pts.map((p) => num(tag(p, "Cadence") ?? tag(p, "RunCadence"))), pwr: pts.map((p) => num(tag(p, "Watts"))),

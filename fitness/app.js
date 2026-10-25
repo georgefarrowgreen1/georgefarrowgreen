@@ -608,7 +608,9 @@ function builderView(base) {
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}, from your devices` : "None yet", h("button.round", { type: "button", "aria-label": "Import files", onclick: chooseFiles }, icon("inbox", 21, 2)))];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}, from your devices` : "None yet", h("button.round", { type: "button", "aria-label": "Upload activities", onclick: chooseFiles }, icon("upload", 21, 2.1)))];
+  // none yet: what to do, and where your files are
+  if (!S.acts.length) return [...out, ...firstUpload()];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
   const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
@@ -618,18 +620,31 @@ function activitiesView() {
   const byWeek = new Map();
   for (const a of list) { const k = mondayOf(a.start); if (!byWeek.has(k)) byWeek.set(k, []); byWeek.get(k).push(a); }
   const thisMon = mondayOf(TODAY);
-  if (!list.length) out.push(section("Your first ride", h("div.group.glass", {},
-      row({ icon: "inbox", tint: "blue", title: "Import files", sub: "Choose them, or drop them anywhere on this page", onclick: chooseFiles })),
-    h("ol.how.foot", {}, h("li", {}, h("b", { text: "Garmin: " }), "connect it by cable and open ", h("code", { text: "Garmin/Activity" }), ", or in Garmin Connect on the web, an activity’s ⚙ › Export Original."),
-      h("li", {}, h("b", { text: "Wahoo: " }), "in the Wahoo app, History, an activity, then Download .fit; or by cable, the ELEMNT’s ", h("code", { text: "exports" }), " folder."),
-      h("li", {}, h("b", { text: "Anywhere else: " }), "Strava, Zwift and most apps export FIT, GPX or TCX."))));
+  if (!list.length) out.push(h("p.foot.none", { text: `No ${sports[at][1].toLowerCase()} yet.` }));
   for (const [mon, acts] of byWeek) {
     const name = mon === thisMon ? "This week" : mon === addDays(thisMon, -7) ? "Last week" : `${dateShort(mon)} – ${dateShort(addDays(mon, 6))}`;
     const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0);
     out.push(section([name, h("span.aside", { text: S.summed ? dur(secs) : "" })], h("div.group.glass", {}, acts.map(actRow))));
   }
-  if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Import from a Garmin or Wahoo")));
+  if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: chooseFiles }, "Upload more activities")));
   return out;
+}
+// Your first activity: one button, and where each device and app keeps its files
+function firstUpload() {
+  const where = (ic, tint, title, sub) => h("div.row.plain", {}, h("span.ic." + tint, {}, icon(ic, 18, 2.1)), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })));
+  return [
+    h("div.card.glass.first", {},
+      h("span.big", {}, icon("upload", 30, 2)),
+      h("h2", { text: "Add your first activity" }),
+      h("p", { text: "Upload a file from your Garmin, Wahoo, Strava or Zwift. Fitness works out whether it was a ride, a run or a swim, and you can change it before it’s saved." }),
+      h("button.btn", { type: "button", onclick: chooseFiles }, icon("upload", 19, 2.2), "Upload a file"),
+      h("small", { text: "FIT, GPX or TCX, or a zip of them" })),
+    section("Where to find your files", h("div.group.glass", {},
+      where("device", "blue", "Garmin", "In Garmin Connect, open an activity, then ⋯ › Export Original. Or plug the device in and open Garmin › Activity."),
+      where("device", "teal", "Wahoo", "In the Wahoo app, open an activity, then Share › Download .fit."),
+      where("open", "coral", "Strava", "On strava.com, open an activity, then ⋯ › Export Original."),
+      where("trainer", "indigo", "Zwift", "Documents › Zwift › Activities, on the computer you ride on."))),
+  ];
 }
 function actRow(a) {
   const s = sumOf(a);
@@ -933,46 +948,86 @@ dropEl.append(h("div", {}, icon("inbox", 40, 1.8), h("b", { text: "Drop to impor
 
 async function importFiles(files) {
   if (!S.me) return;
+  // read first, here: each activity in the files (a zip's, a triathlon's three), and any workouts
   const got = { acts: [], workouts: [], skipped: [], dupes: 0 };
-  toast(`Reading ${plural(files.length, "file")}…`);
+  toast(`Reading ${plural(files.length, "file")}…`, false, 60000);
   for (const f of files) {
     try {
       const r = await F.readAny(f.name, await f.arrayBuffer());
       for (const a of r.activities) {
-        if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3 && x.sport === a.sport)) { got.dupes++; continue; }
-        // (kept with your account: its file as it came, and its figures as worked out here)
-        const sum = summarise(a, P()), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
-        toast(`Saving ${a.name}, ${dayShort(a.start)}…`, false, 120000);
-        try {
-          const kept = await A.upload(meta, a.raw.name, a.raw.bytes);
-          if (kept.already) { got.dupes++; continue; }
-        } catch (e) {
-          if (e.status === 401) return signedOutHere();
-          got.skipped.push(`${a.raw.name}${r.activities.length > 1 ? ` (${a.sport})` : ""}: not saved. ${e.message}`); continue;
-        }
-        const entry = { ...meta, sample: false };
-        S.own.push(entry); S.sums.set(entry.id, sum); got.acts.push(entry);
-        remember(entry.id, Object.assign(a, { id: entry.id }));
-        idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
+        if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3) || got.acts.some((x) => x.start === a.start)) { got.dupes++; continue; }
+        got.acts.push(a);
       }
-      for (const w of r.workouts) { S.mine.unshift(w); got.workouts.push(w); }
+      got.workouts.push(...r.workouts);
       got.skipped.push(...(r.skipped || []));
     } catch (e) { got.skipped.push(`${f.name}: ${e.message}`); }
   }
-  setActs();
-  if (got.workouts.length) keep("workouts");
   toastEl.classList.remove("on");
+  got.acts.sort((a, b) => b.start - a.start);
+  openSheet(() => uploadView(got), { tall: got.acts.length > 2 });
+}
+const SPORT_NAMES = [["ride", "Ride"], ["run", "Run"], ["swim", "Swim"], ["walk", "Walk"], ["row", "Row"], ["strength", "Strength"], ["other", "Other"]];
+// What's in the files, before it's saved: each activity with what it was (as its file says, or worked out from how it
+// went, and a tap to change), then Upload
+function uploadView(got) {
+  const n = got.acts.length, nw = got.workouts.length;
+  if (!n && !nw) return { title: "Upload", body: [h("div.sheet-top", {}, h("h1", { text: "Nothing to upload" }), h("div.sub", { text: got.dupes ? `${plural(got.dupes, "activity is", "activities are")} here already` : "" })),
+    got.skipped.length > 0 && section("Not read", h("div.group", {}, got.skipped.map((t) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: t })))))),
+    h("button.btn.quiet", { type: "button", onclick: () => { closeSheet(); chooseFiles(); } }, "Choose other files")] };
+  const rows = got.acts.map((a) => {
+    const sum = summarise(a, P()), tile = h("span.tile.s-" + a.sport, {}, sportIcon(a.sport, 20)), name = h("b", { text: a.name });
+    const said = h("small.said", { text: a.guessed ? "Fitness worked this out: check it" : "As your device recorded it" });
+    const pick = h("select.sport-pick", { "aria-label": `What ${a.name} was`, onchange: () => {
+      const was = defaultFor(a), now = pick.value; a.sport = now; a.guessed = false;
+      if (a.name === was) { a.name = defaultFor(a); name.textContent = a.name; }
+      tile.className = "tile s-" + now; tile.replaceChildren(sportIcon(now, 20)); said.textContent = "Chosen by you";
+    } }, SPORT_NAMES.map(([v, l]) => h("option", { value: v, selected: a.sport === v, text: l })));
+    return h("div.row.up" + (a.guessed ? ".guess" : ""), {}, tile,
+      h("span.tx", {}, name, h("small", { text: [`${dayShort(a.start)}, ${timeOf(a.start)}`, sum.dist > 100 ? dist(sum.dist) : null, hm(sum.moving)].filter(Boolean).join(" · ") }), said),
+      h("label.pick", {}, pick, icon("chev", 14, 2.6)));
+  });
+  const go = h("button.btn", { type: "button", onclick: () => upload(got, go) }, icon("upload", 19, 2.2), n ? `Upload ${plural(n, "activity", "activities")}` : `Save ${plural(nw, "workout")}`);
+  return { title: "Upload", right: h("button.link.done.r", { type: "button", onclick: closeSheet }, "Cancel"), body: [
+    h("div.sheet-top", {}, h("h1", { text: n ? (n === 1 ? "One activity" : `${n} activities`) : plural(nw, "workout") }),
+      h("div.sub", { text: n ? "Check what each one was, then upload." : "To your workouts." })),
+    n > 0 && h("div.group", {}, rows),
+    nw > 0 && section("Workouts", h("div.group", {}, got.workouts.map((w) => h("div.row.plain", {}, h("span.mini", {}, C.profile(w, { mini: true, pace: paceFor(w.sport) })),
+      h("span.tx", {}, h("b", { text: w.name }), h("small", { text: `${dur(measure(w, paceFor(w.sport)).secs)} · ${SPORTS[w.sport]?.name || w.sport}` })))))),
+    (got.dupes || got.skipped.length) > 0 && section("Left out", h("div.group", {},
+      got.dupes > 0 && h("div.row.plain", {}, h("span.tx", {}, h("small", { text: `${plural(got.dupes, "activity is", "activities are")} here already` }))),
+      got.skipped.map((t) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: t })))))),
+    go,
+  ] };
+}
+const defaultFor = (a) => F.defaultName(a.sport, a.start, a.indoor);
+// Each activity kept with your account (its file as it came, and its figures as worked out here), one at a time, the
+// sheet saying how far it's got
+async function upload(got, btn) {
+  btn.disabled = true;
+  const done = [], failed = [];
+  for (const [i, a] of got.acts.entries()) {
+    btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
+    const sum = summarise(a, P()), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: a.raw.name, type: a.raw.type, sum };
+    try {
+      const r = await A.upload(meta, a.raw.name, a.raw.bytes);
+      if (r.already) continue;
+    } catch (e) {
+      if (e.status === 401) return signedOutHere();
+      failed.push(`${a.name}: ${e.message}`); continue;
+    }
+    const entry = { ...meta, sample: false };
+    S.own.push(entry); S.sums.set(entry.id, sum); done.push(entry);
+    remember(entry.id, Object.assign(a, { id: entry.id }));
+    idb.put(fileKey(entry), a.raw.bytes).catch(() => {});
+  }
+  if (got.workouts.length) { S.mine.unshift(...got.workouts); keep("workouts"); }
+  setActs();
+  if (failed.length) { btn.disabled = false; btn.lastChild.textContent = "Try again"; got.acts = got.acts.filter((a) => failed.some((f) => f.startsWith(a.name + ":"))); toast(failed[0], true, 6000); redraw(); return; }
+  await closeSheet();
+  if (done.length) { S.tab !== "activities" && go("activities"); S.actSport = "all"; }
   redraw();
-  if (got.acts.length === 1 && !got.workouts.length && !got.skipped.length) return openAct(got.acts[0]);
-  if (got.workouts.length === 1 && !got.acts.length && !got.skipped.length) { S.sport = got.workouts[0].sport; redraw(); return openWorkout(got.workouts[0]); }
-  openSheet(() => ({
-    title: "Imported",
-    body: [h("div.sheet-top", {}, h("h1", { text: got.acts.length || got.workouts.length ? "Imported" : "Nothing imported" }),
-      h("div.sub", { text: [got.acts.length && plural(got.acts.length, "activity", "activities"), got.workouts.length && plural(got.workouts.length, "workout"), got.dupes && `${got.dupes} already here`].filter(Boolean).join(" · ") || "" })),
-      got.acts.length > 0 && section("Activities", h("div.group", {}, got.acts.map(actRow))),
-      got.workouts.length > 0 && section("Workouts", h("div.group", {}, got.workouts.map(workoutRow))),
-      got.skipped.length > 0 && section("Not read", h("div.group", {}, got.skipped.map((s) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: s }))))))],
-  }));
+  toast([done.length && plural(done.length, "activity", "activities"), got.workouts.length && plural(got.workouts.length, "workout")].filter(Boolean).join(" and ") + " added");
+  if (done.length === 1 && !got.workouts.length) openAct(done[0]);
 }
 
 // ---- sheets: up from below, the page stepping back; inside one, on and back slide like pages ----

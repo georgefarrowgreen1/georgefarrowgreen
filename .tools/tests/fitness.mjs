@@ -36,7 +36,8 @@ const wahoo = writeFit([['fileId', { type: 4, manufacturer: 32, product: 31, ser
   ['deviceInfo', { timestamp: t0, deviceIndex: 0, manufacturer: 32, product: 31, productName: 'ELEMNT BOLT' }],
   ...ride.s.t.map((t, i) => ['record', { timestamp: t0 + t, lat: ride.s.lat[i], lon: ride.s.lon[i], altitude: ride.s.ele[i], heartRate: ride.s.hr[i], cadence: ride.s.cad[i], distance: ride.s.dist[i], speed: ride.s.spd[i], power: ride.s.pwr[i] }]),
   ['session', { timestamp: t0 + ride.s.t.at(-1), startTime: t0, sport: 2, subSport: 7, elapsed: ride.s.t.at(-1), timer: ride.s.t.at(-1) }]]);
-const gpx = gpxFromActivity({ ...ride, start: (t0 + 86400) * 1000, name: 'Morning ride' });
+// (a GPX that doesn't say what it was, as some apps write it: worked out from how it went, a ride, then said to be a run)
+const gpx = gpxFromActivity({ ...ride, start: (t0 + 86400) * 1000, name: 'Morning ride' }).replace(/<type>[^<]*<\/type>/, '');
 const garmin = writeFit([['fileId', { type: 4, manufacturer: 1, product: 3843, serial: 99, created: t0 - 86400 }],
   ...Array.from({ length: 1800 }, (_, i) => ['record', { timestamp: t0 - 86400 + i, heartRate: 130 + (i % 20), power: 180 + (i % 40), cadence: 85 }]),
   ['session', { timestamp: t0 - 86400 + 1799, startTime: t0 - 86400, sport: 2, subSport: 6, elapsed: 1800, timer: 1800 }]]);
@@ -116,12 +117,22 @@ await done(L);
 
 // ---- 3. Files in on the laptop: each ride kept with the account, its file as it came ----
 await tab(L, 4);
+ok(await L.p.locator('.card.first .btn').innerText() === 'Upload a file' && !(await L.p.$('main .seg')), 'none yet: one button to upload, and where the files are (no filters for nothing)');
+await L.p.screenshot({ path: `${out}/first.png` });
 await L.p.setInputFiles('#files', FILES);
 await L.p.waitForSelector('#sheet[open] .sheet-top', { timeout: 60000 }); await settle(L);
-const sub = await L.p.locator('#sheet .sheet-top .sub').innerText();
-ok(/^3 activities · 1 workout$/.test(sub), 'three rides (one from the zip) and a workout, imported', sub);
-ok(await L.p.locator('#sheet').getByText(/notes\.txt: Fitness reads FIT/).count() === 1, 'a file it can\'t read: said, by name, with why');
+// (first, what's in them, each with what it was, before anything's kept)
+const review = await L.p.evaluate(() => [...document.querySelectorAll('#sheet .row.up')].map((r) => `${r.querySelector('b').textContent}=${r.querySelector('select').value}${r.classList.contains('guess') ? '?' : ''}`));
+ok(await L.p.locator('#sheet .sheet-top h1').innerText() === '3 activities' && review.join() === 'Morning ride=ride?,Afternoon ride=ride,Indoor ride=ride' && !acts(sam).length,
+  'three activities (one from the zip) to check before they\'re kept: each one\'s sport from its file, or worked out and marked to check', review.join());
+ok(await L.p.locator('#sheet').getByText(/notes\.txt: Fitness reads FIT/).count() === 1 && await L.p.locator('#sheet').getByText('Hills from Zwift').count() === 1, 'the workout too, and a file it can\'t read: said, by name, with why');
+await L.p.screenshot({ path: `${out}/upload.png` });
+await L.p.selectOption('#sheet .row.up.guess select', 'run');
+await L.p.locator('#sheet .btn', { hasText: 'Upload 3 activities' }).click();
+await L.p.waitForSelector('#sheet[open]', { state: 'detached', timeout: 60000 }).catch(() => {});
+await L.p.waitForFunction(() => !document.querySelector('#sheet[open]'), null, { timeout: 60000 }); await settle(L);
 const kept = acts(sam);
+ok(kept.find((a) => a.name === 'Morning ride')?.sport === 'run', 'the one changed: kept as a run', JSON.stringify(kept.map((a) => [a.name, a.sport])));
 ok(kept.length === 3 && kept.map((a) => a.type).join() === 'fit,fit,gpx' && kept.find((a) => a.type === 'gpx')?.size === Buffer.byteLength(gpx) && kept.find((a) => a.file === 'wahoo.fit')?.size === wahoo.length,
   'each ride kept with the account: its file as it came (the zip\'s ride as its FIT)', JSON.stringify(kept.map((a) => [a.file, a.type, a.size])));
 const st1 = await waitFor(() => { const s = state(sam); return s?.workouts?.length ? s : null; });
@@ -130,7 +141,7 @@ await L.p.screenshot({ path: `${out}/imported.png` });
 await done(L);
 await L.p.setInputFiles('#files', FILES.slice(0, 1));
 await L.p.waitForSelector('#sheet[open] .sheet-top', { timeout: 30000 }); await settle(L);
-ok(/^1 already here$/.test(await L.p.locator('#sheet .sheet-top .sub').innerText()) && acts(sam).length === 3, 'the same ride again: already here, not kept twice', await L.p.locator('#sheet .sheet-top .sub').innerText());
+ok(/^1 activity is here already$/.test(await L.p.locator('#sheet .sheet-top .sub').innerText()) && acts(sam).length === 3, 'the same ride again: already here, not kept twice', await L.p.locator('#sheet .sheet-top .sub').innerText());
 await done(L);
 
 // ---- 4. The phone signs in on the account's page, handed back: the laptop's rides are there ----

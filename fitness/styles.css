@@ -525,3 +525,23 @@ dialog.sheet.dragging { animation: none; transition: none; }
   .glass, .status, .toast, dialog.sheet, .tabs, .round { -webkit-backdrop-filter: none; backdrop-filter: none; }
   .glass, .status, .toast, dialog.sheet, .tabs, .round:not(.me) { background: var(--glass-strong); }
 }
+
+/* ---- Activities, before the first: one button, and where the files are ---- */
+.card.first { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 28px 22px 22px; }
+.first .big { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: var(--s-ride); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 14px 30px -14px rgba(238, 75, 47, 0.8); margin-bottom: 4px; }
+.first h2 { margin: 0; font: 700 24px/1.15 var(--font-d); }
+.first p { margin: 0 0 8px; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+.first small { color: var(--text-3); font-size: 13px; }
+.foot.none { text-align: center; padding: 28px 0; }
+
+/* ---- uploading: each activity, with what it was, a tap to change ---- */
+.row.up { align-items: center; }
+.row.up .tx small.said { color: var(--text-3); font-size: 12.5px; }
+.row.up.guess .tx small.said { color: #ffc65a; }
+.pick { position: relative; flex: none; display: inline-flex; align-items: center; height: 34px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+.pick select { appearance: none; -webkit-appearance: none; border: 0; background: none; height: 100%; padding: 0 28px 0 13px; font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; }
+.pick svg { position: absolute; right: 10px; pointer-events: none; transform: rotate(90deg); color: var(--text-3); }
+.row.up.guess .pick { box-shadow: inset 0 0 0 1.5px #f2a100; }
+.sheet-body > .btn { margin-top: 6px; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .row.up.guess .tx small.said { color: #a85f00; } }
+:root[data-theme="light"] .row.up.guess .tx small.said { color: #a85f00; }

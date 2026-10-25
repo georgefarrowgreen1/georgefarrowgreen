@@ -10,7 +10,7 @@ import {
   ergFromWorkout, mrcFromWorkout, workoutFromCourse, planFromWorkout, readAny, zip, unzip, crc32,
 } from '../../../fitness/formats.js';
 import { WORKOUTS, workoutById, measure, layOut, PLANS, mondayOf } from '../../../fitness/workouts.js';
-import { activityFromFit } from '../../../fitness/formats.js';
+import { activityFromFit, guessSport } from '../../../fitness/formats.js';
 import { summarise, fitness, bestEfforts } from '../../../fitness/load.js';
 import { demo, samples, PROFILE } from '../../../fitness/sample.js';
 import { cleanState, cleanAct, fileIs } from '../../../functions/_fitness.js';
@@ -244,4 +244,13 @@ test('two devices\' records put together: each part changed here this device\'s;
   assert.deepEqual(merge({ swaps: { 1: 'a', 2: 'b' } }, { swaps: { 2: 'c' } }, new Set(['swaps'])).swaps, { 1: 'a', 2: 'c' });
   assert.deepEqual(workoutIds({ workouts: [w('x'), w('y')] }), ['x', 'y']);
   assert.deepEqual(workoutIds(null), []);
+});
+
+test('an activity whose file doesn\'t say what it was: worked out from power, or its moving speed', () => {
+  const at = (kmh, n = 600) => ({ t: Array.from({ length: n }, (_, i) => i), spd: Array(n).fill(kmh / 3.6) });
+  assert.equal(guessSport({ ...at(10), pwr: [200] }), 'ride');
+  assert.deepEqual([28, 12, 5].map((v) => guessSport(at(v))), ['ride', 'run', 'walk']);
+  assert.equal(guessSport(at(12, 30)), 'ride', 'too little to go by');
+  const gpx = gpxFromActivity({ ...samples(demo(Date.now()).history.find((x) => x.workout === 'endurance-90' && !x.indoor)), start: Date.UTC(2026, 9, 20), name: 'x' }).replace(/<type>[^<]*<\/type>/, '');
+  return readAny('x.gpx', new TextEncoder().encode(gpx)).then((r) => assert.ok(r.activities[0].guessed && r.activities[0].sport === 'ride'));
 });
