@@ -977,6 +977,8 @@ function openSheet(view, { tall = false } = {}) {
     document.body.style.setProperty("--sy", `${scrollY + innerHeight / 2}px`);
     sheetEl.classList.remove("closing");
     sheetEl.showModal();
+    // (the sheet itself takes the focus, as the account page's does, not its first button: so Done isn't ringed as it opens)
+    sheetEl.focus({ preventScroll: true });
     document.body.classList.add("sheet-up");
   }
 }
