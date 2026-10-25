@@ -379,7 +379,9 @@ function feelCard(w) {
   // (not yet today: a check-in, a tap away; with Rhythm it's asked as the app opens, once a day)
   if (!done) return h("div.card.glass.checkin", {}, h("div", {}, h("b", { text: "How are you today?" }), h("small", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps: sleep, legs and motivation." })),
     h("button.pill.primary", { type: "button", onclick: () => openCheckIn() }, "Check in"));
-  const said = [["sleep", ["Slept poorly", "Slept OK", "Slept well"]], ["legs", ["Heavy legs", "Normal legs", "Fresh legs"]], ["mood", ["Low motivation", "Motivation OK", "Motivated"]]].map(([k, xs]) => xs[f[k]]).join(" · ");
+  // (each answer a chip: its icon, its words, and its tone: amber for a poor one, green for a good one)
+  const chips = [["sleep", "contrast", ["Slept poorly", "Slept OK", "Slept well"]], ["legs", "run", ["Heavy legs", "Normal legs", "Fresh legs"]], ["mood", "bolt", ["Low motivation", "Motivation OK", "Motivated"]]]
+    .map(([k, ic, xs]) => h("span.chip.tone-" + ["low", "mid", "high"][f[k]], {}, icon(ic, 14, 2.2), xs[f[k]]));
   const rd = rhythmOn() ? rhDay(TODAY) : null, tm = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null;
   let verdict;
   if (rd) {
@@ -391,8 +393,9 @@ function feelCard(w) {
     verdict = score <= 2 && hard ? ["amber", "swap", "Take it easy today", `${w.name} would cost more than it gives today.`] : ["green", "check", score >= 5 ? "Ready for it" : "Good to go", w ? `${w.name} as planned.` : "Ride as you feel."];
   }
   return h("div.card.glass.checkin.done", {},
-    h("div.checkin-said", {}, h("span.ic." + verdict[0], {}, icon(verdict[1], 16, 2.4)), h("div", {}, h("b", { text: verdict[2] }), h("small", { text: verdict[3] }))),
-    h("div.checkin-foot", {}, h("span", { text: said }), h("button.link.small", { type: "button", onclick: () => openCheckIn() }, "Change")));
+    h("div.checkin-top", {}, h("span.ic." + verdict[0], {}, icon(verdict[1], 18, 2.4)), h("div.tx", {}, h("b", { text: verdict[2] }), h("small", { text: verdict[3] })),
+      h("button.pill.small", { type: "button", onclick: () => openCheckIn(), "aria-label": "Change how you are today" }, "Change")),
+    h("div.checkin-chips", {}, chips));
 }
 // The day's check-in: sleep, legs and motivation, a tap each; with Rhythm, today and the days after follow it
 function openCheckIn() {

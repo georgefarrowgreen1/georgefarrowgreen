@@ -274,7 +274,8 @@ await L.p.locator('.checkin .pill', { hasText: 'Check in' }).click(); await L.p.
 for (const [k, v] of [['sleep', 'Poorly'], ['legs', 'Heavy'], ['mood', 'Low']]) await L.p.locator(`#sheet .seg[aria-label="${k}"] button`, { hasText: v }).click();
 await L.p.locator('#sheet .btn', { hasText: 'Done' }).click(); await settle(L, 900);
 const checked = await L.p.locator('.checkin.done').innerText().catch(() => '');
-ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly · Heavy legs · Low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
+ok(/Rhythm has eased today|Tomorrow eased/.test(checked) && /Slept poorly\s+Heavy legs\s+Low motivation/.test(checked), 'checked in: what you said, and what Rhythm changed', checked.replace(/\s+/g, ' '));
+await L.p.locator('.checkin.done').screenshot({ path: `${out}/checkin.png` });
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

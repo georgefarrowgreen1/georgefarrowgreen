@@ -698,14 +698,20 @@ dialog.sheet.dragging { animation: none; transition: none; }
 
 /* ---- the day's check-in ---- */
 .checkin { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.checkin > div:first-child { display: grid; gap: 3px; }
+.checkin:not(.done) > div:first-child { display: grid; gap: 3px; }
 .checkin b { font-size: 16px; font-weight: 600; }
 .checkin small { font-size: 13px; color: var(--text-2); line-height: 1.35; }
-.checkin.done { display: grid; gap: 10px; }
-.checkin-said { display: flex; gap: 12px; align-items: flex-start; }
-.checkin-said .ic { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
-.checkin-said > div { display: grid; gap: 2px; }
-.checkin-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 8px; border-top: 0.5px solid var(--line); font-size: 13px; color: var(--text-3); }
+.checkin.done { display: grid; gap: 14px; }
+.checkin-top { display: flex; align-items: center; gap: 12px; }
+.checkin-top .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
+.checkin-top .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.checkin-top .tx b { font-size: 17px; font-weight: 600; }
+.checkin-top .tx small { font-size: 14px; line-height: 1.35; color: var(--text-2); }
+.checkin-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.checkin-chips .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 11px 0 9px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--glass-ctl); color: var(--text-2); }
+.checkin-chips .chip svg { flex: none; }
+.checkin-chips .tone-high { background: color-mix(in srgb, #1fa75a 14%, transparent); color: var(--good-text); }
+.checkin-chips .tone-low { background: color-mix(in srgb, #f2a100 16%, transparent); color: var(--warn); }
 .checkin-q { display: grid; gap: 10px; }
 .checkin-q b { font-size: 16px; font-weight: 600; }
 .rh-today .acts { flex-wrap: wrap; }
