@@ -306,8 +306,20 @@ await waitFor(() => tDev()?.user_id, 20000); await T.p.waitForTimeout(1500);
 await T.p.evaluate(() => { const k = JSON.parse(localStorage.getItem('wx:acct')); localStorage.setItem('wx:acct', JSON.stringify({ ...k, id: 'someone-else', name: 'Pat Doe', handle: 'pat' })); });
 sql(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE dev = '${tId}'`);
 const ver0 = kept('sam')?.ver;
-await weather(T); await settings(T); await T.p.waitForSelector('#acct-keep', { timeout: 15000 }).catch(() => {});
-const tAsks = await acctSays(T);
+// (opened with its notifications due to be told again, and the server slow to say who's signed in: told meanwhile as
+// the tablet's own, not the one signed in now's; and Settings, open meanwhile on the account it had, signed out of it
+// once it asks)
+await T.p.evaluate(() => { const s = JSON.parse(localStorage.getItem('wx:settings')); localStorage.setItem('wx:settings', JSON.stringify({ ...s, notify: { ...s.notify, syncedAt: 0 } })); });
+const slowMe = async (r) => { await new Promise((d) => setTimeout(d, 8000)); await r.continue().catch(() => {}); }, tw = Date.now();
+await T.ctx.route(/\/api\/weather\/me$/, slowMe);
+await weather(T); await settings(T);
+const told = await waitFor(() => T.p.evaluate((t0) => (JSON.parse(localStorage.getItem('wx:settings')).notify?.syncedAt || 0) > t0, tw), 7000);
+const tEarly = tDev();
+await T.ctx.unroute(/\/api\/weather\/me$/, slowMe);
+await T.p.waitForSelector('#acct-keep', { timeout: 20000 }).catch(() => {});
+const tAsks = await acctSays(T), footOut = await T.p.isHidden('#out-grp');
+ok(told && tEarly && !tEarly.user_id && tEarly.n > 0 && /Keep them with @sam/.test(tAsks) && footOut,
+  'signed in as someone else meanwhile, the server slow to say so: the tablet\'s notifications told meanwhile as its own, and Settings no longer signed in once it asks', JSON.stringify({ told, tEarly, tAsks, footOut }));
 // (a unit changed meanwhile: kept here, and the tablet's notifications told it)
 const to = await T.p.evaluate(() => (JSON.parse(localStorage.getItem('wx:settings')).temp === 'f' ? 'c' : 'f')), t0 = Date.now();
 await folder(T, 'units'); await T.p.click(`input[name="temp"][value="${to}"]`);

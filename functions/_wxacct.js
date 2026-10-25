@@ -125,9 +125,12 @@ export async function setMail(env, userId, change) {
 }
 // Turning notifications on (or changing them) on a device: signed in to Weather (not just asked about it), as the
 // account's choices, and the device one of the account's; signed out, as its own. (b.account: false from a page that's
-// signed out, though the browser has the site's sign-in, and asks whether this device's places go to it; an app from
-// before says nothing, and the sign-in decides, as it did)
+// signed out, though the browser has the site's sign-in, and asks whether this device's places go to it; the account's
+// id from one signed in, so a page still in step with the account it had, the browser signed in to another since and
+// the page not yet told, is taken as signed out too; an app from before says nothing, or true, and the sign-in
+// decides, as it did)
 export async function subscribeHere(request, env, b) {
-  const u = b.account !== false && cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
+  let u = b.account !== false && cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
+  if (u && typeof b.account === "string" && b.account !== u.id) u = null;
   return subscribe(env, b, u, u ? (await kept(env, u.id)).data.notify : null, u ? deviceOf(request) : "", hex(await sha256("wxnet|" + clientNet(request))).slice(0, 24));
 }

@@ -2230,8 +2230,9 @@ async function syncNow() {
   let r;
   try {
     r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
-      // (signed out here, though the browser may have the site's sign-in: this device's own choices, not the account's)
-      account: !!S.acct, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+      // (signed out here, though the browser may have the site's sign-in: this device's own choices, not the account's;
+      // signed in, which account, so if the browser's signed in to another since, not yet heard of here, it's the same)
+      account: S.acct ? S.acct.id || true : false, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
   } catch (e) {
     // (not told, offline, say, or the server busy: out of step, so it's told again the next time the app's opened or
     // back online, keepNotify, not a week on)
@@ -2360,12 +2361,15 @@ async function pull() {
 }
 // here: signed in on this page just now (so this device's places are meant for the account)
 async function adopt(r, here = false) {
-  const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle);
+  // (kept from before the account's id was: by its handle, unless that's been changed since and this device is still
+  // among the account's)
+  const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
   if (fresh && !here && mine().places.length) {
     // (asked first; and the account this device was in step with till now, signed out of in this browser since, let go
-    // of meanwhile, so nothing here goes to the one signed in now, nor its notifications come here, till it's answered)
-    S.ask = r;
-    if (S.acct || k) signedOutElsewhere(); else SE()?.drawAccount();
+    // of before it's asked, so nothing here goes to the one signed in now, nor its notifications come here, till it's
+    // answered, and Settings no longer says it's signed in)
+    if (S.acct || k) signedOutElsewhere();
+    S.ask = r; SE()?.drawAccount();
     return;
   }
   S.ask = null;
