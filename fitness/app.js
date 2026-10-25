@@ -1435,7 +1435,7 @@ function welcome(note = null) {
   document.body.classList.add("out");
   const page = A.accountPage();
   main.replaceChildren(h("div.welcome.screen.in", {},
-    h("div.w-top", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 }), h("h1", { text: "Fitness" })),
+    h("div.w-top", {}, h("img.mark", { src: "icon.svg", alt: "Fitness", width: 96, height: 96 })),
     // (Sign in at the foot of the page, as on the site's other apps)
     h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
       h("button.btn", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
