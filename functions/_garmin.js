@@ -11,7 +11,7 @@
 // which clears it. Nothing here reads a file: the phone does that, as with every upload.
 import { HttpError, limit } from "./_pigeon.js";
 import { lockVault, openVault } from "./_atrest.js";
-import { fitdb } from "./_fitness.js";
+import { fitdb, MAX_FILE, MAX_STORE } from "./_fitness.js";
 
 const API = "https://personal.connectapi.garmin.com";
 const TOKEN = "/personalapitoken-service/personal-api/personal-api-key/token";
@@ -34,6 +34,8 @@ async function tables(env) {
       D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_last ON fx_garmin (ok, last)"),
       D.prepare(`CREATE TABLE IF NOT EXISTS fx_garmin_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
     ]);
+    // (each waiting file's size, counted with your activities' against the space there is: a table made before it had none)
+    await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN size INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
     tables.done = true;
   }
   return D;
@@ -56,7 +58,12 @@ async function swap(env, key) {
 async function get(env, token, path, raw = false) {
   const r = await fetch(base(env) + path, { headers: { Authorization: `Bearer ${token}`, Accept: raw ? "application/zip, application/x-zip-compressed, application/octet-stream" : "application/json" }, signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw garminSaid(r.status);
-  return raw ? new Uint8Array(await r.arrayBuffer()) : r.json();
+  if (!raw) return r.json();
+  // (a file no bigger than one Fitness keeps: said so up front, or found so as it's read)
+  if (Number(r.headers.get("Content-Length")) > MAX_FILE) { r.body?.cancel(); throw garminSaid("too big"); }
+  const u8 = new Uint8Array(await r.arrayBuffer());
+  if (u8.length > MAX_FILE) throw garminSaid("too big");
+  return u8;
 }
 // a time as Garmin writes it ("2026-10-25 08:12:03", in GMT, or milliseconds)
 const when = (v) => (typeof v === "number" ? v : typeof v === "string" ? Date.parse(v.replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? "" : "Z")) : NaN);
@@ -129,13 +136,19 @@ export async function fetchNew(env, userId, { force = false } = {}) {
     // oldest first, so a long gap fills in order; a few at a time
     found.sort((a, b) => (a.start || 0) - (b.start || 0));
     let since = g.since || 0;
+    // (the space you've used: your activities, and the files waiting)
+    const used = await D.prepare("SELECT (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) + (SELECT COALESCE(SUM(size), 0) FROM fx_garmin_new WHERE user_id = ?1) AS b").bind(userId).first();
+    let room = MAX_STORE - (used?.b || 0);
     for (const a of found.slice(0, MOST)) {
       let bytes;
       try { bytes = await get(env, token, FILE(a.id), true); }
-      catch (e) { if (e.status === 404) { seen.add(a.id); continue; } throw e; }   // (one with no file: a manual entry)
+      // (one with no file, a manual entry; or too big to keep: passed over)
+      catch (e) { if (e.status === 404 || e.status === "too big") { seen.add(a.id); continue; } throw e; }
+      if (bytes.length > room) return fail("full");
+      room -= bytes.length;
       if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
       await env.BIO_R2.put(newKey(userId, a.id), bytes, { httpMetadata: { contentType: "application/octet-stream" } });
-      await D.prepare("INSERT OR IGNORE INTO fx_garmin_new (user_id, id, start, name, added) VALUES (?, ?, ?, ?, ?)").bind(userId, a.id, Number.isFinite(a.start) ? a.start : null, a.name, Date.now()).run();
+      await D.prepare("INSERT OR IGNORE INTO fx_garmin_new (user_id, id, start, name, added, size) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, a.id, Number.isFinite(a.start) ? a.start : null, a.name, Date.now(), bytes.length).run();
       seen.add(a.id);
       if (Number.isFinite(a.start)) since = Math.max(since, a.start);
     }

@@ -1335,7 +1335,7 @@ function garminView() {
   };
   const checkBtn = h("button.btn.quiet", { type: "button", onclick: () => check(checkBtn) }, "Check now");
   return { title: "Garmin Connect", body: [
-    h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: g.ok ? (g.said === "unreachable" ? "Connected, but Garmin didn’t answer last time" : "Connected") : "Your key has expired, or was deleted" })),
+    h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: g.ok ? (g.said === "unreachable" ? "Connected, but Garmin didn’t answer last time" : g.said === "full" ? "Connected, but your activities have used all the space there is (2 GB)" : "Connected") : "Your key has expired, or was deleted" })),
     h("div.group", {},
       row({ icon: "today", tint: "blue", title: "Last checked", value: g.last ? ago(g.last) : "Not yet", chev: false }),
       row({ icon: "calendar", tint: "green", title: "Connected", value: dayShort(g.since), chev: false })),

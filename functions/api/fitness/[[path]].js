@@ -51,6 +51,8 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     const said = Number(request.headers.get("Content-Length"));
+    // (its size said up front, and no more than that: one that doesn't say isn't read)
+    if (!(said > 0)) throw new HttpError(411, "Bad request.");
     if (!(said <= MAX_FILE + 64 * 1024)) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
     let form;
     try { form = await request.formData(); } catch (_) { throw new HttpError(400, "Bad request."); }
@@ -65,8 +67,9 @@ const ROUTES = {
   },
   "GET acts/:id": async ({ request, env, id }) => {
     const u = await signedIn(request, env), f = await activityFile(env, u.id, id);
-    // (the same address only ever has the same file: kept by this browser, for this account's pages alone)
-    return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, max-age=31536000, immutable",
+    // (not kept by the browser: a shared computer's next account mustn't find it there; the app keeps its own copy,
+    // cleared as you sign out)
+    return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
   },
   "PATCH acts/:id": async ({ request, env, id }) => {

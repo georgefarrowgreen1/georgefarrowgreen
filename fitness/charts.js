@@ -6,7 +6,7 @@ import { svg } from "./ui.js";
 import { flatten, zoneOf } from "./workouts.js";
 
 const f1 = (v) => Math.round(v * 10) / 10;
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 // A workout's shape: each step a block as tall as it's hard, in its zone's colour (a ramp slopes). Mini, for a row
 // (no labels); else with your FTP marked, its watts (or the share of it) up the side and the minutes along the foot.
