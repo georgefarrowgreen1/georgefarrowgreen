@@ -694,8 +694,14 @@ await p.waitForTimeout(700);
 const fills = await p.evaluate(() => { const m = document.querySelector('#radar .radar-map').getBoundingClientRect(), c = document.querySelector('#radar .maplibregl-canvas').getBoundingClientRect(); return Math.abs(m.width - c.width) < 1 && Math.abs(m.height - c.height) < 1 && m.height > 500; });
 ok(fills, 'the map filling it, edge to edge');
 await p.screenshot({ path: `${out}/wx-radar.png` });
+// (the page under it out of reach meanwhile: Tab goes round the map's own controls, never to a card hidden under it)
+const tabbed = [];
+for (let k = 0; k < 14; k++) { await p.keyboard.press('Tab'); tabbed.push(await p.evaluate(() => { const a = document.activeElement; return a === document.body ? 'body' : a?.closest('#radar') ? 'map' : `${a?.tagName}.${a?.className}`; })); }
+ok(tabbed.includes('map') && tabbed.every((t) => t === 'map' || t === 'body'), 'full screen, Tab stays on the map', tabbed.join(', '));
 await p.keyboard.press('Escape');
 ok(await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'and back');
+const closedFocus = await p.evaluate(() => ({ on: !!document.activeElement?.matches('#radar .radar-full'), foot: document.querySelector('.foot').inert, pv: document.querySelector('.pv-prev').inert }));
+ok(closedFocus.on && !closedFocus.foot && closedFocus.pv, 'focus on its × again, and the page in reach again (the places either side\'s pages still not)', JSON.stringify(closedFocus));
 // the map's layers, as Apple's: the wind, flowing, its bubble saying which way and how strong, by the hour from two hours
 // ago to twelve on; the temperature, its bubble the temperature there; and back to the rain, each kept as chosen
 {
