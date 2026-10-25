@@ -51,13 +51,16 @@ const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5
 export const MAX_PLACES = 12;
 // what Open-Meteo is asked, in its own measure: a place's rain is one call, its whole forecast about seven (its free
 // service allows 10,000 a day: the ticks have OM_DAY a day between them, earned evenly through it, however often they
-// come, and at most BUDGET in one)
-const BUDGET = 55, COST_FULL = 7, OM_DAY = 8000;
+// come, and at most BUDGET in one; what the quiet hours don't use is kept, up to OM_KEEP, an hour and a half's, for the
+// morning's briefings)
+const BUDGET = 55, COST_FULL = 7, OM_DAY = 8000, OM_KEEP = 500;
 // the places the radar's read for in a tick (each costs a few tiles, shared with any place near it)
 const RADAR_PLACES = 40;
 // the places whose official warnings are asked for in a tick, at most, how many at once, and none begun once the tick's
-// had this long (well inside the 30 seconds a tick the site's traffic starts is given, and the schedulers' minute)
-const WARN_PLACES = 150, WARN_AT_ONCE = 6, WARN_MS = 20e3;
+// had WARN_MS (inside the 30 seconds a tick the site's traffic starts is given), or once they've had WARN_LEAST, if
+// that's later (a slow Open-Meteo, or a morning's many briefings, mustn't leave them no time: still inside the
+// schedulers' minute)
+const WARN_PLACES = 150, WARN_AT_ONCE = 6, WARN_MS = 20e3, WARN_LEAST = 10e3;
 // Weather's emails a day, at most (WX_MAIL_DAY sets another), a briefing only within four-fifths of them
 const MAIL_DAY = 60, MAIL = "mail:";
 let ready = null;
@@ -384,7 +387,7 @@ async function tick(env, D, t, origin) {
   for (const s of need) { const k = cellOf(s), c = cells.get(k) || { lat: snap(s.lat), lon: snap(s.lon), full: false }; c.full ||= due(s) || s.tz_off == null; cells.set(k, c); }
   // (what's left of Open-Meteo's allowance, kept between ticks: they run one at a time)
   let left = null; try { left = JSON.parse((await D.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").first())?.v); } catch (_) {}
-  const have = allowance(left, t), asked = budgeted([...cells], Math.floor(have)), cost = asked.reduce((a, [, c]) => a + (c.full ? COST_FULL : 1), 0);
+  const have = allowance(left, t), asked = budgeted([...cells], Math.floor(Math.min(have, BUDGET))), cost = asked.reduce((a, [, c]) => a + (c.full ? COST_FULL : 1), 0);
   if (cost) await D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('om_bucket', ?)").bind(JSON.stringify({ n: have - cost, at: t })).run();
   const forecasts = new Map(), base = env.WXAPP_URL || "https://api.open-meteo.com";
   ask: for (const full of [true, false]) {
@@ -429,20 +432,21 @@ export function toLook(subs, t, most = PER_TICK, rnd = Math.random) {
   return subs.filter((s) => s.tz_off == null || (s.rain && !isQuiet(local(s))) || due(s))
     .map((s) => [s, due(s) ? -1 : rnd()]).sort((a, b) => a[1] - b[1]).map(([s]) => s).slice(0, most);
 }
-// What a tick may ask Open-Meteo for (left: what the last tick that asked left, { n, at }): that, and what's been earned
-// since (OM_DAY a day), up to BUDGET; the whole of BUDGET the first time
-export const allowance = (left, t) => Math.min(BUDGET, left && Number.isFinite(left.n) && Number.isFinite(left.at) ? left.n + Math.max(0, t - left.at) * OM_DAY / 864e5 : BUDGET);
+// What's kept of Open-Meteo's allowance for the ticks (left: what the last tick that asked left, { n, at }): that, and
+// what's been earned since (OM_DAY a day), up to OM_KEEP; the whole of OM_KEEP the first time. (A tick asks for no more
+// than BUDGET of it)
+export const allowance = (left, t) => Math.min(OM_KEEP, left && Number.isFinite(left.n) && Number.isFinite(left.at) ? left.n + Math.max(0, t - left.at) * OM_DAY / 864e5 : OM_KEEP);
 // Official warnings for the places that want them, once each place's clock is known (for saying when): each place's
 // asked for once, however many phones are there, a few at a time; at most WARN_PLACES a tick, and none begun once the
-// tick's had WARN_MS. The rest wait for a later tick, in a different order each time (nothing's taken as told for them
-// meanwhile). look(s): a place's warnings. → "lat,lon" → its warnings (null: not to be had this tick), for those looked at
+// tick (begun at t) has had WARN_MS, or they've had WARN_LEAST, if that's later. The rest wait for a later tick, in a
+// different order each time (nothing's taken as told for them meanwhile). look(s): a place's warnings. → "lat,lon" → its
+// warnings (null: not to be had this tick), for those looked at
 export async function warningsFor(subs, look, t, most = WARN_PLACES, rnd = Math.random) {
-  const places = new Map(), got = new Map();
+  const places = new Map(), got = new Map(), end = Math.max(t + WARN_MS, Date.now() + WARN_LEAST);
   for (const s of subs) if (s.warn && s.tz_off != null) places.set(`${s.lat},${s.lon}`, s);
   const queue = [...places].map((e) => [e, rnd()]).sort((a, b) => a[1] - b[1]).map(([e]) => e).slice(0, most);
-  const ask = async (n = Infinity) => { for (; n > 0 && queue.length && Date.now() - t < WARN_MS; n--) { const [k, s] = queue.shift(); got.set(k, await look(s).catch(() => null)); } };
-  // (the first on its own, so a feed many places share, a country's, is in the cache before the rest ask for it)
-  await ask(1);
+  const ask = async () => { while (queue.length && Date.now() < end) { const [k, s] = queue.shift(); got.set(k, await look(s).catch(() => null)); } };
+  // (all of them from the start: a place whose feed is slow, a flood's, holds up only its own)
   await Promise.all(Array.from({ length: WARN_AT_ONCE }, () => ask()));
   return got;
 }

@@ -26,18 +26,28 @@ test("the places a tick looks at: briefings due first, then the rest in a differ
   assert.ok(late([...seen]) > 150, `within a few ticks, nearly every later one (${late([...seen])} of 200)`);
 });
 
-test("Open-Meteo's allowance: the whole budget at first, then 8,000 a day between the ticks however often they come", () => {
-  assert.equal(allowance(null, NOON), 55);
+test("Open-Meteo's allowance: all that's kept at first, then 8,000 a day between the ticks however often they come", () => {
+  assert.equal(allowance(null, NOON), 500);
   assert.equal(allowance({ n: 0, at: NOON }, NOON), 0, "spent, and asked again at once: nothing");
   assert.ok(Math.abs(allowance({ n: 0, at: NOON }, NOON + 5 * 60e3) - 8000 / 288) < 1e-9, "five minutes later: a 288th of the day's");
-  assert.equal(allowance({ n: 10, at: NOON }, NOON + 24 * H), 55, "never more than a tick's budget");
+  assert.equal(allowance({ n: 10, at: NOON }, NOON + 24 * H), 500, "never more kept than an hour and a half's");
   assert.equal(allowance({ n: 10, at: NOON + 60e3 }, NOON), 10, "a clock a little behind earns nothing");
-  assert.equal(allowance({ n: "x" }, NOON), 55, "what's kept not as it should be: as at first");
+  assert.equal(allowance({ n: "x" }, NOON), 500, "what's kept not as it should be: as at first");
+  // (a tick spending all it may: what's kept, up to a tick's 55)
+  const spend = (left, t) => { const have = allowance(left, t), cost = Math.floor(Math.min(have, 55)); return [cost, { n: have - cost, at: t }]; };
   // a day of ticks every two and a half minutes (the ticker's and GitHub's, and the site's traffic's), each spending all
-  // it may: about 8,000 between them, not 55 each
+  // it may: about 8,000 between them (and the 500 kept at first), not 55 each
   let left = null, spent = 0;
-  for (let t = NOON; t < NOON + 24 * H; t += 150e3) { const have = allowance(left, t), cost = Math.floor(have); spent += cost; left = { n: have - cost, at: t }; }
-  assert.ok(spent > 7900 && spent <= 8055, String(spent));
+  for (let t = NOON; t < NOON + 24 * H; t += 150e3) { const [cost, now] = spend(left, t); spent += cost; left = now; }
+  assert.ok(spent > 8400 && spent <= 8500, String(spent));
+  // a quiet night (nothing asked since 22:00), then a morning's briefings every 5 minutes, as many as there's room for:
+  // the whole of a tick's 55 for over an hour, from what the night kept, then the day's share
+  left = { n: 0, at: NOON - 9 * H }; const morning = [];
+  for (let t = NOON; t < NOON + 3 * H; t += 5 * 60e3) { const [cost, now] = spend(left, t); morning.push(cost); left = now; }
+  assert.ok(morning.slice(0, 15).every((c) => c === 55), morning.join(" "));
+  assert.ok(morning.slice(-6).every((c) => c >= 27 && c <= 28), morning.join(" "));
+  const sum = morning.reduce((a, c) => a + c, 0);
+  assert.ok(sum > 1450 && sum <= 1500, `about 500 and three hours' share (${sum})`);
 });
 
 test("official warnings: each place asked once, a few at a time, at most 150 a tick and only while there's time; the rest on later ticks", async () => {
@@ -49,12 +59,28 @@ test("official warnings: each place asked once, a few at a time, at most 150 a t
   const got = await warningsFor(subs, look, Date.now());
   assert.equal(got.size, 150); assert.equal(new Set(asked).size, asked.length, "each place once, however many phones are there");
   assert.equal(most, 6, "six at a time");
+  // (a place whose feed is slow holds up only its own: the rest are asked meanwhile)
+  let slow = true, meanwhile = 0;
+  const lag = async () => { if (slow) { slow = false; await new Promise((r) => setTimeout(r, 40)); slow = null; return []; } if (slow === false) meanwhile++; await new Promise((r) => setTimeout(r, 1)); return []; };
+  await warningsFor(subs, lag, Date.now());
+  assert.ok(meanwhile > 20, `others asked while the slow one was (${meanwhile})`);
   assert.ok(!got.has("1,1") && !got.has("2,2"), "not before the place's clock is known, nor where they're not on");
   const seen = new Set(got.keys());
   for (let n = 0; n < 4; n++) (await warningsFor(subs, look, Date.now())).forEach((_, k) => seen.add(k));
   assert.ok(seen.size > 260, `within a few ticks, nearly every place (${seen.size} of 300)`);
-  asked = [];
-  assert.equal((await warningsFor(subs, look, Date.now() - 21e3)).size, 0, "none begun once the tick's had its 20 seconds"); assert.equal(asked.length, 0);
+  // (begun late in the tick, the forecasts and phones having taken their time: still ten seconds of their own)
+  assert.equal((await warningsFor(subs, look, Date.now() - 21e3)).size, 150, "begun 21 seconds into the tick: still asked");
+  // none begun once the tick's had its 20 seconds, or they've had their 10, if that's later (each lookup a second, by a
+  // clock of the test's own)
+  const real = Date.now;
+  try {
+    let clock = 1e6;
+    Date.now = () => clock;
+    const second = async () => { clock += 1000; return []; };
+    assert.equal((await warningsFor(subs, second, clock)).size, 20, "begun as the tick began: 20 seconds");
+    assert.equal((await warningsFor(subs, second, clock - 15e3)).size, 10, "begun 15 seconds in: 10 seconds of their own");
+    assert.equal((await warningsFor(subs, second, clock - 4e3)).size, 16, "begun 4 seconds in: the rest of the tick's 20");
+  } finally { Date.now = real; }
   assert.equal((await warningsFor([{ lat: 9, lon: 0, warn: 1, tz_off: 0 }], look, Date.now())).get("9,0"), null, "not to be had: null (nothing's taken as told)");
 });
 

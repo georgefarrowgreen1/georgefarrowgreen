@@ -754,9 +754,11 @@ so there's nothing to set up beyond the address.
   Open-Meteo only for the next four hours' rain; the whole forecast only where
   a briefing is due; and the ticks ask no more than Open-Meteo's free
   allowance spread over a day, however often they come (briefings first; places
-  left over wait for a later tick, in a different order each time). Official
-  warnings are asked for at most 150 places a tick, a few at a time (the rest
-  likewise wait, in a different order each time). Each connection can only ask the
+  left over wait for a later tick, in a different order each time; what the quiet
+  hours don't use is kept, up to an hour and a half's, for the morning's
+  briefings). Official warnings are asked for at most 150 places a tick, a few at
+  a time, for 20 seconds of the tick or 10 of their own, whichever's later (the
+  rest likewise wait, in a different order each time). Each connection can only ask the
   API so often. Each device's notifications are a row a place
   (`functions/_wxpush.js`: wx_devs, the device; wx_subs, its places, each with
   what's been told there), at most 12 places a device; an app from before (one
