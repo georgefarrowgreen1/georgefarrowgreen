@@ -46,6 +46,11 @@ export function cleanPrefs(cur, b) {
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
 }
+// A partial update kept: merged into what's stored in the one statement (not read, changed and written back whole), so
+// two changes made at once both stay
+export const savePrefs = (D, id, b) =>
+  D.prepare("UPDATE pg_users SET notify_prefs = json_patch(CASE WHEN json_valid(notify_prefs) THEN notify_prefs ELSE '{}' END, ?) WHERE id = ?")
+    .bind(JSON.stringify(cleanPrefs({}, b)), id).run();
 export function isQuiet(p, t = Date.now()) {
   if (!p.quiet || p.quietFrom === p.quietTo) return false;
   const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: p.tz, hour: "numeric", hourCycle: "h23" }).format(t));

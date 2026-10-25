@@ -57,3 +57,20 @@ test('a changed crypto.js gives the page a new app.js', async () => {
   const after = stampIn((await (await host({ '/pigeon/crypto.js': crypto }))('/')).text, 'app.js');
   assert.ok(before && after && before !== after);
 });
+
+test('a page worked out afresh reads each file once, side by side rather than one by one', async () => {
+  const { accountHost } = await import(`../../../functions/_acctapp.js?${Math.random()}`);
+  const store = assets(), reads = [];
+  let now = 0, most = 0;
+  const ASSETS = { async fetch(req) {
+    reads.push(new URL(req.url).pathname); most = Math.max(most, ++now);
+    await new Promise((r) => setTimeout(r, 5));
+    try { return await store.fetch(req); } finally { now--; }
+  } };
+  const request = new Request('https://account.georgefarrowgreen.com/');
+  const page = await (await accountHost({ request, env: { ASSETS }, next: () => new Response('api') }, new URL(request.url))).text();
+  assert.equal(reads.length, new Set(reads).size, `each read once: ${reads.join(' ')}`);
+  for (const f of ['/account/app.js', '/pigeon/crypto.js', '/pigeon/argon2.js']) assert.ok(reads.includes(f), f);
+  assert.ok(most > 1, 'more than one read at a time');
+  assert.ok(stampIn(page, 'crypto.js') && stampIn(page, 'app.js'));
+});

@@ -12,7 +12,7 @@ import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
 import { vanishOk } from "./_vanish.js";
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
+  HttpError, json, body, readCapped, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
@@ -370,10 +370,10 @@ async function listMessages({ request, env }) {
 async function send({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
-  if (!(Number(request.headers.get("Content-Length")) <= MAX_PHOTO + MAX_BODY * 2 + GROUP_MAX * 4096)) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   let meta, photo = null;
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
-    const f = await request.formData();
+    const f = await new Response(await readCapped(request, MAX_PHOTO + MAX_BODY * 2 + GROUP_MAX * 4096, "That photo is too large. Try a smaller one."),
+      { headers: { "Content-Type": request.headers.get("Content-Type") } }).formData();
     try { meta = JSON.parse(f.get("meta")); } catch (_) { throw new HttpError(400, "That message was malformed."); }
     const p = f.get("photo");
     if (p && typeof p !== "string") photo = p;

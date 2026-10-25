@@ -5,16 +5,12 @@
 // any location in it), at most 20 a day. The account's page shows the photo larger, as its card's poster: a copy of it
 // at most 1600px across (MAX_POSTER), and the point of it that stays in view, chosen there.
 
-import { HttpError, db, limit, DAY, HANDLE_RE, HANDLE_EVERY, MAX_AVATAR, MAX_POSTER, handleTaken, holdHandle } from "./_pigeon.js";
+import { HttpError, db, limit, DAY, HANDLE_RE, HANDLE_EVERY, MAX_AVATAR, MAX_POSTER, handleTaken, holdHandle, waitText, readCapped } from "./_pigeon.js";
+export { waitText };
 
 export const avatarKey = (id) => `pigeon-avatars/${id}`;
 export const posterKey = (id) => `pigeon-posters/${id}`;
 
-// "23h 5m", "12 minutes": how long until something's allowed again
-export function waitText(ms) {
-  const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
-  return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
-}
 // Names go into emails and notifications other people get, so they can't look like a web address, an email or a handle.
 export function cleanName(v, empty) {
   const name = String(v || "").normalize("NFC").replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩]/g, "").trim().replace(/\s+/g, " ").slice(0, 50);
@@ -45,9 +41,7 @@ export async function setHandle(env, u, v) {
 export async function putPhoto(env, u, request, keep = null) {
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   await limit(env, "avatar:" + u.id, 20, DAY);
-  if (!(Number(request.headers.get("Content-Length")) <= MAX_AVATAR)) throw new HttpError(413, "That picture is too large. Try another one.");
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.length > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
+  const bytes = await readCapped(request, MAX_AVATAR, "That picture is too large. Try another one.");
   if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");
   const t = Date.now();
   await env.BIO_R2.put(avatarKey(u.id), bytes, { httpMetadata: { contentType: "image/jpeg" } });
@@ -75,9 +69,7 @@ export async function putPoster(env, u, request, focus) {
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   if (!u.avatar_at) throw new HttpError(409, "Add a photo first.");
   await limit(env, "poster:" + u.id, 20, DAY);
-  if (!(Number(request.headers.get("Content-Length")) <= MAX_POSTER)) throw new HttpError(413, "That picture is too large. Try another one.");
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.length > MAX_POSTER) throw new HttpError(413, "That picture is too large. Try another one.");
+  const bytes = await readCapped(request, MAX_POSTER, "That picture is too large. Try another one.");
   if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Photos must be JPEG images.");
   const t = Date.now();
   await env.BIO_R2.put(posterKey(u.id), bytes, { httpMetadata: { contentType: "image/jpeg" } });

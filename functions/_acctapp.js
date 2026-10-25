@@ -33,27 +33,34 @@ const FOREVER = "public, max-age=31536000, immutable";
 const IMPORT_RE = /\b(from\s+|import\()"\.\/([\w.-]+\.js)"/g;
 const where = (name) => SHARED["/" + name] || "/account/" + name;
 const stampOf = async (text) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
-// (worked out again each minute: just after a deploy the files can briefly be last version's)
+// (worked out again each minute: just after a deploy the files can briefly be last version's. Kept from when it's begun,
+// so the files are read side by side, not one by one, and one that two others bring in is read once, with one stamp;
+// one that couldn't be read is tried again next time)
 const memo = new Map();
-async function fingerprint(ctx, url, name) {
+function fingerprint(ctx, url, name) {
   const hit = memo.get(name);
-  if (hit && Date.now() - hit.at < 60_000) return hit.v;
-  const r = await ctx.env.ASSETS.fetch(new Request(new URL(where(name), url)));
-  if (!r.ok) return "";
-  const v = await stampOf(await asSent(ctx, url, name, await r.text()));
-  memo.set(name, { v, at: Date.now() });
-  return v;
+  if (hit && Date.now() - hit.at < 60_000) return hit.p;
+  const e = { at: Date.now(), p: (async () => {
+    const r = await ctx.env.ASSETS.fetch(new Request(new URL(where(name), url)));
+    if (!r.ok) return "";
+    return stampOf(await asSent(ctx, url, name, await r.text()));
+  })() };
+  memo.set(name, e);
+  const done = (v) => { if (memo.get(name) === e) { if (v) e.at = Date.now(); else memo.delete(name); } };
+  e.p.then(done, () => done(""));
+  return e.p;
 }
 // a file as sent: a module with its imports stamped (each by its address here: crypto.js's argon2.js is this page's)
 async function asSent(ctx, url, name, text) {
   if (!name.endsWith(".js")) return text;
-  const seen = new Map();
-  for (const [, , dep] of text.matchAll(IMPORT_RE)) if (!seen.has(dep)) seen.set(dep, await fingerprint(ctx, url, dep));
+  const deps = [...new Set([...text.matchAll(IMPORT_RE)].map((m) => m[2]))], vs = await Promise.all(deps.map((d) => fingerprint(ctx, url, d)));
+  const seen = new Map(deps.map((d, i) => [d, vs[i]]));
   return text.replace(IMPORT_RE, (m, how, dep) => (seen.get(dep) ? `${how}"./${dep}?v=${seen.get(dep)}"` : m));
 }
 async function stamped(ctx, url, html) {
   const refs = [...new Set([...html.matchAll(/(?:src|href)="([\w.-]+\.(?:js|css))"/g)].map((m) => m[1]))];
-  for (const f of refs) { const v = await fingerprint(ctx, url, f); if (v) html = html.replaceAll(`"${f}"`, `"${f}?v=${v}"`); }
+  const vs = await Promise.all(refs.map((f) => fingerprint(ctx, url, f)));
+  refs.forEach((f, i) => { if (vs[i]) html = html.replaceAll(`"${f}"`, `"${f}?v=${vs[i]}"`); });
   return html;
 }
 
