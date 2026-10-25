@@ -112,7 +112,7 @@ ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.head .round.me')).trim
 await you(L);
 const card = await L.p.innerText('#sheet .acct');
 ok(/Sam Taylor/.test(card) && /@sam · georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
-ok(/0 rides of your own/.test(await L.p.innerText('#sheet')) && /Showing only your rides/.test(await L.p.innerText('#sheet')), 'no example rides: only your own (none yet)');
+ok(!/Example rides/.test(await L.p.innerText('#sheet')), 'no example rides to turn on: only your own');
 await done(L);
 
 // ---- 3. Files in on the laptop: each ride kept with the account, its file as it came ----

@@ -70,7 +70,7 @@ function adopt(d) {
   S.rhythm = ok(d?.rhythm) && Array.isArray(d.rhythm.days) ? d.rhythm : null;
   S.swaps = ok(d?.swaps) ? d.swaps : {}; S.feel = ok(d?.feel) ? d.feel : {};
   S.mine = Array.isArray(d?.workouts) ? d.workouts : [];
-  U.metric = d?.prefs?.units !== "imperial"; S.examples = !!d?.prefs?.examples;
+  U.metric = d?.prefs?.units !== "imperial"; S.examples = false;   // (the example rides are gone: your own alone)
   setActs();
   // (new numbers, from another device: every ride's stress worked out again for them)
   if (numbers() !== was) resum();
@@ -966,10 +966,6 @@ function settingsView() {
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })),
         row({ icon: "usb", tint: "coral", title: "Sending workouts to a device", onclick: () => pushSheet(() => sendView(wkById("ss-3x12"))) })),
         h("p.foot", { text: "Garmin and Wahoo devices are known from the files they write. Sending workouts straight to them, without a cable, comes with Garmin’s and Wahoo’s partner programmes." })),
-      section("Example rides", h("div.group", {},
-        row({ icon: "sparkle", tint: "coral", title: S.examples ? "Showing example rides" : "Showing only your rides", sub: S.examples ? "Made-up rides and a plan, alongside yours" : `${plural(S.own.length, "ride", "rides")} of your own`, chev: false,
-          extra: h("span.pill.small", { text: S.examples ? "Turn off" : "Turn on" }), onclick: () => { setExamples(!S.examples); Sheet.redraw(); } })),
-        h("p.foot", { text: "Off, your fitness, the week and the plan go by your own rides alone. Your rides and workouts stay either way." })),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         row({ icon: "ruler", tint: "blue", title: "Units", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; keep("prefs"); redraw(true); } }))),
