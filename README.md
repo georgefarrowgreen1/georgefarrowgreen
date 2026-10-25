@@ -1163,8 +1163,8 @@ five weeks into a 16-week sportive plan, dated from today.
   (durability); heavy strength on hard days; fuel for each ride; a poor night keeps the time and drops the intensity;
   rest when form passes −25; a missed session moves the next rest day (if another's to come). It plans this week and
   the next seven days but commits only to today. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
-  the same on every device). Its settings are kept with your record (`rhythm`). An event's plan (below) takes over
-  until it's stopped. The research behind it is in the proposal it was built from.
+  the same on every device). Its settings are kept with your record (`rhythm`). The event plans (below) are no longer
+  offered; one chosen before keeps going until it's stopped. The research behind it is in the proposal it was built from.
 - **Plan, for an event**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each
   asks, what's done), this week's and next week's days (each a tap from its workout), this week's workouts as one zip
   of FIT files, both weeks as calendar events (.ics), and other plans: FTP builder, winter base, a first 10k, a sprint

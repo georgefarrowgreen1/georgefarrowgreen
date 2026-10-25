@@ -162,22 +162,25 @@ ok(!(await P.p.locator('#sheet .section', { hasText: 'Export' }).count()), 'no e
 await done(P);
 await tab(P, 3);
 
-// ---- 5. A plan chosen on the phone, and a workout built on the laptop from the version before it: put together ----
+// ---- 5. Rhythm set up on the phone (your week), and a new FTP on the laptop from the version before it: put together ----
 await tab(P, 2);
-await P.p.getByRole('button', { name: /^FTP builder/ }).click(); await settle(P);
-await P.p.getByRole('button', { name: /^Start next Monday/ }).click(); await settle(P, 800);
+ok(!(await P.p.getByText('Or train for an event').count()), 'the Plan tab: Rhythm alone, no event plans');
+await P.p.locator('main .btn', { hasText: 'Set up Rhythm' }).click(); await settle(P, 800);
+await P.p.getByRole('button', { name: 'More on Monday' }).click();
+await P.p.locator('#sheet .seg[aria-label="A run a week"] button', { hasText: 'Yes' }).click();
+await P.p.locator('#sheet .btn', { hasText: 'Save' }).click(); await settle(P, 900);
 const planSub = await P.p.locator('.head .sub').innerText();
-const st2 = await waitFor(() => { const s = state(sam); return s?.plan ? s : null; });
-ok(/^FTP builder · starts /.test(planSub) && st2?.plan?.id === 'ftp', 'a plan chosen on the phone: kept with the account', `${planSub} | ${JSON.stringify(st2?.plan)} v${st2?.ver}`);
+const st2 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : null; });
+ok(/^Rhythm · Aerobic block · week 1 of 4/.test(planSub) && st2?.rhythm?.days?.[0] === 45 && st2.rhythm.run === true, 'Rhythm set up on the phone: your week kept with the account', `${planSub} | ${JSON.stringify(st2?.rhythm)}`);
 await you(L);
 await L.p.locator('#sheet .row', { hasText: 'FTP' }).first().click(); await settle(L, 600);
 await L.p.getByRole('button', { name: 'More FTP' }).click(); await settle(L, 300);
 await L.p.getByRole('button', { name: 'More FTP' }).click();
 const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp ? s : null; });
-ok(st3?.plan?.id === 'ftp' && st3.profile.ftp === PROFILE.ftp + 10, 'a new FTP on the laptop, which hadn\'t heard of the plan: both kept', JSON.stringify(st3 && { plan: st3.plan?.id, ftp: st3.profile.ftp }));
+ok(st3?.rhythm?.run === true && st3.profile.ftp === PROFILE.ftp + 10, 'a new FTP on the laptop, which hadn\'t heard of Rhythm: both kept', JSON.stringify(st3 && { rhythm: !!st3.rhythm, ftp: st3.profile.ftp }));
 await done(L); await done(L);
 await tab(L, 2);
-ok(/^FTP builder · starts /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s plan now', await L.p.locator('.head .sub').innerText());
+ok(/^Rhythm · /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
 // (miles, chosen on the phone: the laptop's in miles too, next it's opened)
 await you(P);
 await P.p.locator('#sheet .row', { hasText: 'Units' }).click(); await settle(P, 400);
@@ -223,15 +226,8 @@ ok(true, 'and still signed out after a reload');
 await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
 
-// ---- 8b. Rhythm, in place of the event's plan: your week, then a session or rest each day, with its reason ----
+// ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
 await tab(L, 2);
-await L.p.locator('.row', { hasText: 'Switch to Rhythm' }).click(); await settle(L, 800);
-await L.p.getByRole('button', { name: 'More on Monday' }).click();
-await L.p.locator('#sheet .seg[aria-label="A run a week"] button', { hasText: 'Yes' }).click();
-await L.p.locator('#sheet .btn', { hasText: 'Save' }).click(); await settle(L, 900);
-const rSub = await L.p.locator('.head .sub').innerText();
-const st4 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : null; });
-ok(/^Rhythm · Aerobic block · week 1 of 4/.test(rSub) && st4?.rhythm?.days?.[0] === 45 && st4.rhythm.run === true && st4.plan === null, 'Rhythm set up: the event plan gives way, your week kept with the account', `${rSub} | ${JSON.stringify(st4?.rhythm)}`);
 const weekRows = await L.p.locator('.section', { hasText: 'This week' }).first().locator('.row').count();
 ok(weekRows === 7 && await L.p.locator('.section', { hasText: 'Coming up' }).count() === 1, 'this week day by day, and the days coming up', String(weekRows));
 await L.p.screenshot({ path: `${out}/rhythm-plan.png`, fullPage: true });
