@@ -2058,6 +2058,10 @@ async function pull() {
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
+// (nothing copied or dragged out of the app, but what you type: a field's own text)
+const inField = (t) => t instanceof Element && !!t.closest("input, textarea, select");
+for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target)) e.preventDefault(); });
+addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefault(); });
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----

@@ -937,3 +937,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-gauge .needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; } .p-gauge .hub { fill: var(--text); }
 .p-arc .bg, .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } .p-arc .bg { stroke: var(--glass-ctl); } .p-arc .fg { stroke: var(--tint); }
 .p-arc text { font-size: 20px; font-weight: 800; fill: var(--text); }
+/* nothing to select or copy, anywhere: an app's screens, not a page's text (what you type in is yours to select) */
+html { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, svg { -webkit-user-drag: none; }
