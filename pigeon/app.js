@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.3";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.4";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2755,6 +2755,13 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.4", at: Date.UTC(2026, 9, 25), title: "Steadier", items: [
+    ["sliders", "indigo", "Your settings, on your account", "InFlight Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
+    ["search", "blue", "Search finds people again", "Searching Messages for a friend’s or a group’s name shows their chat, as it should."],
+    ["bird", "green", "Easier on your battery", "InFlight asks the server for less while you’re in it: a chat you’ve left, a phone that hasn’t moved and an open chat that hasn’t changed all cost nothing now."],
+    ["lock", "orange", "Quieter about you", "With read receipts off, a disappearing message counts from landing, so no one learns when you read it; and a reaction is sealed to its message."],
+    ["person", "teal", "Easier to use", "Pinch to zoom, bigger buttons by the message box, and the keyboard and screen readers keep their place."],
+  ] },
   { v: "1.3.3", at: Date.UTC(2026, 9, 24), title: "Coming and going", items: [
     ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in InFlight, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
     ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],

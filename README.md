@@ -1090,11 +1090,17 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.2
+## InFlight (chat.georgefarrowgreen.com) — 1.3.4
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
-**Settings on your account** (after 1.3.3): InFlight's Settings has one row, **InFlight Settings**, which opens the
+**1.3.4** (steadier): the site-wide audit's fixes. Searching Messages by name works again; the app asks the server for
+less (a chat you've left with a pigeon in the air, a phone that hasn't moved, an open chat that hasn't changed, the
+Skies on Messages); what's typed while a message sends is kept; with read receipts off a disappearing message counts
+from landing; a reaction carries its message's id inside its seal; pinch zoom; focus kept through redraws and inside
+sheets; and the account's settings, below.
+
+**Settings on your account** (1.3.4): InFlight's Settings has one row, **InFlight Settings**, which opens the
 account's page at InFlight's settings (notifications, lock screen names, quiet hours, email, who sees what, who's
 blocked) and says in a line what's set ("10 of 11 notifications on · quiet 22:00–07:00 · 1 blocked"). **Location**
 stays, and **This Phone** has what's each phone's own: Push Notifications (and a test), Lock InFlight, Haptics, and
