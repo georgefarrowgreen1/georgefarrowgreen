@@ -558,6 +558,9 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .head { margin-top: 18px; }
   .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; }
   .grid > section { min-width: 0; }
+  /* (the apps side by side, so the page still fits on one screen) */
+  .apps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .apps > .app:last-child:nth-child(odd) { grid-column: auto; }
 }
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
