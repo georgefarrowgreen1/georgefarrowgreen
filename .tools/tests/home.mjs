@@ -151,8 +151,20 @@ ok(await P.p.evaluate(() => window.stayed && document.querySelector('#c-message'
   'back to the page kept, their name changed: the message half written kept, from their name as it is now', await P.p.evaluate(() => `${!!window.stayed} ${document.querySelector('#c-name').value}`));
 await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
 ok(await text(P, '#from') === 'P Pat Reid pat@example.com', 'shown as their From row', await text(P, '#from'));
+// sending as someone else (Change), and back again from a change of name there: what they put in kept; and once it's
+// theirs again, the From row theirs as they are now, not as it was last filled
+await P.p.click('#from-change'); await P.p.fill('#c-name', 'Sam Okoro');
 await P.p.keyboard.press('Escape'); await settle(P, 500);
 sql(`UPDATE pg_users SET name = 'Pat Reed' WHERE id = '${pat}'`);
+await P.p.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+await P.p.waitForFunction(() => /Pat Reed/.test(document.querySelector('#me').getAttribute('aria-label')), null, { timeout: 5000 }).catch(() => {});
+ok(await P.p.evaluate(() => document.querySelector('#c-name').value === 'Sam Okoro'), 'back, sending as someone else: their details kept', await P.p.evaluate(() => document.querySelector('#c-name').value));
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+await P.p.fill('#c-name', 'Pat Reed');
+await P.p.keyboard.press('Escape'); await settle(P, 500);
+await P.p.click('.cta [data-contact]'); await P.p.waitForSelector('#contact-sheet[open]'); await settle(P, 500);
+ok(await text(P, '#from') === 'P Pat Reed pat@example.com' && await P.p.isHidden('#c-name'), 'their own again: their From row, as they are now', await text(P, '#from'));
+await P.p.keyboard.press('Escape'); await settle(P, 500);
 
 // their figures in each app: a friend, and a place with alerts
 sql(`INSERT INTO pg_links (a, b, status, created_at) VALUES ('${gail}', '${pat}', 'ok', ${Date.now()})`);

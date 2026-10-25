@@ -367,15 +367,20 @@ function showMe() {
     if (!$("#c-name").value) $("#c-name").value = me.name;
     if (!$("#c-email").value) $("#c-email").value = me.email;
   }
-  if (me.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email) {
-    $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
-    $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
-    for (const img of $$("img", $("#from-face"))) fadeOnLoad(img);
-    if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
-    $("#from").hidden = false; $("#sender").classList.add("known");
-  }
+  fromMe();
   // (back, signed in: the photo on its way; back, but not signed in after all: the picture fades, the page as ever)
   if (welcome) arrive(back, pill); else if (back) arriveEnd(back, true);
+}
+// (their own details, if those are what the fields hold: the From row, filled from them as they are now, its photo the
+// bar's; filled each time it's shown, as it may last have been someone else's, or theirs before a change)
+function fromMe() {
+  if (!(me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email)) return;
+  const face = $("#face");
+  $("#from-name").textContent = me.name; $("#from-email").textContent = me.email;
+  $("#from-face").replaceChildren(...[...face.childNodes].map((n) => n.cloneNode(true)));
+  for (const img of $$("img", $("#from-face"))) fadeOnLoad(img);
+  if (!face.childNodes.length) $("#from-face").textContent = face.textContent;
+  $("#from").hidden = false; $("#sender").classList.add("known");
 }
 // each app's line: theirs when they use it, what it is otherwise
 function showLines() {
@@ -835,8 +840,8 @@ function hideToast() {
 const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
-  // (their own details, if those are still what the From row says: that row again, rather than the two fields)
-  if (me?.signedIn && me.name && me.email && $("#c-name").value === me.name && $("#c-email").value === me.email) { $("#from").hidden = false; $("#sender").classList.add("known"); }
+  // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
+  fromMe();
   ready();
   openSheet(contact.sheet);
   grow(); fit();
