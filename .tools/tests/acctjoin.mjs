@@ -57,7 +57,7 @@ const V = await browser('visitor');
 await open(V, `${ACCT}/`);
 await waitText(V, /Accounts are by invitation/);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && /New here\? Accounts are by invitation: open the link you were sent to make yours\./.test(signin) && /One sign-in for InFlight and Weather/.test(signin) && !/Create your account/.test(signin),
+ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && /New here\? Accounts are by invitation: open the link you were sent to make yours\./.test(signin) && /One sign-in for InFlight, Weather and Fitness/.test(signin) && !/Create your account/.test(signin),
   'the account\'s page, signed out: a passkey, then email and password; and, with no invite, accounts said to be by invitation', signin.slice(-160));
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
 ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${ACCT}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
