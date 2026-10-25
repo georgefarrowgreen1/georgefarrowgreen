@@ -1111,7 +1111,7 @@ function trainingView() {
   const peak = Math.max(3600, ...wk.map((w) => w.secs)), step = [1800, 3600, 7200, 10800, 18000, 36000].find((x) => peak / x <= 3) || 36000, max = Math.ceil(peak / step) * step;
   const grid = Array.from({ length: max / step }, (_, k) => (k + 1) * step).map((v) => h("span.p-wgrid", { vars: { "--y": (v / max) * 100 + "%" } }, h("u", { text: `${Math.floor(v / 3600) || ""}${v % 3600 ? "½" : ""} h` })));
   const bars = wk.map((w, i) => h("span.p-wbar" + (i === wk.length - 1 ? ".now" : "") + (w.secs ? "" : ".off"), { title: `${dayShort(w.mon)}: ${dur(w.secs)}` },
-    w.secs > 0 && h("span.p-wcol", { vars: { "--h": (w.secs / max) * 100 + "%" } }, ["hard", "mid", "easy", "unknown"].map((k) => w[k] > 0 && h("i." + k, { vars: { "--f": w[k] / w.secs } }))))));
+    w.secs > 0 && h("span.p-wcol", { vars: { "--h": (w.secs / max) * 100 + "%" } }, ["hard", "mid", "easy", "unknown"].map((k) => w[k] > 0 && h("i." + k, { vars: { "--f": w[k] / w.secs } })))));
   // (each month's name under its first week)
   const monthsUnder = wk.map((w, i) => { const m = new Date(w.mon).getMonth(); const starts = i === 0 ? new Date(wk[2].mon).getMonth() === m : new Date(wk[i - 1].mon).getMonth() !== m;   // (the first, only if its month has a few weeks still to run: else it'd sit on the next)
     return h("span", { text: starts ? monthOf(w.mon, "short") : "" }); });
