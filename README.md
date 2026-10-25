@@ -1162,7 +1162,12 @@ five weeks into a 16-week sportive plan, dated from today.
   30/15s first for VO₂ max; every other week in aerobic and threshold blocks a long ride with a hard finish
   (durability); heavy strength on hard days; fuel for each ride; a poor night keeps the time and drops the intensity;
   rest when form passes −25; a missed session moves the next rest day (if another's to come). It plans this week and
-  the next seven days but commits only to today. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
+  the next seven days but commits only to today. With less than six days of your own riding in the last six weeks, setting
+  up asks how much you've been riding lately and starts its fitness there; no day asks more than about two and a half
+  days of your fitness. The Plan tab: the week at a glance (a circle a day, and its easy and hard balance), today first
+  (with Change: shorter, easier, swapped with tomorrow, or rest, each kept as the day's swap and taken in by the next
+  decision), the next three days, where it's heading (the block's weeks and your fitness, the week ahead dotted), and How
+  Rhythm decides. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
   the same on every device). Its settings are kept with your record (`rhythm`). The event plans (below) are no longer
   offered; one chosen before keeps going until it's stopped. The research behind it is in the proposal it was built from.
 - **Plan, for an event**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each

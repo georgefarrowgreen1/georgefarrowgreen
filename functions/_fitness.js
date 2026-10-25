@@ -82,7 +82,7 @@ export function cleanState(d) {
   if (d.profile?.name) profile.name = text(d.profile.name, 60);
   const p = d.plan, plan = obj(p) && /^[a-z0-9-]{1,20}$/.test(String(p.id || "")) && num(p.start, 0, 9e12) != null ? { id: p.id, start: p.start, ...(num(p.at, 0, 9e12) != null ? { at: p.at } : {}) } : null;
   const swaps = {}, feel = {};
-  for (const [k, v] of Object.entries(obj(d.swaps) ? d.swaps : {}).slice(-400)) if (DAYKEY.test(k) && (v === null || /^[A-Za-z0-9_-]{1,40}$/.test(String(v)))) swaps[k] = v;
+  for (const [k, v] of Object.entries(obj(d.swaps) ? d.swaps : {}).slice(-400)) if (DAYKEY.test(k) && (v === null || /^[A-Za-z0-9_:-]{1,40}$/.test(String(v)))) swaps[k] = v;
   for (const [k, v] of Object.entries(obj(d.feel) ? d.feel : {}).slice(-400)) {
     if (!DAYKEY.test(k) || !obj(v)) continue;
     const f = {}; for (const x of ["sleep", "legs", "mood"]) if (num(v[x], 0, 2) != null) f[x] = v[x];
@@ -93,7 +93,7 @@ export function cleanState(d) {
   // Rhythm: minutes each day of the week (Monday first, none a rest day), a run and a swim, its lean, build or hold, the
   // Monday it began and the day it was set up
   const r = d.rhythm, rhythm = obj(r) && Array.isArray(r.days) && r.days.length === 7 ? { days: r.days.map((x) => Math.round(num(x, 0, 600) ?? 0)), run: r.run === true, swim: r.swim === true,
-    lean: ["balanced", "endurance", "punch"].includes(r.lean) ? r.lean : "balanced", mode: r.mode === "hold" ? "hold" : "build", ...(num(r.start, 0, 9e12) != null ? { start: r.start } : {}), ...(num(r.at, 0, 9e12) != null ? { at: r.at } : {}) } : null;
+    lean: ["balanced", "endurance", "punch"].includes(r.lean) ? r.lean : "balanced", mode: r.mode === "hold" ? "hold" : "build", ...(["none", "some", "regular", "lots"].includes(r.level) ? { level: r.level } : {}), ...(num(r.start, 0, 9e12) != null ? { start: r.start } : {}), ...(num(r.at, 0, 9e12) != null ? { at: r.at } : {}) } : null;
   const out = { profile, plan, rhythm, swaps, feel, workouts, prefs };
   if (JSON.stringify(out).length > MAX_STATE) throw new HttpError(413, "That’s more than can be kept. Delete a few of your own workouts.");
   return out;

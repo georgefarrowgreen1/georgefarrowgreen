@@ -122,8 +122,8 @@ let rhCache = null;
 function rh() {
   if (!rhythmOn()) return null;
   const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
-  const key = JSON.stringify([S.rhythm, S.feel, P().ftp, P().runPace, P().css, acts.map((a) => [a.start, a.sum?.tss])]);
-  if (rhCache?.key !== key) rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
+  const key = JSON.stringify([S.rhythm, S.feel, S.swaps, P().ftp, P().runPace, P().css, acts.map((a) => [a.start, a.sum?.tss])]);
+  if (rhCache?.key !== key) rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
   return rhCache.v;
 }
 const rhDay = (d) => rh()?.days.find((x) => x.date === d) || null;
@@ -464,37 +464,105 @@ function noPlanView() {
 // ---- Rhythm, on the Plan tab: where you are in the block, the days ahead, and your week ----
 const rhythmSaid = () => { const b = rh().block; return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`; };
 function rhythmView() {
-  const r = rh(), b = r.block, prefs = { ...R.DEFAULTS, ...S.rhythm }, mon = mondayOf(TODAY);
-  const out = [head("Plan", `Rhythm · ${rhythmSaid()}`)];
-  const cells = [0, 1, 2, 3].map((i) => h("div.rb-week" + (i === b.week ? ".now" : "") + (i < b.week ? ".past" : ""), {}, h("i.bg-" + (i === 3 ? "z1" : { aerobic: "z2", threshold: "z4", topend: "z6" }[b.theme])), h("small", { text: i === 3 ? "Lighter" : `Week ${i + 1}` })));
-  const about = { aerobic: "Long steady riding and tempo, with a little of everything else so nothing fades.", threshold: "Sweet spot and threshold work, the long ride, and short sprints to stay sharp.", topend: "VO₂ max (30/15s first) and sprints, with endurance between." }[b.theme];
-  const fitNow = Math.round(r.ctl);
-  out.push(h("div.card.hero.glass", {},
-    h("h3", {}, `${R.THEMES[b.theme]} block`),
-    h("div.rb-weeks", {}, cells),
-    h("p.line-said", { text: `${about} ${b.absorb ? "This week is lighter, so it all sinks in." : `${prefs.mode === "hold" ? (r.seeded ? "Holding your fitness where it is" : `Holding your fitness around ${fitNow}`) : r.seeded ? "Building your fitness a few points a week" : `Building your fitness from ${fitNow}, a few points a week`}.`} The next block is chosen by how this one goes.` }),
-    r.cpw && h("p.line-said.small", { text: `Intervals set from your critical power, ${r.cpw.cp} W, and W′, ${(r.cpw.w / 1000).toFixed(1)} kJ.` })));
-  const rowOf = (d) => {
-    const id = S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id, wk = id ? wkById(id) : null, did = actsOn(d.date), past = d.date < TODAY;
-    return h("button.row" + (d.date === TODAY ? ".today" : "") + (past ? ".past" : ""), { type: "button", onclick: () => openDay(d.date) },
-      h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: d.date === TODAY ? "Today" : dayName(d.date).slice(0, 3) })),
-      // (a day gone by: what you did; the days to come: what Rhythm has in mind, and why)
-      past && did.length ? h("span.tx", {}, h("b", { text: did.map((x) => x.name).join(", ") }), h("small", { text: did.map((x) => { const sm = sumOf(x); return sm ? [hm(sm.moving), sm.tss != null ? `TSS ${sm.tss}` : null].filter(Boolean).join(" · ") : ""; }).join(", ") }))
-      : h("span.tx", {}, h("b", { text: wk ? `${wk.name}${d.strength && S.swaps[d.date] === undefined ? " + strength" : ""}` : "Rest" }),
-        h("small", { text: wk ? `${dur(d.mins * 60)}${wk.sport !== "strength" ? ` · TSS ${d.tss}` : ""}${S.swaps[d.date] !== undefined ? " · swapped" : d.date >= TODAY ? ` · ${d.why}` : ""}` : d.date >= TODAY ? d.why : "Recover" })),
-      wk && !(past && did.length) && h("span.mini", {}, C.profile(wk, { mini: true, pace: paceFor(wk.sport) })),
-      did.length ? h("span.badge", {}, "Done") : d.missed ? h("span.badge.plan", {}, "Missed") : d.moved ? h("span.badge.plan", {}, "Moved") : null);
+  const r = rh(), b = r.block, prefs = { ...R.DEFAULTS, ...S.rhythm }, mon = mondayOf(TODAY), from = S.rhythm.at ?? S.rhythm.start ?? mon;
+  const out = [head("Plan", rhythmSaid())];
+  // this week at a glance: a circle a day (ridden, rested, today, missed, or what's planned), and how it's balanced
+  const wk = r.days.filter((d) => mondayOf(d.date) === mon);
+  const dot = (d) => {
+    const did = actsOn(d.date).length > 0;
+    if (d.date < from && !did) return ["pre", null];
+    if (did) return ["done", icon("check", 14, 3)];
+    if (d.date === TODAY) return ["today", h("i")];
+    if (d.missed) return ["missed", h("i")];
+    return d.id ? ["plan" + (d.hard ? ".hard" : ""), h("i")] : ["rest", "–"];
   };
-  const thisWeek = r.days.filter((d) => mondayOf(d.date) === mon), ahead = r.days.filter((d) => mondayOf(d.date) !== mon);
-  out.push(section(["This week", h("span.aside", { text: `${dateShort(mon)} – ${dateShort(addDays(mon, 6))}` })], h("div.group.glass", {}, thisWeek.map(rowOf)),
-    h("p.foot", {}, "The days ahead firm up each morning, from what you’ve done and how you feel. Tap a day for its workout.")));
-  if (ahead.length) out.push(section("Coming up", h("div.group.glass", {}, ahead.map(rowOf))));
-  const days = prefs.days.filter((x) => x > 0), hours = prefs.days.reduce((a, x) => a + x, 0);
-  out.push(section("Your Rhythm", h("div.group.glass", {},
-    row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(days.length, "day")}, ${dur(hours * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, value: prefs.mode === "hold" ? "Holding" : "Building", onclick: () => rhythmSetup() }),
-    row({ icon: "zip", tint: "coral", title: "Send this week’s workouts", sub: "One zip: a FIT file for each, for your Garmin or Wahoo", onclick: () => weekZip({ week: "Rhythm", days: [...thisWeek, ...ahead].filter((d) => d.date >= TODAY) }) }),
-    row({ icon: "calendar", tint: "red", title: "Add to your calendar", sub: "The next seven days as events (.ics)", onclick: () => calendar([{ days: r.days.filter((d) => d.date >= TODAY) }]) }))));
+  const doneMins = wk.reduce((a, d) => a + actsOn(d.date).reduce((x, act) => x + (sumOf(act)?.moving || 0) / 60, 0), 0);
+  // (the week's whole time: what's planned from when Rhythm began, and what you rode before it)
+  const rode = (d) => actsOn(d.date).reduce((x, act) => x + (sumOf(act)?.moving || 0) / 60, 0);
+  const planMins = wk.reduce((a, d) => a + (d.date >= from ? d.mins : rode(d)), 0);
+  const hardMins = wk.filter((d) => d.date >= from && d.hard).reduce((a, d) => a + Math.min(d.mins, 60) * 0.55, 0), easy = planMins ? Math.round(100 * (1 - hardMins / planMins)) : 100;
+  out.push(h("div.card.glass.rh-week", {},
+    h("div.rh-week-head", {}, h("b", { text: "This week" }), h("span", {}, h("b", { text: dur(doneMins * 60) }), ` of ${dur(planMins * 60)} done`)),
+    h("div.rh-circles", {}, wk.map((d) => { const [cls, inner] = dot(d); return h("button" + (d.date === TODAY ? ".is-today" : ""), { type: "button", onclick: () => openDay(d.date), "aria-label": `${dayLong(d.date)}: ${cls === "done" ? "done" : d.id ? wkById(d.id)?.name : "rest"}` },
+      h("small", { text: d.date === TODAY ? "TODAY" : dayName(d.date).slice(0, 3).toUpperCase() }), h("span.c." + cls.replace(".", "."), {}, inner), h("small.n", { text: new Date(d.date).getDate() })); })),
+    h("div.rh-balance", {}, h("div.bar", {}, h("i.easy", { vars: { "--w": easy + "%" } }), h("i.hard", { vars: { "--w": 100 - easy + "%" } })),
+      h("span", { text: `${easy}% easy, ${100 - easy}% hard this week. ${easy >= 75 ? "Right where it should be." : "A harder week than most: the easy days matter."}` }))));
+  // today, first
+  const td = rhDay(TODAY), tw = td?.id ? wkById(S.swaps[TODAY] !== undefined ? S.swaps[TODAY] : td.id) : null, tdone = actsOn(TODAY);
+  if (tdone.length) out.push(h("button.card.glass.rh-today.done", { type: "button", onclick: () => openAct(tdone[0]) }, h("span.rh-chip", {}, icon("check", 13, 3), "Today · done"), h("h2", { text: tdone[0].name }), h("p", { text: "Nice work. Tomorrow’s plan takes it in." })));
+  else if (tw) {
+    const m = measure(tw, paceFor(tw.sport));
+    out.push(h("div.card.glass.rh-today", {},
+      h("div.rh-today-top", {}, h("span.rh-chip", {}, sportTile(tw.sport, true), `Today · ${tw.kind}`), h("span", { text: `${dur(m.secs)}${tw.sport !== "strength" ? ` · TSS ${Math.round(m.tss)}` : ""}` })),
+      h("h2", { text: tw.name }),
+      h("div.profile", {}, C.profile(tw, { ftp: tw.sport === "ride" ? P().ftp : null, pace: paceFor(tw.sport), label: `${tw.name}, step by step`, W: cardW(true) })),
+      h("p", { text: td.why }),
+      (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
+      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Send to device"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
+  } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
+  // coming up: three days, the rest of the week ahead a tap away
+  const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
+  const rowOf = (d) => { const id = S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id, w = id ? wkById(id) : null;
+    return h("button.row", { type: "button", onclick: () => openDay(d.date) }, h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: dayName(d.date).slice(0, 3) })),
+      h("span.tx", {}, h("b", { text: w ? `${w.name}${d.strength ? " + strength" : ""}` : "Rest" }), h("small", { text: w ? `${dur(d.mins * 60)} · ${d.hard ? "hard" : "easy"}${d.moved ? " · rest day moved" : ""}` : d.why })),
+      w && h("span.mini", {}, C.profile(w, { mini: true, pace: paceFor(w.sport) }))); };
+  out.push(section(["Coming up", h("span.aside", { text: "Firms up each morning" })], h("div.group.glass", {}, shown.map(rowOf),
+    ahead.length > 3 && h("button.row.action", { type: "button", onclick: () => { S.planMore = !S.planMore; redraw(); } }, S.planMore ? "Show fewer" : `Show the next ${ahead.length - 3} days`))));
+  // where it's heading: the block's four weeks, and your fitness, with the week ahead as planned
+  const line = r.line, lo = Math.min(...line.map((x) => x.ctl)), hi = Math.max(...line.map((x) => x.ctl)), span = Math.max(8, hi - lo), W = 320, H = 70;
+  const pt = (x, i) => `${((i / (line.length - 1)) * W).toFixed(1)},${(H - 6 - ((x.ctl - lo) / span) * (H - 16)).toFixed(1)}`;
+  const past = line.filter((x) => !x.future), cut = past.length - 1;
+  const chart = svgOf(`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Your fitness, the last four weeks and the week ahead"><line x1="0" y1="${H - 1}" x2="${W}" y2="${H - 1}" class="rh-axis"/><polyline class="rh-line up" points="${past.map(pt).join(" ")}"/><polyline class="rh-line up ahead" points="${line.slice(cut).map((x, i) => pt(x, i + cut)).join(" ")}"/><circle cx="${pt(line[cut], cut).split(",")[0]}" cy="${pt(line[cut], cut).split(",")[1]}" r="4" class="rh-now"/></svg>`);
+  const ramp = Math.max(1.5, 4.5 - r.ctl / 40);
+  out.push(h("div.card.glass.rh-heading", {}, h("div.rh-week-head", {}, h("b", { text: "Where it’s heading" }), h("span", { text: prefs.mode === "hold" ? "Holding" : "Building" })),
+    h("div.rb-weeks", {}, [0, 1, 2, 3].map((i) => h("div.rb-week" + (i === b.week ? ".now" : "") + (i < b.week ? ".past" : ""), {}, h("i.bg-" + (i === 3 ? "z1" : { aerobic: "z2", threshold: "z4", topend: "z6" }[b.theme])), h("small", { text: i === b.week ? "This week" : i === 3 ? "Lighter" : `Week ${i + 1}` })))),
+    chart,
+    h("p.line-said", { text: `${prefs.mode === "hold" ? "Holding your fitness where it is" : b.absorb ? "A lighter week, so the work sinks in" : `Up about ${Math.round(ramp)} points a week, then a lighter week so it sinks in`}. ${{ aerobic: "Steady riding and tempo first.", threshold: "Sweet spot and threshold now.", topend: "VO₂ max and sprints now." }[b.theme]}` })));
+  const nd = prefs.days.filter((x) => x > 0).length, hrs = prefs.days.reduce((a, x) => a + x, 0);
+  out.push(section(null, h("div.group.glass", {},
+    row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, onclick: () => rhythmSetup() }),
+    row({ icon: "zip", tint: "coral", title: "Send the week to your device", sub: "A FIT file for each session, in one zip", onclick: () => weekZip({ week: "Rhythm", days: r.days.filter((d) => d.date >= TODAY) }) }),
+    row({ icon: "info", tint: "indigo", title: "How Rhythm decides", sub: "The rules, and your numbers", onclick: () => openSheet(rhythmHow) }))));
   return out;
+}
+// The rules Rhythm keeps, and the numbers it's going by
+function rhythmHow() {
+  const r = rh(), rule = (t, s) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: t }), h("small", { text: s })));
+  return { title: "How Rhythm decides", body: [
+    h("p", { text: "Each morning Rhythm looks at what you’ve done, how fresh you are and how you feel, and picks the day’s session or rest. It plans the week ahead but only commits to today." }),
+    section("The rules", h("div.group", {},
+      rule("Mostly easy", "At most two hard sessions a week (three from 12 hours), never two days running."),
+      rule("Built gradually", "Fitness up a few points a week at most, and every fourth week lighter."),
+      rule("Never stale", "Four-week blocks (aerobic, threshold, top end); anything left too long comes back."),
+      rule("Listens to you", "A poor night keeps the time and drops the intensity; feeling poor twice, rest."),
+      rule("Never too much", "No day asks more than your fitness can take, whatever time you’ve given it."),
+      rule("Fair to missed days", "A missed session can move a rest day, if another rest day is still to come."))),
+    section("Your numbers", h("div.group", {},
+      rule("Fitness", `${Math.round(r.ctl)}${r.seeded ? ", from what you said you’ve been riding (your rides take over once there’s a month of them)" : ", from your rides"}`),
+      rule("FTP", `${P().ftp} W, from You`),
+      r.cpw && rule("Critical power", `${r.cpw.cp} W, with ${(r.cpw.w / 1000).toFixed(1)} kJ above it: intervals are set from these`))),
+  ] };
+}
+// A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
+function rhDayView(day) {
+  const d = rhDay(day), id = S.swaps[day] !== undefined ? S.swaps[day] : d?.id, w = id ? wkById(id) : null, future = day >= TODAY;
+  const watts = (() => { if (!w || w.sport !== "ride") return null; const xs = flatten(w).filter((x) => x.kind === "work").map((x) => Math.round(x.from * P().ftp)); return xs.length ? `${Math.min(...xs)}${Math.max(...xs) !== Math.min(...xs) ? `–${Math.max(...xs)}` : ""} W` : null; })();
+  const set = (v, said) => { if (v === undefined) delete S.swaps[day]; else S.swaps[day] = v; keep("swaps"); closeSheet(); toast(said); redraw(); };
+  const tomorrow = addDays(day, 1), tm = rhDay(tomorrow);
+  const opt = (ic, tint, t, sub, fn) => row({ icon: ic, tint, title: t, sub, onclick: fn });
+  const mins = d?.mins || 60, kind = /^rh:([a-z0-9]+):/.exec(id || "")?.[1];
+  return { title: dayLong(day), body: [
+    h("div.sheet-top", {}, h("h1", { text: w ? w.name : "Rest" }), h("div.sub", { text: w ? [dur(measure(w, paceFor(w.sport)).secs), watts && `efforts at ${watts}`].filter(Boolean).join(" · ") : "Recover" })),
+    d && h("div.rh-why", {}, h("b", { text: "Why: " }), S.swaps[day] !== undefined ? "you changed this day." : d.why),
+    w && d?.fuel && h("p.rh-note", { text: `Eat ${d.fuel}${d.strength ? ", then 20 minutes of heavy strength" : ""}.` }),
+    future && w && section("Not the day for it?", h("div.group", {},
+      mins > 50 && opt("today", "blue", "Short on time", kind && kind !== "endurance" && kind !== "long" ? `The same work in ${dur(Math.max(50, mins - 30) * 60)}` : `${dur(Math.max(40, Math.round(mins / 2 / 5) * 5) * 60)} instead`, () => set(kind ? `rh:${kind}:${kind === "endurance" || kind === "long" ? Math.max(40, Math.round(mins / 2 / 5) * 5) : Math.max(50, mins - 30)}` : "recovery-45", "Shorter, same purpose")),
+      d?.hard && opt("gauge", "green", "Make it easier", "Steady all the way, no hard efforts", () => set(`rh:endurance:${Math.min(mins, 90)}`, "Easier today")),
+      tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
+      opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
+    S.swaps[day] !== undefined && future && h("button.btn.quiet", { type: "button", onclick: () => set(undefined, "Back to Rhythm’s plan") }, "Undo the change"),
+    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => workoutView(w)) }, "Steps")),
+  ] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
 // like to ride, build or hold, and the first week it gives you before anything's kept
@@ -502,8 +570,10 @@ function rhythmSetup() {
   const editing = !!S.rhythm, draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
   draft.days = [...draft.days];
   const cancel = () => h("button.link.r", { type: "button", onclick: closeSheet }, "Cancel");
-  const dots = (n) => h("div.rh-dots", { "aria-label": `Step ${n} of 4` }, [1, 2, 3, 4].map((i) => h("i" + (i === n ? ".now" : i < n ? ".done" : ""))));
-  const top = (n, title, sub) => [dots(n), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
+  // (little of your own riding to go by: a step asking where you've been, so Rhythm starts there)
+  const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY), N = needLevel ? 5 : 4, at = (n) => (needLevel && n > 1 ? n + 1 : n);
+  const dots = (n) => h("div.rh-dots", { "aria-label": `Step ${n} of ${N}` }, Array.from({ length: N }, (_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : ""))));
+  const top = (n, title, sub) => [dots(at(n)), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
   // 1. When you ride: a bar a day, dragged up to how long you have (to 6 hours, by quarter hours); a tap makes it rest
   const MAX = 360, said = (v) => (v ? dur(v * 60) : "Rest");
@@ -528,7 +598,18 @@ function rhythmSetup() {
     return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top(1, "When do you ride?", "Drag each day up to how long you usually have. Tap a day to make it a rest day."),
       h("div.card.rh-days", {}, h("div.rh-sum", {}, total, count), h("div.rh-bars", {}, cols)),
       section("Or start from", h("div.rh-presets", {}, preset("Evenings and weekends", [0, 60, 60, 60, 0, 150, 90]), preset("Weekends only", [0, 0, 0, 0, 0, 180, 150]), preset("Most days", [45, 75, 60, 75, 0, 180, 120]))),
-      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(style) : toast("Choose at least one day to ride", true)) }, "Next")] };
+      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(needLevel ? level : style) : toast("Choose at least one day to ride", true)) }, "Next")] };
+  };
+  // 1b. Where you've been riding lately (only with less than a month of your own rides to go by)
+  const level = () => {
+    if (!draft.level) draft.level = "some";
+    const opt = (k, t, sub) => h("button.rh-choice" + (draft.level === k ? ".on" : ""), { type: "button", role: "radio", "aria-checked": String(draft.level === k), onclick: () => { draft.level = k; Sheet.redraw(); } },
+      h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })), h("span.tick", {}, draft.level === k ? icon("check", 13, 3.2) : null));
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [dots(2), h("div.sheet-top", {}, h("h1", { text: "How much have you been riding?" }),
+      h("div.sub", { text: `The last month or so. ${S.own.length ? `You’ve uploaded ${plural(S.own.length, "ride")}, so` : "With no rides uploaded yet,"} Rhythm starts from this, and learns from every ride you add.` })),
+      h("div.rh-choices", { role: "radiogroup", "aria-label": "Riding lately" },
+        opt("none", "Hardly at all", "Starting again, or new to it"), opt("some", "A ride or two a week", "About 2 to 4 hours"), opt("regular", "Most weeks, regularly", "About 5 to 8 hours"), opt("lots", "A lot", "9 hours or more")),
+      next("Next", style)] };
   };
   // 2. How you like to ride, and a run and a swim
   const pic = (bars) => h("span.rh-pic", { "aria-hidden": "true" }, bars.map(([v, z]) => h("i.bg-" + z, { vars: { "--h": v + "%" } })));
@@ -608,6 +689,8 @@ function planSheet(p) {
 }
 // a day: what's planned, what's done
 function openDay(day) {
+  if (rhythmOn() && actsOn(day).length) return actsOn(day).length === 1 ? openAct(actsOn(day)[0]) : null;
+  if (rhythmOn() && rhDay(day)) return openSheet(() => rhDayView(day));
   const id = plannedOn(day), w = id && id !== "event" ? wkById(id) : null, did = actsOn(day);
   if (did.length === 1 && !w) return openAct(did[0]);
   if (!did.length && w) return openWorkout(w);

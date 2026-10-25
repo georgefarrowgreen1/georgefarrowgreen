@@ -127,7 +127,14 @@ const fuelFor = (mins, hard) => (mins < 75 ? null : mins >= 150 && hard ? "about
 // sum } (sum: its figures, tss and zones and curve); feel: how you felt, by day; today: the day's start; ftp.
 // → { days: this week's and the next seven (each { date, id, kind, mins, tss, hard, why, fuel, strength, moved, done,
 //   missed }), today, block: { index, theme, week, absorb }, ctl, atl, cpw }
-export function plan({ prefs, acts = [], feel = {}, today, ftp = 250, paces = { run: 4, swim: 1 } }) {
+// (where you've been riding lately, as you said it, for a start when there's little of your own to go by: fitness)
+export const LEVELS = { none: 10, some: 25, regular: 45, lots: 70 };
+// what a day you've changed (a swap: a session's id, or null for rest) asks of you
+const kindOfId = (id) => (id == null ? "rest" : /^rh:([a-z0-9]+):/.exec(id)?.[1] || ({ "recovery-45": "recovery", "run-tempo": "run-tempo", "swim-css": "swim-css" }[id] || (/^run/.test(id) ? "run-easy" : /^swim/.test(id) ? "swim" : "endurance")));
+// (too little of your own riding lately to go by: fewer than six days with an activity in the last six weeks)
+export const sparse = (acts, today) => new Set(acts.filter((a) => a.start >= addDays(today, -42) && a.start < addDays(today, 1)).map((a) => startOfDay(a.start))).size < 6;
+
+export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250, paces = { run: 4, swim: 1 } }) {
   const P = { ...DEFAULTS, ...(prefs || {}) }, start = mondayOf(P.start ?? today);
   const hours = P.days.reduce((a, x) => a + x, 0) / 60;
   // each day's activities, and their kinds
@@ -153,21 +160,27 @@ export function plan({ prefs, acts = [], feel = {}, today, ftp = 250, paces = { 
   const first = acts.length ? Math.min(...acts.map((a) => startOfDay(a.start))) : today;
   let d = Math.min(Math.max(addDays(first, -1), addDays(today, -112)), mondayOf(today)), ctl = 0, atl = 0;
   // (with under four weeks of your activities to go by, the load model starts where riding your week would have you)
-  const seeded = first > addDays(today, -28);
-  if (seeded) ctl = atl = hours * 5;
+  const seeded = sparse(acts, today);
+  if (seeded) ctl = atl = LEVELS[P.level] ?? Math.min(45, hours * 5);
   const since = { tempo: 14, sweet: 14, threshold: 14, vo2: 14, sprint: 14, durable: 14, long: 7 };
   let lastHard = -Infinity, poorRun = 0;
   const week = { mon: null, tss: 0, hard: 0, strength: 0, run: false, swim: false, missed: null, moved: false };
   const out = [], thisMon = mondayOf(today), end = addDays(today, 7);
   let now = { ctl: 0, atl: 0 };
+  const line = [];   // (fitness, the last four weeks and the week ahead, as planned)
   for (; d <= end; d = addDays(d, 1)) {
     const mon = mondayOf(d);
     if (week.mon !== mon) Object.assign(week, { mon, tss: 0, hard: 0, strength: 0, run: false, swim: false, missed: null, moved: false });
     if (d === today) now = { ctl, atl };
+    if (d >= addDays(today, -28)) line.push({ date: d, ctl, future: d > today });
     const done = byDay.get(d) || [], planning = d >= thisMon && d >= start;
     let dec = null;
     if (planning) {
       dec = decide(d);
+      if (Object.prototype.hasOwnProperty.call(swaps, d)) {
+        const id = swaps[d], k = kindOfId(id), w = id ? workoutOf(id, T) : null, mm = w ? measure(w, w.sport === "run" ? paces.run : w.sport === "swim" ? paces.swim : 4) : null;
+        dec = { ...dec, id: id ?? null, kind: k, mins: mm ? Math.round(mm.secs / 60) : 0, tss: mm ? Math.round(mm.tss) : 0, hard: HARD.has(k), strength: dec.strength && HARD.has(k), fuel: w?.sport === "ride" && mm ? fuelFor(Math.round(mm.secs / 60), HARD.has(k)) : null, why: "As you changed it", swapped: true };
+      }
       // (missed: a session planned on a day gone by, since Rhythm was set up, with nothing done)
       const missed = d < today && d >= (P.at ?? start) && dec.kind !== "rest" && !done.length;
       if (missed && !week.missed) week.missed = d;
@@ -241,8 +254,11 @@ export function plan({ prefs, acts = [], feel = {}, today, ftp = 250, paces = { 
     if (!id) {
       if (kind === "endurance" || kind === "long") mins = Math.max(40, Math.min(avail, Math.round(share / (kind === "long" ? 0.75 : 0.77) / 5) * 5));   // (TSS a minute, steady zone 2)
       if (kind === "recovery") mins = Math.min(45, avail);
+      // (never more in a day than your fitness can take: about two and a half days' worth, an hour at least)
+      const cap = Math.max(60, ctl * 2.5);
+      if (kind === "endurance" || kind === "long") mins = Math.min(mins, Math.max(40, Math.round(cap / 0.77 / 5) * 5));
       // (a hard day: the session, with steady riding round it only as far as the week's budget goes)
-      if (HARD.has(kind) || kind === "tempo") mins = Math.min(avail, Math.max(kind === "durable" ? 100 : 55, Math.round(share / (kind === "durable" ? 0.8 : 0.9) / 5) * 5));
+      if (HARD.has(kind) || kind === "tempo") mins = Math.min(avail, Math.max(kind === "durable" ? 100 : 55, Math.round(Math.min(share, cap) / (kind === "durable" ? 0.8 : 0.9) / 5) * 5));
       id = `rh:${kind}:${mins}`;
     }
     const w = workoutOf(id, T), meas = w ? measure(w, w.sport === "run" ? paces.run : w.sport === "swim" ? paces.swim : 4) : { secs: mins * 60, tss: 0 };
@@ -255,5 +271,5 @@ export function plan({ prefs, acts = [], feel = {}, today, ftp = 250, paces = { 
   }
 
   const at0 = out.find((x) => x.date === today) || null;
-  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, cpw, targets: T };
+  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, line, cpw, targets: T };
 }

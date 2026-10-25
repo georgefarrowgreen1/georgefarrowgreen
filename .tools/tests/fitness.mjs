@@ -171,6 +171,10 @@ await P.p.locator('main .btn', { hasText: 'Set up Rhythm' }).click(); await sett
 ok(await P.p.locator('#sheet .rh-day .track').count() === 7 && /^When do you ride\?/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'step 1: a bar for each day');
 await P.p.locator('#sheet .rh-day .track').first().click(); await settle(P, 300);
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
+// (only a few rides uploaded: where you've been riding lately, for Rhythm to start from)
+ok(/How much have you been riding/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'little riding uploaded: asked how much you’ve been riding lately');
+await P.p.locator('#sheet .rh-choice', { hasText: 'Most weeks, regularly' }).click(); await settle(P, 300);
+await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 await P.p.locator('#sheet .rh-tile', { hasText: 'A run a week' }).click(); await settle(P, 300);
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 ok(await P.p.locator('#sheet .rh-goal.on', { hasText: 'Keep building' }).count() === 1, 'step 3: building, unless you say hold');
@@ -181,7 +185,7 @@ await P.p.screenshot({ path: `${out}/rhythm-first-week.png` });
 await P.p.locator('#sheet .rh-next', { hasText: 'Start Rhythm' }).click(); await settle(P, 900);
 const planSub = await P.p.locator('.head .sub').innerText();
 const st2 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : null; });
-ok(/^Rhythm · Aerobic block · week 1 of 4/.test(planSub) && st2?.rhythm?.days?.[0] === 60 && st2.rhythm.run === true, 'Rhythm set up on the phone: your week kept with the account', `${planSub} | ${JSON.stringify(st2?.rhythm)}`);
+ok(/^Aerobic block · week 1 of 4/.test(planSub) && st2?.rhythm?.days?.[0] === 60 && st2.rhythm.run === true && st2.rhythm.level === 'regular', 'Rhythm set up on the phone: your week kept with the account', `${planSub} | ${JSON.stringify(st2?.rhythm)}`);
 await you(L);
 await L.p.locator('#sheet .row', { hasText: 'FTP' }).first().click(); await settle(L, 600);
 await L.p.getByRole('button', { name: 'More FTP' }).click(); await settle(L, 300);
@@ -190,7 +194,7 @@ const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp ?
 ok(st3?.rhythm?.run === true && st3.profile.ftp === PROFILE.ftp + 10, 'a new FTP on the laptop, which hadn\'t heard of Rhythm: both kept', JSON.stringify(st3 && { rhythm: !!st3.rhythm, ftp: st3.profile.ftp }));
 await done(L); await done(L);
 await tab(L, 2);
-ok(/^Rhythm · /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
+ok(/ block · /.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
 // (miles, chosen on the phone: the laptop's in miles too, next it's opened)
 await you(P);
 await P.p.locator('#sheet .row', { hasText: 'Units' }).click(); await settle(P, 400);
@@ -238,8 +242,17 @@ ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the lapto
 
 // ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
 await tab(L, 2);
-const weekRows = await L.p.locator('.section', { hasText: 'This week' }).first().locator('.row').count();
-ok(weekRows === 7 && await L.p.locator('.section', { hasText: 'Coming up' }).count() === 1, 'this week day by day, and the days coming up', String(weekRows));
+const circles = await L.p.locator('.rh-circles button').count(), comingUp = await L.p.locator('.section', { hasText: 'Coming up' }).locator('.row:not(.action)').count();
+ok(circles === 7 && await L.p.locator('.rh-today').count() === 1 && comingUp === 3 && /% easy/.test(await L.p.locator('.rh-balance').innerText()), 'the Plan tab: the week at a glance, today first, the next three days', `${circles} ${comingUp}`);
+// (a day that isn't the day for it: rest instead, and Rhythm takes it in)
+const tomorrowRow = L.p.locator('.section', { hasText: 'Coming up' }).locator('.row:not(.action)').first();
+await tomorrowRow.click(); await L.p.waitForSelector('#sheet[open] .sheet-top'); await settle(L, 500);
+const dayText = await L.p.locator('#sheet').innerText();
+if (/Rest today/.test(dayText)) {
+  await L.p.locator('#sheet .row', { hasText: 'Rest today' }).click(); await settle(L, 900);
+  const st5 = await waitFor(() => { const s = state(sam); return s && Object.values(s.swaps || {}).includes(null) ? s : null; });
+  ok(!!st5, 'a day changed to rest: kept with the account, and the plan takes it in', JSON.stringify(st5?.swaps));
+} else ok(/Why/.test(dayText), 'a rest day: why', dayText.slice(0, 80));
 await L.p.screenshot({ path: `${out}/rhythm-plan.png`, fullPage: true });
 await tab(L, 1);
 const todayCard = await L.p.locator('.session').first().innerText();
