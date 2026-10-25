@@ -157,6 +157,10 @@ test('real devices\' quirks: a corrupt last sample, a sensor of zeros, a triathl
   const u = new Uint8Array(14 + body.length + 2), dv = new DataView(u.buffer);
   u.set(head.subarray(0, 14)); u.set(body, 14);
   dv.setUint32(4, body.length, true); dv.setUint16(12, crc16(u, 0, 12), true); dv.setUint16(u.length - 2, crc16(u, 0, u.length - 2), true);
+  // (a swim whose heart rate was barely heard, as a strap isn't under water: its stress from its pace against CSS instead)
+  const swim = activityFromFit(writeFit([id(4), ...Array.from({ length: 1800 }, (_, i) => ['record', { timestamp: t0 + i, distance: i * 0.85, ...(i < 8 ? { heartRate: 140 } : {}) }]),
+    ['session', { timestamp: t0 + 1799, startTime: t0, sport: 5, elapsed: 1799, timer: 1799 }]]))[0], ss = summarise(swim, { css: 108 });
+  assert.ok(ss.kind === 'pace' && Math.abs(ss.tss - Math.round(0.5 * (0.85 / (100 / 108)) ** 3 * 100)) <= 1, `a swim's stress from its pace: ${ss.tss} (${ss.kind})`);
   const old = activityFromFit(u)[0];
   assert.ok(Math.abs(summarise(old).dist - 99 * 8) < 1 && Math.abs(old.s.spd[50] - 4.5) < 0.01, 'speed and distance unpacked');
 });

@@ -2,8 +2,10 @@
 //
 // A ride's figures (summarise): its distance, moving time, climbing, power (average, Normalized Power, the most it held
 // for 5 seconds to an hour), heart rate, and how long in each zone. Its training stress (TSS) from power where there is
-// power (an hour at FTP is 100), and from heart rate where there isn't (an hour at threshold heart rate is 100, as
-// TrainingPeaks' hrTSS has it).
+// power (an hour at FTP is 100); from heart rate where there isn't (an hour at threshold heart rate is 100, as
+// TrainingPeaks' hrTSS has it), so long as it was heard for most of it; and else, for a run or a swim, from its pace
+// against your threshold pace or CSS (a swim's cubed, as swimming's own stress score has it, the water's drag rising
+// with the cube of speed).
 //
 // Fitness, fatigue and form (fitness): your training stress day by day, averaged over six weeks (fitness, CTL) and over
 // one (fatigue, ATL), as exponentially weighted averages; form (TSB) is yesterday's fitness less yesterday's fatigue.
@@ -39,7 +41,7 @@ export function perSecond(a) {
 }
 
 // A ride's figures, for your FTP and threshold heart rate
-export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190 } = {}) {
+export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260, css = 108 } = {}) {
   const s = a.s, n = s.t.length, ps = perSecond(a), secs = ps.moving.length;
   const moving = ps.moving.reduce((x, m) => x + m, 0);
   // (distance: as far as it got from where it started, which a device's reset mid-file can't make less than nothing)
@@ -56,7 +58,7 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190 } = {}) {
       else if (v - base >= 2) { ascent += v - base; base = v; }
     }
   }
-  const out = { secs: s.t[n - 1], moving, dist, ascent: Math.round(ascent), ftp, kind: s.pwr ? "power" : s.hr ? "hr" : null };
+  const out = { secs: s.t[n - 1], moving, dist, ascent: Math.round(ascent), ftp, kind: s.pwr ? "power" : null };
   const avg = (arr, onlyMoving) => { let t = 0, c = 0; for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i]) && (!onlyMoving || ps.moving[i])) { t += arr[i]; c++; } return c ? t / c : null; };
   const max = (arr) => { let m = -Infinity; for (const v of arr) if (Number.isFinite(v) && v > m) m = v; return m === -Infinity ? null : m; };
   if (ps.pwr) {
@@ -76,14 +78,18 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190 } = {}) {
   if (ps.hr) {
     out.avgHr = Math.round(avg(ps.hr, true) ?? avg(ps.hr)); out.maxHr = Math.round(max(ps.hr));
     out.hrZones = HR_ZONES.map(() => 0);
-    let hrs = 0;
+    let hrs = 0, heard = 0;
     for (let i = 0; i < ps.hr.length; i++) {
       const v = ps.hr[i];
       if (!Number.isFinite(v)) continue;
       out.hrZones[(HR_ZONES.find((z) => v / lthr < z.top) || HR_ZONES[4]).n - 1]++;
-      if (ps.moving[i]) hrs += (v / lthr) ** 2;
+      if (ps.moving[i]) { hrs += (v / lthr) ** 2; heard++; }
     }
-    if (out.tss == null) out.tss = Math.round((hrs / 3600) * 100);
+    if (out.tss == null && heard > moving / 2) { out.tss = Math.round((hrs / 3600) * 100); out.kind = "hr"; }
+  }
+  if (out.tss == null && dist > 0 && moving > 0 && (a.sport === "run" || a.sport === "walk" || a.sport === "swim")) {
+    const iF = dist / moving / (a.sport === "swim" ? 100 / css : 1000 / runPace);
+    out.tss = Math.round((moving / 3600) * iF ** (a.sport === "swim" ? 3 : 2) * 100); out.kind = "pace";
   }
   if (ps.cad) out.avgCad = Math.round(avg(ps.cad.map((v) => (v > 0 ? v : NaN))));
   if (ps.spd) out.maxSpd = max(ps.spd);

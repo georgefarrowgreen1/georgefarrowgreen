@@ -602,7 +602,7 @@ function actView(a) {
     s.dist > 100 && stat("Distance", ...distNum(s.dist)), stat("Moving time", clock(s.moving)), s.ascent > 0 && stat("Climbing", ...height(s.ascent)),
     a.sport === "ride" && s.avgSpd && stat("Average speed", ...speed(s.avgSpd)), a.sport === "run" && s.avgSpd && stat("Average pace", pace(paceOfSpeed(s.avgSpd)).split(" ")[0], U.metric ? "/km" : "/mi"),
     s.avgPwr != null && stat("Average power", s.avgPwr, "W"), s.np != null && stat("Normalized Power", s.np, "W"), s.iF != null && stat("Intensity", s.iF.toFixed(2)),
-    s.tss != null && stat(s.kind === "hr" ? "TSS (from heart rate)" : "Training stress", s.tss), s.avgHr && stat("Average heart rate", s.avgHr, "bpm"), s.maxHr && stat("Max heart rate", s.maxHr, "bpm"),
+    s.tss != null && stat({ hr: "TSS (heart rate)", pace: "TSS (pace)" }[s.kind] || "Training stress", s.tss), s.avgHr && stat("Average heart rate", s.avgHr, "bpm"), s.maxHr && stat("Max heart rate", s.maxHr, "bpm"),
     s.avgCad && stat("Cadence", s.avgCad, a.sport === "run" ? "spm" : "rpm"), s.kj != null ? stat("Work", s.kj.toLocaleString("en-GB"), "kJ") : stat("Energy", s.kcal, "kcal"))));
   // power, heart rate and height, with a cursor that says what each was there (and moves a marker on the map)
   if (ps.moving.length > 60) {
