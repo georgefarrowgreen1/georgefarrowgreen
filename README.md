@@ -1689,9 +1689,10 @@ light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
 little darker than iOS's, the blue a touch deeper, and green, orange and red
 words use darker versions of those colours, while switches, dots and badges
 keep the bright ones). Pinching zooms the page, for words too small to read
-(on the map it zooms the map; zoomed in, one finger moves round the page, so
-the swipes between tabs and back, pulling to refresh and pulling a sheet or
-photo away wait till it's back to size). Every icon button has a spoken name, sheets are labelled
+(on the map it zooms the map; zoomed in, one finger moves round the page,
+even from the message box, so the swipes between tabs and back, pulling to refresh,
+pulling a sheet or photo away, folding the map's card and flicking a banner
+wait till it's back to size). Every icon button has a spoken name, sheets are labelled
 dialogs with their own heading (Tab and Switch Control stay in a sheet, menu or
 question till it closes), chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the

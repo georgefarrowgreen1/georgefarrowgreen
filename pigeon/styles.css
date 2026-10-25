@@ -64,7 +64,7 @@ html{height:100%;background:var(--bg)}
 html.kbup,html.kbup body{height:var(--app-h,100%);overflow:hidden}
 body{height:100%;margin:0;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--bg);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 button,input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
-/* the app can't be zoomed (except the map) or copied from; typing and pasting still work */
+/* the app can't be copied from (a pinch still zooms it); typing and pasting still work */
 input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 img{-webkit-user-drag:none}
 body.admin{touch-action:auto}
@@ -1559,6 +1559,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .compose .kind::before{content:"";position:absolute;inset:-6px -4px}
 .compose{touch-action:none}
 .compose textarea{touch-action:pan-y}
+html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinch-zoom}   /* (pinched in: a finger here moves round the page, and pinches it back) */
 /* iPhones zoom the page into any box whose words are under 16px: the message box never is, whatever the text size */
 .field-wrap textarea{font-size:max(16px,calc(17px * var(--ts, 1)));line-height:max(21px,calc(22px * var(--ts, 1)))}
 /* flight streaks: a flame and the days in a row */

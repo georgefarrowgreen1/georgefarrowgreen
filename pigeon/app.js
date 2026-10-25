@@ -3302,7 +3302,7 @@ function viewerDrag() {
 function toastSwipe() {
   let st = null;
   $toast.addEventListener("touchstart", (e) => {
-    const t = e.target.closest?.(".toast"); st = t && e.touches.length === 1 ? { t, y: e.touches[0].clientY, ly: e.touches[0].clientY, lx: 0, lt: performance.now(), vy: 0, dy: 0 } : null;
+    const t = e.target.closest?.(".toast"); st = t && e.touches.length === 1 && !zoomed() ? { t, y: e.touches[0].clientY, ly: e.touches[0].clientY, lx: 0, lt: performance.now(), vy: 0, dy: 0 } : null;
     if (st) clearTimeout(toastTimer);
   }, { passive: true });
   $toast.addEventListener("touchmove", (e) => {
@@ -3394,7 +3394,7 @@ function composeTouch() {
     // held still first, then moved in the words: that's choosing text or the caret, leave it be
     if (!t0.moved && d > 8) { t0.moved = true; t0.select = e.target === $ta && document.activeElement === $ta && performance.now() - t0.at > 350; }
     if (d > TAP) t0.far = true;
-    if (!t0.scrolls && !t0.select && e.cancelable) e.preventDefault();           // the screen stays where it is
+    if (!t0.scrolls && !t0.select && e.cancelable && !zoomed()) e.preventDefault();      // the screen stays where it is (pinched in, it moves: lockPage)
   }, { passive: false });
   $compose.addEventListener("touchend", (e) => {
     const s = t0; t0 = null;
@@ -3491,7 +3491,9 @@ function fitKeyboard() {
   let raf = 0, was = false;
   const fit = () => {
     raf = 0;
-    if (zoomed()) return;             // (pinched in, the page is where you've moved it: fitted again once it's back to size)
+    // (pinched in, the page is where you've moved it: fitted again once it's back to size; and a finger on the message
+    // box moves it too, styles.css html.zoomed)
+    if (doc.classList.toggle("zoomed", zoomed())) return;
     const kb = window.innerHeight - vv.height > 80 && inField(document.activeElement);
     if (kb) doc.style.setProperty("--app-h", `${Math.round(vv.height)}px`); else doc.style.removeProperty("--app-h");
     doc.classList.toggle("kbup", kb);
@@ -3739,6 +3741,7 @@ function calmRender() {
   const later = () => { if (busy()) { calmWait = setTimeout(later, 120); return; } calmWait = null; render(); };
   calmWait = setTimeout(later, 120);
 }
+let drawnView = null;            // (the screen render() last drew: a redraw of that one keeps its focus)
 function render() {
   if (!$view) return;
   if (calmWait) { clearTimeout(calmWait); calmWait = null; }
@@ -3760,12 +3763,12 @@ function render() {
       if (nb && shown) nb.classList.add("swap"); else if (nb && a) nb.style.animationDelay = `${left}ms`;
       return;
     }
-    $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
+    $view.innerHTML = vAuth(); drawnView = null; $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     if (S.view === "welcome") S.welcomed = true;
     return;
   }
   if (document.documentElement.classList.contains("night")) { document.documentElement.classList.remove("night"); applyTheme(); }
-  if (S.locked) { $view.innerHTML = ""; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; syncInert(); drawLock(); return; }
+  if (S.locked) { $view.innerHTML = ""; drawnView = null; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; syncInert(); drawLock(); return; }
   drawLock();
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
@@ -3775,11 +3778,12 @@ function render() {
   S.noRise = false;
   // the same screen drawn again: what you'd reached by keyboard or VoiceOver (a switch you've just flipped, the search
   // box) keeps its focus, and a field its caret, as in a sheet (renderSheet)
-  const fa = $view.contains(document.activeElement) ? document.activeElement : null, fAt = kView();
+  const fa = $view.contains(document.activeElement) ? document.activeElement : null, fAt = drawnView;
   const fid = fa?.id || "", fk = !fid && fa?.dataset?.act ? switchKey(fa) : null;
   const caret = fid && typeof fa.selectionStart === "number" ? [fa.selectionStart, fa.selectionEnd] : null;
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view), was = snapKeyed();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
+  drawnView = kView();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
@@ -3796,9 +3800,10 @@ function render() {
   if (!chat && S.view === "messages") { airMount(); if (!S.listAt && $(".mlist:not(.skel)", $view)) S.listAt = performance.now(); }
   inRender = true; renderCompose(); inRender = false;
   renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh(); playKeyed(was);
-  // (only if nothing else has taken the focus since: the message box, a sheet's title)
-  if (fa && !fa.isConnected && fAt === kView() && (!document.activeElement || document.activeElement === document.body)) {
-    const back = fid ? document.getElementById(fid) : fk ? [...$view.querySelectorAll(`[data-act="${CSS.escape(fa.dataset.act)}"]`)].find((x) => switchKey(x) === fk) : null;
+  // (only if nothing else has taken the focus since: the message box, a sheet's title. A card in the air is the same
+  // one put back, airMount, so it has its focus back as it is)
+  if (fa && fAt === drawnView && (!document.activeElement || document.activeElement === document.body)) {
+    const back = fa.isConnected ? fa : fid ? document.getElementById(fid) : fk ? [...$view.querySelectorAll(`[data-act="${CSS.escape(fa.dataset.act)}"]`)].find((x) => switchKey(x) === fk) : null;
     if (back && $view.contains(back)) { try { back.focus({ preventScroll: true }); if (caret) back.setSelectionRange(...caret); } catch (_) {} }
   }
 }
@@ -6938,7 +6943,7 @@ function fcDrag(card) {
   let st = null;
   card.addEventListener("touchstart", (e) => {
     const tl = e.target.closest(".fctl");
-    st = card.classList.contains("fc") && e.touches.length === 1 && !(tl && tl.scrollHeight > tl.clientHeight + 1)
+    st = card.classList.contains("fc") && e.touches.length === 1 && !zoomed() && !(tl && tl.scrollHeight > tl.clientHeight + 1)
       ? { y: e.touches[0].clientY, x: e.touches[0].clientX, t: performance.now(), v: 0, dy: 0, dir: null } : null;
   }, { passive: true });
   card.addEventListener("touchmove", (e) => {
@@ -7787,7 +7792,9 @@ function closePop() {
   $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => { freeze(e); e.classList.add("closing"); });
   syncInert();
   clearTimeout(popTimer); popTimer = setTimeout(() => {
-    const f = popFrom, lost = $pop.contains(document.activeElement); popFrom = null;
+    // (focus that's fallen to the page is lost too: what opened it was made inert under it, and let it go. Not for a
+    // field, though, whose keyboard has gone: that doesn't come back up unasked)
+    const f = popFrom, a = document.activeElement, lost = $pop.contains(a) || ((!a || a === document.body) && !inField(f)); popFrom = null;
     $pop.innerHTML = "";
     if (lost && f?.isConnected) f.focus({ preventScroll: true });
   }, STILL.matches ? 220 : 320);

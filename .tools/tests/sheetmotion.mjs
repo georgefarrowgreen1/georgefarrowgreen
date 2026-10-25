@@ -117,6 +117,24 @@ const s0 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(4
 const s1 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(400);
 const s2 = await sw();
 ok(s1.act === 'haptics' && s1.on !== s0.on && s2.act === 'haptics' && s2.on === s0.on, 'a switch flipped by keyboard keeps its focus through the redraw', JSON.stringify([s0, s1, s2]));
+// 7. a menu opened by a tap that focused its button (as Android's do): the button's inert under the menu, which lets
+// its focus go, and a tap outside the menu gives it back
+await openChat(A, bs.me.id);
+await A.p.click('.view [data-act=chatmenu]'); await A.p.waitForSelector('.menu-pop'); await A.p.waitForTimeout(300);
+const under7 = await A.p.evaluate(() => document.activeElement?.dataset?.act || document.activeElement?.tagName);
+await A.p.click('.menu-scrim', { position: { x: 20, y: 700 } }); await A.p.waitForTimeout(500);
+const back7 = await A.p.evaluate(() => document.activeElement?.dataset?.act || document.activeElement?.tagName);
+ok(back7 === 'chatmenu', 'a menu closed by a tap outside it gives the focus back to what opened it', `${under7} → ${back7}`);
+// 8. a card in the air keeps its focus as Messages is drawn again (it's the same card, put back in the new list)
+await K.say(A, 'standard', 'Off to New York');
+await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=messages]')?.click()); await A.p.waitForSelector('.view .acard', { timeout: 15000 }); await A.p.waitForTimeout(900);
+const where = () => A.p.evaluate(() => { const a = document.activeElement; return a?.classList?.contains('acard') ? 'acard' : a?.outerHTML?.slice(0, 120) || String(a); });
+await A.p.evaluate(() => { document.querySelector('.view .acard').focus(); document.querySelector('.view .mlist').dataset.was = '1'; }); const card0 = await where();
+// (news for Ann, from Ben: her sync draws the list again)
+K.one(`UPDATE pg_users SET place = 'Brooklyn' WHERE id = '${bs.me.id}'`);
+await A.p.evaluate(() => dispatchEvent(new Event('online'))); await A.p.waitForFunction(() => !document.querySelector('.view .mlist[data-was]'), null, { timeout: 20000 }).catch(() => {}); await A.p.waitForTimeout(400);
+const card = await where(), drawn = await A.p.evaluate(() => !document.querySelector('.view .mlist[data-was]'));
+ok(card0 === 'acard' && drawn && card === 'acard', 'a card in the air keeps its focus through a redraw of Messages', `${card0} → ${card}${drawn ? '' : ' (not redrawn)'}`);
 await A.p.screenshot({ path: `${out}/after.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
