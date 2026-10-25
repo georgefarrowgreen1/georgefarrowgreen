@@ -328,7 +328,7 @@ function sessionCard(w, id, done) {
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(w)) }, icon("upload", 17, 2.2), "Send to device"),
-      h("button.pill", { type: "button", onclick: () => openWorkout(w) }, "Details"),
+      h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
       swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")));
 }
 // The best time for it today, as Weather would say it (its Best times, for a ride as long as this one). In the demo, a
@@ -497,7 +497,7 @@ function rhythmView() {
       h("div.profile", {}, C.profile(tw, { ftp: tw.sport === "ride" ? P().ftp : null, pace: paceFor(tw.sport), label: `${tw.name}, step by step`, W: cardW(true) })),
       h("p", { text: td.why }),
       (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
-      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Send to device"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
+      h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => openSheet(() => sendView(tw)) }, "Send to device"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change"))));
   } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
   // coming up: three days, the rest of the week ahead a tap away
   const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
@@ -522,6 +522,50 @@ function rhythmView() {
     row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, onclick: () => rhythmSetup() }))));
   return out;
 }
+// A day's session in full: its shape, every step in order with the clock, the watts and how it should feel, time in
+// each zone, when to eat, what follows it, and why it's today
+const CUES = { warmup: "Spin up gradually; nothing hard yet.", cooldown: "Ease right off and spin the legs out.", rest: "Spin easy and let your breathing settle.",
+  z1: "Very easy: barely pressing on the pedals.", z2: "Conversational: you could talk in full sentences.", z3: "Comfortably hard: steady pressure, breathing deep.",
+  z4: "Hard but steady: a few words at a time. Even, not heroic.", z5: "As hard as you can hold for the whole effort. Breathing hard.", z6: "Very hard and short: everything but a sprint.", z7: "All out, from a rolling start." };
+function sessionView(day) {
+  const d = rhDay(day), id = S.swaps[day] !== undefined ? S.swaps[day] : d?.id, w = id ? wkById(id) : null;
+  if (!w) return rhDayView(day);
+  const m = measure(w, paceFor(w.sport)), ftp = P().ftp, ride = w.sport === "ride", steps = flatten(w, paceFor(w.sport));
+  const clk = (sec) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}`;
+  const watts = (x) => (x.from === x.to ? `${Math.round(x.from * ftp)} W` : `${Math.round(x.from * ftp)}–${Math.round(x.to * ftp)} W`);
+  const zOf = (x) => (x.kind === "free" ? ZONES[1] : zoneOf((x.from + x.to) / 2));
+  // (repeats said as "Effort 2 of 3"; each step with the clock it starts at)
+  let t = 0;
+  const rows = steps.map((x) => {
+    const z = zOf(x), at = t; t += x.secs;
+    const name = x.rep && x.kind === "work" ? `${x.name || "Effort"} ${x.rep[0]} of ${x.rep[1]}` : x.name || { warmup: "Warm up", cooldown: "Cool down", rest: "Easy", steady: "Steady" }[x.kind] || "Effort";
+    const cue = ["warmup", "cooldown", "rest"].includes(x.kind) ? CUES[x.kind] : CUES[z.c];
+    return h("div.ss-step", {}, h("span.ss-at", { text: clk(at) }), h("i.bg-" + z.c),
+      h("div.ss-tx", {}, h("b", { text: name }), h("small", { text: [stepLen(x), ride ? `Z${z.n} ${z.name}` : null, x.cad ? `${x.cad[0]}–${x.cad[1]} rpm` : null].filter(Boolean).join(" · ") }), cue && h("small.cue", { text: x.note || cue })),
+      h("span.ss-w", { text: ride && x.kind !== "free" ? watts(x) : "" }));
+  });
+  // (the same steps again, merged where one follows another at the same effort, for long steady rides)
+  const zsecs = ZONES.map(() => 0); for (const x of steps) zsecs[zOf(x).n - 1] += x.secs;
+  const g = /(\d+)(?:–(\d+))? g/.exec(d?.fuel || ""), perHour = g ? (+g[1] + +(g[2] || g[1])) / 2 : 0;
+  const feeds = [];
+  if (perHour) for (let at = 20 * 60; at < m.secs - 10 * 60; at += 20 * 60) feeds.push(at);
+  const each = perHour ? Math.round(perHour / 3 / 5) * 5 : 0;
+  return { title: dayLong(day), body: [
+    h("div.sheet-top", {}, h("div.sub", {}, sportTile(w.sport, true), `${SPORTS[w.sport].name} · ${w.kind}`), h("h1", { text: w.name }),
+      h("div.sub.num", { text: [dur(m.secs), w.sport !== "strength" ? `TSS ${Math.round(m.tss)}` : null, ride ? `IF ${m.iF.toFixed(2)}` : null, ride ? `${Math.round((m.avg * ftp * m.secs) / 1000)} kJ` : null].filter(Boolean).join(" · ") })),
+    card(null, ride ? `Power, at your FTP of ${ftp} W` : "Effort", C.profile(w, { ftp: ride ? ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: sheetW() })),
+    d && h("div.rh-why", {}, h("b", { text: "Why today: " }), S.swaps[day] !== undefined ? "you changed this day." : d.why),
+    w.about && h("p", { text: w.about }),
+    section("Step by step", h("div.card.glass.ss-steps", {}, rows)),
+    ride && section("Time in each zone", card(null, null, zoneBars(zsecs, ZONES.map((z) => z.name), ZONES.map((z) => z.c)))),
+    perHour > 0 && section("Eating and drinking", h("div.card.glass.ss-fuel", {},
+      h("p", {}, h("b", { text: `About ${Math.round(perHour)} g of carbs an hour` }), `, ${Math.round((perHour * m.secs) / 3600)} g in all: ${each} g every 20 minutes (a gel is about 25 g, a bar 40). A bottle an hour, more if it’s warm.`),
+      h("div.ss-feeds", {}, feeds.map((at) => h("span", {}, h("b", { text: clk(at) }), `${each} g`))))),
+    !perHour && ride && h("p.rh-note", { text: "Under 75 minutes: water is enough." }),
+    d?.strength && section("Afterwards", h("div.group.glass", {}, row({ icon: "strength", tint: "indigo", title: "Heavy strength, 20 minutes", sub: "Squats, Romanian deadlifts and step-ups: heavy, few, never to failure", onclick: () => pushSheet(() => workoutView(workoutById("strength-heavy"))) }))),
+    h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), day >= TODAY && h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => rhDayView(day)) }, "Change")),
+  ] };
+}
 // A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
 function rhDayView(day) {
   const d = rhDay(day), id = S.swaps[day] !== undefined ? S.swaps[day] : d?.id, w = id ? wkById(id) : null, future = day >= TODAY;
@@ -540,7 +584,7 @@ function rhDayView(day) {
       tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
       opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
     S.swaps[day] !== undefined && future && h("button.btn.quiet", { type: "button", onclick: () => set(undefined, "Back to Rhythm’s plan") }, "Undo the change"),
-    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => workoutView(w)) }, "Steps")),
+    w && h("div.acts.rh-day-acts", {}, w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => pushSheet(() => sendView(w)) }, "Send to device"), h("button.btn.quiet", { type: "button", onclick: () => pushSheet(() => sessionView(day)) }, "Details")),
   ] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you

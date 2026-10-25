@@ -258,6 +258,14 @@ await tab(L, 1);
 const todayCard = await L.p.locator('.session').first().innerText();
 ok(/Why today:|Rest, and let it sink in/.test(todayCard), 'Today: the session Rhythm chose, and why (or rest, and why)', todayCard.replace(/\s+/g, ' ').slice(0, 160));
 await L.p.screenshot({ path: `${out}/rhythm-today.png` });
+// (today's session in full: every step with the clock, its watts and how it should feel)
+if (await L.p.locator('.session .pill', { hasText: 'Details' }).count()) {
+  await L.p.locator('.session .pill', { hasText: 'Details' }).click(); await L.p.waitForSelector('#sheet[open] .ss-step'); await settle(L, 600);
+  const stepsN = await L.p.locator('#sheet .ss-step').count(), firstAt = await L.p.locator('#sheet .ss-at').first().innerText();
+  ok(stepsN > 2 && firstAt === '0:00' && /Step by step/i.test(await L.p.innerText('#sheet')), 'Details: the session step by step, from 0:00', `${stepsN} steps`);
+  await L.p.screenshot({ path: `${out}/rhythm-session.png` });
+  await done(L);
+}
 
 // ---- 9. Nothing scrolls sideways on a small phone ----
 await L.p.setViewportSize({ width: 320, height: 640 }); await settle(L);

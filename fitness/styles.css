@@ -677,3 +677,21 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .rh-why b { color: var(--text); }
 .rh-day-acts { display: flex; gap: 8px; }
 .rh-day-acts .btn { flex: 1; }
+
+/* ---- a session in full ---- */
+.ss-steps { padding: 6px 14px; display: grid; }
+.ss-step { display: grid; grid-template-columns: 36px 6px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 0; }
+.ss-step + .ss-step { border-top: 0.5px solid var(--line); }
+.ss-at { font: 600 12px/1.6 var(--font); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ss-step > i { align-self: stretch; border-radius: 3px; min-height: 30px; }
+.ss-tx { display: grid; gap: 2px; min-width: 0; }
+.ss-tx b { font-size: 15px; font-weight: 600; }
+.ss-tx small { font-size: 13px; color: var(--text-2); }
+.ss-tx small.cue { color: var(--text-3); line-height: 1.35; }
+.ss-w { font: 600 14px/1.6 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ss-fuel { display: grid; gap: 12px; padding: 16px; }
+.ss-fuel p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
+.ss-fuel p b { color: var(--text); }
+.ss-feeds { display: flex; flex-wrap: wrap; gap: 8px; }
+.ss-feeds span { display: grid; gap: 1px; padding: 8px 12px; border-radius: 14px; background: var(--glass-ctl); font-size: 13px; color: var(--text-2); text-align: center; }
+.ss-feeds b { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
