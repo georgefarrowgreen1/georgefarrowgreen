@@ -1166,8 +1166,7 @@ five weeks into a 16-week sportive plan, dated from today.
   up asks how much you've been riding lately and starts its fitness there; no day asks more than about two and a half
   days of your fitness. The Plan tab: the week at a glance (a circle a day, and its easy and hard balance), today first
   (with Change: shorter, easier, swapped with tomorrow, or rest, each kept as the day's swap and taken in by the next
-  decision), the next three days, where it's heading (the block's weeks and your fitness, the week ahead dotted), and How
-  Rhythm decides. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
+  decision), the next three days, where it's heading (the block's weeks and your fitness, the week ahead dotted), and Your week. Sessions are made to fit the day (`rh:<kind>:<minutes>`, worked out
   the same on every device). Its settings are kept with your record (`rhythm`). The event plans (below) are no longer
   offered; one chosen before keeps going until it's stopped. The research behind it is in the proposal it was built from.
 - **Plan, for an event**: a countdown to your event, the plan's phases (base, build, peak, taper) and its 16 weeks as bars (what each

@@ -519,28 +519,8 @@ function rhythmView() {
     h("p.line-said", { text: `${prefs.mode === "hold" ? "Holding your fitness where it is" : b.absorb ? "A lighter week, so the work sinks in" : `Up about ${Math.round(ramp)} points a week, then a lighter week so it sinks in`}. ${{ aerobic: "Steady riding and tempo first.", threshold: "Sweet spot and threshold now.", topend: "VO₂ max and sprints now." }[b.theme]}` })));
   const nd = prefs.days.filter((x) => x > 0).length, hrs = prefs.days.reduce((a, x) => a + x, 0);
   out.push(section(null, h("div.group.glass", {},
-    row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, onclick: () => rhythmSetup() }),
-    row({ icon: "zip", tint: "coral", title: "Send the week to your device", sub: "A FIT file for each session, in one zip", onclick: () => weekZip({ week: "Rhythm", days: r.days.filter((d) => d.date >= TODAY) }) }),
-    row({ icon: "info", tint: "indigo", title: "How Rhythm decides", sub: "The rules, and your numbers", onclick: () => openSheet(rhythmHow) }))));
+    row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""}`, onclick: () => rhythmSetup() }))));
   return out;
-}
-// The rules Rhythm keeps, and the numbers it's going by
-function rhythmHow() {
-  const r = rh(), rule = (t, s) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: t }), h("small", { text: s })));
-  return { title: "How Rhythm decides", body: [
-    h("p", { text: "Each morning Rhythm looks at what you’ve done, how fresh you are and how you feel, and picks the day’s session or rest. It plans the week ahead but only commits to today." }),
-    section("The rules", h("div.group", {},
-      rule("Mostly easy", "At most two hard sessions a week (three from 12 hours), never two days running."),
-      rule("Built gradually", "Fitness up a few points a week at most, and every fourth week lighter."),
-      rule("Never stale", "Four-week blocks (aerobic, threshold, top end); anything left too long comes back."),
-      rule("Listens to you", "A poor night keeps the time and drops the intensity; feeling poor twice, rest."),
-      rule("Never too much", "No day asks more than your fitness can take, whatever time you’ve given it."),
-      rule("Fair to missed days", "A missed session can move a rest day, if another rest day is still to come."))),
-    section("Your numbers", h("div.group", {},
-      rule("Fitness", `${Math.round(r.ctl)}${r.seeded ? ", from what you said you’ve been riding (your rides take over once there’s a month of them)" : ", from your rides"}`),
-      rule("FTP", `${P().ftp} W, from You`),
-      r.cpw && rule("Critical power", `${r.cpw.cp} W, with ${(r.cpw.w / 1000).toFixed(1)} kJ above it: intervals are set from these`))),
-  ] };
 }
 // A day of Rhythm's: the session in plain terms, why, and what to do when it isn't the day for it
 function rhDayView(day) {
