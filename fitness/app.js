@@ -27,6 +27,7 @@ import * as R from "./rhythm.js";
 import * as G from "./progress.js";
 import * as M from "./map.js";
 import * as BT from "./besttime.js";
+import * as E from "./efforts.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -351,14 +352,15 @@ function sessionCard(w, id, done) {
     const third = s?.np ? fig("Norm. power", String(Math.round(s.np)), " W") : fig("Stress", s?.tss != null ? String(s.tss) : "–");
     const on = pl && s?.tss != null && pt ? (s.tss > pt * 1.1 ? "A bit more than planned" : s.tss < pt * 0.9 ? "A bit less: no matter" : "Right on target") : null;
     const bar = (k, v, max, cls) => h("div.vs-row", {}, h("small", { text: k }), h("span.vs-bar", {}, h("i." + cls, { vars: { width: Math.min(100, (v / max) * 100) + "%" } })), h("b", { text: String(v) }));
-    const rec = newBest(a);
+    const rec = newBest(a), ef = pl ? effortsNow(a) : null;
     return h("div.card.hero.glass.session.done", {},
       doneMap(a),
       heroTop(h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done · as planned" : "Done today"), pl ? pl.name : a.name, null),
       s && h("div.hero-figs", {}, fig("Time", hmOf(s.moving)), s.dist ? fig("Distance", dist(s.dist)) : fig("Stress", s.tss != null ? String(s.tss) : "–"), third),
       on && h("div.vs", {}, h("div.vs-head", {}, h("small", { text: "Training stress" }), h("small.ok", { text: on })),
         bar("Planned", pt, Math.max(pt, s.tss) * 1.08, "plan"), bar("Ridden", s.tss, Math.max(pt, s.tss) * 1.08, "done")),
-      rec && h("div.hero-chips", {}, h("span.rec", {}, icon("medal", 14, 2.2), rec)),
+      (rec || ef) && h("div.hero-chips", {}, rec && h("span.rec", {}, icon("medal", 14, 2.2), rec),
+        ef && h("span.held" + (ef.held === ef.n ? ".ok" : ""), {}, icon(ef.held === ef.n ? "check" : "info", 14, 2.6), E.effortsSaid(ef))),
       h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride", icon("chev", 15, 2.4))));
   }
   if (id === "event") {
@@ -456,6 +458,27 @@ function doneMap(a) {
     if (todayMap?.el === el) todayMap.g = g; else g.remove();
   })().catch(() => el.remove());
   return el;
+}
+// The efforts of a ride against the session it was for (fitness/efforts.js): the session planned on its day, of its
+// sport (rides, with power); kept once worked out, the file read for it once, and the page drawn again when it's said
+const sessionOf = (a) => { if (a.sport !== "ride") return null; const id = a.workout || plannedOn(startOfDay(a.start)), w = id && id !== "event" ? wkById(id) : null; return w?.sport === "ride" ? w : null; };
+const effortsOf = (a, x) => { const w = sessionOf(a); return w && x ? E.efforts(flatten(w, paceFor("ride")), perSecond(x).pwr, P().ftp) : null; };
+const effortsSeen = new Map();
+function effortsNow(a) {
+  if (effortsSeen.has(a.id)) return effortsSeen.get(a.id);
+  effortsSeen.set(a.id, null);
+  if (sessionOf(a)) load(a).then((x) => { const e = effortsOf(a, x); effortsSeen.set(a.id, e); if (e) redraw(); }).catch(() => {});
+  return null;
+}
+// the efforts, one by one: each a bar against its target (the line), green where it held
+function effortsCard(e) {
+  const top = Math.max(1.15, ...e.each.map((x) => x.got / x.target)), few = e.each.length <= 10, targets = new Set(e.each.map((x) => x.target));
+  return card("eff-card", "The efforts",
+    h("div.eff-head", {}, h("b." + (e.held === e.n ? "ok" : "part"), { text: E.effortsSaid(e) }),
+      h("small", { text: `Target ${targets.size > 1 ? `${Math.min(...targets)}–${Math.max(...targets)}` : e.each[0].target} W · within 6% counts as held` })),
+    h("div.eff-strip" + (few ? ".few" : ""), { role: "img", "aria-label": e.each.map((x, i) => `Effort ${i + 1}: ${x.got} W of ${x.target}`).join("; "), vars: { "--line": (1 / top) * 100 + "%" } },
+      e.each.map((x) => h("span.eff" + (x.held ? ".ok" : ""), { title: `${x.got} W of ${x.target} W` }, few && h("small", { text: x.got }), h("i", { vars: { height: Math.min(100, (x.got / x.target / top) * 100) + "%" } })))),
+    h("p.line-said", { text: "Each effort’s average power, from a few seconds in (getting up to it isn’t counted), against the dashed line: its target." }));
 }
 // a new best, from today's ride: the longest length it beat your best before at
 function newBest(a) {
@@ -1494,6 +1517,8 @@ function actView(a) {
     pic.addEventListener("pointermove", show); pic.addEventListener("pointerdown", show);
     pic.addEventListener("pointerleave", () => { cur.setAttribute("visibility", "hidden"); mapAt?.(null); });
     body.push(card(null, "Through the ride", read, pic, h("div.legend", {}, ps.pwr && h("span", {}, h("i.lg-pwr"), "Power"), ps.hr && h("span", {}, h("i.lg-hr"), "Heart rate"), !ps.pwr && ps.spd && h("span", {}, h("i.lg-spd"), "Speed"), ps.ele && h("span", {}, h("i.lg-ele"), "Height"))));
+  // (the efforts, against the session it was for)
+  { const e = effortsOf(a, x); if (e) { effortsSeen.set(a.id, e); body.push(effortsCard(e)); } }
   }
   // time in zones
   if (s.zones) body.push(card(null, `Time in power zones · FTP ${ftp} W`, zoneBars(s.zones, ZONES.map((z, i) => `${z.name} · ${i ? Math.round(ZONES[i - 1].top * ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * ftp)}` : "+"} W`), ZONES.map((z) => z.c))));
@@ -2236,7 +2261,7 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
-const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js"];
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
 versionNow().then((v) => { version = v; });
