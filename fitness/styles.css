@@ -1112,7 +1112,7 @@ img, svg { -webkit-user-drag: none; }
 .form-top small { display: block; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .form-top b { font: 700 36px/1 var(--font-r); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
 .pill-word { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 14px; font-size: 14px; font-weight: 600; background: color-mix(in srgb, currentColor 15%, transparent); }
-.fband { position: relative; height: 40px; }
+.fband { position: relative; height: 40px; margin-bottom: 12px; }
 .fband .track { position: absolute; left: 0; right: 0; top: 7px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #ff6b5f 0%, #ffb547 24%, #4cd98a 48%, #4cd98a 62%, #5aa2ff 80%, #8e94ad 100%); }
 .fband .knob { position: absolute; top: 1px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px var(--glass-strong), 0 2px 8px rgba(0, 0, 0, 0.35); }
 .fband .lab { position: absolute; left: 0; right: 0; top: 25px; display: flex; justify-content: space-between; font-size: 11px; font-weight: 500; color: var(--text-3); }
