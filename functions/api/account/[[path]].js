@@ -629,7 +629,7 @@ const ROUTES = {
       weatherOf(env, u.id),
       devicesOf(env, u.id).catch(() => []),
       fitnessKept(env, u.id).catch(() => ({ data: null })),
-      fitnessActs(env, u.id).catch(() => []),
+      fitnessActs(env, u.id).then((r) => r.acts || [], () => []),   // (every one, newest first: { acts })
     ]);
     let photo = null;
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
