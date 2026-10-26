@@ -255,13 +255,18 @@ function fitnessSeries() {
 }
 
 // ---- the page ----
-const TABS = [["today", "Today", "today"], ["plan", "Plan", "plan"], ["activities", "Activities", "list"], ["progress", "Progress", "trend"]];
+// (three: Today has the plan's days too, Plan having gone into it)
+const TABS = [["today", "Today", "today"], ["activities", "Activities", "list"], ["progress", "Progress", "trend"]];
 function drawTabs() {
   tabsEl.replaceChildren(...TABS.map(([id, name, ic], i) => h("button.tab", { type: "button", "aria-current": S.tab === id ? "page" : null, onclick: () => go(id) }, icon(ic, 24, 1.9), name)));
   tabsEl.style.setProperty("--tab", TABS.findIndex(([id]) => id === S.tab));
 }
 function go(tab) {
-  if (tab === S.tab) return scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" });
+  if (tab === S.tab) {
+    // (Today, tapped again while looking at another day: back to today)
+    if (tab === "today" && (S.dayAt != null || S.agenda)) { S.dayAt = null; S.agenda = false; render(true); }
+    return scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" });
+  }
   S.tab = tab;
   tabsEl.classList.remove("moving"); void tabsEl.offsetWidth; tabsEl.classList.add("moving");
   drawTabs();
@@ -1018,6 +1023,7 @@ const signedOutHere = () => signOutHere(true);
   if (code) history.replaceState(null, "", location.pathname + location.search);
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
+  else if (want === "plan") S.tab = "today";
   let m = null;
   try {
     if (code) m = await signedBack(code);
@@ -1030,4 +1036,4 @@ const signedOutHere = () => signOutHere(true);
 })();
 
 // (what the screens, each its own module, take from here)
-export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, ZONES, actsOn, addDays, bigMapView, calendar, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, myPlan, numbers, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
+export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, myPlan, numbers, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
