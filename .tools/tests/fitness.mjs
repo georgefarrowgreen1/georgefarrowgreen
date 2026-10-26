@@ -197,7 +197,7 @@ await P.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(/Signed in as Sam/.test(said) && !/signin=/.test(P.p.url()), 'Sign in, on the account\'s page, and back in Fitness signed in (the code out of the address)', `${said} ${P.p.url()}`);
 await tab(P, 2);
 const listed = await P.p.locator('.head .sub').innerText();
-ok(/^3 activities/.test(listed) && await P.p.getByText('Wahoo ELEMNT BOLT', { exact: false }).count() >= 1, 'the phone has the laptop\'s three rides', listed);
+ok(/^3 activities/i.test(listed) && await P.p.getByText('Wahoo ELEMNT BOLT', { exact: false }).count() >= 1, 'the phone has the laptop\'s three rides', listed);
 await P.p.locator('.row', { hasText: 'Wahoo ELEMNT BOLT' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P, 1200);
 const stats = await P.p.locator('#sheet .stat').allInnerTexts();
@@ -275,7 +275,7 @@ const left = acts(sam);
 ok(left.length === 2 && left.some((a) => a.name === 'Saturday loop') && !left.some((a) => a.file === '123_ACTIVITY.fit'), 'renamed and deleted with the account', JSON.stringify(left.map((a) => a.name)));
 await tab(L, 2);
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
-ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.head .sub').innerText());
+ok(/^2 activities/i.test(await L.p.locator('.head .sub').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.head .sub').innerText());
 
 // ---- 7. The account's page: Fitness among your apps ----
 await L.p.goto(`${ACCT}/`);
@@ -293,7 +293,7 @@ ok(/Signed out\./.test(await P.p.innerText('main')) && cached === 0 && JSON.pars
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
 await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
-ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
+ok(/^2 activities/i.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
 
 // ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
 await tab(L, 1);
