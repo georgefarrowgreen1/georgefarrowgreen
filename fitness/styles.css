@@ -1007,10 +1007,10 @@ img, svg { -webkit-user-drag: none; }
   background: color-mix(in srgb, var(--glass-strong) 80%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: var(--edge); pointer-events: none; }
 
 /* ---- Today, overhauled: the day first, at a glance ---- */
-/* (the date over the title, as Apple's own apps have Today) */
+/* (the title, and under it the date, or where you are in Rhythm's block) */
 .head.dated { align-items: flex-end; }
 .head.dated .t { display: flex; flex-direction: column; gap: 4px; }
-.head.dated .sub { order: -1; margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
+.head.dated .sub { order: 1; margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
 .head.dated h1 { line-height: 1; letter-spacing: -0.4px; }
 /* (a section of Today: its title a heading over it) */
 .section.t-sec > h3 { margin: 22px 16px 10px; font: 700 20px/1.2 var(--font-d); letter-spacing: -0.2px; text-transform: none; color: var(--text); }
