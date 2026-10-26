@@ -392,7 +392,7 @@ await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Make my key' }).click(); await L.p.waitForSelector('#sheet .hk-key'); await settle(L, 400);
 const hAddr = (await L.p.locator('#sheet .hk-key').first().innerText()).replace(/\s+/g, ''), hKey = hAddr.split('/').pop(), hSteps = await L.p.locator('#sheet').innerText();
-ok(hAddr === `${FIT}/api/fitness/health/${hKey}` && /^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Get Contents of URL/.test(hSteps) && !/Authorization/.test(hSteps), 'Apple Health: an address of your own (the key in it, nothing else to copy), and the Shortcut’s five steps', hAddr.slice(0, 60));
+ok(hAddr === `${FIT}/api/fitness/health/${hKey}` && /^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Get Contents of URL/.test(hSteps) && !/Authorization/.test(hSteps), 'Apple Health: an address of your own (the key in it, nothing else to copy), and the Shortcut’s steps', hAddr.slice(0, 60));
 await L.p.screenshot({ path: `${out}/health-key.png` });
 const shortcut = (headers, b, path = '/api/fitness/health') => api(L, path, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(b) });
 const hNo = await shortcut({}, { hrv: 50 }), hBad = await shortcut({ Authorization: 'Bearer fxh_' + 'x'.repeat(40) }, { hrv: 50 });

@@ -833,7 +833,8 @@ function healthView() {
       step(2, "Find Health Samples: Heart Rate Variability", "Start Date is in the last 12 hours."),
       step(3, "Find Health Samples: Resting Heart Rate", "Start Date is in the last 1 day."),
       step(4, "Find Health Samples: Sleep, then Get Details: Duration", "Start Date is in the last 16 hours, Value is not In Bed, Value is not Awake. Then Get Details of Health Samples, Duration."),
-      step(5, "Get Contents of URL", "Paste your address. Method POST. Request Body JSON, with three fields: hrv (step 2), rhr (step 3), sleep (step 4’s Duration)."))),
+      step(5, "Get Contents of URL", "Paste your address. Method POST. Request Body JSON."),
+      step(6, "Add three fields to the body", "For each, type its name in Key, then tap the value and Select Variable: hrv, step 2’s Health Samples; rhr, step 3’s; sleep, step 4’s Duration. Each value shows as a blue chip, not typed text."))),
     section(null, h("p.foot", { text: "Then tap Run once: Fitness answers with what it got, and this page shows it." })),
   ];
   if (!x?.on && !key) return { title: "Apple Health", body: [

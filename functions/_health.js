@@ -110,7 +110,9 @@ export async function takeNight(env, request, b, inPath = null) {
   const n = nightFrom(b), day = typeof b.day === "string" && DATE.test(b.day) ? b.day : dayIn(request.cf?.timezone);
   if (n.hrv == null && n.rhr == null && n.sleep == null) {
     await D.prepare("UPDATE fx_health_key SET last = ?2, said = ?3 WHERE user_id = ?1").bind(k.user_id, Date.now(), JSON.stringify({ day, none: true })).run();
-    throw new HttpError(400, "Nothing Fitness could read: it looks for hrv, rhr and sleep.");
+    // (the names typed as values, their keys left empty: the usual slip in Shortcuts' body fields)
+    const slip = Object.entries(b).some(([k, v]) => !k.trim() || /^(hrv|rhr|hrh|sleep)$/i.test(String(v).trim()));
+    throw new HttpError(400, slip ? "Each field’s name goes in Key (hrv, rhr, sleep), and its value is a variable: tap it, then Select Variable, and pick that step’s Health Samples (sleep: the Duration)." : "Nothing Fitness could read: it looks for hrv, rhr and sleep, each set to that step’s Health Samples.");
   }
   await D.batch([
     D.prepare(`INSERT INTO fx_health (user_id, day, hrv, rhr, sleep, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
