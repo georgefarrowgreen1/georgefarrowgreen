@@ -201,8 +201,13 @@ function dayChanges(day) {
   if (!rhythmOn() || day < TODAY) return [];
   const set = (v, said) => { if (v === undefined) delete S.swaps[day]; else S.swaps[day] = v; keep("swaps"); toast(said); redraw(); };
   const mins = d?.mins || 60, kind = /^rh:([a-z0-9]+):/.exec(id || "")?.[1], out = [];
-  if (w && mins > 50) out.push({ key: "short", label: "Short on time", sub: kind && kind !== "endurance" && kind !== "long" ? `The same work in ${dur(Math.max(50, mins - 30) * 60)}` : `${dur(Math.max(40, Math.round(mins / 2 / 5) * 5) * 60)} instead`,
-    run: () => set(kind ? `rh:${kind}:${kind === "endurance" || kind === "long" ? Math.max(40, Math.round(mins / 2 / 5) * 5) : Math.max(50, mins - 30)}` : "recovery-45", "Shorter, same purpose") });
+  // (shorter: the same kind of work, less of it; offered only where that's really shorter, by five minutes at least)
+  if (w) {
+    const steady = kind === "endurance" || kind === "long" || kind === "recovery";
+    const sid = kind ? `rh:${kind}:${steady ? Math.max(30, Math.round(mins / 2 / 5) * 5) : Math.max(35, mins - 20)}` : "recovery-45", sw = wkById(sid);
+    const now = measure(w, paceFor(w.sport)).secs, then = sw ? measure(sw, paceFor(sw.sport)).secs : now;
+    if (sw && then <= now - 300) out.push({ key: "short", label: "Short on time", sub: `${sw.name}: ${dur(then)} instead of ${dur(now)}`, run: () => set(sid, `${sw.name}: ${dur(then)}`) });
+  }
   if (w && d?.hard) out.push({ key: "easier", label: "Easier", sub: "Steady all the way, no hard efforts", run: () => set(`rh:endurance:${Math.min(mins, 90)}`, "Easier") });
   if (w) out.push({ key: "move", label: "Another day", sub: "Swap it with another day this week or next", run: () => openSheet(() => moveView(day)) });
   if (w) out.push({ key: "rest", label: "Rest", sub: "Rhythm makes up for it later in the week", run: () => set(null, day === TODAY ? "Rest today" : `Rest on ${dayName(day)}`) });
