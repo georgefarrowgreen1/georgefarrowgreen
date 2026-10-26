@@ -2,7 +2,7 @@
 // time for it, the efforts held), the morning's check-in, the week and your fitness and form. Drawn by app.js render.
 
 import * as TC from "./todaycalc.js";
-import { A, BT, C, DAY, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
+import { A, BT, C, DAY, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dlFor, download, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
@@ -30,6 +30,7 @@ function todayView() {
   if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
+  if (planned && left[0]) left[0].style.setProperty("view-transition-name", "day-card");
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(rhythmSays(), isToday && feelCard(w));
   right.push(planned && weekCard(), headingCard(), formCard(), planRows());
@@ -39,7 +40,13 @@ function todayView() {
 // (Rhythm plans this week and the next seven days: a day after that isn't planned yet, rather than a rest day)
 const unplanned = (d) => { if (!rhythmOn()) return false; const ds = rh()?.days; return !!ds?.length && d > ds.at(-1).date && S.swaps[d] === undefined; };
 // (looking at another day: its card slides in from the side it's on, once)
-const lookAt = (d) => { const was = S.dayAt ?? TODAY; if (d !== was) S.dayFx = d > was ? "next" : "prev"; S.dayAt = d === TODAY ? null : d; redraw(); };
+const lookAt = (d) => {
+  const was = S.dayAt ?? TODAY, show = () => { S.dayAt = d === TODAY ? null : d; redraw(); };
+  // (the chosen day's pill and the day's card glide to the new day; else the card slides in from its side)
+  if (d === was) return show();
+  if (canMorph()) return morph("day", show);
+  S.dayFx = d > was ? "next" : "prev"; show();
+};
 // what's on a day: Rhythm's (or the plan's) session, as changed; null for rest
 const idOn = (d) => { const id = plannedOn(d); return id ?? null; };
 // a ride's colour by how hard it is (todaycalc.js), a run's or swim's the tint
@@ -62,9 +69,9 @@ function dayStrip(sel) {
       h("button.strip-step", { type: "button", "aria-label": "The week before", disabled: mon <= addDays(thisMon, -7), onclick: () => step(-1) }, icon("back", 15, 2.6)),
       h("b", { text: which }),
       h("button.strip-step", { type: "button", "aria-label": "The week after", disabled: mon >= addDays(thisMon, 7), onclick: () => step(1) }, icon("chev", 15, 2.6)),
-      h("button.strip-all" + (S.agenda ? ".on" : ""), { type: "button", "aria-expanded": String(!!S.agenda), onclick: () => { S.agenda = !S.agenda; S.agendaFx = S.agenda; redraw(); } }, icon("list", 14, 2.4), S.agenda ? "Fold" : "Two weeks")),
+      h("button.strip-all" + (S.agenda ? ".on" : ""), { type: "button", "aria-expanded": String(!!S.agenda), onclick: () => morph("agenda", () => { S.agenda = !S.agenda; S.agendaFx = S.agenda && !canMorph(); redraw(); }) }, icon("list", 14, 2.4), S.agenda ? "Fold" : "Two weeks")),
     h("div.strip-days", {}, days.map((d) => { const r = ring(d);
-      return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
+      return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", vars: d === sel ? { "view-transition-name": "sday-on" } : null, "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), svgOf(`<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${r.svg}</svg>`)); })));
 }
 // Both weeks as a list: each day, what's on it, its shape, and how it went
@@ -416,7 +423,7 @@ function feelCard(w) {
     FEEL.map(([k, label, ic, words]) => h("div.checkin-row", {},
       h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), h("span.lt", { text: label })),
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
-        h("button.t" + i, { type: "button", "aria-pressed": String(cur[k] === i), onclick: () => setFeel(k, i) }, word))))),
+        h("button.t" + i, { type: "button", vars: cur[k] === i ? { "view-transition-name": `seg-${k}` } : null, "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
     v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
       h("small.checkin-hint", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
 }

@@ -1320,3 +1320,32 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 /* (the open check-in's head a row, the title and Done at its end: the old card's first-child grid kept from it) */
 .checkin.open > .checkin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .checkin.open > .checkin-head .checkin-done { margin-left: auto; }
+
+/* ---- iOS, in motion: springs, blur, and what changes gliding to where it goes ---- */
+/* (things arrive out of a soft blur, as iOS's do) */
+@keyframes rise { from { opacity: 0; transform: translateY(16px) scale(0.98); filter: blur(8px); } }
+@keyframes screen-in { from { opacity: 0; transform: translateY(10px); filter: blur(6px); } }
+@keyframes row-in { from { opacity: 0; transform: translateX(-10px); filter: blur(4px); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.92); filter: blur(6px); } }
+@keyframes day-next { from { opacity: 0; transform: translateX(28px) scale(0.98); filter: blur(8px); } }
+@keyframes day-prev { from { opacity: 0; transform: translateX(-28px) scale(0.98); filter: blur(8px); } }
+/* (and settle with a spring, a hair past and back) */
+.screen.in > *, .screen.in .cols > div > *, .day-in, dialog.sheet.fresh .sheet-body > *, .agenda.open-in .ag-row, dialog.sheet.fresh .stats .stat, .says .say { animation-timing-function: var(--ease-spring); animation-duration: 0.7s; }
+/* (what's chosen glides there: the day's pill, the day's card, the check-in's answers) */
+::view-transition-group(*) { animation-duration: 0.55s; animation-timing-function: var(--ease-spring); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.28s; }
+::view-transition-old(day-card) { animation: vt-out 0.22s var(--ease-out) both; }
+::view-transition-new(day-card) { animation: vt-in 0.42s var(--ease-out) both; }
+::view-transition-old(sday-on), ::view-transition-new(sday-on) { animation-duration: 0.3s; }
+@keyframes vt-out { to { opacity: 0; filter: blur(10px); transform: scale(0.98); } }
+@keyframes vt-in { from { opacity: 0; filter: blur(10px); transform: scale(1.02); } }
+/* (a press: in quickly, back with a spring) */
+:is(.pill, .btn, button.row, a.row, button.card, .next-up, .tomorrow, .chip-btn, .sday, .strip-all, .strip-step, .mv-day, .ag-row, .seg3 button, .checkin-done, .round.me, .p-card, .go, .choice) {
+  transition: transform 0.55s var(--ease-spring), background-color 0.25s var(--ease-out), color 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out), opacity 0.25s; }
+:is(.pill, .btn, .chip-btn, .sday, .strip-all, .strip-step, .mv-day, .seg3 button, .checkin-done, .round.me, .go):active { transform: scale(0.93); transition-duration: 0.12s; }
+:is(button.row, a.row, button.card, .next-up, .tomorrow, .ag-row, .p-card, .choice):active { transform: scale(0.975); transition-duration: 0.12s; }
+/* (the readiness ring: drawn round with a spring) */
+:is(.screen.in, .day-in) .ready .arc { animation-timing-function: var(--ease-spring); animation-duration: 1.1s; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.pill, .btn, .chip-btn, .sday, .strip-all, .strip-step, .mv-day, .seg3 button, .checkin-done, .round.me, .go, button.row, a.row, button.card, .next-up, .tomorrow, .ag-row, .p-card, .choice):active { transform: none; }
+}
