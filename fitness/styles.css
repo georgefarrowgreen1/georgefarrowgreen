@@ -1382,3 +1382,8 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .ss-pat .ss-tx b { font-size: 15px; }
 /* (a Rhythm says note's own action: FTP) */
 .say .tx .say-act { justify-self: start; margin-top: 6px; }
+/* Apple Health: its tile, and the key and address to copy */
+.ic.brand.health { background: linear-gradient(160deg, #ff5a6e, #ff2d55); }
+.hk-box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--field); }
+.hk-key { flex: 1; min-width: 0; font: 500 13px/1.35 ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.section > .hk-box + .foot { margin-top: 8px; }

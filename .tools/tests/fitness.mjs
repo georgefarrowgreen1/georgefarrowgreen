@@ -387,6 +387,26 @@ ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM
 const gWell = rows(`SELECT day, hrv, hrv_lo, rhr, sleep, score FROM fx_well WHERE user_id = '${sam}'`), meWell = JSON.parse((await api(L, '/api/fitness/me')).body).garmin?.well || [];
 ok(gWell.length === 1 && gWell[0].hrv === 41 && gWell[0].hrv_lo === 52 && gWell[0].rhr === 49 && gWell[0].sleep === 25200 && gWell[0].score === 78 && meWell.length === 1 && glog.some((l) => l.includes('/hrv-service/hrv/daily/')),
   'Garmin: your night’s HRV, resting heart rate and sleep kept, and the page told', JSON.stringify({ gWell, meWell }));
+// ---- Apple Health, by a Shortcut: a key made in Fitness, and the morning's post with it (no cookie: from Shortcuts) ----
+await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
+await L.p.locator('#sheet .btn', { hasText: 'Make my key' }).click(); await L.p.waitForSelector('#sheet .hk-key'); await settle(L, 400);
+const hKey = (await L.p.locator('#sheet .hk-key').first().innerText()).trim(), hSteps = await L.p.locator('#sheet').innerText();
+ok(/^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Find Health Samples/.test(hSteps) && /api\/fitness\/health/.test(hSteps), 'Apple Health: a key of your own, the address, and the Shortcut’s steps', hKey.slice(0, 8));
+await L.p.screenshot({ path: `${out}/health-key.png` });
+const shortcut = (headers, b) => api(L, '/api/fitness/health', { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(b) });
+const hNo = await shortcut({}, { hrv: 50 }), hBad = await shortcut({ Authorization: 'Bearer fxh_' + 'x'.repeat(40) }, { hrv: 50 });
+// (as Shortcuts writes them: samples a line each, with their units; sleep as each stretch's length)
+const hYes = await shortcut({ Authorization: `Bearer ${hKey}` }, { hrv: '48 ms\n52 ms\n55 ms', rhr: '51 count/min', sleep: '2 hr 10 min\n3 hr 5 min\n1 hr 45 min' });
+const hRow = rows(`SELECT hrv, rhr, sleep FROM fx_health WHERE user_id = '${sam}'`)[0];
+ok(hNo.status === 401 && hBad.status === 401 && hYes.status === 200 && /Fitness has it: HRV 51.7 ms, resting 51 bpm, 7 h 0 min asleep/.test(hYes.body) && hRow?.hrv === 51.7 && hRow.rhr === 51 && hRow.sleep === 25200,
+  'the Shortcut’s morning: nothing without the key; with it, last night read as Shortcuts writes it, and kept', `${hNo.status} ${hBad.status} ${hYes.body} ${JSON.stringify(hRow)}`);
+await done(L); await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
+await L.p.locator('#sheet .btn', { hasText: 'Check again' }).click(); await L.p.waitForFunction(() => /Last morning/.test(document.querySelector('#sheet .sheet-top')?.textContent || '')); await settle(L, 400);
+ok(/Last morning: HRV 51.7 ms, resting heart rate 51, 7 h 0 min asleep/.test(await L.p.locator('#sheet .sheet-top').innerText()), 'and Fitness shows what came', await L.p.locator('#sheet .sheet-top').innerText());
+await L.p.screenshot({ path: `${out}/health-on.png` });
+await done(L);
 const noLeak = await api(L, '/api/fitness/me');
 ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Garmin’s token never sent to the page');
 

@@ -180,7 +180,7 @@ function rh() {
   // (worked out again only when something it goes on has changed: the count covers the rides and their figures)
   // (and the wet days ahead, from the weather where you ride, and your nights, from Garmin)
   const wet = wetAhead(), well = wellByDay();
-  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}|${JSON.stringify(wet)}|${S.garmin?.well?.length || 0}:${S.garmin?.well?.at(-1)?.day || ""}`;
+  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}|${JSON.stringify(wet)}|${wellSource().length}:${JSON.stringify(wellSource().at(-1) || "")}`;
   if (rhCache?.key !== key) {
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, indoor: !!a.indoor, sum: sumOf(a) }));
     rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet, well }) };
@@ -193,10 +193,16 @@ function wetAhead() {
   for (const k of Object.keys(w)) { const [y, m, d] = k.split("-").map(Number); out[startOfDay(new Date(y, m - 1, d, 12).getTime())] = true; }
   return out;
 }
-// your nights from Garmin (functions/_garmin.js), by the day they ended: { day: { hrv, hrv_lo, hrv_hi, rhr, sleep, score } }
+// your nights, by the day they ended: { day: { hrv, hrv_lo, hrv_hi, rhr, sleep, score } }, from Garmin (functions/_garmin.js)
+// or Apple Health (functions/_health.js), whichever has more of this month's; never the two mixed, their HRVs being
+// measured differently (Garmin's RMSSD, the Watch's SDNN), each read against its own usual range
+function wellSource() {
+  const month = new Date(TODAY - 30 * DAY).toISOString().slice(0, 10), n = (xs) => (xs || []).filter((r) => r.day >= month).length;
+  return n(S.health?.well) > n(S.garmin?.well) ? S.health.well : S.garmin?.well || [];
+}
 function wellByDay() {
   const out = {};
-  for (const r of S.garmin?.well || []) { const [y, m, d] = r.day.split("-").map(Number); out[startOfDay(new Date(y, m - 1, d, 12).getTime())] = r; }
+  for (const r of wellSource()) { const [y, m, d] = r.day.split("-").map(Number); out[startOfDay(new Date(y, m - 1, d, 12).getTime())] = r; }
   return out;
 }
 const rhDay = (d) => rh()?.days.find((x) => x.date === d) || null;
@@ -390,6 +396,7 @@ function settingsView() {
         h("span.val", { text: `${i ? Math.round(ZONES[i - 1].top * p.ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * p.ftp) - 1}` : "+"} W` }))))),
       section("Your devices", h("div.group", {},
         row({ tile: h("span.ic.brand.garmin", {}, icon("device", 18, 2)), title: "Garmin Connect", sub: garminSaid(), onclick: () => pushSheet(garminView) }),
+        row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Apple Health", sub: healthSaid(), onclick: () => { healthView.key = null; pushSheet(healthView); } }),
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })))),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
@@ -795,6 +802,75 @@ function garminView() {
   ] };
 }
 
+// ---- Apple Health, by a Shortcut (functions/_health.js): Health stays on the phone, so a personal automation in
+// Shortcuts sends last night's HRV, resting heart rate and sleep here each morning, with a key of your own. Rhythm reads
+// them as it reads Garmin's (rhythm.js nightOf). The key's shown once, as it's made, with the steps to make the
+// Shortcut; made again, the old one stops working ----
+const healthUrl = () => `${location.origin}/api/fitness/health`;
+function healthSaid() {
+  const x = S.health;
+  if (!x?.on) return "Your nights from your Apple Watch, by a Shortcut";
+  if (!x.last) return "Waiting for the Shortcut’s first morning";
+  return x.said?.none ? `Last sent ${ago(x.last)}, with nothing Fitness could read` : `Last sent ${ago(x.last)}`;
+}
+// (what the Shortcut sent, in words)
+const nightSaid = (n) => [n.hrv != null && `HRV ${n.hrv} ms`, n.rhr != null && `resting heart rate ${n.rhr}`, n.sleep != null && `${Math.floor(n.sleep / 3600)} h ${Math.round((n.sleep % 3600) / 60)} min asleep`].filter(Boolean).join(", ");
+function healthView() {
+  const x = S.health, key = healthView.key;
+  const copy = (text, what) => h("button.pill.small", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast(`${what} copied`), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy");
+  const make = async (btn) => {
+    btn.disabled = true; btn.textContent = "Making your key…";
+    try { const r = await A.healthKey(); healthView.key = r.key; S.health = { ...r, key: undefined }; }
+    catch (e) { btn.disabled = false; btn.textContent = "Try again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
+    Sheet.redraw();
+  };
+  const step = (n, title, sub) => h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: String(n) })), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })));
+  const steps = () => [
+    section("Your key", h("div.hk-box", {}, h("code.hk-key", { text: key }), copy(key, "Key")), h("p.foot", { text: "Shown this once: copy it into the Shortcut now. Lost it? Make a new one here." })),
+    section("The address", h("div.hk-box", {}, h("code.hk-key", { text: healthUrl() }), copy(healthUrl(), "Address"))),
+    section("Make the Shortcut", h("div.group", {},
+      step(1, "In Shortcuts: Automation, then New Automation", "Time of Day: 07:30, Daily, Run Immediately. Then New Blank Automation."),
+      step(2, "Add Find Health Samples", "Heart Rate Variability, where Start Date is in the last 12 hours."),
+      step(3, "Add Find Health Samples again", "Resting Heart Rate, where Start Date is in the last 1 day. Sort by Start Date, Latest First, Limit 1."),
+      step(4, "And again", "Sleep, where Start Date is in the last 16 hours, Value is not In Bed, and Value is not Awake."),
+      step(5, "Add Get Details of Health Samples", "Duration, of the sleep samples from step 4."),
+      step(6, "Add Get Contents of URL", "The address above. Method: POST. Header: Authorization, with Bearer, a space, then your key. Request Body: JSON, with hrv (step 2’s samples), rhr (step 3’s) and sleep (step 5’s Duration)."),
+      step(7, "Tap Run once to try it", "Fitness answers with what it got, and this page shows it."))),
+  ];
+  if (!x?.on && !key) return { title: "Apple Health", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Apple Health" }), h("div.sub", { text: "Your nights from your Apple Watch: HRV, resting heart rate and sleep, each morning." })),
+    section(null, h("p.line-said", { text: "Apple keeps Health on your iPhone, with no way for a website to ask for it. So a Shortcut sends it: each morning, it finds last night in Health and sends it here, with a key of your own. Rhythm then eases the day when your night says you need it." })),
+    (() => { const b = h("button.btn", { type: "button", onclick: () => make(b) }, "Make my key"); return b; })(),
+    section(null, h("p.foot", { text: "Only those three numbers are sent, once a morning, and only from your phone. Turning it off forgets the key and every night it sent." })),
+  ] };
+  const sure = h("p.foot", { text: "The key stops working, and the nights it sent are forgotten." });
+  sure.hidden = true;
+  const off = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Turn off Apple Health"; sure.hidden = false; return; }
+    try { S.health = await A.healthOff(); healthView.key = null; } catch (e) { return toast(e.message, true); }
+    sheetBack(); redraw(); toast("Apple Health off");
+  };
+  const check = async (btn) => {
+    btn.disabled = true; btn.textContent = "Checking…";
+    try { S.health = await A.health(); } catch (e) { return toast(e.message, true); } finally { btn.disabled = false; btn.textContent = "Check again"; }
+    Sheet.redraw(); redraw();
+  };
+  const again = h("button.btn.quiet", { type: "button", onclick: () => check(again) }, "Check again");
+  const last = x?.said && !x.said.none ? nightSaid(x.said) : null;
+  return { title: "Apple Health", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Apple Health" }), h("div.sub", { text: x?.last ? (last ? `Last morning: ${last}` : "The Shortcut sent nothing Fitness could read: check step 6") : "Waiting for the Shortcut’s first morning" })),
+    x?.on && h("div.group", {},
+      row({ icon: "today", tint: "blue", title: "Last sent", value: x.last ? ago(x.last) : "Not yet", chev: false }),
+      row({ icon: "calendar", tint: "green", title: "Nights", value: String(x.well?.length || 0), chev: false })),
+    key ? steps() : null,
+    !key && x?.on && again,
+    !key && section(null, h("div.group", {}, h("button.row.action", { type: "button", onclick: (e) => make(e.currentTarget) }, "Make a new key, and see the steps again"))),
+    section(null, h("p.foot", { text: "Your Apple Watch measures HRV its own way (SDNN, where Garmin’s is RMSSD), so Rhythm reads it against its own usual range, and never mixes it with Garmin’s. With both, it goes by whichever has more of this month’s nights." })),
+    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: off }, "Turn off")), sure),
+  ] };
+}
+
 // ---- the morning notification (functions/_fitpush.js): today's session, or a rest day, at the time you chose, on this
 // phone. Its words for the next week are written here, from Rhythm, and sent again as things change; the server only
 // sends the day's when your time comes ----
@@ -1025,8 +1101,8 @@ function arrive(m) {
   render(true);
   estimate();
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
-  if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); setTimeout(firstRun, 500); }
-  else { askToday(); garminNow(m.garmin); }
+  if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
+  else { askToday(); garminNow(m.garmin); S.health = m.health || { on: false }; }
   setTimeout(squash, 4000);
   setTimeout(routes, 6000);
   morningRefresh();
@@ -1040,6 +1116,7 @@ function takeUp(m) {
   adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
+  S.health = m.health || { on: false };
   setActs(); redraw(); estimate();
   garminNow(m.garmin);
 }

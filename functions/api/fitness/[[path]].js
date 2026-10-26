@@ -16,7 +16,12 @@
 //   POST   /api/fitness/garmin/fetch  what's new asked for now (as the app opens; force, for Check now) → as GET
 //   GET    /api/fitness/garmin/new/<id>  a waiting activity's file, as Garmin gave it (a zip of its FIT file)
 //   DELETE /api/fitness/garmin/new/<id>  read, and not to be kept (one you have already, or that can't be read)
-//   GET    /api/fitness/weather      the next day and a half's weather where you ride, hour by hour (functions/_fitwx.js)
+//   GET    /api/fitness/health        Apple Health, by a Shortcut (functions/_health.js): on or not, what it last sent, your nights
+//   POST   /api/fitness/health/key    a new key for the Shortcut (any old one stops working), shown this once → as GET, and { key }
+//   DELETE /api/fitness/health        off: the key and the nights forgotten
+//   POST   /api/fitness/health        the Shortcut's morning post, with the key (not signed in: from the phone's Shortcuts):
+//                                    { hrv, rhr, sleep, day? }
+//   GET    /api/fitness/weather      the week's weather where you ride, hour by hour (functions/_fitwx.js)
 //   GET    /api/fitness/push-key     the key push subscriptions are made with
 //   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
 //   DELETE /api/fitness/push         and off again: { endpoint }
@@ -33,6 +38,7 @@ import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
+import { newKey as healthKey, forget as healthOff, healthOf, takeNight } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
@@ -41,8 +47,8 @@ import { kept, saveState, cleanState, cleanAct, activities, addActivity, activit
 // for next time, a moment early so nothing changing as it's read is missed)
 async function view(env, u, since = null) {
   const at = Date.now() - 2000;
-  const [k, got, garmin] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.ids ? { ids: got.ids, since } : {}), at, garmin };
+  const [k, got, garmin, health] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false }))]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -141,6 +147,17 @@ const ROUTES = {
     await done(env, u.id, id);
     return json({ ok: true });
   },
+  "GET health": async ({ request, env }) => json(await healthOf(env, (await signedIn(request, env)).id)),
+  "POST health/key": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await healthKey(env, (await signedIn(request, env)).id));
+  },
+  "DELETE health": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await healthOff(env, (await signedIn(request, env)).id));
+  },
+  // (from Shortcuts on the phone, not the page: its key, not the site's cookie, says whose it is)
+  "POST health": async ({ request, env }) => json(await takeNight(env, request, await body(request, 64 * 1024))),
   // (the weather for a ride today: functions/_fitwx.js; none, where it can't be had)
   "GET weather": async ({ request, env }) => {
     const u = await signedIn(request, env);

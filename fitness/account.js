@@ -94,6 +94,10 @@ export const garminConnect = (key) => call("garmin", { method: "POST", body: { k
 export const garminDisconnect = () => call("garmin", { method: "DELETE" });
 export const garminFetch = (force = false) => call("garmin/fetch", { method: "POST", body: { force }, wait: 120000 });
 export const garminFile = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });
+// Apple Health, by a Shortcut (functions/_health.js): { on, since, last, said, well }; a new key for it ({ key }, shown once)
+export const health = () => call("health");
+export const healthKey = () => call("health/key", { method: "POST", body: {} });
+export const healthOff = () => call("health", { method: "DELETE" });
 export const garminDone = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { method: "DELETE" });
 // The morning notification on this phone (functions/_fitpush.js): the key subscriptions are made with; on (or its
 // time or words sent again): { sub, at, tz, days }; and off
