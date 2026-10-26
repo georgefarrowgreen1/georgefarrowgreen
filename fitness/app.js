@@ -840,6 +840,8 @@ function openSheet(view, { tall = false } = {}) {
   if (!sheetEl.open) {
     document.body.style.setProperty("--sy", `${scrollY + innerHeight / 2}px`);
     sheetEl.classList.remove("closing");
+    // (fresh, for a moment: what's in it comes up in turn as it opens, and not again as it's redrawn)
+    sheetEl.classList.add("fresh"); clearTimeout(openSheet.t); openSheet.t = setTimeout(() => sheetEl.classList.remove("fresh"), 1200);
     sheetEl.showModal();
     // (the sheet itself takes the focus, as the account page's does, not its first button: so Done isn't ringed as it opens)
     sheetEl.focus({ preventScroll: true });

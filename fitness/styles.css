@@ -1262,3 +1262,44 @@ img, svg { -webkit-user-drag: none; }
   .screen.in .cols > div > *, .screen.in .strip, .day-in, .agenda.open-in .ag-row, .ready .arc, .week-bar i, .vs-bar i, .bal i, .fband .knob, .eff i { animation: none !important; }
   .sday:active, .strip-all:active, .mv-day:active, .tomorrow:active, .ag-row:active, .seg3 button:active { transform: none; }
 }
+
+/* ---- more motion: every screen's parts in turn, rows and sheets too, lines drawn, the tab's icon, the map ---- */
+/* (each screen: its parts coming up in turn) */
+.screen.in > * { animation: rise 0.6s var(--ease-out) backwards; }
+.screen.in > :nth-child(2) { animation-delay: 50ms; } .screen.in > :nth-child(3) { animation-delay: 100ms; } .screen.in > :nth-child(4) { animation-delay: 150ms; }
+.screen.in > :nth-child(5) { animation-delay: 200ms; } .screen.in > :nth-child(6) { animation-delay: 250ms; } .screen.in > :nth-child(n + 7) { animation-delay: 300ms; }
+/* (a list's first rows, one after another) */
+.screen.in .group > .row:nth-child(-n + 12) { animation: row-in 0.5s var(--ease-out) backwards; }
+.screen.in .group > .row:nth-child(2) { animation-delay: 40ms; } .screen.in .group > .row:nth-child(3) { animation-delay: 80ms; } .screen.in .group > .row:nth-child(4) { animation-delay: 120ms; }
+.screen.in .group > .row:nth-child(5) { animation-delay: 160ms; } .screen.in .group > .row:nth-child(6) { animation-delay: 200ms; } .screen.in .group > .row:nth-child(n + 7) { animation-delay: 240ms; }
+@keyframes row-in { from { opacity: 0; transform: translateX(-10px); } }
+/* (Rhythm's notes, in turn) */
+:is(.screen.in, .day-in) .says .say { animation: rise 0.5s var(--ease-out) backwards; }
+:is(.screen.in, .day-in) .says .say:nth-child(3) { animation-delay: 90ms; } :is(.screen.in, .day-in) .says .say:nth-child(4) { animation-delay: 180ms; }
+/* (a sheet as it opens: its parts after it, in turn; a ride's figures one by one) */
+dialog.sheet.fresh .sheet-body > * { animation: rise 0.55s var(--ease-out) backwards; animation-delay: 120ms; }
+dialog.sheet.fresh .sheet-body > :nth-child(2) { animation-delay: 170ms; } dialog.sheet.fresh .sheet-body > :nth-child(3) { animation-delay: 220ms; }
+dialog.sheet.fresh .sheet-body > :nth-child(4) { animation-delay: 270ms; } dialog.sheet.fresh .sheet-body > :nth-child(n + 5) { animation-delay: 320ms; }
+dialog.sheet.fresh .stats .stat { animation: pop-in 0.45s var(--ease-out) backwards; }
+dialog.sheet.fresh .stats .stat:nth-child(2) { animation-delay: 230ms; } dialog.sheet.fresh .stats .stat:nth-child(3) { animation-delay: 260ms; } dialog.sheet.fresh .stats .stat:nth-child(4) { animation-delay: 290ms; }
+dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.sheet.fresh .stats .stat:nth-child(6) { animation-delay: 350ms; } dialog.sheet.fresh .stats .stat:nth-child(n + 7) { animation-delay: 380ms; }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.94); } }
+/* (lines drawn, left to right: fitness, FTP, where it's heading) */
+:is(.screen.in, dialog.sheet.fresh) :is(.chart .l-fit, .p-hero-chart .ln, .p-ftp .ln, .heading .rh-line.up:not(.ahead)) { stroke-dasharray: 2400; animation: draw 1.2s var(--ease-out) 0.2s backwards; }
+@keyframes draw { from { stroke-dashoffset: 2400; } }
+:is(.screen.in, dialog.sheet.fresh) :is(.chart .a-fit) { animation: fade-up 1s var(--ease-out) 0.5s backwards; }
+@keyframes fade-up { from { opacity: 0; } }
+/* (a session's shape: its steps rising) */
+:is(.screen.in, .day-in, dialog.sheet.fresh) .profile svg { animation: shape-up 0.7s var(--ease-out) 0.15s backwards; transform-origin: bottom; }
+@keyframes shape-up { from { opacity: 0; transform: scaleY(0.4); } }
+/* (the tab chosen: its icon, a little bounce) */
+.tab[aria-current="page"] svg { animation: tab-pop 0.5s var(--ease-glide, var(--ease-out)); }
+@keyframes tab-pop { 40% { transform: scale(1.18) translateY(-1px); } }
+/* (the map, fading in as it's drawn) */
+.maplibregl-canvas { animation: fade-up 0.7s var(--ease-out); }
+/* (the check-in's answer, as it comes) */
+.checkin-said, .checkin.done { animation: pop-in 0.4s var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .screen.in > *, .screen.in .group > .row, .says .say, dialog.sheet.fresh .sheet-body > *, dialog.sheet.fresh .stats .stat, .chart .l-fit, .p-hero-chart .ln, .p-ftp .ln, .heading .rh-line, .chart .a-fit,
+  .profile svg, .tab[aria-current="page"] svg, .maplibregl-canvas, .checkin-said, .checkin.done { animation: none !important; }
+}
