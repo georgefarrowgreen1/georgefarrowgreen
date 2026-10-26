@@ -33,7 +33,7 @@ function todayView() {
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
-  left.push(rhythmSays(), isToday && nightCard(), isToday && feelCard(w));
+  left.push(rhythmSays(), isToday && morningCard(w));
   right.push(planned && weekCard(), headingCard(), formCard(), planRows());
   out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
   return out;
@@ -432,23 +432,30 @@ function nightVerdict(n) {
   if (n.trendLow) return ["amber", "Under par all week", "Your HRV has been under its usual most of this week: easy days till it’s back."];
   if (n.short || n.debt) return ["amber", "Short on sleep", `${capN(n.said)}.`];
   if (n.green) return ["green", "Recovered", "HRV and resting heart rate in your usual range, after a full night."];
-  return ["blue", "As usual", n.lo ? "Nothing out of the ordinary last night." : "Fitness learns your usual over your first week of nights."];
+  return n.lo || n.rb ? ["blue", "As usual", "Nothing out of the ordinary last night."] : ["blue", "Learning your usual", "Fitness learns your HRV and resting heart rate over your first week of nights. Sleep counts from today."];
 }
-function nightCard() {
+// This morning: last night (where your watch has it) and how you are, in one: the night's verdict and its three tiles
+// (tapped, your nights in full), then the check-in, its sleep from your watch, so only legs and motivation are asked;
+// once said, a line. With no nights, the check-in alone.
+function morningCard(w) {
   const ln = lastNight();
-  if (!ln) return null;
-  const { n, day, src } = ln, ser = nightsSeries(14), v = nightVerdict(n), rd = rhythmOn() ? rhDay(TODAY) : null;
-  const tile = (cls, ic, label, val, unit, sub, tone, spark) => h("div.nt." + cls + (tone ? "." + tone : ""), {}, h("small", {}, icon(ic, 13, 2.4), label), h("b", {}, val, unit && h("u", { text: unit })), h("span.nt-sub", { text: sub }), spark);
+  if (!ln) return feelCard(w);
+  const { n, day, src } = ln, ser = nightsSeries(14), v = nightVerdict(n), rd = rhythmOn() ? rhDay(TODAY) : null, many = ser.filter((x) => x.hrv != null || x.sleep != null).length >= 2;
+  const open = () => openSheet(nightsView, { tall: true });
+  const tile = (cls, ic, label, val, unit, sub, tone, spark) => h("div.nt." + cls + (tone ? "." + tone : ""), {}, h("small", {}, icon(ic, 13, 2.4), label), h("b", {}, val, unit && h("u", { text: unit })), h("span.nt-sub", { text: sub }), many && spark);
   const hv = n.hrv != null, rr = n.rhr != null, sl = n.sleep != null;
   const effect = rd?.night ? "Today’s session eased for it" : rd?.green ? "Today’s hard session stands for it" : null;
-  return todaySection("Last night", `${FROM[src]}${day !== TODAY ? ", the night before" : ""}`, h("button.card.glass.night-card", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": `Last night: ${v[1]}. ${v[2]} Your nights, in full` },
-    h("div.nc-head", {}, h("span.nc-chip." + v[0], {}, icon(v[0] === "green" ? "check" : v[0] === "amber" ? "gauge" : "moon", 13, 2.6), v[1]), h("span.chev", {}, icon("chev", 15, 2.6))),
+  return todaySection("This morning", `${FROM[src]}${day !== TODAY ? ", the night before" : ""}`, h("div.card.glass.morning-card", {},
+    h("button.nc-head", { type: "button", onclick: open, "aria-label": `Last night: ${v[1]}. ${v[2]} Your nights, in full` },
+      h("span.nc-chip." + v[0], {}, icon(v[0] === "green" ? "check" : v[0] === "amber" ? "gauge" : "moon", 13, 2.6), v[1]), h("span.nc-more", {}, "Your nights", icon("chev", 14, 2.6))),
     h("p.nc-said", { text: v[2] }),
-    h("div.nt-row", {},
+    h("button.nt-row" + (many ? "" : ".flat"), { type: "button", onclick: open, "aria-label": "Your nights, in full" },
       tile("hrv", "pulse", "HRV", hv ? String(Math.round(n.hrv)) : "–", hv ? " ms" : "", n.lo ? `usual ${Math.round(n.lo)}–${Math.round(n.hi)}` : "learning", hv && n.lo ? (n.hrvLow ? "low" : "ok") : "", C.nightSpark(ser.map((x) => x.hrv), { lo: n.lo, hi: n.hi, cls: "hrv" })),
       tile("rhr", "heart", "Resting", rr ? String(Math.round(n.rhr)) : "–", rr ? " bpm" : "", n.rb ? `usual ${Math.round(n.rb)}` : "learning", rr && n.rb ? (n.rhrUp ? "low" : "ok") : "", C.nightSpark(ser.map((x) => x.rhr), { cls: "rhr" })),
       tile("sleep", "moon", "Sleep", sl ? hmN(n.sleep) : "–", "", n.score ? `scored ${n.score}` : sl ? (n.sleep >= 7 * 3600 ? "a full night" : n.sleep >= 6 * 3600 ? "a little short" : "short") : "", sl ? (n.short || n.debt ? "low" : n.sleep >= 7 * 3600 ? "ok" : "") : "", C.nightSpark(ser.map((x) => x.sleep), { kind: "bars", cls: "sleep" }))),
-    effect && h("div.nc-effect." + v[0], {}, icon("wave", 14, 2.4), effect)));
+    effect && h("div.nc-effect." + v[0], {}, icon("wave", 14, 2.4), effect),
+    day === TODAY && h("div.mc-sep"),
+    day === TODAY && feelCard(w, true)));
 }
 // Your nights, in full: the last two months, what Rhythm does with them (today's in colour), and where they come from
 function nightsView() {
@@ -498,22 +505,24 @@ function setFeel(k, v) {
   const after = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
   if (!all(was) || after !== before) toast(before && after !== before ? "Rhythm has changed your plan to suit" : "Thanks: today stands");
 }
-function feelCard(w) {
+function feelCard(w, inside = false) {
   const f = S.feel[TODAY] || {}, done = FEEL.every(([k]) => f[k] != null), ws = !done && watchSleep(), cur = done ? f : { ...(ws ? { sleep: ws.v } : {}), ...feelDraft }, v = done && verdictOf(w);
+  // (inside the morning card, the night's tiles have sleep: asked only once you open it again to change it)
+  const box = inside ? "div.checkin.mc-check" : "div.card.glass.checkin", rows = FEEL.filter(([k]) => !(inside && ws && k === "sleep"));
   if (done && !feelOpen) {
-    return h("div.card.glass.checkin.done", {},
+    return h(box + ".done", {},
       h("span.ic." + v[0], {}, icon(v[1], 18, 2.4)),
       h("div.tx", {}, h("b", { text: v[2] }), h("small", { text: FEEL.map(([k, , , , said], i) => (i ? said[f[k]] : said[f[k]].charAt(0).toUpperCase() + said[f[k]].slice(1))).join(" · ") })),
       h("button.pill.small", { type: "button", onclick: () => { feelOpen = true; redraw(); }, "aria-label": "Change how you are today" }, "Change"));
   }
-  return h("div.card.glass.checkin.open", {},
-    h("div.checkin-head", {}, h("b", { text: "How are you this morning?" }), done && h("button.checkin-done", { type: "button", onclick: () => { feelOpen = false; redraw(); } }, "Done")),
-    FEEL.map(([k, label, ic, words]) => h("div.checkin-row", {},
+  return h(box + ".open", {},
+    h("div.checkin-head", {}, h("b", { text: inside && ws ? "And how are you?" : "How are you this morning?" }), done && h("button.checkin-done", { type: "button", onclick: () => { feelOpen = false; redraw(); } }, "Done")),
+    rows.map(([k, label, ic, words]) => h("div.checkin-row", {},
       h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), h("span.lt", { text: label })),
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
         h("button.t" + i, { type: "button", vars: cur[k] === i ? { "view-transition-name": `seg-${k}` } : null, "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
     v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
-      h("small.checkin-hint", { text: ws ? `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.` : rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
+      h("small.checkin-hint", { text: ws ? (inside ? `Sleep’s from your ${ws.watch}: two taps for the rest.` : `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.`) : rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
 }
 // (sleep, from your watch where last night's in: seven hours or more, or a score of 80, slept well; six, or 60, OK)
 function watchSleep() {

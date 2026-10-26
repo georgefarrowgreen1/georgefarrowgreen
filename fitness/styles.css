@@ -1392,10 +1392,16 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 :root { --hrv: #ad97ff; --sleep: #8c9cff; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --hrv: #6847e0; --sleep: #4258e0; } }
 :root[data-theme="light"] { --hrv: #6847e0; --sleep: #4258e0; }
-.night-card { display: grid; gap: 10px; width: 100%; padding: 16px; border: 0; text-align: left; color: var(--text); font: inherit; cursor: pointer; transition: transform 0.18s var(--ease-out); }
-.night-card:active { transform: scale(0.985); }
-.nc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.nc-head .chev { display: grid; color: var(--text-3); }
+.morning-card { display: grid; gap: 10px; padding: 16px; }
+.nc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nc-more { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; color: var(--tint-text); }
+.nt-row { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out); }
+.nt-row:active { transform: scale(0.985); }
+.nt-row.flat .nt { padding-bottom: 10px; }
+/* (the check-in, in the same card: under a hairline, without a card of its own) */
+.mc-sep { height: 0.5px; margin: 4px -16px 2px; background: var(--line); }
+.morning-card .mc-check { padding: 0; background: none; box-shadow: none; }
+.morning-card .mc-check.open > .checkin-head b { font-size: 16px; }
 .nc-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px 0 9px; border-radius: 13px; font-size: 13px; font-weight: 650; }
 .nc-chip.green, .nc-effect.green { color: var(--good-text); background: color-mix(in srgb, var(--good) 15%, transparent); }
 .nc-chip.amber, .nc-effect.amber { color: var(--warn); background: color-mix(in srgb, #ffb547 16%, transparent); }
@@ -1436,10 +1442,10 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .n-rule .n-today { font-size: 12px; font-weight: 650; color: var(--warn); } .n-rule.on .ic.green ~ .n-today { color: var(--good-text); }
 .n-rule:not(.on) .tx b { color: var(--text-2); }
 /* (in motion: the tiles one after another, lines drawn, bars rising, the last night's dot popping in) */
-:is(.screen.in, .day-in) .night-card .nt { animation: pop-in 0.5s var(--ease-out) backwards; }
-:is(.screen.in, .day-in) .night-card .nt:nth-child(1) { animation-delay: 120ms; } :is(.screen.in, .day-in) .night-card .nt:nth-child(2) { animation-delay: 190ms; }
-:is(.screen.in, .day-in) .night-card .nt:nth-child(3) { animation-delay: 260ms; }
-:is(.screen.in, .day-in) .night-card .nc-chip { animation: pop-in 0.45s var(--ease-spring, var(--ease-out)) 80ms backwards; }
+:is(.screen.in, .day-in) .morning-card .nt { animation: pop-in 0.5s var(--ease-out) backwards; }
+:is(.screen.in, .day-in) .morning-card .nt:nth-child(1) { animation-delay: 120ms; } :is(.screen.in, .day-in) .morning-card .nt:nth-child(2) { animation-delay: 190ms; }
+:is(.screen.in, .day-in) .morning-card .nt:nth-child(3) { animation-delay: 260ms; }
+:is(.screen.in, .day-in) .morning-card .nc-chip { animation: pop-in 0.45s var(--ease-spring, var(--ease-out)) 80ms backwards; }
 :is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nl, .nights-chart .n-hrv, .nights-chart .n-rhr) { stroke-dasharray: 1; animation: n-draw 1.2s var(--ease-out) 0.3s backwards; }
 @keyframes n-draw { from { stroke-dashoffset: 1; } }
 :is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nband, .nights-chart .n-band, .nights-chart .n-trend) { animation: fade-up 0.9s var(--ease-out) 0.5s backwards; }
@@ -1448,6 +1454,6 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 :is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nd, .nights-chart .n-dot) { transform-box: fill-box; transform-origin: center; animation: n-pop 0.5s var(--ease-spring, var(--ease-out)) 1.2s backwards; }
 @keyframes n-pop { from { transform: scale(0); } }
 @media (prefers-reduced-motion: reduce) {
-  .night-card .nt, .night-card .nc-chip, .nspark *, .nights-chart * { animation: none !important; }
-  .night-card:active, .p-nights:active { transform: none; }
+  .morning-card .nt, .morning-card .nc-chip, .nspark *, .nights-chart * { animation: none !important; }
+  .nt-row:active, .p-nights:active { transform: none; }
 }
