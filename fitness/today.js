@@ -30,7 +30,6 @@ function todayView() {
   if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
-  if (planned && left[0]) left[0].style.setProperty("view-transition-name", "day-card");
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(rhythmSays(), isToday && feelCard(w));
   right.push(planned && weekCard(), headingCard(), formCard(), planRows());
@@ -42,10 +41,10 @@ const unplanned = (d) => { if (!rhythmOn()) return false; const ds = rh()?.days;
 // (looking at another day: its card slides in from the side it's on, once)
 const lookAt = (d) => {
   const was = S.dayAt ?? TODAY, show = () => { S.dayAt = d === TODAY ? null : d; redraw(); };
-  // (the chosen day's pill and the day's card glide to the new day; else the card slides in from its side)
+  // (the chosen day's pill glides to the new day, and the day's card slides in from its side)
   if (d === was) return show();
-  if (canMorph()) return morph("day", show);
-  S.dayFx = d > was ? "next" : "prev"; show();
+  S.dayFx = d > was ? "next" : "prev";
+  morph("day", show);
 };
 // what's on a day: Rhythm's (or the plan's) session, as changed; null for rest
 const idOn = (d) => { const id = plannedOn(d); return id ?? null; };
