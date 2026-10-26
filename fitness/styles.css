@@ -1303,3 +1303,17 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
   .screen.in > *, .screen.in .group > .row, .says .say, dialog.sheet.fresh .sheet-body > *, dialog.sheet.fresh .stats .stat, .chart .l-fit, .p-hero-chart .ln, .p-ftp .ln, .heading .rh-line, .chart .a-fit,
   .profile svg, .tab[aria-current="page"] svg, .maplibregl-canvas, .checkin-said, .checkin.done { animation: none !important; }
 }
+
+/* (the check-in, open: the whole width, Done on the title's line, the answer a heading and its detail) */
+.checkin.open { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 12px; }
+.checkin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px 2px; }
+.checkin-head b { flex: 1; min-width: 0; font-size: 17px; font-weight: 600; }
+.checkin-done { flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: var(--glass-ctl); color: var(--tint-text); font: 600 14px/1 var(--font); cursor: pointer; }
+.checkin-done:active { transform: scale(0.95); }
+.checkin-row { gap: 12px; } .checkin-row .lab { width: auto; flex: 0 0 104px; white-space: nowrap; }
+.seg3 { flex: 1; } .seg3 button { min-width: 0; padding: 0 4px; white-space: nowrap; font-size: 14px; }
+@media (max-width: 360px) { .checkin-row .lab { flex-basis: 34px; } .checkin-row .lab .lt { display: none; } }
+.checkin-said { align-items: center; gap: 12px; padding: 12px 14px; }
+.checkin-said .cs-ic { flex: none; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.checkin-said.green .cs-ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } .checkin-said.amber .cs-ic { background: linear-gradient(160deg, #ffc65a, #f29a12); }
+.checkin-said .cs-tx { display: grid; gap: 1px; } .checkin-said .cs-tx b { font-size: 15px; } .checkin-said .cs-tx small { font-size: 13px; line-height: 1.35; color: var(--text-2); }

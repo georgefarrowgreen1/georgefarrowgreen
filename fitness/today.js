@@ -412,12 +412,12 @@ function feelCard(w) {
       h("button.pill.small", { type: "button", onclick: () => { feelOpen = true; redraw(); }, "aria-label": "Change how you are today" }, "Change"));
   }
   return h("div.card.glass.checkin.open", {},
-    h("div.checkin-head", {}, h("b", { text: "How are you this morning?" }), done && h("button.link.small", { type: "button", onclick: () => { feelOpen = false; redraw(); } }, "Done")),
+    h("div.checkin-head", {}, h("b", { text: "How are you this morning?" }), done && h("button.checkin-done", { type: "button", onclick: () => { feelOpen = false; redraw(); } }, "Done")),
     FEEL.map(([k, label, ic, words]) => h("div.checkin-row", {},
-      h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), label),
+      h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), h("span.lt", { text: label })),
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
         h("button.t" + i, { type: "button", "aria-pressed": String(cur[k] === i), onclick: () => setFeel(k, i) }, word))))),
-    v ? h("div.checkin-said." + v[0], {}, icon(v[1], 16, 2.6), h("span", {}, h("b", { text: v[2] }), v[3] ? `: ${v[3].charAt(0).toLowerCase()}${v[3].slice(1)}` : "")) :
+    v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
       h("small.checkin-hint", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
 }
 // The day's check-in: sleep, legs and motivation, a tap each; with Rhythm, today and the days after follow it
