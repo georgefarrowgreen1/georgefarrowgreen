@@ -141,15 +141,46 @@ function sessionView(day) {
   const clk = (sec) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}`;
   const watts = (x) => (x.from === x.to ? `${Math.round(x.from * ftp)} W` : `${Math.round(x.from * ftp)}–${Math.round(x.to * ftp)} W`);
   const zOf = (x) => (x.kind === "free" ? ZONES[1] : zoneOf((x.from + x.to) / 2));
-  // (repeats said as "Effort 2 of 3"; each step with the clock it starts at)
+  // Step by step: in its phases (warm up, the main set, cool down), each with its length and its clock; a run of the same
+  // step, or two, three times or more said once ("13 × 30 s hard, 15 s easy"); each cue the first time it's needed;
+  // the watts large, with their share of FTP, a ramp as it goes (163 → 234 W); the zone a coloured chip
+  const lenOf = (x) => (x.metres ? stepLen(x) : dur(x.secs));
+  const wattsOf = (x) => (x.from === x.to ? `${Math.round(x.from * ftp)} W` : `${Math.round(x.from * ftp)} → ${Math.round(x.to * ftp)} W`);
+  const pctOf = (x) => (x.from === x.to ? `${pct(x.from)} FTP` : `${pct(x.from)} → ${pct(x.to)}`);
+  const nameOf = (x) => (x.rep && x.kind === "work" ? `${x.name || "Effort"} ${x.rep[0]} of ${x.rep[1]}` : x.name || { warmup: "Warm up", cooldown: "Cool down", rest: "Easy", steady: "Steady" }[x.kind] || "Effort");
+  const same = (p, q) => p.kind === q.kind && p.secs === q.secs && p.from === q.from && p.to === q.to && (p.name || "") === (q.name || "");
+  const seen = new Set(), cueOf = (x) => { const c = x.note || (["warmup", "cooldown", "rest"].includes(x.kind) ? CUES[x.kind] : CUES[zOf(x).c]); if (!c || seen.has(c)) return null; seen.add(c); return c; };
+  const zchip = (z) => ride && h("span.zchip", {}, h("i.bg-" + z.c), `Z${z.n} ${z.name}`);
+  const when = (from, to) => h("span.ss-when", {}, h("span.ss-at", { text: clk(from) }), h("span.ss-end", { text: clk(to) }));
+  const stepRow = (x, at) => {
+    const z = zOf(x);
+    return h("div.ss-step", {}, when(at, at + x.secs), h("i.bg-" + z.c),
+      h("div.ss-tx", {}, h("b", { text: nameOf(x) }), h("small.ss-meta", {}, h("span", { text: lenOf(x) }), zchip(z), x.cad && h("span", { text: `${x.cad[0]}–${x.cad[1]} rpm` })), (() => { const c = cueOf(x); return c && h("small.cue", { text: c }); })()),
+      ride && x.kind !== "free" ? h("span.ss-w", {}, h("b", { text: wattsOf(x) }), h("small", { text: pctOf(x) })) : h("span"));
+  };
+  const patRow = (pat, k, at) => {
+    const hard = pat.find((x) => x.kind === "work") || pat[0], z = zOf(hard), each = pat.reduce((a, x) => a + x.secs, 0);
+    const said = pat.map((x) => `${lenOf(x)} ${(x.kind === "work" ? x.name || "hard" : x.kind === "rest" ? "easy" : nameOf(x)).toLowerCase()}`).join(", ");
+    return h("div.ss-step.ss-pat", {}, when(at, at + each * k), h("i.bg-" + z.c),
+      h("div.ss-tx", {}, h("b", { text: `${k} × ${said}` }), h("small.ss-meta", {}, h("span", { text: `${dur(each * k)} in all` }), zchip(z)),
+        (() => { const c = cueOf(hard); return c && h("small.cue", { text: c }); })()),
+      ride ? h("span.ss-w", {}, h("b", { text: wattsOf(hard) }), h("small", { text: pat.filter((x) => x !== hard).map((x) => `then ${wattsOf(x)}`).join(" ") || pctOf(hard) })) : h("span"));
+  };
+  // (the phases: warm up, the main set, cool down)
+  const phaseOf = (x) => (x.kind === "warmup" ? "warm" : x.kind === "cooldown" ? "cool" : "main");
+  const phases = [];
+  for (const x of steps) { const k = phaseOf(x); if (!phases.length || phases.at(-1).k !== k) phases.push({ k, xs: [] }); phases.at(-1).xs.push(x); }
   let t = 0;
-  const rows = steps.map((x) => {
-    const z = zOf(x), at = t; t += x.secs;
-    const name = x.rep && x.kind === "work" ? `${x.name || "Effort"} ${x.rep[0]} of ${x.rep[1]}` : x.name || { warmup: "Warm up", cooldown: "Cool down", rest: "Easy", steady: "Steady" }[x.kind] || "Effort";
-    const cue = ["warmup", "cooldown", "rest"].includes(x.kind) ? CUES[x.kind] : CUES[z.c];
-    return h("div.ss-step", {}, h("span.ss-at", { text: clk(at) }), h("i.bg-" + z.c),
-      h("div.ss-tx", {}, h("b", { text: name }), h("small", { text: [stepLen(x), ride ? `Z${z.n} ${z.name}` : null, x.cad ? `${x.cad[0]}–${x.cad[1]} rpm` : null].filter(Boolean).join(" · ") }), cue && h("small.cue", { text: x.note || cue })),
-      h("span.ss-w", { text: ride && x.kind !== "free" ? watts(x) : "" }));
+  const rows = phases.flatMap((ph) => {
+    const from = t, secs = ph.xs.reduce((a, x) => a + x.secs, 0), out = [];
+    for (let i = 0; i < ph.xs.length;) {
+      let best = null;
+      for (const p of [2, 1]) { let k = 1; while (i + (k + 1) * p <= ph.xs.length && ph.xs.slice(i + k * p, i + (k + 1) * p).every((y, j) => same(y, ph.xs[i + j]))) k++; if (k >= 3 && (!best || k * p > best.k * best.p)) best = { p, k }; }
+      if (best) { const pat = ph.xs.slice(i, i + best.p); out.push(patRow(pat, best.k, t)); t += pat.reduce((a, x) => a + x.secs, 0) * best.k; i += best.p * best.k; }
+      else { out.push(stepRow(ph.xs[i], t)); t += ph.xs[i].secs; i++; }
+    }
+    const title = { warm: "Warm up", cool: "Cool down", main: phases.length > 1 ? "Main set" : "The ride" }[ph.k];
+    return [h("div.ss-phase", {}, h("b", { text: title }), h("small", { text: `${dur(secs)} · ${clk(from)}–${clk(from + secs)}` })), ...out];
   });
   // (the same steps again, merged where one follows another at the same effort, for long steady rides)
   const zsecs = ZONES.map(() => 0); for (const x of steps) zsecs[zOf(x).n - 1] += x.secs;
