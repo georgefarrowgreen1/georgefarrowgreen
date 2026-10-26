@@ -228,7 +228,7 @@ function engineView() {
   for (let i = 1; i < log.length; i++) path += `H${x(log[i][0]).toFixed(1)}V${y(log[i][1]).toFixed(1)}`;
   const dots = log.slice(1, -1).map((p) => `<circle cx="${x(p[0]).toFixed(1)}" cy="${y(p[1]).toFixed(1)}" r="4.5" class="${p[2] ? "set" : "est"}"/>`).join("");
   const ftpChart = svgOf(`<svg class="p-ftp" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="FTP over the range, from ${ftp0} to ${P().ftp} W">
-    <defs><linearGradient id="pff" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f29a12" stop-opacity="0.35"/><stop offset="1" stop-color="#f29a12" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="pff" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6f6cf0" stop-opacity="0.35"/><stop offset="1" stop-color="#6f6cf0" stop-opacity="0"/></linearGradient></defs>
     <path d="${path}H${(W - 4).toFixed(1)}V${H - B}H${x(from).toFixed(1)}Z" fill="url(#pff)"/><path d="${path}H${(W - 4).toFixed(1)}" class="ln"/>${dots}
     <text x="4" y="${H - 4}" class="lab">${monthOf(from, "short")}</text><text x="${W - 4}" y="${H - 4}" text-anchor="end" class="lab">Now</text></svg>`);
   // efficiency: each steady ride a dot, deeper as it's more recent; the line through them, and its usual spread
