@@ -1317,3 +1317,6 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .checkin-said .cs-ic { flex: none; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .checkin-said.green .cs-ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } .checkin-said.amber .cs-ic { background: linear-gradient(160deg, #ffc65a, #f29a12); }
 .checkin-said .cs-tx { display: grid; gap: 1px; } .checkin-said .cs-tx b { font-size: 15px; } .checkin-said .cs-tx small { font-size: 13px; line-height: 1.35; color: var(--text-2); }
+/* (the open check-in's head a row, the title and Done at its end: the old card's first-child grid kept from it) */
+.checkin.open > .checkin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.checkin.open > .checkin-head .checkin-done { margin-left: auto; }
