@@ -121,5 +121,8 @@ export async function takeNight(env, request, b, inPath = null) {
     D.prepare("DELETE FROM fx_health WHERE user_id = ? AND day < ?").bind(k.user_id, ymd(Date.now() - 120 * 86400e3)),
   ]);
   const said = [n.hrv != null && `HRV ${n.hrv} ms`, n.rhr != null && `resting ${n.rhr} bpm`, n.sleep != null && `${Math.floor(n.sleep / 3600)} h ${Math.round((n.sleep % 3600) / 60)} min asleep`].filter(Boolean).join(", ");
-  return { ok: true, day, ...n, said: `Fitness has it: ${said}.` };
+  // (a field sent that couldn't be read, said so: sleep, most often, sent as its samples, not their Duration)
+  const missed = ["hrv", "rhr", "sleep"].filter((k) => n[k] == null && b[k] != null && String(b[k]).trim() !== "");
+  const fix = { hrv: "hrv: set it to the Heart Rate Variability step’s Health Samples", rhr: "rhr: set it to the Resting Heart Rate step’s Health Samples", sleep: "sleep: add Get Details of Health Samples, Duration, after the Sleep step, and set sleep to that Duration" };
+  return { ok: true, day, ...n, said: `Fitness has it: ${said}.${missed.length ? ` Couldn’t read ${missed.map((k) => fix[k]).join("; ")}.` : ""}` };
 }
