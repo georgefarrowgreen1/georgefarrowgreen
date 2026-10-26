@@ -423,7 +423,27 @@ function workoutView(w) {
   const stepEl = (s) => h("div.step", {}, h("i.bg-" + (s.kind === "free" ? "z1" : zoneOf((s.from + (s.to ?? s.from)) / 2).c)),
     h("div", {}, h("b", { text: s.name || { warmup: "Warm up", cooldown: "Cool down", rest: "Easy", work: "Interval", steady: "Steady" }[s.kind] }), h("small", { text: [stepLen(s), s.cad ? `${s.cad[0]}–${s.cad[1]} rpm` : null, s.note].filter(Boolean).join(" · ") })),
     h("div.v", { text: target({ ...s, to: s.to ?? s.from }) }));
-  const steps = w.steps.map((s) => (s.repeat ? h("div.repeat", {}, h("div.rh", {}, icon("swap", 14, 2.4), `${s.repeat} times`), h("div.steps", {}, s.steps.map(stepEl))) : stepEl(s)));
+  // (a run of the same step, or the same two, three times or more: said once, with how many, not listed out: 30/15s are
+  // "13 × 30 s hard, 15 s easy", not twenty-six lines)
+  const same = (a, b) => a.kind === b.kind && a.secs === b.secs && a.metres === b.metres && a.from === b.from && (a.to ?? a.from) === (b.to ?? b.from) && a.name === b.name;
+  const runs = (xs) => {
+    const out = [];
+    for (let i = 0; i < xs.length;) {
+      let best = null;
+      for (const p of [2, 1]) { let k = 1; while (i + (k + 1) * p <= xs.length && xs.slice(i + k * p, i + (k + 1) * p).every((x, j) => same(x, xs[i + j]))) k++; if (k >= 3 && (!best || k * p > best.k * best.p)) best = { p, k }; }
+      if (best) { out.push({ pattern: xs.slice(i, i + best.p), times: best.k }); i += best.k * best.p; } else out.push(xs[i++]);
+    }
+    return out;
+  };
+  const secsOf = (xs) => xs.reduce((a, x) => a + (x.secs || 0), 0);
+  const patternEl = ({ pattern, times }) => h("div.pattern", {},
+    h("div.pt-head", {}, h("b", { text: `${times} ×` }), h("small", { text: `${dur(secsOf(pattern) * times)} in all` })),
+    h("div.pt-parts", {}, pattern.map((x) => h("div.pt-part", {}, h("i.bg-" + zoneOf((x.from + (x.to ?? x.from)) / 2).c),
+      h("span", {}, h("b", { text: `${stepLen(x)} ${(x.name || { rest: "easy", work: "hard" }[x.kind] || "steady").toLowerCase()}` }), h("small", { text: target({ ...x, to: x.to ?? x.from }) }))))));
+  const list = (xs) => runs(xs).map((x) => (x.pattern ? patternEl(x) : stepEl(x)));
+  const steps = w.steps.map((s) => (s.repeat
+    ? h("div.repeat", {}, h("div.rh", {}, icon("swap", 14, 2.4), s.repeat === 2 ? "Twice" : `${s.repeat} times`, h("span.rh-len", { text: `${dur(secsOf(flatten({ steps: s.steps })))} each` })), h("div.steps", {}, list(s.steps)))
+    : stepEl(s)));
   return {
     title: "Workout",
     body: [
