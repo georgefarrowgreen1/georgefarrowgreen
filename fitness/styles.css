@@ -1298,7 +1298,7 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 /* (the map, fading in as it's drawn) */
 .maplibregl-canvas { animation: fade-up 0.7s var(--ease-out); }
 /* (the check-in's answer, as it comes) */
-.checkin-said, .checkin.done { animation: pop-in 0.4s var(--ease-out); }
+.checkin-said, .screen.in .checkin.done { animation: pop-in 0.4s var(--ease-out); }
 @media (prefers-reduced-motion: reduce) {
   .screen.in > *, .screen.in .group > .row, .says .say, dialog.sheet.fresh .sheet-body > *, dialog.sheet.fresh .stats .stat, .chart .l-fit, .p-hero-chart .ln, .p-ftp .ln, .heading .rh-line, .chart .a-fit,
   .profile svg, .tab[aria-current="page"] svg, .maplibregl-canvas, .checkin-said, .checkin.done { animation: none !important; }
