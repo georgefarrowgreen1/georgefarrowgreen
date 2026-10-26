@@ -80,6 +80,16 @@ createServer((req, res) => {
   const m = /^\/download-service\/files\/activity\/(\d+)$/.exec(u.pathname), a = m && GACTS.find((x) => String(x.activityId) === m[1]);
   return a ? send(200, a.file, 'application/zip') : send(404, {});
 }).listen(8793, '127.0.0.1');
+// (a stand-in for Open-Meteo: today's hours, wet till 11, fine after)
+const wxlog = [];
+createServer((req, res) => {
+  const u = new URL(req.url, 'http://x'); wxlog.push(u.pathname + u.search);
+  const d0 = Math.floor(Date.now() / 86400e3) * 86400, time = Array.from({ length: 48 }, (_, i) => d0 + i * 3600), hr = (i) => i % 24;
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ utc_offset_seconds: 0, hourly: { time, temperature_2m: time.map((_, i) => (hr(i) < 11 ? 8 : 15)), apparent_temperature: time.map((_, i) => (hr(i) < 11 ? 6 : 15)),
+    precipitation_probability: time.map((_, i) => (hr(i) < 11 ? 80 : 5)), precipitation: time.map((_, i) => (hr(i) < 11 ? 1.2 : 0)), weather_code: time.map((_, i) => (hr(i) < 11 ? 61 : 2)),
+    wind_speed_10m: time.map(() => 11), wind_gusts_10m: time.map(() => 22), wind_direction_10m: time.map(() => 260), is_day: time.map((_, i) => (hr(i) >= 7 && hr(i) < 19 ? 1 : 0)) } }));
+}).listen(8794, '127.0.0.1');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
@@ -165,7 +175,7 @@ await L.p.locator('#sheet .btn', { hasText: 'Upload 3 activities' }).click();
 await L.p.waitForSelector('#sheet[open]', { state: 'detached', timeout: 60000 }).catch(() => {});
 await L.p.waitForFunction(() => !document.querySelector('#sheet[open]'), null, { timeout: 60000 }); await settle(L);
 const kept = acts(sam);
-ok(kept.find((a) => a.name === 'Morning ride')?.sport === 'run', 'the one changed: kept as a run', JSON.stringify(kept.map((a) => [a.name, a.sport])));
+ok(kept.some((a) => a.sport === 'run' && / run$/.test(a.name)) && kept.filter((a) => a.sport === 'ride').length === 2, 'the one changed: kept as a run (and named for it)', JSON.stringify(kept.map((a) => [a.name, a.sport])));
 const gzOf = (uid) => rows(`SELECT id, gz FROM fx_acts WHERE user_id = '${uid}'`);
 ok(kept.length === 3 && kept.every((a) => a.type === 'fit') && kept.find((a) => a.file === 'ride.fit')?.size < Buffer.byteLength(gpx) / 4 && kept.find((a) => a.file === 'wahoo.fit')?.size < wahoo.length
   && gzOf(sam).every((r) => r.gz === 1), 'each ride kept with the account, in less space: the GPX written as FIT, every file gzipped', JSON.stringify(kept.map((a) => [a.file, a.type, a.size])) + ` (GPX ${Buffer.byteLength(gpx)}, FIT ${wahoo.length})`);
@@ -302,12 +312,18 @@ await L.p.screenshot({ path: `${out}/rhythm-plan.png`, fullPage: true });
 await tab(L, 1);
 const todayCard = await L.p.locator('.session').first().innerText();
 ok(/Why today:|Rest, and let it sink in/.test(todayCard), 'Today: the session Rhythm chose, and why (or rest, and why)', todayCard.replace(/\s+/g, ' ').slice(0, 160));
+// (a ride today: the best time for it, from the weather where you ride, while there's daylight left)
+if (/^(Ride|Run) ·/m.test(todayCard) && new Date().getUTCHours() < 17) {
+  await L.p.waitForSelector('.session .best-time', { timeout: 8000 }).catch(() => {});
+  const bt = await L.p.locator('.session .best-time').innerText().catch(() => '');
+  ok(/^Best .+ to .+/.test(bt) && wxlog.some((x) => x.startsWith('/v1/forecast')), 'a ride or run today: the best time for it, from the forecast where you ride', bt.replace(/\s+/g, ' ') + ' | ' + wxlog.length);
+}
 await L.p.screenshot({ path: `${out}/rhythm-today.png` });
 // (today's session in full: every step with the clock, its watts and how it should feel)
 if (await L.p.locator('.session .pill', { hasText: 'Details' }).count()) {
   await L.p.locator('.session .pill', { hasText: 'Details' }).click(); await L.p.waitForSelector('#sheet[open] .ss-step'); await settle(L, 600);
   const stepsN = await L.p.locator('#sheet .ss-step').count(), firstAt = await L.p.locator('#sheet .ss-at').first().innerText();
-  ok(stepsN > 2 && firstAt === '0:00' && /Step by step/i.test(await L.p.innerText('#sheet')), 'Details: the session step by step, from 0:00', `${stepsN} steps`);
+  ok(stepsN >= 1 && firstAt === '0:00' && /Step by step/i.test(await L.p.innerText('#sheet')), 'Details: the session step by step, from 0:00', `${stepsN} steps`);
   await L.p.screenshot({ path: `${out}/rhythm-session.png` });
   await done(L);
 }

@@ -15,6 +15,7 @@
 //   POST   /api/fitness/garmin/fetch  what's new asked for now (as the app opens; force, for Check now) → as GET
 //   GET    /api/fitness/garmin/new/<id>  a waiting activity's file, as Garmin gave it (a zip of its FIT file)
 //   DELETE /api/fitness/garmin/new/<id>  read, and not to be kept (one you have already, or that can't be read)
+//   GET    /api/fitness/weather      the next day and a half's weather where you ride, hour by hour (functions/_fitwx.js)
 //   GET    /api/fitness/push-key     the key push subscriptions are made with
 //   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
 //   DELETE /api/fitness/push         and off again: { endpoint }
@@ -31,6 +32,7 @@ import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
+import { rideWeather } from "../../_fitwx.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
@@ -133,6 +135,12 @@ const ROUTES = {
     const u = await signedIn(request, env);
     await done(env, u.id, id);
     return json({ ok: true });
+  },
+  // (the weather for a ride today: functions/_fitwx.js; none, where it can't be had)
+  "GET weather": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, `fxwx:${u.id}`, 120, 3600e3);
+    try { return json(await rideWeather(env, u.id, request)); } catch (e) { return json({ place: null, error: "The forecast isn’t available right now." }); }
   },
   "GET push-key": async ({ env }) => json({ key: await pushKey(env) }),
   "POST push": async ({ request, env }) => {

@@ -96,6 +96,8 @@ export const garminFile = (id) => call(`garmin/new/${encodeURIComponent(id)}`, {
 export const garminDone = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { method: "DELETE" });
 // The morning notification on this phone (functions/_fitpush.js): the key subscriptions are made with; on (or its
 // time or words sent again): { sub, at, tz, days }; and off
+// The weather where you ride, the next day and a half, hour by hour (functions/_fitwx.js): { place, offset, hours }
+export const rideWeather = () => call("weather");
 export const pushKey = () => call("push-key");
 export const morning = (b) => call("push", { method: "POST", body: b });
 export const morningOff = (endpoint) => call("push", { method: "DELETE", body: { endpoint } });

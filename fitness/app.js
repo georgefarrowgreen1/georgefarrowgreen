@@ -26,6 +26,7 @@ import * as A from "./account.js";
 import * as R from "./rhythm.js";
 import * as G from "./progress.js";
 import * as M from "./map.js";
+import * as BT from "./besttime.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -397,23 +398,46 @@ function sessionCard(w, id, done) {
     rd && (rd.fuel || rd.strength) && h("div.extras", {},
       rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
-    // (the best time to ride: Weather's, once Fitness has your place; till then, the examples' alone)
-    S.examples && (w.sport === "ride" || w.sport === "run") && bestTime(w),
+    // (the best time to ride: from the weather where you ride)
+    (w.sport === "ride" || w.sport === "run") && bestTime(w),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(w) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
       swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")),
     w.sport !== "strength" && dlFor(w, TODAY));
 }
-// The best time for it today, as Weather would say it (its Best times, for a ride as long as this one). In the demo, a
-// made-up day.
+// The weather where you ride (functions/_fitwx.js), asked for once and kept half an hour; the page drawn again when
+// it comes
+let wxAsking = false;
+function rideWx() {
+  if (S.wx && Date.now() - S.wx.at < 30 * 60e3) return S.wx.d;
+  if (!wxAsking && S.me) {
+    wxAsking = true;
+    A.rideWeather().then((d) => { S.wx = { at: Date.now(), d }; redraw(); }).catch(() => { S.wx = { at: Date.now(), d: null }; }).finally(() => { wxAsking = false; });
+  }
+  return S.wx?.d || null;
+}
+// The best time for it today, as Weather would say it (fitness/besttime.js, from Weather's Best times): the stretch as
+// long as the session, from now till dusk. In the demo, a made-up day.
 function bestTime(w) {
-  const r = rng("wx" + TODAY), m = measure(w, paceFor(w.sport)), hrs = Math.max(1, Math.ceil(m.secs / 3600));
-  const from = 9 + Math.floor(r() * 3), to = Math.min(17, from + hrs + 1 + Math.floor(r() * 2)), temp = 9 + Math.floor(r() * 7), wind = 8 + Math.floor(r() * 14);
-  const dir = ["northerly", "north-easterly", "easterly", "south-easterly", "southerly", "south-westerly", "westerly", "north-westerly"][Math.floor(r() * 8)];
-  const at = (x) => (x > 12 ? x - 12 : x) + (x >= 12 ? " pm" : " am");
+  const m = measure(w, paceFor(w.sport));
+  if (S.examples) {
+    const r = rng("wx" + TODAY), hrs = Math.max(1, Math.ceil(m.secs / 3600));
+    const from = 9 + Math.floor(r() * 3), to = Math.min(17, from + hrs + 1 + Math.floor(r() * 2)), temp = 9 + Math.floor(r() * 7);
+    return h("div.best-time", {}, h("span.wxi", {}, C.weatherIcon()), h("span.tx", {}, h("b", { text: `Best ${from}:00 to ${to}:00` }), h("small", { text: `${temp}°, dry, ${BT.windWords(8 + r() * 14, r() * 360)} · an example day` })));
+  }
+  const d = rideWx(), b = d?.hours?.length ? BT.bestWindow(d, { secs: m.secs, sport: w.sport === "run" ? "run" : "ride" }) : null;
+  if (!b) return null;
+  const at = (t) => new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(t + (d.offset || 0) * 1000));
+  const deg = (c) => (c == null ? "" : U.metric ? `${Math.round(c)}°` : `${Math.round(c * 1.8 + 32)}°`);
+  const where = d.place?.name ? ` · ${d.place.name}` : "";
+  if (b.rating === "Poor") {
+    const why = !b.dry || b.pop >= 60 ? "Rain on and off all day" : b.wind > 30 || b.gust > 55 ? "Windy all day" : `${deg(b.temp)} at best`;
+    return h("div.best-time.poor", {}, h("span.wxi", {}, icon("info", 18, 2.2)), h("span.tx", {}, h("b", { text: `No good time outside today` }), h("small", { text: `${why}: the trainer, perhaps${where}` })));
+  }
   return h("div.best-time", {}, h("span.wxi", {}, C.weatherIcon()),
-    h("span.tx", {}, h("b", { text: `Best between ${at(from)} and ${at(to)}` }), h("small", { text: `${temp}°, dry, a ${wind} km/h ${dir} · an example day` })));
+    h("span.tx", {}, h("b", { text: `Best ${at(b.start)} to ${at(b.end)}` }),
+      h("small", { text: `${deg(b.temp)}, ${b.dry && b.pop < 30 ? "dry" : `${Math.round(b.pop)}% chance of rain`}, ${BT.windWords(b.wind, b.dir)}${where}` })));
 }
 // today's ride on its map (kept between redraws, so the map isn't made again each time the page is)
 let todayMap = null;
@@ -2212,7 +2236,7 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
-const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js"];
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
 versionNow().then((v) => { version = v; });

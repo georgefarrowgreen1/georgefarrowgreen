@@ -1133,3 +1133,4 @@ img, svg { -webkit-user-drag: none; }
 :root[data-theme="light"] .seg3 button[aria-pressed="true"]:not(.t0):not(.t2) { background: #fff; box-shadow: 0 1px 3px rgba(13, 16, 32, 0.14); }
 :root[data-theme="light"] .hero-chips .rec { color: #4a46b8; background: #e6e3ff; box-shadow: none; }
 :root[data-theme="light"] .fband .knob { box-shadow: 0 0 0 1px rgba(13, 16, 32, 0.12), 0 2px 8px rgba(13, 16, 32, 0.3); }
+.best-time.poor .wxi { background: var(--glass-ctl); color: var(--text-2); }
