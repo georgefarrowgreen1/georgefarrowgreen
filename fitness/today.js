@@ -440,12 +440,12 @@ function nightVerdict(n) {
 function morningCard(w) {
   const ln = lastNight();
   if (!ln) return feelCard(w);
-  const { n, day, src } = ln, ser = nightsSeries(14), v = nightVerdict(n), rd = rhythmOn() ? rhDay(TODAY) : null, many = ser.filter((x) => x.hrv != null || x.sleep != null).length >= 2;
+  const { n, day } = ln, ser = nightsSeries(14), v = nightVerdict(n), rd = rhythmOn() ? rhDay(TODAY) : null, many = ser.filter((x) => x.hrv != null || x.sleep != null).length >= 2;
   const open = () => openSheet(nightsView, { tall: true });
   const tile = (cls, ic, label, val, unit, sub, tone, spark) => h("div.nt." + cls + (tone ? "." + tone : ""), {}, h("small", {}, icon(ic, 13, 2.4), label), h("b", {}, val, unit && h("u", { text: unit })), h("span.nt-sub", { text: sub }), many && spark);
   const hv = n.hrv != null, rr = n.rhr != null, sl = n.sleep != null;
   const effect = rd?.night ? "Today’s session eased for it" : rd?.green ? "Today’s hard session stands for it" : null;
-  return todaySection("This morning", `${FROM[src]}${day !== TODAY ? ", the night before" : ""}`, h("div.card.glass.morning-card", {},
+  return todaySection("This morning", day !== TODAY ? "The night before" : null, h("div.card.glass.morning-card", {},
     h("button.nc-head", { type: "button", onclick: open, "aria-label": `Last night: ${v[1]}. ${v[2]} Your nights, in full` },
       h("span.nc-chip." + v[0], {}, icon(v[0] === "green" ? "check" : v[0] === "amber" ? "gauge" : "moon", 13, 2.6), v[1]), h("span.nc-more", {}, "Your nights", icon("chev", 14, 2.6))),
     h("p.nc-said", { text: v[2] }),
