@@ -81,7 +81,7 @@ function ringSvg(frac, word, cls) {
   const r = 22, c = 2 * Math.PI * r;
   return `<svg class="p-ring ${cls}" width="56" height="56" viewBox="0 0 56 56" role="img" aria-label="${cls} ${word}"><circle cx="28" cy="28" r="${r}" class="bg"/><circle cx="28" cy="28" r="${r}" class="fg" stroke-dasharray="${(frac * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 28 28)"/><text x="28" y="33" text-anchor="middle">${word}</text></svg>`;
 }
-// fitness over the range, glowing; a dotted line to where it's heading; and a mark or two: a week off, a record
+// fitness over the range, glowing; a dotted line to where it's heading; and a record, where there's one
 function heroChart(pts, proj, from, acts, aheadDays) {
   if (pts.length < 2) return null;
   const W = cardW(true), H = 150, B = 26, n = pts.length, step = Math.max(1, Math.floor(n / 90)), use = pts.filter((_, i) => i % step === 0 || i === n - 1);
@@ -89,9 +89,6 @@ function heroChart(pts, proj, from, acts, aheadDays) {
   const x = (d) => ((d - from) / span) * (W - 6) + 3, y = (v) => H - B - ((v - lo) / (hi - lo)) * (H - B - 14);
   const line = use.map((p, i) => `${i ? "L" : "M"}${x(p.day).toFixed(1)} ${y(p.ctl).toFixed(1)}`).join(""), lx = x(TODAY), ly = y(pts.at(-1).ctl);
   let marks = "";
-  // (a week or more with nothing, after riding had begun: the first such in the range)
-  const daysOn = new Set(acts.map((a) => startOfDay(a.start))), began = Math.max(from, Math.min(...daysOn));
-  for (let d = began, run = 0; d < TODAY; d = addDays(d, 1)) { run = daysOn.has(d) ? 0 : run + 1; if (run === 8) { const dd = addDays(d, -4), p = pts.find((q) => q.day >= dd); if (p) marks += `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.ctl).toFixed(1)}" r="3.5" class="m-off"/><text x="${x(p.day).toFixed(1)}" y="${(y(p.ctl) + 16).toFixed(1)}" text-anchor="middle">a week off</text>`; break; } }
   // (your best 20 minutes in the range, where it's your best ever)
   const b = G.bests(acts, from)[1200], all = G.bests(acts)[1200];
   if (b && all && b.id === all.id) { const p = pts.find((q) => q.day >= startOfDay(b.start)), px = p && x(p.day);
