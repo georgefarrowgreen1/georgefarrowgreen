@@ -103,7 +103,7 @@ function dayCard(day) {
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
     rd && h("p.why", {}, h("b", { text: "Why: " }), S.swaps[day] !== undefined ? "you changed this day." : rd.why),
-    changes.length && h("div.day-change", {}, h("small", { text: "Not the day for it?" }),
+    changes.length > 0 && h("div.day-change", {}, h("small", { text: "Not the day for it?" }),
       h("div.chips", {}, changes.map((c) => h("button.chip-btn" + (c.key === "undo" ? ".undo" : ""), { type: "button", title: c.sub, onclick: c.run }, c.label)))),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill", { type: "button", onclick: () => download(w, day) }, icon("download", 17, 2.2), "Download"),
