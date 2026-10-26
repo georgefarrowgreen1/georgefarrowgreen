@@ -18,7 +18,7 @@
 
 import { h, svg as svgOf, icon, sportIcon, U, dur, hm, clock, stepLen, dist, distNum, height, speed, pace, paceOf, weight, dayLong, dayShort, dayName, dayLetter, dateShort, timeOf, plural, pct } from "./ui.js";
 import { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, measure, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "./workouts.js";
-import { summarise, fitness, formSaid, perSecond, rescale } from "./load.js";
+import { summarise, fitness, formSaid, perSecond, rescale, tssOf } from "./load.js";
 import { demo, samples, PROFILE, rng } from "./sample.js";
 import * as F from "./formats.js";
 import * as C from "./charts.js";
@@ -178,12 +178,26 @@ let rhCache = null;
 function rh() {
   if (!rhythmOn()) return null;
   // (worked out again only when something it goes on has changed: the count covers the rides and their figures)
-  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}`;
+  // (and the wet days ahead, from the weather where you ride, and your nights, from Garmin)
+  const wet = wetAhead(), well = wellByDay();
+  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}|${JSON.stringify(wet)}|${S.garmin?.well?.length || 0}:${S.garmin?.well?.at(-1)?.day || ""}`;
   if (rhCache?.key !== key) {
-    const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
-    rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
+    const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, indoor: !!a.indoor, sum: sumOf(a) }));
+    rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet, well }) };
   }
   return rhCache.v;
+}
+// the wet days ahead (fitness/besttime.js), as the days' starts here: { day: true }
+function wetAhead() {
+  const w = BT.wetDays(S.wx?.d), out = {};
+  for (const k of Object.keys(w)) { const [y, m, d] = k.split("-").map(Number); out[startOfDay(new Date(y, m - 1, d, 12).getTime())] = true; }
+  return out;
+}
+// your nights from Garmin (functions/_garmin.js), by the day they ended: { day: { hrv, hrv_lo, hrv_hi, rhr, sleep, score } }
+function wellByDay() {
+  const out = {};
+  for (const r of S.garmin?.well || []) { const [y, m, d] = r.day.split("-").map(Number); out[startOfDay(new Date(y, m - 1, d, 12).getTime())] = r; }
+  return out;
 }
 const rhDay = (d) => rh()?.days.find((x) => x.date === d) || null;
 
@@ -266,7 +280,7 @@ function resum() {
 const fitnessSeries = once(() => fitnessSeriesNow());
 function fitnessSeriesNow() {
   const daily = {};
-  for (const a of S.acts) { const s = sumOf(a); if (s?.tss) daily[startOfDay(a.start)] = (daily[startOfDay(a.start)] || 0) + s.tss; }
+  for (const a of S.acts) { const t = tssOf(sumOf(a), a.sport); if (t) daily[startOfDay(a.start)] = (daily[startOfDay(a.start)] || 0) + t; }
   const first = Math.min(...S.acts.map((a) => a.start), TODAY - 120 * DAY);
   return fitness(daily, first, TODAY);
 }
@@ -1099,4 +1113,5 @@ const signedOutHere = () => signOutHere(true);
 })();
 
 // (what the screens, each its own module, take from here)
+export { wellByDay, setNumber, resum };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

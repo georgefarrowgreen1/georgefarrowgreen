@@ -5,7 +5,7 @@
 // power (an hour at FTP is 100); from heart rate where there isn't (an hour at threshold heart rate is 100, as
 // TrainingPeaks' hrTSS has it), so long as it was heard for most of it; and else, for a run or a swim, from its pace
 // against your threshold pace or CSS (a swim's cubed, as swimming's own stress score has it, the water's drag rising
-// with the cube of speed).
+// with the cube of speed); and with none of those, from its time, as an easy one (tssOf).
 //
 // Fitness, fatigue and form (fitness): your training stress day by day, averaged over six weeks (fitness, CTL) and over
 // one (fatigue, ATL), as exponentially weighted averages; form (TSB) is yesterday's fitness less yesterday's fatigue.
@@ -92,6 +92,8 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260
     const iF = dist / moving / (a.sport === "swim" ? 100 / css : 1000 / runPace);
     out.tss = Math.round((moving / 3600) * iF ** (a.sport === "swim" ? 3 : 2) * 100); out.kind = "pace";
   }
+  // (nothing to go by, no power, heart rate or pace: from its time, as an easy one of its sport: tssOf)
+  if (out.tss == null && moving > 0) { out.tss = tssOf({ moving }, a.sport); out.kind = "time"; }
   if (ps.cad) out.avgCad = Math.round(avg(ps.cad.map((v) => (v > 0 ? v : NaN))));
   if (ps.spd) out.maxSpd = max(ps.spd);
   out.avgSpd = moving ? dist / moving : null;
@@ -115,6 +117,17 @@ export function rescale(sum, p, sport) {
   out.tss = Math.round(sum.tss * k ** pow);
   if (sum.iF != null) out.iF = Math.round(sum.iF * k * 1000) / 1000;
   return out;
+}
+
+// An activity's training stress: its own, else from how long it was, ridden (or run, or swum) easy: an hour at the
+// intensity an easy one of its sport usually is (a ride 0.65 of threshold, a run 0.75), so a ride with no power meter
+// or heart rate still counts towards fitness and fatigue, not as nothing
+export const EASY_IF = { ride: 0.65, run: 0.75, swim: 0.7, walk: 0.5, hike: 0.55 };
+export function tssOf(sum, sport) {
+  if (!sum) return 0;
+  if (sum.tss != null) return sum.tss;
+  const h = (sum.moving || sum.secs || 0) / 3600;
+  return h > 0 ? Math.round(h * (EASY_IF[sport] ?? 0.6) ** 2 * 100) : 0;
 }
 
 // the most you held for each of CURVE's durations, in watts

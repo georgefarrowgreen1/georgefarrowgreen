@@ -36,6 +36,9 @@ async function tables(env) {
     ]);
     // (each waiting file's size, counted with your activities' against the space there is: a table made before it had none)
     await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN size INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+    // (your nights, as Garmin has them: fx_well; and when they were last asked for)
+    await D.prepare(`CREATE TABLE IF NOT EXISTS fx_well (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, hrv_lo REAL, hrv_hi REAL, rhr INTEGER, sleep INTEGER, score INTEGER, PRIMARY KEY (user_id, day))`).run();
+    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN well_at INTEGER").run().catch(() => {});
     tables.done = true;
   }
   return D;
@@ -94,7 +97,7 @@ export async function connect(env, userId, rawKey) {
 export async function disconnect(env, userId) {
   const D = await tables(env), { results } = await D.prepare("SELECT id FROM fx_garmin_new WHERE user_id = ?").bind(userId).all();
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => newKey(userId, r.id)));
-  await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId)]);
+  await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_well WHERE user_id = ?").bind(userId)]);
 }
 
 // ---- what's new ----
@@ -153,18 +156,71 @@ export async function fetchNew(env, userId, { force = false } = {}) {
       if (Number.isFinite(a.start)) since = Math.max(since, a.start);
     }
     await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = NULL WHERE user_id = ?1").bind(userId, JSON.stringify([...seen].slice(-SEEN)), since || g.since).run();
+    // (and your nights: every few hours, the last few days; two months the first time)
+    if (!g.well_at || now - g.well_at > WELL_EVERY) await wellness(env, D, userId, token, g.well_at ? now - 4 * 86400e3 : now - 60 * 86400e3, now).catch((e) => console.error("garmin well", e.status, e.message));
     return { ...(await garminOf(env, userId)), more: found.length > MOST };
   } catch (e) {
     if (e instanceof HttpError) throw e;
     return fail("unreachable");
   }
 }
+// ---- your nights: heart rate variability, resting heart rate, sleep ----
+// Garmin's daily summaries (as its own client asks for them), read for what's needed and nothing else: each day's
+// overnight HRV and its usual range, resting heart rate, how long you slept and its score. Garmin's answers are read
+// for the fields by name wherever they sit, so a reshuffle of its JSON doesn't lose them; a day with none, left out.
+const WELL_EVERY = 3 * 3600e3;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// (the first number under any of these names, looked for a few levels down; "a.b" a name inside a name)
+function pick(o, names, depth = 3) {
+  if (!o || typeof o !== "object" || depth < 0) return null;
+  for (const n of names) {
+    const v = n.split(".").reduce((x, k) => (x && typeof x === "object" ? x[k] : undefined), o);
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  for (const v of Object.values(o)) if (v && typeof v === "object" && !Array.isArray(v)) { const got = pick(v, names, depth - 1); if (got != null) return got; }
+  return null;
+}
+// (every object in the answer that's for a day)
+function daysIn(j, out = [], depth = 6) {
+  if (!j || typeof j !== "object" || depth < 0) return out;
+  if (Array.isArray(j)) { for (const x of j) daysIn(x, out, depth - 1); return out; }
+  const day = [j.calendarDate, j.date, j.summaryDate].find((v) => typeof v === "string" && DATE.test(v.slice(0, 10)));
+  if (day) out.push([day.slice(0, 10), j]);
+  for (const v of Object.values(j)) if (v && typeof v === "object") daysIn(v, out, depth - 1);
+  return out;
+}
+export function wellFrom({ hrv, sleep, daily }) {
+  const by = new Map(), at = (d) => { if (!by.has(d)) by.set(d, {}); return by.get(d); };
+  const put = (row, k, v, lo, hi) => { if (v != null && v >= lo && v <= hi && row[k] == null) row[k] = Math.round(v * 10) / 10; };
+  for (const [d, o] of daysIn(hrv)) { const r = at(d); put(r, "hrv", pick(o, ["lastNightAvg", "lastNightAvgHrv", "hrvValue", "avgOvernightHrv"]), 5, 300); put(r, "hrv_lo", pick(o, ["baseline.balancedLow", "balancedLow", "baselineLowUpper", "baseline.lowUpper"]), 5, 300); put(r, "hrv_hi", pick(o, ["baseline.balancedUpper", "balancedUpper"]), 5, 300); }
+  for (const [d, o] of daysIn(sleep)) { const r = at(d); put(r, "sleep", pick(o, ["sleepTimeSeconds", "totalSleepTimeSeconds", "sleepTimeInSeconds", "totalSleepSeconds"]), 600, 86400); put(r, "score", pick(o, ["sleepScores.overall.value", "overallSleepScore.value", "overallSleepScore", "sleepScore.value", "sleepScore", "overallScore"]), 0, 100); }
+  for (const [d, o] of daysIn(daily)) { const r = at(d); put(r, "rhr", pick(o, ["restingHeartRate", "restingHeartRateValue", "restingHr", "currentDayRestingHeartRate"]), 25, 130); }
+  return [...by].filter(([, r]) => Object.keys(r).length).map(([day, r]) => ({ day, ...r }));
+}
+async function wellness(env, D, userId, token, from, to) {
+  const got = { hrv: [], sleep: [], daily: [] };
+  // (four weeks at a time, as Garmin's ranges are short)
+  for (let a = from; a < to; a += 28 * 86400e3) {
+    const s = ymd(a), e = ymd(Math.min(to, a + 27 * 86400e3)), ask = (path) => get(env, token, path).catch(() => null);
+    const [h, sl, dl] = await Promise.all([ask(`/hrv-service/hrv/daily/${s}/${e}`), ask(`/sleep-service/sleep/dailySleepSummariesByDate?startDate=${s}&endDate=${e}`), ask(`/usersummary-service/v2/dailysummaries?startDate=${s}&endDate=${e}`)]);
+    got.hrv.push(h); got.sleep.push(sl); got.daily.push(dl);
+  }
+  const rows = wellFrom(got);
+  if (rows.length) await D.batch(rows.map((r) => D.prepare(`INSERT INTO fx_well (user_id, day, hrv, hrv_lo, hrv_hi, rhr, sleep, score) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    ON CONFLICT(user_id, day) DO UPDATE SET hrv = COALESCE(?3, hrv), hrv_lo = COALESCE(?4, hrv_lo), hrv_hi = COALESCE(?5, hrv_hi), rhr = COALESCE(?6, rhr), sleep = COALESCE(?7, sleep), score = COALESCE(?8, score)`)
+    .bind(userId, r.day, r.hrv ?? null, r.hrv_lo ?? null, r.hrv_hi ?? null, r.rhr ?? null, r.sleep ?? null, r.score ?? null)));
+  await D.prepare("UPDATE fx_garmin SET well_at = ?2 WHERE user_id = ?1").bind(userId, Date.now()).run();
+  await D.prepare("DELETE FROM fx_well WHERE user_id = ? AND day < ?").bind(userId, ymd(Date.now() - 120 * 86400e3)).run();
+}
 // What the app's told: connected or not, how the last ask went, and the files waiting to be read
 export async function garminOf(env, userId) {
   const D = await tables(env), g = await D.prepare("SELECT last, ok, said, added FROM fx_garmin WHERE user_id = ?").bind(userId).first();
   if (!g) return { on: false };
   const { results } = await D.prepare("SELECT id, start, name FROM fx_garmin_new WHERE user_id = ? ORDER BY start LIMIT 50").bind(userId).all();
-  return { on: true, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results };
+  // (and the last two months of your nights)
+  const well = (await D.prepare("SELECT day, hrv, hrv_lo, hrv_hi, rhr, sleep, score FROM fx_well WHERE user_id = ? AND day >= ? ORDER BY day").bind(userId, ymd(Date.now() - 60 * 86400e3)).all()).results
+    .map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v != null)));
+  return { on: true, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results, well };
 }
 export async function waitingFile(env, userId, id) {
   const D = await tables(env), row = await D.prepare("SELECT id FROM fx_garmin_new WHERE user_id = ? AND id = ?").bind(userId, id).first();

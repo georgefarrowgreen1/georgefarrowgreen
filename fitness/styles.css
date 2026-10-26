@@ -1380,3 +1380,5 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .ss-w b { font: 700 16px/1.25 var(--font-r); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ss-w small { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ss-pat .ss-tx b { font-size: 15px; }
+/* (a Rhythm says note's own action: FTP) */
+.say .tx .say-act { justify-self: start; margin-top: 6px; }

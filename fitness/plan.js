@@ -217,7 +217,7 @@ function rhDayView(day) {
     d && h("div.rh-why", {}, h("b", { text: "Why: " }), S.swaps[day] !== undefined ? "you changed this day." : d.why),
     w && d?.fuel && h("p.rh-note", { text: `Eat ${d.fuel}${d.strength ? ", then 20 minutes of heavy strength" : ""}.` }),
     future && w && section("Not the day for it?", h("div.group", {},
-      mins > 50 && opt("today", "blue", "Short on time", kind && kind !== "endurance" && kind !== "long" ? `The same work in ${dur(Math.max(50, mins - 30) * 60)}` : `${dur(Math.max(40, Math.round(mins / 2 / 5) * 5) * 60)} instead`, () => set(kind ? `rh:${kind}:${kind === "endurance" || kind === "long" ? Math.max(40, Math.round(mins / 2 / 5) * 5) : Math.max(50, mins - 30)}` : "recovery-45", "Shorter, same purpose")),
+      mins > 50 && opt("today", "blue", "Short on time", kind && kind !== "endurance" && kind !== "long" ? `The same work in ${dur(Math.max(50, mins - 30) * 60)}` : `${dur(Math.max(40, Math.round(mins / 2 / 5) * 5) * 60)} instead`, () => set(kind ? R.withMins(id, kind === "endurance" || kind === "long" ? Math.max(40, Math.round(mins / 2 / 5) * 5) : Math.max(50, mins - 30)) : "recovery-45", "Shorter, same purpose")),
       d?.hard && opt("gauge", "green", "Make it easier", "Steady all the way, no hard efforts", () => set(`rh:endurance:${Math.min(mins, 90)}`, "Easier today")),
       tm && opt("swap", "indigo", "Swap with tomorrow", `${tm.id ? (wkById(tm.id)?.name || "Tomorrow’s") : "Rest"} today, this on ${dayName(tomorrow)}`, () => { S.swaps[day] = tm.id ?? null; S.swaps[tomorrow] = id; keep("swaps"); closeSheet(); toast("Swapped"); redraw(); }),
       opt("heart", "grey", "Rest today", "Rhythm makes up for it later in the week", () => set(null, "Rest today")))),
@@ -235,7 +235,7 @@ function dayChanges(day) {
   // (shorter: the same kind of work, less of it; offered only where that's really shorter, by five minutes at least)
   if (w) {
     const steady = kind === "endurance" || kind === "long" || kind === "recovery";
-    const sid = kind ? `rh:${kind}:${steady ? Math.max(30, Math.round(mins / 2 / 5) * 5) : Math.max(35, mins - 20)}` : "recovery-45", sw = wkById(sid);
+    const sid = kind ? R.withMins(id, steady ? Math.max(30, Math.round(mins / 2 / 5) * 5) : Math.max(35, mins - 20)) : "recovery-45", sw = wkById(sid);
     const now = measure(w, paceFor(w.sport)).secs, then = sw ? measure(sw, paceFor(sw.sport)).secs : now;
     if (sw && then <= now - 300) out.push({ key: "short", label: "Short on time", sub: `${sw.name}: ${dur(then)} instead of ${dur(now)}`, run: () => set(sid, `${sw.name}: ${dur(then)}`) });
   }

@@ -77,6 +77,12 @@ createServer((req, res) => {
   if (u.pathname === '/personalapitoken-service/personal-api/personal-api-key/token') return req.headers.accept === 'application/json' ? send(406, '') : auth === `ApiKey ${GKEY}` ? send(200, GTOKEN, 'text/plain') : send(401, '');
   if (auth !== `Bearer ${GTOKEN}`) return send(401, {});
   if (u.pathname === '/activitylist-service/activities/search/activities') return send(200, Number(u.searchParams.get('start')) ? [] : GACTS.map(({ file, ...a }) => a));
+  // (your nights: last night's HRV low against its range, a resting heart rate, seven hours' sleep; each as Garmin's own
+  // client has them, a day's figures by its calendarDate)
+  const gDay = new Date(Date.now() - 2 * 3600e3).toISOString().slice(0, 10);
+  if (u.pathname.startsWith('/hrv-service/hrv/daily/')) return send(200, { hrvSummaries: [{ calendarDate: gDay, lastNightAvg: 41, baseline: { balancedLow: 52, balancedUpper: 70 } }] });
+  if (u.pathname === '/sleep-service/sleep/dailySleepSummariesByDate') return send(200, [{ calendarDate: gDay, sleepTimeSeconds: 25200, sleepScores: { overall: { value: 78 } } }]);
+  if (u.pathname === '/usersummary-service/v2/dailysummaries') return send(200, [{ calendarDate: gDay, restingHeartRate: 49 }]);
   const m = /^\/download-service\/files\/activity\/(\d+)$/.exec(u.pathname), a = m && GACTS.find((x) => String(x.activityId) === m[1]);
   return a ? send(200, a.file, 'application/zip') : send(404, {});
 }).listen(8793, '127.0.0.1');
@@ -377,6 +383,10 @@ ok(tickNo.status === 401 && JSON.parse(tickYes.body).asked === 1 && rows(`SELECT
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000);
 ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
+// (and your nights, with the activities: kept, and the page told)
+const gWell = rows(`SELECT day, hrv, hrv_lo, rhr, sleep, score FROM fx_well WHERE user_id = '${sam}'`), meWell = JSON.parse((await api(L, '/api/fitness/me')).body).garmin?.well || [];
+ok(gWell.length === 1 && gWell[0].hrv === 41 && gWell[0].hrv_lo === 52 && gWell[0].rhr === 49 && gWell[0].sleep === 25200 && gWell[0].score === 78 && meWell.length === 1 && glog.some((l) => l.includes('/hrv-service/hrv/daily/')),
+  'Garmin: your night’s HRV, resting heart rate and sleep kept, and the page told', JSON.stringify({ gWell, meWell }));
 const noLeak = await api(L, '/api/fitness/me');
 ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Garmin’s token never sent to the page');
 

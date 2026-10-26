@@ -2,7 +2,7 @@
 // time for it, the efforts held), the morning's check-in, the week and your fitness and form. Drawn by app.js render.
 
 import * as TC from "./todaycalc.js";
-import { A, BT, C, DAY, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
+import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dlFor, download, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
@@ -15,6 +15,8 @@ function todayView() {
   const lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13);
   if (S.dayAt != null && (S.dayAt < lo || S.dayAt > hi || S.dayAt === TODAY)) S.dayAt = null;
   const sel = S.dayAt ?? TODAY, isToday = sel === TODAY;
+  // (the week's weather, for Rhythm's wet days: asked for as the page is drawn, and the plan drawn again when it comes)
+  if (rhythmOn()) rideWx();
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
   const title = isToday ? "Today" : sel === addDays(TODAY, 1) ? "Tomorrow" : sel === addDays(TODAY, -1) ? "Yesterday" : new Date(sel).toLocaleDateString("en-GB", { weekday: "long" });
   // (the date over the title, as Apple's own apps have Today; with Rhythm, where you are in its block)
@@ -121,7 +123,16 @@ function dayCard(day) {
 function rhythmSays() {
   if (!rhythmOn()) return null;
   const r = rh(), notes = [], rd = rhDay(TODAY), tw = rd?.id ? wkById(S.swaps[TODAY] !== undefined ? S.swaps[TODAY] : rd.id) : null, ready = readiness();
-  const note = (tone, ic, title, text) => notes.push(h("div.say", {}, h("span.say-ic." + tone, {}, icon(ic, 16, 2.4)), h("span.tx", {}, h("b", { text: title }), h("small", { text: text }))));
+  const note = (tone, ic, title, text, act) => notes.push(h("div.say", {}, h("span.say-ic." + tone, {}, icon(ic, 16, 2.4)), h("span.tx", {}, h("b", { text: title }), h("small", { text: text }), act)));
+  // (your night, from Garmin, where it's eased the day)
+  if (rd?.night && !actsOn(TODAY).length) note("amber", "heart", "An easier day, from your night", `${rd.night[0].toUpperCase() + rd.night.slice(1)}: Rhythm keeps the ride and drops the intensity.`);
+  // (FTP, where your rides say it's moved)
+  const fs = r.ftpSeen;
+  if (fs && fs.ftp !== P().ftp && isSet("ftp")) {
+    const up = fs.ftp > P().ftp;
+    note(up ? "green" : "amber", "bolt", `FTP ${up ? "up" : "down"} to about ${fs.ftp} W?`, fs.from === "cp" ? `Your best efforts from 2 to 20 minutes lately put it there, against the ${P().ftp} W set now.` : `Your best 20 minutes in six weeks puts it there, against the ${P().ftp} W set now.`,
+      h("button.pill.small.primary.say-act", { type: "button", onclick: () => { setNumber("ftp", fs.ftp); resum(); redraw(); toast(`FTP set to ${fs.ftp} W`); } }, `Use ${fs.ftp} W`));
+  }
   if (ready && tw && rd.hard && !actsOn(TODAY).length) {
     if (ready.v >= 80) note("green", "check", `Fresh for ${tw.name}`, `Readiness ${ready.v}: today’s hard day is well timed. Hold the targets from the start.`);
     else if (ready.v < 58) note("amber", "gauge", `Take ${tw.name} gently`, `Readiness ${ready.v}: ride the lower end of the targets, or swap it for an easier day below.`);
@@ -178,7 +189,7 @@ const todaySection = (title, aside, ...kids) => h("section.section.t-sec", {}, h
 // How ready you are, out of 100: your form, and how you said you are this morning. None till there are rides to go on.
 function readiness() {
   if (!S.summed || !S.acts.some((a) => sumOf(a)?.tss)) return null;
-  return TC.readinessOf(fitnessSeries().at(-1).tsb, S.feel[TODAY]);
+  return TC.readinessOf(fitnessSeries().at(-1).tsb, S.feel[TODAY], R.nightOf(wellByDay(), TODAY));
 }
 function readyRing(size = 84) {
   const r = readiness();

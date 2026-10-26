@@ -1,7 +1,7 @@
-// The weather for a ride, for Fitness's Today: the next day and a half, hour by hour, where you ride. Where: the first
+// The weather for a ride, for Fitness's Today: the week ahead, hour by hour, where you ride. Where: the first
 // of your places in Weather (kept with the same account: functions/_wxacct.js), else roughly where you're connecting
 // from (Cloudflare's guess, to the city). The forecast is Open-Meteo's, as Weather's is, cached a while for each place
-// (to about a kilometre), so many opens of the app ask it once. The phone works out the best time from it
+// (to about a kilometre), so many opens of the app ask it once. The phone works out the best time from it, and Rhythm the wet days
 // (fitness/besttime.js); nothing is kept here.
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 import { kept } from "./_wxacct.js";
@@ -30,9 +30,9 @@ export async function rideWeather(env, userId, request) {
   if (!place) return { place: null };
   const lat = place.lat.toFixed(2), lon = place.lon.toFixed(2);
   const base = env.WXAPP_URL || "https://api.open-meteo.com";
-  const d = await cachedJSON(`${base}/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${HOURS}&forecast_days=2&timezone=auto&timeformat=unixtime&wind_speed_unit=kmh`);
+  const d = await cachedJSON(`${base}/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${HOURS}&forecast_days=7&timezone=auto&timeformat=unixtime&wind_speed_unit=kmh`);
   const H = d?.hourly || {}, t = Array.isArray(H.time) ? H.time : [];
-  const hours = t.slice(0, 48).map((s, i) => ({ t: s * 1000, temp: r1(H.temperature_2m?.[i]), feels: r1(H.apparent_temperature?.[i]), pop: r1(H.precipitation_probability?.[i]),
+  const hours = t.slice(0, 168).map((s, i) => ({ t: s * 1000, temp: r1(H.temperature_2m?.[i]), feels: r1(H.apparent_temperature?.[i]), pop: r1(H.precipitation_probability?.[i]),
     rain: r1(H.precipitation?.[i]), code: H.weather_code?.[i] ?? null, wind: r1(H.wind_speed_10m?.[i]), gust: r1(H.wind_gusts_10m?.[i]), dir: H.wind_direction_10m?.[i] ?? null, day: H.is_day?.[i] === 1 }));
   return { place: { name: place.name, rough: !!place.rough }, offset: Number(d?.utc_offset_seconds) || 0, hours };
 }
