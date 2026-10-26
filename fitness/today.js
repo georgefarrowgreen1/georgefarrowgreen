@@ -2,7 +2,7 @@
 // time for it, the efforts held), the morning's check-in, the week and your fitness and form. Drawn by app.js render.
 
 import * as TC from "./todaycalc.js";
-import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
+import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dlFor, download, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
@@ -33,7 +33,7 @@ function todayView() {
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
-  left.push(rhythmSays(), isToday && feelCard(w));
+  left.push(rhythmSays(), isToday && nightCard(), isToday && feelCard(w));
   right.push(planned && weekCard(), headingCard(), formCard(), planRows());
   out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
   return out;
@@ -413,6 +413,65 @@ function weekCard() {
     planSecs > 0 && h("div.bal", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { flex: String(easy) } }), h("i.hard", { vars: { flex: String(100 - easy) } })),
     planSecs > 0 && h("small.week-status", { text: easy >= 75 && easy <= 88 ? "About 80/20: the mix that builds fitness fastest." : easy > 88 ? "Mostly easy this week: good for building the base." : "A hard week: rest well between the sessions." })));
 }
+// ---- Last night (rhythm.js nightOf): HRV, resting heart rate and sleep, from your Apple Watch or Garmin, each against
+// your own usual, and what Rhythm made of it; tapped, the last two months and the rules ----
+const hmN = (s) => `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}`;
+const capN = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const FROM = { apple: "From your Apple Watch", garmin: "From Garmin" };
+// (today's night, else yesterday's, from wherever your nights come from)
+function lastNight() {
+  const src = nightsFrom();
+  if (!src) return null;
+  const w = wellByDay();
+  for (const d of [TODAY, addDays(TODAY, -1)]) if (w[d]) return { day: d, n: R.nightOf(w, d), src };
+  return null;
+}
+function nightVerdict(n) {
+  if (n.trendLow && (n.hrvLow || n.rhrUp)) return ["amber", "Time for a rest", `${capN(n.said)}, after a week under your usual: Rhythm makes today a rest day.`];
+  if (n.hrvLow || n.rhrUp) return ["amber", "Not quite recovered", `${capN(n.said)}.`];
+  if (n.trendLow) return ["amber", "Under par all week", "Your HRV has been under its usual most of this week: easy days till it’s back."];
+  if (n.short || n.debt) return ["amber", "Short on sleep", `${capN(n.said)}.`];
+  if (n.green) return ["green", "Recovered", "HRV and resting heart rate in your usual range, after a full night."];
+  return ["blue", "As usual", n.lo ? "Nothing out of the ordinary last night." : "Fitness learns your usual over your first week of nights."];
+}
+function nightCard() {
+  const ln = lastNight();
+  if (!ln) return null;
+  const { n, day, src } = ln, ser = nightsSeries(14), v = nightVerdict(n), rd = rhythmOn() ? rhDay(TODAY) : null;
+  const tile = (cls, ic, label, val, unit, sub, tone, spark) => h("div.nt." + cls + (tone ? "." + tone : ""), {}, h("small", {}, icon(ic, 13, 2.4), label), h("b", {}, val, unit && h("u", { text: unit })), h("span.nt-sub", { text: sub }), spark);
+  const hv = n.hrv != null, rr = n.rhr != null, sl = n.sleep != null;
+  const effect = rd?.night ? "Today’s session eased for it" : rd?.green ? "Today’s hard session stands for it" : null;
+  return todaySection("Last night", `${FROM[src]}${day !== TODAY ? ", the night before" : ""}`, h("button.card.glass.night-card", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": `Last night: ${v[1]}. ${v[2]} Your nights, in full` },
+    h("div.nc-head", {}, h("span.nc-chip." + v[0], {}, icon(v[0] === "green" ? "check" : v[0] === "amber" ? "gauge" : "moon", 13, 2.6), v[1]), h("span.chev", {}, icon("chev", 15, 2.6))),
+    h("p.nc-said", { text: v[2] }),
+    h("div.nt-row", {},
+      tile("hrv", "pulse", "HRV", hv ? String(Math.round(n.hrv)) : "–", hv ? " ms" : "", n.lo ? `usual ${Math.round(n.lo)}–${Math.round(n.hi)}` : "learning", hv && n.lo ? (n.hrvLow ? "low" : "ok") : "", C.nightSpark(ser.map((x) => x.hrv), { lo: n.lo, hi: n.hi, cls: "hrv" })),
+      tile("rhr", "heart", "Resting", rr ? String(Math.round(n.rhr)) : "–", rr ? " bpm" : "", n.rb ? `usual ${Math.round(n.rb)}` : "learning", rr && n.rb ? (n.rhrUp ? "low" : "ok") : "", C.nightSpark(ser.map((x) => x.rhr), { cls: "rhr" })),
+      tile("sleep", "moon", "Sleep", sl ? hmN(n.sleep) : "–", "", n.score ? `scored ${n.score}` : sl ? (n.sleep >= 7 * 3600 ? "a full night" : n.sleep >= 6 * 3600 ? "a little short" : "short") : "", sl ? (n.short || n.debt ? "low" : n.sleep >= 7 * 3600 ? "ok" : "") : "", C.nightSpark(ser.map((x) => x.sleep), { kind: "bars", cls: "sleep" }))),
+    effect && h("div.nc-effect." + v[0], {}, icon("wave", 14, 2.4), effect)));
+}
+// Your nights, in full: the last two months, what Rhythm does with them (today's in colour), and where they come from
+function nightsView() {
+  const src = nightsFrom(), ser = nightsSeries(60), n = lastNight()?.n, had = ser.filter((x) => x.hrv != null || x.rhr != null || x.sleep != null).length;
+  const both = (S.health?.well?.length || 0) > 0 && (S.garmin?.well?.length || 0) > 0;
+  const rule = (on, tint, ic, t, sub) => h("div.row.plain.n-rule" + (on ? ".on" : ""), {}, h("span.ic." + (on ? tint : "grey"), {}, icon(ic, 16, 2.2)), h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })), on && h("span.val.n-today", { text: "Today" }));
+  const opts = [["auto", "Automatic"], ["apple", "Apple Watch"], ["garmin", "Garmin"]], cur = S.nightsFrom || "auto", at = opts.findIndex(([k]) => k === cur);
+  return { title: "Your nights", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Your nights" }), h("div.sub", { text: src ? `${FROM[src]} · ${plural(had, "night")} in the last two months` : "None yet" })),
+    had > 1 ? card("nights-big", null, C.nightsChart(ser, { W: sheetW() }), h("div.n-key", {}, h("span", {}, h("i.k-band"), "Your usual range"), h("span", {}, h("i.k-trend"), "The week’s average"), h("span", {}, h("i.k-short"), "Under six hours")))
+      : card(null, null, h("p.line-said", { text: "Your nights draw here as they come in." })),
+    section("What Rhythm does with them", h("div.group", {},
+      rule(n?.hrvLow, "amber", "pulse", "HRV under its usual range", "Eases the day: the ride stays, the intensity goes."),
+      rule(n?.trendLow, "amber", "trend", "HRV under its usual most of the week", "No hard days till it’s back; with a low night too, a rest day."),
+      rule(n?.rhrUp, "amber", "heart", "Resting heart rate up 5 or more", "Eases the day, as heavy legs do."),
+      rule(n?.short || n?.debt, "amber", "moon", "Under six hours, or three short nights", "Eases the day, unless your check-in says you slept well."),
+      rule(n?.green, "green", "check", "A good night", "HRV and resting heart rate as usual after seven hours: a hard day can stand a little deeper into fatigue."))),
+    both && section("Nights from", h("div.seg.wide", { vars: { "--n": 3, "--at": at }, role: "group", "aria-label": "Nights from" }, opts.map(([k, l]) =>
+      h("button", { type: "button", "aria-pressed": String(cur === k), onclick: () => { S.nightsFrom = k; keep("prefs"); Sheet.redraw(); redraw(); } }, l))),
+      h("p.foot", { text: "Your Apple Watch and Garmin measure HRV differently, so Rhythm never mixes the two. Automatic goes by whichever has more of this month’s nights." })),
+    section(null, h("p.foot", { text: "Your usual is your own, from your last month of nights (HRV’s range is Garmin’s own, where it gives one). Each night is read the morning after." })),
+  ] };
+}
 // How you feel: sleep, legs and motivation, a tap each, there on the page; what Rhythm (or the plan) makes of it under
 // them. Once said, folded to a line, opened again to change it.
 const FEEL = [["sleep", "Sleep", "contrast", ["Poor", "OK", "Great"], ["Slept poorly", "slept OK", "slept well"]],
@@ -433,14 +492,14 @@ function verdictOf(w) {
 function setFeel(k, v) {
   const was = S.feel[TODAY], all = (f) => FEEL.every(([x]) => f?.[x] != null);
   try { localStorage.setItem("fitness:asked", String(TODAY)); } catch (_) {}
-  if (!all(was)) { feelDraft = { ...feelDraft, [k]: v }; if (!all(feelDraft)) return redraw(); }
+  if (!all(was)) { const ws = watchSleep(); feelDraft = { ...(ws ? { sleep: ws.v } : {}), ...feelDraft, [k]: v }; if (!all(feelDraft)) return redraw(); }
   const before = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
   S.feel[TODAY] = all(was) ? { ...was, [k]: v } : { ...feelDraft }; feelDraft = {}; keep("feel"); redraw();
   const after = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
   if (!all(was) || after !== before) toast(before && after !== before ? "Rhythm has changed your plan to suit" : "Thanks: today stands");
 }
 function feelCard(w) {
-  const f = S.feel[TODAY] || {}, done = FEEL.every(([k]) => f[k] != null), cur = done ? f : feelDraft, v = done && verdictOf(w);
+  const f = S.feel[TODAY] || {}, done = FEEL.every(([k]) => f[k] != null), ws = !done && watchSleep(), cur = done ? f : { ...(ws ? { sleep: ws.v } : {}), ...feelDraft }, v = done && verdictOf(w);
   if (done && !feelOpen) {
     return h("div.card.glass.checkin.done", {},
       h("span.ic." + v[0], {}, icon(v[1], 18, 2.4)),
@@ -454,11 +513,19 @@ function feelCard(w) {
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
         h("button.t" + i, { type: "button", vars: cur[k] === i ? { "view-transition-name": `seg-${k}` } : null, "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
     v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
-      h("small.checkin-hint", { text: rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
+      h("small.checkin-hint", { text: ws ? `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.` : rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
+}
+// (sleep, from your watch where last night's in: seven hours or more, or a score of 80, slept well; six, or 60, OK)
+function watchSleep() {
+  const ln = lastNight();
+  if (!ln || ln.day !== TODAY || (ln.n.sleep == null && ln.n.score == null)) return null;
+  const n = ln.n, v = n.score != null ? (n.score >= 80 ? 2 : n.score >= 60 ? 1 : 0) : n.sleep >= 7 * 3600 ? 2 : n.sleep >= 6 * 3600 ? 1 : 0, watch = ln.src === "apple" ? "Apple Watch" : "Garmin";
+  const hm = n.sleep != null ? hmN(n.sleep) : `scored ${n.score}`;
+  return { v, watch, hm, said: `${hm}, from your ${watch}` };
 }
 // The day's check-in: sleep, legs and motivation, a tap each; with Rhythm, today and the days after follow it
 function openCheckIn() {
-  const f = { ...(S.feel[TODAY] || {}) };
+  const ws = watchSleep(), f = { ...(ws && !S.feel[TODAY] ? { sleep: ws.v } : {}), ...(S.feel[TODAY] || {}) };
   try { localStorage.setItem("fitness:asked", String(TODAY)); } catch (_) {}
   const before = rhythmOn() ? JSON.stringify([rhDay(TODAY)?.id, rhDay(addDays(TODAY, 1))?.id]) : null;
   const view = () => {
@@ -473,7 +540,7 @@ function openCheckIn() {
     };
     return { title: dayLong(TODAY), right: h("button.link.r", { type: "button", onclick: closeSheet }, "Not now"), body: [
       h("div.sheet-top", {}, h("h1", { text: "How are you today?" }), h("div.sub", { text: rhythmOn() ? "Today’s session, and the next days, follow what you say." : "So today’s riding suits how you are." })),
-      h("div.checkin-q", {}, h("b", { text: "How did you sleep?" }), seg("sleep", [[0, "Poorly"], [1, "OK"], [2, "Well"]])),
+      h("div.checkin-q", {}, h("b", {}, "How did you sleep?", ws && h("span.from-watch", { text: ws.said })), seg("sleep", [[0, "Poorly"], [1, "OK"], [2, "Well"]])),
       h("div.checkin-q", {}, h("b", { text: "How are your legs?" }), seg("legs", [[0, "Heavy"], [1, "Normal"], [2, "Fresh"]])),
       h("div.checkin-q", {}, h("b", { text: "How motivated are you?" }), seg("mood", [[0, "Low"], [1, "OK"], [2, "High"]])),
       h("button.btn", { type: "button", disabled: !all, onclick: save }, "Done")] };
@@ -487,4 +554,4 @@ function askToday() {
   setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
 
-export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, todayView };
+export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, nightsView, todayView };

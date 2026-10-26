@@ -176,3 +176,53 @@ export function curve(best, ftp, W = 340) {
 // Weather's picture for a fair day (its sun and cloud, as its icon has them), for the best time to ride
 export const weatherIcon = () => svg(`<svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><defs><linearGradient id="wxs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f97f8"/><stop offset="1" stop-color="#2b69de"/></linearGradient></defs>
   <rect width="48" height="48" fill="url(#wxs)"/><circle cx="17" cy="19" r="8.5" fill="#ffc93c"/><path d="M35 36H18a7 7 0 0 1-1.5-13.8 9 9 0 0 1 17.4 1A6.5 6.5 0 0 1 35 36z" fill="#fff" fill-opacity="0.9"/></svg>`);
+
+// ---- your nights (fitness/rhythm.js nightOf): HRV, resting heart rate and sleep ----
+// A tiny one for a tile: the last fortnight's nights, as a line (with your usual range behind it, where there's one) or
+// as bars (sleep, against a seven-hour line); the last night a dot. vals: [number | null], oldest first.
+export function nightSpark(vals, { kind = "line", lo = null, hi = null, W = 96, H = 30, cls = "" } = {}) {
+  const n = vals.length, xs = vals.filter((v) => v != null);
+  if (xs.length < 2) return svg(`<svg class="nspark ${cls}" viewBox="0 0 ${W} ${H}" aria-hidden="true"></svg>`);
+  const x = (i) => 3 + (i / (n - 1)) * (W - 6);
+  if (kind === "bars") {
+    const top = Math.max(9 * 3600, ...xs), y = (v) => H - 2 - (v / top) * (H - 4), bw = Math.max(2, (W - 6) / n - 2);
+    const bars = vals.map((v, i) => (v == null ? "" : `<rect class="nb${v < 6 * 3600 ? " short" : ""}" x="${f1(x(i) - bw / 2)}" y="${f1(y(v))}" width="${f1(bw)}" height="${f1(H - 2 - y(v))}" rx="1.2"/>`)).join("");
+    return svg(`<svg class="nspark bars ${cls}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><line class="ng" x1="0" x2="${W}" y1="${f1(y(7 * 3600))}" y2="${f1(y(7 * 3600))}"/><g class="nbars">${bars}</g></svg>`);
+  }
+  const all = [...xs, ...(lo != null ? [lo, hi] : [])], mn = Math.min(...all), mx = Math.max(...all), pad = (mx - mn || 1) * 0.15;
+  const y = (v) => H - 3 - ((v - mn + pad) / (mx - mn + 2 * pad)) * (H - 6);
+  let d = "", on = false;
+  vals.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${f1(x(i))} ${f1(y(v))}`; on = true; });
+  const li = vals.map((v, i) => (v == null ? -1 : i)).filter((i) => i >= 0).at(-1);
+  const band = lo != null && hi != null ? `<rect class="nband" x="0" y="${f1(y(hi))}" width="${W}" height="${f1(Math.max(1, y(lo) - y(hi)))}" rx="3"/>` : "";
+  return svg(`<svg class="nspark ${cls}" viewBox="0 0 ${W} ${H}" aria-hidden="true">${band}<path class="nl" pathLength="1" d="${d}"/><circle class="nd" cx="${f1(x(li))}" cy="${f1(y(vals[li]))}" r="3"/></svg>`);
+}
+// Your nights, the last two months: HRV with your usual range shaded (and its week's average), resting heart rate, and
+// sleep as bars against seven hours, one above another. nights: [{ day, hrv, lo, hi, trend, rhr, sleep }], oldest first.
+export function nightsChart(all, { W = 340, label = "night" } = {}) {
+  // (from the first night there's anything for)
+  const first = all.findIndex((d) => d.hrv != null || d.rhr != null || d.sleep != null), nights = first > 0 ? all.slice(first) : all;
+  const n = nights.length, L = 4, R = 34, H1 = 92, H2 = 46, H3 = 46, gap = 22, y1 = 18, y2 = y1 + H1 + gap, y3 = y2 + H2 + gap, H = y3 + H3 + 20;
+  const x = (i) => L + (n > 1 ? i / (n - 1) : 0.5) * (W - L - R);
+  const lineOf = (vals, y) => { let d = "", on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${f1(x(i))} ${f1(y(v))}`; on = true; }); return d; };
+  const scale = (vals, top, h, pad = 0.12) => { const xs = vals.filter((v) => v != null); if (!xs.length) return () => top + h / 2; const mn = Math.min(...xs), mx = Math.max(...xs), p = (mx - mn || 1) * pad; return (v) => top + h - ((v - mn + p) / (mx - mn + 2 * p)) * h; };
+  // HRV, its usual range, and the week's average
+  const hv = nights.map((d) => d.hrv ?? null), ya = scale([...hv, ...nights.flatMap((d) => [d.lo, d.hi])].map((v) => (v > 0 ? v : null)), y1, H1);
+  let band = "", on = false, up = "", dn = "";
+  nights.forEach((d, i) => { if (d.lo > 0 && d.hi > 0) { up += `${on ? "L" : "M"}${f1(x(i))} ${f1(ya(d.hi))}`; dn = `L${f1(x(i))} ${f1(ya(d.lo))}` + dn; on = true; } });
+  if (up) band = `<path class="n-band" d="${up}${dn.replace(/^L/, "L")}Z"/>`;
+  const tr = lineOf(nights.map((d) => d.trend ?? null), ya), last = [...nights].reverse().find((d) => d.hrv > 0), li = nights.lastIndexOf(last);
+  // resting heart rate
+  const rv = nights.map((d) => d.rhr ?? null), yb = scale(rv, y2, H2, 0.2), rl = [...nights].reverse().find((d) => d.rhr > 0), ri = nights.lastIndexOf(rl);
+  // sleep, as bars against seven hours
+  const sv = nights.map((d) => d.sleep ?? null), top = Math.max(9 * 3600, ...sv.filter((v) => v != null)), yc = (v) => y3 + H3 - (v / top) * H3, bw = Math.max(1.5, (W - L - R) / Math.max(n, 1) - (n > 40 ? 1 : 2));
+  const bars = sv.map((v, i) => (v == null ? "" : `<rect class="n-sl${v < 6 * 3600 ? " short" : ""}" x="${f1(x(i) - bw / 2)}" y="${f1(yc(v))}" width="${f1(bw)}" height="${f1(y3 + H3 - yc(v))}" rx="1.2"/>`)).join("");
+  const sl = [...sv].reverse().find((v) => v != null);
+  const head = (y, t, v) => `<text class="n-h" x="${L}" y="${y - 6}">${t}</text>${v ? `<text class="n-v" x="${W - R}" y="${y - 6}" text-anchor="end">${v}</text>` : ""}`;
+  const hm = (s) => `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}`;
+  return svg(`<svg class="chart nights-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Your nights, the last ${n}: HRV${last ? ` ${Math.round(last.hrv)} ms last` : ""}, resting heart rate${rl ? ` ${rl.rhr}` : ""}, sleep${sl ? ` ${hm(sl)}` : ""}">
+    ${head(y1, "HRV", last ? `${Math.round(last.hrv)} ms` : "")}${band}${tr ? `<path class="n-trend" d="${tr}"/>` : ""}<path class="n-hrv" pathLength="1" d="${lineOf(hv, ya)}"/>${last ? `<circle class="n-dot hrv" cx="${f1(x(li))}" cy="${f1(ya(last.hrv))}" r="4"/>` : ""}
+    ${head(y2, "Resting heart rate", rl ? `${rl.rhr} bpm` : "")}<path class="n-rhr" pathLength="1" d="${lineOf(rv, yb)}"/>${rl ? `<circle class="n-dot rhr" cx="${f1(x(ri))}" cy="${f1(yb(rl.rhr))}" r="3.5"/>` : ""}
+    ${head(y3, "Sleep", sl ? hm(sl) : "")}<line class="n-7" x1="${L}" x2="${W - R}" y1="${f1(yc(7 * 3600))}" y2="${f1(yc(7 * 3600))}"/><text x="${W - R + 5}" y="${f1(yc(7 * 3600) + 4)}">7 h</text><g class="n-bars">${bars}</g>
+    <text x="${L}" y="${H - 2}">${n} ${label}s ago</text><text x="${W - R}" y="${H - 2}" text-anchor="end">Last ${label}</text></svg>`);
+}

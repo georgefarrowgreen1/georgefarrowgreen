@@ -108,3 +108,23 @@ test("Garmin's nights read for their fields wherever they sit", () => {
   });
   assert.deepEqual(rows, [{ day: "2026-10-20", hrv: 58, hrv_lo: 52, hrv_hi: 70, sleep: 25200, score: 81, rhr: 47 }]);
 });
+
+test("nights: a falling week, three short nights, and a good night", () => {
+  const well = (f) => { const w = {}; for (let i = 40; i >= 0; i--) w[add(today, -i)] = f(i); return w; };
+  // (a month at 60, then a week mostly at 50: falling; one low night alone isn't)
+  const falling = RH.nightOf(well((i) => ({ hrv: i === 0 ? 56 : i < 7 ? 50 + (i % 2) : 60 + (i % 3), rhr: 48, sleep: 7.5 * 3600 })), today);
+  assert.ok(falling.trendLow && /all week/.test(falling.said), JSON.stringify(falling));
+  const once = RH.nightOf(well((i) => ({ hrv: i === 0 ? 50 : 60 + (i % 3), rhr: 48, sleep: 7.5 * 3600 })), today);
+  assert.ok(!once.trendLow && once.hrvLow);
+  const debt = RH.nightOf(well((i) => ({ hrv: 60 + ((i + 1) % 3), rhr: 48, sleep: i < 3 ? 6.3 * 3600 : 7.5 * 3600 })), today);
+  assert.ok(debt.debt && !debt.short && /three short nights/.test(debt.said));
+  const good = RH.nightOf(well((i) => ({ hrv: 60 + ((i + 1) % 3), rhr: 48, sleep: 7.6 * 3600 })), today);
+  assert.ok(good.green && !good.hrvLow && !good.trendLow && !good.debt);
+  // (in the plan: a falling week and a low night, rest; a falling week, no hard days for the two after)
+  const base = { prefs: { start: add(monOf(today), -7), days: [60, 60, 60, 60, 60, 120, 90] }, acts: steady(6), today, ftp: 260 };
+  const low = { ...well((i) => ({ hrv: i < 7 ? 50 + (i % 2) : 60 + (i % 3), rhr: 48, sleep: 7.5 * 3600 })), [today]: { hrv: 40, rhr: 48, sleep: 7.5 * 3600 } };
+  const r = RH.plan({ ...base, well: low });
+  assert.equal(r.today.kind, "rest");
+  assert.ok(r.days.filter((d) => d.date > today && d.date <= add(today, 2)).every((d) => !d.hard));
+  assert.ok(readinessOf(-10, null, good).v > readinessOf(-10, null, null).v && readinessOf(-10, null, falling).v < readinessOf(-10, null, null).v);
+});

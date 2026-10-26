@@ -97,6 +97,7 @@ function adopt(d) {
   S.unitsSet = d?.prefs?.units === "metric" || d?.prefs?.units === "imperial";
   U.metric = S.unitsSet ? d.prefs.units !== "imperial" : !/-(US|LR|MM)\b/i.test(navigator.language || "");
   S.ask = d?.prefs?.ask !== false;
+  S.nightsFrom = ["apple", "garmin"].includes(d?.prefs?.nights) ? d.prefs.nights : "auto";
   S.examples = false;   // (the example rides are gone: your own alone)
   setActs();
   // (new numbers, from another device: every ride's stress worked out again for them)
@@ -105,7 +106,7 @@ function adopt(d) {
 const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
 // what's kept with the account, as this device has it now
 const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine,
-  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}) } });
+  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}), ...(S.nightsFrom && S.nightsFrom !== "auto" ? { nights: S.nightsFrom } : {}) } });
 // Your numbers from your rides, for those you haven't set: FTP from your best 20 minutes of the last 90 days (95% of
 // it), max heart rate the highest in any of them (and threshold heart rate 90% of that, unless you've set it)
 const isSet = (k) => (P().set || []).includes(k);
@@ -196,9 +197,21 @@ function wetAhead() {
 // your nights, by the day they ended: { day: { hrv, hrv_lo, hrv_hi, rhr, sleep, score } }, from Garmin (functions/_garmin.js)
 // or Apple Health (functions/_health.js), whichever has more of this month's; never the two mixed, their HRVs being
 // measured differently (Garmin's RMSSD, the Watch's SDNN), each read against its own usual range
-function wellSource() {
+// (or the one you chose: S.nightsFrom, "apple" or "garmin"; "auto" till you do)
+function wellSource() { return nightsFrom() === "apple" ? S.health?.well || [] : S.garmin?.well || []; }
+function nightsFrom() {
   const month = new Date(TODAY - 30 * DAY).toISOString().slice(0, 10), n = (xs) => (xs || []).filter((r) => r.day >= month).length;
-  return n(S.health?.well) > n(S.garmin?.well) ? S.health.well : S.garmin?.well || [];
+  const a = n(S.health?.well), g = n(S.garmin?.well);
+  if (S.nightsFrom === "apple" && S.health?.on) return "apple";
+  if (S.nightsFrom === "garmin" && S.garmin?.on) return "garmin";
+  return a > g ? "apple" : g ? "garmin" : a ? "apple" : null;
+}
+// your nights for the charts, the last `days`: [{ day, hrv, lo, hi, trend, rhr, sleep, score }], oldest first (a night
+// with nothing, nulls), each with its usual range and its week's HRV as Rhythm reads them (rhythm.js nightOf)
+function nightsSeries(days = 60) {
+  const w = wellByDay(), out = [];
+  for (let d = addDays(TODAY, -(days - 1)); d <= TODAY; d = addDays(d, 1)) { const n = R.nightOf(w, d); out.push({ day: d, hrv: n?.hrv ?? null, lo: n?.lo ?? null, hi: n?.hi ?? null, trend: n?.trend ?? null, rhr: n?.rhr ?? null, sleep: n?.sleep ?? null, score: n?.score ?? null }); }
+  return out;
 }
 function wellByDay() {
   const out = {};
@@ -1190,5 +1203,5 @@ const signedOutHere = () => signOutHere(true);
 })();
 
 // (what the screens, each its own module, take from here)
-export { wellByDay, setNumber, resum };
+export { wellByDay, setNumber, resum, nightsFrom, nightsSeries };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

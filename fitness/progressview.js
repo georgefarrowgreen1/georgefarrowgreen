@@ -1,6 +1,8 @@
 // Fitness's Progress: how you're coming on, the story first; power, training and engine, each a sheet (progress.js
 // has the figures). Drawn by app.js render.
 
+import { nightsFrom, nightsSeries } from "./app.js";
+import { nightsView } from "./today.js";
 import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
 import { formView, openAct, staying, uploadFilesView } from "./activities.js";
 
@@ -53,6 +55,10 @@ function progressView() {
     pTile("Power to weight", "c-wkg", [f1n(P().ftp / P().weight), " W/kg"], svgOf(stepSpark(log.map(([d, w]) => [d, w / P().weight]), from)), dF ? `${dF > 0 ? "+" : "−"}${f1n(Math.abs(dF) / P().weight)}` : "Held", dF >= 0, () => openSheet(engineView, { tall: true })),
     pTile("A week, on average", "c-wk", [dur(avg)], h("span.p-bars", { "aria-hidden": "true" }, twelve.map((w, i) => h("i" + (i === 11 ? ".now" : ""), { vars: { "--h": Math.max(4, (w.secs / maxW) * 100) + "%" } }))), `${Math.round(wk.reduce((a, w) => a + w.tss, 0) / wk.length)} TSS`, null, () => openSheet(trainingView, { tall: true })),
     h("button.p-tile.p-form", { type: "button", onclick: () => openSheet(formView) }, svgOf(ringSvg(Math.max(0, Math.min(1, (last.tsb + 30) / 50)), signed(last.tsb), "form")), h("span.tx", {}, h("small", { text: "Form" }), h("b", { text: said2.word }), h("small", { text: said2.tone === "fresh" ? "Ready for a hard day" : said2.tone === "high" ? "Time for an easy day" : said2.tone === "productive" ? "Getting fitter" : "Steady" })))));
+  // your nights, the last two months, against your training (from your Apple Watch or Garmin, where they come in)
+  const src = nightsFrom(), ns = src ? nightsSeries(60) : null, had = ns ? ns.filter((x) => x.hrv != null || x.rhr != null || x.sleep != null).length : 0;
+  if (had >= 3) out.push(section(["Recovery", h("span.aside", { text: src === "apple" ? "Apple Watch" : "Garmin" })],
+    h("button.card.glass.p-nights", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": "Your nights, in full" }, C.nightsChart(ns, { W: cardW() }))));
   // what stands out
   const cards = insights(acts, from);
   out.push(section(["What stands out", h("span.aside", { text: cards.length > 1 ? `${cards.length} things` : "" })], cards.length ? h("div.p-cards", {}, cards) : h("p.foot.none", { text: "Ride a few more weeks, and what stands out shows here." })));

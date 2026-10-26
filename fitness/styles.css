@@ -1387,3 +1387,67 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .hk-box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--field); }
 .hk-key { flex: 1; min-width: 0; font: 500 13px/1.35 ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .section > .hk-box + .foot { margin-top: 8px; }
+
+/* ---- Last night: HRV, resting heart rate and sleep, each against your usual, from your Apple Watch or Garmin ---- */
+:root { --hrv: #ad97ff; --sleep: #8c9cff; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --hrv: #6847e0; --sleep: #4258e0; } }
+:root[data-theme="light"] { --hrv: #6847e0; --sleep: #4258e0; }
+.night-card { display: grid; gap: 10px; width: 100%; padding: 16px; border: 0; text-align: left; color: var(--text); font: inherit; cursor: pointer; transition: transform 0.18s var(--ease-out); }
+.night-card:active { transform: scale(0.985); }
+.nc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.nc-head .chev { display: grid; color: var(--text-3); }
+.nc-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px 0 9px; border-radius: 13px; font-size: 13px; font-weight: 650; }
+.nc-chip.green, .nc-effect.green { color: var(--good-text); background: color-mix(in srgb, var(--good) 15%, transparent); }
+.nc-chip.amber, .nc-effect.amber { color: var(--warn); background: color-mix(in srgb, #ffb547 16%, transparent); }
+.nc-chip.blue, .nc-effect.blue { color: var(--tint-text); background: color-mix(in srgb, var(--tint) 14%, transparent); }
+.nc-said { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-2); }
+.nt-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nt { display: grid; align-content: start; gap: 1px; min-width: 0; padding: 10px 10px 8px; border-radius: 16px; background: var(--field); }
+.nt small { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.nt.hrv small svg { color: var(--hrv); } .nt.rhr small svg { color: var(--hr); } .nt.sleep small svg { color: var(--sleep); }
+.nt b { font: 700 21px/1.2 var(--font-d); letter-spacing: -0.3px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nt b u { text-decoration: none; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.nt-sub { overflow: hidden; font-size: 11.5px; color: var(--text-3); white-space: nowrap; text-overflow: ellipsis; }
+.nt.low .nt-sub { color: var(--warn); } .nt.ok .nt-sub { color: var(--good-text); }
+.nspark { width: 100%; height: 30px; margin-top: 5px; overflow: visible; }
+.nspark.hrv { color: var(--hrv); } .nspark.rhr { color: var(--hr); } .nspark.sleep { color: var(--sleep); }
+.nspark .nband { fill: currentColor; opacity: 0.15; }
+.nspark .nl { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nspark .nd { fill: currentColor; stroke: var(--glass-strong); stroke-width: 1.5; }
+.nspark .nb { fill: currentColor; opacity: 0.8; } .nspark .nb.short { fill: var(--warn); opacity: 0.9; }
+.nspark .ng { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.5; }
+.nc-effect { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+.checkin-q b .from-watch { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--sleep); }
+/* (the two months: HRV and its usual range, resting heart rate, sleep against seven hours) */
+.nights-chart .n-band { fill: var(--hrv); opacity: 0.14; }
+.nights-chart .n-hrv, .nights-chart .n-rhr, .nights-chart .n-trend { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.nights-chart .n-hrv { stroke: var(--hrv); stroke-width: 2.2; } .nights-chart .n-rhr { stroke: var(--hr); stroke-width: 2; }
+.nights-chart .n-trend { stroke: var(--hrv); stroke-width: 1.4; stroke-dasharray: 3 3; opacity: 0.75; }
+.nights-chart .n-dot { stroke: var(--glass-strong); stroke-width: 2; } .n-dot.hrv { fill: var(--hrv); } .n-dot.rhr { fill: var(--hr); }
+.nights-chart .n-sl { fill: var(--sleep); opacity: 0.78; } .nights-chart .n-sl.short { fill: var(--warn); opacity: 0.9; }
+.nights-chart .n-7 { stroke: var(--text-3); stroke-dasharray: 3 3; opacity: 0.5; }
+.nights-chart .n-h { fill: var(--text-2); font-size: 12px; font-weight: 600; } .nights-chart .n-v { fill: var(--text); font-size: 12px; font-weight: 700; }
+.p-nights { display: block; width: 100%; padding: 14px 16px 12px; border: 0; color: var(--text); font: inherit; cursor: pointer; transition: transform 0.18s var(--ease-out); }
+.p-nights:active { transform: scale(0.985); }
+.n-key { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--text-2); }
+.n-key span { display: inline-flex; align-items: center; gap: 6px; }
+.n-key i { width: 14px; height: 8px; border-radius: 3px; } .n-key .k-band { background: color-mix(in srgb, var(--hrv) 22%, transparent); }
+.n-key .k-trend { height: 0; border-top: 2px dashed var(--hrv); border-radius: 0; } .n-key .k-short { background: var(--warn); }
+.n-rule .n-today { font-size: 12px; font-weight: 650; color: var(--warn); } .n-rule.on .ic.green ~ .n-today { color: var(--good-text); }
+.n-rule:not(.on) .tx b { color: var(--text-2); }
+/* (in motion: the tiles one after another, lines drawn, bars rising, the last night's dot popping in) */
+:is(.screen.in, .day-in) .night-card .nt { animation: pop-in 0.5s var(--ease-out) backwards; }
+:is(.screen.in, .day-in) .night-card .nt:nth-child(1) { animation-delay: 120ms; } :is(.screen.in, .day-in) .night-card .nt:nth-child(2) { animation-delay: 190ms; }
+:is(.screen.in, .day-in) .night-card .nt:nth-child(3) { animation-delay: 260ms; }
+:is(.screen.in, .day-in) .night-card .nc-chip { animation: pop-in 0.45s var(--ease-spring, var(--ease-out)) 80ms backwards; }
+:is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nl, .nights-chart .n-hrv, .nights-chart .n-rhr) { stroke-dasharray: 1; animation: n-draw 1.2s var(--ease-out) 0.3s backwards; }
+@keyframes n-draw { from { stroke-dashoffset: 1; } }
+:is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nband, .nights-chart .n-band, .nights-chart .n-trend) { animation: fade-up 0.9s var(--ease-out) 0.5s backwards; }
+:is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nbars, .nights-chart .n-bars) { transform-box: fill-box; transform-origin: 50% 100%; animation: n-rise 0.8s var(--ease-out) 0.3s backwards; }
+@keyframes n-rise { from { transform: scaleY(0); } }
+:is(.screen.in, .day-in, dialog.sheet.fresh) :is(.nspark .nd, .nights-chart .n-dot) { transform-box: fill-box; transform-origin: center; animation: n-pop 0.5s var(--ease-spring, var(--ease-out)) 1.2s backwards; }
+@keyframes n-pop { from { transform: scale(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .night-card .nt, .night-card .nc-chip, .nspark *, .nights-chart * { animation: none !important; }
+  .night-card:active, .p-nights:active { transform: none; }
+}

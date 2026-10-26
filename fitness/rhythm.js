@@ -201,19 +201,41 @@ const feelOf = (f) => {
   const score = (f.sleep ?? 1) + (f.legs ?? 1) + (f.mood ?? 1);
   return score <= 2 ? "poor" : f.sleep === 0 || f.legs === 0 ? "tired" : "good";
 };
-// Your night, from Garmin (functions/_garmin.js: { day: { hrv, hrv_lo, hrv_hi, rhr, sleep, score } }): HRV under its
-// usual range (Garmin's own, else your last month's average less a standard deviation), resting heart rate 5 or more
-// above your month's middle, a night under six hours or scored under 60. → { hrvLow, rhrUp, short, said } or null
+// Your night, from Garmin (functions/_garmin.js) or Apple Health (functions/_health.js): { day: { hrv, hrv_lo, hrv_hi,
+// rhr, sleep, score } }, each read against your own usual:
+// - HRV under its usual range (Garmin's own; else your last month's average, less a standard deviation), or the week's
+//   average under your usual by more than half a standard deviation (a falling trend: Plews et al. 2013, HRV's 7-day
+//   rolling average against its baseline, the smallest change that matters half its spread)
+// - resting heart rate 5 or more above your month's middle
+// - a night under six hours or scored under 60; or three short nights running (sleep debt: under 19 h 30 in three)
+// - and a good night: HRV in its range or above, resting heart rate as usual, seven hours or more (the green light)
+// → { hrv, rhr, sleep, score, lo, hi, rb, trend, base, hrvLow, rhrUp, short, trendLow, debt, green, said } or null
 export function nightOf(well, day) {
   const n = well?.[day];
   if (!n) return null;
+  const on = (d) => well?.[addDays(day, d)], mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length, sdOf = (xs, m) => Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
   const before = Object.entries(well || {}).filter(([d]) => +d < day && +d >= addDays(day, -30)).map(([, v]) => v);
   const hv = before.map((v) => v.hrv).filter((v) => v > 0), mid = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : null; };
-  let lo = n.hrv_lo;
-  if (!(lo > 0) && hv.length >= 7) { const m = hv.reduce((a, b) => a + b, 0) / hv.length, sd = Math.sqrt(hv.reduce((a, b) => a + (b - m) ** 2, 0) / hv.length); lo = m - sd; }
+  let lo = n.hrv_lo > 0 ? n.hrv_lo : null, hi = n.hrv_hi > 0 ? n.hrv_hi : null;
+  if ((!lo || !hi) && hv.length >= 7) { const m = mean(hv), sd = sdOf(hv, m); lo ??= m - sd; hi ??= m + sd; }
   const rb = mid(before.map((v) => v.rhr).filter((v) => v > 0)), rhrN = before.filter((v) => v.rhr > 0).length;
-  const out = { hrvLow: n.hrv > 0 && lo > 0 && n.hrv < lo, rhrUp: n.rhr > 0 && rhrN >= 7 && n.rhr >= rb + 5, short: (n.sleep > 0 && n.sleep < 6 * 3600) || (n.score > 0 && n.score < 60) };
-  out.said = out.hrvLow ? `your HRV is ${Math.round(n.hrv)}, under its usual range` : out.rhrUp ? `your resting heart rate is ${Math.round(n.rhr)}, up ${Math.round(n.rhr - rb)}` : out.short ? (n.sleep > 0 && n.sleep < 6 * 3600 ? `you slept ${Math.floor(n.sleep / 3600)} h ${Math.round((n.sleep % 3600) / 60)}` : `your sleep scored ${n.score}`) : null;
+  // (the week's HRV, against the month before it)
+  const week = Array.from({ length: 7 }, (_, i) => on(-i)?.hrv).filter((v) => v > 0);
+  const baseXs = Array.from({ length: 30 }, (_, i) => on(-7 - i)?.hrv).filter((v) => v > 0);
+  const trend = week.length >= 5 ? mean(week) : null, base = baseXs.length >= 14 ? { m: mean(baseXs), sd: sdOf(baseXs, mean(baseXs)) } : null;
+  const three = [0, -1, -2].map((d) => on(d)?.sleep), slept = three.every((v) => v > 0) ? three.reduce((a, b) => a + b, 0) : null;
+  const out = {
+    hrv: n.hrv ?? null, rhr: n.rhr ?? null, sleep: n.sleep ?? null, score: n.score ?? null, lo, hi, rb, trend, base,
+    hrvLow: n.hrv > 0 && lo > 0 && n.hrv < lo, rhrUp: n.rhr > 0 && rhrN >= 7 && n.rhr >= rb + 5, short: (n.sleep > 0 && n.sleep < 6 * 3600) || (n.score > 0 && n.score < 60),
+    // (and most of the week's nights under it too, so one bad night isn't a falling week)
+    trendLow: trend != null && base != null && trend < base.m - 0.5 * base.sd && week.filter((v) => v < base.m).length >= 4,
+    debt: slept != null && slept < 19.5 * 3600 && three.filter((v) => v < 7 * 3600).length >= 2,
+  };
+  out.green = !out.hrvLow && !out.rhrUp && !out.short && !out.trendLow && !out.debt && n.hrv > 0 && lo > 0 && (n.sleep >= 7 * 3600 || n.score >= 75);
+  const hm = (s) => `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}`;
+  out.said = out.hrvLow ? `your HRV is ${Math.round(n.hrv)}, under its usual range` : out.rhrUp ? `your resting heart rate is ${Math.round(n.rhr)}, up ${Math.round(n.rhr - rb)}`
+    : out.trendLow ? `your HRV has been under its usual all week` : out.short ? (n.sleep > 0 && n.sleep < 6 * 3600 ? `you slept ${hm(n.sleep)}` : `your sleep scored ${n.score}`)
+    : out.debt ? `three short nights: ${hm(slept)} in all` : null;
   return out;
 }
 const fuelFor = (mins, hard) => (mins < 75 ? null : mins >= 150 && hard ? "about 90 g of carbs an hour" : mins >= 120 ? "60–80 g of carbs an hour" : "40–60 g of carbs an hour");
@@ -273,6 +295,8 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
   if (seeded) ctl = atl = LEVELS[P.level] ?? Math.min(45, hours * 5);
   const since = { tempo: 14, sweet: 14, threshold: 14, vo2: 14, sprint: 14, durable: 14, long: 7 };
   let lastHard = -Infinity, poorRun = 0, allow = null;
+  // (a falling week of HRV this morning: no hard days for the next two either)
+  const trendTill = nightOf(well, today)?.trendLow ? addDays(today, 2) : null;
   const week = { mon: null, tss: 0, hard: 0, strength: 0, run: false, swim: false, missed: null, missedTss: 0, moved: false, target: null };
   const out = [], thisMon = mondayOf(today), end = addDays(today, 7);
   let now = { ctl: 0, atl: 0 };
@@ -356,9 +380,13 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     const absorb = bw === 3, hold = P.mode === "hold", dow = (new Date(day).getDay() + 6) % 7, tsb = ctl - atl;
     let f = day <= today ? feelOf(feel[day]) : "good";
     poorRun = f === "poor" ? poorRun + 1 : 0;
-    // (your night: a low HRV or a raised resting heart rate eases the day; a short night, where you've not checked in)
-    const night = day <= today ? nightOf(well, day) : null, nightWhy = f === "good" && night && (night.hrvLow || night.rhrUp || (night.short && !feel[day])) ? night.said : null;
+    // (your night: a low HRV, a falling week of it, or a raised resting heart rate eases the day; a short night or three,
+    // where you've not said you slept well; a falling week and a low night as well, rest; and for two days after a
+    // falling week, no hard days, so it can come back)
+    const night = day <= today ? nightOf(well, day) : null, sleptWell = feel[day]?.sleep === 2;
+    const nightWhy = f === "good" && night && (night.hrvLow || night.rhrUp || night.trendLow || ((night.short || night.debt) && !sleptWell)) ? night.said : null;
     if (nightWhy) f = "tired";
+    const green = day === today && f === "good" && night?.green;
     const base = { date: day, block: { index: b, theme, week: bw, absorb }, feel: f };
     let avail = P.days[dow] || 0, moved = false;
     // a rest day moved: a session missed earlier this week, form good, and another rest day still to come this week
@@ -370,6 +398,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     if (!avail) return restWhy(P.days.some((x) => x) ? "A rest day: fitness is built while you recover" : "Choose the days you ride in Rhythm's settings");
     if (tsb < -25) return restWhy(`Rest: your form is ${Math.round(tsb)}, too tired to train well`);
     if (poorRun >= 2) return restWhy("Rest: you've felt poor two days running");
+    if (night?.trendLow && (night.hrvLow || night.rhrUp)) return restWhy(`Rest: your HRV has been under its usual all week, and last night ${night.hrvLow ? "was low again" : "your resting heart rate was up"}`);
     // the week's training stress: fitness up a few points in a build week (fewer as it gets higher), level in hold,
     // about 60% in an absorb week
     const ramp = hold ? 0 : Math.max(1.5, 4.5 - ctl / 40);
@@ -379,7 +408,9 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     const maxHard = absorb ? 1 : hours >= 12 ? 3 : 2, longest = avail === Math.max(...P.days) && avail >= 90;
     // (heavy legs, or a poor day, carry over: the day after is easy too)
     const fy = feel[addDays(day, -1)], yesterday = fy && addDays(day, -1) <= today ? (feelOf(fy) === "poor" ? "you weren't feeling good yesterday" : fy.legs === 0 ? "your legs were heavy yesterday" : null) : null;
-    const canHard = tsb > -20 && day - lastHard >= 2 * DAY - 3600e3 && week.hard < maxHard && f === "good" && !yesterday && avail >= 50 && (!allow || allow.has(day));
+    // (a good night lets a hard day stand a little deeper into fatigue: form down to −25, not −20)
+    const settling = trendTill && day > today && day <= trendTill;
+    const canHard = tsb > (green ? -25 : -20) && day - lastHard >= 2 * DAY - 3600e3 && week.hard < maxHard && f === "good" && !yesterday && !settling && avail >= 50 && (!allow || allow.has(day));
     // what's needed most: each kind's days since, against how often this block (and your lean, and your hours) wants it
     const sp = { ...SPACING[theme] };
     if (P.lean === "endurance") { sp.tempo *= 0.7; sp.sweet *= 0.8; sp.vo2 *= 1.4; sp.sprint *= 1.6; }
@@ -396,7 +427,8 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       why = `${ago} since your last ${WORDS[k]} session${theme === (k === "vo2" || k === "sprint" ? "topend" : k === "tempo" ? "aerobic" : "threshold") ? `, and you're in ${/^[aeiou]/.test(block) ? "an" : "a"} ${block} block` : ": keeping it sharp"}`;
     } else if (longest) { kind = "long"; why = "Your longest day: the week's long ride"; }
     else if (tsb < -15) { kind = "recovery"; why = `Easy: your form is ${Math.round(tsb)}`; }
-    else { kind = "endurance"; why = f === "tired" ? `Steady, not hard: ${nightWhy || "a poor night or heavy legs"}` : yesterday ? `Steady, not hard: ${yesterday}` : "Aerobic riding between the harder days"; }
+    else { kind = "endurance"; why = f === "tired" ? `Steady, not hard: ${nightWhy || "a poor night or heavy legs"}` : yesterday ? `Steady, not hard: ${yesterday}` : settling ? "Steady, not hard: your HRV's been low this week, so easy days till it's back" : "Aerobic riding between the harder days"; }
+    if (green && HARD.has(kind) && tsb <= -20) why += ". Your night says you've recovered: the hard day stands";
     // a run and a swim a week, where you do them, in place of an easy ride on a shorter day
     let id = null, mins = avail;
     if ((kind === "endurance" || kind === "recovery") && !longest) {
@@ -434,7 +466,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     if (moved) why = `Rest day moved: you missed ${new Date(week.missed).toLocaleDateString("en-GB", { weekday: "long" })}'s session. ${why}`;
     // (heavy strength on a hard day, twice a week in aerobic and threshold blocks, once in top end, none when absorbing)
     const strength = hard && !absorb && week.strength < (theme === "topend" ? 1 : 2) && !kind.startsWith("swim");
-    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: w?.sport === "ride" ? fuelFor(mins, hard) : null, strength, moved, need: needed, tsb: Math.round(tsb), night: nightWhy };
+    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: w?.sport === "ride" ? fuelFor(mins, hard) : null, strength, moved, need: needed, tsb: Math.round(tsb), night: nightWhy, green: !!(green && hard) };
   }
 
   const at0 = out.find((x) => x.date === today) || null;

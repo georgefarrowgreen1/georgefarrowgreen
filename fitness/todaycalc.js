@@ -2,13 +2,13 @@
 
 // How ready you are, out of 100: from your form (training stress balance), and the morning's check-in where it's all
 // said (feel: { sleep, legs, mood }, each 0 poor, 1 so-so, 2 good), and your night from Garmin where there's one
-// (night: fitness/rhythm.js nightOf: HRV low, resting heart rate up, a short night; the last counted only where the
-// check-in hasn't said how you slept). → { v, tone, word }
+// (night: fitness/rhythm.js nightOf: HRV low or falling all week, resting heart rate up, a short night or three, the
+// last two not where the check-in says you slept well; and a good night, a little up). → { v, tone, word }
 export function readinessOf(tsb, feel = null, night = null) {
   let v = 64 + tsb * 1.1;
   const said = feel && ["sleep", "legs", "mood"].every((k) => feel[k] != null);
   if (said) for (const k of ["sleep", "legs", "mood"]) v += feel[k] === 0 ? -11 : feel[k] === 2 ? 7 : 0;
-  if (night) v += (night.hrvLow ? -10 : 0) + (night.rhrUp ? -8 : 0) + (night.short && !said ? -6 : 0);
+  if (night) v += (night.hrvLow ? -10 : 0) + (night.rhrUp ? -8 : 0) + (night.trendLow ? -8 : 0) + ((night.short || night.debt) && !(said && feel.sleep === 2) ? -6 : 0) + (night.green ? 5 : 0);
   v = Math.round(Math.max(15, Math.min(97, v)));
   const tone = v >= 80 ? "good" : v >= 58 ? "steady" : "easy";
   return { v, tone, word: { good: "Ready", steady: "Steady", easy: "Go easy" }[tone] };
