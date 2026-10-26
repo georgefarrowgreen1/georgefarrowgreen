@@ -975,6 +975,29 @@ async function signedBack(code) {
   catch (e) { toast(e.message, true); return null; }
 }
 // Signed in: your record and your activities, from the account
+// The account as last fetched, kept on this phone: the app's drawn from it at once as it opens, while what's changed
+// since is fetched (and gone with the rest of this phone's copies on signing out: idb.clear)
+let meBase = null;
+// (kept as one string: read back as one, and parsed, it's far quicker than thousands of objects copied out one by one)
+const lastMe = {
+  get: async () => { try { const t = await idb.get("me:last"); return typeof t === "string" ? JSON.parse(t) : null; } catch (_) { return null; } },
+  put: (m) => { meBase = m; idb.put("me:last", JSON.stringify(m)).catch(() => {}); },
+};
+// the account now: what's changed since the copy here (its activities put together with those it has, and those gone
+// left out), or all of it where there's no copy, or it's another account's
+async function fetchMe(base = meBase) {
+  let m = await A.me(base?.id && base.at ? base.at : null);
+  if (m.signedIn && m.ids) {
+    if (base?.id !== m.id) m = await A.me();
+    else {
+      const still = new Set(m.ids), byId = new Map((base.acts || []).filter((a) => still.has(a.id)).map((a) => [a.id, a]));
+      for (const a of m.acts || []) byId.set(a.id, a);
+      m = { ...m, acts: [...byId.values()].sort((a, b) => b.start - a.start), ids: undefined };
+    }
+  }
+  if (m.signedIn) lastMe.put(m);
+  return m;
+}
 function arrive(m) {
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
@@ -983,9 +1006,9 @@ function arrive(m) {
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   document.body.classList.remove("out");
   drawTabs();
-  render(true);
+  // (the figures first, so the screen's drawn once, not drawn and then drawn again)
   sumUp();
-  if (S.summed) redraw();
+  render(true);
   estimate();
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
   if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); setTimeout(firstRun, 500); }
@@ -996,18 +1019,23 @@ function arrive(m) {
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
+// the account as fetched, taken up over what's on the screen (this device's changes not yet kept winning)
+function takeUp(m) {
+  document.body.dataset.fresh = "1";
+  S.me = { ...S.me, name: m.name, handle: m.handle, photoAt: m.photoAt, garmin: m.garmin }; S.ver = m.ver; S.pulledAt = Date.now();
+  adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
+  S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
+  for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
+  setActs(); redraw(); estimate();
+  garminNow(m.garmin);
+}
 async function pull() {
   if (!S.me || pull.busy) return;
   pull.busy = true;
   try {
-    const m = await A.me();
+    const m = await fetchMe();
     if (!m.signedIn || m.id !== S.me.id) return signedOutHere(true);
-    S.me = { ...S.me, name: m.name, handle: m.handle, photoAt: m.photoAt }; S.ver = m.ver; S.pulledAt = Date.now();
-    adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
-    S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
-    for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
-    setActs(); redraw(); estimate();
-    garminNow(m.garmin);
+    takeUp(m);
   } catch (_) {} finally { pull.busy = false; }
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
@@ -1052,15 +1080,22 @@ const signedOutHere = () => signOutHere(true);
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
   else if (want === "plan") S.tab = "today";
-  let m = null;
+  let m = null, early = null;
   try {
-    if (code) m = await signedBack(code);
-    if (!m) m = await A.me();
+    if (code) { m = await signedBack(code); if (m) lastMe.put(m); }
+    if (!m) {
+      // (the copy kept here, drawn at once; then what's changed since, taken up)
+      const kept = await lastMe.get();
+      if (kept?.signedIn && Array.isArray(kept.acts)) { early = kept; meBase = kept; arrive(kept); }
+      m = await fetchMe(kept);
+    }
   } catch (e) {
+    if (early) return;   // (offline: what was here last stays)
     return welcome(e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
   }
-  if (!m.signedIn) return welcome();
-  arrive(m);
+  if (!m.signedIn) return early ? signOutHere(true) : welcome();
+  if (early && m.id !== early.id) return location.reload();
+  if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
 })();
 
 // (what the screens, each its own module, take from here)

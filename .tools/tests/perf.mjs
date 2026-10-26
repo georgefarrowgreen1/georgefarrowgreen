@@ -26,7 +26,7 @@ const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', a
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: UA, reducedMotion: 'reduce' });
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
-const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message));
+const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.text().startsWith('TIME ') && process.env.PERF_TRACE) console.log(m.text()); });
 await joinInFlight(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
 await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 });
 // (Rhythm on, so Today is as full as it gets: kept, and the page reloaded with it, till it's there)
@@ -57,9 +57,9 @@ const timed = (fn) => p.evaluate(async (src) => { const t = performance.now(); n
 const med = (xs) => { const v = xs.filter((x) => x != null).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
 const runs = [];
 for (let r = 0; r < 3; r++) {
-  let meBytes = 0; const onResp = async (res) => { if (res.url().endsWith('/api/fitness/me') && res.request().method() === 'GET') meBytes = (await res.body().catch(() => Buffer.alloc(0))).length; };
+  let meBytes = 0; const onResp = async (res) => { if (res.url().includes('/api/fitness/me') && res.request().method() === 'GET') meBytes = (await res.body().catch(() => Buffer.alloc(0))).length; };
   p.on('response', onResp);
-  await p.evaluate(() => { location.hash = '#today'; }); const t0 = Date.now(); await p.reload(); await p.waitForSelector('.strip-days .sday', { timeout: 600000 }).catch(async (e) => { await p.screenshot({ path: `${out}/stuck.png` }); console.log('stuck; errors: ' + errs.join(' | ')); throw e; }); await settle(); const open = Date.now() - t0;
+  await p.evaluate(() => { location.hash = '#today'; }); const t0 = Date.now(); await p.reload(); await p.waitForSelector('.strip-days .sday', { timeout: 600000 }).catch(async (e) => { await p.screenshot({ path: `${out}/stuck.png` }); console.log('stuck; errors: ' + errs.join(' | ')); throw e; }); await settle(); const open = Date.now() - t0; await p.waitForSelector('body[data-fresh]', { state: 'attached', timeout: 120000 }); const fresh = Date.now() - t0;
   p.off('response', onResp);
   await p.waitForTimeout(1500);
   // (each by a click, timed to the next frame: a redraw of Today, another day, Activities, Progress, back to Today)
@@ -71,9 +71,9 @@ for (let r = 0; r < 3; r++) {
   const prog = await timed(clk('.tab:nth-child(3)')); await settle(); await p.waitForTimeout(500);
   const back = await timed(clk('.tab:nth-child(1)')); await settle();
   const heap = await p.evaluate(() => performance.memory?.usedJSHeapSize || 0);
-  runs.push({ open, meKB: Math.round(meBytes / 1024), redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: shown });
+  runs.push({ open, fresh, meKB: Math.round(meBytes / 1024), redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: shown });
 }
-const res = { rides: N, open: med(runs.map((r) => r.open)), meKB: runs[0].meKB, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
+const res = { rides: N, open: med(runs.map((r) => r.open)), fresh: med(runs.map((r) => r.fresh)), meKB: runs[0].meKB, meKBthen: runs.at(-1).meKB, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
   openActivities: med(runs.map((r) => r.acts)), activityRows: runs.at(-1).rows, openProgress: med(runs.map((r) => r.prog)), backToToday: med(runs.map((r) => r.back)), heapMB: med(runs.map((r) => r.heapMB)) };
 writeFileSync(`${out}/perf.json`, JSON.stringify({ res, runs }, null, 1));
 console.log(JSON.stringify(res)); console.log('page errors: ' + errs.slice(0, 3).join(' | ')); console.log('FAILS 0'); await b.close();

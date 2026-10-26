@@ -19,7 +19,8 @@ async function call(path, { method = "GET", body, form, raw = false, wait = 3000
   return { status: r.status, ...j };
 }
 // who's signed in, your record and your activities: { signedIn, name, handle, photoAt, ver, data, acts }
-export const me = () => call("me");
+// (since: only the activities changed since then, and every one's id, for a phone that has the rest: { ..., ids, at })
+export const me = (since = null) => call(since ? `me?since=${Math.round(since)}` : "me");
 // a change to the record, made from version base: { ver, data } as kept now; or { conflict, ver, data } where it's
 // moved on meanwhile
 export const save = (base, data) => call("me", { method: "PUT", body: { base, data } });

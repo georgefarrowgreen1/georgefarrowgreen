@@ -43,6 +43,8 @@ async function setup(env) {
   ]);
   // (whether a file's kept gzipped: a table made before it had none)
   await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN gz INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  // (when each last changed: added, renamed, its figures or its file; so a phone asks for only what's changed since)
+  await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN changed INTEGER").run().catch(() => {});
 }
 const SCHEMA_FP = (() => { let h = 2166136261; for (const c of setup.toString()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "f" + h.toString(36); })();
 
@@ -168,11 +170,17 @@ export async function saveState(env, userId, base, data) {
   if (!r.meta?.changes) { const now = await kept(env, userId); return { conflict: true, ...now }; }
   return { ver: base + 1, data };
 }
-// every activity's row, newest first: what the lists and charts need, without the files
-export async function activities(env, userId) {
-  const { results } = await (await fitdb(env)).prepare("SELECT id, start, sport, indoor, name, device, file, type, size, sum, gz FROM fx_acts WHERE user_id = ? ORDER BY start DESC LIMIT ?")
-    .bind(userId, MAX_ACTS).all();
-  return results.map((r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, gz: !!r.gz, sum }; });
+// every activity's row, newest first: what the lists and charts need, without the files. since (ms): only those added
+// or changed since, and every one's id (so a phone that has the rest knows which have gone)
+export async function activities(env, userId, since = null) {
+  const D = await fitdb(env), cols = "id, start, sport, indoor, name, device, file, type, size, sum, gz";
+  const { results } = since == null
+    ? await D.prepare(`SELECT ${cols} FROM fx_acts WHERE user_id = ? ORDER BY start DESC LIMIT ?`).bind(userId, MAX_ACTS).all()
+    : await D.prepare(`SELECT ${cols} FROM fx_acts WHERE user_id = ? AND COALESCE(changed, added) > ? ORDER BY start DESC LIMIT ?`).bind(userId, since, MAX_ACTS).all();
+  const rows = results.map((r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, gz: !!r.gz, sum }; });
+  if (since == null) return { acts: rows };
+  const ids = (await D.prepare("SELECT id FROM fx_acts WHERE user_id = ? LIMIT ?").bind(userId, MAX_ACTS).all()).results.map((r) => r.id);
+  return { acts: rows, ids };
 }
 // One kept, its file first (so a row never points at nothing). The same activity sent again (the same id): kept once.
 export async function addActivity(env, userId, meta, u8) {
@@ -186,8 +194,9 @@ export async function addActivity(env, userId, meta, u8) {
   if ((had?.bytes || 0) + u8.length > MAX_STORE) throw new HttpError(413, "Your activities have used all the space there is (2 GB). Delete some old ones first.");
   if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
   await env.BIO_R2.put(fileKey(userId, meta.id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
-  await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added, gz) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), Date.now(), isGz(u8) ? 1 : 0).run();
+  const now = Date.now();
+  await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added, gz, changed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), now, isGz(u8) ? 1 : 0, now).run();
   return { kept: true };
 }
 // One kept before, its file made smaller by the phone (written as FIT, and gzipped): the same activity, in less space
@@ -200,7 +209,7 @@ export async function replaceFile(env, userId, id, meta, u8) {
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
   if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
   await env.BIO_R2.put(fileKey(userId, id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
-  await D.prepare("UPDATE fx_acts SET type = ?, file = ?, size = ?, gz = 1 WHERE user_id = ? AND id = ?").bind(meta.type, text(meta.file, 120) || null, u8.length, userId, id).run();
+  await D.prepare("UPDATE fx_acts SET type = ?, file = ?, size = ?, gz = 1, changed = ? WHERE user_id = ? AND id = ?").bind(meta.type, text(meta.file, 120) || null, u8.length, Date.now(), userId, id).run();
   return { kept: true, size: u8.length };
 }
 export async function activityFile(env, userId, id) {
@@ -211,7 +220,7 @@ export async function activityFile(env, userId, id) {
 }
 // renamed (the one thing about an activity you can change)
 export async function renameActivity(env, userId, id, name) {
-  const r = await (await fitdb(env)).prepare("UPDATE fx_acts SET name = ? WHERE user_id = ? AND id = ?").bind(text(name, 80) || "Activity", userId, id).run();
+  const r = await (await fitdb(env)).prepare("UPDATE fx_acts SET name = ?, changed = ? WHERE user_id = ? AND id = ?").bind(text(name, 80) || "Activity", Date.now(), userId, id).run();
   if (!r.meta?.changes) throw new HttpError(404, "That activity isn’t here any more.");
 }
 // figures worked out by the phone for one kept before rows had them: its route's shape, its staying power
@@ -223,7 +232,7 @@ export async function addFigures(env, userId, id, b) {
   const row = await D.prepare("SELECT sum FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
   let sum = {}; try { sum = JSON.parse(row.sum || "{}") || {}; } catch (_) {}
-  await D.prepare("UPDATE fx_acts SET sum = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, ...add }), userId, id).run();
+  await D.prepare("UPDATE fx_acts SET sum = ?, changed = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, ...add }), Date.now(), userId, id).run();
 }
 export async function deleteActivity(env, userId, id) {
   await (await fitdb(env)).prepare("DELETE FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).run();

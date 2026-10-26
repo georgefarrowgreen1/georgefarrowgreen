@@ -254,7 +254,7 @@ const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Units' }).innerT
 await P.p.locator('#sheet .row', { hasText: 'Units' }).click(); await settle(P, 400);
 await done(P);
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await you(L);
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
 const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Units' }).innerText();
 ok(/Kilometres/.test(unitsFirst) && /From your region/.test(unitsFirst) && /Miles/.test(unitsThen) && !/From your region/.test(unitsThen), 'units from your region at first; miles, chosen on the phone: the laptop\'s in miles too', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));
 await done(L);
@@ -274,7 +274,7 @@ await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P,
 const left = acts(sam);
 ok(left.length === 2 && left.some((a) => a.name === 'Saturday loop') && !left.some((a) => a.file === '123_ACTIVITY.fit'), 'renamed and deleted with the account', JSON.stringify(left.map((a) => a.name)));
 await tab(L, 2);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me');
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.head .sub').innerText());
 
 // ---- 7. The account's page: Fitness among your apps ----
@@ -292,7 +292,7 @@ const cached = await P.p.evaluate(() => new Promise((res) => { const r = indexed
 ok(/Signed out\./.test(await P.p.innerText('main')) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
-await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
+await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 ok(/^2 activities/.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
 
 // ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
@@ -374,7 +374,7 @@ const tickNo = await api(L, '/api/fitness/garmin-tick', { method: 'POST' });
 const tickYes = await api(L, '/api/fitness/garmin-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });
 ok(tickNo.status === 401 && JSON.parse(tickYes.body).asked === 1 && rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).map((r) => r.id).join() === '9003',
   'the scheduler’s turn (with its secret only): the evening’s run fetched, waiting', `${tickNo.status} ${tickYes.body}`);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me');
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000);
 ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
 const noLeak = await api(L, '/api/fitness/me');
@@ -384,7 +384,7 @@ ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Ga
 const oldAt = (t0 - 86400 * 9) * 1000, oldGpx = gpxFromActivity({ ...ride, start: oldAt, name: 'Old ride' });
 const oldUp = await L.p.evaluate(async ([gpx, at]) => { const f = new FormData(); f.append('meta', JSON.stringify({ id: `i${at}`, start: at, sport: 'ride', name: 'Old ride', file: 'old.gpx', type: 'gpx', sum: { secs: 5400, tss: 70 } }));
   f.append('file', new Blob([gpx]), 'old.gpx'); const r = await fetch('/api/fitness/acts', { method: 'POST', body: f }); return r.status; }, [oldGpx, oldAt]);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me');
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const squashed = await waitFor(() => rows(`SELECT type, file, size, gz, sum FROM fx_acts WHERE user_id = '${sam}' AND id = 'i${oldAt}'`).find((r) => r.gz === 1), 20000);
 ok(oldUp === 200 && squashed?.type === 'fit' && squashed.file === 'old.fit' && squashed.size < Buffer.byteLength(oldGpx) / 4 && JSON.parse(squashed.sum).tss === 70,
   'one kept before: written as FIT and gzipped as the app opens, its figures as they were', `${oldUp} ${JSON.stringify(squashed)} (GPX ${Buffer.byteLength(oldGpx)})`);
@@ -402,7 +402,7 @@ await L.ctx.addInitScript(({ endpoint, p256dh, auth }) => {
   PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make(null) : null; };
   PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(null); };
 }, { endpoint: 'https://fcm.googleapis.com/fcm/send/fitness-laptop', p256dh: pushPub, auth: pushAuth });
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await you(L);
+await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Morning reminder' }).click(); await settle(L, 600);
 const preview = await L.p.locator('#sheet .note-preview').innerText().catch(() => '');
 await L.p.locator('#sheet .times .pill', { hasText: '07:30' }).click(); await settle(L, 300);

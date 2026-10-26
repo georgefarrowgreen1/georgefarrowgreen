@@ -1,6 +1,7 @@
 // Fitness's own API, at fitness.georgefarrowgreen.com only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
+//                                    (?since=<ms>: only those changed since, and every one's id)
 //   PUT    /api/fitness/me            a change to your record, from the version it was made from (409, with the record now,
 //                                    where another device has changed it since)
 //   POST   /api/fitness/acts          an activity: its figures (meta, as the phone worked them out) and its file, as imported
@@ -36,9 +37,12 @@ import { rideWeather } from "../../_fitwx.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
-async function view(env, u) {
-  const [k, acts, garmin] = await Promise.all([kept(env, u.id), activities(env, u.id), garminOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts, garmin };
+// (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
+// for next time, a moment early so nothing changing as it's read is missed)
+async function view(env, u, since = null) {
+  const at = Date.now() - 2000;
+  const [k, got, garmin] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false }))]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.ids ? { ids: got.ids, since } : {}), at, garmin };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -46,7 +50,8 @@ const ROUTES = {
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false });
-    return withCookie(json(await view(env, u)), request, env, u.token);
+    const since = Number(new URL(request.url).searchParams.get("since"));
+    return withCookie(json(await view(env, u, Number.isFinite(since) && since > 0 ? since : null)), request, env, u.token);
   },
   "PUT me": async ({ request, env }) => {
     sameOrigin(request);
