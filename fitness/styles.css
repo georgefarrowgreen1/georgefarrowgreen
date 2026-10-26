@@ -733,7 +733,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 
 /* ---- the day's check-in ---- */
 .checkin { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.checkin:not(.done) > div:first-child { display: grid; gap: 3px; }
+.checkin:not(.done):not(.open) > div:first-child { display: grid; gap: 3px; }
 .checkin b { font-size: 16px; font-weight: 600; }
 .checkin small { font-size: 13px; color: var(--text-2); line-height: 1.35; }
 .checkin.done { display: grid; gap: 14px; }
