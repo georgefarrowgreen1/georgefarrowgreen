@@ -18,7 +18,7 @@ function whenSeen(btn) {
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ", from your devices"}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload files", onclick: () => openSheet(uploadFilesView) }, icon("upload", 21, 2.1)))];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ""}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload files", onclick: () => openSheet(uploadFilesView) }, icon("upload", 21, 2.1)))];
   // Garmin's six months coming in
   if (S.bringing) out.push(bringingCard());
   // none yet: Garmin, or files
