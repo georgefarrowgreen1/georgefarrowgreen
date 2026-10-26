@@ -39,7 +39,9 @@ export function efforts(steps, pwr, ftp) {
   // (the ones missed, at the end: faded, rather than missed here and there)
   let faded = 0;
   for (let i = each.length - 1; i >= 0 && !each[i].held; i--) faded++;
-  return { n: each.length, held, each, faded: held && faded === each.length - held ? faded : 0 };
+  // (how hard they were, on average, against their targets; and the targets, as watts)
+  const ratio = each.reduce((a, e) => a + e.got / e.target, 0) / each.length, aim = each.reduce((a, e) => a + e.target, 0) / each.length;
+  return { n: each.length, held, each, faded: held && faded === each.length - held ? faded : 0, ratio, target: aim };
 }
 // in words: "All 26 efforts held", "24 of 26 held: faded on the last 2", "18 of 26 efforts held"
 export function effortsSaid(e) {

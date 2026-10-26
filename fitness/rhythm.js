@@ -61,6 +61,25 @@ export function criticalPower(bests, ftp) {
   if (!(w >= 3000 && w <= 40000 && cp >= 0.7 * ftp && cp <= 1.2 * ftp)) return null;
   return { cp: Math.round(cp), w: Math.round(w) };
 }
+// How you've been getting on with each kind of hard session: its targets set to what you've been holding. Each ride's
+// efforts (fitness/efforts.js, kept with it: effFam 1 VO₂ max, 4 30/15s, 2 threshold; effFtp their targets as a share of
+// FTP, in thousandths; effortPct what you rode against them) say the level held: what you rode, where every effort held;
+// a little under the target, where some didn't. The last three of each kind in six weeks, averaged, against the target
+// Rhythm would set from your power alone: at most 6% either way. → { vo2, on30, thr: shares to add, said: [...] }
+export const FAMS = [[1, "vo2", "VO₂ max"], [4, "on30", "30/15s"], [2, "thr", "threshold"]];
+export function adjustments(acts, today, base) {
+  const out = { vo2: 0, on30: 0, thr: 0, said: [] };
+  for (const [fam, key, name] of FAMS) {
+    const xs = acts.filter((a) => a.sum?.effFam === fam && a.sum.efforts > 0 && a.sum.effFtp > 0 && a.start >= addDays(today, -42) && a.start < addDays(today, 1)).sort((a, b) => a.start - b.start).slice(-3);
+    if (!xs.length || !base?.[key]) continue;
+    const level = (a) => { const f = a.sum.effFtp / 1000, r = (a.sum.effortPct || 100) / 100; return a.sum.held >= a.sum.efforts ? r * f : Math.min(r, 1) * f * 0.97; };
+    const held = xs.reduce((t, a) => t + level(a), 0) / xs.length;
+    const by = Math.round(clamp(held / base[key] - 1, -0.06, 0.06) * 200) / 200;
+    out[key] = by;
+    if (Math.abs(by) >= 0.01) out.said.push({ key, name, by, n: xs.length, allHeld: xs.every((a) => a.sum.held >= a.sum.efforts), last: xs.at(-1) });
+  }
+  return out;
+}
 export function targets(cpw, ftp) {
   if (!cpw) return { thr: 0.97, vo2: 1.18, on30: 1.25 };
   return { thr: clamp((cpw.cp / ftp) * 0.97, 0.92, 1.02), vo2: clamp((cpw.cp + cpw.w / 300) / ftp, 1.08, 1.3), on30: clamp((cpw.cp + cpw.w / 240) / ftp, 1.12, 1.4) };
@@ -146,6 +165,9 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
   // your power curve now (the last 12 weeks' best), for intervals set from it
   const bestsIn = (from, to) => { const b = {}; for (const a of acts) if (a.start >= from && a.start < to && a.sport === "ride") for (const [k, v] of Object.entries(a.sum?.curve || {})) if (v > (b[k] || 0)) b[k] = v; return b; };
   const cpw = criticalPower(bestsIn(addDays(today, -84), addDays(today, 1)), ftp), T = targets(cpw, ftp);
+  // (the targets, as you've been holding them)
+  const adjust = adjustments(acts, today, { ...T });
+  T.vo2 *= 1 + adjust.vo2; T.on30 *= 1 + adjust.on30; T.thr *= 1 + adjust.thr;
   // each block's theme: in order the first time round; then whatever moved least in the six weeks before it, or the
   // same again once if it moved a lot
   const themes = [];
@@ -276,5 +298,5 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
   }
 
   const at0 = out.find((x) => x.date === today) || null;
-  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, line, cpw, targets: T };
+  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, line, cpw, targets: T, adjust };
 }

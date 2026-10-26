@@ -131,6 +131,13 @@ function rhythmSays() {
   if (missed.length) note("amber", "swap", missed.length === 1 ? `${dayName(missed[0].date)} missed` : `${missed.length} sessions missed`, "Rhythm has taken it in: the days ahead follow what you actually did, not what was planned.");
   const moved = r.days.find((d) => d.date >= TODAY && d.date < addDays(TODAY, 7) && d.moved);
   if (moved) note("blue", "calendar", `A rest day moved to ${dayName(moved.date)}`, "So the week still gets its hard days, with rest around them.");
+  // (targets moved to what you've been holding)
+  const said = [...(r.adjust?.said || [])].sort((x, y) => Math.abs(y.by) - Math.abs(x.by))[0];
+  if (said) {
+    const up = said.by > 0, by = `${Math.round(Math.abs(said.by) * 100)}%`, of = said.n === 1 ? `your last ${said.name} session` : `your last ${["", "", "two", "three"][said.n]} ${said.name} sessions`;
+    note(up ? "green" : "amber", "gauge", `${said.name[0].toUpperCase() + said.name.slice(1)} targets ${up ? "up" : "down"} ${by}`,
+      up ? `Every effort held in ${of}, and with room to spare: Rhythm has raised them to match.` : said.allHeld ? `Held, but only just, in ${of}: Rhythm has eased them a little.` : `Not every effort held in ${of}: Rhythm has eased them to what you’ve been riding.`);
+  }
   if (notes.length < 3) {
     const b = r.block;
     if (b.absorb) note("indigo", "wave", "A lighter week", "Less riding this week, so the last three weeks sink in. Then the next block.");
@@ -304,11 +311,23 @@ function doneMap(a) {
 // sport (rides, with power); kept once worked out, the file read for it once, and the page drawn again when it's said
 const sessionOf = (a) => { if (a.sport !== "ride") return null; const id = a.workout || plannedOn(startOfDay(a.start)), w = id && id !== "event" ? wkById(id) : null; return w?.sport === "ride" ? w : null; };
 const effortsOf = (a, x) => { const w = sessionOf(a); return w && x ? E.efforts(flatten(w, paceFor("ride")), perSecond(x).pwr, P().ftp) : null; };
+// (and kept with the ride, for Rhythm to set its targets by: rhythm.js adjustments; the kind of session from its id)
+const FAM = { vo2: 1, thirty: 4, threshold: 2 };
+function effortFigs(a, x) {
+  const w = sessionOf(a), e = w && effortsOf(a, x);
+  if (!e?.n) return {};
+  return { efforts: e.n, held: e.held, effortPct: Math.round(e.ratio * 1000) / 10, effFtp: Math.round((e.target / P().ftp) * 1000), effFam: FAM[String(w.id).split(":")[1]] || 0, faded: e.faded };
+}
+function keepEfforts(a, figs) {
+  if (!figs.efforts || sumOf(a)?.efforts === figs.efforts && sumOf(a)?.effFtp === figs.effFtp) return;
+  a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
+  if (signed()) A.addFigures(a.id, figs).catch(() => {});
+}
 const effortsSeen = new Map();
 function effortsNow(a) {
   if (effortsSeen.has(a.id)) return effortsSeen.get(a.id);
   effortsSeen.set(a.id, null);
-  if (sessionOf(a)) load(a).then((x) => { const e = effortsOf(a, x); effortsSeen.set(a.id, e); if (e) redraw(); }).catch(() => {});
+  if (sessionOf(a)) load(a).then((x) => { const e = effortsOf(a, x); effortsSeen.set(a.id, e); if (e) { keepEfforts(a, effortFigs(a, x)); redraw(); } }).catch(() => {});
   return null;
 }
 // the efforts, one by one: each a bar against its target (the line), green where it held
@@ -457,4 +476,4 @@ function askToday() {
   setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
 
-export { askToday, effortsCard, effortsOf, effortsSeen, todayView };
+export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, todayView };

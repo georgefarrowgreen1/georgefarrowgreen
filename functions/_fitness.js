@@ -111,7 +111,7 @@ export function cleanState(d) {
 // An activity's own words and figures, as the phone sends them with its file
 // (drift: heart rate's drift against power, second half on first, in %; late20: the best 20 minutes after two hours;
 // xv: which version of those figures the phone worked out)
-const SUM_NUMS = ["secs", "moving", "dist", "ascent", "ftp", "lthr", "runPace", "css", "avgPwr", "maxPwr", "kj", "np", "iF", "tss", "avgHr", "maxHr", "avgCad", "maxSpd", "avgSpd", "kcal", "drift", "late20", "xv"];
+const SUM_NUMS = ["secs", "moving", "dist", "ascent", "ftp", "lthr", "runPace", "css", "avgPwr", "maxPwr", "kj", "np", "iF", "tss", "avgHr", "maxHr", "avgCad", "maxSpd", "avgSpd", "kcal", "drift", "late20", "xv", "efforts", "held", "effortPct", "effFtp", "effFam", "faded"];
 export function cleanAct(m) {
   if (!obj(m) || !/^[A-Za-z0-9_-]{1,40}$/.test(String(m.id || ""))) throw new HttpError(400, "Bad request.");
   const start = num(m.start, Date.UTC(1990, 0, 1), Date.now() + 2 * 86400e3);
@@ -227,7 +227,8 @@ export async function renameActivity(env, userId, id, name) {
 export async function addFigures(env, userId, id, b) {
   const D = await fitdb(env), add = {};
   if (b.route !== undefined) { const r = cleanRoute(b.route); if (!r) throw new HttpError(400, "Bad request."); add.route = r; }
-  for (const [k, lo, hi] of [["drift", -50, 100], ["late20", 0, 2000], ["xv", 0, 100]]) if (b[k] !== undefined) { const v = num(b[k], lo, hi); if (v == null) throw new HttpError(400, "Bad request."); add[k] = Math.round(v * 10) / 10; }
+  // (and the efforts of a session: how many, how many held, at what share of their targets and of FTP, which kind, and a fade)
+  for (const [k, lo, hi] of [["drift", -50, 100], ["late20", 0, 2000], ["xv", 0, 100], ["efforts", 0, 200], ["held", 0, 200], ["effortPct", 0, 300], ["effFtp", 0, 3000], ["effFam", 0, 9], ["faded", 0, 200]]) if (b[k] !== undefined) { const v = num(b[k], lo, hi); if (v == null) throw new HttpError(400, "Bad request."); add[k] = Math.round(v * 10) / 10; }
   if (!Object.keys(add).length) throw new HttpError(400, "Bad request.");
   const row = await D.prepare("SELECT sum FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");

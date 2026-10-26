@@ -2,7 +2,7 @@
 // efforts; their figures filled in, in the background. Drawn by app.js render.
 
 import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, calendar, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dur, fileKey, fitness, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, idb, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plan, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, upload, wait, weeks, wkById, zoneOf } from "./app.js";
-import { effortsCard, effortsOf, effortsSeen } from "./today.js";
+import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 
 // ---- Activities ----
@@ -101,7 +101,7 @@ function actRow(a) {
 }
 // A ride's staying power, from its samples: heart rate's drift against power, its second half on its first (rides of 90
 // minutes and more with both: under 5% is a well-built base), and its best 20 minutes after the first two hours
-const XV = 1;
+const XV = 2;
 function staying(a) {
   const out = { xv: XV };
   if (a.sport !== "ride" || !a.s?.pwr) return out;
@@ -118,7 +118,7 @@ function staying(a) {
   }
   return out;
 }
-const withFigures = (sum, a) => ({ ...withRoute(sum, a), ...staying(a) });
+const withFigures = (sum, a) => ({ ...withRoute(sum, a), ...staying(a), ...effortFigs(a, a) });
 // The ones kept before rows had these: each read from its file as the app opens, a few at a time, and its route's shape
 // and staying power added (one with no route, an indoor ride, remembered here so it isn't looked for again)
 async function routes() {
@@ -129,7 +129,7 @@ async function routes() {
     for (const a of S.own.filter((x) => (!sumOf(x)?.route && !none.has(x.id)) || !(sumOf(x)?.xv >= XV)).slice(0, 40)) {
       if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
       try {
-        const x = await load(a), r = sumOf(a)?.route ? null : F.routeShape(x.s), figs = { ...staying(x), ...(r ? { route: r } : {}) };
+        const x = await load(a), r = sumOf(a)?.route ? null : F.routeShape(x.s), figs = { ...staying(x), ...effortFigs(a, x), ...(r ? { route: r } : {}) };
         if (!r && !sumOf(a)?.route) none.add(a.id);
         await A.addFigures(a.id, figs);
         a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
