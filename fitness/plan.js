@@ -237,7 +237,7 @@ const TCtone = (iF) => (iF >= 0.95 ? "z6" : iF >= 0.84 ? "z4" : iF >= 0.76 ? "z3
 function workoutsView() {
   const bySport = Object.keys(SPORTS).map((sp) => [sp, WORKOUTS.filter((w) => w.sport === sp)]).filter(([, ws]) => ws.length);
   return { title: "Workouts", body: [h("div.sheet-top", {}, h("h1", { text: "Workouts" }), h("div.sub", { text: "To ride any day, or send to your device" })),
-    S.mine.length && section("Yours", h("div.group", {}, S.mine.map(workoutRow))),
+    S.mine.length > 0 && section("Yours", h("div.group", {}, S.mine.map(workoutRow))),
     ...bySport.map(([sp, ws]) => section(SPORTS[sp].name, h("div.group", {}, ws.map(workoutRow))))] };
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
