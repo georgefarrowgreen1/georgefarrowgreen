@@ -34,7 +34,7 @@ function todayView() {
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(rhythmSays(), isToday && morningCard(w));
-  right.push(planned && weekCard(), headingCard(), formCard(), planRows());
+  right.push(planned && weekCard(), headingCard(), planRows());
   out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
   return out;
 }
@@ -377,22 +377,6 @@ function didCard(a) {
   return todaySection("What it did", null, h("div.did", {},
     h("div.card.glass", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("span.v", {}, h("b", { text: Math.round(last.ctl) }), Math.round(gain) > 0 && h("em", { text: signed(gain) })), h("small.sub", { text: "From today’s ride" })),
     h("div.card.glass", {}, h("small", {}, h("i.dot-form"), "Form tomorrow"), h("span.v", {}, h("b", { text: signed(tm) })), h("small.sub", { text: said.word }))));
-}
-function formCard() {
-  const box = (...kids) => todaySection("Fitness and form", null, ...kids);
-  if (!S.summed) return box(card(null, null, wait(44), h("div", { vars: { height: "10px" } }), wait(120)));
-  if (!S.acts.some((a) => sumOf(a)?.tss)) return box(card(null, null, h("p.line-said", { text: "Your fitness, fatigue and form come from your rides’ training stress, day by day. Import a few weeks of rides to see them; the more, the truer." }),
-    h("div.acts", { vars: { "margin-top": "12px" } }, h("button.pill", { type: "button", onclick: () => openSheet(uploadFilesView) }, icon("inbox", 17, 2.1), "Bring your rides in"))));
-  const f = fitnessSeries(), last = f.at(-1), said = formSaid(last.tsb), wk = f.at(-8);
-  // (form on a band: strain, building, neutral, fresh, rested; -40 to +30)
-  const at = Math.max(2, Math.min(98, ((last.tsb + 40) / 70) * 100));
-  return box(h("button.card.glass.form-card", { type: "button", onclick: () => openSheet(formView), "aria-label": `Fitness ${Math.round(last.ctl)}, fatigue ${Math.round(last.atl)}, form ${Math.round(last.tsb)}: ${said.word}` },
-    h("div.form-top", {}, h("div", {}, h("small", { text: "Form" }), h("b", { text: signed(last.tsb) })), h("span.word.pill-word.tone-" + said.tone, { text: said.word })),
-    h("div.fband", { "aria-hidden": "true" }, h("span.track"), h("span.knob", { vars: { left: at + "%" } }), h("span.lab", {}, ["Strain", "Building", "Neutral", "Fresh", "Rested"].map((t) => h("span", { text: t })))),
-    h("div.fit-tiles", {},
-      h("div", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("b", { text: Math.round(last.ctl) }), h("small.sub", { text: `${last.ctl >= wk.ctl ? "+" : "−"}${Math.abs(Math.round(last.ctl - wk.ctl))} this week` })),
-      h("div", {}, h("small", {}, h("i.dot-fat"), "Fatigue"), h("b", { text: Math.round(last.atl) }), h("small.sub", { text: last.atl < 5 ? "All but gone" : last.atl > last.ctl ? "Above your fitness" : "Below your fitness" }))),
-    C.fitnessChart(f, { days: 42, W: cardW() }), h("p.line-said", { text: said.line })));
 }
 // The week: hours ridden of what's planned, and how it's balanced, easy against hard (the strip has its days)
 function weekCard() {

@@ -268,6 +268,12 @@ function formView() {
     title: "Fitness and form",
     body: [
       h("div.sheet-top", {}, h("h1", { text: `${said.word}, at ${signed(last.tsb)}` }), h("div.sub", { text: said.line })),
+      // (form on its band: strain, building, neutral, fresh, rested, −40 to +30; and fitness and fatigue now)
+      card("form-now", null,
+        h("div.fband", { "aria-hidden": "true" }, h("span.track"), h("span.knob", { vars: { left: Math.max(2, Math.min(98, ((last.tsb + 40) / 70) * 100)) + "%" } }), h("span.lab", {}, ["Strain", "Building", "Neutral", "Fresh", "Rested"].map((t) => h("span", { text: t })))),
+        h("div.fit-tiles", {},
+          h("div", {}, h("small", {}, h("i.dot-fit"), "Fitness"), h("b", { text: Math.round(last.ctl) }), h("small.sub", { text: `${last.ctl >= (f.at(-8) || last).ctl ? "+" : "−"}${Math.abs(Math.round(last.ctl - (f.at(-8) || last).ctl))} this week` })),
+          h("div", {}, h("small", {}, h("i.dot-fat"), "Fatigue"), h("b", { text: Math.round(last.atl) }), h("small.sub", { text: last.atl < 5 ? "All but gone" : last.atl > last.ctl ? "Above your fitness" : "Below your fitness" })))),
       seg,
       card(null, null, C.fitnessChart(f, { days: Math.min(days, f.length), W: sheetW() }), h("div.legend", {}, h("span", {}, h("i.lg-fit"), `Fitness ${Math.round(last.ctl)}`), h("span", {}, h("i.lg-fat"), `Fatigue ${Math.round(last.atl)}`), h("span", {}, h("i.lg-form"), "Form"))),
       h("p", { text: "Fitness is your training stress averaged over the last six weeks; fatigue, over the last one. Form is the gap between them: below zero you’re carrying fatigue, which is where training does its work; above it, you’re fresh." }),

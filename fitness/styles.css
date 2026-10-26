@@ -1457,3 +1457,7 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
   .morning-card .nt, .morning-card .nc-chip, .nspark *, .nights-chart * { animation: none !important; }
   .nt-row:active, .p-nights:active { transform: none; }
 }
+/* (Fitness and form, from Progress's Form tile: the band and the two tiles, above the chart) */
+.form-now { display: grid; gap: 6px; }
+dialog.sheet.fresh .fband .knob { animation: knob-in 0.8s var(--ease-out) 0.35s backwards; }
+@media (prefers-reduced-motion: reduce) { dialog.sheet.fresh .fband .knob { animation: none; } }
