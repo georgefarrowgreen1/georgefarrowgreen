@@ -205,6 +205,10 @@ test('the record, made safe: numbers within what a person could be, days and wor
   assert.equal(r.workouts[0].steps[1].repeat, 3);
   assert.deepEqual(r.prefs, { units: 'imperial', examples: false });
   assert.ok(!('goneWorkouts' in r));
+  // (where your nights come from, and an event you're riding towards, kept; anything else about them, not)
+  const r2 = cleanState({ prefs: { nights: 'apple' }, rhythm: { days: [0, 60, 60, 60, 0, 150, 90], event: { date: 1795000000000, kind: 'sportive', name: 'Fred\u0000 Whitton', x: 1 } } });
+  assert.equal(r2.prefs.nights, 'apple'); assert.deepEqual(r2.rhythm.event, { date: 1795000000000, kind: 'sportive', name: 'Fred Whitton' });
+  assert.ok(!cleanState({ prefs: { nights: 'fitbit' }, rhythm: { days: [0, 0, 0, 0, 0, 0, 60], event: { date: 1, kind: 'party' } } }).rhythm.event);
   assert.throws(() => cleanState([]), /Bad request/);
   assert.throws(() => cleanState({ workouts: [{ id: 'bad id!' }] }), /Bad request/);
   assert.throws(() => cleanState({ workouts: Array.from({ length: 300 }, (_, i) => ({ id: `w${i}`, steps: Array(250).fill({ secs: 60, from: 0.6, note: 'x'.repeat(100) }) })) }), /more than can be kept/);

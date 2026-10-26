@@ -31,6 +31,10 @@
 // - A rest day may move: a session missed earlier in the week, form good, and another rest day still to come, and the
 //   rest day becomes the catch-up ride.
 // - Rides first; a run and a swim a week as well, where you ride those too.
+// - A target event, where you give one: the six weeks before it themed for it (a sportive's threshold and long days, a
+//   race's top end, a time trial's threshold), no lighter week in the three before it, then a taper: the last two
+//   weeks' riding cut to about 70% and 50%, the intensity kept but shorter, one hard day in the last week; rest two days
+//   before, openers the day before, and the day itself (Mujika & Padilla 2003; Bosquet et al. 2007).
 
 import { workoutById, measure, startOfDay, addDays, mondayOf, DAY } from "./workouts.js";
 import { tssOf } from "./load.js";
@@ -44,7 +48,9 @@ const SPACING = {
   topend: { tempo: 21, sweet: 14, threshold: 10, vo2: 4, sprint: 5 },
 };
 const WORDS = { tempo: "tempo", sweet: "sweet spot", threshold: "threshold", vo2: "VO₂ max", sprint: "sprint", durable: "hard-finish long" };
-export const HARD = new Set(["sweet", "threshold", "vo2", "thirty", "sprint", "durable", "run-tempo", "swim-css"]);
+export const HARD = new Set(["sweet", "threshold", "vo2", "thirty", "sprint", "durable", "run-tempo", "swim-css", "event"]);
+// a target event's kinds: its words, the block theme its last six weeks take, and how long the day itself, in minutes
+export const EVENTS = { sportive: { name: "Sportive", theme: "threshold", mins: 240 }, race: { name: "Road race", theme: "topend", mins: 120 }, tt: { name: "Time trial", theme: "threshold", mins: 60 } };
 // your week, Monday first: minutes each day (0: a rest day), and the rest
 export const DEFAULTS = { days: [0, 60, 60, 60, 0, 150, 90], run: false, swim: false, lean: "balanced", mode: "build" };
 export const LEANS = { balanced: "Balanced", endurance: "Long days", punch: "Punchy rides" };
@@ -157,6 +163,9 @@ export function session(id, t = targets(null)) {
   switch (kind) {
     case "endurance": return make(`Endurance ${hm(mins)}`, "Endurance", "Steady zone 2: conversational all the way. The riding that builds everything else.", [wu(10, 0.5, 0.65), at(Math.max(10, mins - 15), 0.68, "Endurance"), cd(5, 0.6, 0.45)]);
     case "long": return make(`Long ride ${hm(mins)}`, "Endurance", "Your long ride: zone 2 throughout, and eat from the first hour.", [wu(15, 0.5, 0.65), at(Math.max(20, mins - 30), 0.67, "Endurance"), cd(15, 0.6, 0.45)]);
+    // (a target event's last days: openers the day before, and the day itself)
+    case "openers": return make("Openers", "Openers", "Easy riding with three short, sharp efforts: legs awake for tomorrow, nothing taken out of them.", [wu(15, 0.5, 0.65), rep(3, on(1, 1.15, "Opener"), off(3, 0.5)), cd(Math.max(5, mins - 27), 0.6, 0.45)]);
+    case "event": return make("Event day", "Event", "The day it's all been for: warm up well, start steady, eat and drink from the first hour.", [wu(15, 0.5, 0.7), at(Math.max(30, mins - 15), 0.75, "Your event")]);
     case "recovery": return make("Recovery spin", "Recovery", "Easy spinning, nothing more: come away fresher than you started.", [at(Math.min(mins, 60), 0.48, "Easy spin")]);
     // (the hard ones: a ladder each, the block's week climbing it, longer efforts first, then more of them, then harder;
     // as far up as the day's time goes, give or take five minutes)
@@ -274,8 +283,11 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
   // each block's theme: in order the first time round; then whatever moved least in the six weeks before it, or the
   // same again once if it moved a lot
   const themes = [];
+  // (a target event ahead, or just gone: its date, and its kind)
+  const ev = P.event && Number.isFinite(P.event.date) && P.event.date >= addDays(today, -7) && EVENTS[P.event.kind] ? P.event : null;
   const themeOf = (b) => {
     if (themes[b]) return themes[b];
+    if (ev && addDays(start, b * 28 + 27) >= addDays(ev.date, -42) && addDays(start, b * 28) <= ev.date) return (themes[b] = EVENTS[ev.kind].theme);
     if (b < 3) return (themes[b] = ORDER[b]);
     const at0 = addDays(start, b * 28), now = bestsIn(addDays(at0, -42), at0), before = bestsIn(addDays(at0, -84), addDays(at0, -42));
     const gain = (k) => (now[k] && before[k] ? now[k] / before[k] - 1 : null);
@@ -377,7 +389,9 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
 
   function decide(day) {
     const wk = Math.max(0, Math.round((mondayOf(day) - start) / (7 * DAY))), b = Math.floor(wk / 4), bw = wk % 4, theme = themeOf(b);
-    const absorb = bw === 3, hold = P.mode === "hold", dow = (new Date(day).getDay() + 6) % 7, tsb = ctl - atl;
+    // (a target event: how many days to it; no lighter week in the three before it, the taper being that)
+    const toEv = ev ? Math.round((ev.date - day) / DAY) : null, taper = toEv != null && toEv >= 0 && toEv <= 14, evName = ev ? ev.name || EVENTS[ev.kind].name.toLowerCase() : "";
+    const absorb = bw === 3 && !(toEv != null && toEv >= 0 && toEv <= 21), hold = P.mode === "hold", dow = (new Date(day).getDay() + 6) % 7, tsb = ctl - atl;
     let f = day <= today ? feelOf(feel[day]) : "good";
     poorRun = f === "poor" ? poorRun + 1 : 0;
     // (your night: a low HRV, a falling week of it, or a raised resting heart rate eases the day; a short night or three,
@@ -395,6 +409,14 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       avail = Math.max(45, Math.min(90, Math.max(...P.days) / 2)); moved = true; week.moved = true;
     }
     const restWhy = (why) => ({ ...base, id: null, kind: "rest", mins: 0, tss: 0, hard: false, why, fuel: null, strength: false, moved: false });
+    // (the event's own days: the day itself, whatever the week says; rest two days before; openers the day before; and
+    // the day after, rest)
+    if (toEv === 0) { const m = EVENTS[ev.kind].mins, id = `rh:event:${m}`, w = workoutOf(id, T), meas = measure(w, 4);
+      return { ...base, id, kind: "event", mins: Math.round(meas.secs / 60), tss: Math.round(meas.tss), hard: true, why: `${ev.name || EVENTS[ev.kind].name}: the day it's all been for`, fuel: fuelFor(m, true), strength: false, moved: false, event: true }; }
+    if (toEv === 2) return restWhy(`Rest: ${evName} is the day after tomorrow`);
+    if (toEv === -1) return restWhy(`Rest: recover from ${evName}`);
+    if (toEv === 1) { const id = `rh:openers:${Math.min(45, Math.max(35, avail || 40))}`, w = workoutOf(id, T), meas = measure(w, 4);
+      return { ...base, id, kind: "openers", mins: Math.round(meas.secs / 60), tss: Math.round(meas.tss), hard: false, why: `Openers: ${evName} is tomorrow`, fuel: null, strength: false, moved: false }; }
     if (!avail) return restWhy(P.days.some((x) => x) ? "A rest day: fitness is built while you recover" : "Choose the days you ride in Rhythm's settings");
     if (tsb < -25) return restWhy(`Rest: your form is ${Math.round(tsb)}, too tired to train well`);
     if (poorRun >= 2) return restWhy("Rest: you've felt poor two days running");
@@ -402,10 +424,10 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     // the week's training stress: fitness up a few points in a build week (fewer as it gets higher), level in hold,
     // about 60% in an absorb week
     const ramp = hold ? 0 : Math.max(1.5, 4.5 - ctl / 40);
-    const target = absorb ? ctl * 7 * (hold ? 0.8 : 0.6) : (ctl + 6 * ramp) * 7;
+    const target = taper ? ctl * 7 * (toEv <= 7 ? 0.5 : 0.7) : absorb ? ctl * 7 * (hold ? 0.8 : 0.6) : (ctl + 6 * ramp) * 7;
     if (week.target == null) week.target = target;
     const daysLeft = P.days.slice(dow).filter((x) => x > 0).length || 1, share = Math.max(0, (target - week.tss) / daysLeft);
-    const maxHard = absorb ? 1 : hours >= 12 ? 3 : 2, longest = avail === Math.max(...P.days) && avail >= 90;
+    const maxHard = absorb || (taper && toEv <= 7) ? 1 : hours >= 12 ? 3 : 2, longest = avail === Math.max(...P.days) && avail >= 90;
     // (heavy legs, or a poor day, carry over: the day after is easy too)
     const fy = feel[addDays(day, -1)], yesterday = fy && addDays(day, -1) <= today ? (feelOf(fy) === "poor" ? "you weren't feeling good yesterday" : fy.legs === 0 ? "your legs were heavy yesterday" : null) : null;
     // (a good night lets a hard day stand a little deeper into fatigue: form down to −25, not −20)
@@ -445,6 +467,8 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       if (kind === "endurance" || kind === "long") mins = Math.min(mins, Math.max(40, Math.round(cap / 0.77 / 5) * 5));
       // (a hard day: the session, with steady riding round it only as far as the week's budget goes)
       if (HARD.has(kind) || kind === "tempo") mins = Math.min(avail, Math.max(kind === "durable" ? 100 : 55, Math.round(Math.min(share, cap) / (kind === "durable" ? 0.8 : 0.9) / 5) * 5));
+      // (tapering: the intensity kept, the time cut: hard days an hour at most, long rides two hours, then ninety minutes)
+      if (taper) { if (HARD.has(kind) || kind === "tempo") mins = Math.min(mins, 60); if (kind === "long" || kind === "endurance") mins = Math.min(mins, toEv <= 7 ? 90 : 120); }
       // (a missed ride's training made up on the easy days left, as far as they go: said where it's ten minutes or more)
       if ((kind === "endurance" || kind === "long") && week.missedTss > 0 && week.missed) {
         const without = Math.max(40, Math.min(avail, Math.round(Math.max(0, share - week.missedTss / daysLeft) / (kind === "long" ? 0.75 : 0.77) / 5) * 5));
@@ -453,10 +477,11 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       // (the hard ones at their level: the block's week, a step up where every effort's held lately, none in an absorb week)
       const fam = { vo2: "vo2", thirty: "on30", threshold: "thr" }[kind];
       if (LADDERS[kind]) {
-        const up = fam && adjust[fam] > 0 ? 1 : 0, level = absorb ? 0 : hold ? 1 : Math.min(3, bw + up);
+        const up = fam && adjust[fam] > 0 ? 1 : 0, level = absorb ? 0 : taper ? 1 : hold ? 1 : Math.min(3, bw + up);
         id = `rh:${kind}:${mins}:${level}`;
         if (up && level > bw) why += ". A step up: you held every effort last time";
       } else id = `rh:${kind}:${mins}`;
+      if (taper) why = `Tapering for ${evName}: ${HARD.has(kind) ? "the intensity kept, shorter" : "less riding"}, so you arrive fresh`;
       if (wet[day] && (HARD.has(kind) || kind === "tempo")) why += ". Rain forecast: one for the trainer";
       else if (wet[day] && kind === "long") why += ". Rain forecast: dress for it, or take it indoors";
     }
@@ -466,9 +491,9 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     if (moved) why = `Rest day moved: you missed ${new Date(week.missed).toLocaleDateString("en-GB", { weekday: "long" })}'s session. ${why}`;
     // (heavy strength on a hard day, twice a week in aerobic and threshold blocks, once in top end, none when absorbing)
     const strength = hard && !absorb && week.strength < (theme === "topend" ? 1 : 2) && !kind.startsWith("swim");
-    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: w?.sport === "ride" ? fuelFor(mins, hard) : null, strength, moved, need: needed, tsb: Math.round(tsb), night: nightWhy, green: !!(green && hard) };
+    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: w?.sport === "ride" ? fuelFor(mins, hard) : null, strength: strength && !taper, moved, need: needed, tsb: Math.round(tsb), night: nightWhy, green: !!(green && hard), taper };
   }
 
   const at0 = out.find((x) => x.date === today) || null;
-  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, line, cpw, targets: T, adjust, ftpSeen: ftpNew };
+  return { days: out, today: at0, block: at0?.block || { index: 0, theme: "aerobic", week: 0, absorb: false }, ctl: now.ctl, atl: now.atl, seeded, line, cpw, targets: T, adjust, ftpSeen: ftpNew, event: ev ? { ...ev, days: Math.round((ev.date - today) / DAY) } : null };
 }

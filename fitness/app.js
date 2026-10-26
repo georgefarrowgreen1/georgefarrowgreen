@@ -31,7 +31,7 @@ import * as E from "./efforts.js";
 import { askToday, todayView } from "./today.js";
 import { dayStamp, download, planView, rhythmSetup } from "./plan.js";
 import { progressView } from "./progressview.js";
-import { activitiesView, openAct, routes, uploadFilesView, withFigures } from "./activities.js";
+import { activitiesView, figuresOf, openAct, routes, uploadFilesView, withFigures } from "./activities.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -260,11 +260,28 @@ function full(a) {
   return a.sample ? remember(a.id, samples(a, P())) : null;
 }
 const fileKey = (a) => `${S.me?.id}:${a.id}`;
+// A file read off the page's thread (reader.js), each activity with its figures worked out there (as `pre`); where a
+// worker can't be had, or fails, read here instead. → as formats.js readAny
+let readerW = null, readerN = 0;
+const readerWait = new Map();
+function readOff(name, bytes) {
+  if (!readerW && readerW !== false) {
+    try {
+      readerW = new Worker(new URL("./reader.js", import.meta.url), { type: "module" });
+      readerW.onmessage = ({ data }) => { const w = readerWait.get(data.id); if (!w) return; readerWait.delete(data.id); data.error ? w.no(Object.assign(new Error(data.error), { read: true })) : w.ok(data.r); };
+      readerW.onerror = () => { readerW = false; for (const [, w] of readerWait) w.no(Object.assign(new Error("worker"), { worker: true })); readerWait.clear(); };
+    } catch (_) { readerW = false; }
+  }
+  if (!readerW) return F.readAny(name, bytes);
+  const id = ++readerN, u8 = new Uint8Array(bytes).slice();
+  return new Promise((ok, no) => { readerWait.set(id, { ok, no }); readerW.postMessage({ id, name, bytes: u8, profile: P() }, [u8.buffer]); })
+    .catch((e) => (e.worker ? F.readAny(name, bytes) : Promise.reject(e)));
+}
 async function load(a) {
   if (full(a)) return full(a);
   let bytes = await idb.get(fileKey(a)).catch(() => null);
   if (!bytes) { bytes = await A.fileOf(a.id); idb.put(fileKey(a), bytes).catch(() => {}); }
-  const r = await F.readAny(a.file || `activity.${a.type}`, bytes);
+  const r = await readOff(a.file || `activity.${a.type}`, bytes);
   // (a file of several parts, a triathlon's: the part that's this one, by when it started)
   const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
   if (!x) throw new Error("That file has no activity in it any more.");
@@ -571,7 +588,7 @@ async function importFiles(files) {
   toast(`Reading ${plural(files.length, "file")}…`, false, 60000);
   for (const f of files) {
     try {
-      const r = await F.readAny(f.name, await f.arrayBuffer());
+      const r = await readOff(f.name, await f.arrayBuffer());
       for (const a of r.activities) {
         a.parts = r.activities.filter((y) => y.raw?.bytes === a.raw?.bytes).length;
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3) || got.acts.some((x) => x.start === a.start)) { got.dupes++; continue; }
@@ -594,12 +611,14 @@ function uploadView(got) {
     got.skipped.length > 0 && section("Not read", h("div.group", {}, got.skipped.map((t) => h("div.row.plain", {}, h("span.tx", {}, h("small", { text: t })))))),
     h("button.btn.quiet", { type: "button", onclick: () => { closeSheet(); chooseFiles(); } }, "Choose other files")] };
   const rows = got.acts.map((a) => {
-    const sum = summarise(a, P()), tile = h("span.tile.s-" + a.sport, {}, sportIcon(a.sport, 20)), name = h("b", { text: a.name });
+    const sum = a.pre || summarise(a, P()), tile = h("span.tile.s-" + a.sport, {}, sportIcon(a.sport, 20)), name = h("b", { text: a.name });
     // (said only where it matters: a sport worked out, to check; or one you chose)
     const said = h("small.said", { text: "Fitness worked this out: check it" }); said.hidden = !a.guessed;
     const pick = h("select.sport-pick", { "aria-label": `What ${a.name} was`, onchange: () => {
-      const was = defaultFor(a), now = pick.value; a.sport = now; a.guessed = false;
-      if (a.name === was) { a.name = defaultFor(a); name.textContent = a.name; }
+      const was = defaultFor(a), old = a.sport, now = pick.value; a.sport = now; a.guessed = false; delete a.pre;   // (its figures, worked out again for its sport)
+      // (named for its sport and time of day, as Fitness names one: its sport's word changed, whatever clock named it)
+      const word = (sp) => F.defaultName(sp, a.start, false).replace(/^\S+ /, ""), named = new RegExp(`^(Morning|Afternoon|Evening|Night) ${word(old)}$`).exec(a.name);
+      if (a.name === was || named) { a.name = named ? `${named[1]} ${word(now)}` : defaultFor(a); name.textContent = a.name; }
       tile.className = "tile s-" + now; tile.replaceChildren(sportIcon(now, 20)); said.textContent = "Chosen by you"; said.hidden = false;
     } }, SPORT_NAMES.map(([v, l]) => h("option", { value: v, selected: a.sport === v, text: l })));
     return h("div.row.up" + (a.guessed ? ".guess" : ""), {}, tile,
@@ -641,7 +660,7 @@ async function squash() {
       try {
         let bytes = await idb.get(fileKey(a)).catch(() => null);
         if (!bytes) bytes = await A.fileOf(a.id);
-        const r = await F.readAny(a.file || `activity.${a.type}`, bytes), parts = r.activities;
+        const r = await readOff(a.file || `activity.${a.type}`, bytes), parts = r.activities;
         const x = parts.find((y) => Math.abs(y.start - a.start) < 2000) || (parts.length === 1 ? parts[0] : null);
         if (!x) continue;
         const k = keptFile(x, a.sum, parts.length), got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, await A.gzip(k.bytes));
@@ -659,7 +678,7 @@ async function upload(got, btn) {
   const done = [], failed = [];
   for (const [i, a] of got.acts.entries()) {
     btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
-    const sum = withFigures(summarise(a, P()), a), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
+    const sum = figuresOf(a), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
     try {
       const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
       if (r.already) continue;
@@ -700,13 +719,13 @@ async function fromGarmin({ quiet = false } = {}) {
   try {
     for (const w of waiting) {
       let acts;
-      try { acts = (await F.readAny(`garmin-${w.id}.zip`, await A.garminFile(w.id))).activities; }
+      try { acts = (await readOff(`garmin-${w.id}.zip`, await A.garminFile(w.id))).activities; }
       catch (e) { if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
       let kept = 0;
       for (const [k, a] of acts.entries()) {
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
         if (w.name && acts.length === 1) a.name = w.name;
-        const sum = withFigures(summarise(a, P()), a), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
+        const sum = figuresOf(a), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
         try { await A.upload(meta, f.name, await A.gzip(f.bytes)); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
         const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
@@ -1171,7 +1190,7 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
-const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js"];
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
 versionNow().then((v) => { version = v; });

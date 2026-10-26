@@ -67,7 +67,12 @@ function rhythmIntro(wk = [[0, "z1"], [44, "z4"], [30, "z2"], [40, "z6"], [0, "z
       h("p.rh-note", { text: "Four questions, about a minute" }));
 }
 // ---- Rhythm, on the Plan tab: where you are in the block, the days ahead, and your week ----
-const rhythmSaid = () => { const b = rh().block; return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`; };
+// (where you are in Rhythm: counting down to your event, in its last twelve weeks; else the block and its week)
+const rhythmSaid = () => {
+  const r = rh(), b = r.block, ev = r.event;
+  if (ev && ev.days >= 0 && ev.days <= 84) return `${ev.name || R.EVENTS[ev.kind].name} · ${ev.days === 0 ? "today" : ev.days < 14 ? `${plural(ev.days, "day")} to go` : `${plural(Math.round(ev.days / 7), "week")} to go`}`;
+  return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`;
+};
 function rhythmView() {
   const r = rh(), b = r.block, prefs = { ...R.DEFAULTS, ...S.rhythm }, mon = mondayOf(TODAY), from = S.rhythm.at ?? S.rhythm.start ?? mon;
   const out = [head("Plan", rhythmSaid())];
@@ -278,14 +283,14 @@ function workoutsView() {
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
 // like to ride, build or hold, and the first week it gives you before anything's kept
-function rhythmSetup({ first = false } = {}) {
+function rhythmSetup({ first = false, at = null } = {}) {
   const editing = !!S.rhythm, draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
   draft.days = [...draft.days];
   const cancel = () => h("button.link.r", { type: "button", onclick: closeSheet }, "Cancel");
   // (the steps: someone new has had Garmin's first; little of your own riding to go by, a step asking where you've
   // been, so Rhythm starts there; your numbers, setting up, not changing your week)
   const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY);
-  const STEPS = [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "preview"].filter(Boolean);
+  const STEPS = [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "event", "preview"].filter(Boolean);
   const dots = (k) => { const n = STEPS.indexOf(k) + 1; return h("div.rh-dots", { "aria-label": `Step ${n} of ${STEPS.length}` }, STEPS.map((_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : "")))); };
   const top = (k, title, sub) => [dots(k), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
@@ -368,7 +373,26 @@ function rhythmSetup({ first = false } = {}) {
         card("build", "Keep building", "Up a few points a week, never faster, with a lighter week every fourth. Uses all the time you gave.", "M0 54 C40 50, 60 46, 90 42 S 130 40, 150 40 C170 40, 190 32, 230 26 S 280 20, 300 18 L326 14", "up"),
         card("hold", "Hold where I am", "Fitness kept level with less riding: shorter sessions, the hard work kept.", "M0 32 C40 28, 70 34, 110 31 S 170 28, 200 32 S 270 34, 326 30", "level")),
       h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), isSet("ftp") ? ", as you set it." : ", worked out from your rides till you set it.", " Rhythm sets every interval from it, and from your power curve once your rides show it.")),
-      next("See your first week", preview)] };
+      next("Next", event)] };
+  };
+  // 3b. Riding towards something: a sportive, a race or a time trial, its date and its name; or nothing in particular
+  const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const event = () => {
+    const ev = draft.event || null, k = ev?.kind || "none";
+    const set = (kind) => { draft.event = kind === "none" ? null : { kind, date: ev?.date ?? null, name: ev?.name || "" }; Sheet.redraw(); };
+    const opt = (kind, t, sub, ic) => h("button.rh-choice" + (k === kind ? ".on" : ""), { type: "button", role: "radio", "aria-checked": String(k === kind), onclick: () => set(kind) },
+      h("span.ic.ev-ic." + kind, {}, icon(ic, 16, 2.2)), h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })), h("span.tick", {}, k === kind ? icon("check", 13, 3.2) : null));
+    const date = h("input.field", { type: "date", "aria-label": "Its date", min: ymd(addDays(TODAY, 3)), max: ymd(addDays(TODAY, 365)), value: ev?.date ? ymd(ev.date) : "",
+      onchange: () => { const [y, m, d] = date.value.split("-").map(Number); if (ev && y) { ev.date = startOfDay(new Date(y, m - 1, d, 12).getTime()); Sheet.redraw(); } } });
+    const name = h("input.field", { type: "text", maxlength: "60", placeholder: "Its name (optional)", "aria-label": "Its name", value: ev?.name || "", oninput: () => { if (ev) ev.name = name.value.trim().slice(0, 60); } });
+    const go = () => { if (ev && !ev.date) { toast("Choose its date", true); return date.focus(); } pushSheet(preview); };
+    const weeksTo = ev?.date ? Math.round((ev.date - TODAY) / (7 * DAY)) : null;
+    return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("event", "Riding towards something?", "Rhythm shapes the weeks before it for what it asks of you, then tapers, so you arrive fresh. Or nothing in particular: Rhythm keeps you getting fitter."),
+      h("div.rh-choices", { role: "radiogroup", "aria-label": "Riding towards" },
+        opt("none", "Nothing in particular", "Fitter, all year", "wave"), opt("sportive", "A sportive", "Long days, climbs: threshold and staying power", "mountain"),
+        opt("race", "A road race", "Attacks and sprints: top-end work", "bolt"), opt("tt", "A time trial", "Steady and hard: threshold", "gauge")),
+      ev && h("div.ev-when", {}, date, name, h("small.rh-note", { text: weeksTo != null ? (weeksTo >= 6 ? `${plural(weeksTo, "week")} away: the last six themed for it, then a two-week taper.` : weeksTo >= 2 ? `${plural(weeksTo, "week")} away: straight into the build for it, then the taper.` : "Close: Rhythm goes straight into the taper.") : "The day, so Rhythm can count back from it." })),
+      h("button.btn.rh-next", { type: "button", onclick: go }, "See your first week")] };
   };
   // 4. The first week, as Rhythm would have it, before anything's kept
   const preview = () => {
@@ -391,7 +415,8 @@ function rhythmSetup({ first = false } = {}) {
       h("button.btn.rh-next", { type: "button", onclick: start }, editing ? "Save" : "Start Rhythm"),
       h("p.rh-note", { text: "Change your week any time in Plan" })] };
   };
-  openSheet(days, { tall: true });
+  // (straight to your event, from Today's Riding towards: then on to the next seven days, and saved)
+  openSheet(at === "event" && editing ? event : days, { tall: true });
 }
 // A plan: what a week of it looks like, and when to start it: next Monday, or so it ends on your event's day (a plan of
 // 16 weeks to an event 10 weeks off starts six weeks in)

@@ -128,3 +128,19 @@ test("nights: a falling week, three short nights, and a good night", () => {
   assert.ok(r.days.filter((d) => d.date > today && d.date <= add(today, 2)).every((d) => !d.hard));
   assert.ok(readinessOf(-10, null, good).v > readinessOf(-10, null, null).v && readinessOf(-10, null, falling).v < readinessOf(-10, null, null).v);
 });
+
+test("a target event: the day itself, openers the day before, rest two days before, a taper before that", () => {
+  const ev = { date: add(today, 6), kind: "sportive", name: "Fred Whitton" };
+  const r = RH.plan({ prefs: { start: add(monOf(today), -21), days: [60, 60, 60, 60, 60, 150, 90], event: ev }, acts: steady(8), today, ftp: 260 });
+  const on = (d) => r.days.find((x) => x.date === add(today, d));
+  assert.equal(on(6).kind, "event"); assert.ok(/Fred Whitton/.test(on(6).why) && RH.workoutOf(on(6).id, r.targets).name === "Event day");
+  assert.equal(on(5).kind, "openers"); assert.equal(on(4).kind, "rest");
+  assert.equal(on(7).kind, "rest"); assert.ok(/recover from/i.test(on(7).why));
+  const last = r.days.filter((d) => d.date >= today && d.date < ev.date);
+  assert.ok(last.filter((d) => d.hard).length <= 1, "one hard day at most in the last week");
+  assert.ok(last.filter((d) => d.kind !== "rest" && d.kind !== "openers").every((d) => d.taper && d.mins <= 95), JSON.stringify(last.map((d) => [d.kind, d.mins])));
+  assert.equal(r.event.days, 6);
+  // (and the weeks before it themed for it: a sportive's, threshold)
+  const far = RH.plan({ prefs: { start: monOf(today), days: [60, 60, 60, 60, 60, 150, 90], event: { date: add(today, 30), kind: "race" } }, acts: steady(8), today, ftp: 260 });
+  assert.equal(far.block.theme, "topend");
+});

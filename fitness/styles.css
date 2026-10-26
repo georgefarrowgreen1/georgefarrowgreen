@@ -1461,3 +1461,58 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 .form-now { display: grid; gap: 6px; }
 dialog.sheet.fresh .fband .knob { animation: knob-in 0.8s var(--ease-out) 0.35s backwards; }
 @media (prefers-reduced-motion: reduce) { dialog.sheet.fresh .fband .knob { animation: none; } }
+
+/* ---- your history on Progress: this year against last, all-time bests, each year's peak; a year in review ---- */
+.p-history { display: grid; gap: 10px; width: 100%; padding: 16px 16px 12px; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out); }
+.p-history:active { transform: scale(0.985); }
+.ph-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.ph-top small { display: block; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.ph-top b { font: 700 30px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; } .ph-top b u { text-decoration: none; font-size: 15px; color: var(--text-2); }
+.ph-vs { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.ph-vs.up { color: var(--good-text); background: color-mix(in srgb, var(--good) 15%, transparent); } .ph-vs.down { color: var(--warn); background: color-mix(in srgb, #ffb547 16%, transparent); }
+.years-chart .y-prev { fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-dasharray: 4 4; opacity: 0.6; }
+.years-chart .y-cur { fill: none; stroke: var(--tint); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.years-chart .y-area { fill: color-mix(in srgb, var(--tint) 14%, transparent); }
+.years-chart .y-now { fill: var(--tint); stroke: var(--glass-strong); stroke-width: 2; } .years-chart .y-then { fill: var(--text-3); }
+.n-key .k-cur { background: var(--tint); height: 3px; } .n-key .k-prev { height: 0; border-top: 2px dashed var(--text-3); border-radius: 0; }
+.ph-more { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--tint-text); }
+.ph-bests .row { min-height: 56px; }
+.ph-len { flex: none; width: 52px; font: 700 14px/1 var(--font-d); color: var(--text-2); }
+.ph-yr { font-size: 13px; color: var(--text-2); white-space: nowrap; } .ph-yr.best { color: var(--good-text); font-weight: 650; }
+.ph-peaks { display: grid; gap: 10px; padding: 16px; }
+.pk-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px 32px; align-items: center; gap: 10px; }
+.pk-row small { font-size: 13px; font-weight: 600; color: var(--text-2); } .pk-row b { font: 700 15px/1 var(--font-d); text-align: right; font-variant-numeric: tabular-nums; }
+.pk-row .pk-when { font-weight: 500; color: var(--text-3); }
+.pk-bar { height: 10px; border-radius: 5px; background: var(--field); overflow: hidden; } .pk-bar i { display: block; height: 100%; border-radius: 5px; background: color-mix(in srgb, var(--fit) 55%, transparent); }
+.pk-row.now .pk-bar i { background: var(--fit); } .pk-row.now small:first-child { color: var(--text); }
+.month-bars .mb { fill: color-mix(in srgb, var(--tint) 45%, transparent); } .month-bars .mb.top { fill: var(--tint); }
+:is(.screen.in, dialog.sheet.fresh) .years-chart .y-cur { stroke-dasharray: 1; animation: n-draw 1.3s var(--ease-out) 0.25s backwards; }
+:is(.screen.in, dialog.sheet.fresh) :is(.years-chart .y-area, .years-chart .y-prev) { animation: fade-up 1s var(--ease-out) 0.4s backwards; }
+:is(.screen.in, dialog.sheet.fresh) .years-chart .y-now { transform-box: fill-box; transform-origin: center; animation: n-pop 0.5s var(--ease-spring, var(--ease-out)) 1.3s backwards; }
+.screen.in .pk-bar i { animation: bar-grow 0.9s var(--ease-out) 0.3s backwards; }
+dialog.sheet.fresh .month-bars .mbars { transform-box: fill-box; transform-origin: 50% 100%; animation: n-rise 0.8s var(--ease-out) 0.3s backwards; }
+@media (prefers-reduced-motion: reduce) { .years-chart *, .pk-bar i, .month-bars * { animation: none !important; } .p-history:active { transform: none; } }
+
+/* ---- your week, on Sundays ---- */
+.review-card { display: grid; gap: 12px; padding: 16px; }
+.rv-row { display: flex; align-items: flex-start; gap: 12px; }
+.rv-row .ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
+.rv-row .tx { display: grid; gap: 2px; min-width: 0; } .rv-row .tx b { font-size: 15px; font-weight: 600; } .rv-row .tx small { font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.rv-next { display: grid; gap: 10px; margin: 4px -16px -16px; padding: 14px 16px 16px; border-top: 0.5px solid var(--line); background: color-mix(in srgb, var(--tint) 6%, transparent); border-radius: 0 0 var(--r-hero, 28px) var(--r-hero, 28px); }
+.rv-next-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; } .rv-next-top b { font-size: 16px; } .rv-next-top small { font-size: 13px; color: var(--text-2); text-align: right; }
+.rv-days { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; } .rv-days::-webkit-scrollbar { display: none; }
+.rv-day { flex: none; display: grid; gap: 2px; padding: 10px 12px; border: 0; border-radius: 14px; background: var(--glass-strong); box-shadow: var(--edge); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out); }
+.rv-day:active { transform: scale(0.96); } .rv-day small { font-size: 12px; font-weight: 600; color: var(--text-2); } .rv-day b { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.rv-why { font-size: 13px; line-height: 1.4; color: var(--text-2); }
+:is(.screen.in, .day-in) .review-card .rv-row { animation: rise 0.5s var(--ease-out) backwards; }
+:is(.screen.in, .day-in) .review-card .rv-row:nth-child(2) { animation-delay: 70ms; } :is(.screen.in, .day-in) .review-card .rv-row:nth-child(3) { animation-delay: 140ms; }
+:is(.screen.in, .day-in) .review-card .rv-row:nth-child(4) { animation-delay: 210ms; } :is(.screen.in, .day-in) .review-card .rv-next { animation: rise 0.55s var(--ease-out) 280ms backwards; }
+@media (prefers-reduced-motion: reduce) { .review-card .rv-row, .review-card .rv-next { animation: none !important; } .rv-day:active { transform: none; } }
+/* (Rhythm's setup: riding towards an event, its kind, then its day and name) */
+.ev-ic { flex: none; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: #fff; }
+.ev-ic.none { background: linear-gradient(160deg, #9aa3b8, #6b7389); } .ev-ic.sportive { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
+.ev-ic.race { background: linear-gradient(160deg, #ff8a7a, #e8453a); } .ev-ic.tt { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.ev-when { display: grid; gap: 10px; margin-top: 14px; animation: rise 0.45s var(--ease-out); }
+.ev-when input[type="date"] { min-height: 48px; }
+@media (prefers-reduced-motion: reduce) { .ev-when { animation: none; } }
+.ph-vs:not(.up):not(.down) { color: var(--tint-text); background: color-mix(in srgb, var(--tint) 13%, transparent); }

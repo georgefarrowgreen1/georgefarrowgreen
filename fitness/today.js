@@ -33,7 +33,7 @@ function todayView() {
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
-  left.push(rhythmSays(), isToday && morningCard(w));
+  left.push(rhythmSays(), isToday && morningCard(w), isToday && reviewCard());
   right.push(planned && weekCard(), headingCard(), planRows());
   out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
   return out;
@@ -149,7 +149,12 @@ function rhythmSays() {
     note(up ? "green" : "amber", "gauge", `${said.name[0].toUpperCase() + said.name.slice(1)} targets ${up ? "up" : "down"} ${by}`,
       up ? `Every effort held in ${of}, and with room to spare: Rhythm has raised them to match.` : said.allHeld ? `Held, but only just, in ${of}: Rhythm has eased them a little.` : `Not every effort held in ${of}: Rhythm has eased them to what you’ve been riding.`);
   }
-  if (notes.length < 3) {
+  // (your event: the day itself, and the taper before it)
+  const ev = r.event, evName = ev ? ev.name || R.EVENTS[ev.kind].name.toLowerCase() : "";
+  if (ev?.days === 0) note("green", "medal", "Today’s the day", "Warm up well, start steady, and eat and drink from the first hour. Enjoy it.");
+  else if (ev && ev.days > 0 && ev.days <= 14 && notes.length < 3) note("indigo", "wave", `Tapering for ${evName}`, `Less riding, the intensity kept, so you arrive fresh: rest two days before, openers the day before.${ev.days <= 7 ? "" : " One more week of it."}`);
+  else if (ev && ev.days > 14 && ev.days <= 42 && notes.length < 3) note("indigo", "trend", `Building for ${evName}`, `${plural(Math.round(ev.days / 7), "week")} to go: the sessions are shaped for it, then a two-week taper.`);
+  if (notes.length < 3 && !(ev && ev.days >= 0 && ev.days <= 14)) {
     const b = r.block;
     if (b.absorb) note("indigo", "wave", "A lighter week", "Less riding this week, so the last three weeks sink in. Then the next block.");
     else if (b.week === 2) note("indigo", "wave", "Last full week of the block", `A lighter week follows, then ${({ aerobic: "threshold work", threshold: "top-end work", topend: "a new aerobic block" })[b.theme]}.`);
@@ -179,6 +184,7 @@ function planRows() {
   const prefs = rhythmOn() ? { ...R.DEFAULTS, ...S.rhythm } : null, nd = prefs ? prefs.days.filter((x) => x > 0).length : 0, hrs = prefs ? prefs.days.reduce((a, x) => a + x, 0) : 0;
   return section(null, h("div.group.glass", {},
     prefs && row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""} · ${prefs.mode === "hold" ? "holding" : "building"}`, onclick: () => rhythmSetup() }),
+    prefs && row({ icon: "medal", tint: "green", title: "Riding towards", sub: prefs.event?.date >= TODAY ? `${prefs.event.name || R.EVENTS[prefs.event.kind].name}, ${new Date(prefs.event.date).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}` : "Nothing in particular: a sportive, a race or a time trial?", onclick: () => rhythmSetup({ at: "event" }) }),
     row({ icon: "list", tint: "indigo", title: "Workouts", sub: S.mine.length ? `The library, and ${plural(S.mine.length, "of your own", "of your own")}` : "The library, to ride any day", onclick: () => openSheet(workoutsView, { tall: true }) })));
 }
 // a length of time as a clock has it: 1:30
@@ -332,7 +338,7 @@ function effortFigs(a, x) {
 function keepEfforts(a, figs) {
   if (!figs.efforts || sumOf(a)?.efforts === figs.efforts && sumOf(a)?.effFtp === figs.effFtp) return;
   a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
-  if (signed()) A.addFigures(a.id, figs).catch(() => {});
+  if (S.me) A.addFigures(a.id, figs).catch(() => {});
 }
 const effortsSeen = new Map();
 function effortsNow(a) {
@@ -441,6 +447,47 @@ function morningCard(w) {
     day === TODAY && h("div.mc-sep"),
     day === TODAY && feelCard(w, true)));
 }
+// ---- The week in review, on Sundays: what you rode against the plan, the efforts you held, your nights, how fitness
+// and form moved, and what next week holds and why (Rhythm's next seven days) ----
+function reviewCard() {
+  if ((new Date(TODAY).getDay() + 6) % 7 !== 6 || !S.summed) return null;
+  const mon = mondayOf(TODAY), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const planned = days.filter((d) => { const id = d >= began ? plannedOn(d) : null; return id && id !== "event"; });
+  const done = days.filter((d) => actsOn(d).length), acts = days.flatMap((d) => actsOn(d));
+  const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0), planSecs = planned.reduce((t, d) => { const w = wkById(plannedOn(d)); return t + (w ? measure(w, paceFor(w.sport)).secs : 0); }, 0);
+  const rows = [];
+  const line = (ic, tint, title, text) => rows.push(h("div.rv-row", {}, h("span.ic." + tint, {}, icon(ic, 15, 2.3)), h("span.tx", {}, h("b", { text: title }), h("small", { text: text }))));
+  // (rides against the plan)
+  line("ride", "coral", planned.length ? `${done.length} of ${planned.length} ${planned.length === 1 ? "session" : "sessions"} ridden` : `${plural(done.length, "day")} out`,
+    planSecs ? `${dur(secs)} of ${dur(planSecs)} planned${planned.filter((d) => d < TODAY && !actsOn(d).length).length ? `; ${dayList(planned.filter((d) => d < TODAY && !actsOn(d).length))} missed` : ""}` : `${dur(secs)} in all`);
+  // (the efforts held)
+  const eff = acts.map((a) => sumOf(a)).filter((x) => x?.efforts > 0), held = eff.reduce((t, x) => t + (x.held || 0), 0), all = eff.reduce((t, x) => t + x.efforts, 0);
+  if (all) line("bolt", held === all ? "green" : "amber", held === all ? `Every effort held: ${all} of ${all}` : `${held} of ${all} efforts held`, held === all ? `Across ${plural(eff.length, "session")}: Rhythm nudges the targets up when it’s easy.` : "Rhythm sets the next ones to what you’ve been holding.");
+  // (your nights)
+  const well = wellByDay(), nights = days.map((d) => well[d]).filter(Boolean);
+  if (nights.length >= 3) {
+    const avg = (k) => { const xs = nights.map((n) => n[k]).filter((v) => v > 0); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; };
+    const hv = avg("hrv"), sl = avg("sleep"), n = R.nightOf(well, days.filter((d) => well[d]).at(-1));
+    line("moon", n?.trendLow ? "amber" : "indigo", sl ? `${hmN(sl)} a night` : "Your nights", [hv && `HRV ${Math.round(hv)} on average${n?.lo ? (hv < n.lo ? ", under your usual" : ", in your usual range") : ""}`, n?.trendLow && "a week under par"].filter(Boolean).join(", ") || "From your watch");
+  }
+  // (fitness and form)
+  const f = fitnessSeries(), at = (d) => f.find((x) => x.day === d) || f.at(-1), a0 = at(addDays(mon, -1)), a1 = f.at(-1), gain = Math.round(a1.ctl - a0.ctl);
+  line("trend", gain >= 0 ? "blue" : "grey", `Fitness ${Math.round(a1.ctl)}, ${gain > 0 ? `up ${gain}` : gain < 0 ? `down ${-gain}` : "level"}`, `Form ${signed(a1.tsb)}: ${formSaid(a1.tsb).word.toLowerCase()} going into the week ahead.`);
+  // (next week, with Rhythm: the hard days, and where the block's going)
+  let next = null;
+  if (rhythmOn()) {
+    const r = rh(), ahead = r.days.filter((d) => d.date > TODAY && d.date <= addDays(TODAY, 7)), hard = ahead.filter((d) => d.hard || d.kind === "long" || d.kind === "event");
+    const b = ahead[0]?.block, theme = b ? `${R.THEMES[b.theme]} block, ${b.absorb ? "a lighter week to let it sink in" : `week ${b.week + 1} of 4`}` : "";
+    const hrs = ahead.reduce((t, d) => t + (d.mins || 0), 0);
+    next = h("div.rv-next", {}, h("div.rv-next-top", {}, h("b", { text: "Next week" }), h("small", { text: `${dur(hrs * 60)} · ${theme}` })),
+      h("div.rv-days", {}, hard.map((d) => { const w = wkById(S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id); return w && h("button.rv-day", { type: "button", onclick: () => lookAt(d.date) }, h("small", { text: dayShortName(d.date) }), h("b", { text: w.name })); })),
+      ahead[0]?.block?.absorb ? h("small.rv-why", { text: "Lighter, so the last three weeks sink in: the next block starts fitter." }) : hard[0] && h("small.rv-why", { text: hard[0].why }));
+  }
+  return todaySection("Your week", `${dayShort(mon)} to ${dayShort(TODAY)}`, h("div.card.glass.review-card", {}, rows, next));
+}
+const dayShortName = (d) => new Date(d).toLocaleDateString("en-GB", { weekday: "short" });
+const dayList = (ds) => { const n = ds.map((d) => new Date(d).toLocaleDateString("en-GB", { weekday: "long" })); return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0] || ""; };
 // Your nights, in full: the last two months, what Rhythm does with them (today's in colour), and where they come from
 function nightsView() {
   const src = nightsFrom(), ser = nightsSeries(60), n = lastNight()?.n, had = ser.filter((x) => x.hrv != null || x.rhr != null || x.sleep != null).length;

@@ -226,3 +226,27 @@ export function nightsChart(all, { W = 340, label = "night" } = {}) {
     ${head(y3, "Sleep", sl ? hm(sl) : "")}<line class="n-7" x1="${L}" x2="${W - R}" y1="${f1(yc(7 * 3600))}" y2="${f1(yc(7 * 3600))}"/><text x="${W - R + 5}" y="${f1(yc(7 * 3600) + 4)}">7 h</text><g class="n-bars">${bars}</g>
     <text x="${L}" y="${H - 2}">${n} ${label}s ago</text><text x="${W - R}" y="${H - 2}" text-anchor="end">Last ${label}</text></svg>`);
 }
+
+// ---- your history ----
+// This year against last: each one's distance added up through the year, last year's the whole of it, faint; this
+// year's to today, bright, its dot today; the months along the foot. cur, prev: [[day of year, metres, seconds]]
+export function yearsChart(cur, prev, { W = 340, km = (m) => m / 1000, unit = "km", years = ["", ""] } = {}) {
+  const H = 168, L = 4, R = 40, top = 16, foot = 24, max = Math.max(1, ...cur.map((p) => p[1]), ...prev.map((p) => p[1]));
+  const x = (d) => L + (d / 365) * (W - L - R), y = (m) => top + (1 - m / max) * (H - top - foot);
+  const path = (pts) => pts.filter((_, i) => i % 2 === 0 || i === pts.length - 1).map((p, i) => `${i ? "L" : "M"}${f1(x(p[0]))} ${f1(y(p[1]))}`).join("");
+  const months = "JFMAMJJASOND".split("").map((m, i) => `<text x="${f1(x(i * 30.4 + 15))}" y="${H - 6}" text-anchor="middle">${m}</text>`).join("");
+  const grid = [0.5, 1].map((f) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${f1(y(max * f))}" y2="${f1(y(max * f))}"/><text x="${W - R + 6}" y="${f1(y(max * f) + 4)}">${Math.round(km(max * f)).toLocaleString("en-GB")}</text>`).join("");
+  const c = cur.at(-1), p = prev.length ? prev[Math.min(prev.length - 1, c?.[0] ?? 0)] : null;
+  return svg(`<svg class="chart years-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${years[0]}: ${Math.round(km(c?.[1] || 0))} ${unit} so far${p ? `; ${years[1]} by the same day, ${Math.round(km(p[1]))} ${unit}` : ""}">${grid}
+    ${prev.length ? `<path class="y-prev" d="${path(prev)}"/>` : ""}${p ? `<circle class="y-then" cx="${f1(x(p[0]))}" cy="${f1(y(p[1]))}" r="3"/>` : ""}
+    <path class="y-area" d="${path(cur)}L${f1(x(c?.[0] || 0))} ${f1(y(0))}L${f1(x(0))} ${f1(y(0))}Z"/><path class="y-cur" pathLength="1" d="${path(cur)}"/>
+    ${c ? `<circle class="y-now" cx="${f1(x(c[0]))}" cy="${f1(y(c[1]))}" r="4.5"/>` : ""}${months}</svg>`);
+}
+// A year month by month: each month's time as a bar, the biggest marked
+export function monthBars(months, { W = 340 } = {}) {
+  const H = 96, foot = 18, max = Math.max(1, ...months), bw = (W - 8) / 12 - 6;
+  const top = months.indexOf(max);
+  const bars = months.map((s, i) => { const h = Math.max(s ? 3 : 0, (s / max) * (H - foot - 8)); return `<rect class="mb${i === top ? " top" : ""}" x="${f1(4 + i * ((W - 8) / 12) + 3)}" y="${f1(H - foot - h)}" width="${f1(bw)}" height="${f1(h)}" rx="3"/>`; }).join("");
+  const labels = "JFMAMJJASOND".split("").map((m, i) => `<text x="${f1(4 + i * ((W - 8) / 12) + 3 + bw / 2)}" y="${H - 4}" text-anchor="middle">${m}</text>`).join("");
+  return svg(`<svg class="chart month-bars" viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="mbars">${bars}</g>${labels}</svg>`);
+}

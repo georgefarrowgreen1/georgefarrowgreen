@@ -4,6 +4,7 @@
 import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, calendar, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dur, fileKey, fitness, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, idb, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plan, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, upload, wait, weeks, wkById, zoneOf } from "./app.js";
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
+import { stayingOf } from "./load.js";
 
 // ---- Activities ----
 const PAGE = 60;
@@ -100,26 +101,12 @@ function actRow(a) {
     h("span.tx", {}, h("b", { text: named }), h("small.one-line", { text: `${dayShort(a.start)} · ${pw && pw.sport === a.sport ? pw.name : a.device || (a.sample ? "Example" : "Uploaded")}` })),
     h("span.val", {}, s ? hm(s.moving) : "", h("small", { text: s?.tss != null ? `TSS ${s.tss}` : "" })));
 }
-// A ride's staying power, from its samples: heart rate's drift against power, its second half on its first (rides of 90
-// minutes and more with both: under 5% is a well-built base), and its best 20 minutes after the first two hours
+// A ride's staying power (load.js stayingOf), marked with the version it was worked out to
 const XV = 2;
-function staying(a) {
-  const out = { xv: XV };
-  if (a.sport !== "ride" || !a.s?.pwr) return out;
-  const ps = perSecond(a), p = ps.pwr, hr = ps.hr, n = p?.length || 0;
-  if (hr && n >= 5400) {
-    const ef = (from, to) => { let w = 0, b = 0, c = 0; for (let i = from; i < to; i++) if (ps.moving[i] && p[i] > 0 && hr[i] > 0) { w += p[i]; b += hr[i]; c++; } return c > 600 ? w / b : null; };
-    const e1 = ef(0, n >> 1), e2 = ef(n >> 1, n);
-    if (e1 && e2) out.drift = Math.round(((e1 - e2) / e1) * 1000) / 10;
-  }
-  if (n >= 7200 + 1200) {
-    let sum = 0, best = 0;
-    for (let i = 7200; i < n; i++) { sum += Number.isFinite(p[i]) ? p[i] : 0; if (i >= 7200 + 1200) sum -= Number.isFinite(p[i - 1200]) ? p[i - 1200] : 0; if (i >= 7200 + 1199) best = Math.max(best, sum / 1200); }
-    if (best > 0) out.late20 = Math.round(best);
-  }
-  return out;
-}
+const staying = (a) => ({ xv: XV, ...stayingOf(a) });
 const withFigures = (sum, a) => ({ ...withRoute(sum, a), ...staying(a), ...effortFigs(a, a) });
+// (an activity's figures: as the worker worked them out (app.js readOff), where it did, else here)
+const figuresOf = (a) => (a.pre ? { ...a.pre, xv: XV, ...effortFigs(a, a) } : withFigures(summarise(a, P()), a));
 // The ones kept before rows had these: each read from its file as the app opens, a few at a time, and its route's shape
 // and staying power added (one with no route, an indoor ride, remembered here so it isn't looked for again)
 async function routes() {
@@ -283,4 +270,4 @@ function formView() {
   };
 }
 
-export { actRow, activitiesView, formView, openAct, rollAvg, routes, staying, uploadFilesView, withFigures, zoneBars };
+export { actRow, activitiesView, figuresOf, formView, openAct, rollAvg, routes, staying, uploadFilesView, withFigures, zoneBars };

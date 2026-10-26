@@ -1,7 +1,7 @@
 // Fitness's Progress: how you're coming on, the story first; power, training and engine, each a sheet (progress.js
 // has the figures). Drawn by app.js render.
 
-import { nightsFrom, nightsSeries } from "./app.js";
+import { nightsFrom, nightsSeries, U, distNum, stat } from "./app.js";
 import { nightsView } from "./today.js";
 import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
 import { formView, openAct, staying, uploadFilesView } from "./activities.js";
@@ -59,6 +59,8 @@ function progressView() {
   const src = nightsFrom(), ns = src ? nightsSeries(60) : null, had = ns ? ns.filter((x) => x.hrv != null || x.rhr != null || x.sleep != null).length : 0;
   if (had >= 3) out.push(section(["Recovery", h("span.aside", { text: src === "apple" ? "Apple Watch" : "Garmin" })],
     h("button.card.glass.p-nights", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": "Your nights, in full" }, C.nightsChart(ns, { W: cardW() }))));
+  // your history, where there's most of a year of it: this year against last, the bests of all time, each year's peak
+  if (Math.min(...acts.map((a) => a.start)) < addDays(TODAY, -300)) out.push(...historySection(acts, f));
   // what stands out
   const cards = insights(acts, from);
   out.push(section(["What stands out", h("span.aside", { text: cards.length > 1 ? `${cards.length} things` : "" })], cards.length ? h("div.p-cards", {}, cards) : h("p.foot.none", { text: "Ride a few more weeks, and what stands out shows here." })));
@@ -70,6 +72,48 @@ function progressView() {
     row({ icon: "heart", tint: "red", title: "Engine", sub: "FTP, efficiency and staying power", onclick: () => openSheet(engineView, { tall: true }) }))));
   return out;
 }
+// ---- your history ----
+const fullDist = (m) => { const [v, u] = distNum(m); return `${Number(v) >= 100 ? Math.round(Number(v)).toLocaleString("en-GB") : v} ${u}`; };
+function historySection(acts, f) {
+  const y = G.yearOf(TODAY), cur = G.cumulative(acts, y, TODAY), prev = G.cumulative(acts, y - 1), at = cur.at(-1), then = prev[Math.min(prev.length - 1, at[0])];
+  const km = (m) => (U.metric ? m / 1000 : m / 1609.344), unit = U.metric ? "km" : "mi", pct = then?.[1] > 0 ? Math.round((at[1] / then[1] - 1) * 100) : null;
+  const [v, u] = distNum(at[1]), first = G.yearOf(Math.min(...acts.map((a) => a.start)));
+  const pk = G.peaks(f), years = Object.keys(pk).map(Number).filter((x) => x >= first).sort((a, b) => b - a).slice(0, 5), top = Math.max(1, ...years.map((x) => pk[x].ctl));
+  const bests = G.allTime(acts, TODAY);
+  return [
+    section(["Your history", h("span.aside", { text: `Since ${first}` })],
+      h("button.card.glass.p-history", { type: "button", onclick: () => openYear(y), "aria-label": `${y} so far: ${fullDist(at[1])}. Your year in review` },
+        h("div.ph-top", {}, h("div", {}, h("small", { text: `${y} so far` }), h("b", {}, Number(v) >= 100 ? Math.round(Number(v)).toLocaleString("en-GB") : v, h("u", { text: ` ${u}` }))),
+          pct != null && h("span.ph-vs" + (pct > 0 ? ".up" : pct < 0 ? ".down" : ""), { text: pct ? `${pct > 0 ? "+" : "−"}${Math.abs(pct)}% on ${y - 1} by now` : `Level with ${y - 1} by now` })),
+        C.yearsChart(cur, prev, { W: cardW(), km, unit, years: [y, y - 1] }),
+        h("div.n-key", {}, h("span", {}, h("i.k-cur"), String(y)), prev.at(-1)?.[1] > 0 && h("span", {}, h("i.k-prev"), String(y - 1)), h("span.ph-more", {}, "Year in review", icon("chev", 13, 2.6))))),
+    section("All-time bests", h("div.group.glass.ph-bests", {}, bests.map((b) => h("div.row.plain", {}, h("span.ph-len", { text: b.short }),
+      h("span.tx", {}, h("b", { text: `${b.ever.w} W` }), h("small.one-line", { text: `${G.yearOf(b.ever.start)} · ${b.ever.name}` })),
+      h("span.val.ph-yr" + (b.isBest ? ".best" : ""), { text: b.isBest ? `Set in ${y}` : b.year ? `${b.year.w} W in ${y}` : `None in ${y}` }))))),
+    years.length > 1 && section("Fitness at its peak", h("div.card.glass.ph-peaks", {}, years.map((x) => h("div.pk-row" + (x === y ? ".now" : ""), {},
+      h("small", { text: String(x) }), h("span.pk-bar", {}, h("i", { vars: { width: Math.max(4, (pk[x].ctl / top) * 100) + "%" } })), h("b", { text: String(Math.round(pk[x].ctl)) }),
+      h("small.pk-when", { text: new Date(pk[x].day).toLocaleDateString("en-GB", { month: "short" }) }))))),
+  ].filter(Boolean);
+}
+// A year in review: its figures, month by month, and its highlights; the years you have, one tap each
+function yearView(year) {
+  const acts = progActs(), f = fitnessSeries(), ys = [...new Set(acts.map((a) => G.yearOf(a.start)))].sort((a, b) => b - a).slice(0, 6), at = Math.max(0, ys.indexOf(year));
+  const r = G.yearReview(acts, year, f), now = year === G.yearOf(TODAY), MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const top = r ? r.months.indexOf(Math.max(...r.months)) : -1;
+  return { title: "Year in review", body: [
+    h("div.sheet-top", {}, h("h1", { text: now ? `${year} so far` : `${year} in review` }), h("div.sub", { text: r ? `${plural(r.count, "activity", "activities")} on ${plural(r.days, "day")}` : "Nothing this year" })),
+    ys.length > 1 && h("div.seg.wide", { vars: { "--n": ys.length, "--at": at }, role: "group", "aria-label": "Year" }, ys.map((y) => h("button", { type: "button", "aria-pressed": String(y === year), onclick: () => { yearView.at = y; Sheet.redraw(); } }, String(y)))),
+    r && card(null, null, h("div.stats", {}, stat("Distance", fullDist(r.dist)), stat("Time", `${Math.round(r.secs / 3600).toLocaleString("en-GB")} h`), stat("Climbing", height(r.ascent)), stat("Rides", String(r.rides)), stat("Days out", String(r.days)), stat("Training stress", Math.round(r.tss).toLocaleString("en-GB")))),
+    r && section(["Month by month", h("span.aside", { text: r.months[top] ? `Most in ${MONTHS[top]}` : "" })], card(null, null, C.monthBars(r.months, { W: sheetW() }))),
+    r && section("Highlights", h("div.group", {},
+      r.longest && row({ icon: "ride", tint: "coral", title: "The longest", sub: `${r.longest.name} · ${dayShort(r.longest.start)}`, value: dur(r.longest.secs), chev: false }),
+      r.bigWeek && row({ icon: "calendar", tint: "blue", title: "The biggest week", sub: `From ${dayShort(r.bigWeek.mon)}`, value: dur(r.bigWeek.secs), chev: false }),
+      r.best20 && row({ icon: "bolt", tint: "amber", title: "The best 20 minutes", sub: `${r.best20.name} · ${dayShort(r.best20.start)}`, value: `${r.best20.w} W`, chev: false }),
+      r.peak && row({ icon: "trend", tint: "green", title: "Fitness at its peak", sub: new Date(r.peak.day).toLocaleDateString("en-GB", { day: "numeric", month: "long" }), value: String(Math.round(r.peak.ctl)), chev: false }))),
+  ].filter(Boolean) };
+}
+// (the year shown, kept as you pick another: the sheet's drawn again from it)
+function openYear(y) { yearView.at = y; openSheet(() => yearView(yearView.at), { tall: true }); }
 function pTile(label, c, big, chart, delta, up, onclick) {
   return h("button.p-tile", { type: "button", onclick }, h("small", {}, h("i." + c), label), h("b", {}, big[0], big[1] && h("u", { text: big[1] })), h("span.p-spark." + c, {}, chart),
     h("span.p-delta" + (up === true ? ".up" : up === false ? ".down" : ""), { text: delta }));

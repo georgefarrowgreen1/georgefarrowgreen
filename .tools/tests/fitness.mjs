@@ -237,6 +237,14 @@ await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 await P.p.locator('#sheet .rh-tile', { hasText: 'A run a week' }).click(); await settle(P, 300);
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
 ok(await P.p.locator('#sheet .rh-goal.on', { hasText: 'Keep building' }).count() === 1, 'step 3: building, unless you say hold');
+await P.p.locator('#sheet .rh-next').click(); await settle(P, 700);
+// (riding towards something: nothing in particular, unless you say; a kind chosen asks its day before going on)
+ok(await P.p.locator('#sheet .rh-choice.on', { hasText: 'Nothing in particular' }).count() === 1, 'step 3b: no event, unless you choose one');
+await P.p.locator('#sheet .rh-choice', { hasText: 'A sportive' }).click(); await settle(P, 400);
+await P.p.locator('#sheet .rh-next').click(); await settle(P, 500);
+const askedDay = await P.p.locator('#sheet .ev-when').count() === 1 && /Choose its date/.test(await P.p.locator('#toast').innerText().catch(() => ''));
+await P.p.locator('#sheet .rh-choice', { hasText: 'Nothing in particular' }).click(); await settle(P, 400);
+ok(askedDay && !(await P.p.locator('#sheet .ev-when').count()), 'a sportive chosen: its day asked for before going on; back to nothing in particular');
 await P.p.locator('#sheet .rh-next').click(); await settle(P, 900);
 const firstWeek = await P.p.locator('#sheet .group .row').count();
 ok(firstWeek === 7 && /Your first week/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'step 4: the first week, before anything is kept', String(firstWeek));
@@ -269,7 +277,8 @@ await done(L);
 
 // ---- 6. A ride renamed on the phone, and another deleted: so on the laptop ----
 await tab(P, 2);
-await P.p.locator('.row', { hasText: 'Morning ride' }).first().click();
+// (the ride from the GPX, named for its time of day, whichever: the run beside it is named a run now)
+await P.p.locator('.row', { hasText: /(Morning|Afternoon|Evening|Night) ride/ }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P);
 await P.p.locator('#sheet').getByRole('button', { name: 'Rename' }).click(); await settle(P);
 await P.p.fill('#sheet input.field', 'Saturday loop');

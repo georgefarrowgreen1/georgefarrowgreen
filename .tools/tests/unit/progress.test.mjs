@@ -54,3 +54,20 @@ test('intensity, staying power and each day', () => {
   const d = daily(acts, today, 7);
   assert.equal(d.tss.length, 7); assert.equal(d.tss[5], 60); assert.equal(d.from, addDays(today, -6));
 });
+
+// ---- your history ----
+import * as GH from '../../../fitness/progress.js';
+test('history: the year added up day by day, all-time bests against this year, each year\'s peak, a year in review', () => {
+  const day = 86400000, at = (y, m, d) => new Date(y, m, d, 9).getTime();
+  const r = (start, dist, w20, extra = {}) => ({ id: String(start), name: `Ride ${start}`, sport: 'ride', start, sum: { dist, moving: 3600, ascent: 100, tss: 60, curve: { 1200: w20, 300: w20 + 40 }, ...extra } });
+  const acts = [r(at(2025, 2, 1), 40000, 260), r(at(2025, 5, 10), 80000, 280), r(at(2026, 1, 1), 50000, 270), r(at(2026, 4, 5), 30000, 290)];
+  const c = GH.cumulative(acts, 2026, at(2026, 9, 26));
+  assert.equal(c.at(-1)[1], 80000); assert.equal(c[0][1], 0);
+  assert.equal(GH.cumulative(acts, 2025).at(-1)[1], 120000);
+  const b = GH.allTime(acts, at(2026, 9, 26)).find((x) => x.secs === 1200);
+  assert.equal(b.ever.w, 290); assert.ok(b.isBest);
+  const pk = GH.peaks([{ day: at(2025, 5, 1), ctl: 50 }, { day: at(2025, 6, 1), ctl: 55 }, { day: at(2026, 3, 1), ctl: 60 }]);
+  assert.equal(pk[2025].ctl, 55); assert.equal(pk[2026].ctl, 60);
+  const y = GH.yearReview(acts, 2025);
+  assert.equal(y.count, 2); assert.equal(y.dist, 120000); assert.equal(y.best20.w, 280); assert.equal(y.months[5], 3600); assert.equal(GH.yearReview(acts, 2020), null);
+});

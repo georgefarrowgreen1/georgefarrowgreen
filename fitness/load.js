@@ -130,6 +130,26 @@ export function tssOf(sum, sport) {
   return h > 0 ? Math.round(h * (EASY_IF[sport] ?? 0.6) ** 2 * 100) : 0;
 }
 
+// A ride's staying power, from its samples: heart rate's drift against power, its second half on its first (rides of 90
+// minutes and more with both: under 5% is a well-built base), and its best 20 minutes after the first two hours
+// → { drift?, late20? }
+export function stayingOf(a) {
+  const out = {};
+  if (a.sport !== "ride" || !a.s?.pwr) return out;
+  const ps = perSecond(a), p = ps.pwr, hr = ps.hr, n = p?.length || 0;
+  if (hr && n >= 5400) {
+    const ef = (from, to) => { let w = 0, b = 0, c = 0; for (let i = from; i < to; i++) if (ps.moving[i] && p[i] > 0 && hr[i] > 0) { w += p[i]; b += hr[i]; c++; } return c > 600 ? w / b : null; };
+    const e1 = ef(0, n >> 1), e2 = ef(n >> 1, n);
+    if (e1 && e2) out.drift = Math.round(((e1 - e2) / e1) * 1000) / 10;
+  }
+  if (n >= 7200 + 1200) {
+    let sum = 0, best = 0;
+    for (let i = 7200; i < n; i++) { sum += Number.isFinite(p[i]) ? p[i] : 0; if (i >= 7200 + 1200) sum -= Number.isFinite(p[i - 1200]) ? p[i - 1200] : 0; if (i >= 7200 + 1199) best = Math.max(best, sum / 1200); }
+    if (best > 0) out.late20 = Math.round(best);
+  }
+  return out;
+}
+
 // the most you held for each of CURVE's durations, in watts
 export function bestEfforts(p) {
   const cum = new Float64Array(p.length + 1);

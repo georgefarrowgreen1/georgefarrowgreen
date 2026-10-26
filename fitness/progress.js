@@ -114,3 +114,40 @@ export function stayingPower(acts, from, best20) {
   const late = Math.max(0, ...acts.filter((a) => a.start >= from && a.sum?.late20).map((a) => a.sum.late20));
   return { drift, late20: late || null, ofFresh: late && best20 ? late / best20 : null };
 }
+
+// ---- your history: year against year, all-time bests, the seasons' peaks, a year in review ----
+export const yearOf = (t) => new Date(t).getFullYear();
+const dayOfYear = (t) => Math.floor((startOfDay(t) - startOfDay(new Date(yearOf(t), 0, 1, 12).getTime())) / DAY + 0.5);
+// A year's distance (metres) and time (seconds) added up day by day: [day of year (0 on 1 January), distance, time],
+// to `upTo` (that year's last day, or today), every activity of every sport
+export function cumulative(acts, year, upTo = Infinity) {
+  const end = Math.min(upTo, new Date(year, 11, 31, 12).getTime()), n = Math.max(0, dayOfYear(end)) + 1, dd = new Float64Array(n), ss = new Float64Array(n);
+  for (const a of acts) { if (yearOf(a.start) !== year || a.start > end + DAY) continue; const i = dayOfYear(a.start); if (i < n) { dd[i] += a.sum?.dist || 0; ss[i] += a.sum?.moving || 0; } }
+  const out = []; let d = 0, s = 0;
+  for (let i = 0; i < n; i++) { d += dd[i]; s += ss[i]; out.push([i, d, s]); }
+  return out;
+}
+// Your best at each of LENGTHS, ever, and this year's: [{ secs, short, ever: { w, start, name }, year: { w, start } | null, isBest }]
+export function allTime(acts, today) {
+  const ever = bests(acts), now = bests(acts, new Date(yearOf(today), 0, 1).getTime());
+  return LENGTHS.map(([secs, short]) => ({ secs, short, ever: ever[secs] || null, year: now[secs] || null, isBest: !!(ever[secs] && now[secs] && now[secs].id === ever[secs].id) })).filter((x) => x.ever);
+}
+// Fitness's peak in each year: { year: { ctl, day } }, from fitness, day by day (load.js fitness)
+export function peaks(series) {
+  const out = {};
+  for (const p of series) { const y = yearOf(p.day); if (!out[y] || p.ctl > out[y].ctl) out[y] = { ctl: p.ctl, day: p.day }; }
+  return out;
+}
+// A year in review: how many, how far, how long, how high, how hard; the longest, the biggest week, the best 20
+// minutes, the days out, month by month, and fitness's peak
+export function yearReview(acts, year, series = []) {
+  const xs = acts.filter((a) => yearOf(a.start) === year);
+  if (!xs.length) return null;
+  const sum = (k) => xs.reduce((t, a) => t + (a.sum?.[k] || 0), 0), months = Array(12).fill(0), weeks = new Map();
+  for (const a of xs) { months[new Date(a.start).getMonth()] += a.sum?.moving || 0; const m = mondayOf(a.start); weeks.set(m, (weeks.get(m) || 0) + (a.sum?.moving || 0)); }
+  const longest = xs.reduce((b, a) => ((a.sum?.moving || 0) > (b?.sum?.moving || 0) ? a : b), null), big = [...weeks].sort((p, q) => q[1] - p[1])[0];
+  const b20 = bests(xs)[1200] || null, pk = peaks(series)[year] || null;
+  return { year, count: xs.length, rides: xs.filter((a) => a.sport === "ride").length, dist: sum("dist"), secs: sum("moving"), ascent: sum("ascent"), tss: sum("tss"),
+    days: new Set(xs.map((a) => startOfDay(a.start))).size, months, longest: longest && { name: longest.name, start: longest.start, secs: longest.sum?.moving || 0, dist: longest.sum?.dist || 0 },
+    bigWeek: big ? { mon: big[0], secs: big[1] } : null, best20: b20, peak: pk };
+}
