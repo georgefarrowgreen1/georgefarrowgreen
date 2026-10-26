@@ -39,7 +39,7 @@ export function profile(w, { ftp = null, pace = 4, mini = false, label = "", W: 
 
 // Fitness and fatigue as lines, form as bars under them, over the last `days` days
 export function fitnessChart(series, { days = 42, W = 340 } = {}) {
-  const s = series.slice(-days), H = 206, top = 122, L = 4, R = 28, n = s.length;
+  const s = series.slice(-days), H = 224, top = 122, L = 4, R = 28, n = s.length;
   const max = Math.max(20, ...s.map((d) => Math.max(d.ctl, d.atl))) * 1.12;
   const x = (i) => L + (i / (n - 1)) * (W - L - R), y = (v) => top - (v / max) * (top - 8);
   const fb = Math.max(15, ...s.map((d) => Math.abs(d.tsb))), mid = 156, yf = (v) => mid - (v / fb) * 24;
