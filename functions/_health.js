@@ -124,5 +124,8 @@ export async function takeNight(env, request, b, inPath = null) {
   // (a field sent that couldn't be read, said so: sleep, most often, sent as its samples, not their Duration)
   const missed = ["hrv", "rhr", "sleep"].filter((k) => n[k] == null && b[k] != null && String(b[k]).trim() !== "");
   const fix = { hrv: "hrv: set it to the Heart Rate Variability step’s Health Samples", rhr: "rhr: set it to the Resting Heart Rate step’s Health Samples", sleep: "sleep: add Get Details of Health Samples, Duration, after the Sleep step, and set sleep to that Duration" };
-  return { ok: true, day, ...n, said: `Fitness has it: ${said}.${missed.length ? ` Couldn’t read ${missed.map((k) => fix[k]).join("; ")}.` : ""}` };
+  // (and what came, as it came: how many values in each field, and the first few, so a Shortcut that sends something
+  // unexpected can be seen and set right)
+  const got = Object.fromEntries(["hrv", "rhr", "sleep"].filter((k) => b[k] != null).map((k) => { const xs = items(b[k]); return [k, { n: xs.length, first: xs.slice(0, 4).map((x) => String(x).slice(0, 40)) }]; }));
+  return { ok: true, day, ...n, got, said: `Fitness has it: ${said}.${missed.length ? ` Couldn’t read ${missed.map((k) => fix[k]).join("; ")}.` : ""}` };
 }
