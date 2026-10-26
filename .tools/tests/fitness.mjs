@@ -391,16 +391,21 @@ ok(gWell.length === 1 && gWell[0].hrv === 41 && gWell[0].hrv_lo === 52 && gWell[
 await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Make my key' }).click(); await L.p.waitForSelector('#sheet .hk-key'); await settle(L, 400);
-const hKey = (await L.p.locator('#sheet .hk-key').first().innerText()).trim(), hSteps = await L.p.locator('#sheet').innerText();
-ok(/^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Find Health Samples/.test(hSteps) && /api\/fitness\/health/.test(hSteps), 'Apple Health: a key of your own, the address, and the Shortcut’s steps', hKey.slice(0, 8));
+const hAddr = (await L.p.locator('#sheet .hk-key').first().innerText()).replace(/\s+/g, ''), hKey = hAddr.split('/').pop(), hSteps = await L.p.locator('#sheet').innerText();
+ok(hAddr === `${FIT}/api/fitness/health/${hKey}` && /^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Get Contents of URL/.test(hSteps) && !/Authorization/.test(hSteps), 'Apple Health: an address of your own (the key in it, nothing else to copy), and the Shortcut’s five steps', hAddr.slice(0, 60));
 await L.p.screenshot({ path: `${out}/health-key.png` });
-const shortcut = (headers, b) => api(L, '/api/fitness/health', { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(b) });
+const shortcut = (headers, b, path = '/api/fitness/health') => api(L, path, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(b) });
 const hNo = await shortcut({}, { hrv: 50 }), hBad = await shortcut({ Authorization: 'Bearer fxh_' + 'x'.repeat(40) }, { hrv: 50 });
 // (as Shortcuts writes them: samples a line each, with their units; sleep as each stretch's length)
-const hYes = await shortcut({ Authorization: `Bearer ${hKey}` }, { hrv: '48 ms\n52 ms\n55 ms', rhr: '51 count/min', sleep: '2 hr 10 min\n3 hr 5 min\n1 hr 45 min' });
-const hRow = rows(`SELECT hrv, rhr, sleep FROM fx_health WHERE user_id = '${sam}'`)[0];
+// (and with the key as a header to the plain address, and the body as a form, as Shortcuts can send it too)
+const hDay0 = new Date(Date.now() - 3 * 86400e3).toISOString().slice(0, 10);
+const hForm = await api(L, '/api/fitness/health', { method: 'POST', credentials: 'omit', headers: { Authorization: `Bearer ${hKey}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: `hrv=50&hrv=53&rhr=52&sleep=7.5&day=${hDay0}` });
+const hFormRow = rows(`SELECT hrv, rhr, sleep FROM fx_health WHERE user_id = '${sam}' AND day = '${hDay0}'`)[0];
+const hYes = await shortcut({}, { hrv: '48 ms\n52 ms\n55 ms', rhr: '51 count/min', sleep: '2 hr 10 min\n3 hr 5 min\n1 hr 45 min' }, `/api/fitness/health/${hKey}`);
+const hRow = rows(`SELECT hrv, rhr, sleep FROM fx_health WHERE user_id = '${sam}' AND day != '${hDay0}'`)[0];
 ok(hNo.status === 401 && hBad.status === 401 && hYes.status === 200 && /Fitness has it: HRV 51.7 ms, resting 51 bpm, 7 h 0 min asleep/.test(hYes.body) && hRow?.hrv === 51.7 && hRow.rhr === 51 && hRow.sleep === 25200,
-  'the Shortcut’s morning: nothing without the key; with it, last night read as Shortcuts writes it, and kept', `${hNo.status} ${hBad.status} ${hYes.body} ${JSON.stringify(hRow)}`);
+  'the Shortcut’s morning: nothing without the key; to your address, last night read as Shortcuts writes it, and kept', `${hNo.status} ${hBad.status} ${hYes.body} ${JSON.stringify(hRow)}`);
+ok(hForm.status === 200 && hFormRow?.hrv === 51.5 && hFormRow.rhr === 52 && hFormRow.sleep === 27000, 'and as a form, with the key as a header', `${hForm.status} ${hForm.body}`);
 await done(L); await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Check again' }).click(); await L.p.waitForFunction(() => /Last morning/.test(document.querySelector('#sheet .sheet-top')?.textContent || '')); await settle(L, 400);

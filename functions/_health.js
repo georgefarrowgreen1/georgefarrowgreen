@@ -1,13 +1,16 @@
 // Fitness and Apple Health, by a Shortcut on your iPhone. Apple keeps Health on the phone (there's no web API to ask,
 // as there is Garmin's), so the phone sends it: a personal automation each morning finds last night's heart rate
-// variability, resting heart rate and sleep in Health, and posts them here with your own key (Authorization: Bearer).
+// variability, resting heart rate and sleep in Health, and posts them to an address of your own: the key is in it
+// (/api/fitness/health/<key>; or Authorization: Bearer, to the plain address), so there's one thing to copy and no
+// header to type. The key can only send nights, nothing more.
 //
 // What's kept: the key's hash (fx_health_key; the key itself shown once, as it's made, and made again to replace it),
 // when it last sent, and each night (fx_health: hrv in ms, as the Watch has it, its SDNN, not Garmin's RMSSD, so the two
 // are never mixed; rhr, beats a minute; sleep, seconds). Two months of nights go to the app with your record.
 //
 // What the Shortcut sends is read leniently, as Shortcuts writes it: numbers, text with units ("45 ms", "7 hr 12 min"),
-// or lists of either (several samples; a list put in a text field is one a line). HRV: their average; resting heart rate:
+// or lists of either (several samples; a list put in a text field is one a line); as JSON or as a form, whichever the
+// Shortcut's Request Body is set to (readBody). HRV: their average; resting heart rate:
 // their middle; sleep: their total (a plain number under 24 is hours, under 1,440 minutes, else seconds). The day is
 // today where you are (Cloudflare's guess of your time zone), unless it says { day: "YYYY-MM-DD" }.
 import { HttpError, hex, sha256, limit, randomToken } from "./_pigeon.js";
@@ -84,8 +87,22 @@ export async function healthOf(env, userId) {
 }
 
 // ---- the Shortcut's morning post ----
-export async function takeNight(env, request, b) {
-  const auth = request.headers.get("Authorization") || "", key = /^Bearer\s+(\S+)$/i.exec(auth)?.[1] || (typeof b.key === "string" ? b.key.trim() : "");
+// (the Shortcut's body: JSON, or a form, its fields kept as they came, a field sent twice as a list)
+export async function readBody(request, max = 64 * 1024) {
+  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "Too big.");
+  const ct = (request.headers.get("Content-Type") || "").toLowerCase();
+  if (/multipart\/form-data|application\/x-www-form-urlencoded/.test(ct)) {
+    const out = {};
+    for (const [k, v] of (await request.formData()).entries()) if (typeof v === "string") out[k] = k in out ? [].concat(out[k], v) : v;
+    return out;
+  }
+  const text = await request.text();
+  if (text.length > max) throw new HttpError(413, "Too big.");
+  try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
+  throw new HttpError(400, "Fitness reads JSON or a form: set the Shortcut’s Request Body to JSON.");
+}
+export async function takeNight(env, request, b, inPath = null) {
+  const auth = request.headers.get("Authorization") || "", key = inPath || /^Bearer\s+(\S+)$/i.exec(auth)?.[1] || (typeof b.key === "string" ? b.key.trim() : "");
   if (!/^fxh_[A-Za-z0-9_-]{20,80}$/.test(key)) throw new HttpError(401, "No key, or not a Fitness one: copy it again from Fitness, Apple Health.");
   const D = await tables(env), hash = hex(await sha256(key)), k = await D.prepare("SELECT user_id FROM fx_health_key WHERE hash = ?").bind(hash).first();
   if (!k) throw new HttpError(401, "That key isn’t Fitness’s any more: make a new one in Fitness, Apple Health.");

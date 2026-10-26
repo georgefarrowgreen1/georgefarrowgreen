@@ -804,9 +804,9 @@ function garminView() {
 
 // ---- Apple Health, by a Shortcut (functions/_health.js): Health stays on the phone, so a personal automation in
 // Shortcuts sends last night's HRV, resting heart rate and sleep here each morning, with a key of your own. Rhythm reads
-// them as it reads Garmin's (rhythm.js nightOf). The key's shown once, as it's made, with the steps to make the
-// Shortcut; made again, the old one stops working ----
-const healthUrl = () => `${location.origin}/api/fitness/health`;
+// them as it reads Garmin's (rhythm.js nightOf). The key's in the address the Shortcut sends to, so that's all there is
+// to copy; shown once, as it's made, with the five steps to make the Shortcut; made again, the old one stops working ----
+const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
 function healthSaid() {
   const x = S.health;
   if (!x?.on) return "Your nights from your Apple Watch, by a Shortcut";
@@ -826,16 +826,15 @@ function healthView() {
   };
   const step = (n, title, sub) => h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: String(n) })), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })));
   const steps = () => [
-    section("Your key", h("div.hk-box", {}, h("code.hk-key", { text: key }), copy(key, "Key")), h("p.foot", { text: "Shown this once: copy it into the Shortcut now. Lost it? Make a new one here." })),
-    section("The address", h("div.hk-box", {}, h("code.hk-key", { text: healthUrl() }), copy(healthUrl(), "Address"))),
+    section("Your address", h("div.hk-box", {}, h("code.hk-key", { text: healthUrl(key) }), copy(healthUrl(key), "Address")),
+      h("p.foot", { text: "Yours alone, and shown this once: copy it now. It can only send your nights to Fitness, nothing more. Lost it? Make a new one here." })),
     section("Make the Shortcut", h("div.group", {},
-      step(1, "In Shortcuts: Automation, then New Automation", "Time of Day: 07:30, Daily, Run Immediately. Then New Blank Automation."),
-      step(2, "Add Find Health Samples", "Heart Rate Variability, where Start Date is in the last 12 hours."),
-      step(3, "Add Find Health Samples again", "Resting Heart Rate, where Start Date is in the last 1 day. Sort by Start Date, Latest First, Limit 1."),
-      step(4, "And again", "Sleep, where Start Date is in the last 16 hours, Value is not In Bed, and Value is not Awake."),
-      step(5, "Add Get Details of Health Samples", "Duration, of the sleep samples from step 4."),
-      step(6, "Add Get Contents of URL", "The address above. Method: POST. Header: Authorization, with Bearer, a space, then your key. Request Body: JSON, with hrv (step 2’s samples), rhr (step 3’s) and sleep (step 5’s Duration)."),
-      step(7, "Tap Run once to try it", "Fitness answers with what it got, and this page shows it."))),
+      step(1, "Shortcuts, then Automation, then New Automation", "Time of Day, 07:30, Daily, Run Immediately. Then New Blank Automation."),
+      step(2, "Find Health Samples: Heart Rate Variability", "Start Date is in the last 12 hours."),
+      step(3, "Find Health Samples: Resting Heart Rate", "Start Date is in the last 1 day."),
+      step(4, "Find Health Samples: Sleep, then Get Details: Duration", "Start Date is in the last 16 hours, Value is not In Bed, Value is not Awake. Then Get Details of Health Samples, Duration."),
+      step(5, "Get Contents of URL", "Paste your address. Method POST. Request Body JSON, with three fields: hrv (step 2), rhr (step 3), sleep (step 4’s Duration)."))),
+    section(null, h("p.foot", { text: "Then tap Run once: Fitness answers with what it got, and this page shows it." })),
   ];
   if (!x?.on && !key) return { title: "Apple Health", body: [
     h("div.sheet-top", {}, h("h1", { text: "Apple Health" }), h("div.sub", { text: "Your nights from your Apple Watch: HRV, resting heart rate and sleep, each morning." })),

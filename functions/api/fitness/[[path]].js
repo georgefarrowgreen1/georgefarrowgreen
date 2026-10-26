@@ -19,8 +19,9 @@
 //   GET    /api/fitness/health        Apple Health, by a Shortcut (functions/_health.js): on or not, what it last sent, your nights
 //   POST   /api/fitness/health/key    a new key for the Shortcut (any old one stops working), shown this once → as GET, and { key }
 //   DELETE /api/fitness/health        off: the key and the nights forgotten
-//   POST   /api/fitness/health        the Shortcut's morning post, with the key (not signed in: from the phone's Shortcuts):
-//                                    { hrv, rhr, sleep, day? }
+//   POST   /api/fitness/health/<key>  the Shortcut's morning post, its key in the address (or to /health, with the key as
+//                                    Authorization: Bearer): not signed in, from the phone's Shortcuts; { hrv, rhr, sleep,
+//                                    day? }, as JSON or a form
 //   GET    /api/fitness/weather      the week's weather where you ride, hour by hour (functions/_fitwx.js)
 //   GET    /api/fitness/push-key     the key push subscriptions are made with
 //   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
@@ -38,7 +39,7 @@ import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
-import { newKey as healthKey, forget as healthOff, healthOf, takeNight } from "../../_health.js";
+import { newKey as healthKey, forget as healthOff, healthOf, takeNight, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
@@ -157,7 +158,8 @@ const ROUTES = {
     return json(await healthOff(env, (await signedIn(request, env)).id));
   },
   // (from Shortcuts on the phone, not the page: its key, not the site's cookie, says whose it is)
-  "POST health": async ({ request, env }) => json(await takeNight(env, request, await body(request, 64 * 1024))),
+  "POST health": async ({ request, env }) => json(await takeNight(env, request, await healthBody(request))),
+  "POST health/:id": async ({ request, env, id }) => json(await takeNight(env, request, await healthBody(request), id)),
   // (the weather for a ride today: functions/_fitwx.js; none, where it can't be had)
   "GET weather": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -211,7 +213,8 @@ const ROUTES = {
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
-    : parts[0] === "garmin" && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2] : null;
+    : parts[0] === "garmin" && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
+    : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
   // (only at Fitness's own address; the scheduler's turn at the site's own, as InFlight's and Weather's are)
   const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";
