@@ -6,6 +6,15 @@ import { effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 
 // ---- Activities ----
+const PAGE = 60;
+// (the next weeks drawn as the list's end comes into view, as if it were all there)
+let moreSeen = null;
+function whenSeen(btn) {
+  if (!("IntersectionObserver" in window)) return;
+  moreSeen?.disconnect();
+  moreSeen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { moreSeen.disconnect(); btn.click(); } }, { rootMargin: "600px 0px" });
+  setTimeout(() => btn.isConnected && moreSeen.observe(btn), 0);
+}
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
@@ -19,9 +28,10 @@ function activitiesView() {
   const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving || 0; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
   if (S.acts.length) out.push(card(null, "The last four weeks", S.summed ? h("div.stats", {}, stat("Time", hm(tot.secs), tot.secs >= 3600 ? "h" : null), stat("Distance", ...distNum(tot.dist)), stat("Climbing", ...height(tot.asc))) : wait(48)));
   out.push(h("div.seg.wide", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.actSport === k), onclick: () => { S.actSport = k; redraw(); } }, label))));
-  // by week, newest first
+  // by week, newest first: the first weeks drawn, more as you come to the end of them (a long history isn't drawn at once)
+  const show = S.actShow || PAGE, shown = list.slice(0, show);
   const byWeek = new Map();
-  for (const a of list) { const k = mondayOf(a.start); if (!byWeek.has(k)) byWeek.set(k, []); byWeek.get(k).push(a); }
+  for (const a of shown) { const k = mondayOf(a.start); if (!byWeek.has(k)) byWeek.set(k, []); byWeek.get(k).push(a); }
   const thisMon = mondayOf(TODAY);
   if (!list.length) out.push(h("p.foot.none", { text: `No ${sports[at][1].toLowerCase()} yet.` }));
   for (const [mon, acts] of byWeek) {
@@ -29,6 +39,7 @@ function activitiesView() {
     const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0);
     out.push(section([name, h("span.aside", { text: S.summed ? dur(secs) : "" })], h("div.group.glass", {}, acts.map(actRow))));
   }
+  if (list.length > show) { const more = h("button.more-acts.pill", { type: "button", onclick: () => { S.actShow = show + PAGE * 2; redraw(); } }, `Show more · ${(list.length - show).toLocaleString("en-GB")} older`); out.push(h("div.more-wrap", {}, more)); whenSeen(more); }
   if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: () => openSheet(uploadFilesView) }, "Upload more activities")));
   return out;
 }

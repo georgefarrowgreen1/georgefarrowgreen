@@ -1,13 +1,14 @@
 // Fitness's Progress: how you're coming on, the story first; power, training and engine, each a sheet (progress.js
 // has the figures). Drawn by app.js render.
 
-import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
+import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
 import { formView, openAct, staying, uploadFilesView } from "./activities.js";
 
 // ---- Progress: how you're coming on, the story first (progress.js has the figures) ----
 const RANGES = [[42, "6 wk"], [91, "3 mo"], [182, "6 mo"], [365, "Year"]];
 // (each with its figures as now; its time in zones as worked out when it came in, where a new FTP has cleared them since)
-const progActs = () => S.own.map((a) => { const s = sumOf(a) || a.sum; return { id: a.id, name: a.name, start: a.start, sport: a.sport, sum: s && { ...s, zones: s.zones || a.sum?.zones, hrZones: s.hrZones || a.sum?.hrZones } }; }).filter((a) => a.sum);
+// (your activities as Progress takes them: made once a change)
+const progActs = once(() => S.own.map((a) => { const s = sumOf(a) || a.sum; return { id: a.id, name: a.name, start: a.start, sport: a.sport, sum: s && { ...s, zones: s.zones || a.sum?.zones, hrZones: s.hrZones || a.sum?.hrZones } }; }).filter((a) => a.sum));
 const monthOf = (t, len = "long") => new Date(t).toLocaleDateString("en-GB", { month: len });
 const pRange = () => { const d = store.get("prange", 182); return RANGES.some(([v]) => v === d) ? d : 182; };
 const f1n = (v) => (Math.round(v * 10) / 10).toFixed(1);

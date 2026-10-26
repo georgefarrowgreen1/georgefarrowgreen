@@ -66,15 +66,25 @@ const D = demo(Date.now());
 // Your numbers before Fitness knows them: middling ones, each marked not set (so worked out from your rides as they
 // come in, and asked in Rhythm's setup), never someone else's
 const START = { ftp: 200, weight: 75, lthr: 160, maxHr: 182, restHr: 55, runPace: 330, css: 120 };
+// What everything worked out from your rides is kept against: a count that moves whenever the rides, their figures or
+// what's kept with the account change (so Rhythm's plan, your fitness, the days' rides and Progress's figures are worked
+// out once a change, not each time a screen asks)
+let dataV = 0;
+const changed = () => { dataV++; };
+class Watched extends Map { set(k, v) { dataV++; return super.set(k, v); } delete(k) { dataV++; return super.delete(k); } clear() { dataV++; return super.clear(); } }
+// a value worked out once a change (and a day: a new day, worked out afresh)
+// (a declaration, so the screens' modules can make theirs as they load, before this one has run)
+function once(f) { let at = null, v; return () => { const k = `${dataV}@${TODAY}`; if (k !== at) { v = f(); at = k; } return v; }; }
 const S = {
   tab: "today", me: null, ver: 0, dirty: new Set(), inStepWorkouts: [], pulledAt: 0,
   profile: { ...START, set: [] }, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [],
   sport: "ride", actSport: "all", formDays: 42,
   own: [], acts: [], garmin: { on: false },
-  sums: new Map(), summed: false,
+  sums: new Watched(), summed: false,
 };
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
+  changed();
   const ok = (o) => o && typeof o === "object" && !Array.isArray(o), was = numbers();
   // (a record from before numbers were marked set or worked out: all of them taken to be yours)
   const kept = ok(d?.profile) ? d.profile : null;
@@ -127,7 +137,7 @@ function setNumber(k, v) {
 // device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
 // its own, the days and workouts joined) and sent again.
 let saveT = null;
-function keep(...parts) { if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
+function keep(...parts) { changed(); if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
 async function inStep() {
   if (!S.me || !S.dirty.size || inStep.busy) return;
   inStep.busy = true;
@@ -152,6 +162,7 @@ async function inStep() {
   if (S.dirty.size) { clearTimeout(saveT); saveT = setTimeout(inStep, again); }
 }
 function setActs() {
+  changed();
   S.acts = [...(S.examples ? D.history.map((x) => ({ ...x, sample: true })) : []), ...S.own].sort((a, b) => b.start - a.start);
 }
 const P = () => S.profile;
@@ -166,9 +177,12 @@ const rhythmOn = () => !!S.rhythm && !S.chosen;
 let rhCache = null;
 function rh() {
   if (!rhythmOn()) return null;
-  const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
-  const key = JSON.stringify([S.rhythm, S.feel, S.swaps, P().ftp, P().runPace, P().css, acts.map((a) => [a.start, a.sum?.tss])]);
-  if (rhCache?.key !== key) rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
+  // (worked out again only when something it goes on has changed: the count covers the rides and their figures)
+  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}`;
+  if (rhCache?.key !== key) {
+    const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
+    rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } }) };
+  }
   return rhCache.v;
 }
 const rhDay = (d) => rh()?.days.find((x) => x.date === d) || null;
@@ -196,7 +210,9 @@ function plannedOn(day) {
   return undefined;
 }
 const weekIndex = (day) => (myPlan() ? Math.floor((mondayOf(day) - mondayOf(planStart())) / (7 * DAY) + 0.01) : -1);
-const actsOn = (day) => S.acts.filter((a) => startOfDay(a.start) === day);
+// each day's activities, by day (made once a change)
+const byDay = once(() => { const m = new Map(); for (const a of S.acts) { const d = startOfDay(a.start); if (!m.has(d)) m.set(d, []); m.get(d).push(a); } return m; });
+const actsOn = (day) => byDay().get(day) || [];
 const eventDay = () => weeks().at(-1)?.days.at(-1).date ?? null;
 
 // ---- each ride's figures: worked out a few at a time once the page is up, newest first, and kept for next time ----
@@ -247,7 +263,8 @@ function resum() {
 }
 
 // fitness, day by day, from every ride's stress
-function fitnessSeries() {
+const fitnessSeries = once(() => fitnessSeriesNow());
+function fitnessSeriesNow() {
   const daily = {};
   for (const a of S.acts) { const s = sumOf(a); if (s?.tss) daily[startOfDay(a.start)] = (daily[startOfDay(a.start)] || 0) + s.tss; }
   const first = Math.min(...S.acts.map((a) => a.start), TODAY - 120 * DAY);
@@ -276,7 +293,7 @@ function go(tab) {
     if (tab === "today" && (S.dayAt != null || S.agenda)) { S.dayAt = null; S.agenda = false; render(true); }
     return scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" });
   }
-  S.tab = tab;
+  S.tab = tab; S.actShow = 0;
   tabsEl.classList.remove("moving"); void tabsEl.offsetWidth; tabsEl.classList.add("moving");
   drawTabs();
   render(true);
@@ -1047,4 +1064,4 @@ const signedOutHere = () => signOutHere(true);
 })();
 
 // (what the screens, each its own module, take from here)
-export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
+export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

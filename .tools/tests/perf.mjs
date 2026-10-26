@@ -59,7 +59,7 @@ const runs = [];
 for (let r = 0; r < 3; r++) {
   let meBytes = 0; const onResp = async (res) => { if (res.url().endsWith('/api/fitness/me') && res.request().method() === 'GET') meBytes = (await res.body().catch(() => Buffer.alloc(0))).length; };
   p.on('response', onResp);
-  const t0 = Date.now(); await p.goto(`${FIT}/#today`); await p.waitForSelector('.strip-days .sday', { timeout: 600000 }).catch(async (e) => { await p.screenshot({ path: `${out}/stuck.png` }); console.log('stuck; errors: ' + errs.join(' | ')); throw e; }); await settle(); const open = Date.now() - t0;
+  await p.evaluate(() => { location.hash = '#today'; }); const t0 = Date.now(); await p.reload(); await p.waitForSelector('.strip-days .sday', { timeout: 600000 }).catch(async (e) => { await p.screenshot({ path: `${out}/stuck.png` }); console.log('stuck; errors: ' + errs.join(' | ')); throw e; }); await settle(); const open = Date.now() - t0;
   p.off('response', onResp);
   await p.waitForTimeout(1500);
   // (each by a click, timed to the next frame: a redraw of Today, another day, Activities, Progress, back to Today)
@@ -67,12 +67,13 @@ for (let r = 0; r < 3; r++) {
   const redraw = await timed(clk('.strip-all')); await settle();
   const dayPick = await timed(clk('.strip-days .sday:nth-child(5)')); await settle();
   const acts = await timed(clk('.tab:nth-child(2)')); await settle(); await p.waitForTimeout(500);
+  const shown = await p.evaluate(() => document.querySelectorAll('main .row').length);
   const prog = await timed(clk('.tab:nth-child(3)')); await settle(); await p.waitForTimeout(500);
   const back = await timed(clk('.tab:nth-child(1)')); await settle();
   const heap = await p.evaluate(() => performance.memory?.usedJSHeapSize || 0);
-  runs.push({ open, meKB: Math.round(meBytes / 1024), redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: await p.locator('.row').count() });
+  runs.push({ open, meKB: Math.round(meBytes / 1024), redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: shown });
 }
 const res = { rides: N, open: med(runs.map((r) => r.open)), meKB: runs[0].meKB, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
-  openActivities: med(runs.map((r) => r.acts)), openProgress: med(runs.map((r) => r.prog)), backToToday: med(runs.map((r) => r.back)), heapMB: med(runs.map((r) => r.heapMB)) };
+  openActivities: med(runs.map((r) => r.acts)), activityRows: runs.at(-1).rows, openProgress: med(runs.map((r) => r.prog)), backToToday: med(runs.map((r) => r.back)), heapMB: med(runs.map((r) => r.heapMB)) };
 writeFileSync(`${out}/perf.json`, JSON.stringify({ res, runs }, null, 1));
 console.log(JSON.stringify(res)); console.log('page errors: ' + errs.slice(0, 3).join(' | ')); console.log('FAILS 0'); await b.close();

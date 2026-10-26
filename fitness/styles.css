@@ -1349,3 +1349,4 @@ dialog.sheet.fresh .stats .stat:nth-child(5) { animation-delay: 320ms; } dialog.
 @media (prefers-reduced-motion: reduce) {
   :is(.pill, .btn, .chip-btn, .sday, .strip-all, .strip-step, .mv-day, .seg3 button, .checkin-done, .round.me, .go, button.row, a.row, button.card, .next-up, .tomorrow, .ag-row, .p-card, .choice):active { transform: none; }
 }
+.more-wrap { display: flex; justify-content: center; margin: 4px 0 8px; }
