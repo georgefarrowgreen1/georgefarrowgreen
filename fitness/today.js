@@ -27,8 +27,9 @@ function todayView() {
   }
   const planned = rhythmOn() || myPlan();
   if (planned) out.push(dayStrip(sel));
-  if (planned && S.agenda) out.push(agenda(sel));
+  if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
+  if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(rhythmSays(), isToday && feelCard(w));
   right.push(planned && weekCard(), headingCard(), formCard(), planRows());
@@ -37,7 +38,8 @@ function todayView() {
 }
 // (Rhythm plans this week and the next seven days: a day after that isn't planned yet, rather than a rest day)
 const unplanned = (d) => { if (!rhythmOn()) return false; const ds = rh()?.days; return !!ds?.length && d > ds.at(-1).date && S.swaps[d] === undefined; };
-const lookAt = (d) => { S.dayAt = d === TODAY ? null : d; redraw(); };
+// (looking at another day: its card slides in from the side it's on, once)
+const lookAt = (d) => { const was = S.dayAt ?? TODAY; if (d !== was) S.dayFx = d > was ? "next" : "prev"; S.dayAt = d === TODAY ? null : d; redraw(); };
 // what's on a day: Rhythm's (or the plan's) session, as changed; null for rest
 const idOn = (d) => { const id = plannedOn(d); return id ?? null; };
 // a ride's colour by how hard it is (todaycalc.js), a run's or swim's the tint
@@ -60,7 +62,7 @@ function dayStrip(sel) {
       h("button.strip-step", { type: "button", "aria-label": "The week before", disabled: mon <= addDays(thisMon, -7), onclick: () => step(-1) }, icon("back", 15, 2.6)),
       h("b", { text: which }),
       h("button.strip-step", { type: "button", "aria-label": "The week after", disabled: mon >= addDays(thisMon, 7), onclick: () => step(1) }, icon("chev", 15, 2.6)),
-      h("button.strip-all" + (S.agenda ? ".on" : ""), { type: "button", "aria-expanded": String(!!S.agenda), onclick: () => { S.agenda = !S.agenda; redraw(); } }, icon("list", 14, 2.4), S.agenda ? "Fold" : "Two weeks")),
+      h("button.strip-all" + (S.agenda ? ".on" : ""), { type: "button", "aria-expanded": String(!!S.agenda), onclick: () => { S.agenda = !S.agenda; S.agendaFx = S.agenda; redraw(); } }, icon("list", 14, 2.4), S.agenda ? "Fold" : "Two weeks")),
     h("div.strip-days", {}, days.map((d) => { const r = ring(d);
       return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), svgOf(`<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${r.svg}</svg>`)); })));
