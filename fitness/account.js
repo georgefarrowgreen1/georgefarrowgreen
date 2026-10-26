@@ -92,7 +92,9 @@ export const workoutIds = (d) => (Array.isArray(d?.workouts) ? d.workouts.map((w
 export const garmin = () => call("garmin");
 export const garminConnect = (key) => call("garmin", { method: "POST", body: { key }, wait: 120000 });
 export const garminDisconnect = () => call("garmin", { method: "DELETE" });
-export const garminFetch = (force = false) => call("garmin/fetch", { method: "POST", body: { force }, wait: 120000 });
+export const garminFetch = (force = false, all = false) => call("garmin/fetch", { method: "POST", body: { force, ...(all ? { all } : {}) }, wait: 120000 });
+// all your history on Garmin, not just six months (functions/_garmin.js allHistory) → as garmin(), with { back, backAt }
+export const garminAll = () => call("garmin/all", { method: "POST", body: {}, wait: 120000 });
 export const garminFile = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });
 // Apple Health, by a Shortcut (functions/_health.js): { on, since, last, said, well }; a new key for it ({ key }, shown once)
 export const health = () => call("health");

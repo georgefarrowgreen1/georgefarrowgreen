@@ -76,7 +76,9 @@ createServer((req, res) => {
   const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
   if (u.pathname === '/personalapitoken-service/personal-api/personal-api-key/token') return req.headers.accept === 'application/json' ? send(406, '') : auth === `ApiKey ${GKEY}` ? send(200, GTOKEN, 'text/plain') : send(401, '');
   if (auth !== `Bearer ${GTOKEN}`) return send(401, {});
-  if (u.pathname === '/activitylist-service/activities/search/activities') return send(200, Number(u.searchParams.get('start')) ? [] : GACTS.map(({ file, ...a }) => a));
+  // (between its dates, as Garmin's does: all your history is asked for a window at a time)
+  if (u.pathname === '/activitylist-service/activities/search/activities') { const sd = u.searchParams.get('startDate') || '0', ed = u.searchParams.get('endDate') || '9';
+    return send(200, Number(u.searchParams.get('start')) ? [] : GACTS.filter((a) => a.startTimeGMT.slice(0, 10) >= sd && a.startTimeGMT.slice(0, 10) <= ed).map(({ file, ...a }) => a)); }
   // (your nights: last night's HRV low against its range, a resting heart rate, seven hours' sleep; each as Garmin's own
   // client has them, a day's figures by its calendarDate)
   const gDay = new Date(Date.now() - 2 * 3600e3).toISOString().slice(0, 10);
@@ -383,6 +385,19 @@ ok(tickNo.status === 401 && JSON.parse(tickYes.body).asked === 1 && rows(`SELECT
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000);
 ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
+// ---- all your history: a ride from over a year ago, not in the six months; brought in when asked for ----
+const gOld = gAt - 400 * 86400;
+GACTS.push({ activityId: 9004, activityName: 'Old gravel', startTimeGMT: gTimes(gOld), file: zipOf('9004_ACTIVITY.fit', Buffer.from(gride(gOld, 1800))) });
+await you(L);
+await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
+const gAllSheet = await L.p.locator('#sheet').innerText();
+await L.p.locator('#sheet .btn', { hasText: 'Bring in all your rides' }).click();
+const gAll = await waitFor(() => acts(sam).find((a) => a.id === 'g9004'), 30000);
+await waitFor(() => !rows(`SELECT back FROM fx_garmin WHERE user_id = '${sam}' AND back = 1`).length, 30000);
+await settle(L, 1500);
+ok(/All your rides/i.test(gAllSheet) && gAll?.name === 'Old gravel' && acts(sam).filter((a) => a.id.startsWith('g9001')).length === 1 && !rows(`SELECT back FROM fx_garmin WHERE user_id = '${sam}' AND back = 1`).length,
+  'all your rides: one from over a year ago brought in, nothing twice, and done once it’s caught up', `${JSON.stringify(gAll)} | ${acts(sam).map((a) => a.id).join(',')}`);
+await L.p.screenshot({ path: `${out}/garmin-all.png` });
 // (and your nights, with the activities: kept, and the page told)
 const gWell = rows(`SELECT day, hrv, hrv_lo, rhr, sleep, score FROM fx_well WHERE user_id = '${sam}'`), meWell = JSON.parse((await api(L, '/api/fitness/me')).body).garmin?.well || [];
 ok(gWell.length === 1 && gWell[0].hrv === 41 && gWell[0].hrv_lo === 52 && gWell[0].rhr === 49 && gWell[0].sleep === 25200 && gWell[0].score === 78 && meWell.length === 1 && glog.some((l) => l.includes('/hrv-service/hrv/daily/')),

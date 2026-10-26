@@ -688,6 +688,8 @@ async function upload(got, btn) {
 function garminNow(g) {
   if (!g?.on) { S.garmin = g || { on: false }; return; }
   S.garmin = g;
+  // (all your history part way in: carried on, as you open the app)
+  if (g.back && g.ok) { bringIn({ all: true }); return; }
   fromGarmin().then(() => (Date.now() - (S.garmin.last || 0) > 2 * 60e3 ? A.garminFetch().then((n) => { S.garmin = n; return fromGarmin(); }) : null)).catch(() => {});
 }
 async function fromGarmin({ quiet = false } = {}) {
@@ -720,6 +722,7 @@ async function fromGarmin({ quiet = false } = {}) {
   if (added.length) { setActs(); estimate(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from Garmin` : `${plural(added.length, "activity", "activities")} from Garmin`); }
   return added.length;
 }
+const R_ALL = Date.UTC(2000, 0, 2);
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dayShort(t); };
 function garminSaid() {
   const g = S.garmin;
@@ -729,13 +732,19 @@ function garminSaid() {
 }
 // Garmin's six months, a batch at a time, each read and kept as it comes (Activities shows them coming in); then your
 // numbers worked out from them
-async function bringIn() {
-  S.bringing = { n: 0 }; redraw();
-  const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; redraw(); return k; };
-  let n = await more();
-  for (let i = 0; i < 16 && S.garmin.more; i++) { try { S.garmin = await A.garminFetch(true); } catch (_) { break; } n += await more(); }
+// (all: your whole history, a batch at a time while there's more, Activities saying how far back it's got)
+async function bringIn({ all = false } = {}) {
+  if (bringIn.busy) return 0;
+  bringIn.busy = true;
+  S.bringing = { n: 0, all, at: S.garmin?.backAt || null }; redraw();
+  const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; S.bringing.at = S.garmin?.backAt || S.bringing.at; redraw(); return k; };
+  let n = 0;
+  try {
+    n = await more();
+    for (let i = 0; i < (all ? 400 : 16) && (S.garmin.more || (all && S.garmin.back)); i++) { try { S.garmin = await A.garminFetch(true, all); } catch (_) { break; } n += await more(); }
+  } finally { bringIn.busy = false; }
   S.bringing = null; redraw(); estimate();
-  toast(n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
+  toast(all ? (n ? `${plural(n, "activity", "activities")} from your Garmin history` : "Your Garmin history is all here") : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
   return n;
 }
 // Someone new: three steps, Garmin (or skip), then Rhythm's setup, with your numbers in it
@@ -803,6 +812,15 @@ function garminView() {
     Sheet.redraw(); toast(n ? `${plural(n, "activity", "activities")} from Garmin` : S.garmin.ok ? "Nothing new" : garminSaid(), !S.garmin.ok);
   };
   const checkBtn = h("button.btn.quiet", { type: "button", onclick: () => check(checkBtn) }, "Check now");
+  // (all your history: asked for, then brought in on Activities, a batch at a time)
+  const all = async (btn) => {
+    btn.disabled = true; btn.textContent = "Starting…";
+    try { S.garmin = await A.garminAll(); } catch (e) { btn.disabled = false; btn.textContent = "Bring in all your rides"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
+    await closeSheet(); go("activities");
+    bringIn({ all: true });
+  };
+  const allBtn = h("button.btn", { type: "button", onclick: () => all(allBtn) }, g.back ? "Carry on bringing them in" : "Bring in all your rides");
+  const backTo = g.back && g.backAt > R_ALL ? new Date(g.backAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : null;
   return { title: "Garmin Connect", body: [
     h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: g.ok ? (g.said === "unreachable" ? "Connected, but Garmin didn’t answer last time" : g.said === "full" ? "Connected, but your activities have used all the space there is (2 GB)" : "Connected") : "Your key has expired, or was deleted" })),
     h("div.group", {},
@@ -811,6 +829,8 @@ function garminView() {
     !g.ok && section("A new key", h("div.garmin-key", {}, ...keyForm("Add the new key"))),
     g.ok && checkBtn,
     section(null, h("p.foot", { text: "Fitness looks for new activities every 15 minutes, and as you open it: a ride shows up a minute or two after your watch syncs with Garmin Connect." })),
+    g.ok && section("All your rides", bringIn.busy ? h("p.foot", { text: "Coming in now: Activities shows how far back it’s got." }) : allBtn,
+      h("p.foot", { text: g.back ? `Part way${backTo ? `: up to ${backTo}` : ""}. It carries on by itself every 15 minutes; this brings the rest in now.` : "Everything on Garmin Connect, not just the last six months: oldest first, skipping what’s here already. Carries on by itself if you close Fitness." })),
     section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect")), sure),
   ] };
 }

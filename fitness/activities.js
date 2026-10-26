@@ -64,10 +64,11 @@ function firstUpload() {
 }
 // Garmin's six months, coming in: how many so far, and how far back it goes
 function bringingCard() {
-  const back = new Date(addDays(TODAY, -183)).toLocaleDateString("en-GB", { month: "long" });
+  const all = S.bringing.all, at = S.bringing.at > Date.UTC(2000, 0, 2) ? S.bringing.at : null;
+  const back = all ? (at ? `up to ${new Date(at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` : "looking for your first") : new Date(addDays(TODAY, -183)).toLocaleDateString("en-GB", { month: "long" });
   return h("div.card.glass.bringing", { role: "status" },
     h("div.bringing-top", {}, h("span.ic.brand.garmin", {}, icon("device", 20, 2)),
-      h("span.tx", {}, h("b", { text: "Bringing in six months from Garmin" }), h("small", { text: `${S.bringing.n ? `${plural(S.bringing.n, "activity", "activities")} so far` : `Back to ${back}`} · you can carry on meanwhile` }))),
+      h("span.tx", {}, h("b", { text: all ? "Bringing in all your rides from Garmin" : "Bringing in six months from Garmin" }), h("small", { text: `${S.bringing.n ? `${plural(S.bringing.n, "activity", "activities")} so far${all && at ? `, ${back}` : ""}` : all ? `Starting from the oldest: ${back}` : `Back to ${back}`} · you can carry on meanwhile` }))),
     h("div.bar", {}, h("i")));
 }
 // Uploading files: choose them, and where each app keeps them (Garmin's connected instead)

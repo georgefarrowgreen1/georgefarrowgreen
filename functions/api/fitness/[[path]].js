@@ -14,6 +14,7 @@
 //   POST   /api/fitness/garmin        your Personal API key, tried and kept → as GET
 //   DELETE /api/fitness/garmin        the key forgotten
 //   POST   /api/fitness/garmin/fetch  what's new asked for now (as the app opens; force, for Check now) → as GET
+//   POST   /api/fitness/garmin/all    all your history on Garmin, not just six months: walked through, oldest first → as GET
 //   GET    /api/fitness/garmin/new/<id>  a waiting activity's file, as Garmin gave it (a zip of its FIT file)
 //   DELETE /api/fitness/garmin/new/<id>  read, and not to be kept (one you have already, or that can't be read)
 //   GET    /api/fitness/health        Apple Health, by a Shortcut (functions/_health.js): on or not, what it last sent, your nights
@@ -37,7 +38,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
-import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick } from "../../_garmin.js";
+import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick, allHistory } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
@@ -134,8 +135,13 @@ const ROUTES = {
   "POST garmin/fetch": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
-    if (b.force) await limit(env, `fxgarminnow:${u.id}`, 30, 3600e3);
+    // (all your history coming in: a batch a time, so many more)
+    if (b.force) await limit(env, b.all ? `fxgarminallnow:${u.id}` : `fxgarminnow:${u.id}`, b.all ? 600 : 30, 3600e3);
     return json(await fetchNew(env, u.id, { force: b.force === true }));
+  },
+  "POST garmin/all": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await allHistory(env, (await signedIn(request, env)).id));
   },
   "GET garmin/new/:id": async ({ request, env, id }) => {
     const u = await signedIn(request, env);

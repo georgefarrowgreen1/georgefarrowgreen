@@ -39,6 +39,8 @@ async function tables(env) {
     // (your nights, as Garmin has them: fx_well; and when they were last asked for)
     await D.prepare(`CREATE TABLE IF NOT EXISTS fx_well (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, hrv_lo REAL, hrv_hi REAL, rhr INTEGER, sleep INTEGER, score INTEGER, PRIMARY KEY (user_id, day))`).run();
     await D.prepare("ALTER TABLE fx_garmin ADD COLUMN well_at INTEGER").run().catch(() => {});
+    // (and all your history, asked for: being walked through, oldest first, from since)
+    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN back INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
     tables.done = true;
   }
   return D;
@@ -100,6 +102,18 @@ export async function disconnect(env, userId) {
   await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_well WHERE user_id = ?").bind(userId)]);
 }
 
+// ---- all your history ----
+// Everything on Garmin Connect, not just the six months: Garmin walked through from 2000, a window at a time (four
+// months, doubling while they're empty, up to three years), oldest first, a batch of files each time it's asked (by
+// the app, and the scheduler's turns meanwhile, so it carries on with the app closed), till it's caught up to now
+export const ALL_FROM = Date.UTC(2000, 0, 1);
+export async function allHistory(env, userId) {
+  const D = await tables(env);
+  await limit(env, `fxgarminall:${userId}`, 10, 3600e3);
+  await D.prepare("UPDATE fx_garmin SET back = 1, since = ?2, last = NULL WHERE user_id = ?1").bind(userId, ALL_FROM).run();
+  return fetchNew(env, userId, { force: true });
+}
+
 // ---- what's new ----
 // Garmin asked for what's started since the newest seen (a day's overlap, as it lists by day): each new one's file
 // fetched to wait for the app. → the state, as garminOf has it. Not more than once every couple of minutes, unless forced.
@@ -126,19 +140,32 @@ export async function fetchNew(env, userId, { force = false } = {}) {
       }
     }
     const seen = new Set(JSON.parse(g.seen || "[]")), waiting = new Set((await D.prepare("SELECT id FROM fx_garmin_new WHERE user_id = ?").bind(userId).all()).results.map((r) => r.id));
-    const from = ymd((g.since || now - FIRST * 86400e3) - 86400e3), found = [];
-    for (let start = 0; start < 1000; start += 100) {
-      const page = await get(env, token, `${SEARCH}?start=${start}&limit=100&startDate=${from}&endDate=${ymd(now + 86400e3)}`);
-      const list = Array.isArray(page) ? page : page?.activities || page?.activityList || page?.results || [];
-      for (const a of list) {
-        const id = String(a.activityId ?? a.id ?? "");
-        if (/^\d{1,20}$/.test(id) && !seen.has(id) && !waiting.has(id)) found.push({ id, start: when(a.startTimeGMT ?? a.beginTimestamp ?? a.startTimeLocal), name: String(a.activityName || "").slice(0, 80) || null });
+    // (and the ones kept already: g<Garmin's id>, or g<id>-2 and on for a multisport one's parts)
+    for (const r of (await D.prepare("SELECT id FROM fx_acts WHERE user_id = ? AND id LIKE 'g%'").bind(userId).all()).results) seen.add(r.id.slice(1).replace(/-\d+$/, ""));
+    const found = [], list = async (from, to) => {
+      for (let start = 0; start < 1000; start += 100) {
+        const page = await get(env, token, `${SEARCH}?start=${start}&limit=100&startDate=${ymd(from)}&endDate=${ymd(to)}`);
+        const xs = Array.isArray(page) ? page : page?.activities || page?.activityList || page?.results || [];
+        for (const a of xs) {
+          const id = String(a.activityId ?? a.id ?? "");
+          if (/^\d{1,20}$/.test(id) && !seen.has(id) && !waiting.has(id)) found.push({ id, start: when(a.startTimeGMT ?? a.beginTimestamp ?? a.startTimeLocal), name: String(a.activityName || "").slice(0, 80) || null });
+        }
+        if (xs.length < 100) break;
       }
-      if (list.length < 100) break;
+    };
+    let back = !!g.back, at = g.since || now - FIRST * 86400e3;
+    if (!back) await list(at - 86400e3, now + 86400e3);
+    else {
+      // (all your history: windows from where it's got to, till one has something new, or it's caught up)
+      for (let span = 120 * 86400e3, k = 0; k < 6 && !found.length; k++, span = Math.min(span * 2, 3 * 365 * 86400e3)) {
+        const to = Math.min(now + 86400e3, at + span);
+        await list(at - 86400e3, to);
+        if (!found.length) { at = to; if (to >= now) { back = false; break; } }
+      }
     }
     // oldest first, so a long gap fills in order; a few at a time
     found.sort((a, b) => (a.start || 0) - (b.start || 0));
-    let since = g.since || 0;
+    let since = back || g.back ? at : g.since || 0;
     // (the space you've used: your activities, and the files waiting)
     const used = await D.prepare("SELECT (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) + (SELECT COALESCE(SUM(size), 0) FROM fx_garmin_new WHERE user_id = ?1) AS b").bind(userId).first();
     let room = MAX_STORE - (used?.b || 0);
@@ -155,10 +182,12 @@ export async function fetchNew(env, userId, { force = false } = {}) {
       seen.add(a.id);
       if (Number.isFinite(a.start)) since = Math.max(since, a.start);
     }
-    await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = NULL WHERE user_id = ?1").bind(userId, JSON.stringify([...seen].slice(-SEEN)), since || g.since).run();
+    // (all your history: done once a window comes up empty at now, or the last of it is fetched)
+    if (back && found.length <= MOST && since >= now - 86400e3 * 2) back = false;
+    await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = NULL, back = ?4 WHERE user_id = ?1").bind(userId, JSON.stringify([...seen].filter((x) => /^\d+$/.test(x)).slice(-SEEN)), since || g.since, back ? 1 : 0).run();
     // (and your nights: every few hours, the last few days; two months the first time)
     if (!g.well_at || now - g.well_at > WELL_EVERY) await wellness(env, D, userId, token, g.well_at ? now - 4 * 86400e3 : now - 60 * 86400e3, now).catch((e) => console.error("garmin well", e.status, e.message));
-    return { ...(await garminOf(env, userId)), more: found.length > MOST };
+    return { ...(await garminOf(env, userId)), more: found.length > MOST || back };
   } catch (e) {
     if (e instanceof HttpError) throw e;
     return fail("unreachable");
@@ -214,13 +243,13 @@ async function wellness(env, D, userId, token, from, to) {
 }
 // What the app's told: connected or not, how the last ask went, and the files waiting to be read
 export async function garminOf(env, userId) {
-  const D = await tables(env), g = await D.prepare("SELECT last, ok, said, added FROM fx_garmin WHERE user_id = ?").bind(userId).first();
+  const D = await tables(env), g = await D.prepare("SELECT last, ok, said, added, back, since FROM fx_garmin WHERE user_id = ?").bind(userId).first();
   if (!g) return { on: false };
   const { results } = await D.prepare("SELECT id, start, name FROM fx_garmin_new WHERE user_id = ? ORDER BY start LIMIT 50").bind(userId).all();
   // (and the last two months of your nights)
   const well = (await D.prepare("SELECT day, hrv, hrv_lo, hrv_hi, rhr, sleep, score FROM fx_well WHERE user_id = ? AND day >= ? ORDER BY day").bind(userId, ymd(Date.now() - 60 * 86400e3)).all()).results
     .map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v != null)));
-  return { on: true, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results, well };
+  return { on: true, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results, well, ...(g.back ? { back: true, backAt: g.since } : {}) };
 }
 export async function waitingFile(env, userId, id) {
   const D = await tables(env), row = await D.prepare("SELECT id FROM fx_garmin_new WHERE user_id = ? AND id = ?").bind(userId, id).first();
