@@ -5,7 +5,7 @@ import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
-import { shareView } from "./app.js";
+import { shareView, mapsAlways } from "./app.js";
 import * as SH from "./share.js";
 
 // ---- Activities ----
@@ -166,11 +166,15 @@ function actView(a) {
     const sampleAt = (sec) => { let lo = 0, hi = x.s.t.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (x.s.t[m] < sec) lo = m + 1; else hi = m; } return lo; };
     mapAt = (sec) => { if (sec == null) { r.at(null); gl?.at(null); return; } const i = sampleAt(sec); r.at(i); if (gl && x.s.lat[i] != null) gl.at([x.s.lon[i], x.s.lat[i]]); };
     // (on a real map, where the phone can draw one: the route as ridden, over it; a tap opens it to explore)
-    if (M.able()) {
+    const real = () => {
       const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => pushSheet(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
       box.replaceChildren(holder);
       // (and where it can't after all, its own drawing of the route back)
       M.routeMap(holder, { ...route, light: lightNow() }).then((g) => { gl = g; }).catch(() => box.replaceChildren(r.el));
+    };
+    if (M.able()) {
+      if (mapsAlways()) real();
+      else box.append(h("button.pill.small.map-show", { type: "button", onclick: real }, icon("open", 14, 2.4), "Show on map"));
     }
     body.push(box);
   }

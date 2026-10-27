@@ -98,6 +98,7 @@ function adopt(d) {
   U.metric = S.unitsSet ? d.prefs.units !== "imperial" : !/-(US|LR|MM)\b/i.test(navigator.language || "");
   S.ask = d?.prefs?.ask !== false;
   S.nightsFrom = ["apple", "garmin"].includes(d?.prefs?.nights) ? d.prefs.nights : "auto";
+  S.onboarded = d?.prefs?.onboarded === true;
   S.examples = false;   // (the example rides are gone: your own alone)
   setActs();
   // (new numbers, from another device: every ride's stress worked out again for them)
@@ -106,7 +107,7 @@ function adopt(d) {
 const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
 // what's kept with the account, as this device has it now
 const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine,
-  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}), ...(S.nightsFrom && S.nightsFrom !== "auto" ? { nights: S.nightsFrom } : {}) } });
+  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}), ...(S.nightsFrom && S.nightsFrom !== "auto" ? { nights: S.nightsFrom } : {}), ...(S.onboarded ? { onboarded: true } : {}) } });
 // Your numbers from your rides, for those you haven't set: FTP from your best 20 minutes of the last 90 days (95% of
 // it), max heart rate the highest in any of them (and threshold heart rate 90% of that, unless you've set it)
 const isSet = (k) => (P().set || []).includes(k);
@@ -399,6 +400,9 @@ function mapCredit() {
   b.addEventListener("keydown", (e) => e.stopPropagation());
   return b;
 }
+// Maps (OpenFreeMap's tiles, fetched by the phone: it sees where they're shown): by default only when you tap for one,
+// each route otherwise Fitness's own drawing, which asks nothing of anyone; or always, chosen in You. (This phone's.)
+const mapsAlways = () => store.get("maps", "tap") === "always";
 // the route's map, the whole sheet, to move and zoom
 function bigMapView(name, route) {
   const holder = h("div.map-gl.big", {}, mapCredit());
@@ -432,6 +436,7 @@ function settingsView() {
         row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Apple Health", sub: healthSaid(), onclick: () => { healthView.key = null; pushSheet(healthView); } }),
         devices.length > 0 && row({ icon: "device", tint: "grey", title: "Devices", sub: `${plural(devices.length, "device")} seen in your files`, onclick: () => pushSheet(devicesView) }))),
       section("Preferences", h("div.group", {},
+        row({ icon: "open", tint: "teal", title: "Maps", sub: "From OpenFreeMap, which sees where they’re shown", value: mapsAlways() ? "Always" : "When you tap", onclick: () => { store.set("maps", mapsAlways() ? "tap" : "always"); Sheet.redraw(); } }),
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
         // (units, the morning check-in and exporting everything: your account's, on its page, for every device)
@@ -778,34 +783,86 @@ async function bringIn({ all = false, src = "garmin" } = {}) {
   toast(all ? (n ? `${plural(n, "activity", "activities")} from your ${c.label} history` : `Your ${c.label} history is all here`) : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : `Connected to ${src === "garmin" ? "Garmin Connect" : "Strava"}`);
   return n;
 }
-// Someone new: three steps, Garmin (or skip), then Rhythm's setup, with your numbers in it
-function firstRun() {
-  const field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
-  const go1 = async (btn) => {
-    if (!field.value.trim()) return field.focus();
-    btn.disabled = true; btn.textContent = "Connecting…";
-    try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
-    catch (e) { btn.disabled = false; btn.textContent = "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
-    bringIn();   // (coming in meanwhile)
-    rhythmSetup({ first: true });
+// ---- the first use: a welcome, the whole screen, over the sky (once for an account, on whichever phone) ----
+// welcome → your rides → your week (and how much you've been riding, where there's little to go by) → what you're
+// riding for → your mornings → your first week, then Today. Every step but the week and the goal can be skipped; where
+// it's got to's kept on this phone, so it opens there again (and back from Strava's page, on your week, the rides coming).
+const ONB = "onb";
+function onboarding(at = null) {
+  const V = rhythmSetup({ onboard: { extras, done: finish, coming } });
+  const mark = (k) => store.set(ONB, k);
+  const first = (S.me?.name || "").trim().split(/\s+/)[0];
+  function finish() {
+    S.onboarded = true; keep("prefs"); store.set(ONB, null); store.set("welcomed", true);
+    closeSheet(); if (S.tab !== "today") go("today"); else redraw();
+    toast(S.own.length ? "Your plan’s ready" : "Your plan’s ready: it learns from every ride you add");
+    if (onboarding.upload) { onboarding.upload = false; setTimeout(() => { go("activities"); chooseFiles(); }, 700); }
+  }
+  // (skipped from the welcome: Rhythm's own week, to change any time)
+  const skip = () => { if (!S.rhythm) { S.rhythm = { ...R.DEFAULTS, days: [...R.DEFAULTS.days], start: mondayOf(TODAY), at: TODAY }; keep("rhythm"); } finish(); };
+  const skipTo = (view, k) => h("button.link.r", { type: "button", onclick: () => { if (k) mark(k); pushSheet(view); } }, "Skip");
+  const point = (ic, tint, title, sub) => h("li", {}, h("span.ic." + tint, {}, icon(ic, 16, 2.2)), h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })));
+  const welcome = () => ({ title: "", right: h("button.link.r", { type: "button", onclick: skip }, "Skip"), body: [
+    h("div.onb-hero", {}, h("span.onb-logo", { "aria-hidden": "true" }, icon("ride", 28, 2.2)), h("h1.onb-title", { text: first ? `Hi ${first}. Training that fits your week.` : "Training that fits your week." })),
+    svgOf('<svg viewBox="0 0 300 110" preserveAspectRatio="none" class="onb-course" aria-hidden="true"><path class="road" d="M-10 92 C 40 92, 62 36, 112 46 S 176 104, 220 70 S 268 18, 310 26"/><path class="ridden" d="M-10 92 C 40 92, 62 36, 112 46 S 176 104, 220 70 S 268 18, 310 26"/></svg>'),
+    h("ul.onb-points", {}, point("plan", "blue", "A plan around your days", "Your sessions set to the time you have."), point("wave", "indigo", "It adapts as you go", "To what you ride, how you slept and how you feel."),
+      point("download", "coral", "Straight to your bike computer", "Every workout ready for Garmin, Wahoo or Zwift.")),
+    h("button.btn.rh-next", { type: "button", onclick: () => { mark("rides"); pushSheet(rides); } }, "Get started")] });
+  const choice = (cls, tile, title, sub, onclick, tag) => h("button.onb-choice" + cls, { type: "button", onclick }, tile,
+    h("span.tx", {}, h("b", {}, title, tag && h("span.onb-tag", { text: tag })), h("small", { text: sub })), h("span.chev", {}, icon("chev", 16, 2.4)));
+  const rides = () => ({ title: "", right: skipTo(V.days, "days"), body: [V.dots("rides"),
+    h("div.sheet-top", {}, h("h1", { text: "Bring your rides in" }), h("div.sub", { text: "Six months of them tell Fitness how fit you are, so your plan starts in the right place." })),
+    h("div.onb-choices", {},
+      S.strava?.ready !== false && choice(".best", h("span.ic.brand.strava", {}, icon("wave", 16, 2.2)), "Strava", "Say yes on Strava’s page, and they come in", (e) => { mark("days"); stravaGo(e.currentTarget); }, "Quickest"),
+      choice("", h("span.ic.brand.garmin", {}, icon("device", 16, 2)), "Garmin Connect", "Paste a key from Garmin, and your nights come too", () => pushSheet(garminStep)),
+      choice("", h("span.ic.coral", {}, icon("upload", 16, 2.2)), "Upload files", "FIT, GPX or TCX, from Wahoo, Zwift or anything: right after this", () => { onboarding.upload = true; mark("days"); pushSheet(V.days); }),
+      choice("", h("span.ic.grey", {}, icon("plus", 16, 2.4)), "I’m just starting out", "No rides yet: a question about your riding instead", () => { mark("days"); pushSheet(V.days); })),
+    h("p.foot.onb-small", { text: "Fitness only reads. Nothing’s posted anywhere." })] });
+  const garminStep = () => {
+    const field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
+    const btn = h("button.btn.rh-next", { type: "button", onclick: () => connect() }, "Connect");
+    const connect = async () => {
+      if (!field.value.trim()) return field.focus();
+      btn.disabled = true; btn.textContent = "Connecting…";
+      try { S.garmin = await A.garminConnect(field.value); field.value = ""; }
+      catch (e) { btn.disabled = false; btn.textContent = "Connect"; if (e.status === 401) return signedOutHere(); return toast(e.message, true, 6000); }
+      bringIn();   // (coming in meanwhile, as you set your week)
+      mark("days"); pushSheet(V.days);
+    };
+    field.onkeydown = (e) => { if (e.key === "Enter") connect(); };
+    return { title: "", body: [V.dots("rides"), h("div.sheet-top", {}, h("h1", { text: "Garmin Connect" }), h("div.sub", { text: "Every ride comes in by itself after this, and your nights with them." })),
+      h("div.card.first-garmin", {}, h("ol.first-steps", {}, h("li", { text: "In Garmin Connect: Settings › Personal API Key › Create" }), h("li", { text: "Copy it, and paste it here" })), field),
+      btn] };
   };
-  // (as many steps as Rhythm's setup will have after this one)
-  const n = 6 + (R.sparse(S.own.map((a) => ({ start: a.start })), TODAY) ? 1 : 0);
-  const view = () => {
-    const btn = h("button.btn.rh-next", { type: "button", onclick: () => go1(btn) }, "Connect");
-    field.onkeydown = (e) => { if (e.key === "Enter") go1(btn); };
-    return { title: "Welcome", right: h("button.link.r", { type: "button", onclick: closeSheet }, "Later"), body: [
-      h("div.rh-dots", { "aria-label": `Step 1 of ${n}` }, Array.from({ length: n }, (_, i) => h(i ? "i" : "i.now"))),
-      h("div.sheet-top", {}, h("h1", { text: "Bring your rides in" }), h("div.sub", { text: "Six months of them tells Fitness how fit you are, so your plan starts in the right place. Then your week: about a minute in all." })),
-      h("div.card.first-garmin", {},
-        h("div.first-garmin-top", {}, h("span.ic.brand.garmin", {}, icon("device", 22, 2)), h("span.tx", {}, h("b", { text: "Connect Garmin" }), h("small", { text: "Every ride comes in by itself after this" }))),
-        h("ol.first-steps", {}, h("li", { text: "In Garmin Connect: Settings › Personal API Key › Create" }), h("li", { text: "Copy it, and paste it here" })),
-        field),
-      btn,
-      h("button.btn.quiet", { type: "button", onclick: () => rhythmSetup({ first: true }) }, "Not on Garmin? Skip"),
-    ] };
-  };
-  openSheet(view, { tall: true });
+  // (as you set your week: the rides coming in, counted)
+  function coming() {
+    if (!S.bringing && !S.garmin?.on && !S.strava?.on) return null;
+    const t = h("span"), el = h("div.onb-coming", { role: "status" }, h("i"), t);
+    const say = () => { if (el.dataset.drawn && !el.isConnected) return clearInterval(tick); el.dataset.drawn = "1";
+      const n = S.bringing?.n || 0, src = S.bringing?.src === "strava" ? "Strava" : "Garmin";
+      t.textContent = S.bringing ? (n ? `${plural(n, "activity", "activities")} in from ${src} so far` : `Bringing your rides in from ${src}…`) : `${plural(S.own.length, "activity", "activities")} in`; };
+    const tick = setInterval(say, 800); say();
+    return el;
+  }
+  // your mornings: your nights (Apple Watch's; Garmin's come with it), and the morning reminder, each a tap
+  function extras() {
+    const m = morningOf(), at = m?.at ?? 7 * 60;
+    const time = h("input.field.onb-time", { type: "time", value: clockOf(at), "aria-label": "Its time", onchange: async () => { const [hh, mm] = time.value.split(":").map(Number); if (morningOf() && Number.isFinite(hh)) { try { await morningOn(hh * 60 + mm); } catch (e) { toast(e.message, true); } } } });
+    const sw = h("button.onb-switch" + (m ? ".on" : ""), { type: "button", role: "switch", "aria-checked": String(!!m), "aria-label": "Morning reminder", onclick: async () => {
+      sw.disabled = true;
+      try { if (morningOf()) await morningOffHere(); else { const [hh, mm] = time.value.split(":").map(Number); await morningOn(hh * 60 + mm); } } catch (e) { toast(e.message, true); }
+      Sheet.redraw(); } });
+    return { title: "", right: skipTo(V.preview), body: [V.dots("extras"),
+      h("div.sheet-top", {}, h("h1", { text: "Your mornings" }), h("div.sub", { text: "Two extras that make each day’s plan fit you better. Both optional, both easy to add later in You." })),
+      S.garmin?.on ? h("div.card.onb-note", {}, h("b", { text: "Your nights: already on" }), h("small", { text: "Your Garmin’s HRV, resting heart rate and sleep come in with your rides, so a poor night eases your day." }))
+        : h("div.group", {}, row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Your nights", sub: S.health?.on ? "On, from your Apple Watch" : "HRV, resting heart rate and sleep from your Apple Watch, so a poor night eases your day", onclick: () => { healthView.key = null; pushSheet(healthView); } })),
+      canPush() && h("div.group", {}, h("div.row.plain", {}, h("span.ic.blue", {}, icon("today", 16, 2.2)), h("span.tx", {}, h("b", { text: "Morning reminder" }), h("small", { text: "Today’s session, or a rest day, as a notification" })), sw),
+        h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "At" })), time)),
+      h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(V.preview) }, "Next")] };
+  }
+  const stack = at === "days" ? [welcome, rides, V.days] : at === "rides" ? [welcome, rides] : [welcome];
+  openSheet(stack[0], { tall: true, full: true });
+  if (stack.length > 1) { Sheet.stack.push(...stack.slice(1)); drawSheet(); }
 }
 function garminView() {
   const g = S.garmin, field = h("input.field", { type: "password", id: "garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key", "aria-label": "Your Garmin Personal API key" });
@@ -1100,9 +1157,11 @@ function morningView() {
 
 // ---- sheets: up from below, the page stepping back; inside one, on and back slide like pages ----
 const Sheet = { stack: [], tall: false, redraw: null };
-function openSheet(view, { tall = false } = {}) {
+// (full: the whole screen, over the sky, as the first-use welcome has it: no handle, no dragging it away)
+function openSheet(view, { tall = false, full = false } = {}) {
   if (sheetEl.open) { Sheet.stack = []; }
   Sheet.stack.push(view); Sheet.tall = tall;
+  sheetEl.classList.toggle("full", full);
   drawSheet();
   if (!sheetEl.open) {
     document.body.style.setProperty("--sy", `${scrollY + innerHeight / 2}px`);
@@ -1142,15 +1201,15 @@ async function closeSheet() {
   sheetEl.classList.add("closing");
   document.body.classList.remove("sheet-up");
   await new Promise((r) => setTimeout(r, still.matches ? 200 : 340));
-  sheetEl.close(); sheetEl.classList.remove("closing"); sheetEl.style.removeProperty("transform"); sheetEl.style.removeProperty("--from-tf");
+  sheetEl.close(); sheetEl.classList.remove("closing", "full"); sheetEl.style.removeProperty("transform"); sheetEl.style.removeProperty("--from-tf");
   Sheet.stack = []; Sheet.redraw = null;
 }
-sheetEl.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(); });
+sheetEl.addEventListener("cancel", (e) => { e.preventDefault(); if (!sheetEl.classList.contains("full")) closeSheet(); });
 sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });   // (a tap on the dim outside it)
 // dragged down by its top, it follows the finger; let go far enough (or quickly), it goes
 function drag(handle) {
   handle.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button")) return;
+    if (e.target.closest("button") || sheetEl.classList.contains("full")) return;
     const y0 = e.clientY, t0 = performance.now();
     let dy = 0;
     sheetEl.classList.add("dragging");
@@ -1407,7 +1466,10 @@ function arrive(m, kept = false) {
 function background(m) {
   background.done = true;
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
-  if (!S.rhythm && !S.own.length && !m.garmin?.on && !m.strava?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
+  // (someone new to Fitness, on any phone: the welcome; part way through it, on this one: where it got to. Anyone with
+  // a plan already, or rides of their own, is set up)
+  const onb = !S.onboarded && !S.rhythm && (store.get(ONB, null) || (!S.own.length && !m.garmin?.on && !m.strava?.on && !store.get("welcomed", false)));
+  if (onb) { garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; setTimeout(() => onboarding(store.get(ONB, null)), 400); }
   else { askToday(); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; }
   older();
   setTimeout(squash, 4000);
@@ -1503,6 +1565,8 @@ const signedOutHere = () => signOutHere(true);
   // (back from Strava's page: how it went, taken out of the address at once)
   const fromStrava = /^#strava=(on|no|error|taken)$/.exec(location.hash)?.[1];
   if (fromStrava) history.replaceState(null, "", location.pathname + location.search);
+  // (back from it part way through the welcome, not connected: back to choosing how your rides come in)
+  if (fromStrava && fromStrava !== "on" && store.get(ONB, null) === "days") store.set(ONB, "rides");
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
   else if (want === "plan") S.tab = "today";
@@ -1526,11 +1590,12 @@ const signedOutHere = () => signOutHere(true);
   if (early && m.id !== early.id) return location.reload();
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
   arv?.in();
-  if (fromStrava === "on") { go("activities"); bringIn({ src: "strava" }); }
+  if (fromStrava === "on") { if (!store.get(ONB, null)) go("activities"); bringIn({ src: "strava" }); }
   else if (fromStrava === "taken") toast("That Strava account is connected to another Fitness account. On Strava’s page, sign in as yourself, or disconnect it from the other account first.", true, 9000);
   else if (fromStrava) toast(fromStrava === "no" ? "Strava wasn’t connected: Fitness needs to see your activities. Try again, and leave the activities box ticked on Strava’s page." : "Strava didn’t connect. Try again in a moment.", true, 7000);
 })();
 
 // (what the screens, each its own module, take from here)
 export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
+export { mapsAlways };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

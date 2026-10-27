@@ -283,14 +283,17 @@ function workoutsView() {
 }
 // Setting Rhythm up (or changing it): four short steps, each a page of the sheet (Back pops it): when you ride, how you
 // like to ride, build or hold, and the first week it gives you before anything's kept
-function rhythmSetup({ first = false, at = null } = {}) {
-  const editing = !!S.rhythm, draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
+// (onboard: as part of the first-use welcome (app.js onboarding), whose own screens come before and between: its views
+// handed back, not opened; riding style a balanced default, and its goal one screen, "What are you riding for?")
+function rhythmSetup({ first = false, at = null, onboard = null } = {}) {
+  const editing = !!S.rhythm && !onboard, draft = { ...R.DEFAULTS, ...(S.rhythm || {}) };
   draft.days = [...draft.days];
-  const cancel = () => h("button.link.r", { type: "button", onclick: closeSheet }, "Cancel");
+  const cancel = () => (onboard ? h("span.r") : h("button.link.r", { type: "button", onclick: closeSheet }, "Cancel"));
   // (the steps: someone new has had Garmin's first; little of your own riding to go by, a step asking where you've
   // been, so Rhythm starts there; your numbers, setting up, not changing your week)
   const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY);
-  const STEPS = [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "event", "preview"].filter(Boolean);
+  const STEPS = onboard ? ["rides", "days", needLevel && "level", "aim", "extras", "preview"].filter(Boolean)
+    : [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "event", "preview"].filter(Boolean);
   const dots = (k) => { const n = STEPS.indexOf(k) + 1; return h("div.rh-dots", { "aria-label": `Step ${n} of ${STEPS.length}` }, STEPS.map((_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : "")))); };
   const top = (k, title, sub) => [dots(k), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
@@ -329,7 +332,8 @@ function rhythmSetup({ first = false, at = null } = {}) {
         h("button", { type: "button", "aria-label": "15 minutes less", onclick: () => step(-15) }, icon("minus", 16, 2.4)), selVal,
         h("button", { type: "button", "aria-label": "15 minutes more", onclick: () => step(15) }, icon("plus", 16, 2.4)))),
       section("Or start from", h("div.rh-presets", {}, preset("Evenings and weekends", [0, 60, 60, 60, 0, 150, 90]), preset("Weekends only", [0, 0, 0, 0, 0, 180, 150]), preset("Most days", [45, 75, 60, 75, 0, 180, 120]))),
-      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(needLevel ? level : editing ? style : numbersStep) : toast("Choose at least one day to ride", true)) }, "Next")] };
+      onboard?.coming?.(),
+      h("button.btn.rh-next", { type: "button", onclick: () => (draft.days.some((x) => x) ? pushSheet(needLevel ? level : onboard ? aim : editing ? style : numbersStep) : toast("Choose at least one day to ride", true)) }, "Next")] };
   };
   // 1b. Where you've been riding lately (only with less than a month of your own rides to go by)
   const level = () => {
@@ -340,7 +344,7 @@ function rhythmSetup({ first = false, at = null } = {}) {
       h("div.sub", { text: `The last month or so. ${S.own.length ? `You’ve uploaded ${plural(S.own.length, "ride")}, so` : "With no rides uploaded yet,"} Rhythm starts from this, and learns from every ride you add.` })),
       h("div.rh-choices", { role: "radiogroup", "aria-label": "Riding lately" },
         opt("none", "Hardly at all", "Starting again, or new to it"), opt("some", "A ride or two a week", "About 2 to 4 hours"), opt("regular", "Most weeks, regularly", "About 5 to 8 hours"), opt("lots", "A lot", "9 hours or more")),
-      next("Next", editing ? style : numbersStep)] };
+      next("Next", onboard ? aim : editing ? style : numbersStep)] };
   };
   // 1c. Your numbers: every target's set from them (worked out from your rides till you set them)
   const numbersStep = () => ({ title: "Rhythm", right: cancel(), body: [...top("numbers", "Your numbers", "Every target in your plan is set from these. Not sure? Leave them: Fitness works them out from your rides, and keeps them up to date."),
@@ -394,6 +398,26 @@ function rhythmSetup({ first = false, at = null } = {}) {
       ev && h("div.ev-when", {}, date, name, h("small.rh-note", { text: weeksTo != null ? (weeksTo >= 6 ? `${plural(weeksTo, "week")} away: the last six themed for it, then a two-week taper.` : weeksTo >= 2 ? `${plural(weeksTo, "week")} away: straight into the build for it, then the taper.` : "Close: Rhythm goes straight into the taper.") : "The day, so Rhythm can count back from it." })),
       h("button.btn.rh-next", { type: "button", onclick: go }, "See your first week")] };
   };
+  // (the welcome's goal: four, each Rhythm's own settings: fitter, balanced; further, long days; faster, punchy rides;
+  // or a date in mind, its kind and day, built towards and tapered for)
+  const aim = () => {
+    const ev = draft.event, k = ev ? "date" : draft.lean === "endurance" ? "further" : draft.lean === "punch" ? "faster" : "fitter";
+    const set = (x) => { draft.mode = "build"; if (x === "date") { draft.lean = "balanced"; draft.event = draft.event || { kind: "sportive", date: null, name: "" }; } else { draft.event = null; draft.lean = { fitter: "balanced", further: "endurance", faster: "punch" }[x]; } Sheet.redraw(); };
+    const card = (x, ic, tint, title, sub) => h("button.onb-goal" + (k === x ? ".on" : ""), { type: "button", role: "radio", "aria-checked": String(k === x), onclick: () => set(x) },
+      h("span.ic." + tint, {}, icon(ic, 16, 2.2)), h("b", { text: title }), h("small", { text: sub }));
+    const kind = (x, t) => h("button" + (ev?.kind === x ? ".on" : ""), { type: "button", "aria-pressed": String(ev?.kind === x), onclick: () => { ev.kind = x; Sheet.redraw(); } }, t);
+    const date = ev && h("input.field", { type: "date", "aria-label": "Its date", min: ymd(addDays(TODAY, 3)), max: ymd(addDays(TODAY, 365)), value: ev.date ? ymd(ev.date) : "",
+      onchange: () => { const [y, m, d] = date.value.split("-").map(Number); if (y) { ev.date = startOfDay(new Date(y, m - 1, d, 12).getTime()); Sheet.redraw(); } } });
+    const name = ev && h("input.field", { type: "text", maxlength: "60", placeholder: "Its name (optional)", "aria-label": "Its name", value: ev.name || "", oninput: () => { ev.name = name.value.trim().slice(0, 60); } });
+    const go = () => { if (ev && !ev.date) { toast("Choose its date", true); return date.focus(); } pushSheet(onboard.extras); };
+    return { title: "", right: cancel(), body: [...top("aim", "What are you riding for?"),
+      h("div.onb-goals", { role: "radiogroup", "aria-label": "Riding for" },
+        card("fitter", "trend", "green", "Get fitter", "A steady build, week by week"), card("further", "mountain", "blue", "Go further", "Longer rides, more endurance"),
+        card("faster", "bolt", "red", "Get faster", "More intensity, a higher FTP"), card("date", "calendar", "indigo", "A date in mind", "A sportive, a race or a time trial")),
+      ev && h("div.card.onb-event", {}, h("div.onb-kinds", { role: "group", "aria-label": "What kind" }, kind("sportive", "Sportive"), kind("race", "Race"), kind("tt", "Time trial")), date, name,
+        h("small.rh-note", { text: "Fitness builds towards it, then eases off before it, so you arrive fresh." })),
+      h("button.btn.rh-next", { type: "button", onclick: go }, "Next")] };
+  };
   // 4. The first week, as Rhythm would have it, before anything's kept
   const preview = () => {
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
@@ -406,15 +430,18 @@ function rhythmSetup({ first = false, at = null } = {}) {
         w && h("span.mini", {}, C.profile(w, { mini: true, pace: paceFor(w.sport) }))); };
     const start = () => {
       S.rhythm = { ...draft, start: S.rhythm?.start ?? mondayOf(TODAY), at: S.rhythm?.at ?? TODAY };
+      if (onboard) { if (S.chosen) { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); } keep("rhythm"); return onboard.done(); }
       if (S.chosen) { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); }
       keep("rhythm"); closeSheet(); toast(editing ? "Your week is saved" : "Rhythm has started"); if (S.tab !== "today") go("today"); else redraw();
     };
     return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("preview", editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
       h("div.group", {}, ds.map(rowOf)),
       h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard days", String(hard.length)], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
-      h("button.btn.rh-next", { type: "button", onclick: start }, editing ? "Save" : "Start Rhythm"),
+      onboard && h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), S.own.length ? ", worked out from your rides. " : ", a starting guess till your rides say. ", "Every zone and target follows it; change it in You.")),
+      h("button.btn.rh-next", { type: "button", onclick: start }, onboard ? "Start training" : editing ? "Save" : "Start Rhythm"),
       h("p.rh-note", { text: "Change your week any time in Plan" })] };
   };
+  if (onboard) return { days, preview, dots };
   // (straight to your event, from Today's Riding towards: then on to the next seven days, and saved)
   openSheet(at === "event" && editing ? event : days, { tall: true });
 }

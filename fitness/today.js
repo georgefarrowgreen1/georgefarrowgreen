@@ -5,6 +5,7 @@ import * as TC from "./todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dlFor, download, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
+import { mapsAlways } from "./app.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
 
 // ---- Today ----
@@ -318,16 +319,17 @@ function whyToday(why, w) {
 // today's ride on its map (kept between redraws, so the map isn't made again each time the page is)
 let todayMap = null;
 function doneMap(a) {
-  if (!M.able() || !(sumOf(a)?.route || a.sample)) return null;
+  if (!(sumOf(a)?.route || a.sample) || (mapsAlways() && !M.able())) return null;
   if (todayMap?.id === a.id) return todayMap.el;
   todayMap?.g?.remove();
-  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route on a map: open the ride", onclick: () => openAct(a) }, mapCredit());
+  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route: open the ride", onclick: () => openAct(a) }, mapsAlways() ? mapCredit() : null);
   todayMap = { id: a.id, el, g: null };
   (async () => {
     const x = await load(a);
     if (!x?.s?.lat?.some((v) => v != null)) throw 0;
     const ps = perSecond(x), roll = ps.pwr ? rollAvg(ps.pwr, 30) : null;
     const zoneAt = roll ? (i) => zoneOf((roll[Math.min(roll.length - 1, Math.round(x.s.t[i]))] || 0) / P().ftp).c : null;
+    if (!mapsAlways()) { el.classList.add("drawn"); el.replaceChildren(C.route(x.s, zoneAt, cardW(), U.metric).el); return; }
     const g = await M.routeMap(el, { ...routeOf(x.s, zoneAt), light: lightNow() });
     if (todayMap?.el === el) todayMap.g = g; else g.remove();
   })().catch(() => el.remove());

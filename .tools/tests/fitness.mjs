@@ -189,7 +189,7 @@ await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.head .round.me')).trim() === 'S' && await L.p.isVisible('.tabbar'), 'Fitness in the same browser: signed in already, as Sam (no sign-in of its own)');
 await you(L);
 const card = await L.p.innerText('#sheet .acct');
-ok(/Sam Taylor/.test(card) && /@sam · georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
+ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
 ok(!/Example rides/.test(await L.p.innerText('#sheet')), 'no example rides to turn on: only your own');
 await done(L);
 
@@ -521,6 +521,35 @@ const offTxt = await L.p.innerText('main');
 await L.ctx.setOffline(false);
 await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 800);
 ok(/Today|Activities|Progress/.test(offTxt) && !/needs JavaScript|You’re offline. Fitness will be here/.test(offTxt) && /Today|Activities|Progress/.test(await L.p.innerText('main')), 'with no network, the app still opens, from this phone’s copy', offTxt.slice(0, 160));
+
+// ---- 8d½. Someone new: the welcome, the whole screen, a step at a time, then Today ----
+// (a phone as the others, but never welcomed: the welcome's for it)
+const O = await browser('new'), OC = O.ctx;
+await OC.addInitScript(() => { try { localStorage.removeItem('fitness:welcomed'); } catch (_) {} });
+await joinInFlight(O.p, `${CHAT}/`, { name: 'Jo Bloggs', handle: 'jobloggs', email: 'jo@example.com', password: PW, city: 'York' }).catch(async (e) => { await O.p.screenshot({ path: `${out}/onb-join-fail.png` }); console.log('JOINFAIL', O.p.url(), e.message.split('\n')[0]); throw e; });
+await O.p.goto(`${FIT}/`);
+const oOpen = await O.p.waitForSelector('dialog.sheet.full[open] .onb-title', { timeout: 30000 }).then(() => true, () => false);
+const oHi = oOpen ? await O.p.locator('.onb-title').innerText() : '';
+await O.p.screenshot({ path: `${out}/onb-1-welcome.png` });
+const oStep = async (sel, text, shot) => { await O.p.locator(sel, text ? { hasText: text } : {}).first().click(); await settle(O, 700); if (shot) await O.p.screenshot({ path: `${out}/onb-${shot}.png` }); };
+await oStep('#sheet .rh-next', 'Get started', '2-rides');
+const oRides = await O.p.locator('#sheet .sheet-body').innerText();
+await oStep('#sheet .onb-choice', 'just starting out', '3-week');
+await oStep('#sheet .rh-next', 'Next', '3b-level');
+await oStep('#sheet .rh-next', 'Next', '4-goal');
+await oStep('#sheet .onb-goal', 'Go further');
+await oStep('#sheet .rh-next', 'Next', '5-mornings');
+await oStep('#sheet .rh-next', 'Next', '6-first-week');
+const oWeek = await O.p.locator('#sheet .sheet-top h1').innerText();
+await oStep('#sheet .rh-next', 'Start training'); await settle(O, 1500);
+await O.p.screenshot({ path: `${out}/onb-7-today.png` });
+const oState = JSON.parse(rows(`SELECT data FROM fx_state WHERE user_id = '${userId('jobloggs')}'`)[0]?.data || '{}');
+await O.p.reload(); await O.p.waitForSelector('.tabs .tab'); await settle(O, 1500);
+const oAgain = await O.p.$('dialog.sheet.full[open]');
+ok(oOpen && /Hi Jo\. Training that fits your week\./.test(oHi) && /Bring your rides in/.test(oRides) && /Strava/.test(oRides) && /Garmin Connect/.test(oRides) && /Your first week/.test(oWeek)
+  && oState.prefs?.onboarded === true && oState.rhythm?.lean === 'endurance' && oState.rhythm?.mode === 'build' && !oAgain && /Today/.test(await O.p.innerText('main')),
+  'someone new: the welcome, their rides, their week, what they’re riding for, their mornings, their first week; then Today, and not again', `${oHi} | ${oWeek} | ${JSON.stringify(oState.prefs)} ${oState.rhythm?.lean}`);
+await OC.close();
 
 // ---- 8e. Strava: connected on its own page, and back; its activities in by themselves, as Garmin's are ----
 await you(L); await L.p.locator('#sheet .row', { hasText: 'Strava' }).click(); await L.p.waitForSelector('#sheet .btn.strava'); await settle(L, 400);
