@@ -1260,6 +1260,28 @@ async function signedBack(code) {
   try { const m = await A.handback(code, k.word); toast(`Signed in as ${String(m.name).trim().split(/\s+/)[0]}`); return m; }
   catch (e) { toast(e.message, true); return null; }
 }
+// The older activities, where only the newest came (a phone new to the account: those are drawn at once), brought in a
+// page at a time behind, then the screen drawn again with them all
+async function older() {
+  if (older.busy || !S.me?.more) return;
+  older.busy = true;
+  const me = S.me.id;
+  try {
+    for (;;) {
+      const last = S.own.reduce((o, a) => (!o || a.start < o.start || (a.start === o.start && a.id < o.id) ? a : o), null);
+      if (!last) break;
+      const got = await A.older(last.start, last.id);
+      if (S.me?.id !== me) return;
+      const have = new Set(S.own.map((a) => a.id)), add = got.acts.filter((a) => !have.has(a.id));
+      for (const a of add) { S.own.push({ ...a, sample: false }); S.sums.set(a.id, rescale(a.sum, P(), a.sport)); }
+      if (meBase?.id === me) lastMe.put({ ...meBase, acts: [...(meBase.acts || []), ...add], more: got.more });
+      if (!got.more || !add.length) break;
+    }
+    S.me.more = false;
+    if (meBase?.id === me) lastMe.put({ ...meBase, more: false });
+    S.own.sort((a, b) => b.start - a.start); setActs(); redraw();
+  } catch (_) {} finally { older.busy = false; }
+}
 // Signed in: your record and your activities, from the account
 // The account as last fetched, kept on this phone: the app's drawn from it at once as it opens, while what's changed
 // since is fetched (and gone with the rest of this phone's copies on signing out: idb.clear)
@@ -1267,7 +1289,8 @@ let meBase = null;
 // (kept as one string: read back as one, and parsed, it's far quicker than thousands of objects copied out one by one)
 const lastMe = {
   get: async () => { try { const t = await idb.get("me:last"); return typeof t === "string" ? JSON.parse(t) : null; } catch (_) { return null; } },
-  put: (m) => { meBase = m; idb.put("me:last", JSON.stringify(m)).catch(() => {}); },
+  // (and its time, where theme.js can read it at once: what's changed since is asked for as the page is read)
+  put: (m) => { meBase = m; idb.put("me:last", JSON.stringify(m)).then(() => store.set("meAt", { at: m.at }), () => {}); },
 };
 // the account now: what's changed since the copy here (its activities put together with those it has, and those gone
 // left out), or all of it where there's no copy, or it's another account's
@@ -1278,7 +1301,8 @@ async function fetchMe(base = meBase) {
     else {
       const still = new Set(m.ids), byId = new Map((base.acts || []).filter((a) => still.has(a.id)).map((a) => [a.id, a]));
       for (const a of m.acts || []) byId.set(a.id, a);
-      m = { ...m, acts: [...byId.values()].sort((a, b) => b.start - a.start), ids: undefined };
+      // (still bringing the older ones in, or some the account has that aren't here: more to come, behind)
+      m = { ...m, acts: [...byId.values()].sort((a, b) => b.start - a.start), ids: undefined, more: !!base.more || m.ids.length > byId.size };
     }
   }
   if (m.signedIn) lastMe.put(m);
@@ -1299,6 +1323,7 @@ function arrive(m) {
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
   if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
   else { askToday(); garminNow(m.garmin); S.health = m.health || { on: false }; }
+  older();
   setTimeout(squash, 4000);
   setTimeout(routes, 6000);
   morningRefresh();
@@ -1313,8 +1338,10 @@ function takeUp(m) {
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   S.health = m.health || { on: false };
+  S.me.more = m.more;
   setActs(); redraw(); estimate();
   garminNow(m.garmin);
+  older();
 }
 async function pull() {
   if (!S.me || pull.busy) return;
@@ -1337,6 +1364,23 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
+// The service worker, kept on: it holds the app's files, so it opens at once, and with no network (sw.js). Where it finds
+// a new version, it says so: the app opens afresh, at once if it's only just opened and nothing's been touched, else
+// as you come back to it (as below), never mid-upload.
+const opened = Date.now();
+let touched = false, newer = false;
+addEventListener("pointerdown", () => { touched = true; }, { once: true, capture: true });
+const afresh = () => { if (!document.querySelector(".btn[disabled]")) location.reload(); };
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (e.data?.type !== "fitness:new") return;
+    newer = true;
+    if (!touched && Date.now() - opened < 6000 && !sheetEl.open) afresh();
+  });
+  const keep = () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
+  if (document.readyState === "complete") keep(); else addEventListener("load", keep);
+}
+addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && newer) afresh(); });
 // (as it opened, but asked a few seconds on: not in the way of its opening)
 setTimeout(() => versionNow().then((v) => { version = v; }), 4000);
 addEventListener("visibilitychange", async () => {
@@ -1356,7 +1400,7 @@ async function signOutHere(already = false) {
   const d = already !== true && S.me ? dusk() : null;
   if (d) await d.dark;
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
-  idb.clear().catch(() => {});
+  store.set("meAt", null); idb.clear().catch(() => {});
   welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
   d?.done();
 }

@@ -175,16 +175,26 @@ export async function saveState(env, userId, base, data) {
   return { ver: base + 1, data };
 }
 // every activity's row, newest first: what the lists and charts need, without the files. since (ms): only those added
-// or changed since, and every one's id (so a phone that has the rest knows which have gone)
+// or changed since, and every one's id (so a phone that has the rest knows which have gone). With none (a phone with
+// nothing yet): the newest FIRST of them, and more: true where there are others, for olderActs to bring in after
+export const FIRST = 400, PAGE = 1000;
+const COLS = "id, start, sport, indoor, name, device, file, type, size, sum, gz";
+const rowOut = (r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, gz: !!r.gz, sum }; };
 export async function activities(env, userId, since = null) {
-  const D = await fitdb(env), cols = "id, start, sport, indoor, name, device, file, type, size, sum, gz";
+  const D = await fitdb(env);
   const { results } = since == null
-    ? await D.prepare(`SELECT ${cols} FROM fx_acts WHERE user_id = ? ORDER BY start DESC LIMIT ?`).bind(userId, MAX_ACTS).all()
-    : await D.prepare(`SELECT ${cols} FROM fx_acts WHERE user_id = ? AND COALESCE(changed, added) > ? ORDER BY start DESC LIMIT ?`).bind(userId, since, MAX_ACTS).all();
-  const rows = results.map((r) => { let sum = null; try { sum = JSON.parse(r.sum || "null"); } catch (_) {} return { ...r, indoor: !!r.indoor, gz: !!r.gz, sum }; });
-  if (since == null) return { acts: rows };
+    ? await D.prepare(`SELECT ${COLS} FROM fx_acts WHERE user_id = ? ORDER BY start DESC, id DESC LIMIT ?`).bind(userId, FIRST + 1).all()
+    : await D.prepare(`SELECT ${COLS} FROM fx_acts WHERE user_id = ? AND COALESCE(changed, added) > ? ORDER BY start DESC LIMIT ?`).bind(userId, since, MAX_ACTS).all();
+  if (since == null) return { acts: results.slice(0, FIRST).map(rowOut), more: results.length > FIRST };
+  const rows = results.map(rowOut);
   const ids = (await D.prepare("SELECT id FROM fx_acts WHERE user_id = ? LIMIT ?").bind(userId, MAX_ACTS).all()).results.map((r) => r.id);
   return { acts: rows, ids };
+}
+// Those older than one you have (its start and id: the order they're given in), a page at a time
+export async function olderActs(env, userId, start, id) {
+  const { results } = await (await fitdb(env)).prepare(`SELECT ${COLS} FROM fx_acts WHERE user_id = ?1 AND (start < ?2 OR (start = ?2 AND id < ?3)) ORDER BY start DESC, id DESC LIMIT ?4`)
+    .bind(userId, start, id, PAGE + 1).all();
+  return { acts: results.slice(0, PAGE).map(rowOut), more: results.length > PAGE };
 }
 // One kept, its file first (so a row never points at nothing). The same activity sent again (the same id): kept once.
 export async function addActivity(env, userId, meta, u8) {

@@ -42,7 +42,7 @@ import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick,
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
-import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
+import { kept, saveState, cleanState, cleanAct, activities, olderActs, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 // (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
@@ -50,7 +50,7 @@ import { kept, saveState, cleanState, cleanAct, activities, addActivity, activit
 async function view(env, u, since = null) {
   const at = Date.now() - 2000;
   const [k, got, garmin, health] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health };
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -60,6 +60,12 @@ const ROUTES = {
     if (!u) return json({ signedIn: false });
     const since = Number(new URL(request.url).searchParams.get("since"));
     return withCookie(json(await view(env, u, Number.isFinite(since) && since > 0 ? since : null)), request, env, u.token);
+  },
+  // (the rest of your activities, older than one the phone has: a page at a time, after the newest came with me)
+  "GET me/older": async ({ request, env }) => {
+    const u = await signedIn(request, env), q = new URL(request.url).searchParams, start = Number(q.get("start")), id = q.get("id") || "";
+    if (!Number.isFinite(start) || !ID.test(id)) throw new HttpError(400, "Bad request.");
+    return json(await olderActs(env, u.id, start, id));
   },
   "PUT me": async ({ request, env }) => {
     sameOrigin(request);

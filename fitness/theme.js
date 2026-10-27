@@ -24,3 +24,13 @@ try {
     }
   }
 } catch (_) { /* no picture of you: the sky alone */ }
+// What's changed in your account since this phone's copy of it, asked for as the page is read: on its way while the
+// app's code loads, not after (account.js me takes it up; app.js keeps the copy's time, fitness:meAt). Not when back
+// from signing in: that's asked for otherwise.
+try {
+  if (!/^#signin=/.test(location.hash)) {
+    const k = JSON.parse(localStorage.getItem("fitness:meAt") || "null"), since = k && Number.isFinite(k.at) ? Math.round(k.at) : null;
+    window.fxEarly = { since, got: fetch(`/api/fitness/${since ? `me?since=${since}` : "me"}`, { credentials: "same-origin" }) };
+    window.fxEarly.got.catch(() => {});   // (offline, or not taken up: no matter, it's asked again)
+  }
+} catch (_) {}

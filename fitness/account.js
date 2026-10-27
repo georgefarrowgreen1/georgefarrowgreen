@@ -13,6 +13,9 @@ async function call(path, { method = "GET", body, form, raw = false, wait = 3000
     r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: form || (body ? JSON.stringify(body) : undefined),
       credentials: "same-origin", signal: AbortSignal.timeout(wait) });
   } catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
+  return answer(r, raw);
+}
+async function answer(r, raw = false) {
   if (raw && r.ok) return new Uint8Array(await r.arrayBuffer());
   const j = await r.json().catch(() => ({}));
   if (!r.ok && r.status !== 409) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status });
@@ -20,7 +23,15 @@ async function call(path, { method = "GET", body, form, raw = false, wait = 3000
 }
 // who's signed in, your record and your activities: { signedIn, name, handle, photoAt, ver, data, acts }
 // (since: only the activities changed since then, and every one's id, for a phone that has the rest: { ..., ids, at })
-export const me = (since = null) => call(since ? `me?since=${Math.round(since)}` : "me");
+// (the one theme.js asked for as the page was read, where it's the same ask: taken up once)
+export function me(since = null) {
+  const s = since ? Math.round(since) : null, early = globalThis.fxEarly;
+  globalThis.fxEarly = null;
+  if (early && early.since === s) return early.got.then((r) => answer(r), () => call(s ? `me?since=${s}` : "me"));
+  return call(s ? `me?since=${s}` : "me");
+}
+// the activities older than one you have (its start and id), a page at a time → { acts, more }
+export const older = (start, id) => call(`me/older?start=${Math.round(start)}&id=${encodeURIComponent(id)}`);
 // a change to the record, made from version base: { ver, data } as kept now; or { conflict, ver, data } where it's
 // moved on meanwhile
 export const save = (base, data) => call("me", { method: "PUT", body: { base, data } });

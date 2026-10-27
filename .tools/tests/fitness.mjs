@@ -455,6 +455,22 @@ await done(L);
 const noLeak = await api(L, '/api/fitness/me');
 ok(!noLeak.body.includes(GKEY) && !noLeak.body.includes(GTOKEN), 'the key and Garmin’s token never sent to the page');
 
+// ---- the older activities, a page at a time (a phone new to the account has the newest first): all of them, in order ----
+const byStart = rows(`SELECT id, start FROM fx_acts WHERE user_id = '${sam}' ORDER BY start DESC, id DESC`);
+const olderGot = JSON.parse((await api(L, `/api/fitness/me/older?start=${byStart[0].start}&id=${encodeURIComponent(byStart[0].id)}`)).body);
+const olderBad = await api(L, '/api/fitness/me/older?start=x&id=../y');
+ok(byStart.length > 1 && olderGot.acts.map((a) => a.id).join() === byStart.slice(1).map((a) => a.id).join() && olderGot.more === false && olderBad.status === 400,
+  'the activities older than one the phone has: every one, newest first; a bad ask refused', `${byStart.length} ${olderGot.acts?.length} ${olderBad.status}`);
+// ---- offline: the app's files kept by its service worker, so it opens with no network, from this phone's copy ----
+await L.p.evaluate(async () => { await navigator.serviceWorker.ready; });
+await L.p.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
+await L.ctx.setOffline(true);
+await L.p.reload(); await L.p.waitForSelector('.tabs .tab', { timeout: 20000 }).catch(() => {}); await settle(L, 800);
+const offTxt = await L.p.innerText('main');
+await L.ctx.setOffline(false);
+await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 800);
+ok(/Today|Activities|Progress/.test(offTxt) && !/needs JavaScript|You’re offline. Fitness will be here/.test(offTxt) && /Today|Activities|Progress/.test(await L.p.innerText('main')), 'with no network, the app still opens, from this phone’s copy', offTxt.slice(0, 160));
+
 // ---- 8d. One kept before files were made smaller (a GPX, as it came): made smaller as the app opens, its figures kept ----
 const oldAt = (t0 - 86400 * 9) * 1000, oldGpx = gpxFromActivity({ ...ride, start: oldAt, name: 'Old ride' });
 const oldUp = await L.p.evaluate(async ([gpx, at]) => { const f = new FormData(); f.append('meta', JSON.stringify({ id: `i${at}`, start: at, sport: 'ride', name: 'Old ride', file: 'old.gpx', type: 'gpx', sum: { secs: 5400, tss: 70 } }));

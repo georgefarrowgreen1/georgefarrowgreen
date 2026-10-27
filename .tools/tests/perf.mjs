@@ -28,7 +28,7 @@ const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'e
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
 const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.text().startsWith('TIME ') && process.env.PERF_TRACE) console.log(m.text()); });
 await joinInFlight(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
-await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 });
+await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
 // (Rhythm on, so Today is as full as it gets: kept, and the page reloaded with it, till it's there)
 let me;
 for (let k = 0; k < 4; k++) {
@@ -79,5 +79,18 @@ for (let r = 0; r < 3; r++) {
 }
 const res = { rides: N, open: med(runs.map((r) => r.open)), fresh: med(runs.map((r) => r.fresh)), meKB: runs[0].meKB, meKBthen: runs.at(-1).meKB, appKB: runs.at(-1).appKB, appFiles: runs.at(-1).appFiles, app304: runs.at(-1).app304, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
   openActivities: med(runs.map((r) => r.acts)), activityRows: runs.at(-1).rows, openProgress: med(runs.map((r) => r.prog)), backToToday: med(runs.map((r) => r.back)), heapMB: med(runs.map((r) => r.heapMB)) };
+// (and a phone new to the account: signed in, nothing kept yet; how soon Today's drawn, and how soon every ride's in)
+{
+  const st = await c.storageState(); for (const o of st.origins) o.localStorage = o.localStorage.filter((x) => x.name !== 'fitness:meAt');   // (nothing kept on this phone yet)
+  const c2 = await b.newContext({ storageState: st, viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: UA, reducedMotion: 'reduce' });
+  const p2 = await c2.newPage(); p2.on('console', (m) => { if (m.text().startsWith('TIME ')) console.log('P2 ' + m.text()); }); const cdp2 = await c2.newCDPSession(p2); await cdp2.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.PERF_CPU) || 4 });
+  if (process.env.PERF_NET) { await cdp2.send('Network.enable'); await cdp2.send('Network.emulateNetworkConditions', { offline: false, latency: 120, downloadThroughput: 9e6 / 8, uploadThroughput: 3e6 / 8 }); }
+  let firstKB = 0; p2.on('response', async (r) => { if (r.url().includes('/api/fitness/me') && !r.url().includes('older') && r.request().method() === 'GET') firstKB = Math.round((await r.body().catch(() => Buffer.alloc(0))).length / 1024); });
+  const t0 = Date.now(); await p2.goto(`${FIT}/#today`); await p2.waitForSelector('.strip-days .sday', { timeout: 600000 }); res.newPhoneToday = Date.now() - t0;
+  if (process.env.PERF_TRACE) console.log('NEWPHONE ' + JSON.stringify(await p2.evaluate(() => ({ nav: Math.round(performance.getEntriesByType('navigation')[0].responseEnd), dcl: Math.round(performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd),
+    res: performance.getEntriesByType('resource').filter((r) => !/older/.test(r.name)).map((r) => [r.name.split('/').pop().slice(0, 18), Math.round(r.startTime), Math.round(r.responseEnd), r.encodedBodySize]), now: Math.round(performance.now()) }))));
+  await p2.waitForFunction(async (n) => (await import('./app.js')).S.own.length >= n, N, { timeout: 600000, polling: 200 }); res.newPhoneAll = Date.now() - t0; res.newPhoneFirstKB = firstKB;
+  await c2.close();
+}
 writeFileSync(`${out}/perf.json`, JSON.stringify({ res, runs }, null, 1));
 console.log(JSON.stringify(res)); console.log('page errors: ' + errs.slice(0, 3).join(' | ')); console.log('FAILS 0'); await b.close();
