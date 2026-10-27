@@ -1,4 +1,4 @@
-// The site's one account (georgefarrowgreen.com): the same email, password and passkeys in every app on it, and one
+// The one account (inflite.ai's, and the home page's at georgefarrowgreen.com): the same email, password and passkeys in every app on it, and one
 // sign-in shared by them all in a browser.
 //
 // You sign in on the account's own page (account.<site>), and only there: each app sends you there to sign in, and is
@@ -23,16 +23,15 @@ import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, waitTex
 import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
+import { siteName } from "./_sites.js";
 import { logEvent } from "./_activity.js";
 
-const SITE = "georgefarrowgreen.com";
-export const siteOf = (env) => env?.ACCOUNT_SITE || SITE;
-
-// The cookie: for the whole site where the address is the site's (production's, or the tests'); for that address
-// alone anywhere else (a preview's, localhost)
-// (Secure on the site's own addresses whatever the request came over; plain only for local tests over http)
+// The cookie: for the whole of the site the address is on (inflite.ai, for every app; georgefarrowgreen.com, for the
+// home page: functions/_sites.js), production's or the tests'; for that address alone anywhere else (a preview's,
+// localhost). (The two sites' cookies are two sign-ins: one's carried to the other by a hop, functions/_hop.js)
+// (Secure on the sites' own addresses whatever the request came over; plain only for local tests over http)
 function cookieOf(request, env) {
-  const u = new URL(request.url), site = siteOf(env), whole = u.hostname === site || u.hostname.endsWith(`.${site}`);
+  const u = new URL(request.url), site = siteName(u.hostname, env), whole = !!site;
   const secure = u.protocol === "https:" || (whole && !env?.ACCOUNT_SITE);
   return { name: secure ? "__Secure-account" : "account", attrs: `Path=/${whole ? `; Domain=${site}` : ""}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
 }
@@ -77,7 +76,7 @@ export async function cookieUser(request, env, inflight = false, { deleting = fa
 // (said only to someone who's shown it's their account)
 function refuseDeleting(u) {
   const on = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(u.delete_at);
-  throw new HttpError(403, `This account is being deleted on ${on}. To keep it, sign in at account.georgefarrowgreen.com.`, "deleting");
+  throw new HttpError(403, `This account is being deleted on ${on}. To keep it, sign in at account.inflite.ai.`, "deleting");
 }
 // A request that acts on the cookie's account must come from the app's own pages (the browser says where from): a
 // page elsewhere on the site would send the cookie too
@@ -182,7 +181,7 @@ export async function passkeyUser(env, request, b, { deleting = false } = {}) {
 export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button, pill, when = true }, origin, opts) {
   if (!emailReady(env) || (!to && !u.email_ok)) return false;
   const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button, pill,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.georgefarrowgreen.com."],
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.inflite.ai."],
     rows: [["Account", `@${u.handle}`], ...rows, ...(when ? [["When", ukTime(Date.now())]] : [])] });
   await sendEmail(env, { to: to || u.email, subject, text, html, brand: "account" }, opts);
   return true;

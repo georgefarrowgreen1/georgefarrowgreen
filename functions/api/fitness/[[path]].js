@@ -1,4 +1,4 @@
-// Fitness's own API, at fitness.georgefarrowgreen.com only, and only signed in with the site's account (the site's
+// Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
 //                                    (?since=<ms>: only those changed since, and every one's id)

@@ -2,19 +2,19 @@
 // Settings, that opens them (the page signed in by the code InFlight hands over, open at InFlight's settings, with the
 // way back), and says what's set; This Phone keeps what's each phone's own. On the page, InFlight's card has them beside
 // Open. Each change is saved by the app's own rules (GET/PATCH /api/account/inflight, DELETE inflight/block), from the
-// page's own address only, and InFlight shows it once it's synced. The site's addresses are stood in for by gfg.test.
+// page's own address only, and InFlight shows it once it's synced. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { joinInFlight, ifPage } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${ACCT}`] });
 const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36';
 async function browser(name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', timezoneId: 'Europe/London', isMobile: true, hasTouch: true, userAgent: ANDROID, colorScheme: 'dark' });

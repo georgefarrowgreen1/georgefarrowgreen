@@ -1,6 +1,6 @@
 // InFlight's handover, at its old address (georgefarrowgreen.com/pigeon/).
 //
-// The first time InFlight starts at chat.georgefarrowgreen.com on a phone, it
+// The first time InFlight starts at chat.inflite.ai on a phone, it
 // opens this page there, hidden, and this page hands over what the phone kept
 // at the old address: the sign-in (its key sealed as it was, still unreadable),
 // unsent pigeons, trusted keys and settings. The two addresses are one site, so

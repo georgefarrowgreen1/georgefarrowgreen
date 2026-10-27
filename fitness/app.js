@@ -485,7 +485,7 @@ function settingsView() {
 // Your account's page, opened signed in as you (a code good once, for a minute), with the way back here
 async function openAccount(open) {
   const page = A.accountPage();
-  if (!page) return toast("Your account is at account.georgefarrowgreen.com");
+  if (!page) return toast("Your account is at account.inflite.ai");
   try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness", ...(typeof open === "string" ? { open } : {}) })}`); }
   catch (e) { if (e.status === 401) return signedOutHere(); toast(e.message, true); }
 }
@@ -606,10 +606,10 @@ function calendar(wks) {
     if (!w) continue;
     const m = measure(w, paceFor(w.sport)), start = d.date + 7 * 3600e3;
     const notes = `${w.about}\n\n` + flatten(w, paceFor(w.sport)).map((s) => `${stepLen(s)} ${s.name || s.kind}${w.sport === "ride" && s.kind !== "free" ? ` at ${pct(s.from)}${s.to !== s.from ? `–${pct(s.to)}` : ""}` : ""}`).join("\n");
-    ev.push(["BEGIN:VEVENT", `UID:${w.id}-${d.date}@fitness.georgefarrowgreen.com`, `DTSTAMP:${stamp(Date.now())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(start + m.secs * 1000)}`,
+    ev.push(["BEGIN:VEVENT", `UID:${w.id}-${d.date}@fitness.inflite.ai`, `DTSTAMP:${stamp(Date.now())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(start + m.secs * 1000)}`,
       `SUMMARY:${fold(`${w.name} (${SPORTS[w.sport].name})`)}`, `DESCRIPTION:${fold(notes)}`, "END:VEVENT"].join("\r\n"));
   }
-  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//georgefarrowgreen.com//Fitness//EN", "CALSCALE:GREGORIAN", ...ev, "END:VCALENDAR", ""].join("\r\n");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//inflite.ai//Fitness//EN", "CALSCALE:GREGORIAN", ...ev, "END:VCALENDAR", ""].join("\r\n");
   // (iCalendar files aren't among the kinds claude.ai's viewer hands over: there, it goes in a zip like the rest)
   saveFile(F.fileName(`Fitness week ${wks[0].week}`, "ics"), ics);
 }
@@ -1307,7 +1307,7 @@ function welcome(note = null, { again = !!welcome.shown } = {}) {
     // (Sign in at the foot of the page, as on the site's other apps)
     h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
       h("button.btn.wbeat", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
-      !page && h("p.small", { text: "Signing in is at fitness.georgefarrowgreen.com." }),
+      !page && h("p.small", { text: "Signing in is at fitness.inflite.ai." }),
       page && h("p.new-here", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Fitness";

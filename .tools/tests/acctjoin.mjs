@@ -1,7 +1,7 @@
 // Joining, and getting back in, on the account's own page only: accounts are made there (by invite, as on the real
 // site), a forgotten password is reset there, and every app signs in there, handed the sign-in back (and the
 // hand-back's own guarantees, at the end). InFlight's older links (an invite, a reset) still work: they're passed on
-// to the account's page. The site's addresses are stood in for by gfg.test, as in acctpage.mjs.
+// to the account's page. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -9,7 +9,7 @@ import { createHash, randomBytes } from 'crypto';
 import { onAccountPage, fillJoin as joinSteps } from './join.mjs';
 import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 const PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry', PW3 = 'Copper kettle 19 harbour';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -21,7 +21,7 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${ex
 execSync(`${S}/restartkeep.sh`, { env: { ...process.env, OPEN_SIGNUP: '0' }, stdio: 'ignore' });
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 // (each with a passkey maker of its own, as a phone has: one that can hold a copy of InFlight's key, PRF)
 async function browser(name) {
@@ -192,7 +192,7 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
 // ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----
 {
-  const AC = 'account.gfg.test', ip = '10.8.0.3';
+  const AC = 'account.ifl.test', ip = '10.8.0.3';
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
     proof: randomBytes(32).toString('base64url'), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip });
@@ -209,7 +209,7 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
 
 // ---- 9. The hand-back itself, straight against the API (functions/_handback.js) ----
 {
-  const AC = 'account.gfg.test', IN = 'chat.gfg.test', WE = 'weather.gfg.test', ip = '10.8.0.2';
+  const AC = 'account.ifl.test', IN = 'chat.ifl.test', WE = 'weather.ifl.test', ip = '10.8.0.2';
   const word = () => { const w = randomBytes(32).toString('base64url'); return { w, ask: createHash('sha256').update(w).digest('base64url') }; };
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Hal Back', handle: 'halback', email: 'hal@example.com', salt: randomBytes(16).toString('base64url'),

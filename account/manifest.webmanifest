@@ -1,7 +1,7 @@
 {
-  "name": "Your georgefarrowgreen.com account",
+  "name": "Your inflite.ai account",
   "short_name": "Account",
-  "description": "One sign-in for every app on georgefarrowgreen.com: your profile, password, passkeys and devices.",
+  "description": "One sign-in for every app on inflite.ai: your profile, password, passkeys and devices.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

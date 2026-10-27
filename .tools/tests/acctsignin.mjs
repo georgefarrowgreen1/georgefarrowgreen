@@ -1,13 +1,13 @@
 // Signing in on the account's page, as seamless as it can be: who signed in here last remembered (Not you? forgets
 // them), a passkey asked for in the keyboard as the card's drawn (the passkey button still working past it), a passkey
 // offered after a password sign-in for an app (made there, with its own copy of InFlight's key), the password field's
-// eye and Caps Lock line, and the sky's dawn and dusk. The site's addresses are stood in for by gfg.test, as in
+// eye and Caps Lock line, and the sky's dawn and dusk. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in
 // acctjoin.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { makeAccount } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 const PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -16,7 +16,7 @@ let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 // (each a phone with a passkey maker of its own, one that can hold a copy of InFlight's key: PRF)
 // (autofill: a passkey offered in the keyboard, as mapopen.mjs leaves out unless asked)

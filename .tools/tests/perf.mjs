@@ -11,7 +11,7 @@ import { routeShape } from '../../fitness/formats.js';
 import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const N = Number(process.env.PERF_N) || 2000;
-const CHAT = 'http://chat.gfg.test:8788', FIT = 'http://fitness.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 
 // (rides as the phone would have summed them: a few made up, worked out, then varied)
 const D = demo(Date.now()), tpl = D.history.filter((h) => h.sport === 'ride').slice(0, 6).map((h) => { const x = samples(h); return { s: summarise(x, PROFILE), route: routeShape(x.s), indoor: !!h.indoor }; });
@@ -22,7 +22,7 @@ const rows = Array.from({ length: N }, (_, i) => {
   return { id: `p${i}`, start, sport: 'ride', indoor: t.indoor ? 1 : 0, name: `Ride ${i}`, device: 'Garmin Edge 840', file: `p${i}.fit`, type: 'fit', size: 200000, sum: JSON.stringify(sum) };
 });
 
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: UA, reducedMotion: 'reduce' });
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });

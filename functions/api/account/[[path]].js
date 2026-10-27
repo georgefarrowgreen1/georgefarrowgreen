@@ -1,4 +1,4 @@
-// The account's own API, for its page at account.georgefarrowgreen.com (functions/_acctapp.js), and only there:
+// The account's own API, for its page at account.inflite.ai (functions/_acctapp.js), and only there:
 //   GET  /api/account/me              who's signed in: the profile, email, passkeys, signed-in devices, preferences, the apps
 //   (signing in and out, and the profile: functions/_accountapi.js)
 //   POST /api/account/reauth          showing it's you again (password or passkey), for the few things that need it
@@ -305,7 +305,7 @@ const ROUTES = {
     sameOrigin(request);
     return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
       icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
-      line: "someone asked to reset the password for your georgefarrowgreen.com account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
+      line: "someone asked to reset the password for your inflite.ai account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
       pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
   "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
@@ -368,7 +368,7 @@ const ROUTES = {
       waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
         line: "your account’s password is now kept with a stronger kind of protection.",
         // (not "change your password": that needs the password as it is now, which, if it wasn't them, someone else chose)
-        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.georgefarrowgreen.com. A reset signs out every other device." }, linkOrigin(request)));
+        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.inflite.ai. A reset signs out every other device." }, linkOrigin(request)));
     }
     return json({ ok: true, salt: b.salt });
   },
@@ -414,7 +414,7 @@ const ROUTES = {
     await limit(env, "pwned:" + clientIp(request), 40, 15 * 60e3);
     const p = new URL(request.url).searchParams.get("p") || "";
     if (!/^[0-9A-F]{5}$/.test(p)) throw new HttpError(400, "Send the first 5 characters of the hash.");
-    const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "georgefarrowgreen.com account" } }).catch(() => null);
+    const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "inflite.ai account" } }).catch(() => null);
     return new Response(r?.ok ? await r.text() : "", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin" } });
   },
   // passkeys: a new one (for signing in everywhere on the site, with where it's saved), its name, and taking one away
@@ -779,7 +779,7 @@ const ROUTES = {
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
     const iso = (t) => (t ? new Date(t).toISOString() : null);
     const out = {
-      about: "Everything kept with your georgefarrowgreen.com account that can be read. InFlight's letters aren't here: they're end-to-end encrypted, with keys only your phones have.",
+      about: "Everything kept with your inflite.ai account that can be read. InFlight's letters aren't here: they're end-to-end encrypted, with keys only your phones have.",
       exportedAt: iso(Date.now()),
       account: { id: u.id, name: u.name, handle: u.handle, email: u.email, emailConfirmed: !!u.email_ok, createdAt: iso(u.created_at), photo,
         appearance: u.appearance || "auto" },
@@ -824,7 +824,7 @@ const ROUTES = {
     // (only to an address that's been shown to be theirs: its Keep button stops the deletion. Unconfirmed, signing in keeps it)
     waitUntil(tell(env, u, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
       line: `your account and everything kept with it, in every app on the site, will be deleted on ${onDay(at)}.`,
-      after: "Changed your mind? Keep it with the button, or sign in at account.georgefarrowgreen.com before then.",
+      after: "Changed your mind? Keep it with the button, or sign in at account.inflite.ai before then.",
       pill: ["clock", `On ${onDay(at)}`], when: false, button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
     return withoutSession(json({ ok: true, deleteAt: at }), request, env);
   },

@@ -212,7 +212,7 @@ export async function dataPdf(data, { did, units }) {
   const N = pdf.pages.length;
   pdf.pages.forEach((p, i) => {
     pdf.line(p, L, pdf.H - 44, L + Wd, pdf.H - 44, { color: LINE });
-    pdf.text(p, L, pdf.H - 30, "georgefarrowgreen.com", { size: 8, color: INK3 });
+    pdf.text(p, L, pdf.H - 30, "inflite.ai", { size: 8, color: INK3 });
     const pn = `Page ${i + 1} of ${N}`;
     pdf.text(p, L + Wd - pdf.measure(pn, 8), pdf.H - 30, pn, { size: 8, color: INK3 });
   });

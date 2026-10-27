@@ -1,4 +1,4 @@
-// What's happened to an account lately, for its page's Recent activity (account.georgefarrowgreen.com): sign-ins, a new
+// What's happened to an account lately, for its page's Recent activity (account.inflite.ai): sign-ins, a new
 // password, passkeys added and taken away, devices signed out, the email changed or confirmed, the data downloaded, a
 // deletion asked for or called off. Each with the app it happened in, the device and roughly where (as the list of
 // signed-in devices has them), kept 30 days (pg_events). Noting one never holds up what it's noting.

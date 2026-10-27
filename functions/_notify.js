@@ -88,7 +88,7 @@ async function vapidAuth(env, endpoint) {
   const head = b64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
   const claims = b64url(enc.encode(JSON.stringify({
     aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-    sub: env.PIGEON_CONTACT ? `mailto:${env.PIGEON_CONTACT}` : "https://georgefarrowgreen.com/pigeon/",
+    sub: env.PIGEON_CONTACT ? `mailto:${env.PIGEON_CONTACT}` : "https://chat.inflite.ai/",
   })));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(`${head}.${claims}`));
   return `vapid t=${head}.${claims}.${b64url(sig)}, k=${pub}`;

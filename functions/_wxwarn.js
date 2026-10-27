@@ -19,7 +19,7 @@
 
 import { HttpError } from "./_pigeon.js";
 
-const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.georgefarrowgreen.com)", Accept: "application/json" };
+const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.inflite.ai)", Accept: "application/json" };
 const TTL = 300;
 
 // MeteoAlarm's feeds that draw their areas, with the boxes (south, west, north, east) they cover

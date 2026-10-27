@@ -1,6 +1,6 @@
 // InFlight's files, as a phone gets them, at either of its addresses:
 // georgefarrowgreen.com/pigeon/ (where it has always been) and
-// chat.georgefarrowgreen.com/ (where it's moving), the same files at both.
+// chat.inflite.ai/ (where it's moving), the same files at both.
 //
 // Pages are never cached. Each script and stylesheet a page loads, and each
 // module app.js imports, gets ?v=<fingerprint of that file>, so a refresh
@@ -9,7 +9,7 @@
 // the whole app (inflight-version), which open copies poll to notice a new
 // deploy and reload themselves.
 //
-// At chat.georgefarrowgreen.com the app is the whole site: /x is the file
+// At chat.inflite.ai the app is the whole site: /x is the file
 // /pigeon/x, and every "/pigeon/" the files say is "/" there (so its offline
 // copy, Home Screen app and links cover the site; the API keeps its address).
 
@@ -24,7 +24,7 @@ export const SECURITY = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 };
 const FOREVER = "public, max-age=31536000, immutable";
-export const CHAT_HOST = "chat.georgefarrowgreen.com";
+export const CHAT_HOST = "chat.inflite.ai";
 // (CHAT_HOST in the environment: tests, which run the new address on local names, a comma between them)
 export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname);
 // the app's own paths, as they are at the new address ("/api/pigeon/…" is the API's, and stays)

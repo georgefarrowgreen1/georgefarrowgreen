@@ -59,11 +59,11 @@ function meView(u, t) {
 async function meOf(D, u, t) { return { ...meView(u, t), skin: await skinNow(D, u, t) }; }
 
 /* ---------------- accounts ----------------
-   New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
+   New accounts are made on the account's own page (account.inflite.ai: functions/_join.js), with an
    invite; forgotten passwords are reset there too; and you sign in there, InFlight being handed the sign-in back, with
    what unlocks its key (handback: functions/_handback.js). (A copy of the app from before that still asks here is
    told where to go.) */
-const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.georgefarrowgreen.com.`, "moved"); };
+const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.inflite.ai.`, "moved"); };
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
 // nothing but this (and password resets, which prove the same thing). The email is the
@@ -1109,7 +1109,7 @@ async function pwned({ request, env }) {
   await limit(env, "pwned:" + clientIp(request), 40, 15 * 60e3);
   const p = new URL(request.url).searchParams.get("p") || "";
   if (!/^[0-9A-F]{5}$/.test(p)) throw new HttpError(400, "Send the first 5 characters of the hash.");
-  const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.georgefarrowgreen.com)" } }).catch(() => null);
+  const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.inflite.ai)" } }).catch(() => null);
   const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
   return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }

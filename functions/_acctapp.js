@@ -1,4 +1,4 @@
-// The account's own page, at account.georgefarrowgreen.com: your georgefarrowgreen.com account, the one every app on the
+// The account's own page, at account.inflite.ai: your georgefarrowgreen.com account, the one every app on the
 // site signs in with (functions/_account.js), in one place: your profile, your apps, your password, passkeys and
 // signed-in devices, and deleting the account. Its files are in account/, served at the address's root; its API is
 // /api/account/ (functions/api/account/[[path]].js), answered only here. A few files it shares with the rest of the
@@ -7,7 +7,7 @@
 
 import { notFound } from "./_app.js";
 
-export const ACCOUNT_HOST = "account.georgefarrowgreen.com";
+export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
 export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname);
 

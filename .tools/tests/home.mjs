@@ -9,7 +9,7 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
-const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q.replace(/"/g, '\\"')}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 let fails = 0; const errs = [];
@@ -17,7 +17,7 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${ex
 const mails = () => readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).body);
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${SITE},${CHAT},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${SITE},${CHAT},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 async function browser(name, desktop = false) {
   const ctx = await b.newContext(desktop ? { viewport: { width: 1440, height: 900 }, locale: 'en-GB', colorScheme: 'dark' }
@@ -42,6 +42,15 @@ async function req(x, url, { method = 'GET', headers = {}, data } = {}) {
 }
 const put = (x, path, body, origin = SITE) => req(x, SITE + path, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) }, data: JSON.stringify(body) });
 const settle = (x, ms = 700) => x.p.waitForTimeout(ms);
+// (the home page is a site of its own: signed in there by its Sign in, which comes straight back once you're in on the
+// account's page, the sign-in carried over: functions/_hop.js)
+const signInHome = async (x) => {
+  await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 });
+  await x.p.click('#sign-in'); await x.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 });
+  await x.p.waitForSelector('main .signin .btn, main .hero', { timeout: 20000 }); await x.p.waitForTimeout(500);
+  if (await x.p.$('main .signin .btn')) await x.p.click('main .signin .btn');
+  await x.p.waitForURL(/^http:\/\/gfg\.test:8788\//, { timeout: 30000 }); await x.p.waitForSelector('body.signed', { timeout: 30000 });
+};
 const home = async (x) => { await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 }); await settle(x); };
 const text = (x, sel) => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 const shown = (x, sel) => x.p.isVisible(sel);
@@ -56,7 +65,7 @@ ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycli
   'the name, the line above it and the one under it', await text(V, '.hero'));
 ok(await shown(V, '#sign-in') && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: Sign in, no Edit and no photo');
 ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT}/#signin=home`, 'Sign in goes to the account’s page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
-ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.gfg.test:8788/', 'the apps open at their own addresses');
+ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.ifl.test:8788/', 'the apps open at their own addresses');
 ok(await text(V, '#app-inflight small') === 'Letters carried by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');
 await V.p.click('#sign-in'); await V.p.waitForSelector('main .backapp', { timeout: 20000 }).catch(() => {});
@@ -123,6 +132,7 @@ await joinInFlight(G.p, `${CHAT}/`, { name: 'Gail Owner', handle: 'gail', email:
 await joinInFlight(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
 const gail = idOf('gail'), pat = idOf('pat');
 sql(`UPDATE pg_users SET email_ok = 1 WHERE id = '${gail}'`);
+await signInHome(P); await signInHome(G);
 await home(P);
 ok(await shown(P, '#me') && !(await shown(P, '#sign-in')) && !(await shown(P, '#edit')), 'someone signed in: their photo’s place, no Sign in, and no Edit');
 ok(await text(P, '#face') === 'P' && await P.p.getAttribute('#me', 'href') === `${ACCT}/#from=home`, 'their initial, a tap from their account');

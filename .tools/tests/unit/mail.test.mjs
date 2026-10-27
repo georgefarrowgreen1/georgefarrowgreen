@@ -47,7 +47,7 @@ test('the look: the email\'s tile with its app\'s icon as a badge, a pill, the d
   assert.match(acct, /bgcolor="#4a45dc" style="background-color:#4a45dc;background-image:linear-gradient\(180deg,#7d8aff,#4a45dc\)/, 'the account\'s indigo (flat where gradients aren\'t shown)');
   assert.match(acct, /Paste this link into your browser:<br><a class="ml-a" href="https:\/\/account\.georgefarrowgreen\.com\/"/, 'a web link, its address under the button');
   assert.match(ifl, /a\{color:#0a6ef0\}/, 'InFlight\'s blue');
-  assert.match(acct, /About your georgefarrowgreen\.com account<br><a class="ml-a" href="https:\/\/account\.georgefarrowgreen\.com\/"[^>]*>Manage your account<\/a>/, 'the account, at the foot');
+  assert.match(acct, /About your inflite\.ai account<br><a class="ml-a" href="https:\/\/account\.inflite\.ai\/"[^>]*>Manage your account<\/a>/, 'the account, at the foot');
   assert.match(ifl, /<a class="ml-a" href="https:\/\/georgefarrowgreen\.com\/u"[^>]*>Turn these emails off<\/a>/);
   assert.doesNotMatch(ifl, /Manage your account/);
   assert.match(acct, /@media \(prefers-color-scheme:dark\)\{[\s\S]*\.ml-card\{background:#16182b!important/, 'a dark version, in the app\'s night sky');
@@ -83,6 +83,6 @@ test('the account\'s emails are sent from "Account"; InFlight\'s from "InFlight"
     assert.equal(sent[2].reply_to, 'rowan@example.com');
     assert.equal('reply_to' in sent[1], false);
     assert.match(sent[0].text, /^Your password was changed\n\nHi Rowan, it was\./);
-    assert.match(sent[0].text, /About your georgefarrowgreen\.com account\nManage your account: https:\/\/account\.georgefarrowgreen\.com\/$/);
+    assert.match(sent[0].text, /About your inflite\.ai account\nManage your account: https:\/\/account\.inflite\.ai\/$/);
   } finally { globalThis.fetch = was; }
 });

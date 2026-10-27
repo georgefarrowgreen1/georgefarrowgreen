@@ -52,7 +52,7 @@
   ! Cache-Control
   Cache-Control: public, max-age=604800
 
-# Weather (/weather/, served at weather.georgefarrowgreen.com): location for "Use my location",
+# Weather (/weather/, served at weather.inflite.ai): location for "Use my location",
 # the forecast, radar and map (OpenFreeMap's tiles, fonts and relief) fetched in the browser. functions/_wxapp.js sets the same.
 /weather/*
   ! Permissions-Policy

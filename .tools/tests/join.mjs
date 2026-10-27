@@ -68,7 +68,7 @@ export async function pastOffer(page) {
 // (straight to this machine, with the page's cookie: only the browser knows account.localhost by name; and only the
 // page's own, as the browser would send it: InFlight's on localhost isn't, though Playwright lists it for the address)
 async function pageOut(page, inflight, acct) {
-  if (!acct || new URL(inflight).hostname.endsWith('.gfg.test')) return;
+  if (!acct || new URL(inflight).hostname.endsWith('.ifl.test')) return;
   await page.waitForSelector('.tabs, #city', { state: 'attached', timeout: 60000 });
   const u = new URL(acct), cookie = (await page.context().cookies(acct)).filter((c) => c.domain.replace(/^\./, '') === u.hostname)
     .map((c) => `${c.name}=${c.value}`).join('; ');

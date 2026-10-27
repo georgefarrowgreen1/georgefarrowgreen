@@ -13,7 +13,7 @@ const r1 = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(
 async function cachedJSON(url) {
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null, key = new Request(url);
   if (cache) { const hit = await cache.match(key); if (hit) return hit.json(); }
-  const r = await fetch(url, { headers: { "User-Agent": "georgefarrowgreen.com Fitness" }, signal: AbortSignal.timeout(8000) });
+  const r = await fetch(url, { headers: { "User-Agent": "inflite.ai Fitness" }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(`forecast ${r.status}`);
   const text = await r.text();
   if (cache) await cache.put(key, new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${TTL}` } }));

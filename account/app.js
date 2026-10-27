@@ -37,6 +37,8 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
+// (the home page's site, for the apps' one: siteUrl)
+const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
 const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
@@ -95,7 +97,7 @@ function homeEdit() { try { return sessionStorage.getItem("acct-confirm") === "e
 function confirmForHome() {
   let want = null; try { want = sessionStorage.getItem("acct-confirm"); sessionStorage.removeItem("acct-confirm"); } catch (_) {}
   if (want !== "edit" || !S.me?.signedIn) return;
-  const edit = () => location.replace(siteUrl("") + "#edit");
+  const edit = () => location.replace(homeVia(siteUrl("") + "#edit", true));
   if (S.me.fresh) return edit();
   openSheet(() => ({ title: "Change the home page", body: [
     h("p.hint", { text: "Show it’s you first, then you’re back on the home page to change it." }),
@@ -113,10 +115,10 @@ const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
 function backToApp() {
-  if (S.signFor) return leaveFor(S.signFor.back);
+  if (S.signFor) return leaveFor(S.signFor.app === "home" ? homeVia(S.signFor.back) : S.signFor.back);
   const from = fromApp(), app = APPS[from] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
-  if (from === "home") return location.replace(siteUrl(app.sub));
+  if (from === "home") return location.replace(homeVia(siteUrl(app.sub)));
   try { window.close(); } catch (_) {}
   setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
 }
@@ -250,21 +252,26 @@ async function startAutofill(field, picked) {
   } catch (_) { if (autofill === ac) autofill = null; }
 }
 
-// the rest of the site, from here (account.<site> → chat.<site>, weather.<site>, <site>)
+// the apps, from here (account.inflite.ai → chat.inflite.ai, weather.inflite.ai), and the home page, on a site of its
+// own (georgefarrowgreen.com; the tests' ifl.test → gfg.test; localhost's own)
 function siteUrl(sub) {
-  const { protocol, hostname, port } = location;
-  if (!hostname.startsWith("account.")) return `https://${sub ? sub + "." : ""}georgefarrowgreen.com/`;
-  return `${protocol}//${sub ? sub + "." : ""}${hostname.slice(8)}${port ? ":" + port : ""}/`;
+  const { protocol, hostname, port } = location, p = port ? ":" + port : "", apps = hostname.slice(8);
+  if (!hostname.startsWith("account.")) return sub ? `https://${sub}.inflite.ai/` : "https://georgefarrowgreen.com/";
+  return sub ? `${protocol}//${sub}.${apps}${p}/` : `${protocol}//${HOME_SITES[apps] || apps}${p}/`;
 }
+// (to the home page, signed in there too: its sign-in carried over, functions/_hop.js. fresh: one just made here, so
+// carried over even if the home page was signed in to before, perhaps as someone else)
+const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/start?to=${encodeURIComponent(to)}${fresh ? "&fresh=1" : ""}`;
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
-// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, fitness.<site>/, or <site>/ (beside this page's account.<site>, on the
+// chat.<site>/, weather.<site>/, fitness.<site>/, or the home page (beside this page's account.<site>, on the
 // same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
-    const u = new URL(back), site = location.hostname.replace(/^account\./, "");
-    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${site}/`] }[app];
+    const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
+    // (and InFlight at /pigeon/, where the home page and the apps are one: locally)
+    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -420,7 +427,7 @@ function render() {
   main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
-  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
+  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · inflite.ai";
   whoBar();
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
@@ -906,7 +913,7 @@ function signedOut(r) {
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
-      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on inflite.ai. Once it’s made, you’re straight back in ${to}.` : "One account for every app on inflite.ai, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
@@ -1014,7 +1021,7 @@ async function handBack(m, way, btn) {
   // you've shown it's you here, as InFlight's way on always asks anyway)
   if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; }
   // (the home page: back, saying it's from signing in, so it greets you)
-  if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(`${a.back}#signedin${faceHint(m, face)}`); }
+  if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(homeVia(`${a.back}#signedin${faceHint(m, face)}`, true)); }
   const go = async () => {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
@@ -2214,7 +2221,7 @@ async function addPasskey() {
   let cred;
   try {
     cred = await passkeyMake({ publicKey: {
-      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "georgefarrowgreen.com" },
+      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "inflite.ai" },
       user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
       authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },

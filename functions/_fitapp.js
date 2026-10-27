@@ -1,5 +1,5 @@
 // Fitness's files, as a browser gets them. The app lives in fitness/ and is served at the root of
-// fitness.georgefarrowgreen.com (functions/_middleware.js); on preview and local addresses it's at /fitness/
+// fitness.inflite.ai (functions/_middleware.js); on preview and local addresses it's at /fitness/
 // (functions/fitness/_middleware.js), where it opens but can't sign in (the account's API answers only at its own
 // address). Its files only use relative addresses, so they work the same at either.
 //
@@ -8,7 +8,7 @@
 
 import { notFound } from "./_app.js";
 
-export const FITNESS_HOST = "fitness.georgefarrowgreen.com";
+export const FITNESS_HOST = "fitness.inflite.ai";
 // (FITNESS_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
 export const isFitness = (url, env) => (env.FITNESS_HOST || FITNESS_HOST).split(",").includes(url.hostname);
 
@@ -41,7 +41,7 @@ export function serveFitness(res, path) {
   return out;
 }
 
-// fitness.georgefarrowgreen.com: /x is the file /fitness/x; the API is only Fitness's own
+// fitness.inflite.ai: /x is the file /fitness/x; the API is only Fitness's own
 export async function fitnessHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/fitness/") ? ctx.next() : notFound();
   // an address from the site's own copy, on the new host: the same place, at the root

@@ -18,7 +18,7 @@
 
 import { HOUR, haversineKm } from "./_pigeon.js";
 
-const KEEP = 30 * 60e3, KEEP_FAILED = 5 * 60e3, UA = "InFlight/1.0 (https://georgefarrowgreen.com/pigeon/)";
+const KEEP = 30 * 60e3, KEEP_FAILED = 5 * 60e3, UA = "InFlight/1.0 (https://chat.inflite.ai/)";
 export const MAG_KP = 5;
 // how much ash or smoke a pigeon keeps clear of (km from the volcano or the fire)
 export const HAZARD_KM = { volcanoes: 120, wildfires: 40 };

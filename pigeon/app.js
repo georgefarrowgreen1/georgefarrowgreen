@@ -85,10 +85,10 @@ const S = {
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
-// passkeys belong to georgefarrowgreen.com, at either of InFlight's addresses (as the server has it: rpIdFor)
-const RP_ID = /(^|\.)georgefarrowgreen\.com$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
-// where InFlight is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.georgefarrowgreen.com"
-// InFlight lives at chat.georgefarrowgreen.com now. At its old address (georgefarrowgreen.com/pigeon)
+// passkeys belong to georgefarrowgreen.com, which lets InFlight's address on inflite.ai use them (as the server has it: rpIdFor)
+const RP_ID = /(^|\.)(georgefarrowgreen\.com|inflite\.ai)$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
+// where InFlight is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.inflite.ai"
+// InFlight lives at chat.inflite.ai now. At its old address (georgefarrowgreen.com/pigeon)
 // this is where it went; null at the new address. (Locally, tests turn the old address on.)
 const NEW_HOME = (() => {
   if (/^chat\./.test(location.host)) return null;
@@ -1876,7 +1876,7 @@ async function forget() {
   await idb.del("session");
 }
 /* ---------- the way in: signing in to the georgefarrowgreen.com account ----------
-   Accounts are made, and forgotten passwords reset, on the account's own page (account.georgefarrowgreen.com), not
+   Accounts are made, and forgotten passwords reset, on the account's own page (account.inflite.ai), not
    here: an invite or a reset link that comes here is passed on to it. */
 // a friend's link (#add=handle): kept for a day, so it's still there after the account is made on its own page
 function keepAdd(h) {
@@ -1887,7 +1887,7 @@ function keptAdd() {
   try { const k = JSON.parse(localStorage.getItem("inflight-add") || "null"); if (k && /^[a-z0-9_]{3,20}$/.test(k.h) && Date.now() - k.at < DAY) return k.h; localStorage.removeItem("inflight-add"); } catch (_) {}
   return null;
 }
-const toAccount = (hash = "") => (accountPage() || "https://account.georgefarrowgreen.com/") + hash;
+const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/") + hash;
 const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
@@ -2782,7 +2782,7 @@ const RELEASES = [
     ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
   ] },
   { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
-    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.georgefarrowgreen.com, where you sign in for every app on the site, and brings you straight back."],
+    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.inflite.ai, where you sign in for every app on the site, and brings you straight back."],
     ["person", "green", "Your messages open as you come back", "The password or passkey you sign in with there unlocks them here too, so you only show it’s you once."],
   ] },
   { v: "1.3.1", at: Date.UTC(2026, 9, 24), title: "Smoother", items: [
@@ -2791,15 +2791,15 @@ const RELEASES = [
     ["bird", "orange", "Everything glides", "Screens, sheets, menus, banners and the map move smoothly in and out, and with Reduce Motion they fade instead of cutting."],
   ] },
   { v: "1.3.0", at: Date.UTC(2026, 9, 23), title: "One way in", items: [
-    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on georgefarrowgreen.com: a passkey first, or your email and password."],
-    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.georgefarrowgreen.com, where a forgotten password is reset too. Invite links still work: they open it."],
+    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on inflite.ai: a passkey first, or your email and password."],
+    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.inflite.ai, where a forgotten password is reset too. Invite links still work: they open it."],
   ] },
   { v: "1.2.9", at: Date.UTC(2026, 9, 23), title: "Your account, at the top", items: [
     ["person", "blue", "The same card as Weather", "Account opens with your photo, name and handle, as Weather’s Settings do. Tap it for your account’s page, already signed in."],
     ["pin", "teal", "Location has its own row", "Where you are is under Settings now, and Sign Out is at the foot of Account."],
   ] },
   { v: "1.2.8", at: Date.UTC(2026, 9, 23), title: "Your profile, on your account", items: [
-    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your georgefarrowgreen.com account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
+    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your inflite.ai account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
   ] },
   { v: "1.2.7", at: Date.UTC(2026, 9, 22), title: "Tidier", items: [
     ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
@@ -2861,8 +2861,8 @@ const RELEASES = [
     ["loc", "blue", "Approximate Location", "Privacy & Security: keep your spot to about 10 km instead of a mile."],
   ] },
   { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and InFlight Live", items: [
-    ["globe", "blue", "A new home", "InFlight now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
-    ["map", "indigo", "InFlight Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
+    ["globe", "blue", "A new home", "InFlight now lives at chat.inflite.ai. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
+    ["map", "indigo", "InFlight Live", "On a computer, chat.inflite.ai/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
     ["shield", "green", "Your pigeons, your choice", "Privacy & Security → Live Tracker keeps your pigeons off it. One only shows if you and your friend both leave it on."],
     ["ship", "teal", "The right sea", "A ship’s voyage is named for the sea it really crosses: the North Atlantic, not the English Channel it sails out by."],
   ] },
@@ -3933,7 +3933,7 @@ const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 // The account's own page (account.<site>, beside chat.<site>), where your password, passkeys and devices are for every
 // app on the site; none where InFlight's served at an address of another kind
 const accountPage = () => location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
-  : location.hostname === "georgefarrowgreen.com" ? "https://account.georgefarrowgreen.com/"
+  : location.hostname === "georgefarrowgreen.com" ? "https://account.inflite.ai/"
   : /(^|\.)localhost$/.test(location.hostname) ? `${location.protocol}//account.localhost${location.port ? ":" + location.port : ""}/` : null;
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
@@ -6133,7 +6133,7 @@ function drawSheet(refresh) {
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
-        <details class="learn"><summary>How the live tracker works</summary><p>The tracker (chat.georgefarrowgreen.com/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</p></details>`);
+        <details class="learn"><summary>How the live tracker works</summary><p>The tracker (chat.inflite.ai/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</p></details>`);
       const vb = $(".vbar b", $layer); if (vb) vb.style.width = `${vb.dataset.w}%`;     // (set here: the page allows no inline styles)
       return;
     }
@@ -8463,7 +8463,7 @@ async function onClick1(e, t) {
     case "ifsettings": return openAccount("inflight");
   }
 }
-const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone already has a passkey for your account." : err.name === "SecurityError" ? "Passkeys only work on georgefarrowgreen.com." : err.message || "The passkey didn’t work. Try again.";
+const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone already has a passkey for your account." : err.name === "SecurityError" ? "Passkeys only work on inflite.ai." : err.message || "The passkey didn’t work. Try again.";
 
 async function onChange(e) {
   const el = e.target;
@@ -9368,13 +9368,15 @@ function notAvailable() {
   box.innerHTML = `${qrSvg(NEW_HOME ? `${NEW_HOME}/${location.hash}` : location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
   box.hidden = false;
 }
-// The move to chat.georgefarrowgreen.com: the first time InFlight starts at the new
+// The move to chat.inflite.ai: the first time InFlight starts at the new
 // address on a phone, it brings over what the phone kept at the old one (the sign-in,
 // unsent pigeons, trusted keys, settings) from a hidden page there (pigeon/handover.js),
 // so nobody has to sign in again. Once only: signing out here doesn't bring it back.
 // Then, signed in here, what was kept there is cleared (once, for a phone that moved before
 // too), so the key isn't left at an address the home page shares.
-const OLD_HOME = /^chat\./.test(location.host) ? `${location.protocol}//${location.host.slice(5)}` : null;
+// (InFlight's on a site of its own now, inflite.ai, whose pages can't see what the old one kept: there's no handing over
+// from there any more, so this is off. Signing in brings the key back, with a passkey or the password.)
+const OLD_HOME = null;
 async function moveIn() {
   const DONE = "inflight-movedin", CLEARED = "inflight-oldcleared";
   let moved, cleared;

@@ -11,7 +11,7 @@
 // us): the tokens and the files still waiting go; the activities already in Fitness are yours, and stay.
 //
 // Set up (the site's Cloudflare settings): STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET, from strava.com/settings/api,
-// whose Authorization Callback Domain is fitness.georgefarrowgreen.com. STRAVA_API stands in for Strava in tests.
+// whose Authorization Callback Domain is fitness.inflite.ai. STRAVA_API stands in for Strava in tests.
 import { HttpError, limit, hex, sha256, serverSecret } from "./_pigeon.js";
 import { lockVault, openVault } from "./_atrest.js";
 import { fitdb, MAX_STORE } from "./_fitness.js";
@@ -258,7 +258,7 @@ export async function disconnectStrava(env, userId) {
 // One subscription for the whole app, made the first time someone connects; Strava checks it's ours by a challenge,
 // with a token only we and it know (the hook's verify token: a hash of the client secret)
 const verifyToken = async (env) => hex(await sha256("fitness-strava-hook|" + env.STRAVA_CLIENT_SECRET)).slice(0, 32);
-const hookUrl = (env) => `https://${(env.FITNESS_HOST || "fitness.georgefarrowgreen.com").split(",")[0]}/api/fitness/strava/hook`;
+const hookUrl = (env) => `https://${(env.FITNESS_HOST || "fitness.inflite.ai").split(",")[0]}/api/fitness/strava/hook`;
 async function ensureHook(env) {
   const D = await fitdb(env);
   if ((await D.prepare("SELECT v FROM fx_meta WHERE k = 'strava_hook'").first())?.v) return;

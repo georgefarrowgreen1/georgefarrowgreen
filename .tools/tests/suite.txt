@@ -44,3 +44,4 @@ acctinflight
 sitepaths
 acctpkmsg
 fitness
+move

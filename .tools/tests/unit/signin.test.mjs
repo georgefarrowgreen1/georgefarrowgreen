@@ -36,21 +36,25 @@ test('Weather’s word for a sign-in, and its hash, as the server checks them', 
 // the account's page's backFor, siteUrl and APPS, run as they are, at an address of the page's
 function backFor(at) {
   const src = read('account/app.js'), grab = (re) => re.exec(src)?.[0] || assert.fail(`account/app.js: ${re}`);
-  const code = [grab(/const APPS = \{[^\n]+\};/), grab(/function siteUrl\(sub\) \{[\s\S]*?\n\}/), grab(/function backFor\(app, back\) \{[\s\S]*?\n\}/), 'backFor'].join('\n');
+  const code = [grab(/const APPS = \{[^\n]+\};/), grab(/const HOME_SITES = \{[^\n]+\};/), grab(/function siteUrl\(sub\) \{[\s\S]*?\n\}/), grab(/function backFor\(app, back\) \{[\s\S]*?\n\}/), 'backFor'].join('\n');
   const u = new URL(at);
   return vm.runInNewContext(code, { location: { hostname: u.hostname, protocol: u.protocol, port: u.port }, URL });
 }
 test('the account’s page sends a sign-in back only to the app’s own address', () => {
-  const site = backFor('https://account.georgefarrowgreen.com/');
-  assert.equal(site('inflight', 'https://chat.georgefarrowgreen.com/'), 'https://chat.georgefarrowgreen.com/');
-  assert.equal(site('inflight', 'https://georgefarrowgreen.com/pigeon/'), 'https://georgefarrowgreen.com/pigeon/');
-  assert.equal(site('weather', 'https://weather.georgefarrowgreen.com/'), 'https://weather.georgefarrowgreen.com/');
-  assert.equal(site('home', 'https://georgefarrowgreen.com/'), 'https://georgefarrowgreen.com/');
+  const site = backFor('https://account.inflite.ai/');
+  assert.equal(site('inflight', 'https://chat.inflite.ai/'), 'https://chat.inflite.ai/');
+  assert.equal(site('weather', 'https://weather.inflite.ai/'), 'https://weather.inflite.ai/');
+  assert.equal(site('home', 'https://georgefarrowgreen.com/'), 'https://georgefarrowgreen.com/', 'the home page, on a site of its own');
   // anything else: the app's usual address
-  for (const bad of ['https://evil.example/', 'https://chat.georgefarrowgreen.com.evil.example/', 'http://chat.georgefarrowgreen.com/', 'https://chat.georgefarrowgreen.com:444/',
-    'https://chat.georgefarrowgreen.com/x', 'https://chat.georgefarrowgreen.com/?a=1', 'https://u:p@chat.georgefarrowgreen.com/', 'https://weather.georgefarrowgreen.com/', 'javascript:alert(1)', 'nonsense', null])
-    assert.equal(site('inflight', bad), 'https://chat.georgefarrowgreen.com/', String(bad));
-  assert.equal(site('weather', 'https://chat.georgefarrowgreen.com/'), 'https://weather.georgefarrowgreen.com/', 'one app’s address isn’t another’s');
+  for (const bad of ['https://evil.example/', 'https://chat.inflite.ai.evil.example/', 'http://chat.inflite.ai/', 'https://chat.inflite.ai:444/', 'https://georgefarrowgreen.com/pigeon/',
+    'https://chat.georgefarrowgreen.com/', 'https://chat.inflite.ai/x', 'https://chat.inflite.ai/?a=1', 'https://u:p@chat.inflite.ai/', 'https://weather.inflite.ai/', 'javascript:alert(1)', 'nonsense', null])
+    assert.equal(site('inflight', bad), 'https://chat.inflite.ai/', String(bad));
+  assert.equal(site('weather', 'https://chat.inflite.ai/'), 'https://weather.inflite.ai/', 'one app’s address isn’t another’s');
+  assert.equal(site('home', 'https://inflite.ai/'), 'https://georgefarrowgreen.com/', 'the home page is only ever its own');
+  // the tests' two sites
+  const tests = backFor('http://account.ifl.test:8788/');
+  assert.equal(tests('home', 'http://gfg.test:8788/'), 'http://gfg.test:8788/');
+  assert.equal(tests('fitness', 'http://fitness.ifl.test:8788/'), 'http://fitness.ifl.test:8788/');
   // a test server's: its own names, on its own port
   const local = backFor('http://account.localhost:8788/');
   assert.equal(local('inflight', 'http://localhost:8788/pigeon/'), 'http://localhost:8788/pigeon/');

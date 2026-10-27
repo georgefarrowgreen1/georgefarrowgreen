@@ -344,6 +344,8 @@ function showMe() {
   if (welcome) { for (const el of [$("#me"), $("#edit")]) el.classList.add("held"); back.lines = true; }
   // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
   if (me.account) for (const a of $$("[data-account]")) a.href = me.account + (a.id === "sign-in" ? "/#signin=home" : "/#from=home");
+  // (the apps' own addresses, as the server has them: inflite.ai's, or a test's)
+  for (const [k, v] of Object.entries(me.links || {})) { const a = $(`#app-${k}`); if (a) a.href = v; }
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
   body.classList.add("known");
@@ -576,14 +578,7 @@ function land(a) {
   later(a, () => { $("#edit").classList.remove("held"); if (still) $("#edit").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT }); }, still ? 0 : 120);
   later(a, () => arriveEnd(a), still ? 0 : 240);
 }
-// the apps' own addresses, from this one (the site's, or a test's or a preview's)
-{
-  const host = location.hostname.replace(/^www\./, "");
-  if (host !== "georgefarrowgreen.com") {
-    const at = (sub) => `${location.protocol}//${sub}.${host}${location.port ? ":" + location.port : ""}/`;
-    $("#app-inflight").href = at("chat"); $("#app-weather").href = at("weather"); $("#app-fitness").href = at("fitness");
-  }
-}
+
 // Sign in: off to the account's page, its sky coming in as it goes (handOff)
 $("#sign-in").addEventListener("click", (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

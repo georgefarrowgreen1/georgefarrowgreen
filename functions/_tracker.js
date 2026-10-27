@@ -1,5 +1,5 @@
 /* ---------- the live tracker: every pigeon in the air, for anyone, with no one in it ----------
-   chat.georgefarrowgreen.com/tracker (pigeon/tracker.js) draws this on a world map.
+   chat.inflite.ai/tracker (pigeon/tracker.js) draws this on a world map.
    It's public, so nothing here may lead back to a person:
 
    - No names, handles, places, messages, times, routes or ids. Each pigeon is only

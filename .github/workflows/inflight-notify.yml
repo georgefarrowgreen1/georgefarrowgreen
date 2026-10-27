@@ -24,7 +24,7 @@ jobs:
           # The site's .pages.dev address: the same deployment, but outside the custom
           # domain's bot protection, which challenges requests from GitHub's servers.
           code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST https://georgefarrowgreen.pages.dev/api/pigeon/notify-tick \
-            -H "Authorization: Bearer $SECRET" -H "User-Agent: InFlight-Notify/1.0 (+https://georgefarrowgreen.com/pigeon/)")
+            -H "Authorization: Bearer $SECRET" -H "User-Agent: InFlight-Notify/1.0 (+https://chat.inflite.ai/)")
           echo "HTTP $code"; head -c 400 reply.txt; echo
           # 404: PIGEON_TICK_SECRET isn't set in Cloudflare; 401: the two secrets differ;
           # 403 with an HTML page: Cloudflare's bot protection stopped the request.

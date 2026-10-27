@@ -272,7 +272,7 @@ async function hourlyFor(env, cells, hours) {
 // from this hour (its later hours are 6-hourly: each hour takes the last
 // forecast before it). It has no wind 120 m up: the wind at the ground does.
 // MET_URL: tests only.
-const MET_MOST = 40, MET_UA = "InFlight/1.0 (https://georgefarrowgreen.com/pigeon/)";
+const MET_MOST = 40, MET_UA = "InFlight/1.0 (https://chat.inflite.ai/)";
 // its weather symbols as WMO weather codes
 const metCode = (s = "") => /thunder/.test(s) ? 95 : /heavysnow/.test(s) ? 75 : /snow/.test(s) ? 71 : /sleet/.test(s) ? 67 : /heavyrain/.test(s) ? 65 : /rain/.test(s) ? 61 : /fog/.test(s) ? 45 : 0;
 async function metFor(env, cells, hours) {
