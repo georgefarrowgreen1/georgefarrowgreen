@@ -1787,7 +1787,7 @@ function again(v, left, right, body, head) {
   const active = sheetEl.contains(document.activeElement) ? document.activeElement : null, key = keyOf(active), top = body.scrollTop;
   const sel = active?.selectionStart != null ? [active.selectionStart, active.selectionEnd] : null;
   const had = new Set([...body.querySelectorAll("[data-id]")].map((x) => x.dataset.id));
-  $("#sheet-title", head).textContent = v.title;
+  const t = $("#sheet-title", head); t.textContent = v.title; t.classList.toggle("vh", !!v.quiet);
   $(".l", head).replaceChildren(...[left].filter(Boolean)); $(".r", head).replaceChildren(right);
   body.replaceChildren(...v.body.flat(Infinity).filter((x) => x != null && x !== false && x !== ""));
   if (Sheet.ask) { body.classList.add("asking"); askAt(body); }
@@ -2640,7 +2640,7 @@ const hhRange = (n) => `${hh(n.quietFrom)}–${hh(n.quietTo)}`;
 function inflightView() {
   const P = ifParts("InFlight");
   if (P.wait) return P.wait;
-  const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => IF.privacy[k]).length;
+  const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => k === "approxLocation" ? !IF.privacy[k] : IF.privacy[k]).length;
   return { title: "InFlight", quiet: true, left: P.back, body: [
     setHead("inflight", "InFlight"),
     h("div.group", {},

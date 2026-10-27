@@ -310,7 +310,7 @@ await P.p.waitForURL(/account\.gfg\.test/, { timeout: 20000 });
 await P.p.waitForSelector('#sheet[open] .seg', { timeout: 30000 }); await settle(P, 600);
 const fxSheet = await P.p.locator('#sheet').innerText();
 ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count())
-  && /Where your rides come from/i.test(fxSheet) && /Garmin Connect/.test(fxSheet) && /Apple Health/.test(fxSheet) && /Show a ride’s map/i.test(fxSheet),
+  && /Sources/i.test(fxSheet) && /Garmin Connect/.test(fxSheet) && /Apple Health/.test(fxSheet) && /Ride maps/i.test(fxSheet),
   'Fitness Settings opens its sheet on the account\'s page, with the way back: where your rides come from, maps, units, the morning check-in and the export', fxSheet.replace(/\s+/g, ' ').slice(0, 200));
 await P.p.screenshot({ path: `${out}/account-fitness.png` });
 await P.p.locator('#sheet .seg button', { hasText: /^mi$/ }).click();

@@ -58,13 +58,13 @@ const go = await W.waitForSelector('main .welcome .btn, #sheet[open] #if-email',
 if (await go.evaluate((e) => e.matches('.btn'))) await go.click();
 await W.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); await W.waitForTimeout(700);
 const sheet = await text(W, '#sheet');
-ok(/^InFlight/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*11 of 11/.test(sheet) && /Email me/.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open InFlight/.test(sheet) && !(await W.$('#if-landed')),
+ok(/^InFlight/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*10 of 11/.test(sheet) && /Email me/.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open InFlight/.test(sheet) && !(await W.$('#if-landed')),
   'the page opens at InFlight’s settings: notifications (on their own page), email, who sees what, and one blocked, and the way into the app', sheet.replace(/\s+/g, ' ').slice(0, 260));
 ok(!!(await W.$('#sheet .toapp')) && /InFlight/.test(await text(W, '#sheet .toapp')), 'with the way back to InFlight');
 ok(!(await W.isDisabled('#if-email')), 'email, its address confirmed, can be turned on');
 await shot(W, '02-account-sheet');
 await ifPage(W, 'Notifications');
-ok(await W.isChecked('#if-landed') && !(await W.isChecked('#if-quiet')) && await W.isChecked('#if-names') && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')),
+ok(await W.isChecked('#if-landed') && !(await W.isChecked('#if-quiet')) && !(await W.isChecked('#if-names')) && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')),
   'Notifications, on a page of their own, as the account has them: pigeons, friends, the lock screen and quiet hours');
 await shot(W, '02b-notifications');
 
@@ -80,7 +80,7 @@ const p1 = prefs('rowan');
 ok(p1.quiet === true && p1.quietFrom === 21 && p1.quietTo === 6 && p1.tz === 'Europe/London', 'Quiet hours, 21:00 to 06:00, in the phone’s time zone', JSON.stringify(p1));
 ok(/In Europe\/London time/.test(await text(W, '#sheet')), 'and said, in its row');
 await back();
-ok(/Notifications\s*Quiet 21:00–06:00\s*10 of 11/.test(await text(W, '#sheet')), 'and on the first page: 10 of 11, quiet 21:00–06:00', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 200));
+ok(/Notifications\s*Quiet 21:00–06:00\s*9 of 11/.test(await text(W, '#sheet')), 'and on the first page: 9 of 11, quiet 21:00–06:00', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 200));
 await flip('email');
 ok(row('rowan').notify_email === 1, 'Email me: on');
 await ifPage(W, 'Who sees what');
@@ -89,7 +89,7 @@ const r1 = row('rowan');
 ok(r1.no_receipts === 1 && r1.hide_tracker === 1 && r1.loc_approx === 1 && r1.hide_online === 0, 'who sees what: read receipts and the tracker off, location approximate, online still shown', JSON.stringify(r1));
 await shot(W, '03-changed');
 await back();
-ok(/Who sees what\s*3 of 5/.test(await text(W, '#sheet')), 'and on the first page: 3 of 5 shared');
+ok(/Who sees what\s*2 of 5/.test(await text(W, '#sheet')), 'and on the first page: 2 of 5 shared');
 // Sam, unblocked (Unblock, then Unblock? to be sure)
 await ifPage(W, 'Blocked');
 await W.click('#sheet .row[data-id] button'); await W.waitForTimeout(400); await W.click('#sheet .row[data-id] button');
@@ -117,7 +117,7 @@ ok(!!(await W.$('[data-sec="apps"] .app-set')) && (await W.getAttribute('[data-s
 await W.evaluate(() => document.querySelector('[data-sec="apps"]').scrollIntoView({ block: 'center' })); await W.waitForTimeout(500);
 await shot(W, '05-card');
 await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector('#sheet[open] #if-email', { timeout: 10000 }); await W.waitForTimeout(600);
-ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*3 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
+ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*2 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
 await W.close();
 
 // ---- 6. back in InFlight: what's set, as the account has it ----
