@@ -667,9 +667,14 @@ a.btn { text-decoration: none; }
 /* ---- two even columns on a wide screen: who you are, your apps and your data; and the settings (app.js signedIn) ---- */
 @media (min-width: 1000px) {
   main:has(.cols) { max-width: 1060px; }
-  .cols { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: start; }
+  .cols { display: grid; grid-template-columns: 380px 1fr; gap: 32px; align-items: start; }
+  /* (who you are, kept in view beside the rest as it's scrolled) */
+  .col-a { position: sticky; top: 24px; }
   .col-a .large { margin-bottom: 18px; }
   .col-b > .section:first-child { margin-top: 0; }
+  /* (your apps, at the top of the right-hand column: all three side by side, nothing to swipe) */
+  .col-b .apps { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0;
+    -webkit-mask-image: none; mask-image: none; }
 }
 
 /* ---- rows that say how things are: amber where it needs you; a button's look where there's one thing to do ---- */

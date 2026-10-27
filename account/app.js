@@ -533,9 +533,6 @@ function row({ icon: ic, tint, title, sub, subWarn, value, warn, onclick, label,
 }
 const unitsSaid = (u) => [u.temp === "f" ? "°F" : "°C", { mph: "mph", kmh: "km/h", ms: "m/s", kn: "knots" }[u.wind], u.precip].join(" · ");
 
-// (two even columns on a wide screen: who you are, your apps and your data on the left, the settings on the right)
-const wide = matchMedia("(min-width: 1000px)");
-wide.addEventListener("change", () => { if (S.me?.signedIn && !S.me.deleting && !S.reset) render(); });
 // (this device, as Signed-in devices names it, in a word: "This iPhone")
 const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; return /^(iPhone|iPad|Mac)$/.test(k) ? `This ${k}` : "This device"; };
 function signedIn(r) {
@@ -588,8 +585,7 @@ function signedIn(r) {
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
     (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
-  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
-  return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
+  return [h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
 }
 // Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
 // it, your name and handle on it (your email's in Edit profile, and Sign-in and security); no photo, your colours and initial, and Add a photo. The camera opens Your photo.
