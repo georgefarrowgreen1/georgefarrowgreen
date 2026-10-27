@@ -70,8 +70,8 @@ function bringingCard() {
   const all = S.bringing.all, at = S.bringing.at > Date.UTC(2000, 0, 2) ? S.bringing.at : null;
   const back = all ? (at ? `up to ${new Date(at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` : "looking for your first") : new Date(addDays(TODAY, -183)).toLocaleDateString("en-GB", { month: "long" });
   return h("div.card.glass.bringing", { role: "status" },
-    h("div.bringing-top", {}, h("span.ic.brand.garmin", {}, icon("device", 20, 2)),
-      h("span.tx", {}, h("b", { text: all ? "Bringing in all your rides from Garmin" : "Bringing in six months from Garmin" }), h("small", { text: `${S.bringing.n ? `${plural(S.bringing.n, "activity", "activities")} so far${all && at ? `, ${back}` : ""}` : all ? `Starting from the oldest: ${back}` : `Back to ${back}`} · you can carry on meanwhile` }))),
+    h("div.bringing-top", {}, S.bringing.src === "strava" ? h("span.ic.brand.strava", {}, icon("wave", 20, 2.2)) : h("span.ic.brand.garmin", {}, icon("device", 20, 2)),
+      h("span.tx", {}, h("b", { text: `${all ? "Bringing in all your rides" : "Bringing in six months"} from ${S.bringing.src === "strava" ? "Strava" : "Garmin"}` }), h("small", { text: `${S.bringing.n ? `${plural(S.bringing.n, "activity", "activities")} so far${all && at ? `, ${back}` : ""}` : all ? `Starting from the oldest: ${back}` : `Back to ${back}`} · you can carry on meanwhile` }))),
     h("div.bar", {}, h("i")));
 }
 // Uploading files: choose them, and where each app keeps them (Garmin's connected instead)
@@ -83,7 +83,7 @@ function uploadFilesView() {
       h("button.btn", { type: "button", onclick: () => { chooseFiles(); closeSheet(); } }, "Choose files")),
     section("Where to find them", h("div.group", {},
       where("W", "blue", "Wahoo", "In the Wahoo app: an activity, then Share › Download .fit"),
-      where("S", "amber", "Strava", "On strava.com: an activity, then ⋯ › Export Original"),
+      where("S", "amber", "Strava", S.strava?.ready === false ? "On strava.com: an activity, then ⋯ › Export Original" : "Connect it in You › Strava, and they come in by themselves"),
       where("Z", "indigo", "Zwift", "Documents › Zwift › Activities, on the computer you ride on"))),
     !S.garmin?.on && h("div.note-garmin", {}, h("span.ic.brand.garmin", {}, icon("device", 15, 2.2)),
       h("span", {}, "On Garmin? ", h("button.link", { type: "button", onclick: () => pushSheet(garminView) }, "Connect it instead"), ", and skip the files.")),
@@ -153,7 +153,8 @@ function actView(a) {
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
     h("div.sub.act-links", {}, !a.sample && h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename"),
-      h("button.link.small", { type: "button", onclick: () => pushSheet(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share")),
+      h("button.link.small", { type: "button", onclick: () => pushSheet(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share"),
+      /^s\d{1,20}$/.test(a.id) && h("a.link.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
   let mapAt = null;

@@ -112,6 +112,13 @@ export const health = () => call("health");
 export const healthKey = () => call("health/key", { method: "POST", body: {} });
 export const healthOff = () => call("health", { method: "DELETE" });
 export const garminDone = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { method: "DELETE" });
+// Strava (functions/_strava.js): Strava's own page to say yes on → { url }; then as Garmin's, each new one's file waiting
+export const stravaConnect = () => call("strava/connect", { method: "POST", body: {} });
+export const stravaDisconnect = () => call("strava", { method: "DELETE" });
+export const stravaFetch = (force = false) => call("strava/fetch", { method: "POST", body: { force }, wait: 120000 });
+export const stravaAll = () => call("strava/all", { method: "POST", body: {}, wait: 120000 });
+export const stravaFile = (id) => call(`strava/new/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });
+export const stravaDone = (id) => call(`strava/new/${encodeURIComponent(id)}`, { method: "DELETE" });
 // The morning notification on this phone (functions/_fitpush.js): the key subscriptions are made with; on (or its
 // time or words sent again): { sub, at, tz, days }; and off
 // The weather where you ride, the next day and a half, hour by hour (functions/_fitwx.js): { place, offset, hours }

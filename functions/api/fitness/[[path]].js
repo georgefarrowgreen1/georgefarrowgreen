@@ -32,7 +32,7 @@
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
-import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError } from "../../_pigeon.js";
+import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -42,6 +42,7 @@ import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick,
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
+import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick } from "../../_strava.js";
 import { kept, saveState, cleanState, cleanAct, activities, olderActs, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
@@ -49,8 +50,8 @@ import { kept, saveState, cleanState, cleanAct, activities, olderActs, addActivi
 // for next time, a moment early so nothing changing as it's read is missed)
 async function view(env, u, since = null) {
   const at = Date.now() - 2000;
-  const [k, got, garmin, health] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health };
+  const [k, got, garmin, health, strava] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false }))]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -91,6 +92,9 @@ const ROUTES = {
     // (one that was waiting from Garmin: waiting no longer; a multisport file's parts are g<id>-2 and on)
     const g = /^g(\d{1,20})(-\d+)?$/.exec(meta.id);
     if (g) await done(env, u.id, g[1]);
+    // (and Strava's: s<id>)
+    const sv = /^s(\d{1,20})(-\d+)?$/.exec(meta.id);
+    if (sv) await sDone(env, u.id, sv[1]);
     return json(r);
   },
   "GET acts/:id": async ({ request, env, id }) => {
@@ -162,6 +166,50 @@ const ROUTES = {
     await done(env, u.id, id);
     return json({ ok: true });
   },
+  // ---- Strava: connected by Strava's own sign-in (functions/_strava.js) ----
+  "GET strava": async ({ request, env }) => json(await stravaOf(env, (await signedIn(request, env)).id)),
+  "POST strava/connect": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await connectUrl(env, (await signedIn(request, env)).id, new URL(request.url).origin));
+  },
+  // (back from Strava's page, a whole page's visit: to the app, saying how it went)
+  "GET strava/back": async ({ request, env }) => {
+    const url = new URL(request.url), u = await cookieUser(request, env).catch(() => null);
+    const said = u ? await connectBack(env, u.id, url.searchParams) : "error";
+    return new Response(null, { status: 302, headers: { Location: `${url.origin}/#strava=${said}`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  },
+  "DELETE strava": async ({ request, env }) => {
+    sameOrigin(request);
+    await disconnectStrava(env, (await signedIn(request, env)).id);
+    return json({ on: false, ready: true });
+  },
+  "POST strava/fetch": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request);
+    if (b.force) await limit(env, `fxstravanow:${u.id}`, 120, 3600e3);
+    return json(await fetchStrava(env, u.id, { force: b.force === true }));
+  },
+  "POST strava/all": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await stravaAll(env, (await signedIn(request, env)).id));
+  },
+  "GET strava/new/:id": async ({ request, env, id }) => {
+    const u = await signedIn(request, env);
+    return new Response(await sWaitingFile(env, u.id, id), { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
+  },
+  "DELETE strava/new/:id": async ({ request, env, id }) => {
+    sameOrigin(request);
+    await sDone(env, (await signedIn(request, env)).id, id);
+    return json({ ok: true });
+  },
+  // (Strava's word, from Strava: its check as the subscription's made, and each event after; answered at once)
+  "GET strava/hook": async ({ request, env }) => json(await hookCheck(env, new URL(request.url).searchParams)),
+  "POST strava/hook": async ({ request, env }) => {
+    await limit(env, `fxstravahook:${clientNet(request)}`, 2000, 3600e3);
+    await hookEvent(env, await body(request, 16 * 1024).catch(() => null)).catch((e) => console.error("strava hook", e.message));
+    return json({ ok: true });
+  },
   "GET health": async ({ request, env }) => json(await healthOf(env, (await signedIn(request, env)).id)),
   "POST health/key": async ({ request, env }) => {
     sameOrigin(request);
@@ -194,8 +242,8 @@ const ROUTES = {
   },
   "POST garmin-tick": async ({ request, env }) => {
     tickAuthOk(request, env);
-    const [garmin, morning] = await Promise.all([garminTick(env), morningTick(env)]);
-    return json({ ...garmin, morning });
+    const [garmin, morning, strava] = await Promise.all([garminTick(env), morningTick(env), stravaTick(env).catch(() => null)]);
+    return json({ ...garmin, morning, strava });
   },
   // Signed in on the account's page, for Fitness (functions/_handback.js): the code it was handed back with, and the
   // word Fitness kept for it; where the browser shares the site's sign-in, it's the one the page just made, and that's
@@ -227,7 +275,7 @@ const ROUTES = {
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
-    : parts[0] === "garmin" && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
+    : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
     : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
   // (only at Fitness's own address; the scheduler's turn at the site's own, as InFlight's and Weather's are)

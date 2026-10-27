@@ -426,6 +426,7 @@ function settingsView() {
         h("span.val", { text: `${i ? Math.round(ZONES[i - 1].top * p.ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * p.ftp) - 1}` : "+"} W` }))))),
       section("Your devices", h("div.group", {},
         row({ tile: h("span.ic.brand.garmin", {}, icon("device", 18, 2)), title: "Garmin Connect", sub: garminSaid(), onclick: () => pushSheet(garminView) }),
+        S.strava?.ready !== false && row({ tile: h("span.ic.brand.strava", {}, icon("wave", 18, 2.2)), title: "Strava", sub: stravaSaid(), onclick: () => pushSheet(stravaView) }),
         row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Apple Health", sub: healthSaid(), onclick: () => { healthView.key = null; pushSheet(healthView); } }),
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })))),
       section("Preferences", h("div.group", {},
@@ -731,21 +732,31 @@ function garminNow(g) {
   if (g.back && g.ok) { bringIn({ all: true }); return; }
   fromGarmin().then(() => (Date.now() - (S.garmin.last || 0) > 2 * 60e3 ? A.garminFetch().then((n) => { S.garmin = n; return fromGarmin(); }) : null)).catch(() => {});
 }
-async function fromGarmin({ quiet = false } = {}) {
-  const waiting = S.garmin?.waiting || [];
-  if (!waiting.length || fromGarmin.busy) return 0;
-  fromGarmin.busy = true;
+// (where they come from: Garmin's files as Garmin keeps them, zips of FIT; Strava's written as TCX, gzipped, by the
+// server, with its name, sport, whether it was indoors and the device, as Strava had them)
+const SRC = {
+  garmin: { label: "Garmin", prefix: "g", state: () => S.garmin, set: (g) => { S.garmin = g; }, file: (id) => A.garminFile(id), done: (id) => A.garminDone(id), fetch: (all) => A.garminFetch(true, all),
+    read: async (w, bytes) => (await readOff(`garmin-${w.id}.zip`, bytes)).activities },
+  strava: { label: "Strava", prefix: "s", state: () => S.strava, set: (g) => { S.strava = g; }, file: (id) => A.stravaFile(id), done: (id) => A.stravaDone(id), fetch: () => A.stravaFetch(true),
+    read: async (w, bytes) => (await readOff(`strava-${w.id}.tcx`, await A.gunzip(bytes))).activities.map((a) => Object.assign(a, { ...(w.sport && w.sport !== "other" ? { sport: w.sport } : {}), indoor: !!w.indoor || a.indoor, device: w.device || "Strava" })) },
+};
+const fromGarmin = (o) => fromSource("garmin", o);
+async function fromSource(src, { quiet = false } = {}) {
+  const c = SRC[src], waiting = c.state()?.waiting || [];
+  if (!waiting.length || fromSource[src]) return 0;
+  fromSource[src] = true;
   const added = [];
   try {
     for (const w of waiting) {
       let acts;
-      try { acts = (await readOff(`garmin-${w.id}.zip`, await A.garminFile(w.id))).activities; }
+      try { acts = await c.read(w, await c.file(w.id)); }
       catch (e) { if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
       let kept = 0;
       for (const [k, a] of acts.entries()) {
+        // (one you have already: the same ride, uploaded, or from the other)
         if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
         if (w.name && acts.length === 1) a.name = w.name;
-        const sum = figuresOf(a), f = keptFile(a, sum, acts.length), meta = { id: k ? `g${w.id}-${k + 1}` : `g${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
+        const sum = figuresOf(a), f = keptFile(a, sum, acts.length), meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
         try { await A.upload(meta, f.name, await A.gzip(f.bytes)); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
         const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
@@ -754,11 +765,11 @@ async function fromGarmin({ quiet = false } = {}) {
       }
       if (kept < 0) break;
       // (nothing in it to keep: one you have already, or one with nothing Fitness can read)
-      if (!kept) await A.garminDone(w.id).catch(() => {});
-      S.garmin.waiting = S.garmin.waiting.filter((x) => x.id !== w.id);
+      if (!kept) await c.done(w.id).catch(() => {});
+      c.state().waiting = c.state().waiting.filter((x) => x.id !== w.id);
     }
-  } finally { fromGarmin.busy = false; }
-  if (added.length) { setActs(); estimate(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from Garmin` : `${plural(added.length, "activity", "activities")} from Garmin`); }
+  } finally { fromSource[src] = false; }
+  if (added.length) { setActs(); estimate(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from ${c.label}` : `${plural(added.length, "activity", "activities")} from ${c.label}`); }
   return added.length;
 }
 const R_ALL = Date.UTC(2000, 0, 2);
@@ -772,18 +783,22 @@ function garminSaid() {
 // Garmin's six months, a batch at a time, each read and kept as it comes (Activities shows them coming in); then your
 // numbers worked out from them
 // (all: your whole history, a batch at a time while there's more, Activities saying how far back it's got)
-async function bringIn({ all = false } = {}) {
+// (src: Garmin's, or Strava's, as SRC has them)
+async function bringIn({ all = false, src = "garmin" } = {}) {
+  const c = SRC[src];
   if (bringIn.busy) return 0;
   bringIn.busy = true;
-  S.bringing = { n: 0, all, at: S.garmin?.backAt || null }; redraw();
-  const more = async () => { const k = await fromGarmin({ quiet: true }); S.bringing.n += k; S.bringing.at = S.garmin?.backAt || S.bringing.at; redraw(); return k; };
+  S.bringing = { n: 0, all, src, at: c.state()?.backAt || null }; redraw();
+  const more = async () => { const k = await fromSource(src, { quiet: true }); S.bringing.n += k; S.bringing.at = c.state()?.backAt || S.bringing.at; redraw(); return k; };
   let n = 0;
   try {
+    // (Strava's asked first: nothing's fetched as it's connected, as Garmin's is)
+    if (src === "strava" && !all) { try { c.set(await c.fetch(all)); } catch (_) {} }
     n = await more();
-    for (let i = 0; i < (all ? 400 : 16) && (S.garmin.more || (all && S.garmin.back)); i++) { try { S.garmin = await A.garminFetch(true, all); } catch (_) { break; } n += await more(); }
+    for (let i = 0; i < (all ? 400 : 16) && (c.state().more || (all && c.state().back)); i++) { try { c.set(await c.fetch(all)); } catch (_) { break; } n += await more(); }
   } finally { bringIn.busy = false; }
   S.bringing = null; redraw(); estimate();
-  toast(all ? (n ? `${plural(n, "activity", "activities")} from your Garmin history` : "Your Garmin history is all here") : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : "Connected to Garmin Connect");
+  toast(all ? (n ? `${plural(n, "activity", "activities")} from your ${c.label} history` : `Your ${c.label} history is all here`) : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : `Connected to ${src === "garmin" ? "Garmin Connect" : "Strava"}`);
   return n;
 }
 // Someone new: three steps, Garmin (or skip), then Rhythm's setup, with your numbers in it
@@ -879,6 +894,73 @@ function garminView() {
 // them as it reads Garmin's (rhythm.js nightOf). The key's in the address the Shortcut sends to, so that's all there is
 // to copy; shown once, as it's made, with the five steps to make the Shortcut; made again, the old one stops working ----
 const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
+// ---- Strava (functions/_strava.js): connected on Strava's own page, then as Garmin's, each new activity coming in by
+// itself (Strava says when there's one); its files written for Fitness from Strava's figures ----
+function stravaNow(g) {
+  S.strava = g || { on: false };
+  if (!g?.on) return;
+  if (g.back && g.ok) { if (!bringIn.busy) bringIn({ all: true, src: "strava" }); return; }
+  fromSource("strava").then(() => (Date.now() - (S.strava.last || 0) > 15 * 60e3 ? A.stravaFetch().then((n) => { S.strava = n; return fromSource("strava"); }) : null)).catch(() => {});
+}
+function stravaSaid() {
+  const g = S.strava;
+  if (!g?.on) return "Bring in what you record on Strava";
+  if (!g.ok) return "Strava’s stopped letting Fitness in: connect again";
+  return g.last ? `Connected · checked ${ago(g.last)}` : "Connected";
+}
+async function stravaGo(btn) {
+  btn.disabled = true;
+  try { const { url } = await A.stravaConnect(); location.href = url; }
+  catch (e) { btn.disabled = false; if (e.status === 401) return signedOutHere(); toast(e.message, true); }
+}
+function stravaView() {
+  const g = S.strava;
+  const connectBtn = h("button.btn.strava", { type: "button", onclick: () => stravaGo(connectBtn) }, g?.on ? "Connect with Strava again" : "Connect with Strava");
+  if (!g?.on) return { title: "Strava", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Strava" }), h("div.sub", { text: "Your rides, runs and swims from Strava, in Fitness by themselves." })),
+    section("How", h("div.group", {},
+      h("div.row.plain", {}, h("span.ic.strava", {}, h("b", { text: "1" })), h("span.tx", {}, h("b", { text: "Say yes on Strava’s page" }), h("small", { text: "Fitness asks to read your activities, the private ones too" }))),
+      h("div.row.plain", {}, h("span.ic.strava", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Back here, they come in" }), h("small", { text: "The last six months, then each new one" }))))),
+    connectBtn,
+    section(null, h("p.foot", { text: "Fitness only reads: it never posts to Strava or changes anything there. Strava has no files to hand over, so each activity’s written for Fitness from its figures, second by second. Disconnect here or on Strava at any time; what’s already in Fitness stays." })),
+  ] };
+  const sure = h("p.foot", { text: "New activities stop coming in. The ones already brought in stay." });
+  sure.hidden = true;
+  const disconnect = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Disconnect Strava"; sure.hidden = false; return; }
+    try { S.strava = await A.stravaDisconnect(); } catch (e) { return toast(e.message, true); }
+    sheetBack(); redraw(); toast("Disconnected from Strava");
+  };
+  const check = async (btn) => {
+    btn.disabled = true; btn.textContent = "Checking…";
+    try { S.strava = await A.stravaFetch(true); } catch (e) { btn.disabled = false; btn.textContent = "Check now"; return toast(e.message, true); }
+    const n = await fromSource("strava", { quiet: true });
+    Sheet.redraw(); toast(n ? `${plural(n, "activity", "activities")} from Strava` : S.strava.ok && !S.strava.said ? "Nothing new" : stravaWhy(), !S.strava.ok);
+  };
+  const checkBtn = h("button.btn.quiet", { type: "button", onclick: () => check(checkBtn) }, "Check now");
+  const all = async (btn) => {
+    btn.disabled = true; btn.textContent = "Starting…";
+    try { S.strava = await A.stravaAll(); } catch (e) { btn.disabled = false; btn.textContent = "Bring in all your rides"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
+    await closeSheet(); go("activities");
+    bringIn({ all: true, src: "strava" });
+  };
+  const allBtn = h("button.btn", { type: "button", onclick: () => all(allBtn) }, g.back ? "Carry on bringing them in" : "Bring in all your rides");
+  const backTo = g.back && g.backAt ? new Date(g.backAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : null;
+  return { title: "Strava", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Strava" }), h("div.sub", { text: g.ok ? (g.said ? stravaWhy() : "Connected") : "Strava’s stopped letting Fitness in" })),
+    h("div.group", {},
+      row({ icon: "today", tint: "blue", title: "Last checked", value: g.last ? ago(g.last) : "Not yet", chev: false }),
+      row({ icon: "calendar", tint: "green", title: "Connected", value: dayShort(g.since), chev: false })),
+    g.ok ? checkBtn : connectBtn,
+    section(null, h("p.foot", { text: "Strava tells Fitness as each new activity’s saved, so it shows up a minute or two after it’s on Strava." })),
+    g.ok && section("All your rides", bringIn.busy ? h("p.foot", { text: "Coming in now: Activities shows how far back it’s got." }) : allBtn,
+      h("p.foot", { text: g.back ? `Part way${backTo ? `: back to ${backTo}` : ""}. It carries on by itself; this brings the rest in now.` : "Everything on Strava, not just the last six months, skipping what’s here already (from Garmin, or uploaded). Carries on by itself if you close Fitness." })),
+    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect")), sure),
+    h("p.foot.powered", { text: "Powered by Strava" }),
+  ] };
+}
+const stravaWhy = () => ({ busy: "Strava’s busy: Fitness will ask again shortly", full: "Your activities have used all the space there is (2 GB)", unreachable: "Strava didn’t answer last time", revoked: "Strava’s stopped letting Fitness in: connect again" })[S.strava?.said] || "Connected";
 function healthSaid() {
   const x = S.health;
   if (!x?.on) return "Your nights from your Apple Watch, by a Shortcut";
@@ -1321,8 +1403,8 @@ function arrive(m) {
   render(true);
   estimate();
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
-  if (!S.rhythm && !S.own.length && !m.garmin?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
-  else { askToday(); garminNow(m.garmin); S.health = m.health || { on: false }; }
+  if (!S.rhythm && !S.own.length && !m.garmin?.on && !m.strava?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
+  else { askToday(); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; }
   older();
   setTimeout(squash, 4000);
   setTimeout(routes, 6000);
@@ -1340,7 +1422,7 @@ function takeUp(m) {
   S.health = m.health || { on: false };
   S.me.more = m.more;
   setActs(); redraw(); estimate();
-  garminNow(m.garmin);
+  garminNow(m.garmin); stravaNow(m.strava);
   older();
 }
 async function pull() {
@@ -1415,6 +1497,9 @@ const signedOutHere = () => signOutHere(true);
   if (code) history.replaceState(null, "", location.pathname + location.search);
   // (its sky and you, over Fitness till you're in: theme.js put them up for the first frame, this carries them on)
   const arv = code || document.documentElement.classList.contains("arriving") ? arriving() : null;
+  // (back from Strava's page: how it went, taken out of the address at once)
+  const fromStrava = /^#strava=(on|no|error)$/.exec(location.hash)?.[1];
+  if (fromStrava) history.replaceState(null, "", location.pathname + location.search);
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
   else if (want === "plan") S.tab = "today";
@@ -1438,6 +1523,8 @@ const signedOutHere = () => signOutHere(true);
   if (early && m.id !== early.id) return location.reload();
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
   arv?.in();
+  if (fromStrava === "on") { go("activities"); bringIn({ src: "strava" }); }
+  else if (fromStrava) toast(fromStrava === "no" ? "Strava wasn’t connected: Fitness needs to see your activities. Try again, and leave the activities box ticked on Strava’s page." : "Strava didn’t connect. Try again in a moment.", true, 7000);
 })();
 
 // (what the screens, each its own module, take from here)

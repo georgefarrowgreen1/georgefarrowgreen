@@ -13,6 +13,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { deflateRawSync } from 'node:zlib';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { readFit, writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
@@ -88,6 +89,38 @@ createServer((req, res) => {
   const m = /^\/download-service\/files\/activity\/(\d+)$/.exec(u.pathname), a = m && GACTS.find((x) => String(x.activityId) === m[1]);
   return a ? send(200, a.file, 'application/zip') : send(404, {});
 }).listen(8793, '127.0.0.1');
+// Strava, stood in for (STRAVA_API in server.sh): its page to say yes on (straight back, yes), its tokens, the athlete's
+// activities (a ride indoors this lunchtime, a run two days ago, one typed in by hand, and an old ride for all your
+// history), each one's streams, the webhook's subscription, and disconnecting
+const SAT = Math.round(Date.now() / 1000), sIso = (t) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
+const SACTS = [{ id: 7001, name: 'Lunch ride', sport_type: 'VirtualRide', trainer: true, start_date: sIso(SAT - 3 * 3600 - 17 * 60), device_name: 'Zwift', secs: 1800, w: 210 },
+  { id: 7002, name: 'Evening run', sport_type: 'Run', start_date: sIso(SAT - 2 * 86400 - 41 * 60), secs: 1500, ll: true },
+  { id: 7003, name: 'Typed in', sport_type: 'Ride', manual: true, start_date: sIso(SAT - 3 * 86400) },
+  { id: 7005, name: 'Old ride', sport_type: 'Ride', start_date: sIso(SAT - 400 * 86400 - 13 * 60), secs: 1200, w: 170, ll: true, old: true }];
+const slog = [];
+let sTok = 'sa1';
+createServer(async (req, res) => {
+  const u = new URL(req.url, 'http://x'), auth = req.headers.authorization || '';
+  let body = ''; for await (const c of req) body += c;
+  slog.push(`${req.method} ${u.pathname}${u.search}`);
+  const send = (code, b, head = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...head }); res.end(b == null ? '' : JSON.stringify(b)); };
+  if (u.pathname === '/oauth/authorize') { const back = new URL(u.searchParams.get('redirect_uri')); back.search = new URLSearchParams({ state: u.searchParams.get('state'), code: 'good-code', scope: 'read,activity:read_all' }); return send(302, null, { Location: back.href }); }
+  if (u.pathname === '/oauth/token') { const b = JSON.parse(body || '{}'); if (b.client_secret !== 'test-strava-secret-for-local-tests') return send(401, {});
+    if (b.grant_type === 'authorization_code' && b.code === 'good-code') return send(200, { access_token: 'sa1', refresh_token: 'sr1', expires_at: SAT + 21600, athlete: { id: 555 } });
+    if (b.grant_type === 'refresh_token' && b.refresh_token === 'sr1') { sTok = 'sa2'; return send(200, { access_token: 'sa2', refresh_token: 'sr2', expires_at: Math.round(Date.now() / 1000) + 21600 }); }
+    return send(400, {}); }
+  if (u.pathname === '/oauth/deauthorize') return send(200, {});
+  if (u.pathname === '/api/v3/push_subscriptions') return req.method === 'GET' ? send(200, []) : send(201, { id: 77 });
+  if (auth !== `Bearer ${sTok}`) return send(401, {});
+  if (u.pathname === '/api/v3/athlete/activities') { const after = Number(u.searchParams.get('after')), before = Number(u.searchParams.get('before'));
+    const t = (a) => Date.parse(a.start_date) / 1000;
+    return send(200, SACTS.filter((a) => (after ? t(a) > after && !a.old : true) && (before ? t(a) < before : true)).map(({ secs, w, ll, old, ...a }) => a)); }
+  const m = /^\/api\/v3\/activities\/(\d+)\/streams$/.exec(u.pathname), a = m && SACTS.find((x) => String(x.id) === m[1]);
+  if (!a || a.manual) return send(404, {});
+  const n = a.secs, at = (f) => ({ data: Array.from({ length: n }, (_, i) => f(i)) });
+  return send(200, { time: at((i) => i), distance: at((i) => i * (a.w ? 9 : 3)), heartrate: at((i) => 130 + (i % 20)), ...(a.w ? { watts: at((i) => a.w + (i % 30)), cadence: at(() => 90) } : {}),
+    ...(a.ll ? { latlng: at((i) => [51.4 + i * 1e-4, -2.5 + i * 1e-4]), altitude: at((i) => 30 + (i % 40)) } : {}), velocity_smooth: at(() => (a.w ? 9 : 3)) });
+}).listen(8800, '127.0.0.1');
 // (a stand-in for Open-Meteo: today's hours, wet till 11, fine after)
 const wxlog = [];
 createServer((req, res) => {
@@ -470,6 +503,43 @@ const offTxt = await L.p.innerText('main');
 await L.ctx.setOffline(false);
 await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 800);
 ok(/Today|Activities|Progress/.test(offTxt) && !/needs JavaScript|You’re offline. Fitness will be here/.test(offTxt) && /Today|Activities|Progress/.test(await L.p.innerText('main')), 'with no network, the app still opens, from this phone’s copy', offTxt.slice(0, 160));
+
+// ---- 8e. Strava: connected on its own page, and back; its activities in by themselves, as Garmin's are ----
+await you(L); await L.p.locator('#sheet .row', { hasText: 'Strava' }).click(); await L.p.waitForSelector('#sheet .btn.strava'); await settle(L, 400);
+await L.p.screenshot({ path: `${out}/strava-off.png` });
+await L.p.click('#sheet .btn.strava');
+const sIn = await L.p.waitForFunction(async () => { const { S } = await import('./app.js'); return S.own.some((a) => a.id === 's7001') && S.own.some((a) => a.id === 's7002'); }, null, { timeout: 60000, polling: 500 }).then(() => true, () => false);
+await settle(L, 800);
+await L.p.screenshot({ path: `${out}/strava-in.png` });
+const sRows = rows(`SELECT id, sport, indoor, name, device FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%' ORDER BY id`), sTokRow = rows(`SELECT access, refresh FROM fx_strava WHERE user_id = '${sam}'`)[0];
+const sMe = (await api(L, '/api/fitness/me')).body, sLeft = rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length;
+ok(sIn && sRows.length === 2 && sRows[0].id === 's7001' && sRows[0].sport === 'ride' && sRows[0].indoor === 1 && sRows[0].name === 'Lunch ride' && sRows[0].device === 'Zwift'
+  && sRows[1].id === 's7002' && sRows[1].sport === 'run' && /^w1:/.test(sTokRow?.access) && /^w1:/.test(sTokRow?.refresh) && !/"s[ar]1"/.test(sMe) && slog.some((x) => x.startsWith('POST /api/v3/push_subscriptions')) && sLeft === 0,
+  'Strava: yes on its page, and back; the ride (indoors, its name and device) and the run come in, the one typed in by hand doesn’t; its tokens locked, never sent to the page', `${sIn} ${JSON.stringify(sRows)} ${sTokRow?.access?.slice(0, 6)}`);
+// (the ride's sheet links back to it on Strava)
+await L.p.evaluate(async () => { const { S } = await import('./app.js'), { openAct } = await import('./activities.js'); await openAct(S.own.find((a) => a.id === 's7001')); });
+const sLink = await L.p.waitForSelector('#sheet a.link.strava', { timeout: 15000 }).then((e) => e.getAttribute('href'), () => null);
+await done(L);
+ok(sLink === 'https://www.strava.com/activities/7001', 'and its sheet says “View on Strava”, to it there', sLink);
+// Strava's word: its check (with our token only), a rename, a new one, and someone else's subscription ignored
+const sVerify = createHash('sha256').update('fitness-strava-hook|test-strava-secret-for-local-tests').digest('hex').slice(0, 32);
+const sCheck = await api(L, `/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=${sVerify}&hub.challenge=abc123`), sCheckBad = await api(L, '/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=abc123');
+const hook = (e) => api(L, '/api/fitness/strava/hook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e) });
+await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 78, updates: { title: 'Not ours' } });
+await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { title: 'Lunch ride, renamed' } });
+await hook({ object_type: 'activity', object_id: 7006, aspect_type: 'create', owner_id: 555, subscription_id: 77 });
+const sAfter = rows(`SELECT name FROM fx_acts WHERE user_id = '${sam}' AND id = 's7001'`)[0], sDue = rows(`SELECT due FROM fx_strava WHERE user_id = '${sam}'`)[0];
+ok(sCheck.status === 200 && JSON.parse(sCheck.body)['hub.challenge'] === 'abc123' && sCheckBad.status === 403 && sAfter?.name === 'Lunch ride, renamed' && sDue?.due === 1,
+  'Strava’s webhook: its check answered only with our token; renamed there, renamed here; a new one asked for; another subscription’s word ignored', `${sCheck.status} ${sCheckBad.status} ${sAfter?.name} ${sDue?.due}`);
+// all your history: back past the six months, to the old ride
+const sAll = await api(L, '/api/fitness/strava/all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+const sWait = rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).map((r) => r.id);
+ok(sAll.status === 200 && sWait.join() === '7005', 'all your Strava history: the old ride found, waiting to be read (and only it)', `${sAll.status} ${JSON.stringify(sWait)}`);
+// disconnected on Strava: the tokens and what's waiting go here; what's in Fitness stays
+await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
+ok(!rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length && !rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length && rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%'`).length === 2,
+  'disconnected on Strava: its tokens and the files waiting gone; the activities already in Fitness stay');
+await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 600);
 
 // ---- 8d. One kept before files were made smaller (a GPX, as it came): made smaller as the app opens, its figures kept ----
 const oldAt = (t0 - 86400 * 9) * 1000, oldGpx = gpxFromActivity({ ...ride, start: oldAt, name: 'Old ride' });
