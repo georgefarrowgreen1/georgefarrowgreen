@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.3.5";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.4.0";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2765,6 +2765,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.4.0", at: Date.UTC(2026, 9, 27), title: "A new address", items: [
+    ["globe", "blue", "InFlight is at chat.inflite.ai", "The apps have a home of their own now. Links to the old address still bring you here, signed in as you were."],
+    ["lock", "green", "Your passkeys still work", "The passkey you have already signs you in here, and opens your messages."],
+    ["bell", "orange", "On your Home Screen", "Add InFlight to your Home Screen again from here, and turn notifications on there. Until then the old one still tells you when a pigeon lands, so you can remove it once you have."],
+  ] },
   { v: "1.3.5", at: Date.UTC(2026, 9, 25), title: "In keeping", items: [
     ["sun", "blue", "A sky behind everything", "InFlight now has your account’s sky: slow light drifting behind every screen, dawn in Light and night in Dark."],
     ["bubble", "indigo", "Glass, all through", "Your chats, friends and settings sit on panes of glass, as they do on your account’s page and in Weather; friends’ bubbles too."],
@@ -2782,7 +2787,7 @@ const RELEASES = [
     ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
   ] },
   { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
-    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.inflite.ai, where you sign in for every app on the site, and brings you straight back."],
+    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.georgefarrowgreen.com, where you sign in for every app on the site, and brings you straight back."],
     ["person", "green", "Your messages open as you come back", "The password or passkey you sign in with there unlocks them here too, so you only show it’s you once."],
   ] },
   { v: "1.3.1", at: Date.UTC(2026, 9, 24), title: "Smoother", items: [
@@ -2791,15 +2796,15 @@ const RELEASES = [
     ["bird", "orange", "Everything glides", "Screens, sheets, menus, banners and the map move smoothly in and out, and with Reduce Motion they fade instead of cutting."],
   ] },
   { v: "1.3.0", at: Date.UTC(2026, 9, 23), title: "One way in", items: [
-    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on inflite.ai: a passkey first, or your email and password."],
-    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.inflite.ai, where a forgotten password is reset too. Invite links still work: they open it."],
+    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on georgefarrowgreen.com: a passkey first, or your email and password."],
+    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.georgefarrowgreen.com, where a forgotten password is reset too. Invite links still work: they open it."],
   ] },
   { v: "1.2.9", at: Date.UTC(2026, 9, 23), title: "Your account, at the top", items: [
     ["person", "blue", "The same card as Weather", "Account opens with your photo, name and handle, as Weather’s Settings do. Tap it for your account’s page, already signed in."],
     ["pin", "teal", "Location has its own row", "Where you are is under Settings now, and Sign Out is at the foot of Account."],
   ] },
   { v: "1.2.8", at: Date.UTC(2026, 9, 23), title: "Your profile, on your account", items: [
-    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your inflite.ai account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
+    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your georgefarrowgreen.com account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
   ] },
   { v: "1.2.7", at: Date.UTC(2026, 9, 22), title: "Tidier", items: [
     ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
@@ -2861,8 +2866,8 @@ const RELEASES = [
     ["loc", "blue", "Approximate Location", "Privacy & Security: keep your spot to about 10 km instead of a mile."],
   ] },
   { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and InFlight Live", items: [
-    ["globe", "blue", "A new home", "InFlight now lives at chat.inflite.ai. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
-    ["map", "indigo", "InFlight Live", "On a computer, chat.inflite.ai/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
+    ["globe", "blue", "A new home", "InFlight now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
+    ["map", "indigo", "InFlight Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
     ["shield", "green", "Your pigeons, your choice", "Privacy & Security → Live Tracker keeps your pigeons off it. One only shows if you and your friend both leave it on."],
     ["ship", "teal", "The right sea", "A ship’s voyage is named for the sea it really crosses: the North Atlantic, not the English Channel it sails out by."],
   ] },

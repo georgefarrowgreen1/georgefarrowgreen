@@ -1,7 +1,27 @@
-# George Farrow-Green — georgefarrowgreen.com
+# George Farrow-Green — georgefarrowgreen.com, and the apps at inflite.ai
 
-The site's home page, and the apps beside it: InFlight (chat.), Weather (weather.), Fitness (fitness.) and the account's
-own page (account.), each below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
+Two sites from one Pages project (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
+live at **inflite.ai**: InFlight (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
+each below. inflite.ai itself sends you to the home page's Apps for now.
+
+- **One account, two sign-ins.** The account's cookie is each site's own (`Domain=inflite.ai` for every app;
+  `georgefarrowgreen.com` for the home page). The home page's **Sign in** goes to the account's page, and comes back
+  through a **hop** (`functions/_hop.js`): start on the site to be signed in to (a note only this browser has), issue on
+  the one you're signed in to (a code for that note, good once for two minutes), finish back where it started (a sign-in
+  of its own, that ends when the apps' does).
+- **Passkeys stay georgefarrowgreen.com's**, so every passkey made before the move still works, and with it the key
+  InFlight unlocks with one: `https://georgefarrowgreen.com/.well-known/webauthn` lists the apps' addresses as related
+  origins.
+- **The old addresses** (chat., weather., fitness. and account.georgefarrowgreen.com, and /pigeon/) send each page on to
+  the same place at inflite.ai, signed in still if the browser was (a hop). Their `sw.js` is a stand-in that keeps no
+  files and only shows the notifications still sent to a phone that hasn't moved, opening them at the new address; their
+  APIs still answer a page left open from before (and the Apple Health shortcut).
+- **Setting up the domain** (once): inflite.ai on Cloudflare; chat., weather., fitness. and account.inflite.ai, and
+  inflite.ai itself, as custom domains of the Pages project; Strava's Authorization Callback Domain fitness.inflite.ai.
+- **Tests** stand in both sites: gfg.test for the home page (`ACCOUNT_SITE`), ifl.test for the apps (`APPS_SITE`), with
+  passkeys the apps' site's (`PASSKEY_SITE`: a test over plain http can't fetch the related-origins file).
+
+The home page, then each app, below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
 look: my name, a line above it and one under it, then **Apps** (InFlight, Weather and Fitness) and **Get in touch** (a message,
 or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
 behind it (`functions/`), the words in **KV**, the photos in **R2**.
@@ -166,7 +186,7 @@ To send one:
 import { emailBody, sendEmail, linkOrigin } from "./_email.js";
 const { text, html } = emailBody({ brand: "weather", origin: linkOrigin(request), title: "Rain from 3pm",
   pill: ["pin", "Bristol"], lines: ["Heavy showers this afternoon.", "Take a coat."],
-  rows: [["When", "15:00 to 18:00"]], button: { label: "Open Weather", url: "https://weather.georgefarrowgreen.com/" } });
+  rows: [["When", "15:00 to 18:00"]], button: { label: "Open Weather", url: "https://weather.inflite.ai/" } });
 await sendEmail(env, { brand: "weather", to, subject: "Rain from 3pm", text, html });
 ```
 
@@ -222,7 +242,7 @@ or `p=reject` with `pct=100`, which georgefarrowgreen.com has).
   (`/api/background?id=cover&d=desktop`, which answers a link preview's first look, a HEAD, too).
 - `robots.txt` and `sitemap.xml` point at `https://georgefarrowgreen.com/`.
 
-## Your account (account.georgefarrowgreen.com)
+## Your account (account.inflite.ai)
 
 One page for the georgefarrowgreen.com account every app on the site signs in with (`account/`, served at the
 address's root by `functions/_acctapp.js`; its API is `/api/account/`, `functions/api/account/[[path]].js`, answered
@@ -466,10 +486,10 @@ Motion, solid with Reduce Transparency.
   account's confirm link said to be on its way only when it went, Resend refusing it or not answering in time; against
   Node's own SQLite standing in for D1).
 
-**Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
+**Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.inflite.ai`. Nothing
 else: it's the same deployment, routed by its address.
 
-## Weather (weather.georgefarrowgreen.com)
+## Weather (weather.inflite.ai)
 
 A forecast that explains itself, in `weather/`: no build step, no keys, no
 database. Your phone asks [Open-Meteo](https://open-meteo.com/) (free, CC BY
@@ -1041,7 +1061,7 @@ type into (search, settings) takes typing, copying and pasting as ever.
 Share a place with `?lat=…&lon=…&name=…`.
 
 **Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
-project → Custom domains → Set up a custom domain → `weather.georgefarrowgreen.com`.
+project → Custom domains → Set up a custom domain → `weather.inflite.ai`.
 The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
 else: notifications are sent by `.github/workflows/weather-tick.yml` every 10
 minutes with InFlight's tick secret (`INFLIGHT_TICK_SECRET` in GitHub,
@@ -1061,7 +1081,7 @@ directly, so a branch can be tried before it's merged.
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
 | Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds, the National Weather Service and the Environment Agency's floods, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area; the flood areas' outlines a week); `weather/official.js` says them (colour, title, when) |
 
-**Its own address.** At weather.georgefarrowgreen.com only the app and its own
+**Its own address.** At weather.inflite.ai only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
 site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
 lets it fetch only from Open-Meteo, BigDataCloud (and OpenStreetMap's Nominatim
@@ -1127,7 +1147,7 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## Fitness (fitness.georgefarrowgreen.com)
+## Fitness (fitness.inflite.ai)
 
 Training, riding first and running, swimming and strength alongside, in `fitness/`: no build step, no keys. Like
 Weather, it works everything out on the phone (each file read, every figure and chart); unlike Weather, it's used
@@ -1236,14 +1256,14 @@ wheel, made as Weather's sun and cloud are). Effort is in the seven zone colours
 Two columns of cards on Today on a wide screen. The page's rules allow no style written in it, so every chart is SVG
 coloured by its classes, and sized from script.
 
-**Its own address.** At fitness.georgefarrowgreen.com only the app and its own API answer (`functions/_fitapp.js`:
+**Its own address.** At fitness.inflite.ai only the app and its own API answer (`functions/_fitapp.js`:
 anything else is "Not found"; `/fitness/…` there goes to the root). Its Content-Security-Policy runs only its own
 scripts and lets it fetch only from its own address: nothing goes anywhere else, your files included. On the site's own
 address, `/fitness/` sends you there; a preview (`*.pages.dev/fitness/`) or a local copy serves the app directly, but
 can't sign in (the account's API answers only at its own address), so it shows Sign in, off, and where it is.
 
 **Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen` project → Custom domains → Set up a custom
-domain → `fitness.georgefarrowgreen.com`. The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
+domain → `fitness.inflite.ai`. The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
 else: it uses the site's D1 database (its tables made as they're first wanted) and R2 bucket (`BIO_R2`).
 
 **What's next.** 1. Weather's Best times for each day's session, from your place. 2. Without a cable: Garmin's Connect
@@ -1274,7 +1294,7 @@ and a new FTP on the other from the version before, both kept; miles on one, mil
 and another deleted, on both; Fitness on the account's page; signing out, the phone's copies gone; and no screen wider
 than a 320 px phone).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.3.5
+## InFlight (chat.inflite.ai) — 1.3.5
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
@@ -1334,13 +1354,13 @@ pigeons each frame and the whole map at most twice a second, fold and unfold fro
 waiting for the first draw, and morph when a pigeon lands. The tracker reads its colours once, glides its zoom and
 keeps + and − still. Reduce Motion fades instead of moving, rather than cutting.
 
-**1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
+**1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.inflite.ai, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
 **Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it), `icon-maskable-512.png` square for Android's masks, and `badge-96.png`, the white pigeon alone on transparent, for Android's notification badge.
 
 **1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
-**1.2.8** (your profile, on your account): your photo, name and handle are the georgefarrowgreen.com account's, so My Profile shows them and Edit Profile changes them on the account's page (account.georgefarrowgreen.com) rather than in InFlight. It opens signed in, whatever browser it opens in (a Home Screen app's links open in the browser, which has its own cookies): InFlight asks for a code (`POST /api/pigeon/account-link`, good once, for a minute, in `pg_handoff`), puts it in the address's `#` (never sent to a server), and the page swaps it for a sign-in of its own (`POST /api/account/handoff`, only at the account's address and from its own page; it takes the code out of the address at once). That sign-in shows in Signed-in devices and never counts as having just shown it's you, so a new password or passkey still asks. The page opens straight at Edit profile with the way back to InFlight; Done or Cancel closes it, and InFlight shows the change as you come back. Privacy & Security's Your Account opens the page the same way (`.tools/tests/acctlink.mjs`).
+**1.2.8** (your profile, on your account): your photo, name and handle are the georgefarrowgreen.com account's, so My Profile shows them and Edit Profile changes them on the account's page (account.inflite.ai) rather than in InFlight. It opens signed in, whatever browser it opens in (a Home Screen app's links open in the browser, which has its own cookies): InFlight asks for a code (`POST /api/pigeon/account-link`, good once, for a minute, in `pg_handoff`), puts it in the address's `#` (never sent to a server), and the page swaps it for a sign-in of its own (`POST /api/account/handoff`, only at the account's address and from its own page; it takes the code out of the address at once). That sign-in shows in Signed-in devices and never counts as having just shown it's you, so a new password or passkey still asks. The page opens straight at Edit profile with the way back to InFlight; Done or Cancel closes it, and InFlight shows the change as you come back. Privacy & Security's Your Account opens the page the same way (`.tools/tests/acctlink.mjs`).
 
 **1.2.7** (tidier, after a review of 1.2.2–1.2.6): Look Up's camera and location watch stop whenever the sheet stops being Look Up (Back, X, another sheet, even after the pigeon has landed) and when the app goes to the background; a second tap while the camera starts cancels it rather than opening another; the lens angle when zoomed is right (it was doubled); no location no longer stops the drawing. A way blurred a month on keeps what it said (`w_dodged`, `w_shelter`, `w_ship` on `pg_msgs` / `pg_gdeliv`), so a pigeon tidied away after its blur keeps its storms, shelter and ship in the flight log; the clean-up claims its turn in one step (no warning email twice); a warning never names a day gone by; an account's deletion keeps the landed pigeons its friends sent it as unnamed lines; a full sheet redraw waiting for the slide isn't lost to a lighter one; a safety number for someone no longer found closes; signing out one phone asks first. Times read "2 hours ago" everywhere. `placegrid.js` is fetched with the rest at start (about 0.2 s sooner on a slow line). Insights: days used are noted (`pg_active`, a row per account per London day, 60 kept), so People active counts opening the app and Coming Back shows who used it in their second week; days follow the clocks changing; photos, losses (not recalls) and pigeons in the air counted right; Count Again keeps your place.
 
@@ -1391,7 +1411,7 @@ The passport gets a Moon stamp, there's a Moonshot badge, and InFlight Live
 counts the pigeons out in space (a number only).
 
 **1.0.8** (a new home, and InFlight Live): InFlight moved to
-chat.georgefarrowgreen.com, bringing each phone's sign-in across, and the
+chat.inflite.ai, bringing each phone's sign-in across, and the
 old address says where it went; InFlight Live shows every pigeon in the air
 on a computer, with no one in it.
 
@@ -1423,16 +1443,16 @@ deleted 24 hours after they land. It is end-to-end encrypted and works on
 phones and iPads only, held upright.
 
 **Other ways in.** georgefarrowgreen.com/chat sends you to /pigeon
-(`functions/chat/[[path]].js`), and so can chat.georgefarrowgreen.com. The app
+(`functions/chat/[[path]].js`), and so can chat.inflite.ai. The app
 keeps one address, so sign-ins, keys, notifications and the Home Screen icon
 stay put. For the subdomain, in Cloudflare (the georgefarrowgreen.com zone):
 1. DNS → Records → Add record: type **CNAME**, name **chat**, target
    **georgefarrowgreen.com**, Proxied on.
 2. Rules → Redirect Rules → Create rule: when **Hostname** equals
-   **chat.georgefarrowgreen.com**, redirect (static) to
+   **chat.inflite.ai**, redirect (static) to
    **https://georgefarrowgreen.com/pigeon/**, 301, preserve query string on.
 
-(If chat.georgefarrowgreen.com is added to the Pages project as a custom domain
+(If chat.inflite.ai is added to the Pages project as a custom domain
 instead, its /pigeon pages still send you to the main address.)
 
 **Phones and iPads only.** On a computer, /pigeon shows a page saying InFlight
@@ -1880,7 +1900,7 @@ passport (`functions/_passport.js`).
 shop on accessories for your named pigeons. (In the code and the database they're
 still called feathers: `functions/_feathers.js`, `pg_feathers`.)
 
-**InFlight Live** (`chat.georgefarrowgreen.com/tracker`, computers only). A
+**InFlight Live** (`chat.inflite.ai/tracker`, computers only). A
 public world map of every pigeon in the air, made so that nobody is in it. The
 server decides what may be shown (`functions/_tracker.js`, `GET /api/pigeon/tracker`)
 and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
@@ -2157,7 +2177,7 @@ info. Every change to who's in a group (made, added, left, renamed) shows as a
 line in its chat, so no one can be slipped in without everyone seeing.
 
 **One account for the site.** The same account (email, password, passkeys) signs in to every app on
-georgefarrowgreen.com, on its own page, account.georgefarrowgreen.com, and only there (each app sends you there and is
+georgefarrowgreen.com, on its own page, account.inflite.ai, and only there (each app sends you there and is
 handed the sign-in back: *Your account* above), and one sign-in serves them all in a browser (`functions/_account.js`).
 Each sign-in starts a session and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
 georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signed in for one app,
@@ -2178,7 +2198,7 @@ their limits and the "new sign-in" email, are shared (`functions/_account.js`), 
 same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
 signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
-page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
+page, account.inflite.ai (above), is where its password, passkeys and signed-in devices are for every app
 (InFlight's account card at the top of Account), and InFlight's settings that are the account's (InFlight Settings).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
@@ -2399,7 +2419,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   (`#confirm=edit`) and comes back editing, so nothing typed is lost. Admin's lists with people's details (accounts,
   the site's messages, the log) need the same 12 hours, asked on the page as a change is; its figures (the summary,
   Insights, Storage, invites) are as signed in. A change in Admin still needs the last 10 minutes.
-- **Nothing of InFlight's left at the old address.** Once InFlight is signed in at chat.georgefarrowgreen.com, it tells
+- **Nothing of InFlight's left at the old address.** Once InFlight is signed in at chat.inflite.ai, it tells
   the old address's hidden handover page (`pigeon/handover.js`, which only the new address may open or speak to) to
   clear what that browser kept there: the sign-in, the key, trusted keys and settings, as that address is the home
   page's too. Once per browser, for one that moved before as well (`inflight-oldcleared`); an old tab still open there
@@ -2469,7 +2489,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   database (`functions/_atrest.js`). Accounts from before lock themselves
   within a minute of it being set. **Once set, never change or lose it:**
   every password would stop working.
-- **Two addresses, kept apart:** chat.georgefarrowgreen.com serves only
+- **Two addresses, kept apart:** chat.inflite.ai serves only
   InFlight's own pages (the app, the tracker) and its own API (`/api/pigeon/`);
   the site's API, its owner's sign-in and InFlight's admin stay on
   georgefarrowgreen.com (`/admin` there redirects). At either address anything
