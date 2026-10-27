@@ -930,7 +930,7 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
 await p.click('#settings-btn');
 await p.waitForSelector('#settings[open]'); await p.waitForTimeout(300);
 {
-  const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
+  const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].filter((b) => !b.closest('li')?.hidden).map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
     hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
   ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
     'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
