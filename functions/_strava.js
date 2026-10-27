@@ -38,6 +38,8 @@ async function tables(env) {
       D.prepare(`CREATE TABLE IF NOT EXISTS fx_strava_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, sport TEXT, indoor INTEGER NOT NULL DEFAULT 0,
         device TEXT, size INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
     ]);
+    // (whose Strava it is, by name, so the app can say)
+    await D.prepare("ALTER TABLE fx_strava ADD COLUMN name TEXT").run().catch(() => {});
     tables.done = true;
   }
   return D;
@@ -53,7 +55,7 @@ export async function connectUrl(env, userId, origin) {
   if (!stravaOn(env)) throw new HttpError(503, "Strava isn’t set up here yet.");
   await limit(env, `fxstravago:${userId}`, 30, 3600e3);
   const exp = Date.now() + 15 * 60e3, state = `${exp}.${(await sign(env, `${userId}|${exp}`)).slice(0, 32)}`;
-  const q = new URLSearchParams({ client_id: env.STRAVA_CLIENT_ID, response_type: "code", redirect_uri: `${origin}/api/fitness/strava/back`, approval_prompt: "auto", scope: SCOPE, state });
+  const q = new URLSearchParams({ client_id: env.STRAVA_CLIENT_ID, response_type: "code", redirect_uri: `${origin}/api/fitness/strava/back`, approval_prompt: "force", scope: SCOPE, state });
   return { url: `${base(env)}/oauth/authorize?${q}` };
 }
 // Strava's token endpoint: a code (once), or the refresh (each six hours) → { access_token, refresh_token, expires_at, athlete }
@@ -77,12 +79,16 @@ export async function connectBack(env, userId, q) {
   const athlete = Number(t.athlete?.id);
   if (!t.access_token || !t.refresh_token || !Number.isFinite(athlete)) return "error";
   const D = await tables(env), now = Date.now();
-  // (one Strava athlete, one Fitness account: connected to another before, it's moved here)
-  const was = await D.prepare("SELECT user_id FROM fx_strava WHERE athlete = ? AND user_id != ?").bind(athlete, userId).first();
-  if (was) await forget(env, was.user_id);
-  await D.prepare(`INSERT INTO fx_strava (user_id, athlete, access, refresh, exp, since, seen, last, due, back, ok, said, added) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', NULL, 1, 0, 1, NULL, ?7)
-    ON CONFLICT(user_id) DO UPDATE SET athlete = ?2, access = ?3, refresh = ?4, exp = ?5, ok = 1, said = NULL, due = 1`)
-    .bind(userId, athlete, await lockVault(env, owner(userId), t.access_token), await lockVault(env, owner(userId), t.refresh_token), Number(t.expires_at) * 1000, now - FIRST * 86400e3, now).run();
+  // (one Strava athlete, one Fitness account: already another's, refused, not moved; its rides are that account's.
+  // Strava's told to forget this ask, so nothing's left connected for it)
+  if (await D.prepare("SELECT user_id FROM fx_strava WHERE athlete = ? AND user_id != ?").bind(athlete, userId).first()) {
+    await fetch(`${base(env)}/oauth/deauthorize`, { method: "POST", headers: { Authorization: `Bearer ${t.access_token}` }, signal: AbortSignal.timeout(15000) }).catch(() => {});
+    return "taken";
+  }
+  const name = [t.athlete?.firstname, t.athlete?.lastname].filter((x) => typeof x === "string" && x.trim()).join(" ").slice(0, 80) || null;
+  await D.prepare(`INSERT INTO fx_strava (user_id, athlete, access, refresh, exp, since, seen, last, due, back, ok, said, added, name) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', NULL, 1, 0, 1, NULL, ?7, ?8)
+    ON CONFLICT(user_id) DO UPDATE SET athlete = ?2, access = ?3, refresh = ?4, exp = ?5, ok = 1, said = NULL, due = 1, name = ?8`)
+    .bind(userId, athlete, await lockVault(env, owner(userId), t.access_token), await lockVault(env, owner(userId), t.refresh_token), Number(t.expires_at) * 1000, now - FIRST * 86400e3, now, name).run();
   await ensureHook(env).catch((e) => console.error("strava hook", e.message));
   return "on";
 }
@@ -215,10 +221,10 @@ export async function stravaAll(env, userId) {
 // what the app's told: connected or not, how the last ask went, the files waiting
 export async function stravaOf(env, userId) {
   if (!stravaOn(env)) return { on: false, ready: false };
-  const D = await tables(env), g = await D.prepare("SELECT last, ok, said, added, back, back_at FROM fx_strava WHERE user_id = ?").bind(userId).first();
+  const D = await tables(env), g = await D.prepare("SELECT last, ok, said, added, back, back_at, name FROM fx_strava WHERE user_id = ?").bind(userId).first();
   if (!g) return { on: false, ready: true };
   const { results } = await D.prepare("SELECT id, start, name, sport, indoor, device FROM fx_strava_new WHERE user_id = ? ORDER BY start LIMIT 50").bind(userId).all();
-  return { on: true, ready: true, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results.map((w) => ({ ...w, indoor: !!w.indoor })), ...(g.back ? { back: true, backAt: g.back_at } : {}) };
+  return { on: true, ready: true, name: g.name || null, ok: !!g.ok, said: g.said || null, last: g.last || null, since: g.added, waiting: results.map((w) => ({ ...w, indoor: !!w.indoor })), ...(g.back ? { back: true, backAt: g.back_at } : {}) };
 }
 export async function sWaitingFile(env, userId, id) {
   const D = await tables(env), row = await D.prepare("SELECT id FROM fx_strava_new WHERE user_id = ? AND id = ?").bind(userId, id).first();

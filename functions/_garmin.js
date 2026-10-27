@@ -9,7 +9,7 @@
 // Each new activity's file waits in R2 (fitness/<account>/garmin/<id>, a row in fx_garmin_new) until the app reads it,
 // as it reads any file you upload, and keeps it with its figures (POST /api/fitness/acts, with the id g<Garmin's id>),
 // which clears it. Nothing here reads a file: the phone does that, as with every upload.
-import { HttpError, limit } from "./_pigeon.js";
+import { HttpError, limit, hex, sha256 } from "./_pigeon.js";
 import { lockVault, openVault } from "./_atrest.js";
 import { fitdb, MAX_FILE, MAX_STORE } from "./_fitness.js";
 
@@ -41,6 +41,9 @@ async function tables(env) {
     await D.prepare("ALTER TABLE fx_garmin ADD COLUMN well_at INTEGER").run().catch(() => {});
     // (and all your history, asked for: being walked through, oldest first, from since)
     await D.prepare("ALTER TABLE fx_garmin ADD COLUMN back INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+    // (whose Garmin it is, as a hash: one Garmin account, one Fitness account)
+    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN who TEXT").run().catch(() => {});
+    await D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_who ON fx_garmin (who)").run().catch(() => {});
     tables.done = true;
   }
   return D;
@@ -74,6 +77,13 @@ async function get(env, token, path, raw = false) {
 const when = (v) => (typeof v === "number" ? v : typeof v === "string" ? Date.parse(v.replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? "" : "Z")) : NaN);
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 
+// Whose Garmin account a key is for: the person in Garmin's token where it says (its sub), else the key itself; kept
+// only as a hash. So the same Garmin account can't be connected to two Fitness accounts, and its rides go to one.
+async function whoOf(token, key) {
+  let sub = null;
+  try { sub = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub || null; } catch (_) {}
+  return hex(await sha256("fitness-garmin-who|" + (sub ? `sub:${sub}` : `key:${key}`)));
+}
 // ---- connecting, and not ----
 // Your key: tried at once (a key Garmin won't take isn't kept), then kept, locked, and the last six months fetched
 export async function connect(env, userId, rawKey) {
@@ -89,10 +99,13 @@ export async function connect(env, userId, rawKey) {
     console.error("garmin token", e.status, e.message);
     throw new HttpError(424, `Garmin Connect didn’t answer (${e.status || e.name || "no answer"}). Try again in a moment.`);
   }
+  // (already another Fitness account's: refused, not moved; its rides are that account's)
+  const who = await whoOf(t.token, key);
+  if (await D.prepare("SELECT user_id FROM fx_garmin WHERE who = ? AND user_id != ?").bind(who, userId).first()) throw new HttpError(409, "That Garmin account is connected to another Fitness account. Disconnect it there first.", "key");
   const now = Date.now();
-  await D.prepare(`INSERT INTO fx_garmin (user_id, apikey, token, token_exp, since, seen, last, ok, said, added) VALUES (?1, ?2, ?3, ?4, ?5, '[]', NULL, 1, NULL, ?6)
-    ON CONFLICT(user_id) DO UPDATE SET apikey = ?2, token = ?3, token_exp = ?4, ok = 1, said = NULL`)
-    .bind(userId, await lockVault(env, owner(userId), key), await lockVault(env, owner(userId), t.token), t.exp, now - FIRST * 86400e3, now).run();
+  await D.prepare(`INSERT INTO fx_garmin (user_id, apikey, token, token_exp, since, seen, last, ok, said, added, who) VALUES (?1, ?2, ?3, ?4, ?5, '[]', NULL, 1, NULL, ?6, ?7)
+    ON CONFLICT(user_id) DO UPDATE SET apikey = ?2, token = ?3, token_exp = ?4, ok = 1, said = NULL, who = ?7`)
+    .bind(userId, await lockVault(env, owner(userId), key), await lockVault(env, owner(userId), t.token), t.exp, now - FIRST * 86400e3, now, who).run();
   return fetchNew(env, userId, { force: true });
 }
 // Disconnected: the key forgotten, and the files still waiting
@@ -132,9 +145,10 @@ export async function fetchNew(env, userId, { force = false } = {}) {
     let token = g.token && g.token_exp > now + 5 * 60e3 ? await openVault(env, owner(userId), g.token) : null;
     if (!token) {
       try {
-        const t = await swap(env, await openVault(env, owner(userId), g.apikey));
+        const k = await openVault(env, owner(userId), g.apikey), t = await swap(env, k);
         token = t.token;
-        await D.prepare("UPDATE fx_garmin SET token = ?2, token_exp = ?3 WHERE user_id = ?1").bind(userId, await lockVault(env, owner(userId), t.token), t.exp).run();
+        // (whose it is, for one connected before that was kept)
+        await D.prepare("UPDATE fx_garmin SET token = ?2, token_exp = ?3, who = COALESCE(who, ?4) WHERE user_id = ?1").bind(userId, await lockVault(env, owner(userId), t.token), t.exp, await whoOf(t.token, k)).run();
       } catch (e) {
         if (e.status === 401 || e.status === 403 || e.status === 400) return fail("expired", 0);
         throw e;

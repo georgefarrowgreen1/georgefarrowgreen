@@ -106,7 +106,7 @@ createServer(async (req, res) => {
   const send = (code, b, head = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...head }); res.end(b == null ? '' : JSON.stringify(b)); };
   if (u.pathname === '/oauth/authorize') { const back = new URL(u.searchParams.get('redirect_uri')); back.search = new URLSearchParams({ state: u.searchParams.get('state'), code: 'good-code', scope: 'read,activity:read_all' }); return send(302, null, { Location: back.href }); }
   if (u.pathname === '/oauth/token') { const b = JSON.parse(body || '{}'); if (b.client_secret !== 'test-strava-secret-for-local-tests') return send(401, {});
-    if (b.grant_type === 'authorization_code' && b.code === 'good-code') return send(200, { access_token: 'sa1', refresh_token: 'sr1', expires_at: SAT + 21600, athlete: { id: 555 } });
+    if (b.grant_type === 'authorization_code' && b.code === 'good-code') return send(200, { access_token: 'sa1', refresh_token: 'sr1', expires_at: SAT + 21600, athlete: { id: 555, firstname: 'Sam', lastname: 'Taylor' } });
     if (b.grant_type === 'refresh_token' && b.refresh_token === 'sr1') { sTok = 'sa2'; return send(200, { access_token: 'sa2', refresh_token: 'sr2', expires_at: Math.round(Date.now() / 1000) + 21600 }); }
     return send(400, {}); }
   if (u.pathname === '/oauth/deauthorize') return send(200, {});
@@ -521,6 +521,21 @@ await L.p.evaluate(async () => { const { S } = await import('./app.js'), { openA
 const sLink = await L.p.waitForSelector('#sheet a.link.strava', { timeout: 15000 }).then((e) => e.getAttribute('href'), () => null);
 await done(L);
 ok(sLink === 'https://www.strava.com/activities/7001', 'and its sheet says “View on Strava”, to it there', sLink);
+ok(slog.some((x) => x.startsWith('GET /oauth/authorize') && x.includes('approval_prompt=force')) && rows(`SELECT name FROM fx_strava WHERE user_id = '${sam}'`)[0]?.name === 'Sam Taylor',
+  'Strava always shows its own page (so you see whose Strava it is), and Fitness says whose it is');
+// ---- one person's Strava and Garmin, one Fitness account: another account can't take them, nor their rides ----
+const X = await browser('second');
+await joinInFlight(X.p, `${CHAT}/`, { name: 'Alex Reed', handle: 'alex', email: 'alex@example.com', password: PW, city: 'Leeds' });
+await X.p.goto(`${FIT}/`); await X.p.waitForSelector('.head .round.me', { timeout: 30000 }); await settle(X, 1500);
+const alex = rows("SELECT id FROM pg_users WHERE handle = 'alex'")[0]?.id;
+const xGo = JSON.parse((await api(X, '/api/fitness/strava/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).body).url;
+await X.p.goto(xGo); await X.p.waitForSelector('.tabs .tab', { timeout: 30000 }); await settle(X, 1500);
+const xToast = await X.p.evaluate(() => document.querySelector('#toast')?.textContent || '');
+const xGarmin = await api(X, '/api/fitness/garmin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: GKEY }) });
+ok(!rows(`SELECT user_id FROM fx_strava WHERE user_id = '${alex}'`).length && rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length === 1 && /another Fitness account/.test(xToast)
+  && xGarmin.status === 409 && /another Fitness account/.test(xGarmin.body) && !rows(`SELECT id FROM fx_acts WHERE user_id = '${alex}'`).length,
+  'another account connecting the same Strava, or pasting the same Garmin key: refused, said so, and nothing of Sam’s comes to it', `${xToast} ${xGarmin.status}`);
+await X.ctx.close();
 // Strava's word: its check (with our token only), a rename, a new one, and someone else's subscription ignored
 const sVerify = createHash('sha256').update('fitness-strava-hook|test-strava-secret-for-local-tests').digest('hex').slice(0, 32);
 const sCheck = await api(L, `/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=${sVerify}&hub.challenge=abc123`), sCheckBad = await api(L, '/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=abc123');
@@ -539,6 +554,10 @@ ok(sAll.status === 200 && sWait.join() === '7005', 'all your Strava history: the
 await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
 ok(!rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length && !rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length && rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%'`).length === 2,
   'disconnected on Strava: its tokens and the files waiting gone; the activities already in Fitness stay');
+// and what it brought in, removed, where asked (not yours, say): the activities and their files
+const sDrop = await api(L, '/api/fitness/strava?acts=1', { method: 'DELETE' });
+ok(sDrop.status === 200 && JSON.parse(sDrop.body).gone === 2 && !rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%'`).length && rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}'`).length > 0,
+  'removing what Strava brought in: its activities go, the rest stay', sDrop.body);
 await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 600);
 
 // ---- 8d. One kept before files were made smaller (a GPX, as it came): made smaller as the app opens, its figures kept ----

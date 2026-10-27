@@ -251,6 +251,18 @@ export async function addFigures(env, userId, id, b) {
   let sum = {}; try { sum = JSON.parse(row.sum || "{}") || {}; } catch (_) {}
   await D.prepare("UPDATE fx_acts SET sum = ?, changed = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, ...add }), Date.now(), userId, id).run();
 }
+// Every activity one source brought in (Garmin's g<id>, Strava's s<id>), and their files: removed, on disconnecting
+// where asked → how many
+export async function dropFrom(env, userId, prefix) {
+  if (!/^[gs]$/.test(prefix)) throw new HttpError(400, "Bad request.");
+  const D = await fitdb(env), { results } = await D.prepare("SELECT id FROM fx_acts WHERE user_id = ? AND id GLOB ?").bind(userId, `${prefix}[0-9]*`).all();
+  for (let i = 0; i < results.length; i += 500) {
+    const ids = results.slice(i, i + 500).map((r) => r.id);
+    if (env.BIO_R2) await env.BIO_R2.delete(ids.map((id) => fileKey(userId, id)));
+  }
+  await D.prepare("DELETE FROM fx_acts WHERE user_id = ? AND id GLOB ?").bind(userId, `${prefix}[0-9]*`).run();
+  return results.length;
+}
 export async function deleteActivity(env, userId, id) {
   await (await fitdb(env)).prepare("DELETE FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).run();
   if (env.BIO_R2) await env.BIO_R2.delete(fileKey(userId, id));

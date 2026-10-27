@@ -102,7 +102,8 @@ export const workoutIds = (d) => (Array.isArray(d?.workouts) ? d.workouts.map((w
 // Garmin Connect, by your Personal API key (functions/_garmin.js): { on, ok, said, last, waiting: [{ id, start, name }] }
 export const garmin = () => call("garmin");
 export const garminConnect = (key) => call("garmin", { method: "POST", body: { key }, wait: 120000 });
-export const garminDisconnect = () => call("garmin", { method: "DELETE" });
+// (acts: and every activity it brought in, removed)
+export const garminDisconnect = (acts = false) => call(`garmin${acts ? "?acts=1" : ""}`, { method: "DELETE" });
 export const garminFetch = (force = false, all = false) => call("garmin/fetch", { method: "POST", body: { force, ...(all ? { all } : {}) }, wait: 120000 });
 // all your history on Garmin, not just six months (functions/_garmin.js allHistory) → as garmin(), with { back, backAt }
 export const garminAll = () => call("garmin/all", { method: "POST", body: {}, wait: 120000 });
@@ -114,7 +115,7 @@ export const healthOff = () => call("health", { method: "DELETE" });
 export const garminDone = (id) => call(`garmin/new/${encodeURIComponent(id)}`, { method: "DELETE" });
 // Strava (functions/_strava.js): Strava's own page to say yes on → { url }; then as Garmin's, each new one's file waiting
 export const stravaConnect = () => call("strava/connect", { method: "POST", body: {} });
-export const stravaDisconnect = () => call("strava", { method: "DELETE" });
+export const stravaDisconnect = (acts = false) => call(`strava${acts ? "?acts=1" : ""}`, { method: "DELETE" });
 export const stravaFetch = (force = false) => call("strava/fetch", { method: "POST", body: { force }, wait: 120000 });
 export const stravaAll = () => call("strava/all", { method: "POST", body: {}, wait: 120000 });
 export const stravaFile = (id) => call(`strava/new/${encodeURIComponent(id)}`, { raw: true, wait: 60000 });

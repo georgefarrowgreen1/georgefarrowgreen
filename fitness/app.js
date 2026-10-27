@@ -141,6 +141,8 @@ let saveT = null;
 function keep(...parts) { changed(); if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
 async function inStep() {
   if (!S.me || !S.dirty.size || inStep.busy) return;
+  // (nothing kept till the account's said who's signed in: the copy on the screen may be another's)
+  if (!background.done) { clearTimeout(saveT); saveT = setTimeout(inStep, 700); return; }
   inStep.busy = true;
   const dirty = new Set(S.dirty); S.dirty.clear();
   let again = 700;
@@ -849,16 +851,9 @@ function garminView() {
       h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Copy it, and paste it here" }), h("small", { text: "Garmin shows it only once" }))))),
     h("div.garmin-key", {}, ...keyForm("Connect")),
     section(null, h("p.foot", { text: "The key is kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in your activities from the last six months, then each new one. Workouts still go to your device by Download." })),
+    leaving("garmin", false),
   ] };
-  // (a second tap to be sure, saying what stays, as deleting an activity has)
-  const sure = h("p.foot", { text: "New activities stop coming in. The ones already brought in stay." });
-  sure.hidden = true;
-  const disconnect = async (e) => {
-    const b = e.currentTarget;
-    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Disconnect Garmin Connect"; sure.hidden = false; return; }
-    try { S.garmin = await A.garminDisconnect(); } catch (e) { return toast(e.message, true); }
-    sheetBack(); redraw(); toast("Disconnected");
-  };
+
   const check = async (btn) => {
     btn.disabled = true; btn.textContent = "Checking…";
     try { S.garmin = await A.garminFetch(true); } catch (e) { btn.disabled = false; btn.textContent = "Check now"; return toast(e.message, true); }
@@ -885,7 +880,7 @@ function garminView() {
     section(null, h("p.foot", { text: "Fitness looks for new activities every 15 minutes, and as you open it: a ride shows up a minute or two after your watch syncs with Garmin Connect." })),
     g.ok && section("All your rides", bringIn.busy ? h("p.foot", { text: "Coming in now: Activities shows how far back it’s got." }) : allBtn,
       h("p.foot", { text: g.back ? `Part way${backTo ? `: up to ${backTo}` : ""}. It carries on by itself every 15 minutes; this brings the rest in now.` : "Everything on Garmin Connect, not just the last six months: oldest first, skipping what’s here already. Carries on by itself if you close Fitness." })),
-    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect")), sure),
+    leaving("garmin", true),
   ] };
 }
 
@@ -896,6 +891,28 @@ function garminView() {
 const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
 // ---- Strava (functions/_strava.js): connected on Strava's own page, then as Garmin's, each new activity coming in by
 // itself (Strava says when there's one); its files written for Fitness from Strava's figures ----
+// Disconnecting (connected), or clearing up after (not): a second tap to be sure; and the choice to remove what it
+// brought in too (activities that aren't yours, say: another's Garmin or Strava, connected here by mistake)
+function leaving(src, on) {
+  const c = SRC[src], re = new RegExp(`^${c.prefix}\\d`), n = S.own.filter((a) => re.test(a.id)).length;
+  if (!on && !n) return null;
+  const sure = h("div.group", { hidden: true });
+  const go = async (b, acts) => {
+    b.disabled = true;
+    let r;
+    try { r = await (src === "garmin" ? A.garminDisconnect(acts) : A.stravaDisconnect(acts)); } catch (e) { b.disabled = false; return toast(e.message, true); }
+    if (on) c.set({ ...r, gone: undefined });
+    if (acts) { S.own = S.own.filter((a) => !re.test(a.id)); for (const k of [...S.sums.keys()]) if (re.test(k)) S.sums.delete(k); setActs(); estimate(); }
+    sheetBack(); redraw();
+    toast([on && `Disconnected from ${c.label}`, acts && `${plural(r.gone || 0, "activity", "activities")} removed`].filter(Boolean).join("; "));
+  };
+  const keep = on && h("button.row.action", { type: "button", onclick: (e) => go(e.currentTarget, false) }, n ? `Disconnect, and keep its ${plural(n, "activity", "activities")}` : "Disconnect");
+  const drop = n && h("button.row.action.danger", { type: "button", onclick: (e) => go(e.currentTarget, true) }, `${on ? "Disconnect, and remove" : "Remove"} ${n === 1 ? "the activity" : `all ${n} activities`} from ${c.label}`);
+  sure.append(...[keep, drop].filter(Boolean));
+  const first = h("button.row.action.danger", { type: "button", onclick: (e) => { e.currentTarget.closest(".group").hidden = true; sure.hidden = false; } }, on ? "Disconnect" : `Remove what ${c.label} brought in`);
+  return section(on ? null : `From ${c.label} before`, h("div.group", {}, first), sure,
+    h("p.foot", { text: on ? "New activities stop coming in. You choose whether the ones it brought in stay." : `${plural(n, "activity", "activities")} here came from ${c.label}. If they’re not yours, remove them.` }));
+}
 function stravaNow(g) {
   S.strava = g || { on: false };
   if (!g?.on) return;
@@ -906,7 +923,7 @@ function stravaSaid() {
   const g = S.strava;
   if (!g?.on) return "Bring in what you record on Strava";
   if (!g.ok) return "Strava’s stopped letting Fitness in: connect again";
-  return g.last ? `Connected · checked ${ago(g.last)}` : "Connected";
+  return `${g.name ? `${g.name} · ` : "Connected · "}${g.last ? `checked ${ago(g.last)}` : "connected"}`;
 }
 async function stravaGo(btn) {
   btn.disabled = true;
@@ -923,15 +940,9 @@ function stravaView() {
       h("div.row.plain", {}, h("span.ic.strava", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Back here, they come in" }), h("small", { text: "The last six months, then each new one" }))))),
     connectBtn,
     section(null, h("p.foot", { text: "Fitness only reads: it never posts to Strava or changes anything there. Strava has no files to hand over, so each activity’s written for Fitness from its figures, second by second. Disconnect here or on Strava at any time; what’s already in Fitness stays." })),
+    leaving("strava", false),
   ] };
-  const sure = h("p.foot", { text: "New activities stop coming in. The ones already brought in stay." });
-  sure.hidden = true;
-  const disconnect = async (e) => {
-    const b = e.currentTarget;
-    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Disconnect Strava"; sure.hidden = false; return; }
-    try { S.strava = await A.stravaDisconnect(); } catch (e) { return toast(e.message, true); }
-    sheetBack(); redraw(); toast("Disconnected from Strava");
-  };
+
   const check = async (btn) => {
     btn.disabled = true; btn.textContent = "Checking…";
     try { S.strava = await A.stravaFetch(true); } catch (e) { btn.disabled = false; btn.textContent = "Check now"; return toast(e.message, true); }
@@ -948,7 +959,7 @@ function stravaView() {
   const allBtn = h("button.btn", { type: "button", onclick: () => all(allBtn) }, g.back ? "Carry on bringing them in" : "Bring in all your rides");
   const backTo = g.back && g.backAt ? new Date(g.backAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : null;
   return { title: "Strava", body: [
-    h("div.sheet-top", {}, h("h1", { text: "Strava" }), h("div.sub", { text: g.ok ? (g.said ? stravaWhy() : "Connected") : "Strava’s stopped letting Fitness in" })),
+    h("div.sheet-top", {}, h("h1", { text: "Strava" }), h("div.sub", { text: g.ok ? (g.said ? stravaWhy() : g.name ? `Connected as ${g.name}` : "Connected") : "Strava’s stopped letting Fitness in" })),
     h("div.group", {},
       row({ icon: "today", tint: "blue", title: "Last checked", value: g.last ? ago(g.last) : "Not yet", chev: false }),
       row({ icon: "calendar", tint: "green", title: "Connected", value: dayShort(g.since), chev: false })),
@@ -956,7 +967,7 @@ function stravaView() {
     section(null, h("p.foot", { text: "Strava tells Fitness as each new activity’s saved, so it shows up a minute or two after it’s on Strava." })),
     g.ok && section("All your rides", bringIn.busy ? h("p.foot", { text: "Coming in now: Activities shows how far back it’s got." }) : allBtn,
       h("p.foot", { text: g.back ? `Part way${backTo ? `: back to ${backTo}` : ""}. It carries on by itself; this brings the rest in now.` : "Everything on Strava, not just the last six months, skipping what’s here already (from Garmin, or uploaded). Carries on by itself if you close Fitness." })),
-    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: disconnect }, "Disconnect")), sure),
+    leaving("strava", true),
     h("p.foot.powered", { text: "Powered by Strava" }),
   ] };
 }
@@ -1071,6 +1082,7 @@ async function morningOffHere() {
 }
 // (the week's words sent again, a moment after anything that changes them)
 function morningRefresh() {
+  if (!background.done) return;   // (as inStep: not for a copy that may be another's)
   const m = morningOf();
   if (!m || !S.me || !rhythmOn() || !canPush()) return;
   clearTimeout(morningRefresh.t);
@@ -1390,7 +1402,9 @@ async function fetchMe(base = meBase) {
   if (m.signedIn) lastMe.put(m);
   return m;
 }
-function arrive(m) {
+// (kept: the copy kept on this phone, drawn at once; it may be another account's, the site having been signed into as
+// someone else since, so nothing's done for it, nothing fetched or kept, till the account says it's the same one)
+function arrive(m, kept = false) {
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
@@ -1401,7 +1415,12 @@ function arrive(m) {
   // (the figures first, so the screen's drawn once, not drawn and then drawn again)
   sumUp();
   render(true);
+  if (kept) return;
   estimate();
+  background(m);
+}
+function background(m) {
+  background.done = true;
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
   if (!S.rhythm && !S.own.length && !m.garmin?.on && !m.strava?.on && !store.get("welcomed", false)) { store.set("welcomed", true); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; setTimeout(firstRun, 500); }
   else { askToday(); garminNow(m.garmin); stravaNow(m.strava); S.health = m.health || { on: false }; }
@@ -1422,8 +1441,7 @@ function takeUp(m) {
   S.health = m.health || { on: false };
   S.me.more = m.more;
   setActs(); redraw(); estimate();
-  garminNow(m.garmin); stravaNow(m.strava);
-  older();
+  if (!background.done) background(m); else { garminNow(m.garmin); stravaNow(m.strava); older(); }
 }
 async function pull() {
   if (!S.me || pull.busy) return;
@@ -1498,7 +1516,7 @@ const signedOutHere = () => signOutHere(true);
   // (its sky and you, over Fitness till you're in: theme.js put them up for the first frame, this carries them on)
   const arv = code || document.documentElement.classList.contains("arriving") ? arriving() : null;
   // (back from Strava's page: how it went, taken out of the address at once)
-  const fromStrava = /^#strava=(on|no|error)$/.exec(location.hash)?.[1];
+  const fromStrava = /^#strava=(on|no|error|taken)$/.exec(location.hash)?.[1];
   if (fromStrava) history.replaceState(null, "", location.pathname + location.search);
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
@@ -1511,7 +1529,7 @@ const signedOutHere = () => signOutHere(true);
       const kept = await lastMe.get();
       // (what's changed asked for at once, while the copy's drawn, not after)
       const now = fetchMe(kept);
-      if (kept?.signedIn && Array.isArray(kept.acts)) { early = kept; meBase = kept; arrive(kept); }
+      if (kept?.signedIn && Array.isArray(kept.acts)) { early = kept; meBase = kept; arrive(kept, true); }
       m = await now;
     }
   } catch (e) {
@@ -1524,6 +1542,7 @@ const signedOutHere = () => signOutHere(true);
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
   arv?.in();
   if (fromStrava === "on") { go("activities"); bringIn({ src: "strava" }); }
+  else if (fromStrava === "taken") toast("That Strava account is connected to another Fitness account. On Strava’s page, sign in as yourself, or disconnect it from the other account first.", true, 9000);
   else if (fromStrava) toast(fromStrava === "no" ? "Strava wasn’t connected: Fitness needs to see your activities. Try again, and leave the activities box ticked on Strava’s page." : "Strava didn’t connect. Try again in a moment.", true, 7000);
 })();
 

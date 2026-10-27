@@ -43,7 +43,7 @@ import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick } from "../../_strava.js";
-import { kept, saveState, cleanState, cleanAct, activities, olderActs, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
+import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 // (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
@@ -140,7 +140,9 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     await disconnect(env, u.id);
-    return json({ on: false });
+    // (and, where asked, every activity it brought in)
+    const gone = new URL(request.url).searchParams.get("acts") === "1" ? await dropFrom(env, u.id, "g") : 0;
+    return json({ on: false, gone });
   },
   "POST garmin/fetch": async ({ request, env }) => {
     sameOrigin(request);
@@ -180,8 +182,10 @@ const ROUTES = {
   },
   "DELETE strava": async ({ request, env }) => {
     sameOrigin(request);
-    await disconnectStrava(env, (await signedIn(request, env)).id);
-    return json({ on: false, ready: true });
+    const u = await signedIn(request, env);
+    await disconnectStrava(env, u.id);
+    const gone = new URL(request.url).searchParams.get("acts") === "1" ? await dropFrom(env, u.id, "s") : 0;
+    return json({ on: false, ready: true, gone });
   },
   "POST strava/fetch": async ({ request, env }) => {
     sameOrigin(request);
