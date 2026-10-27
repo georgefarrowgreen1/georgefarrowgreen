@@ -777,6 +777,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 
 /* nowcast */
 .nowcast-text { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.solar-say { margin: 0; font-size: 17px; font-weight: 600; text-wrap: balance; }
+.solar-text { margin: 4px 0 0; color: var(--text-2); }
+.solar-chart { margin-top: 10px; color: var(--text); }
+.solar-chart svg { display: block; }
 .nowcast .card-head { margin-bottom: 10px; }
 /* where the radar's timing the next hours: said quietly, beside the title */
 .nc-src { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22); }

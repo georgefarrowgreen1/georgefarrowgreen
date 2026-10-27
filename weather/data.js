@@ -16,6 +16,7 @@
 // Open-Meteo.com (CC BY 4.0).
 
 import { parseWall, keyOf, HOUR } from "./format.js";
+import { solarQuery, shapeSolar } from "./solar.js";
 import { compactClimate, climateSpan, figures } from "./climate.js";
 import { MODELS, shapePrevious, skillFrom, localSkill, MIN_DAYS } from "./skill.js";
 export { MODELS };
@@ -233,6 +234,8 @@ export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(l
 // (both ask for 17 quarters: the first is the one just gone)
 export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 17, timezone: "auto" });
 export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
+// (the sunlight on your roof, for the Solar card: solar.js)
+export const fetchSolar = (lat, lon, faces, pitch) => getJSON(`${API.forecast}?${solarQuery(lat, lon, faces, pitch)}`).then((j) => shapeSolar(j, parseWall));
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
 export const fetchMarine = (lat, lon) => getJSON(`${API.marine}?${qs({ latitude: r4(lat), longitude: r4(lon), hourly: "wave_height,wave_direction,wave_period,sea_surface_temperature,sea_level_height_msl", forecast_days: 7, timezone: "auto", cell_selection: "sea" })}`);
 export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: ENSEMBLES, hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 20000);

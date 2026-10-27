@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-108" />
+  <meta name="app-version" content="wx-109" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -89,6 +89,13 @@
         </div>
         <p class="nowcast-text" id="nowcast-text"></p>
         <div id="nowcast-chart"></div>
+      </section>
+
+      <section class="card solar" id="solar" hidden aria-labelledby="solar-title">
+        <div class="card-head"><h2 class="card-title" id="solar-title"><span class="ct-icon" data-g="sun"></span>Solar</h2></div>
+        <p class="solar-say" id="solar-say"></p>
+        <p class="solar-text" id="solar-text"></p>
+        <div class="solar-chart" id="solar-chart"></div>
       </section>
 
       <section class="card" id="hourly" aria-labelledby="hourly-title">
@@ -234,6 +241,7 @@
         <ul class="grp folders">
           <li><button class="folder" type="button" data-go="notify"><span class="f-ic" data-g="bell" data-c="red"></span><span class="f-k">Notifications</span><span class="f-v" id="fv-notify"></span></button></li>
           <li><button class="folder" type="button" data-go="commute"><span class="f-ic" data-g="commute" data-c="orange"></span><span class="f-k">Commute</span><span class="f-v" id="fv-commute"></span></button></li>
+          <li><button class="folder" type="button" data-go="solar"><span class="f-ic" data-g="sun" data-c="orange"></span><span class="f-k">Solar</span><span class="f-v" id="fv-solar"></span></button></li>
           <li><button class="folder" type="button" data-go="acts"><span class="f-ic" data-g="run" data-c="green"></span><span class="f-k">Best times</span><span class="f-v" id="fv-acts"></span></button></li>
         </ul>
         <ul class="grp folders">
@@ -274,6 +282,15 @@
             <li><label class="at-row">Return <select class="at" name="pm"><option value="17:30">17:30</option></select></label></li>
           </ul>
           <p class="grp-foot">The weather for your journeys there and back, in Highlights.</p>
+        </div>
+        <div class="set-page" data-page="solar" data-title="Solar" hidden>
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="solar" /> Solar panels</label></li>
+            <li><label class="at-row">Where <select class="at" name="solarAt"></select></label></li>
+            <li><label class="at-row">Roof faces <select class="at" name="solarFaces"></select></label></li>
+            <li><label class="at-row">Roof pitch <select class="at" name="solarPitch"></select></label></li>
+          </ul>
+          <p class="grp-foot">A card when the sun’s coming out on your panels: when, and how long for. Nothing on grey days.</p>
         </div>
         <div class="set-page" data-page="acts" data-title="Best times" hidden>
           <ul class="grp acts-list" id="acts-list"></ul>
