@@ -1,7 +1,8 @@
 // Fitness's Progress: how you're coming on, the story first; power, training and engine, each a sheet (progress.js
 // has the figures). Drawn by app.js render.
 
-import { nightsFrom, nightsSeries, U, distNum, stat } from "./app.js";
+import { nightsFrom, nightsSeries, U, distNum, stat, shareView, pushSheet } from "./app.js";
+import * as SH from "./share.js";
 import { nightsView } from "./today.js";
 import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
 import { formView, openAct, staying, uploadFilesView } from "./activities.js";
@@ -110,7 +111,17 @@ function yearView(year) {
       r.bigWeek && row({ icon: "calendar", tint: "blue", title: "The biggest week", sub: `From ${dayShort(r.bigWeek.mon)}`, value: dur(r.bigWeek.secs), chev: false }),
       r.best20 && row({ icon: "bolt", tint: "amber", title: "The best 20 minutes", sub: `${r.best20.name} · ${dayShort(r.best20.start)}`, value: `${r.best20.w} W`, chev: false }),
       r.peak && row({ icon: "trend", tint: "green", title: "Fitness at its peak", sub: new Date(r.peak.day).toLocaleDateString("en-GB", { day: "numeric", month: "long" }), value: String(Math.round(r.peak.ctl)), chev: false }))),
+    r && h("button.btn.share-year", { type: "button", onclick: () => pushSheet(shareView(() => SH.yearImage(yearCard(r, now, MONTHS)), { name: `Fitness ${year}.png`, title: now ? `${year} so far` : `${year} in review` })) }, icon("upload", 18, 2.2), now ? "Share your year so far" : `Share your ${year}`),
   ].filter(Boolean) };
+}
+// a year as a picture to share (share.js): how far, month by month, and its highlights
+function yearCard(r, now, MONTHS) {
+  const [v, u] = distNum(r.dist), day = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  return { title: now ? `${r.year} so far` : `${r.year} in review`, big: [Number(v) >= 100 ? Math.round(Number(v)).toLocaleString("en-GB") : v, u],
+    line: `${Math.round(r.secs / 3600).toLocaleString("en-GB")} hours · ${height(r.ascent).join(" ")} climbed · ${plural(r.rides, "ride")} · ${plural(r.days, "day")} out`,
+    months: r.months, top: r.months.indexOf(Math.max(...r.months)),
+    rows: [r.longest && ["The longest ride", dur(r.longest.secs), `${r.longest.name} · ${day(r.longest.start)}`], r.bigWeek && ["The biggest week", dur(r.bigWeek.secs), `From ${day(r.bigWeek.mon)}`],
+      r.best20 && ["The best 20 minutes", `${r.best20.w} W`, `${r.best20.name} · ${day(r.best20.start)}`], r.peak && ["Fitness at its peak", String(Math.round(r.peak.ctl)), day(r.peak.day)]].filter(Boolean) };
 }
 // (the year shown, kept as you pick another: the sheet's drawn again from it)
 function openYear(y) { yearView.at = y; openSheet(() => yearView(yearView.at), { tall: true }); }

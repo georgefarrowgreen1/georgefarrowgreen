@@ -5,6 +5,8 @@ import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
+import { shareView } from "./app.js";
+import * as SH from "./share.js";
 
 // ---- Activities ----
 const PAGE = 60;
@@ -136,13 +138,22 @@ async function openAct(a) {
     if (sheetEl.open && !sheetEl.classList.contains("closing")) { Sheet.stack = [() => actView(a)]; drawSheet(); }
   } catch (e) { if (e.status === 401) return signedOutHere(); closeSheet(); toast(e.message, true); }
 }
+// A ride as a picture to share (share.js): its route, its figures, and its efforts where it was a session
+function rideCard(a, x, s) {
+  const sum = sumOf(a) || s, e = effortsSeen.get(a.id), held = e ? e.held : sum.held, n = e ? e.n : sum.efforts;
+  const stats = [s.dist > 100 && ["Distance", dist(s.dist)], ["Time", dur(s.moving || s.secs)], s.ascent > 20 && ["Climbing", height(s.ascent).join(" ")],
+    s.avgPwr && ["Power", `${s.np || s.avgPwr} W`], s.tss != null && ["Stress", String(s.tss)], s.avgHr && ["Heart rate", `${s.avgHr} bpm`], s.avgSpd && !s.avgPwr && ["Speed", speed(s.avgSpd).join(" ")]].filter(Boolean);
+  return { name: a.name, when: `${dayLong(a.start)} · ${timeOf(a.start)}`, sport: a.sport, route: sum.route || F.routeShape(x.s), zones: s.zones || null, stats,
+    chip: n > 0 ? (held >= n ? `Every effort held · ${n} of ${n}` : `${held} of ${n} efforts held`) : null, chipOk: n > 0 && held >= n };
+}
 function actView(a) {
   // (one of yours worked out afresh from its file, its zones and all, for your numbers now)
   const x = full(a), s = a.sample ? sumOf(a) || summarise(x, P()) : summarise(x, P()), ps = perSecond(x), w = a.workout ? wkById(a.workout) : null, plannedId = plannedOn(startOfDay(a.start));
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    !a.sample && h("div.sub", {}, h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename")),
+    h("div.sub.act-links", {}, !a.sample && h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename"),
+      h("button.link.small", { type: "button", onclick: () => pushSheet(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
   let mapAt = null;

@@ -504,6 +504,23 @@ function setExamples(on) {
 // Inside claude.ai's viewer, a page can't start a download itself: it offers the file through the viewer's own save,
 // which takes only some kinds of file, so a FIT (or any) file goes in a zip. Anywhere else, the browser's own download.
 const inViewer = () => typeof window.claude?.use === "function";
+// A picture to share (share.js): drawn, shown, then handed to the phone's share sheet (Messages, Instagram, Photos),
+// or saved where there's none. Drawn first and shared on its own tap, as a phone shares only on a tap.
+// → a sheet's view (pushSheet, openSheet)
+function shareView(make, { name, title }) {
+  const can = (() => { try { return !!navigator.canShare?.({ files: [new File([""], "x.png", { type: "image/png" })] }); } catch (_) { return false; } })();
+  let blob = null;
+  const img = h("img.share-img", { alt: title }), said = h("p.foot.share-said", { text: "Drawing it…" });
+  const go = h("button.btn", { type: "button", disabled: true, onclick: async () => {
+    if (!blob) return;
+    const file = new File([blob], name, { type: "image/png" });
+    if (can) { try { await navigator.share({ files: [file], title }); } catch (e) { if (e?.name !== "AbortError") toast("That couldn’t be shared", true); } }
+    else saveFile(name, new Uint8Array(await blob.arrayBuffer()));
+  } }, icon("upload", 18, 2.2), can ? "Share" : "Save the picture");
+  make().then((b) => { blob = b; img.src = URL.createObjectURL(b); img.classList.add("in"); go.disabled = false; said.textContent = can ? "To Messages, Instagram, Photos or anywhere else." : "Saved as a picture, to share from there."; })
+    .catch((e) => { said.textContent = e.message || "The picture couldn’t be made."; });
+  return () => ({ title: "Share", body: [h("div.share-frame", {}, img), go, said] });
+}
 async function saveFile(name, data) {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   if (inViewer()) {
@@ -1190,7 +1207,7 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
 // come back to it (a phone keeps a page open for days); a new one, and it's opened afresh, unless you're mid-upload ----
-const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js"];
+const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
 versionNow().then((v) => { version = v; });
@@ -1242,5 +1259,5 @@ const signedOutHere = () => signOutHere(true);
 })();
 
 // (what the screens, each its own module, take from here)
-export { wellByDay, setNumber, resum, nightsFrom, nightsSeries };
+export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
