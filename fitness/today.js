@@ -261,7 +261,7 @@ function sessionCard(w, id, done) {
     heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${swapped ? " · swapped" : ""}`), w.name),
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
-    rd ? h("p.why", {}, h("b", { text: "Why today: " }), rd.why) : h("p.about", { text: w.about }),
+    rd ? h("p.why", {}, h("b", { text: "Why today: " }), whyToday(rd.why, w)) : h("p.about", { text: w.about }),
     rd && (rd.fuel || rd.strength) && h("div.extras", {},
       rd.fuel && h("span", {}, icon("bolt", 14, 2.2), `Fuel: ${rd.fuel}`),
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
@@ -305,6 +305,15 @@ function bestTime(w) {
   return h("div.best-time", {}, h("span.wxi", {}, C.weatherIcon()),
     h("span.tx", {}, h("b", { text: `Best ${at(b.start)} to ${at(b.end)}` }),
       h("small", { text: `${deg(b.temp)}, ${b.dry && b.pop < 30 ? "dry" : `${Math.round(b.pop)}% chance of rain`}, ${BT.windWords(b.wind, b.dir)}${where}` })));
+}
+// Today's why, with the weather's own say: a day Rhythm counts as wet (most of its riding hours) that has a dry spell
+// after all, says so, so the two don't disagree
+function whyToday(why, w) {
+  if (!/Rain for much of the day/.test(why) || S.examples) return why;
+  const d = rideWx(), b = d?.hours?.length ? BT.bestWindow(d, { secs: measure(w, paceFor(w.sport)).secs, sport: w.sport === "run" ? "run" : "ride" }) : null;
+  if (!b || !b.dry || b.pop >= 30 || b.rating === "Poor") return why;
+  const at = (t) => new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(t + (d.offset || 0) * 1000));
+  return `${why}, or ride the dry spell, ${at(b.start)} to ${at(b.end)}`;
 }
 // today's ride on its map (kept between redraws, so the map isn't made again each time the page is)
 let todayMap = null;

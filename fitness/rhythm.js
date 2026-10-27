@@ -482,8 +482,8 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
         if (up && level > bw) why += ". A step up: you held every effort last time";
       } else id = `rh:${kind}:${mins}`;
       if (taper) why = `Tapering for ${evName}: ${HARD.has(kind) ? "the intensity kept, shorter" : "less riding"}, so you arrive fresh`;
-      if (wet[day] && (HARD.has(kind) || kind === "tempo")) why += ". Rain forecast: one for the trainer";
-      else if (wet[day] && kind === "long") why += ". Rain forecast: dress for it, or take it indoors";
+      if (wet[day] && (HARD.has(kind) || kind === "tempo")) why += ". Rain for much of the day: a good one for the trainer";
+      else if (wet[day] && kind === "long") why += ". Rain for much of the day: dress for it, or take it indoors";
     }
     const w = workoutOf(id, T), meas = w ? measure(w, w.sport === "run" ? paces.run : w.sport === "swim" ? paces.swim : 4) : { secs: mins * 60, tss: 0 };
     mins = Math.round(meas.secs / 60);
