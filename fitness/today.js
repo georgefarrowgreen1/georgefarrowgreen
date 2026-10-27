@@ -95,8 +95,8 @@ function dayStrip(sel) {
 // days ahead, the week as it'd then be shown before it's kept: plan.js moveView)
 let dragFrom = null;
 const dragDone = () => { document.body.classList.remove("day-drag"); if (redraw.later) { redraw.later = false; redraw(); } };
-// (and should a drag end without saying so, the next press ends it)
-addEventListener("pointerdown", () => { if (document.body.classList.contains("day-drag")) dragDone(); }, true);
+// (and should a drag end without saying so, the next click or key ends it)
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { if (document.body.classList.contains("day-drag")) dragDone(); }, true);
 function weekGrid(sel) {
   const thisMon = mondayOf(TODAY), first = mondayOf(sel) < thisMon ? addDays(thisMon, -7) : thisMon;
   const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;

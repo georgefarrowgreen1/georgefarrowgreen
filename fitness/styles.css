@@ -1778,6 +1778,10 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
   .t-progress > .p-tiles { grid-column: 9 / -1; gap: 14px; margin-bottom: 20px; }
   .t-progress > .p-half { grid-column: span 6; }
   .p-more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* (the tiles as tall as fitness beside them; what stands out as cards side by side, not a row to scroll) */
+  .t-progress > .p-tiles { align-self: stretch; grid-auto-rows: 1fr; }
+  .t-progress .p-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); overflow: visible; margin: 0; padding: 0; }
+  .t-progress .p-card { width: auto; }
 }
 /* the right-click menu on an activity */
 .ctx-menu { position: fixed; z-index: 80; min-width: 200px; padding: 6px; display: grid; border-radius: 14px; background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
