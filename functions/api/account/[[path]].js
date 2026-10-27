@@ -42,7 +42,7 @@ import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
-import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights } from "../../_fitness.js";
+import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile } from "../../_fitness.js";
 import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
@@ -155,6 +155,18 @@ async function inflightSettings(env, u) {
     blocked: results.map((p) => ({ id: p.id, handle: p.handle, name: p.name })) };
 }
 const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
+// Fitness's settings that are the account's (as its record has them, functions/_fitness.js): kilometres or miles (none
+// chosen: the phone's region's, in the app), and whether it asks how you are each morning
+async function fitnessSettings(env, u) {
+  const p = (await fitnessKept(env, u.id)).data?.prefs || {};
+  return { units: p.units === "metric" || p.units === "imperial" ? p.units : null, ask: p.ask !== false };
+}
+// (every one of your activities, as the app has them, newest first: a page at a time)
+async function allActs(env, id) {
+  let { acts, more } = await fitnessActs(env, id);
+  while (more && acts.length < 5000) { const last = acts.at(-1), r = await fitnessOlder(env, id, last.start, last.id); acts = acts.concat(r.acts); more = r.more; }
+  return acts;
+}
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
@@ -600,6 +612,39 @@ const ROUTES = {
     }
     return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
   },
+  // ---- Fitness's settings (fitnessSettings), as its Settings sends you here for them: a change to its record from the
+  // version that's kept (tried again on one made meanwhile on a phone), taken up by the app as it next opens ----
+  "GET fitness": async ({ request, env }) => json(await fitnessSettings(env, await signedIn(request, env))),
+  "PATCH fitness": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024), set = {};
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.units !== undefined) { if (b.units !== "metric" && b.units !== "imperial") throw new HttpError(400, "Choose kilometres or miles."); set.units = b.units; }
+    if (b.ask !== undefined) { if (typeof b.ask !== "boolean") throw new HttpError(400, "Choose on or off."); set.ask = b.ask; }
+    for (let i = 0; i < 4; i++) {
+      const k = await fitnessKept(env, u.id), prefs = { ...(k.data?.prefs || {}), ...set };
+      if (prefs.ask !== false) delete prefs.ask;     // (the app keeps it only when it's off)
+      const r = await fitnessSave(env, u.id, k.ver, { ...(k.data || {}), prefs });
+      if (!r.conflict) return json(await fitnessSettings(env, u));
+    }
+    throw new HttpError(409, "Fitness was changing that on another device. Try again.");
+  },
+  // what's needed to export everything: each activity's name and kind, your workouts, and the paces they're drawn at
+  "GET fitness/export": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, "fxexport:" + u.id, 30, DAY);
+    const d = (await fitnessKept(env, u.id)).data || {}, p = d.profile || {};
+    const acts = (await allActs(env, u.id)).map((a) => ({ id: a.id, start: a.start, name: a.name, type: a.type, file: a.file }));
+    return json({ acts, workouts: Array.isArray(d.workouts) ? d.workouts : [], pace: { run: 1000 / (p.runPace || 330), swim: 100 / (p.css || 120) } });
+  },
+  // one activity's file, as it came (gzipped, if it was kept so: the page unpacks it)
+  "GET fitness/file": async ({ request, env }) => {
+    const u = await signedIn(request, env), id = new URL(request.url).searchParams.get("id") || "";
+    if (!id || id.length > 200) throw new HttpError(400, "Bad request.");
+    const f = await fitnessFile(env, u.id, id);
+    return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
+  },
   // someone blocked in InFlight, unblocked (only lifted: they aren't told, as they weren't told of the block)
   "DELETE inflight/block": async ({ request, env }) => {
     sameOrigin(request);
@@ -629,7 +674,7 @@ const ROUTES = {
       weatherOf(env, u.id),
       devicesOf(env, u.id).catch(() => []),
       fitnessKept(env, u.id).catch(() => ({ data: null })),
-      fitnessActs(env, u.id).then((r) => r.acts || [], () => []),   // (every one, newest first: { acts })
+      allActs(env, u.id).catch(() => []),   // (every one, newest first)
       fitnessNights(env, u.id).catch(() => null),   // (your nights: hrv in ms, rhr in beats a minute, sleep in seconds)
     ]);
     let photo = null;
