@@ -23,3 +23,22 @@ test("today where you are", () => {
   assert.equal(dayIn("Asia/Tokyo", t), "2026-10-27");
   assert.equal(dayIn("Not/AZone", t), "2026-10-26");
 });
+
+// what the Shortcut sends, read no further than the limit, however it's sent; and a key that can't be one, turned away
+// before anything's read
+import { readBody, keyFirst } from "../../../functions/_health.js";
+const chunked = (n) => new Request("https://x/api/fitness/health", { method: "POST", headers: { "Content-Type": "application/json" }, duplex: "half",
+  body: new ReadableStream({ start(c) { for (let i = 0; i < n; i++) c.enqueue(new Uint8Array(1024).fill(32)); c.close(); } }) });
+test("a body sent in pieces, with no length said, is stopped as it passes the limit", async () => {
+  await assert.rejects(readBody(chunked(200)), (e) => e.status === 413);
+  const ok = new Request("https://x/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hrv: 50 }) });
+  assert.deepEqual(await readBody(ok), { hrv: 50 });
+  const form = new Request("https://x/", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "hrv=50&hrv=53&rhr=52" });
+  assert.deepEqual(await readBody(form), { hrv: ["50", "53"], rhr: "52" });
+});
+test("a key that can't be Fitness's, in the address or the header, is refused before the body's read", () => {
+  assert.throws(() => keyFirst(new Request("https://x/"), "nope"), (e) => e.status === 401);
+  assert.throws(() => keyFirst(new Request("https://x/", { headers: { Authorization: "Bearer nope" } })), (e) => e.status === 401);
+  assert.doesNotThrow(() => keyFirst(new Request("https://x/"), "fxh_" + "a".repeat(40)));
+  assert.doesNotThrow(() => keyFirst(new Request("https://x/")));   // (none yet: it may be in the body)
+});

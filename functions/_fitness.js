@@ -209,8 +209,10 @@ export async function replaceFile(env, userId, id, meta, u8) {
   if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
   const D = await fitdb(env);
   await limit(env, `fxsquash:${userId}`, 600, 3600e3);
-  const row = await D.prepare("SELECT size FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
+  const row = await D.prepare("SELECT size, (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) AS bytes FROM fx_acts WHERE user_id = ?1 AND id = ?2").bind(userId, id).first();
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
+  // (it's the same activity made smaller: never bigger than it was, and never past the account's space)
+  if (u8.length > Math.max(row.size || 0, 64 * 1024) || row.bytes - (row.size || 0) + u8.length > MAX_STORE) throw new HttpError(413, "That file is bigger than the one it replaces.");
   if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
   await env.BIO_R2.put(fileKey(userId, id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
   await D.prepare("UPDATE fx_acts SET type = ?, file = ?, size = ?, gz = 1, changed = ? WHERE user_id = ? AND id = ?").bind(meta.type, text(meta.file, 120) || null, u8.length, Date.now(), userId, id).run();
@@ -252,6 +254,12 @@ export async function fitnessOf(env, userId) {
     return { activities: r?.n || 0, last: r?.last || null, bytes: r?.bytes || 0, plan: k.data?.plan?.id || null, workouts: k.data?.workouts?.length || 0 };
   } catch (_) { return { activities: 0, last: null, bytes: 0, plan: null, workouts: 0 }; }
 }
+// Every night kept, for the account's export: Apple Health's (functions/_health.js) and Garmin's (functions/_garmin.js),
+// each where its table's been made
+export async function nightsKept(env, userId) {
+  const D = await fitdb(env), rows = (sql) => D.prepare(sql).bind(userId).all().then((r) => r.results.map((x) => Object.fromEntries(Object.entries(x).filter(([, v]) => v != null))), () => []);
+  return { appleHealth: await rows("SELECT day, hrv, rhr, sleep FROM fx_health WHERE user_id = ? ORDER BY day"), garmin: await rows("SELECT day, hrv, hrv_lo, hrv_hi, rhr, sleep, score FROM fx_well WHERE user_id = ? ORDER BY day") };
+}
 // An account gone (functions/_accounts.js): everything Fitness kept with it, files and all
 export async function dropFitness(env, userId) {
   if (env.BIO_R2) {
@@ -268,4 +276,7 @@ export async function dropFitness(env, userId) {
   await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId)]).catch(() => {});
   // (and the morning notification's phones: functions/_fitpush.js)
   await D.prepare("DELETE FROM fx_push WHERE user_id = ?").bind(userId).run().catch(() => {});
+  // (and the nights: Garmin's (functions/_garmin.js), and Apple Health's with its Shortcut's key, so it can't send more
+  // for an account that's gone (functions/_health.js); each where its table's been made)
+  for (const t of ["fx_well", "fx_health", "fx_health_key"]) await D.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(userId).run().catch(() => {});
 }

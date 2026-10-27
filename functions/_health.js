@@ -13,7 +13,7 @@
 // Shortcut's Request Body is set to (readBody). HRV: their average; resting heart rate:
 // their middle; sleep: their total (a plain number under 24 is hours, under 1,440 minutes, else seconds). The day is
 // today where you are (Cloudflare's guess of your time zone), unless it says { day: "YYYY-MM-DD" }.
-import { HttpError, hex, sha256, limit, randomToken } from "./_pigeon.js";
+import { HttpError, hex, sha256, limit, randomToken, readCapped, clientNet } from "./_pigeon.js";
 import { fitdb } from "./_fitness.js";
 
 async function tables(env) {
@@ -88,26 +88,38 @@ export async function healthOf(env, userId) {
 
 // ---- the Shortcut's morning post ----
 // (the Shortcut's body: JSON, or a form, its fields kept as they came, a field sent twice as a list)
+// (read no further than `max`, however it's sent: in pieces, with no length said, it's stopped as it passes it)
 export async function readBody(request, max = 64 * 1024) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "Too big.");
+  const bytes = await readCapped(request, max, "Too big.");
   const ct = (request.headers.get("Content-Type") || "").toLowerCase();
   if (/multipart\/form-data|application\/x-www-form-urlencoded/.test(ct)) {
     const out = {};
-    for (const [k, v] of (await request.formData()).entries()) if (typeof v === "string") out[k] = k in out ? [].concat(out[k], v) : v;
+    let form; try { form = await new Response(bytes, { headers: { "Content-Type": ct } }).formData(); } catch (_) { throw new HttpError(400, "Fitness reads JSON or a form: set the Shortcut’s Request Body to JSON."); }
+    for (const [k, v] of form.entries()) if (typeof v === "string") out[k] = k in out ? [].concat(out[k], v) : v;
     return out;
   }
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "Too big.");
+  const text = new TextDecoder().decode(bytes);
   try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
   throw new HttpError(400, "Fitness reads JSON or a form: set the Shortcut’s Request Body to JSON.");
 }
+const KEY = /^fxh_[A-Za-z0-9_-]{20,80}$/;
+const NO_KEY = "No key, or not a Fitness one: copy it again from Fitness, Apple Health.";
+// The key, where it's in the address or the header, looked at before the body's read: one that can't be Fitness's is
+// turned away unread
+export function keyFirst(request, inPath = null) {
+  const key = inPath || /^Bearer\s+(\S+)$/i.exec(request.headers.get("Authorization") || "")?.[1] || null;
+  if (key != null && !KEY.test(key)) throw new HttpError(401, NO_KEY);
+}
 export async function takeNight(env, request, b, inPath = null) {
   const auth = request.headers.get("Authorization") || "", key = inPath || /^Bearer\s+(\S+)$/i.exec(auth)?.[1] || (typeof b.key === "string" ? b.key.trim() : "");
-  if (!/^fxh_[A-Za-z0-9_-]{20,80}$/.test(key)) throw new HttpError(401, "No key, or not a Fitness one: copy it again from Fitness, Apple Health.");
+  if (!KEY.test(key)) throw new HttpError(401, NO_KEY);
   const D = await tables(env), hash = hex(await sha256(key)), k = await D.prepare("SELECT user_id FROM fx_health_key WHERE hash = ?").bind(hash).first();
-  if (!k) throw new HttpError(401, "That key isn’t Fitness’s any more: make a new one in Fitness, Apple Health.");
+  // (keys tried that aren't anyone's: a few an hour from one place, so they can't be guessed at)
+  if (!k) { await limit(env, `fxhealthbad:${clientNet(request)}`, 30, 3600e3); throw new HttpError(401, "That key isn’t Fitness’s any more: make a new one in Fitness, Apple Health."); }
   await limit(env, `fxhealth:${k.user_id}`, 60, 86400e3);
-  const n = nightFrom(b), day = typeof b.day === "string" && DATE.test(b.day) ? b.day : dayIn(request.cf?.timezone);
+  // (a day said: a missed morning sent later, up to a month back, but none ahead of tomorrow, where it'd never be pruned)
+  const today = dayIn(request.cf?.timezone), near = (d) => { const x = Date.parse(d) - Date.parse(today); return x <= 86400e3 && x >= -30 * 86400e3; };
+  const n = nightFrom(b), day = typeof b.day === "string" && DATE.test(b.day) && near(b.day) ? b.day : today;
   if (n.hrv == null && n.rhr == null && n.sleep == null) {
     await D.prepare("UPDATE fx_health_key SET last = ?2, said = ?3 WHERE user_id = ?1").bind(k.user_id, Date.now(), JSON.stringify({ day, none: true })).run();
     // (the names typed as values, their keys left empty: the usual slip in Shortcuts' body fields)

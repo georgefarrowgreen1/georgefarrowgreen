@@ -123,9 +123,10 @@ export async function fetchNew(env, userId, { force = false } = {}) {
   if (!g) return garminOf(env, userId);
   const now = Date.now();
   if (!force && g.last && now - g.last < 2 * 60e3) return garminOf(env, userId);
-  // (claimed first, so the scheduler and the app don't both ask at once)
+  // (claimed first, so the scheduler and the app don't both ask at once: asked for now or not, a claim only fails
+  // where another's just begun)
   const claim = await D.prepare("UPDATE fx_garmin SET last = ?2 WHERE user_id = ?1 AND (last IS NULL OR last = ?3)").bind(userId, now, g.last ?? null).run();
-  if (!claim.meta?.changes && !force) return garminOf(env, userId);
+  if (!claim.meta?.changes) return garminOf(env, userId);
   const fail = async (said, ok = 1) => { await D.prepare("UPDATE fx_garmin SET ok = ?2, said = ?3 WHERE user_id = ?1").bind(userId, ok, said).run(); return garminOf(env, userId); };
   try {
     let token = g.token && g.token_exp > now + 5 * 60e3 ? await openVault(env, owner(userId), g.token) : null;
@@ -240,6 +241,10 @@ async function wellness(env, D, userId, token, from, to) {
     .bind(userId, r.day, r.hrv ?? null, r.hrv_lo ?? null, r.hrv_hi ?? null, r.rhr ?? null, r.sleep ?? null, r.score ?? null)));
   await D.prepare("UPDATE fx_garmin SET well_at = ?2 WHERE user_id = ?1").bind(userId, Date.now()).run();
   await D.prepare("DELETE FROM fx_well WHERE user_id = ? AND day < ?").bind(userId, ymd(Date.now() - 120 * 86400e3)).run();
+}
+// Whether all your history's coming in now (the bigger budget for asking: api/fitness)
+export async function bringingBack(env, userId) {
+  return !!(await (await tables(env)).prepare("SELECT back FROM fx_garmin WHERE user_id = ?").bind(userId).first())?.back;
 }
 // What the app's told: connected or not, how the last ask went, and the files waiting to be read
 export async function garminOf(env, userId) {

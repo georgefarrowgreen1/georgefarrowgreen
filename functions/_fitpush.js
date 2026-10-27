@@ -60,6 +60,8 @@ export async function setMorning(env, userId, b) {
   await D.prepare(`INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, days, sent, added) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)
     ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7`)
     .bind(sub.endpoint, userId, keys.p256dh, keys.auth, at, b.tz, JSON.stringify(cleanDays(b.days)), Date.now()).run();
+  // (ten phones an account at most: the oldest goes as an eleventh comes)
+  await D.prepare("DELETE FROM fx_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM fx_push WHERE user_id = ?1 ORDER BY added DESC LIMIT ?2)").bind(userId, PHONES).run();
   return { on: true, at };
 }
 // Turned off on this phone (or the phone's gone)
@@ -74,6 +76,7 @@ function localNow(tz, t) {
   return { day: `${p.year}-${p.month}-${p.day}`, mins: Number(p.hour) * 60 + Number(p.minute) };
 }
 // The scheduler's turn: each phone whose time has come today, and that hasn't had today's, sent it
+const PHONES = 10, PER_TICK = 200;
 export async function morningTick(env, t = Date.now()) {
   const D = await tables(env);
   const { results } = await D.prepare("SELECT endpoint, p256dh, auth, at, tz, days, sent FROM fx_push").all();
@@ -84,6 +87,7 @@ export async function morningTick(env, t = Date.now()) {
     // (claimed first, so two ticks at once send it once)
     const claim = await D.prepare("UPDATE fx_push SET sent = ?2 WHERE endpoint = ?1 AND (sent IS NULL OR sent != ?2)").bind(r.endpoint, now.day).run();
     if (!claim.meta?.changes) continue;
+    if (sent >= PER_TICK) { await D.prepare("UPDATE fx_push SET sent = ?2 WHERE endpoint = ?1").bind(r.endpoint, r.sent).run(); break; }   // (the rest next minute, still in time)
     let days = {}; try { days = JSON.parse(r.days || "{}"); } catch (_) {}
     const note = days[now.day];
     if (!note) continue;   // (its words run out: the app hasn't been opened for a week or more)

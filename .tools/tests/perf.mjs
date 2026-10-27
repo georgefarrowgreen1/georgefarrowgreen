@@ -52,12 +52,16 @@ con.executemany("INSERT OR IGNORE INTO fx_acts (user_id, id, start, sport, indoo
 con.commit(); print(con.execute("SELECT COUNT(*) FROM fx_acts WHERE user_id = ?", (uid,)).fetchone()[0])`, db, rowsFile, me.id], { stdio: 'inherit' });
 
 const cdp = await c.newCDPSession(p); await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.PERF_CPU) || 4 });
+// (and a phone's network, where PERF_NET: 4G's, about 9 Mb/s down with 60 ms each way)
+if (process.env.PERF_NET) { await cdp.send('Network.enable'); await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 120, downloadThroughput: 9e6 / 8, uploadThroughput: 3e6 / 8 }); }
 const settle = () => p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const timed = (fn) => p.evaluate(async (src) => { const t = performance.now(); new Function(src)(); await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); return Math.round(performance.now() - t); }, fn).catch(() => null);
 const med = (xs) => { const v = xs.filter((x) => x != null).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
 const runs = [];
 for (let r = 0; r < 3; r++) {
-  let meBytes = 0; const onResp = async (res) => { if (res.url().includes('/api/fitness/me') && res.request().method() === 'GET') meBytes = (await res.body().catch(() => Buffer.alloc(0))).length; };
+  let meBytes = 0, appBytes = 0, appFiles = 0, app304 = 0; const onResp = async (res) => { const u = res.url();
+    if (u.includes('/api/fitness/me') && res.request().method() === 'GET') meBytes = (await res.body().catch(() => Buffer.alloc(0))).length;
+    else if (u.startsWith(FIT) && !u.includes('/api/')) { appFiles++; if (res.status() === 304) app304++; const sz = await res.request().sizes().catch(() => null); appBytes += sz ? sz.responseBodySize : 0; } };
   p.on('response', onResp);
   await p.evaluate(() => { location.hash = '#today'; }); const t0 = Date.now(); await p.reload(); await p.waitForSelector('.strip-days .sday', { timeout: 600000 }).catch(async (e) => { await p.screenshot({ path: `${out}/stuck.png` }); console.log('stuck; errors: ' + errs.join(' | ')); throw e; }); await settle(); const open = Date.now() - t0; await p.waitForSelector('body[data-fresh]', { state: 'attached', timeout: 120000 }); const fresh = Date.now() - t0;
   p.off('response', onResp);
@@ -71,9 +75,9 @@ for (let r = 0; r < 3; r++) {
   const prog = await timed(clk('.tab:nth-child(3)')); await settle(); await p.waitForTimeout(500);
   const back = await timed(clk('.tab:nth-child(1)')); await settle();
   const heap = await p.evaluate(() => performance.memory?.usedJSHeapSize || 0);
-  runs.push({ open, fresh, meKB: Math.round(meBytes / 1024), redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: shown });
+  runs.push({ open, fresh, meKB: Math.round(meBytes / 1024), appKB: Math.round(appBytes / 1024), appFiles, app304, redraw, dayPick, acts, prog, back, heapMB: Math.round(heap / 1048576), rows: shown });
 }
-const res = { rides: N, open: med(runs.map((r) => r.open)), fresh: med(runs.map((r) => r.fresh)), meKB: runs[0].meKB, meKBthen: runs.at(-1).meKB, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
+const res = { rides: N, open: med(runs.map((r) => r.open)), fresh: med(runs.map((r) => r.fresh)), meKB: runs[0].meKB, meKBthen: runs.at(-1).meKB, appKB: runs.at(-1).appKB, appFiles: runs.at(-1).appFiles, app304: runs.at(-1).app304, redrawToday: med(runs.map((r) => r.redraw)), pickDay: med(runs.map((r) => r.dayPick)),
   openActivities: med(runs.map((r) => r.acts)), activityRows: runs.at(-1).rows, openProgress: med(runs.map((r) => r.prog)), backToToday: med(runs.map((r) => r.back)), heapMB: med(runs.map((r) => r.heapMB)) };
 writeFileSync(`${out}/perf.json`, JSON.stringify({ res, runs }, null, 1));
 console.log(JSON.stringify(res)); console.log('page errors: ' + errs.slice(0, 3).join(' | ')); console.log('FAILS 0'); await b.close();

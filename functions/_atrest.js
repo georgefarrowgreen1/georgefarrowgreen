@@ -76,6 +76,10 @@ export async function lockOldSecrets(D, env) {
   for (const u of us) st.push(D.prepare("UPDATE pg_users SET proof_hash = ?, vault = ? WHERE id = ? AND proof_hash = ? AND vault = ?")
     .bind(locked(u.proof_hash, "p1:") ? u.proof_hash : await lockHash(env, u.proof_hash), await lockVault(env, u.id, u.vault), u.id, u.proof_hash, u.vault));
   for (const p of pks) st.push(D.prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND vault = ?").bind(await lockVault(env, p.user_id, p.vault), p.id, p.vault));
+  // (and Fitness's Garmin keys and tokens, as functions/_garmin.js locks them: to the account, as Fitness's)
+  const { results: gs } = await D.prepare("SELECT user_id, apikey, token FROM fx_garmin WHERE apikey NOT LIKE 'w1:%' OR (token IS NOT NULL AND token NOT LIKE 'w1:%') LIMIT 100").all().catch(() => ({ results: [] }));
+  for (const g of gs) { const o = "fitness/garmin|" + g.user_id;
+    st.push(D.prepare("UPDATE fx_garmin SET apikey = ?, token = ? WHERE user_id = ? AND apikey = ? AND token IS ?").bind(await lockVault(env, o, g.apikey), await lockVault(env, o, g.token), g.user_id, g.apikey, g.token)); }
   if (st.length) await D.batch(st);
   return st.length;
 }

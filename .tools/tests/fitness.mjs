@@ -445,6 +445,11 @@ await done(L); await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Check again' }).click(); await L.p.waitForFunction(() => /Last morning/.test(document.querySelector('#sheet .sheet-top')?.textContent || '')); await settle(L, 400);
 ok(/Last morning: HRV 51.7 ms, resting heart rate 51, 7 h 0 min asleep/.test(await L.p.locator('#sheet .sheet-top').innerText()), 'and Fitness shows what came', await L.p.locator('#sheet .sheet-top').innerText());
+// (a day ahead isn't taken as said: it'd never be pruned; and a key that can't be one, turned away unread)
+const hAhead = new Date(Date.now() + 10 * 86400e3).toISOString().slice(0, 10);
+const hFut = await shortcut({}, { hrv: 49, day: hAhead }, `/api/fitness/health/${hKey}`), hOdd = await shortcut({}, { hrv: 50 }, '/api/fitness/health/not-a-key');
+ok(hFut.status === 200 && !rows(`SELECT day FROM fx_health WHERE user_id = '${sam}' AND day = '${hAhead}'`).length && [401, 404].includes(hOdd.status),
+  'a night dated ahead is kept as today’s, and a key that can’t be Fitness’s is refused', `${hFut.status} ${hOdd.status}`);
 await L.p.screenshot({ path: `${out}/health-on.png` });
 await done(L);
 const noLeak = await api(L, '/api/fitness/me');

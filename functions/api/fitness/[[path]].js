@@ -38,9 +38,9 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
-import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick, allHistory } from "../../_garmin.js";
+import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick, allHistory, bringingBack } from "../../_garmin.js";
 import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
-import { newKey as healthKey, forget as healthOff, healthOf, takeNight, readBody as healthBody } from "../../_health.js";
+import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
 import { kept, saveState, cleanState, cleanAct, activities, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
@@ -136,7 +136,9 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
     // (all your history coming in: a batch a time, so many more)
-    if (b.force) await limit(env, b.all ? `fxgarminallnow:${u.id}` : `fxgarminnow:${u.id}`, b.all ? 600 : 30, 3600e3);
+    // (the bigger budget only while the server has all your history coming in: not for the asking)
+    const all = b.all === true && (await bringingBack(env, u.id));
+    if (b.force) await limit(env, all ? `fxgarminallnow:${u.id}` : `fxgarminnow:${u.id}`, all ? 600 : 30, 3600e3);
     return json(await fetchNew(env, u.id, { force: b.force === true }));
   },
   "POST garmin/all": async ({ request, env }) => {
@@ -164,8 +166,8 @@ const ROUTES = {
     return json(await healthOff(env, (await signedIn(request, env)).id));
   },
   // (from Shortcuts on the phone, not the page: its key, not the site's cookie, says whose it is)
-  "POST health": async ({ request, env }) => json(await takeNight(env, request, await healthBody(request))),
-  "POST health/:id": async ({ request, env, id }) => json(await takeNight(env, request, await healthBody(request), id)),
+  "POST health": async ({ request, env }) => { keyFirst(request); return json(await takeNight(env, request, await healthBody(request))); },
+  "POST health/:id": async ({ request, env, id }) => { keyFirst(request, id); return json(await takeNight(env, request, await healthBody(request), id)); },
   // (the weather for a ride today: functions/_fitwx.js; none, where it can't be had)
   "GET weather": async ({ request, env }) => {
     const u = await signedIn(request, env);

@@ -680,7 +680,10 @@ async function squash() {
         const r = await readOff(a.file || `activity.${a.type}`, bytes), parts = r.activities;
         const x = parts.find((y) => Math.abs(y.start - a.start) < 2000) || (parts.length === 1 ? parts[0] : null);
         if (!x) continue;
-        const k = keptFile(x, a.sum, parts.length), got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, await A.gzip(k.bytes));
+        // (only where it's smaller: the server takes nothing bigger than the file it replaces)
+        const k = keptFile(x, a.sum, parts.length), gz = await A.gzip(k.bytes);
+        if (a.size && gz.length >= a.size) continue;
+        const got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, gz);
         Object.assign(a, { gz: true, type: k.type, file: k.name, size: got.size });
         idb.put(fileKey(a), k.bytes).catch(() => {});
       } catch (e) { if (e.status === 401 || e.offline) break; }
@@ -1334,7 +1337,8 @@ addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefaul
 const FILES = ["app.js", "styles.css", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js", "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js"];
 const versionNow = async () => (await Promise.all(FILES.map((f) => fetch(f, { method: "HEAD", cache: "no-store" }).then((r) => r.headers.get("etag") || "", () => null)))).join();
 let version = null, versionAt = Date.now();
-versionNow().then((v) => { version = v; });
+// (as it opened, but asked a few seconds on: not in the way of its opening)
+setTimeout(() => versionNow().then((v) => { version = v; }), 4000);
 addEventListener("visibilitychange", async () => {
   if (document.visibilityState !== "visible" || !version || Date.now() - versionAt < 30e3) return;
   versionAt = Date.now();
@@ -1376,8 +1380,10 @@ const signedOutHere = () => signOutHere(true);
     if (!m) {
       // (the copy kept here, drawn at once; then what's changed since, taken up)
       const kept = await lastMe.get();
+      // (what's changed asked for at once, while the copy's drawn, not after)
+      const now = fetchMe(kept);
       if (kept?.signedIn && Array.isArray(kept.acts)) { early = kept; meBase = kept; arrive(kept); }
-      m = await fetchMe(kept);
+      m = await now;
     }
   } catch (e) {
     arv?.away();

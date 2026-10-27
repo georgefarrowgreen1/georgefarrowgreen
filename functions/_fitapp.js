@@ -34,8 +34,9 @@ export function serveFitness(res, path) {
   if (res.status === 404) return notFound();
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(FIT_SECURITY)) out.headers.set(k, v);
-  // the page and its code never kept, so each opening is the latest (app.js also checks, as you come back to it)
-  if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "no-store");
+  // the page and its code kept, but asked after each time (their ETag: an unchanged file comes back as a few bytes, a
+  // 304), so each opening is still the latest without fetching it all again (app.js also checks, as you come back to it)
+  if ((res.status === 200 || res.status === 304) && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "no-cache");
   if (res.status === 200 && /\.(png|svg)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=86400");
   return out;
 }
