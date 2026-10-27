@@ -186,13 +186,31 @@ export async function housekeeping(env, D, t, origin) {
   return { purged, files, ...accounts, asked };
 }
 
-// The admin's look at what's kept: rows in each table, the database's size, and the files in storage
-export const TABLES = ["pg_users", "pg_msgs", "pg_gmsgs", "pg_gdeliv", "pg_flights", "pg_reacts", "pg_near", "pg_flyover", "pg_stamped", "pg_passport", "pg_postmarks",
-  "pg_feathers", "pg_birds", "pg_links", "pg_groups", "pg_group_members", "pg_gevents", "pg_sessions", "pg_push", "pg_passkeys", "pg_streaks", "pg_ids",
-  "pg_limits", "pg_wxcache", "pg_admin_log", "pg_vanish", "pg_invites", "pg_active"];
-export async function storageReport(env, D, t) {
-  const res = await D.batch(TABLES.map((x) => D.prepare(`SELECT COUNT(*) AS n FROM ${x}`)));
-  const tables = TABLES.map((name, i) => ({ name, rows: res[i].results?.[0]?.n ?? 0 })).sort((a, b) => b.rows - a.rows);
+// The admin's look at what's kept, across the site: each table's rows and roughly how much is in them, by the app it's
+// for; the database's size; and the files in storage, by app and kind. (D1 says only the whole database's size: each
+// app's share of it is its tables' share of what's in them, so an estimate; the files' sizes are exact)
+const ACCOUNT_TABLES = new Set(["pg_users", "pg_sessions", "pg_passkeys", "pg_challenges", "pg_resets", "pg_handoff", "pg_handback", "pg_handles_held",
+  "pg_invites", "pg_events", "pg_limits", "pg_errors", "pg_admin_log", "pg_meta", "pg_active"]);
+export const appOfTable = (name) => name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
+  : name.startsWith("pg_") ? "inflight" : "home";
+// (each store of files: its prefix, its app, and what's in it; Fitness's by where in it a file is)
+const STORES = [["pigeon/", "inflight", "photos"], ["pigeon-g/", "inflight", "group"], ["pigeon-avatars/", "account", "avatars"],
+  ["pigeon-posters/", "account", "posters"], ["bg/", "home", "bg"], ["fitness/", "fitness", null]];
+const fitnessKind = (key) => (/^fitness\/[^/]+\/garmin\//.test(key) ? "garmin" : /^fitness\/[^/]+\/strava\//.test(key) ? "strava" : "rides");
+// (rows: false for the files alone, as Admin's figures want them)
+export async function storageReport(env, D, t, { rows = true } = {}) {
+  let tables = [];
+  // (and if the database won't say, the files at least)
+  if (rows) try {
+    const names = ((await D.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' AND name NOT LIKE 'd1_%'").all()).results || []).map((r) => r.name);
+    const cols = names.length ? await D.batch(names.map((x) => D.prepare(`PRAGMA table_info("${x}")`))) : [];
+    const q = names.map((x, i) => {
+      const len = (cols[i].results || []).map((c) => `COALESCE(LENGTH("${c.name}"), 0)`).join(" + ") || "0";
+      return D.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(${len}), 0) AS b FROM "${x}"`);
+    });
+    const res = q.length ? await D.batch(q) : [];
+    tables = names.map((name, i) => ({ name, app: appOfTable(name), rows: res[i].results?.[0]?.n ?? 0, bytes: res[i].results?.[0]?.b ?? 0 })).sort((a, b) => b.rows - a.rows);
+  } catch (e) { console.error("storage: tables", e && e.message); }
   const sizes = await D.prepare(`SELECT
       (SELECT COALESCE(SUM(LENGTH(ct)), 0) FROM pg_msgs) + (SELECT COALESCE(SUM(LENGTH(body)), 0) FROM pg_gmsgs) AS words,
       (SELECT COALESCE(SUM(LENGTH(legs)), 0) FROM pg_msgs) + (SELECT COALESCE(SUM(LENGTH(legs)), 0) FROM pg_gdeliv) AS ways,
@@ -202,14 +220,16 @@ export async function storageReport(env, D, t) {
   // the whole database's size, as D1 reports it after any statement
   const probe = await D.prepare("SELECT 1").run().catch(() => null);
   const files = [];
-  if (env.BIO_R2) for (const [prefix] of [...OWNERS, ["bg/"]]) {
-    let n = 0, bytes = 0, cursor, pages = 0, more = true;
+  if (env.BIO_R2) for (const [prefix, app, kind] of STORES) {
+    const got = new Map(), add = (k) => { const f = got.get(k) || { prefix, app, kind: k, n: 0, bytes: 0, more: false }; got.set(k, f); return f; };
+    if (kind) add(kind);
+    let cursor, pages = 0, more = true;
     while (more && pages < 20) {
       const l = await env.BIO_R2.list({ prefix, cursor, limit: 1000 }); pages++;
-      for (const o of l.objects) { n++; bytes += o.size || 0; }
+      for (const o of l.objects) { const f = add(kind || fitnessKind(o.key)); f.n++; f.bytes += o.size || 0; }
       more = l.truncated; cursor = l.cursor;
     }
-    files.push({ prefix, n, bytes, more });
+    for (const f of got.values()) { f.more = more; files.push(f); }
   }
   const meta = Object.fromEntries((await D.prepare("SELECT k, v FROM pg_meta WHERE k IN ('keep_at', 'r2_sweep')").all()).results.map((r) => [r.k, r.v]));
   // (the files' size as of now, for Admin's figures, which don't count them themselves: functions/api/pigeon adminSummary)
