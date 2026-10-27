@@ -20,9 +20,10 @@ export function shapeSolar(j, parseWall) {
   return (h.time || []).map((t, i) => ({ t: parseWall(t), w: h.global_tilted_irradiance?.[i] ?? 0 }));
 }
 
-// Today's spell still to come or under way, if it's to be said yet: { start, end, peak (the middle of its best hour),
-// on (under way), hours (today's daylight ones, each { t, v: share of the day's best }), best } or null
-export function sunSpell(hours, now) {
+// Today's spell still to come or under way, if it's to be said yet (lead: how long before it starts; the whole day's,
+// for the morning briefing): { start, end, peak (the middle of its best hour), on (under way), hours (today's daylight
+// ones, each { t, v: share of the day's best }), best } or null
+export function sunSpell(hours, now, lead = LEAD) {
   const d0 = dayStart(now), today = hours.filter((x) => x.t > d0 && x.t <= d0 + 24 * HOUR);
   const best = Math.max(0, ...today.map((x) => x.w));
   if (best < MIN_W) return null;
@@ -33,7 +34,7 @@ export function sunSpell(hours, now) {
     if (r && r.end === x.t - HOUR) { r.end = x.t; r.hours.push(x); } else runs.push({ start: x.t - HOUR, end: x.t, hours: [x] });
   }
   const r = runs.find((x) => x.end > now);
-  if (!r || now < r.start - LEAD) return null;
+  if (!r || now < r.start - lead) return null;
   const top = r.hours.reduce((a, x) => (x.w > a.w ? x : a));
   const lit = today.filter((x) => x.w > 5);
   return { start: r.start, end: r.end, peak: top.t - HOUR / 2, on: now >= r.start, best,

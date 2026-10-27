@@ -27,3 +27,17 @@ test("the roof's way and pitch, as Open-Meteo has them", () => {
   const q = new URLSearchParams(solarQuery(52.8236, 1.387, "SW", 30));
   assert.equal(q.get("azimuth"), "45"); assert.equal(q.get("tilt"), "30"); assert.equal(q.get("hourly"), "global_tilted_irradiance");
 });
+test("the whole day's spell, for the morning briefing: said however early it's asked", () => {
+  const s = sunSpell(day, D0 + 7 * H, Infinity);
+  assert.ok(s && s.start === D0 + 11 * H && s.end === D0 + 15 * H);
+  assert.equal(sunSpell(day, D0 + 7 * H), null, "the card's: not yet");
+});
+test("what a device says of its roof, made safe (functions/_wxpush.js solarWant)", async () => {
+  const { solarWant } = await import("../../../functions/_wxpush.js");
+  assert.deepEqual(solarWant({ on: true, lat: 52.82361, lon: 1.38701, name: "North Walsham", faces: "SW", pitch: 30, alert: true }),
+    { lat: 52.82, lon: 1.39, name: "North Walsham", faces: "SW", pitch: 30, alert: true });
+  assert.deepEqual(solarWant({ on: true, lat: 52.8, lon: 1.4, faces: "up", pitch: 33 }), { lat: 52.8, lon: 1.4, name: "", faces: "S", pitch: 35, alert: true }, "odd values: the usual");
+  assert.equal(solarWant({ on: false, lat: 52.8, lon: 1.4 }), null);
+  assert.equal(solarWant({ on: true, lat: 952.8, lon: 1.4 }), null);
+  assert.equal(solarWant(null), null);
+});

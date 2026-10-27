@@ -451,7 +451,7 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   const before = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).length;
   const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
   const mails = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).slice(before).map((l) => JSON.parse(l).body).filter((m) => /^Weather </.test(m.from));
-  const brief = mails.find((m) => /^Edinburgh: .+, \d+°$/.test(m.subject)), warn = mails.find((m) => /^Amber thunderstorm warning: London/.test(m.subject));
+  const brief = mails.find((m) => /^Edinburgh: .+ · \d+°$/.test(m.subject)), warn = mails.find((m) => /^Amber thunderstorm warning: London/.test(m.subject));
   if (at.getUTCDate() === new Date().getUTCDate()) ok(brief && brief.to === 'sam@example.com' && /mail\/wx-[a-z-]+\.png/.test(brief.html) && /Morning:/.test(brief.text), 'the tick: the briefing by email, from Weather, with the day in three', `${JSON.stringify(tick)} ${mails.map((m) => m.subject)}`);
   else console.log('(just after midnight: the briefing waits for its day)');
   ok(warn && /mail\/weather-warn-amber\.png/.test(warn.html) && /Thunderstorms could bring flooding/.test(warn.text), 'and London\'s warning, in its own colour', mails.map((m) => m.subject).join(' | '));

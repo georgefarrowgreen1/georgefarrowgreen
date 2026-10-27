@@ -485,6 +485,13 @@ so there's nothing to set up beyond the address.
   the roof by the hour, the spell in gold. A spell is an hour or more with at least
   half the day's best on the roof and over 200 W/m² (Open-Meteo's global tilted
   irradiance, asked for every half hour: `weather/solar.js`); nothing on grey days.
+  With **Tell me when the sun's coming out** on (and notifications on), a
+  notification up to an hour and a half before a spell, or as one starts ("Sun's
+  coming out: sunny on your panels from about 11:00, until about 15:00"), twice
+  a day at most and never in the quiet hours: the device sends its roof with its
+  notifications (`functions/_wxpush.js` solarWant: wx_subs `solar`, `last_sun`),
+  and the tick looks at each roof once a half hour. A briefing for the same place
+  says it too ("Sun on your panels about 11:00–15:00"; the email, a Solar row).
 - **A briefing** for the next day or so, in words ("Cloudy until about 16:00,
   then rain until around 20:00. High 14°"), its first sentence (what's coming)
   in bold, and each day of the fortnight described part by part (morning,

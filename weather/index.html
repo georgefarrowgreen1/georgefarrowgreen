@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-113" />
+  <meta name="app-version" content="wx-114" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -293,6 +293,10 @@
             <li><label class="at-row">Roof pitch <select class="at" name="solarPitch"></select></label></li>
           </ul>
           <p class="grp-foot">A card when the sun’s coming out on your panels: when, and how long for. Nothing on grey days.</p>
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="solarAlert" /> Tell me when the sun’s coming out</label></li>
+          </ul>
+          <p class="grp-foot">A notification up to an hour and a half before a sunny spell, twice a day at most. With a briefing for the same place, a line in it too.</p>
         </div>
         <div class="set-page" data-page="acts" data-title="Best times" hidden>
           <ul class="grp acts-list" id="acts-list"></ul>

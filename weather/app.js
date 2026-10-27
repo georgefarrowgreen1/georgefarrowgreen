@@ -62,15 +62,16 @@ function layoutOf(v) {
   for (const [i, k] of ids.entries()) if (!order.includes(k)) order.splice(Math.min(i, order.length), 0, k);
   return { order, off: [...new Set((Array.isArray(o.off) ? o.off : []).filter((k) => ids.includes(k)))] };
 }
-// Settings › Solar: { on, faces, pitch, and the place the panels are: lat, lon, name }
+// Settings › Solar: { on, faces, pitch, alert (a notification as the sun's coming out), and the place the panels are:
+// lat, lon, name }
 function solarOf(v) {
   const o = v && typeof v === "object" && !Array.isArray(v) ? v : {}, spot = Number.isFinite(o.lat) && Number.isFinite(o.lon);
-  return { on: !!o.on && spot, faces: FACES.some((x) => x[0] === o.faces) ? o.faces : "S", pitch: PITCHES.includes(o.pitch) ? o.pitch : 35,
+  return { on: !!o.on && spot, alert: o.alert !== false, faces: FACES.some((x) => x[0] === o.faces) ? o.faces : "S", pitch: PITCHES.includes(o.pitch) ? o.pitch : 35,
     ...(spot ? { lat: o.lat, lon: o.lon, name: String(o.name || "").slice(0, 60) } : {}) };
 }
 function loadSettings() {
   const d = {
-    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true, solar: { on: false, faces: "S", pitch: 35 },
+    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true, solar: { on: false, alert: true, faces: "S", pitch: 35 },
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
   };
   // (only values the app knows: a damaged or out-of-date one falls back to the default)
@@ -2295,7 +2296,7 @@ async function syncNow() {
     r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
       // (signed out here, though the browser may have the site's sign-in: this device's own choices, not the account's;
       // signed in, which account, so if the browser's signed in to another since, not yet heard of here, it's the same)
-      account: S.acct ? S.acct.id || true : false, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+      account: S.acct ? S.acct.id || true : false, solar: S.settings.solar?.on ? S.settings.solar : null, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
   } catch (e) {
     // (not told, offline, say, or the server busy: out of step, so it's told again the next time the app's opened or
     // back online, keepNotify, not a week on)
@@ -2321,7 +2322,8 @@ async function keepNotify(now = false) {
   } catch (_) { failedAt = Date.now(); } finally { keeping = false; }
 }
 // (any of them on: rain alerts or official warnings for a place, the briefing)
-const notifying = (n) => !!(n.places.length || n.brief);
+// (any notification on here: for a place, the briefing, or the sun coming out on your panels)
+const notifying = (n) => !!(n.places.length || n.brief || (S.settings?.solar?.on && S.settings.solar.alert));
 // a place, as notifications know it (My Location: wherever it is now)
 const nkey = (p) => A.nkeyOf(p);
 // a choice made: kept, and (signed in) the account's first, then this device told

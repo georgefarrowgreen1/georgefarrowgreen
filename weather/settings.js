@@ -59,7 +59,7 @@ function drawSolar() {
   const form = $("settings-form"), s = S.settings.solar, here = place();
   const spots = [...S.places.filter((p) => !p.gps)];
   if (s.lat != null && !spots.some((p) => nkey(p) === nkey(s))) spots.unshift({ name: s.name, lat: s.lat, lon: s.lon });
-  form.solar.checked = !!s.on;
+  form.solar.checked = !!s.on; form.solarAlert.checked = s.alert !== false; form.solarAlert.disabled = !s.on;
   form.solarAt.replaceChildren(...spots.map((p) => h("option", { value: nkey(p) }, p.name || "Your place")));
   form.solarAt.value = s.lat != null ? nkey(s) : here && !here.gps ? nkey(here) : spots[0] ? nkey(spots[0]) : "";
   form.solarFaces.replaceChildren(...FACES.map(([k, name]) => h("option", { value: k }, name)));
@@ -70,8 +70,9 @@ function drawSolar() {
 }
 function solarRead() {
   const form = $("settings-form"), key = form.solarAt.value, was = S.settings.solar;
-  const p = S.places.find((x) => !x.gps && nkey(x) === key) || (was.lat != null && nkey(was) === key ? was : null);
-  return { on: form.solar.checked && !!p, faces: form.solarFaces.value || "S", pitch: Number(form.solarPitch.value) || 0, ...(p ? { lat: p.lat, lon: p.lon, name: p.name || "" } : {}) };
+  // (off: where it was, not whichever place the list shows)
+  const p = !form.solar.checked && was.lat != null ? was : S.places.find((x) => !x.gps && nkey(x) === key) || (was.lat != null && nkey(was) === key ? was : null);
+  return { on: form.solar.checked && !!p, alert: form.solarAlert.checked, faces: form.solarFaces.value || "S", pitch: Number(form.solarPitch.value) || 0, ...(p ? { lat: p.lat, lon: p.lon, name: p.name || "" } : {}) };
 }
 
 /* ---------- arranging the page ---------- */
@@ -204,7 +205,9 @@ function readSettings(e) {
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
+  const sunSig = (x) => (x?.on ? JSON.stringify([x.alert, x.faces, x.pitch, x.lat, x.lon]) : ""), sunWas = sunSig(S.settings.solar);
   S.settings.solar = solarRead();
+  form.solarAlert.disabled = !S.settings.solar.on;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
   // (the glass alone is only how the cards look, eased from one to the other by styles.css: nothing to draw again)
   saveSettings(); if (JSON.stringify({ ...S.settings, glass: null }) !== drawn) afterFrame(redraw); drawFolders();
@@ -212,7 +215,12 @@ function readSettings(e) {
   if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
   const n = S.settings.notify;
-  if ((notifying(n) || n.endpoint) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
+  const unitsNow = units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join();
+  // (and know your roof, for the sun coming out on it: allowed to show it asked as it's turned on, while the tap counts)
+  if (sunSig(S.settings.solar) !== sunWas) {
+    const sun = S.settings.solar;
+    (sun.on && sun.alert && !n.endpoint && !canShow() ? allowed() : Promise.resolve([true])).then(([go]) => { if (go && (notifying(n) || n.endpoint)) syncNotify().catch(() => {}); });
+  } else if ((notifying(n) || n.endpoint) && unitsNow) syncNotify().catch(() => {});
 }
 
 // a time to choose, as "HH:MM": every quarter of an hour, said as the Clock setting says them (and the one chosen,

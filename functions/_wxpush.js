@@ -38,7 +38,8 @@ import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
 import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
-import { makeFormat, nowWall, keyOf } from "../weather/format.js";
+import { makeFormat, nowWall, keyOf, parseWall, dayStart } from "../weather/format.js";
+import { solarQuery, shapeSolar, sunSpell, FACES, PITCHES } from "../weather/solar.js";
 import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP, briefMail, warningMail } from "../weather/alerts.js";
 import { blend } from "../weather/rainmap.js";
 import { oneRain } from "../weather/agree.js";
@@ -64,6 +65,8 @@ const RADAR_PLACES = 40;
 const WARN_PLACES = 150, WARN_AT_ONCE = 6, WARN_MS = 20e3, WARN_LEAST = 10e3;
 // Weather's emails a day, at most (WX_MAIL_DAY sets another), a briefing only within four-fifths of them
 const MAIL_DAY = 60, MAIL = "mail:";
+// roofs looked at for the sun coming out a tick, at most; and how long before a sunny spell it's told of
+const SUN_PLACES = 20, SUN_AHEAD = 90 * 60e3;
 let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
@@ -90,7 +93,9 @@ async function setup(env) {
     // columns added since the table was first made (an older table gains them and keeps its rows)
     // (warn: official warnings wanted; told: those already told of, alerts.js warningAlert)
     // (dev: the device's, a row for each of its places)
-    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER", "warn INTEGER NOT NULL DEFAULT 0", "told TEXT", "dev TEXT"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
+    // (solar: the roof there, for the sun coming out on its panels, { faces, pitch, alert }; last_sun: when that was last
+    // told of, { day, n, start })
+    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER", "warn INTEGER NOT NULL DEFAULT 0", "told TEXT", "dev TEXT", "solar TEXT", "last_sun TEXT"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
     // The devices: each one's push address and keys, its units, its briefing's time, and the account it's signed in to
     // (if it is: user_id). A device from before (one place, its row's id its own) becomes one here, once.
     await env.DB.batch([
@@ -170,7 +175,12 @@ export function wantOf(b) {
   if (b.brief && typeof b.brief === "object" && !brief) throw new HttpError(400, "Bad place.");
   return { places, brief, briefAt, email };
 }
-const wanted = (w) => w.places.length > 0 || !!w.brief;
+// The roof a device's panels are on (Settings › Solar), made safe: { lat, lon, name, faces, pitch, alert } or null
+export function solarWant(v) {
+  const p = v && typeof v === "object" && v.on ? spotOf(v) : null;
+  return p ? { ...p, faces: FACES.some((x) => x[0] === v.faces) ? v.faces : "S", pitch: PITCHES.includes(v.pitch) ? v.pitch : 35, alert: v.alert !== false } : null;
+}
+const wanted = (w) => w.places.length > 0 || !!w.brief || !!w.solar?.alert;
 function unitsOf(U) {
   U = U && typeof U === "object" ? U : {};
   return JSON.stringify({ temp: U.temp === "f" ? "f" : "c", wind: ["mph", "kmh", "ms", "kn"].includes(U.wind) ? U.wind : "mph", precip: U.precip === "in" ? "in" : "mm", clock: U.clock === "12" ? "12" : "24" });
@@ -190,19 +200,51 @@ async function setRows(D, dv, w, t) {
   const rows = new Map();
   for (const p of w.places) rows.set(`${p.lat},${p.lon}`, { ...p, brief: 0 });
   if (w.brief) { const k = `${w.brief.lat},${w.brief.lon}`; rows.set(k, { rain: false, warn: false, ...w.brief, ...rows.get(k), brief: 1 }); }
+  // (the panels' place: its roof, for the sun coming out there, and the briefing's line on it)
+  if (w.solar) { const { faces, pitch, alert } = w.solar, k = `${w.solar.lat},${w.solar.lon}`; rows.set(k, { rain: false, warn: false, brief: 0, ...w.solar, ...rows.get(k), solar: JSON.stringify({ faces, pitch, alert }) }); }
   const { results: have } = await D.prepare("SELECT id, lat, lon, warn FROM wx_subs WHERE dev = ?").bind(dv.dev).all();
   const steps = [], had = new Map(have.map((h) => [`${h.lat},${h.lon}`, h]));
   for (const [k, h] of had) if (!rows.has(k)) steps.push(D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(h.id));
   for (const [k, r] of rows) {
     const h = had.get(k), rain = r.rain ? 1 : 0, warn = r.warn ? 1 : 0;
     if (h) steps.push(D.prepare(`UPDATE wx_subs SET endpoint = ?2, p256dh = ?3, auth = ?4, name = ?5, rain = ?6, brief = ?7, brief_at = ?8, units = ?9, updated = ?10,
-        told = CASE WHEN ?11 = 0 OR warn = 0 THEN NULL ELSE told END, warn = ?11 WHERE id = ?1`)
-      .bind(h.id, dv.endpoint, dv.p256dh, dv.auth, r.name, rain, r.brief, w.briefAt, dv.units, t, warn));
-    else steps.push(D.prepare(`INSERT INTO wx_subs (id, dev, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok, warn)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13, ?14)`)
-      .bind(`${dv.dev}:${k}`, dv.dev, dv.endpoint, dv.p256dh, dv.auth, r.lat, r.lon, r.name, rain, r.brief, w.briefAt, dv.units, t, warn));
+        told = CASE WHEN ?11 = 0 OR warn = 0 THEN NULL ELSE told END, warn = ?11, solar = ?12 WHERE id = ?1`)
+      .bind(h.id, dv.endpoint, dv.p256dh, dv.auth, r.name, rain, r.brief, w.briefAt, dv.units, t, warn, r.solar || null));
+    else steps.push(D.prepare(`INSERT INTO wx_subs (id, dev, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok, warn, solar)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13, ?14, ?15)`)
+      .bind(`${dv.dev}:${k}`, dv.dev, dv.endpoint, dv.p256dh, dv.auth, r.lat, r.lon, r.name, rain, r.brief, w.briefAt, dv.units, t, warn, r.solar || null));
   }
   if (steps.length) await D.batch(steps);
+}
+// The sunlight on a sub's roof (solar.js), with its place's offset, or null
+async function roofSun(env, s) {
+  let o = null; try { o = JSON.parse(s.solar); } catch (_) {}
+  if (!o) return null;
+  const r = await fetch(`${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${solarQuery(s.lat, s.lon, o.faces, o.pitch)}`, { signal: AbortSignal.timeout(10000), headers: { Accept: "application/json" } });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return { o, off: j.utc_offset_seconds ?? 0, hours: shapeSolar(j, parseWall) };
+}
+// The sun coming out on a place's panels: told of up to an hour and a half before a sunny spell (or as one starts), once a
+// spell, twice a day at most, outside the quiet hours (last_sun claimed first, so two ticks never both tell it)
+async function sunNotify(env, D, s, t, out, origin) {
+  const got = await roofSun(env, s);
+  if (!got?.o.alert) return;
+  const now = nowWall(got.off, t), sp = sunSpell(got.hours, now);
+  if (!sp || isQuiet(now) || (sp.on ? now - sp.start > 30 * 60e3 : sp.start - now > SUN_AHEAD)) return;
+  let told = {}; try { told = JSON.parse(s.last_sun || "{}") || {}; } catch (_) {}
+  const day = keyOf(now);
+  if (told.day === day && (told.n >= 2 || told.start === sp.start)) return;
+  const next = JSON.stringify({ day, n: told.day === day ? (told.n || 0) + 1 : 1, start: sp.start });
+  if (!(await D.prepare("UPDATE wx_subs SET last_sun = ?1 WHERE id = ?2 AND last_sun IS ?3").bind(next, s.id, s.last_sun ?? null).run()).meta?.changes) return;
+  let units = {}; try { units = JSON.parse(s.units || "{}"); } catch (_) {}
+  const f = makeFormat(units), at = s.name ? `${s.name}: ` : "";
+  const r = await pushToSub(env, s, sp.on
+    ? { title: "Sun’s out", body: `${at}sunny on your panels now, until about ${f.said(sp.end)}.`, tag: "sun", ttl: 1800, url: linkTo(s.lat, s.lon, s.name) }
+    : { title: "Sun’s coming out", body: `${at}sunny on your panels from about ${f.time(sp.start)}, until about ${f.said(sp.end)}.`, tag: "sun", ttl: 3600, url: linkTo(s.lat, s.lon, s.name) });
+  if (r === "sent") out.sun = (out.sun || 0) + 1;
+  else if (r === "gone") await forget(D, s);
+  else await D.prepare("UPDATE wx_subs SET last_sun = ?1 WHERE id = ?2 AND last_sun = ?3").bind(s.last_sun ?? null, s.id, next).run();
 }
 // A device moved to a new push address by its browser (was: the old one): its places go with it
 async function moveDev(D, from, s, to, t) {
@@ -215,7 +257,7 @@ async function moveDev(D, from, s, to, t) {
 // The account's choices (functions/_wxacct.js), for each of its devices, its email among them (settings: the account's
 // Weather settings, for the units its emails are in)
 export async function applyAccount(env, userId, notify, settings = null) {
-  const D = await wxdb(env), w = wantOf(notify), t = Date.now();
+  const D = await wxdb(env), w = { ...wantOf(notify), solar: solarWant(settings?.solar) }, t = Date.now();
   await unlinkEnded(D, userId);
   const { results: devs } = await D.prepare(`SELECT * FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%'`).bind(userId).all();
   for (const dv of devs) await setRows(D, { ...dv }, w, t);
@@ -256,7 +298,7 @@ export async function devicesOf(env, userId) {
 // is (functions/_account.js): then it's the account's choices this device gets (account: its notify), and this device is
 // one of the account's; label: what to call it ("iPhone · Safari"); net: a hash of the network it's asked from
 export async function subscribe(env, b, user = null, account = null, label = "", net = null) {
-  const s = await checkSub(b.sub), w = wantOf(user ? account || {} : b), units = unitsOf(b.units);
+  const s = await checkSub(b.sub), w = { ...wantOf(user ? account || {} : b), solar: solarWant(b.solar) }, units = unitsOf(b.units);
   const D = await wxdb(env), dev = await idOf(s.endpoint), t = Date.now();
   // the browser gave this device a new push address: its places move over from the old one (no need to say hello again)
   const was = typeof b.was === "string" && b.was.length <= 1000 && b.was !== s.endpoint ? await idOf(b.was) : null;
@@ -363,7 +405,7 @@ export async function wxTick(env, t = Date.now(), origin = SITE) {
   finally {
     await D.prepare("UPDATE wx_meta SET v = '0' WHERE k = 'tick'").run().catch(() => {});
     // (when it last ran, how long it took and what it did: Admin warns when it hasn't run lately)
-    await D.batch([D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('tick_last', ?)").bind(JSON.stringify({ at: t, ms: Date.now() - t, ok: !!out, ...(out && typeof out === "object" ? { rain: out.rain || 0, brief: out.brief || 0 } : {}) })),
+    await D.batch([D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('tick_last', ?)").bind(JSON.stringify({ at: t, ms: Date.now() - t, ok: !!out, ...(out && typeof out === "object" ? { rain: out.rain || 0, brief: out.brief || 0, briefLate: out.briefLate ?? null, sun: out.sun || 0 } : {}) })),
       D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('tick_at', ?)").bind(String(t))]).catch(() => {});
   }
 }
@@ -379,7 +421,7 @@ async function tick(env, D, t, origin) {
     // (and devices with nothing left: not signed in, or not heard from in months)
     D.prepare("DELETE FROM wx_devs WHERE (user_id IS NULL OR coalesce(updated, 0) < ?) AND NOT EXISTS (SELECT 1 FROM wx_subs s WHERE s.dev = wx_devs.dev)").bind(t - KEEP_IDLE),
   ]);
-  const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1").all();
+  const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1 OR solar IS NOT NULL").all();
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
   const need = toLook(subs, t);
   // places a few kilometres apart share a forecast (0.05°); the whole of it only where a briefing's due (or the clock's not known yet)
@@ -422,6 +464,11 @@ async function tick(env, D, t, origin) {
   for (const s of subs) {
     if (!s.warn || s.tz_off == null || !warned.has(spot(s))) continue;
     try { await warnNotify(env, D, s, t, out, warned, origin); } catch (e) { console.error("weather tick: warnings", e && e.message); }
+  }
+  // the sun coming out on panels: each roof looked at once a half hour (the first tick in it), outside the quiet hours
+  if (new Date(t).getUTCMinutes() % 30 < 5) {
+    const roofs = subs.filter((s) => s.solar && !isMail(s) && (s.tz_off == null || !isQuiet(local(s)))).slice(0, SUN_PLACES);
+    for (const s of roofs) { try { await sunNotify(env, D, s, t, out, origin); } catch (e) { console.error("weather tick: sun", e && e.message); } }
   }
   return out;
 }
@@ -541,9 +588,17 @@ async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
       // (an email's: the morning, afternoon and evening drawn with Weather's own pictures, mail/wx-*.png)
       const m = isMail(s) && briefMail(wx, now, f);
       if (m) m.strip = m.strip.map(([part, icon, temp, chance]) => [part, `wx-${icon}`, temp, chance]);
-      const r = !isMail(s) ? await pushToSub(env, s, { ...briefing(wx, now, f), url, ttl: 3 * 3600 })
+      // (where the panels are, and a sunny spell's to come today: when, in a line of its own; Settings › Solar)
+      const sun = s.solar ? await roofSun(env, s).catch(() => null) : null, sp = sun && sunSpell(sun.hours, now, Infinity);
+      const sunny = sp && `${f.time(Math.max(sp.start, now))}–${f.said(sp.end)}`;
+      if (m && sunny) m.rows.splice(m.rows.findIndex((x) => x[0] === "Sun") + 1 || m.rows.length, 0, ["Solar", `Sunny about ${sunny}`, "sunrise"]);
+      const b = !isMail(s) && briefing(wx, now, f);
+      if (b && sunny) b.body = `${b.body} Sun on your panels about ${sunny}.`.slice(0, 280);
+      const r = !isMail(s) ? await pushToSub(env, s, { ...b, url, ttl: 3 * 3600 })
         : m ? await mailOut(env, D, s, t, origin, { kind: "brief", ...m, footer: `Your morning briefing for ${s.name || "your place"}, at ${atOf(f, s.brief_at)}.` }) : "held";
-      got.push(r); if (r === "sent") out.brief++; else if (r !== "skip") await giveBack(D, s, "last_brief", key);
+      got.push(r); if (r !== "sent" && r !== "skip") await giveBack(D, s, "last_brief", key);
+      // (and how long after its time it went, the latest a tick sent: kept with the tick's own record, tick_last)
+      if (r === "sent") { out.brief++; const [hh, mm] = String(s.brief_at || "07:00").split(":").map(Number); out.briefLate = Math.max(out.briefLate || 0, Math.round((now - dayStart(now) - (hh * 60 + mm) * 60e3) / 60e3)); }
     }
   }
   // gone: forgotten; arrived: all's well; failed: one more strike (five in a row, and it's forgotten; not an email's,
