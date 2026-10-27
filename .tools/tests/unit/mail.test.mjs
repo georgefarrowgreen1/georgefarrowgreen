@@ -36,7 +36,7 @@ test('the look: the email\'s tile with its app\'s icon as a badge, a pill, the d
     rows: [['Account', '@geo'], ['How', 'Password'], ['Something new', 'x'], ['Its own', 'y', 'star']], button: { label: 'Review your account', url: 'https://account.georgefarrowgreen.com/' } }).html;
   const ifl = emailBody({ title: 'A pigeon landed', brand: 'inflight', icon: 'landed', unsub: 'https://georgefarrowgreen.com/u' }).html;
   // (nothing above the card: the tile and badge are one picture, in the app's own set)
-  assert.match(acct, /<td class="ml-card"[^>]*>\s*<!--[^>]*-->\s*<img src="https:\/\/georgefarrowgreen\.com\/mail\/account-shield\.png" width="112" height="112" alt="Account"/);
+  assert.match(acct, /<td class="ml-card"[^>]*>\s*<!--[^>]*-->\s*<img class="ml-tile" src="https:\/\/georgefarrowgreen\.com\/mail\/account-shield\.png" width="112" height="112" alt="Account"/);
   assert.match(ifl, /\/mail\/inflight-landed\.png" width="112" height="112" alt="InFlight"/);
   assert.match(emailBody({ title: 'x', brand: 'account', icon: 'landed' }).html, /\/mail\/account-shield\.png/, 'a tile the app hasn\'t: its own');
   assert.doesNotMatch(acct.slice(0, acct.indexOf('<td class="ml-card"')).replace(/<style>[\s\S]*<\/style>|<title>[^<]*<\/title>|<[^>]+>/g, ''), /\S/, 'no words above the card');
