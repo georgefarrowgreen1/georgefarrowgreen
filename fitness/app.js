@@ -1546,9 +1546,9 @@ async function pull() {
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
-// (nothing copied or dragged out of the app, but what you type: a field's own text)
+// (nothing copied or dragged out of the app, but what you type: a field's own text; and Today's sessions, dragged from day to day)
 const inField = (t) => t instanceof Element && !!t.closest("input, textarea, select");
-for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target)) e.preventDefault(); });
+for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target) && !(ev === "dragstart" && e.target.closest?.(".gday[draggable]"))) e.preventDefault(); });
 addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefault(); });
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
