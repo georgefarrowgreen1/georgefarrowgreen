@@ -203,7 +203,9 @@ export function nightsChart(all, { W = 340, label = "night" } = {}) {
   // (from the first night there's anything for)
   const first = all.findIndex((d) => d.hrv != null || d.rhr != null || d.sleep != null), nights = first > 0 ? all.slice(first) : all;
   const n = nights.length, L = 4, R = 34, H1 = 92, H2 = 46, H3 = 46, gap = 22, y1 = 18, y2 = y1 + H1 + gap, y3 = y2 + H2 + gap, H = y3 + H3 + 20;
-  const x = (i) => L + (n > 1 ? i / (n - 1) : 0.5) * (W - L - R);
+  // (each night a slot, fourteen at least, the newest at the right: a few nights sit where the last fortnight's would,
+  // not stretched across the whole width, and a bar's never wider than a slot)
+  const slots = Math.max(n, 14), slot = (W - L - R) / slots, x = (i) => L + (slots - n + i + 0.5) * slot;
   const lineOf = (vals, y) => { let d = "", on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${f1(x(i))} ${f1(y(v))}`; on = true; }); return d; };
   const scale = (vals, top, h, pad = 0.12) => { const xs = vals.filter((v) => v != null); if (!xs.length) return () => top + h / 2; const mn = Math.min(...xs), mx = Math.max(...xs), p = (mx - mn || 1) * pad; return (v) => top + h - ((v - mn + p) / (mx - mn + 2 * p)) * h; };
   // HRV, its usual range, and the week's average
@@ -215,7 +217,7 @@ export function nightsChart(all, { W = 340, label = "night" } = {}) {
   // resting heart rate
   const rv = nights.map((d) => d.rhr ?? null), yb = scale(rv, y2, H2, 0.2), rl = [...nights].reverse().find((d) => d.rhr > 0), ri = nights.lastIndexOf(rl);
   // sleep, as bars against seven hours
-  const sv = nights.map((d) => d.sleep ?? null), top = Math.max(9 * 3600, ...sv.filter((v) => v != null)), yc = (v) => y3 + H3 - (v / top) * H3, bw = Math.max(1.5, (W - L - R) / Math.max(n, 1) - (n > 40 ? 1 : 2));
+  const sv = nights.map((d) => d.sleep ?? null), top = Math.max(9 * 3600, ...sv.filter((v) => v != null)), yc = (v) => y3 + H3 - (v / top) * H3, bw = Math.min(10, Math.max(1.5, slot - (n > 40 ? 1 : 2)));
   const bars = sv.map((v, i) => (v == null ? "" : `<rect class="n-sl${v < 6 * 3600 ? " short" : ""}" x="${f1(x(i) - bw / 2)}" y="${f1(yc(v))}" width="${f1(bw)}" height="${f1(y3 + H3 - yc(v))}" rx="1.2"/>`)).join("");
   const sl = [...sv].reverse().find((v) => v != null);
   const head = (y, t, v) => `<text class="n-h" x="${L}" y="${y - 6}">${t}</text>${v ? `<text class="n-v" x="${W - R}" y="${y - 6}" text-anchor="end">${v}</text>` : ""}`;
