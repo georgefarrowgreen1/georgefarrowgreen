@@ -12,7 +12,7 @@
 
 import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, safeEqual } from "./_pigeon.js";
 
-const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness"]);
+const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness", "mail"]);
 const WORD = /^[A-Za-z0-9_-]{43}$/, CODE = /^[A-Za-z0-9_-]{20,64}$/;
 export const PASSKEY_ID = /^[A-Za-z0-9_-]{16,1400}$/;
 

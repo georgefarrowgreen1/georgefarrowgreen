@@ -41,6 +41,7 @@ import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
+import { MAIL_ROUTES } from "../../_mailapp.js";
 import { avatarKey } from "../../_profile.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
@@ -232,6 +233,8 @@ async function sendConfirm(env, u, request) {
 }
 
 const ROUTES = {
+  // Mail's, asked by its server (functions/_mailapp.js)
+  ...MAIL_ROUTES,
   // a sign-in handed over from InFlight: the code used up (good once, for a minute, and only while the sign-in it came from
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)

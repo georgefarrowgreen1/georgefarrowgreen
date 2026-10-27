@@ -39,7 +39,7 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
 // (the home page's site, for the apps' one: siteUrl)
 const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, home: { name: "Home", sub: "" } };
+const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -62,7 +62,7 @@ if (/^#from=home$/.test(location.hash)) {
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
 const SIGN_FOR = (() => {
-  const m = /^#(signin|join)=(inflight|weather|fitness|home)(&|$)/.exec(ARRIVED);
+  const m = /^#(signin|join)=(inflight|weather|fitness|mail|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
       const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
@@ -271,7 +271,7 @@ function backFor(app, back) {
   try {
     const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
     // (and InFlight at /pigeon/, where the home page and the apps are one: locally)
-    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${home}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -1019,7 +1019,9 @@ async function handBack(m, way, btn) {
   S.me = m; S.pulled = Date.now(); stopAutofill();
   // (a sign-in an app handed over to this browser, signed in to nothing, is this page's alone: it goes on to an app once
   // you've shown it's you here, as InFlight's way on always asks anyway)
-  if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; }
+  if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; m.fresh = true; }
+  // (Mail, the site's inbox, is the admin's alone, and opens only once you've shown it's you: as Admin's lists do)
+  if (a.app === "mail" && !m.fresh) { if (!(await shownHere())) return; m.fresh = true; }
   // (the home page: back, saying it's from signing in, so it greets you)
   if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(homeVia(`${a.back}#signedin${faceHint(m, face)}`, true)); }
   const go = async () => {
@@ -1245,7 +1247,7 @@ function inviteCard() {
     h("ol.invite-steps", { "aria-label": "How it works" },
       step(icon("mail", 22, 1.9), "Open your invite"),
       step(icon("person", 22, 1.9), "Make your account"),
-      step(to ? h("img", { src: `/apps/${to}.png`, alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
+      step(to && to !== "mail" ? h("img", { src: `/apps/${to}.png`, alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
     h("form.form", { onsubmit: (e) => {
       e.preventDefault(); say(said, "");
       const m = /(?:#invite=|^)([A-Za-z0-9_-]{40,50})(?=[&\s]|$)/.exec(link.value.trim());
@@ -2292,7 +2294,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" }[d.app] : d.browser || d.label;
+    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", mail: "Mail", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
