@@ -430,7 +430,7 @@ function settingsView() {
         row({ tile: h("span.ic.brand.garmin", {}, icon("device", 18, 2)), title: "Garmin Connect", sub: garminSaid(), onclick: () => pushSheet(garminView) }),
         S.strava?.ready !== false && row({ tile: h("span.ic.brand.strava", {}, icon("wave", 18, 2.2)), title: "Strava", sub: stravaSaid(), onclick: () => pushSheet(stravaView) }),
         row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Apple Health", sub: healthSaid(), onclick: () => { healthView.key = null; pushSheet(healthView); } }),
-        devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })))),
+        devices.length > 0 && row({ icon: "device", tint: "grey", title: "Devices", sub: `${plural(devices.length, "device")} seen in your files`, onclick: () => pushSheet(devicesView) }))),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
@@ -864,6 +864,16 @@ function garminView() {
 // them as it reads Garmin's (rhythm.js nightOf). The key's in the address the Shortcut sends to, so that's all there is
 // to copy; shown once, as it's made, with the five steps to make the Shortcut; made again, the old one stops working ----
 const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
+// Every device your files came from, most used first: a folder of them, a tap from You
+function devicesView() {
+  const n = new Map();
+  for (const a of S.acts) if (a.device) n.set(a.device, (n.get(a.device) || 0) + 1);
+  const list = [...n].sort((x, y) => y[1] - x[1]);
+  return { title: "Devices", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Devices" }), h("div.sub", { text: "What your activities were recorded on, from their files" })),
+    h("div.group", {}, list.map(([d, k]) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(k, "file")}`, chev: false }))),
+  ] };
+}
 // ---- Strava (functions/_strava.js): connected on Strava's own page, then as Garmin's, each new activity coming in by
 // itself (Strava says when there's one); its files written for Fitness from Strava's figures ----
 // Disconnecting (connected), or clearing up after (not): a second tap to be sure; and the choice to remove what it
