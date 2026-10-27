@@ -54,6 +54,29 @@ async function weatherOf(env, userId) {
   let data = null; try { data = r ? JSON.parse(r.data) : null; } catch (_) {}
   return { ver: r?.ver || 0, data };
 }
+// A change to Weather's settings as the account keeps them (functions/_wxacct.js), from the version kept, tried again on
+// one made meanwhile on a device; Weather takes it up as it next comes into step. New units: every device's notifications
+// say them from now on.
+async function setWeather(env, userId, set) {
+  const D = await wxdb(env);
+  for (let i = 0; i < 3; i++) {
+    const wx = await weatherOf(env, userId), data = wx.data || { places: [], settings: {}, notify: { places: [], brief: null, briefAt: "07:00" } };
+    data.settings = { ...(data.settings || {}), ...set };
+    const r = wx.ver === 0
+      ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(userId, JSON.stringify(data), Date.now()).run()
+      : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(userId, JSON.stringify(data), Date.now(), wx.ver).run();
+    if (r.meta?.changes) break;
+    if (i === 2) throw new HttpError(409, "Weather was changing that on another device. Try again.");
+  }
+  if (Object.keys(set).some((k) => k in UNITS)) await unitsForAccount(env, userId, (await weatherOf(env, userId)).data?.settings || {});
+}
+// Weather's settings that are the account's, besides its units (on the page's Units): its commute, and whether its
+// forecast is tuned for where you are
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+async function weatherSettings(env, u) {
+  const s = (await weatherOf(env, u.id)).data?.settings || {}, c = s.commute || {};
+  return { commute: { on: !!c.on, am: HHMM.test(c.am || "") ? c.am : "08:00", pm: HHMM.test(c.pm || "") ? c.pm : "17:30" }, tune: s.tune !== false };
+}
 // Weather's emails: { warn, brief (each on or off), warnFor (the places with warnings on), briefFor (the briefing's place),
 // briefAt }
 function weatherMail(n) {
@@ -575,17 +598,7 @@ const ROUTES = {
     if (b.units !== undefined) {
       const U = b.units && typeof b.units === "object" ? b.units : {}, set = {};
       for (const [k, ok] of Object.entries(UNITS)) if (U[k] !== undefined) { if (!ok.includes(U[k])) throw new HttpError(400, "Choose one of the units shown."); set[k] = U[k]; }
-      const D = await wxdb(env);
-      for (let i = 0; i < 3; i++) {
-        const wx = await weatherOf(env, u.id), data = wx.data || { places: [], settings: {}, notify: { places: [], brief: null, briefAt: "07:00" } };
-        data.settings = { ...(data.settings || {}), ...set };
-        const r = wx.ver === 0
-          ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(u.id, JSON.stringify(data), Date.now()).run()
-          : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(u.id, JSON.stringify(data), Date.now(), wx.ver).run();
-        if (r.meta?.changes) break;
-      }
-      const s = (await weatherOf(env, u.id)).data?.settings || {};
-      await unitsForAccount(env, u.id, s);
+      await setWeather(env, u.id, set);
     }
     return json(await view(env, now));
   },
@@ -612,6 +625,22 @@ const ROUTES = {
     }
     return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
   },
+  // ---- Weather's settings (weatherSettings), as its Settings sends you here for them (signed in, kept with the account) ----
+  "GET weather": async ({ request, env }) => json(await weatherSettings(env, await signedIn(request, env))),
+  "PATCH weather": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024), set = {};
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.tune !== undefined) { if (typeof b.tune !== "boolean") throw new HttpError(400, "Choose on or off."); set.tune = b.tune; }
+    if (b.commute !== undefined) {
+      const c = b.commute && typeof b.commute === "object" ? b.commute : null, now = (await weatherSettings(env, u)).commute;
+      if (!c || (c.on !== undefined && typeof c.on !== "boolean") || (c.am !== undefined && !HHMM.test(c.am)) || (c.pm !== undefined && !HHMM.test(c.pm))) throw new HttpError(400, "Choose a time.");
+      set.commute = { ...now, ...c };
+    }
+    if (Object.keys(set).length) await setWeather(env, u.id, set);
+    return json(await weatherSettings(env, u));
+  },
+
   // ---- Fitness's settings (fitnessSettings), as its Settings sends you here for them: a change to its record from the
   // version that's kept (tried again on one made meanwhile on a phone), taken up by the app as it next opens ----
   "GET fitness": async ({ request, env }) => json(await fitnessSettings(env, await signedIn(request, env))),

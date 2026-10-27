@@ -146,8 +146,35 @@ await P.p.click('#place-btn'); await P.p.waitForTimeout(500);
 ok((await P.p.textContent('#places .sheet-sub')) === 'Saved' && await P.p.$eval('#sync-note', (n) => n.hidden), 'Places: just the saved places, in step (a note only when they\'re not)', await P.p.textContent('#places .sheet-sub'));
 await closeSheet(P);
 // a setting changed on the phone reaches the laptop, and the laptop has Edinburgh when it next looks
-await settings(P); await folder(P, 'units'); await P.p.click('input[name="temp"][value="f"]'); await closeSheet(P);
+// (signed in, kept with the account: units, commute and forecast are on the account's page, a row here for them all)
+await settings(P);
+const rowsIn = await P.p.evaluate(() => [...document.querySelectorAll('#settings .folder')].filter((b) => !b.closest('li')?.hidden).map((b) => b.querySelector('.f-k').firstChild.textContent));
+ok(rowsIn.includes('Weather settings') && !rowsIn.includes('Units') && !rowsIn.includes('Commute') && !rowsIn.includes('Forecast') && rowsIn.includes('Best times'),
+  'signed in: Units, Commute and Forecast give way to Weather settings, on the account\'s page', rowsIn.join(', '));
+const [WS] = await Promise.all([P.ctx.waitForEvent('page'), P.p.click('#acct-set-go')]);
+await WS.waitForSelector('#sheet[open] #wx-tune', { timeout: 30000 }); await WS.waitForTimeout(600);
+ok(/Weather/.test(await WS.locator('#sheet .toapp').innerText().catch(() => '')) && /On weekdays/.test(await WS.locator('#sheet').innerText()), 'it opens Weather\'s sheet on the account\'s page, with the way back');
+await WS.locator('#sheet .row', { hasText: 'Units' }).click(); await WS.waitForSelector('#sheet .units .seg'); await WS.waitForTimeout(500);
+await WS.locator('#sheet .unit', { hasText: 'Temperature' }).locator('button', { hasText: '°F' }).click();
 await waitFor(() => kept('sam')?.settings?.temp === 'f');
+await WS.locator('#sheet .back').first().click(); await WS.waitForTimeout(600);
+await WS.locator('#sheet label:has(#wx-commute)').click();
+await waitFor(() => kept('sam')?.settings?.commute?.on === true);
+await WS.waitForSelector('#wx-am'); await WS.selectOption('#wx-am', '07:45');
+await WS.locator('#sheet label:has(#wx-tune)').click();
+const kw = await waitFor(() => { const k = kept('sam'); return k?.settings?.commute?.am === '07:45' && k.settings.tune === false ? k : null; });
+ok(kw?.settings?.commute?.on && kw.settings.commute.am === '07:45' && kw.settings.commute.pm && kw.settings.tune === false && kw.places.length === 2,
+  'and there: the commute on, leaving at 07:45, the forecast not tuned, the places as they were', JSON.stringify(kw && { commute: kw.settings.commute, tune: kw.settings.tune, places: kw.places.length }));
+// (put back on the account's page, the units aside, for what follows; Weather takes those up as it next comes into step)
+await WS.locator('#sheet label:has(#wx-tune)').click(); await waitFor(() => kept('sam')?.settings?.tune !== false);
+await WS.locator('#sheet label:has(#wx-commute)').click(); await waitFor(() => kept('sam')?.settings?.commute?.on === false);
+await WS.close();
+// (back in Weather: taken up at once, as it's come back to)
+await P.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await P.p.waitForFunction(() => { const s = JSON.parse(localStorage.getItem('wx:settings')); return s.temp === 'f' && s.commute?.am === '07:45' && s.commute.on === false && s.tune !== false; }, null, { timeout: 15000 }).catch(() => {});
+const sp = await P.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')));
+ok(sp.temp === 'f' && sp.commute?.on === false && sp.commute.am === '07:45' && sp.tune !== false, 'back in Weather: all of it taken up at once', JSON.stringify({ temp: sp.temp, commute: sp.commute, tune: sp.tune }));
+await closeSheet(P);
 await L.p.reload(); await L.p.waitForSelector('.day-row');
 await waitFor(async () => (await places(L)).join() === 'London,Edinburgh');
 ok((await places(L)).join() === 'London,Edinburgh' && (await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)) === 'f', 'the laptop takes up the phone\'s Edinburgh, and °F', `${(await places(L)).join()} ${await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)}`);

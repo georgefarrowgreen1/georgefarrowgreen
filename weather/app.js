@@ -271,7 +271,7 @@ function opened() {
   if (newApp) { location.reload(); return; }
   openedAt = Date.now();
   if ("serviceWorker" in navigator && Date.now() - appAt > 60e3) { appAt = Date.now(); navigator.serviceWorker.getRegistration().then((r) => r?.update()).catch(() => {}); }
-  if (Date.now() - pulledAt > 60e3) pull();
+  if (S.pullNext || Date.now() - pulledAt > 60e3) { S.pullNext = false; pull(); }
   check(true);
   keepNotify();
 }

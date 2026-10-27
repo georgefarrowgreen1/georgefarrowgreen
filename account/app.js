@@ -108,7 +108,7 @@ function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
-const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView };
+const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
@@ -525,8 +525,8 @@ const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; retur
 function signedIn(r) {
   const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
-  // (an app's settings that are the account's, a tap from its card: inflightView, fitnessSetView)
-  const SETS = { inflight: inflightView, fitness: fitnessSetView };
+  // (an app's settings that are the account's, a tap from its card: inflightView, weatherSetView, fitnessSetView)
+  const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView };
   const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
@@ -2649,6 +2649,57 @@ function inflightView() {
     h("div.group", {}, blocked),
     h("p.hint", { text: "Push notifications, Lock InFlight and haptics are set in InFlight, on each phone." }),
     said] };
+}
+
+// ---- Weather's settings that are the account's (functions/api/account weather), signed in and kept with it: its units
+// (the page's own Units), its commute and whether its forecast is tuned for where you are. Its own Settings opens them
+// here (open=weather), with the way back to it; its notifications (each device's), best times, look and the order of its
+// page are set in Weather ----
+let WXS = null, wxFor = null, wxAt = 0;
+function weatherSetView() {
+  if (wxFor !== S.me.id) { WXS = null; wxAt = 0; wxFor = S.me.id; }
+  if (!WXS || Date.now() - wxAt > 5000) {
+    wxAt = Date.now();
+    const who = S.me.id;
+    call("weather").then((r) => { if (who === S.me?.id) { WXS = r; if (Sheet.stack.at(-1) === weatherSetView) redraw(); } },
+      (e) => { if (who === S.me?.id && !WXS) { WXS = { error: e.message }; redraw(); } });
+  }
+  const back = HANDOFF?.open === "weather" && fromApp() === "weather"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Weather") : null;
+  if (!WXS) return { title: "Weather", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (WXS.error) return { title: "Weather", left: back, body: [h("div.group", {}, h("div.empty", { text: WXS.error }))] };
+  // a change, kept as it's made (put back, and why, if it can't be)
+  const change = async (input, patch) => {
+    input.disabled = true;
+    try { WXS = await call("weather", { method: "PATCH", body: patch }); }
+    catch (e) { if (input.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
+    finally { input.disabled = false; if (Sheet.stack.at(-1) === weatherSetView) redraw(); }
+  };
+  const sw = (id, title, sub, on, patch) => {
+    const input = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on });
+    input.onchange = () => change(input, patch(input.checked));
+    return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+  };
+  // (a time, each quarter of an hour)
+  const at = (k, title) => {
+    const times = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`), v = WXS.commute[k];
+    if (!times.includes(v)) times.push(v), times.sort();
+    const sel = h("select", { "aria-label": title, id: `wx-${k}`, name: k }, times.map((t) => h("option", { value: t, selected: t === v, text: t })));
+    const val = h("span.val", { text: v });
+    sel.onchange = () => { val.textContent = sel.value; change(sel, { commute: { [k]: sel.value } }); };
+    return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
+  };
+  const c = WXS.commute, u = { ...unitsHere(), ...(S.me.prefs.units || {}) };
+  return { title: "Weather", left: back, body: [
+    h("p", { text: "For Weather on every device it’s signed in on." }),
+    h("div.group", {}, row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid(u), onclick: () => pushSheet(unitsView) })),
+    h("h4.app-k", { text: "Commute" }),
+    h("div.group", {}, sw("wx-commute", "On weekdays", null, c.on, (v) => ({ commute: { on: v } })), c.on && at("am", "Leave"), c.on && at("pm", "Return")),
+    h("p.hint", { text: "The weather for your journeys there and back, in Highlights." }),
+    h("h4.app-k", { text: "Forecast" }),
+    h("div.group", {}, sw("wx-tune", "Tune highs and lows for here", null, WXS.tune, (v) => ({ tune: v }))),
+    h("p.hint", { text: "Highs, lows and wind put right by how far the forecast has been out where you are lately." }),
+    h("p.hint", { text: "Notifications, Best times, Appearance and Arrange your page are set in Weather." })] };
 }
 
 // ---- Fitness's settings that are the account's (functions/api/account fitness): kilometres or miles, and whether it

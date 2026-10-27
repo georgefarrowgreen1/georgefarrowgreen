@@ -40,6 +40,12 @@ function drawFolders() {
   $("fv-forecast").textContent = s.tune !== false ? "Tuned" : "Off";
   const L = s.layout, usual = L.order.join() === CARDS.map((c) => c[0]).join();
   $("fv-arrange").textContent = usual && !L.off.length ? "As usual" : L.off.length ? `${L.off.length} off` : "Your order";
+  // (signed in, kept with the account: units, commute and forecast on the account's page, as the other apps' settings are,
+  // a row here for them all; signed out, here as ever)
+  const onAcct = !!S.acct && !S.noAcct;
+  for (const k of ["units", "commute", "forecast"]) $("settings").querySelector(`[data-go="${k}"]`).closest("li").hidden = onAcct;
+  $("acct-set").hidden = !onAcct;
+  if (onAcct) $("acct-set-sub").textContent = `${$("fv-units").textContent} · Commute ${s.commute?.on ? "on" : "off"} · ${s.tune !== false ? "Tuned" : "Not tuned"}`;
 }
 
 /* ---------- arranging the page ---------- */
@@ -374,11 +380,13 @@ function drawNotifyAcct() {
 }
 
 
-async function openAccount() {
+async function openAccount(open) {
   const w = window.open("", "_blank");
+  // (and in step with it again as soon as it's back here: what's changed there taken up)
+  S.pullNext = true;
   try {
     const { code } = await A.accountLink();
-    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather" })}`;
+    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather", ...(typeof open === "string" ? { open } : {}) })}`;
     if (w && !w.closed) w.location.href = url; else location.href = url;
   } catch (e) { w?.close(); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
 }
@@ -445,6 +453,7 @@ function addAct() {
 // what's in it, answering from now on (wired once, as this comes)
 const form = $("settings-form");
 $("settings").addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (go) setGo(go.dataset.go); });
+$("acct-set-go").addEventListener("click", () => openAccount("weather"));
 $("set-back").addEventListener("click", setBack);
 // (closed while changing an activity: what's been changed kept)
 $("settings").addEventListener("close", () => { if (actEdit) { const keep = actEdit; actEdit = null; keep(); } });
