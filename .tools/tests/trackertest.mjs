@@ -110,7 +110,7 @@ const ph = await pctx.newPage(); await ph.goto('http://chat.localhost:8788/track
 ok(await ph.isVisible('.tk-phone') && !(await ph.isVisible('.tk-map')), 'on a phone: made for bigger screens');
 await ph.screenshot({ path: `${out}/tracker-phone.png` });
 // the app's switch
-const W = await inflightSettings(G.p);
+const W = await inflightSettings(G.p, 'Who sees what');
 await W.locator('#if-shareTracker').scrollIntoViewIfNeeded(); await W.waitForTimeout(400);
 await W.screenshot({ path: `${out}/tracker-switch.png` });
 ok(await W.isChecked('#if-shareTracker'), 'InFlight Settings has the Live Tracker switch, on');

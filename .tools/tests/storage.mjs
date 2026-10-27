@@ -128,8 +128,17 @@ await ad.goto(AD.page + '/'); await ad.waitForSelector('main .row:has(b:text-is(
 await ad.click('main .row:has(b:text-is("Admin"))'); await ad.click('#sheet .row:has(b:text-is("Storage"))');
 await ad.waitForFunction(() => /Database/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 30000 }).catch(() => {});
 const panel = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
-ok(/Database \d/.test(panel) && /pg_flights 4/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
+ok(/across the site/.test(panel) && /Database \d/.test(panel) && /By app/i.test(panel) && ['Fitness', 'InFlight', 'Home page', 'Weather', 'Accounts'].every((a) => panel.includes(a))
+  && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage, for the whole site: its size, the database and the files, each app’s share, what’s waiting to go', panel.slice(0, 300));
 await ad.screenshot({ path: `${out}/storage-panel.png` });
+await ad.click('#sheet .st-app:has(b:text-is("InFlight"))'); await ad.waitForSelector('#sheet h2:text-is("InFlight")'); await ad.waitForTimeout(700);
+const inf = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
+ok(/% of the site/.test(inf) && /Database About \d/.test(inf) && /Flights 4/.test(inf) && /People \d/.test(inf) === false, 'InFlight’s own page: its share, its database (an estimate), its tables (the accounts’ not among them)', inf.slice(0, 300));
+await ad.screenshot({ path: `${out}/storage-inflight.png` });
+await ad.click('#sheet .sheet-head .back'); await ad.waitForTimeout(600);
+await ad.click('#sheet .st-app:has(b:text-is("Accounts"))'); await ad.waitForSelector('#sheet h2:text-is("Accounts")'); await ad.waitForTimeout(700);
+const acc = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
+ok(/People \d/.test(acc) && /Signed in \d/.test(acc), 'and the accounts’ page: people and sign-ins', acc.slice(0, 300));
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
 process.exit(0);

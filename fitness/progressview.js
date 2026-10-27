@@ -1,7 +1,7 @@
 // Fitness's Progress: how you're coming on, the story first; power, training and engine, each a sheet (progress.js
 // has the figures). Drawn by app.js render.
 
-import { nightsFrom, nightsSeries, U, distNum, stat, shareView, pushSheet } from "./app.js";
+import { nightsFrom, nightsSeries, U, distNum, stat, shareView, pushSheet, wide } from "./app.js";
 import * as SH from "./share.js";
 import { nightsView } from "./today.js";
 import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
@@ -58,21 +58,24 @@ function progressView() {
     h("button.p-tile.p-form", { type: "button", onclick: () => openSheet(formView) }, svgOf(ringSvg(Math.max(0, Math.min(1, (last.tsb + 30) / 50)), signed(last.tsb), "form")), h("span.tx", {}, h("small", { text: "Form" }), h("b", { text: said2.word }), h("small", { text: said2.tone === "fresh" ? "Ready for a hard day" : said2.tone === "high" ? "Time for an easy day" : said2.tone === "productive" ? "Getting fitter" : "Steady" })))));
   // your nights, the last two months, against your training (from your Apple Watch or Garmin, where they come in)
   const src = nightsFrom(), ns = src ? nightsSeries(60) : null, had = ns ? ns.filter((x) => x.hrv != null || x.rhr != null || x.sleep != null).length : 0;
-  if (had >= 3) out.push(section(["Recovery", h("span.aside", { text: src === "apple" ? "Apple Watch" : "Garmin" })],
-    h("button.card.glass.p-nights", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": "Your nights, in full" }, C.nightsChart(ns, { W: cardW() }))));
+  if (had >= 3) out.push(half(section(["Recovery", h("span.aside", { text: src === "apple" ? "Apple Watch" : "Garmin" })],
+    h("button.card.glass.p-nights", { type: "button", onclick: () => openSheet(nightsView, { tall: true }), "aria-label": "Your nights, in full" }, C.nightsChart(ns, { W: cardW(false, 0.5) })))));
   // your history, where there's most of a year of it: this year against last, the bests of all time, each year's peak
   if (Math.min(...acts.map((a) => a.start)) < addDays(TODAY, -300)) out.push(...historySection(acts, f));
   // what stands out
   const cards = insights(acts, from);
-  out.push(section(["What stands out", h("span.aside", { text: cards.length > 1 ? `${cards.length} things` : "" })], cards.length ? h("div.p-cards", {}, cards) : h("p.foot.none", { text: "Ride a few more weeks, and what stands out shows here." })));
-  // every day, the last 26 weeks
-  out.push(section(["Every day", h("span.aside", { text: `${new Set(acts.filter((a) => a.start >= addDays(TODAY, -181)).map((a) => startOfDay(a.start))).size} days riding` })], calendarCard(acts)));
-  out.push(section(null, h("div.group.glass", {},
+  out.push(half(section(["What stands out", h("span.aside", { text: cards.length > 1 ? `${cards.length} things` : "" })], cards.length ? h("div.p-cards", {}, cards) : h("p.foot.none", { text: "Ride a few more weeks, and what stands out shows here." }))));
+  // every day, the last 26 weeks (on a computer, the last year)
+  const cw = wide() ? 52 : 26;
+  out.push(section(["Every day", h("span.aside", { text: `${new Set(acts.filter((a) => a.start >= addDays(TODAY, -cw * 7 + 1)).map((a) => startOfDay(a.start))).size} days riding` })], calendarCard(acts, cw)));
+  out.push(section(null, h("div.group.glass.p-more", {},
     row({ icon: "medal", tint: "amber", title: "Power", sub: "Your curve, records and what kind of rider", onclick: () => openSheet(powerView, { tall: true }) }),
     row({ icon: "list", tint: "blue", title: "Training", sub: "Volume, consistency and how hard", onclick: () => openSheet(trainingView, { tall: true }) }),
     row({ icon: "heart", tint: "red", title: "Engine", sub: "FTP, efficiency and staying power", onclick: () => openSheet(engineView, { tall: true }) }))));
   return out;
 }
+// (on a computer, a section that takes half the grid's width: styles.css)
+const half = (el) => { el.classList.add("p-half"); return el; };
 // ---- your history ----
 const fullDist = (m) => { const [v, u] = distNum(m); return `${Number(v) >= 100 ? Math.round(Number(v)).toLocaleString("en-GB") : v} ${u}`; };
 function historySection(acts, f) {
@@ -82,15 +85,15 @@ function historySection(acts, f) {
   const pk = G.peaks(f), years = Object.keys(pk).map(Number).filter((x) => x >= first).sort((a, b) => b - a).slice(0, 5), top = Math.max(1, ...years.map((x) => pk[x].ctl));
   const bests = G.allTime(acts, TODAY);
   return [
-    section(["Your history", h("span.aside", { text: `Since ${first}` })],
+    half(section(["Your history", h("span.aside", { text: `Since ${first}` })],
       h("button.card.glass.p-history", { type: "button", onclick: () => openYear(y), "aria-label": `${y} so far: ${fullDist(at[1])}. Your year in review` },
         h("div.ph-top", {}, h("div", {}, h("small", { text: `${y} so far` }), h("b", {}, Number(v) >= 100 ? Math.round(Number(v)).toLocaleString("en-GB") : v, h("u", { text: ` ${u}` }))),
           pct != null && h("span.ph-vs" + (pct > 0 ? ".up" : pct < 0 ? ".down" : ""), { text: pct ? `${pct > 0 ? "+" : "−"}${Math.abs(pct)}% on ${y - 1} by now` : `Level with ${y - 1} by now` })),
-        C.yearsChart(cur, prev, { W: cardW(), km, unit, years: [y, y - 1] }),
-        h("div.n-key", {}, h("span", {}, h("i.k-cur"), String(y)), prev.at(-1)?.[1] > 0 && h("span", {}, h("i.k-prev"), String(y - 1)), h("span.ph-more", {}, "Year in review", icon("chev", 13, 2.6))))),
-    section("All-time bests", h("div.group.glass.ph-bests", {}, bests.map((b) => h("div.row.plain", {}, h("span.ph-len", { text: b.short }),
+        C.yearsChart(cur, prev, { W: cardW(false, 0.5), km, unit, years: [y, y - 1] }),
+        h("div.n-key", {}, h("span", {}, h("i.k-cur"), String(y)), prev.at(-1)?.[1] > 0 && h("span", {}, h("i.k-prev"), String(y - 1)), h("span.ph-more", {}, "Year in review", icon("chev", 13, 2.6)))))),
+    half(section("All-time bests", h("div.group.glass.ph-bests", {}, bests.map((b) => h("div.row.plain", {}, h("span.ph-len", { text: b.short }),
       h("span.tx", {}, h("b", { text: `${b.ever.w} W` }), h("small.one-line", { text: `${G.yearOf(b.ever.start)} · ${b.ever.name}` })),
-      h("span.val.ph-yr" + (b.isBest ? ".best" : ""), { text: b.isBest ? `Set in ${y}` : b.year ? `${b.year.w} W in ${y}` : `None in ${y}` }))))),
+      h("span.val.ph-yr" + (b.isBest ? ".best" : ""), { text: b.isBest ? `Set in ${y}` : b.year ? `${b.year.w} W in ${y}` : `None in ${y}` })))))),
     years.length > 1 && section("Fitness at its peak", h("div.card.glass.ph-peaks", {}, years.map((x) => h("div.pk-row" + (x === y ? ".now" : ""), {},
       h("small", { text: String(x) }), h("span.pk-bar", {}, h("i", { vars: { width: Math.max(4, (pk[x].ctl / top) * 100) + "%" } })), h("b", { text: String(Math.round(pk[x].ctl)) }),
       h("small.pk-when", { text: new Date(pk[x].day).toLocaleDateString("en-GB", { month: "short" }) }))))),
@@ -146,7 +149,7 @@ function ringSvg(frac, word, cls) {
 // fitness over the range, glowing; a dotted line to where it's heading; and a record, where there's one
 function heroChart(pts, proj, from, acts, aheadDays) {
   if (pts.length < 2) return null;
-  const W = cardW(true), H = 150, B = 26, n = pts.length, step = Math.max(1, Math.floor(n / 90)), use = pts.filter((_, i) => i % step === 0 || i === n - 1);
+  const W = cardW(true, 8 / 12), H = wide() ? 190 : 150, B = 26, n = pts.length, step = Math.max(1, Math.floor(n / 90)), use = pts.filter((_, i) => i % step === 0 || i === n - 1);
   const ahead = proj ? aheadDays : 0, span = Math.max(1, TODAY - from + ahead * DAY), vs = [...use.map((p) => p.ctl), proj || 0], lo = Math.min(...vs) * 0.9, hi = Math.max(...vs) * 1.06 || 1;
   const x = (d) => ((d - from) / span) * (W - 6) + 3, y = (v) => H - B - ((v - lo) / (hi - lo)) * (H - B - 14);
   const line = use.map((p, i) => `${i ? "L" : "M"}${x(p.day).toFixed(1)} ${y(p.ctl).toFixed(1)}`).join(""), lx = x(TODAY), ly = y(pts.at(-1).ctl);
@@ -183,16 +186,16 @@ function insights(acts, from) {
   if (st.now >= 3) out.push(card("green", "check", "Consistency", `${st.now} weeks in a row`, `Riding twice a week or more.${st.best > st.now ? ` Your best run: ${st.best} weeks.` : " Your best run yet."}`, () => openSheet(trainingView, { tall: true })));
   return out;
 }
-// every day of the last 26 weeks, a square each, deeper the harder it was
-function calendarCard(acts) {
-  const first = addDays(mondayOf(TODAY), -7 * 25), d = G.daily(acts, TODAY, 182 + 7), cells = [];
+// every day of the last 26 weeks (or n), a square each, deeper the harder it was
+function calendarCard(acts, n = 26) {
+  const first = addDays(mondayOf(TODAY), -7 * (n - 1)), d = G.daily(acts, TODAY, n * 7 + 7), cells = [];
   const lvl = (t) => (t <= 0 ? 0 : t < 40 ? 1 : t < 80 ? 2 : t < 120 ? 3 : 4);
-  for (let c = 0; c < 26; c++) for (let r = 0; r < 7; r++) {
+  for (let c = 0; c < n; c++) for (let r = 0; r < 7; r++) {
     const day = addDays(first, c * 7 + r), i = Math.round((day - d.from) / DAY);
     cells.push(day > TODAY ? h("i.future") : h("i.l" + lvl(d.tss[i] || 0), { title: dayShort(day) }));
   }
-  const months = []; for (let c = 0; c < 26; c += 1) { const day = addDays(first, c * 7); if (new Date(day).getDate() <= 7) months.push(h("span", { vars: { "--c": c }, text: monthOf(day, "short") })); }
-  return h("div.card.glass.p-cal", {}, h("div.p-cal-grid", { role: "img", "aria-label": "Each day of the last six months, deeper the harder it was" }, cells),
+  const months = []; for (let c = 0; c < n; c += 1) { const day = addDays(first, c * 7); if (new Date(day).getDate() <= 7) months.push(h("span", { vars: { "--c": c }, text: monthOf(day, "short") })); }
+  return h("div.card.glass.p-cal", { vars: { "--n": n } }, h("div.p-cal-grid", { role: "img", "aria-label": `Each day of the last ${n > 26 ? "year" : "six months"}, deeper the harder it was` }, cells),
     h("div.p-cal-foot", {}, h("div.p-cal-months", {}, months), h("span.p-cal-key", {}, "Less", [0, 1, 2, 3, 4].map((l) => h("i.l" + l)), "More")));
 }
 

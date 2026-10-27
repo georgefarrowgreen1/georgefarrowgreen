@@ -3,9 +3,9 @@
 
 import * as TC from "./todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
-import { dayChanges, dlFor, download, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
+import { dayChanges, dlFor, download, moveView, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
-import { mapsAlways } from "./app.js";
+import { mapsAlways, wide } from "./app.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
 
 // ---- Today ----
@@ -29,10 +29,19 @@ function todayView() {
       h("div.gos", {}, h("button.go", { type: "button", onclick: chooseFiles }, "Import files"), h("button.go", { type: "button", onclick: () => setExamples(false) }, "Use only my rides")))));
   }
   const planned = rhythmOn() || myPlan();
-  if (planned) out.push(dayStrip(sel));
-  if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
+  // (on a computer: the two weeks as one grid across the top, the day under it, and beside it only what decides the
+  // day: the morning's check-in and what Rhythm says; the week and where it's heading are the grid's and Progress's)
+  if (wide()) {
+    if (planned) out.push(weekGrid(sel));
+    if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
+    right.push(isToday && morningCard(w), rhythmSays(), isToday && reviewCard(), planRows());
+    out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
+    return out;
+  }
+  if (planned) out.push(dayStrip(sel));
+  if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
   left.push(rhythmSays(), isToday && morningCard(w), isToday && reviewCard());
   right.push(planned && weekCard(), headingCard(), planRows());
@@ -49,6 +58,11 @@ const lookAt = (d) => {
   S.dayFx = d > was ? "next" : "prev";
   morph("day", show);
 };
+// ← and →: the day before or after, within the weeks Today shows (last week to the end of next)
+function stepDay(k) {
+  const lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13), d = addDays(S.dayAt ?? TODAY, k);
+  if (d >= lo && d <= hi && (rhythmOn() || myPlan())) lookAt(d);
+}
 // what's on a day: Rhythm's (or the plan's) session, as changed; null for rest
 const idOn = (d) => { const id = plannedOn(d); return id ?? null; };
 // a ride's colour by how hard it is (todaycalc.js), a run's or swim's the tint
@@ -75,6 +89,49 @@ function dayStrip(sel) {
     h("div.strip-days", {}, days.map((d) => { const r = ring(d);
       return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", vars: d === sel ? { "view-transition-name": "sday-on" } : null, "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), svgOf(`<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${r.svg}</svg>`)); })));
+}
+// On a computer, both weeks as one grid (this week and next, or last and this when looking back): each day what's on it,
+// its shape and how it went, a click to look at it, and a session dragged to another day to move it there (Rhythm's
+// days ahead, the week as it'd then be shown before it's kept: plan.js moveView)
+let dragFrom = null;
+const dragDone = () => { document.body.classList.remove("day-drag"); if (redraw.later) { redraw.later = false; redraw(); } };
+// (and should a drag end without saying so, the next click or key ends it)
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { if (document.body.classList.contains("day-drag")) dragDone(); }, true);
+function weekGrid(sel) {
+  const thisMon = mondayOf(TODAY), first = mondayOf(sel) < thisMon ? addDays(thisMon, -7) : thisMon;
+  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const ahead = new Set((rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY));
+  const movable = (d) => rhythmOn() && d >= TODAY && !actsOn(d).length && !!idOn(d) && idOn(d) !== "event";
+  const cell = (d) => {
+    const id = idOn(d), w = id && id !== "event" ? wkById(id) : null, did = actsOn(d), m = w ? measure(w, paceFor(w.sport)) : null;
+    const kind = TC.dayKindOf({ day: d, today: TODAY, began, id, did: did.length }), later = unplanned(d) && !did.length;
+    const title = later ? "Not planned yet" : did.length ? did[0].name : w ? w.name : id === "event" ? "Event" : "Rest";
+    const sub = later ? "Planned nearer the time" : did.length ? `${did.length > 1 ? `${did.length} activities · ` : ""}${hmOf(did.reduce((a, x) => a + (sumOf(x)?.moving || 0), 0))}`
+      : w ? `${hmOf(m.secs)}${kind === "missed" ? " · missed" : ""}` : id === "event" ? plan()?.name || "Your event" : d < TODAY ? "Rested" : d === TODAY ? "Let it sink in" : "";
+    const drag = movable(d) && {
+      draggable: "true",
+      ondragstart: (e) => { dragFrom = d; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", w ? w.name : "Session"); e.currentTarget.classList.add("dragging"); document.body.classList.add("day-drag"); },
+      ondragend: (e) => { dragFrom = null; e.currentTarget.classList.remove("dragging"); document.querySelectorAll(".gday.drop-on").forEach((x) => x.classList.remove("drop-on")); dragDone(); },
+    };
+    const target = {
+      ondragover: (e) => { if (dragFrom == null || dragFrom === d || !ahead.has(d)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; e.currentTarget.classList.add("drop-on"); },
+      ondragleave: (e) => e.currentTarget.classList.remove("drop-on"),
+      ondrop: (e) => { if (dragFrom == null || !ahead.has(d)) return; e.preventDefault(); const from = dragFrom; dragFrom = null; dragDone(); openSheet(() => moveView(from, d)); },
+    };
+    return h("button.gday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : "") + (did.length ? ".did" : "") + (!w && !did.length && id !== "event" ? ".rest" : "") + (kind === "missed" ? ".missed" : "") + (d < TODAY ? ".past" : ""),
+      { type: "button", "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${title}${sub ? `, ${sub}` : ""}`, onclick: () => lookAt(d), ...drag, ...target },
+      h("small", { text: `${dayName(d).slice(0, 3)} ${new Date(d).getDate()}${d === TODAY ? " · today" : ""}` }), h("b", { text: title }), sub && h("em", { text: sub }),
+      w && !did.length && !later && h("span.mini", {}, C.profile(w, { mini: true, ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport) })),
+      did.length ? h("span.g-ok", {}, icon("check", 12, 3)) : null);
+  };
+  const week = (mon) => {
+    const ds = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), name = mon === thisMon ? "This week" : mon > thisMon ? "Next week" : "Last week";
+    const planned = ds.reduce((a, d) => { const id = idOn(d), w = id && id !== "event" ? wkById(id) : null; return a + (w ? measure(w, paceFor(w.sport)).secs : 0); }, 0);
+    const done = ds.reduce((a, d) => a + actsOn(d).reduce((b, x) => b + (sumOf(x)?.moving || 0), 0), 0);
+    const said = mon > thisMon ? (planned ? `${dur(planned)} planned` : "") : done || planned ? `${dur(done)} done${planned && mon === thisMon ? ` of ${dur(planned)}` : ""}` : "";
+    return h("div.wg-week", {}, h("h3", {}, name, said && h("span.aside", { text: said })), h("div.wg-days", {}, ds.map(cell)));
+  };
+  return h("nav.wgrid.glass", { "aria-label": "Two weeks" }, week(first), week(addDays(first, 7)));
 }
 // Both weeks as a list: each day, what's on it, its shape, and how it went
 function agenda(sel) {
@@ -605,4 +662,4 @@ function askToday() {
   setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
 
-export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, nightsView, todayView };
+export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, nightsView, stepDay, todayView };

@@ -1164,8 +1164,8 @@ async function adminSummary({ request, env, waitUntil }) {
   const m = Object.fromEntries((meta.results || []).map((r) => [r.k, JSON.parse(r.v)]));
   // (the files' size, as the Storage sheet last counted it: counted now the first time, again in the background once it's old)
   let files = m.files_size;
-  if (!files) files = { bytes: (await storageReport(env, D, t)).files.reduce((a, f) => a + f.bytes, 0), at: t };
-  else if (t - files.at > FILES_STALE) waitUntil(storageReport(env, D, t).catch(() => {}));
+  if (!files) files = { bytes: (await storageReport(env, D, t, { rows: false })).files.reduce((a, f) => a + f.bytes, 0), at: t };
+  else if (t - files.at > FILES_STALE) waitUntil(storageReport(env, D, t, { rows: false }).catch(() => {}));
   const dbBytes = main.meta?.size_after ?? null;
   const [msgs, photos, edits] = await Promise.all([messageCounts(env).catch(() => null), homePhotos(env).catch(() => []), getHistory(env).catch(() => [])]);
   // (the scheduled jobs: when each last ran; and what's gone wrong on the server today, the latest few)

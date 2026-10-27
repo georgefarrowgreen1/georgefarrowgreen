@@ -328,22 +328,81 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("insights", true); redraw(); } }, AD.busy.insights ? "Counting…" : "Count again"))] };
   }
 
-  // Storage: what's kept, and how much (functions/_retention.js)
-  const bytes = (n) => (n == null ? "–" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
-  const FILES = { "pigeon/": "Photos and voice", "pigeon-g/": "Group photos", "pigeon-avatars/": "Profile pictures", "bg/": "Site backgrounds" };
+  // Storage: what's kept across the site, and how much, by app; each app's own page one tap on (functions/_retention.js)
+  const bytes = (n) => (n == null ? "–" : n < 1024 ? `${Math.round(n)} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
+  const ST_APPS = [["fitness", "Fitness", "#f2552c"], ["inflight", "InFlight", "#2f7bf6"], ["home", "Home page", "#a855f7"], ["weather", "Weather", "#3ab0f0"], ["account", "Accounts", "#8e8e93"]];
+  const ST_KINDS = { photos: "Photos and voice", group: "Group photos", avatars: "Profile pictures", posters: "Card photos", bg: "Site backgrounds",
+    rides: ["Ride and run files", "FIT, GPX and TCX"], garmin: "From Garmin, not yet read", strava: "From Strava, not yet read" };
+  const ROWS = { fx_acts: "Activities", fx_well: "Nights and check-ins", fx_health: "From Apple Health", fx_health_key: "Apple Health links", fx_state: "Plans and settings",
+    fx_garmin: "Linked to Garmin", fx_garmin_new: "Waiting from Garmin", fx_strava: "Linked to Strava", fx_strava_new: "Waiting from Strava", fx_push: "Phones with reminders", fx_meta: "Its own notes",
+    wx_subs: "Places with notifications", wx_devs: "Devices", wx_accts: "Accounts’ places and settings", wx_obs: "Observations kept", wx_meta: "Its own notes",
+    messages: "Messages from the contact form",
+    pg_users: "People", pg_sessions: "Signed in", pg_passkeys: "Passkeys", pg_challenges: "Sign-ins under way", pg_resets: "Password resets", pg_handoff: "Into an app, signed in",
+    pg_handback: "Back from an app, signed in", pg_handles_held: "Handles held", pg_invites: "Invites", pg_events: "Account emails’ links", pg_limits: "Rate limits",
+    pg_errors: "Server errors", pg_admin_log: "Admin log", pg_meta: "Its own notes", pg_active: "Days active",
+    pg_msgs: "Letters", pg_gmsgs: "Group letters", pg_gdeliv: "Group deliveries", pg_flights: "Flights", pg_reacts: "Reactions", pg_near: "Near misses", pg_flyover: "Fly-overs",
+    pg_stamped: "Stamps", pg_passport: "Passport places", pg_postmarks: "Postmarks", pg_feathers: "Feathers", pg_birds: "Named pigeons", pg_kit: "Kit", pg_links: "Friends",
+    pg_groups: "Groups", pg_group_members: "Group members", pg_gevents: "Group events", pg_push: "Phones with notifications", pg_streaks: "Streaks", pg_ids: "Message IDs",
+    pg_wxcache: "Weather on the way", pg_vanish: "Vanishing chats" };
+  // (each app: its share of the database (an estimate: its tables' share of what's in them), its files, its tables)
+  function storageApps(s) {
+    const raw = {}, all = s.tables.reduce((a, t) => a + (t.bytes || 0), 0);
+    for (const t of s.tables) raw[t.app] = (raw[t.app] || 0) + (t.bytes || 0);
+    return ST_APPS.map(([id, name, colour]) => {
+      const files = s.files.filter((f) => f.app === id), fn = files.reduce((a, f) => a + f.n, 0), fb = files.reduce((a, f) => a + f.bytes, 0);
+      const db = s.dbBytes != null && all ? (s.dbBytes * (raw[id] || 0)) / all : null;
+      return { id, name, colour, db, files, fn, fb, total: (db || 0) + fb, tables: s.tables.filter((t) => t.app === id) };
+    }).sort((a, b) => b.total - a.total);
+  }
+  const rowsIn = (s, ...names) => s.tables.filter((t) => names.includes(t.name)).reduce((a, t) => a + t.rows, 0);
+  const filesIn = (s, ...kinds) => s.files.filter((f) => kinds.includes(f.kind)).reduce((a, f) => a + f.n, 0);
+  const storageSub = (s, id) => ({
+    fitness: () => `${nOf(filesIn(s, "rides"), "ride file")} · ${nOf(rowsIn(s, "fx_acts"), "activity", "activities")}`,
+    inflight: () => `${nOf(filesIn(s, "photos", "group"), "photo")} · ${nOf(rowsIn(s, "pg_msgs", "pg_gmsgs"), "letter")}`,
+    home: () => `${nOf(filesIn(s, "bg"), "background")} · ${nOf(rowsIn(s, "messages"), "message")}`,
+    weather: () => `${nOf(rowsIn(s, "wx_subs"), "place")} · ${nOf(rowsIn(s, "wx_devs"), "device")}`,
+    account: () => `${nOf(rowsIn(s, "pg_users"), "person", "people")} · ${nOf(filesIn(s, "avatars", "posters"), "profile photo")}`,
+  })[id]();
+  const appPic = (id, size = 30) => ["fitness", "inflight", "weather"].includes(id) ? h("img.st-pic", { src: `/apps/${id}.png`, alt: "", width: size, height: size })
+    : h(`span.ic.${id === "home" ? "indigo" : "grey"}${size > 30 ? ".big" : ""}`, {}, icon(id === "home" ? "home" : "person", size > 30 ? 34 : 19));
+  const painted = (el, props) => { for (const [k, v] of Object.entries(props)) el.style.setProperty(k, v); return el; };
+  const countAgain = () => h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("storage", true); redraw(); } }, AD.busy.storage ? "Counting…" : "Count again"));
   function admStorageView() {
     const s = admAsk("storage");
     if (!s) return { title: "Storage", body: [admWait("storage")] };
-    const files = s.files.reduce((a, f) => ({ n: a.n + f.n, b: a.b + f.bytes }), { n: 0, b: 0 });
+    const apps = storageApps(s), total = apps.reduce((a, x) => a + x.total, 0), files = s.files.reduce((a, f) => ({ n: a.n + f.n, b: a.b + f.bytes }), { n: 0, b: 0 });
     return { title: "Storage", body: [
-      h("div.group", {}, admInfo("Database", bytes(s.dbBytes)), admInfo("Files", `${num(files.n)} · ${bytes(files.b)}`), admInfo("Message words", bytes(s.words)), admInfo("Flight paths", bytes(s.ways))),
+      h("div.st-total", {},
+        h("div.st-big", {}, h("b", { text: bytes(total) }), h("span", { text: "across the site" })),
+        h("div.st-stack", { "aria-hidden": "true" }, apps.filter((a) => a.total > 0).map((a) => painted(h("i"), { flex: `${a.total} 0 0`, background: a.colour }))),
+        h("div.st-legend", {}, apps.map((a) => h("span", {}, painted(h("i"), { background: a.colour }), a.name, h("em", { text: bytes(a.total) })))),
+        h("div.st-split", {}, h("span", {}, "Database ", h("b", { text: bytes(s.dbBytes) })), h("span", {}, "Files ", h("b", { text: `${num(files.n)} · ${bytes(files.b)}` })))),
+      h("h4.app-k", { text: "By app" }),
+      h("div.group", {}, apps.map((a) => h("button.row.st-app", { type: "button", "data-k": `st-${a.id}`, onclick: () => pushSheet(() => admStorageApp(a.id)) },
+        appPic(a.id),
+        h("span.tx", {}, h("b", { text: a.name }), h("small", { text: storageSub(s, a.id) }),
+          h("span.st-bar", { "aria-hidden": "true" }, painted(h("i"), { width: `${total ? Math.max(1, (a.total / total) * 100) : 0}%`, background: a.colour }))),
+        h("span.val", { text: bytes(a.total) }), h("span.chev", {}, icon("chev", 16, 2.4))))),
       h("h4.app-k", { text: "Cleaning up" }),
       h("div.group", {}, admInfo("Last run", s.keptAt ? seenAt(s.keptAt) : "Not yet"), admInfo(`Messages over ${s.keepDays} days`, num(s.due)), admInfo("Unused accounts warned", num(s.warned))),
-      h("h4.app-k", { text: "Files" }),
-      h("div.group", {}, s.files.length ? s.files.map((f) => admInfo(FILES[f.prefix] || f.prefix, `${num(f.n)}${f.more ? "+" : ""} · ${bytes(f.bytes)}`)) : h("div.empty", { text: "No file storage." })),
+      countAgain()] };
+  }
+  // one app's: its total and share, its database and files, its files by kind, and its tables' rows
+  function admStorageApp(id) {
+    const s = admAsk("storage");
+    const a = s && storageApps(s).find((x) => x.id === id);
+    if (!a) return { title: ST_APPS.find((x) => x[0] === id)[1], body: [admWait("storage")] };
+    const total = storageApps(s).reduce((t, x) => t + x.total, 0);
+    return { title: a.name, quiet: true, body: [
+      h("div.app-head.set", {}, appPic(a.id, 64), h("b", { text: a.name }), h("span", { text: `${bytes(a.total)} · ${pct(a.total, total)}% of the site` })),
+      h("div.group", {}, admInfo("Database", a.db == null ? "–" : `About ${bytes(a.db)}`), admInfo("Files", `${num(a.fn)} · ${bytes(a.fb)}`),
+        id === "inflight" && [admInfo("Message words", bytes(s.words)), admInfo("Flight paths", bytes(s.ways))]),
+      a.files.length > 0 && [h("h4.app-k", { text: "Files" }),
+        h("div.group", {}, a.files.map((f) => { const k = ST_KINDS[f.kind] || f.prefix, [t, sub] = Array.isArray(k) ? k : [k];
+          return h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t }), sub && h("small", { text: sub })), h("span.val", { text: `${num(f.n)}${f.more ? "+" : ""} · ${bytes(f.bytes)}` })); }))],
       h("h4.app-k", { text: "Rows" }),
-      h("div.group", {}, s.tables.map((t) => admInfo(t.name, num(t.rows)))),
-      h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("storage", true); redraw(); } }, AD.busy.storage ? "Counting…" : "Count again"))] };
+      h("div.group", {}, a.tables.length ? a.tables.map((t) => admInfo(ROWS[t.name] || t.name, num(t.rows))) : h("div.empty", { text: "Nothing kept yet." })),
+      h("p.hint", { text: "The database’s size is for the whole site: each app’s is its share of what’s in it, so an estimate. Files are exact." })] };
   }
 
   // Email: whether it's on, who it's from, and a test to your own inbox

@@ -381,6 +381,9 @@ await shot(D, '18-light-sheet');
 await closeSheet(D);
 await D.p.setViewportSize({ width: 1280, height: 860 }); await settle(D, 400);
 await shot(D, '19-wide');
+await D.p.emulateMedia({ colorScheme: 'dark' }); await settle(D, 400); await shot(D, '19b-wide-dark');
+await D.p.setViewportSize({ width: 1500, height: 940 }); await settle(D, 400); await shot(D, '19c-wider-dark');
+await D.p.emulateMedia({ colorScheme: 'light' });
 
 // ---- 9. Deleting the account: typed to confirm; then in 7 days, unless it's kept ----
 // (at the foot of Your data's sheet, apart, and asked again in a sheet of its own)

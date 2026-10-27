@@ -127,7 +127,7 @@ r = await tick(); ok(r.landed === 0, 'no repeat notification for the same pigeon
 // ---- settings: each one changes what arrives ----
 const gPrefs = () => JSON.parse(/"notify_prefs": "(.*)"/.exec(sql(`SELECT notify_prefs FROM pg_users WHERE id = '${gId}'`))[1].replace(/\\"/g, '"'));
 // (InFlight Settings: the account's page, at InFlight's settings; each switch saved as it's flipped)
-const W = await inflightSettings(G.p);
+const W = await inflightSettings(G.p, 'Notifications');
 const flip = async (k) => { await W.click('#if-' + k); await W.waitForFunction((k) => !document.getElementById('if-' + k)?.disabled, k); await W.waitForTimeout(300); };
 ok(gPrefs().tz === 'Europe/London', 'quiet hours use the phone’s time zone', gPrefs().tz);
 await W.screenshot({ path: `${out}/notify-sheet.png` });

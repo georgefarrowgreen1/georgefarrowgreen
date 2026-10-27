@@ -61,7 +61,7 @@ const back = where();
 ok(back.loc_approx === 0 && Math.abs(back.lat / step - Math.round(back.lat / step)) > 1e-3, 'turned off: precise to a mile again from the next update', JSON.stringify(back));
 // the switch: InFlight Settings, on the account's page
 await G.p.reload(); await G.p.waitForSelector('.tabs');
-const W = await inflightSettings(G.p);
+const W = await inflightSettings(G.p, 'Who sees what');
 await W.locator('#if-approxLocation').scrollIntoViewIfNeeded(); await W.click('#if-approxLocation');
 await W.waitForFunction(() => !document.getElementById('if-approxLocation').disabled && document.getElementById('if-approxLocation').checked, null, { timeout: 8000 });
 ok(where().loc_approx === 1, 'InFlight Settings → Approximate Location turns it on');

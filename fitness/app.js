@@ -28,10 +28,10 @@ import * as G from "./progress.js";
 import * as M from "./map.js";
 import * as BT from "./besttime.js";
 import * as E from "./efforts.js";
-import { askToday, todayView } from "./today.js";
+import { askToday, stepDay, todayView } from "./today.js";
 import { dayStamp, download, planView, rhythmSetup } from "./plan.js";
 import { progressView } from "./progressview.js";
-import { activitiesView, figuresOf, openAct, routes, uploadFilesView, withFigures } from "./activities.js";
+import { activitiesView, figuresOf, openAct, routes, stepAct, uploadFilesView, withFigures } from "./activities.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -328,9 +328,46 @@ function fitnessSeriesNow() {
 // ---- the page ----
 // (three: Today has the plan's days too, Plan having gone into it)
 const TABS = [["today", "Today", "today"], ["activities", "Activities", "list"], ["progress", "Progress", "trend"]];
+// On a computer the tab bar is a sidebar down the left (styles.css): the tabs, Upload, and you at its foot, which a phone
+// keeps in the screens' own tops instead
 function drawTabs() {
-  tabsEl.replaceChildren(...TABS.map(([id, name, ic], i) => h("button.tab", { type: "button", "aria-current": S.tab === id ? "page" : null, onclick: () => go(id) }, icon(ic, 24, 1.9), name)));
+  tabsEl.replaceChildren(
+    h("div.side-brand.side-only", {}, h("img", { src: "icon.svg", alt: "", width: 30, height: 30 }), h("span.tl", { text: "Fitness" })),
+    ...TABS.map(([id, name, ic], i) => h("button.tab", { type: "button", title: name, "aria-keyshortcuts": String(i + 1), "aria-current": S.tab === id ? "page" : null, onclick: () => go(id) }, icon(ic, 24, 1.9), h("span.tl", { text: name }), h("kbd", { text: String(i + 1) }))),
+    h("button.tab.side-only", { type: "button", title: "Upload files", "aria-keyshortcuts": "U", onclick: () => openSheet(uploadFilesView) }, icon("upload", 22, 1.9), h("span.tl", { text: "Upload files" }), h("kbd", { text: "U" })),
+    h("button.side-me.side-only", { type: "button", title: "You and settings", onclick: () => openSheet(settingsView) }, h("span.round.me", {}, face()), h("span.tl", {}, h("b", { text: S.me?.name?.split(" ")[0] || "You" }), h("small", { text: "You and settings" }))));
   tabsEl.style.setProperty("--tab", TABS.findIndex(([id]) => id === S.tab));
+}
+// ---- on a computer: wider than a phone, the sidebar; wider still (1100px), each screen laid out across it ----
+const wideQ = matchMedia("(min-width: 1100px)"), sideQ = matchMedia("(min-width: 760px)");
+const wide = () => wideQ.matches;
+// (the page's width without its scroll bar, less the sidebar; the content as wide as that, up to 1560px, less its margins)
+const sideW = () => (wideQ.matches ? 252 : sideQ.matches ? 100 : 0);
+const mainW = () => Math.min(document.documentElement.clientWidth - sideW(), 1560) - 64;
+// (a part of the content's width: two-thirds of it, half, a twelfth-column grid's span, less the gap)
+const partW = (part) => Math.round((mainW() + 20) * part - 20);
+for (const q of [wideQ, sideQ]) q.addEventListener("change", () => { if (S.me) { drawTabs(); redraw(true); } });
+// (the charts drawn to the width they're shown at: drawn again once the window's done changing size)
+let sizeT = null;
+addEventListener("resize", () => { clearTimeout(sizeT); sizeT = setTimeout(() => { if (S.me && wide()) redraw(); }, 250); });
+// Keys, as a computer's apps have them: 1, 2 and 3 for the tabs, U to upload, ← and → through the days on Today, ↑ and
+// ↓ (or J and K) through the activities beside the one that's open, and ⌘K or / to find one
+addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || sheetEl.open || !S.me || document.body.classList.contains("out")) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if ((e.metaKey || e.ctrlKey) && k === "k") { e.preventDefault(); return findAct(); }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (k === "1" || k === "2" || k === "3") return go(TABS[Number(k) - 1][0]);
+  if (k === "u") return openSheet(uploadFilesView);
+  if (k === "/") { e.preventDefault(); return findAct(); }
+  if (S.tab === "today" && (k === "ArrowLeft" || k === "ArrowRight")) { e.preventDefault(); return stepDay(k === "ArrowLeft" ? -1 : 1); }
+  if (S.tab === "activities" && wide() && (k === "ArrowUp" || k === "ArrowDown" || k === "j" || k === "k")) { e.preventDefault(); return stepAct(k === "ArrowUp" || k === "k" ? -1 : 1); }
+});
+function findAct() {
+  if (!wide()) return;
+  if (S.tab !== "activities") go("activities");
+  requestAnimationFrame(() => document.getElementById("act-find")?.focus());
 }
 // A change shown as iOS shows it: what moves glides to where it goes, the rest dissolving (View Transitions, where the
 // browser has them, and not with Reduce Motion: else simply done)
@@ -356,14 +393,17 @@ function go(tab) {
 }
 function render(fresh = false) {
   const views = { today: todayView, plan: planView, activities: activitiesView, progress: progressView };
-  const screen = h("div.screen" + (fresh ? ".in" : ""), {}, views[S.tab]());
+  const screen = h("div.screen.t-" + S.tab + (fresh ? ".in" : ""), {}, views[S.tab]());
   main.replaceChildren(screen);
   main.removeAttribute("aria-busy");
   document.title = { today: "Fitness", plan: "Plan · Fitness", workouts: "Workouts · Fitness", activities: "Activities · Fitness" }[S.tab];
 }
 // drawn again in place (what changed behind the scenes), keeping where you'd scrolled to; a sheet that's up stays as it
 // is unless it's asked for too (what's in it is drawn afresh, charts and all)
-function redraw(sheetToo = false) { const y = scrollY; render(false); scrollTo(0, y); if (sheetToo && sheetEl.open && Sheet.redraw) Sheet.redraw(); }
+function redraw(sheetToo = false) {
+  // (not while a session's being dragged to another day: the drag would end; drawn once it's dropped, today.js)
+  if (document.body.classList.contains("day-drag")) { redraw.later = true; return; }
+  const y = scrollY; render(false); scrollTo(0, y); if (sheetToo && sheetEl.open && Sheet.redraw) Sheet.redraw(); }
 const head = (title, sub, ...right) => h("div.head", {}, h("div.t", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub })), ...right,
   h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, face()));
 // you, as the account has you: your photo, or your initial
@@ -380,8 +420,9 @@ function row({ icon: ic, tint, tile, title, sub, value, onclick, chev = true, cl
 const sportTile = (sport, small = false) => h("span.tile.s-" + sport + (small ? ".small" : ""), {}, sportIcon(sport, small ? 17 : 20));
 const stat = (label, v, unit) => h("div.stat", {}, h("small", { text: label }), h("b", {}, v ?? "–", unit && v != null ? h("u", { text: unit }) : null));
 const wait = (hgt) => h("div.wait", { vars: { "min-height": hgt + "px" } });
-// how wide a chart is drawn, in a card on the page or in a sheet (so its labels come out at their own size)
-const cardW = (hero = false) => Math.round((innerWidth >= 1000 ? 500 : Math.min(innerWidth, 680) - 32) - (hero ? 40 : 36));
+// how wide a chart is drawn, in a card on the page or in a sheet (so its labels come out at their own size); on a
+// computer, in a card that's a part of the page's width (by default, Today's first column, beside its 360px one)
+const cardW = (hero = false, part = null) => (wide() ? (part != null ? partW(part) : mainW() - 380) : innerWidth >= 1000 ? 500 : Math.min(innerWidth, 680) - 32) - (hero ? 40 : 36);
 const sheetW = () => Math.round(Math.min(innerWidth - 16, 600) - 32 - 36);
 
 // ---- the map under a route (map.js): the points along it (a few thousand at most), each its stretch's colour ----
@@ -1505,9 +1546,9 @@ async function pull() {
 }
 addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
-// (nothing copied or dragged out of the app, but what you type: a field's own text)
+// (nothing copied or dragged out of the app, but what you type: a field's own text; and Today's sessions, dragged from day to day)
 const inField = (t) => t instanceof Element && !!t.closest("input, textarea, select");
-for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target)) e.preventDefault(); });
+for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target) && !(ev === "dragstart" && e.target.closest?.(".gday[draggable]"))) e.preventDefault(); });
 addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefault(); });
 
 // ---- always the latest version: the app's files as they were when it opened, and as they are now, compared as you
@@ -1601,7 +1642,7 @@ const signedOutHere = () => signOutHere(true);
 
 // (what the screens, each its own module, take from here)
 export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
-export { mapsAlways };
+export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
