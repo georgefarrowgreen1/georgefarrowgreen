@@ -1529,3 +1529,68 @@ dialog.sheet.fresh .month-bars .mbars { transform-box: fill-box; transform-origi
 .act-links { display: flex; gap: 18px; align-items: center; } .act-links .link svg { vertical-align: -2px; margin-right: 4px; }
 .share-year { margin-top: 18px; }
 @media (prefers-reduced-motion: reduce) { .share-img { transition: none; } .share-frame::after { animation: none; } }
+
+/* ---- signed out: the morning, and a course across it (app.js welcome, courseScene) ---- */
+.welcome.dawn { position: relative; isolation: isolate; }
+.welcome.dawn > :not(.course) { position: relative; z-index: 1; }
+.welcome .course { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; height: 48svh; z-index: 0; pointer-events: none; }
+:root { --c-far: rgba(255, 150, 120, 0.16); --c-mid: rgba(190, 140, 255, 0.16); --c-near: rgba(110, 150, 255, 0.18); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --c-far: rgba(255, 140, 100, 0.16); --c-mid: rgba(180, 130, 240, 0.15); --c-near: rgba(90, 130, 240, 0.14); } }
+:root[data-theme="light"] { --c-far: rgba(255, 140, 100, 0.16); --c-mid: rgba(180, 130, 240, 0.15); --c-near: rgba(90, 130, 240, 0.14); }
+.course .c-far { fill: var(--c-far); } .course .c-mid { fill: var(--c-mid); } .course .c-near { fill: var(--c-near); }
+.course .c-route { fill: none; stroke: url(#c-route); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; filter: drop-shadow(0 0 6px rgba(255, 170, 110, 0.45)); }
+.course .c-dot { fill: #fff; } .course .c-halo { transform-box: fill-box; transform-origin: center; animation: c-beat 1.6s ease-in-out infinite; }
+@keyframes c-beat { 0%, 100% { transform: scale(0.85); opacity: 0.7; } 14% { transform: scale(1.15); opacity: 1; } 28% { transform: scale(0.95); } 42% { transform: scale(1.08); } }
+/* (in, in turn: the hills rising out of the haze, the route drawn along the ridge, then the rider) */
+.welcome.dawn .course :is(.c-far, .c-mid, .c-near) { animation: c-rise 1.6s var(--ease-out) backwards; }
+.welcome.dawn .course .c-mid { animation-delay: 0.12s; } .welcome.dawn .course .c-near { animation-delay: 0.24s; }
+@keyframes c-rise { from { opacity: 0; transform: translateY(40px); } }
+.welcome.dawn .course .c-route { animation: c-draw 2.4s var(--ease-out) 0.6s backwards; }
+@keyframes c-draw { from { stroke-dashoffset: 1; } }
+.welcome.dawn .course .c-rider { animation: fade-up 0.8s ease 2.4s backwards; }
+/* the mark, out of the haze in a warm glow; the name a letter at a time; the line; then Sign in */
+.welcome .wlogo { position: relative; display: grid; place-items: center; width: 150px; height: 150px; margin-bottom: -18px; }
+.welcome .wlogo::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 140, 90, 0.38), rgba(255, 120, 150, 0.12) 55%, rgba(255, 120, 150, 0)); animation: fade-up 2s ease 0.5s backwards; }
+.welcome .wlogo .mark { position: relative; margin: 0; animation: w-logo 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s backwards; }
+@keyframes w-logo { from { opacity: 0; filter: blur(14px); transform: scale(0.86); } 80% { filter: blur(0); } }
+.welcome .wtitle { margin: 0; display: block; text-align: center; font: 750 40px/1.05 var(--font-d); letter-spacing: -0.4px; }
+.welcome .wtitle span { display: inline-block; animation: w-letter 0.9s var(--ease-out) backwards; }
+.welcome .wtitle span:nth-child(1) { animation-delay: 0.55s; } .welcome .wtitle span:nth-child(2) { animation-delay: 0.61s; } .welcome .wtitle span:nth-child(3) { animation-delay: 0.67s; }
+.welcome .wtitle span:nth-child(4) { animation-delay: 0.73s; } .welcome .wtitle span:nth-child(5) { animation-delay: 0.79s; } .welcome .wtitle span:nth-child(6) { animation-delay: 0.85s; }
+.welcome .wtitle span:nth-child(7) { animation-delay: 0.91s; }
+@keyframes w-letter { from { opacity: 0; transform: translateY(14px); filter: blur(6px); } }
+.welcome.dawn .tagline { animation: fade-up 1.2s ease 1.3s backwards; }
+.welcome.dawn .w-cta { animation: w-cta 0.9s var(--ease-out) 1.8s backwards; }
+@keyframes w-cta { from { opacity: 0; transform: translateY(10px); } }
+/* Sign in: warm, and pulsing as a heart does (two beats, a rest) */
+.welcome .btn.wbeat { background: linear-gradient(135deg, #ff8a5b, #ff5e7e 55%, #c86bff); color: #fff; box-shadow: 0 10px 28px -10px rgba(255, 94, 126, 0.7); animation: w-beat 2.4s ease-in-out 2.6s infinite; }
+@keyframes w-beat { 0%, 40%, 100% { box-shadow: 0 10px 28px -10px rgba(255, 94, 126, 0.7); } 8% { box-shadow: 0 10px 34px -6px rgba(255, 94, 126, 0.95), 0 0 0 4px rgba(255, 130, 140, 0.25); } 18% { box-shadow: 0 10px 28px -10px rgba(255, 94, 126, 0.7); } 26% { box-shadow: 0 10px 34px -8px rgba(255, 94, 126, 0.85), 0 0 0 3px rgba(255, 130, 140, 0.18); } }
+.welcome .btn.wbeat:disabled { animation: none; }
+/* (shown again, signed out: no slow start) */
+.welcome.again :is(.wlogo .mark, .wlogo::before, .wtitle span, .tagline, .course *) { animation-delay: 0s !important; animation-duration: 0.5s; }
+.welcome.again .w-cta { animation: fade-up 0.5s ease; }
+.welcome.again .course .c-halo { animation: c-beat 1.6s ease-in-out infinite; }
+
+/* ---- signing in and out, in motion (app.js handOff, arriving, dusk): the account page's sky, exactly ---- */
+:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
+  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
+  --dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
+@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
+.handoff { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+.handoff .hsky { position: absolute; inset: 0; background: var(--acct-heaven); opacity: 0; }
+html.arriving body::after, .arrival .arv-sky { background: var(--dawn), var(--acct-heaven); }
+html.arriving body::after { content: ""; position: fixed; inset: 0; z-index: 100; pointer-events: none; animation: arv-gone 0.4s ease 12s forwards; }
+html.arriving.arv-face body::before, .arrival .arv-me { position: fixed; left: 50%; top: 30%; width: 78px; height: 78px; margin: -39px 0 0 -39px; border-radius: 50%; }
+html.arriving.arv-face body::before { content: var(--arv-i, ""); z-index: 101; pointer-events: none; display: grid; place-items: center; color: #fff; font: 600 32px/1 var(--font);
+  background: var(--arv-p, none) center / cover no-repeat, linear-gradient(160deg, #ff8a5b, #ff5e7e 60%, #c86bff); box-shadow: 0 12px 30px -12px rgba(150, 50, 90, 0.5); animation: arv-gone 0.4s ease 12s forwards; }
+.arrival { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.arrival .arv-sky { position: absolute; inset: 0; }
+.arrival .arv-me { display: grid; place-items: center; overflow: hidden; z-index: 1; color: #fff; font: 600 32px/1 var(--font); background: linear-gradient(160deg, #ff8a5b, #ff5e7e 60%, #c86bff); box-shadow: 0 12px 30px -12px rgba(150, 50, 90, 0.5); }
+.arrival .arv-me img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dusk { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.dusk-sky { position: absolute; inset: 0; opacity: 0; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
+@media (prefers-reduced-motion: reduce) {
+  .welcome .course *, .welcome .wlogo .mark, .welcome .wlogo::before, .welcome .wtitle span, .welcome.dawn .tagline, .welcome.dawn .w-cta, .welcome .btn.wbeat { animation: none !important; }
+  html.arriving body::after, html.arriving.arv-face body::before { animation: arv-gone 0.2s ease 12s forwards !important; }
+}
+@keyframes arv-gone { to { opacity: 0; } }

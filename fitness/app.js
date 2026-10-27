@@ -1099,19 +1099,57 @@ addEventListener("scroll", () => document.documentElement.style.setProperty("--b
 // Fitness is used signed in, and only signed in: signed out, this, and Sign in, which is on the account's own page
 // (account.<site>, beside fitness.<site>), where every app on the site signs in: there with a word for the sign-in (kept
 // on this device for half an hour, or until it's used), and back with a code for it (signedBack)
-function welcome(note = null) {
+// Signed out: Fitness's own morning sky, and a course across the foot of it, hills behind hills, its route drawing
+// itself along the ridge in the zones' colours and you, a dot of light, riding it; the mark coming up out of the haze,
+// its name a letter at a time, and Sign in, warm, pulsing as a heart does. (InFlight's welcome, in Fitness's world.)
+// again: shown before in this visit (after signing out): no slow start, the rest as it was
+function welcome(note = null, { again = !!welcome.shown } = {}) {
+  welcome.shown = true;
   S.me = null;
   document.body.classList.add("out");
   const page = A.accountPage();
-  main.replaceChildren(h("div.welcome.screen.in", {},
-    h("div.w-top", {}, h("img.mark", { src: "icon.svg", alt: "Fitness", width: 96, height: 96 }), h("p.tagline", { text: "Training that fits your week" })),
+  main.replaceChildren(h("div.welcome.dawn" + (again ? ".again" : ""), {},
+    courseScene(),
+    h("div.w-top", {}, h("div.wlogo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
+      h("h1.wtitle", { "aria-label": "Fitness" }, [..."Fitness"].map((c) => h("span", { "aria-hidden": "true", text: c }))),
+      h("p.tagline", { text: "Training that fits your week" })),
     // (Sign in at the foot of the page, as on the site's other apps)
     h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
-      h("button.btn", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
+      h("button.btn.wbeat", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
       !page && h("p.small", { text: "Signing in is at fitness.georgefarrowgreen.com." }),
       page && h("p.new-here", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Fitness";
+}
+// The course: three ridges, far to near, each an elevation profile; the nearest with its route drawn in the zones'
+// colours, and a rider (a dot and its glow) going along it, round and round (still, for anyone who asks for less motion)
+function courseScene() {
+  const W = 1200, H = 520, ridge = (base, amps, seed) => (x) => base - amps.reduce((y, a, i) => y + a * Math.sin(x / [180, 71, 33][i] + seed * (i + 1)), 0);
+  const line = (f) => Array.from({ length: 61 }, (_, i) => { const x = (i / 60) * W; return `${i ? "L" : "M"}${x.toFixed(1)} ${f(x).toFixed(1)}`; }).join("");
+  const hill = (f, cls) => `<path class="${cls}" d="${line(f)}L${W} ${H}L0 ${H}Z"/>`;
+  const far = ridge(250, [46, 18, 8], 0.6), mid = ridge(318, [52, 22, 10], 2.1), near = ridge(392, [58, 26, 12], 4.2), route = line(near);
+  const el = svgOf(`<svg class="course" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs><linearGradient id="c-route" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#4aa3ff"/><stop offset=".35" stop-color="#3fd08f"/><stop offset=".6" stop-color="#ffd23f"/><stop offset=".82" stop-color="#ff9440"/><stop offset="1" stop-color="#ff5a5a"/></linearGradient>
+    <radialGradient id="c-glow"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#ffb37a" stop-opacity=".55"/><stop offset="1" stop-color="#ff7a59" stop-opacity="0"/></radialGradient></defs>
+    ${hill(far, "c-far")}${hill(mid, "c-mid")}${hill(near, "c-near")}
+    <path class="c-route" pathLength="1" d="${route}"/>
+    <g class="c-rider"><circle class="c-halo" r="26" fill="url(#c-glow)"/><circle class="c-dot" r="7"/></g></svg>`);
+  // (the rider along the route, across as much of it as the screen shows (the course is wider than a phone), nine
+  // seconds a crossing, then round again from the left: moved here, frame by frame, while the welcome's up; for
+  // anyone who asks for less motion, at rest a third of the way along)
+  const path = el.querySelector(".c-route"), rider = el.querySelector(".c-rider"), t0 = performance.now() + 2400;
+  // (the length along the route at a point across it: the route only ever goes on across, so halving finds it)
+  const lenAt = (x) => { let lo = 0, hi = path.getTotalLength(); for (let i = 0; i < 18; i++) { const m = (lo + hi) / 2; if (path.getPointAtLength(m).x < x) lo = m; else hi = m; } return lo; };
+  let span = null;
+  const shown = () => { const m = el.getScreenCTM(); if (!m || !m.a) return null; const x0 = (16 - m.e) / m.a, x1 = (innerWidth - 16 - m.e) / m.a; return [lenAt(Math.max(0, x0)), lenAt(Math.min(W, x1))]; };
+  const at = (u) => { span = span || shown(); if (!span) return; const p = path.getPointAtLength(span[0] + (span[1] - span[0]) * (((u % 1) + 1) % 1)); rider.setAttribute("transform", `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`); };
+  addEventListener("resize", () => { span = null; }, { passive: true });
+  requestAnimationFrame(() => { try { at(0.33); } catch (_) {} });
+  if (!STILL.matches) {
+    const frame = (now) => { if (!el.isConnected && now > t0) return; try { at(Math.max(0, now - t0) / 9000); } catch (_) {} requestAnimationFrame(frame); };
+    requestAnimationFrame(frame);
+  }
+  return el;
 }
 async function toAccountSignIn(e, mode = "signin") {
   const page = A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
@@ -1120,8 +1158,87 @@ async function toAccountSignIn(e, mode = "signin") {
   try {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("fitness:signin", JSON.stringify({ word, at: Date.now() }));
+    // (the account page's sky coming in over this one first, so going there is one sky, not a jump)
+    await handOff();
     location.assign(`${page}#${new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/` })}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
+}
+
+// ---- signing in and out, in motion, as InFlight does it: going, the account page's sky comes in over Fitness; coming
+// back, that sky and you are there from the first frame (theme.js), then the sky clears, your picture flies up into
+// your own button, and the page comes in a part at a time; signing out, the page goes, a part at a time, and the
+// morning comes back in ----
+const STILL = matchMedia("(prefers-reduced-motion: reduce)");
+const play = (el, frames, o) => { try { return el?.animate(frames, o) || null; } catch (_) { return null; } };
+const played = (a, ms) => new Promise((done) => { const t = setTimeout(done, ms); a?.finished.then(() => { clearTimeout(t); done(); }, () => { clearTimeout(t); done(); }); });
+const SPRING = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(.2,1.1,.4,1)";
+const EASE_OUT = "cubic-bezier(.22,1,.36,1)", EASE_IN = "cubic-bezier(.5,0,.75,0)";
+function handOff() {
+  const still = STILL.matches, el = h("div.handoff", { "aria-hidden": "true" }, h("i.hsky"));
+  document.body.append(el);
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
+  setTimeout(() => el.remove(), 15000);   // (and if the page never goes, the sky doesn't stay)
+  return played(play(el.firstChild, [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 150 : 480, easing: "ease", fill: "forwards" }), 700);
+}
+// the parts of the page as they're drawn: its title, the strip, each card (in order, those on screen)
+function partsOnScreen() {
+  const vh = innerHeight;
+  return [...main.querySelectorAll(".screen > :not(.cols), .screen > .cols > div > *")].filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < vh; });
+}
+// Back from the account's page: its sky and you over Fitness, till Fitness is in (in), or isn't after all (away)
+function arriving() {
+  const root = document.documentElement, still = STILL.matches, timers = [], box = h("div.arrival", { "aria-hidden": "true" }, h("div.arv-sky"));
+  const f = (getComputedStyle(root).getPropertyValue("--arv-i") || "").trim().replace(/^"|"$/g, "");
+  let face = null, over = false;
+  if (root.classList.contains("arv-face")) { face = h("div.arv-me", {}, f); if (window.arvPhoto) face.append(h("img", { src: window.arvPhoto, alt: "" })); box.append(face); }
+  document.body.append(box);
+  root.classList.remove("arriving", "arv-face");
+  const at = (ms, fn) => timers.push(setTimeout(() => { if (!over) try { fn(); } catch (_) {} }, ms));
+  const end = () => { over = true; timers.forEach(clearTimeout); box.remove(); };
+  const late = setTimeout(() => a.away(), 12000);
+  const a = {
+    in() {
+      if (over) return;
+      clearTimeout(late);
+      // (the page under the sky, held back, then a part at a time, top first, as the sky clears)
+      main.querySelector(".screen")?.classList.remove("in");
+      const parts = partsOnScreen();
+      for (const el of parts) el.style.opacity = "0";
+      play(box.firstChild, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 420, easing: "ease", fill: "forwards" });
+      at(still ? 0 : 140, () => parts.forEach((el, i) => { el.style.opacity = ""; play(el, still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(14px) scale(.985)" }, { opacity: 1, transform: "none" }], { duration: still ? 250 : 480, delay: still ? 0 : Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }); }));
+      // your picture: up into your own button, top right, landing with a spring, which gives a little
+      at(still ? 100 : 240, () => {
+        const to = main.querySelector(".head .round.me");
+        if (!face) return;
+        if (!to || still) { play(face, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" }); return; }
+        flyTo(face, to, 720);
+        at(460, () => { play(face, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: "forwards" }); play(to, [{ transform: "scale(1.25)" }, { transform: "none" }], { duration: 560, easing: SPRING() }); });
+      });
+      at(still ? 900 : 1500, end);
+    },
+    away() { if (over) return; clearTimeout(late); over = true; timers.forEach(clearTimeout); played(play(box, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 150 : 300, fill: "forwards" }), 400).then(() => box.remove()); },
+  };
+  return a;
+}
+// A curve from where `el` is onto the middle of `to`, shrinking to its size, out past that side first, then onto it
+function flyTo(el, to, ms) {
+  const a = el.getBoundingClientRect(), b = to.getBoundingClientRect();
+  const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2, x1 = b.left + b.width / 2, y1 = b.top + b.height / 2;
+  const cx = x1 + Math.sign(x1 - x0 || 1) * Math.max(36, Math.abs(x1 - x0) * 0.5), cy = y0 + (y1 - y0) * 0.2, s1 = Math.max(0.15, b.width / a.width), frames = [];
+  for (let i = 0; i <= 24; i++) {
+    const u = i / 24, m = 1 - u, x = m * m * x0 + 2 * m * u * cx + u * u * x1, y = m * m * y0 + 2 * m * u * cy + u * u * y1;
+    frames.push({ transform: `translate(${(x - x0).toFixed(1)}px,${(y - y0).toFixed(1)}px) scale(${(1 + (s1 - 1) * u).toFixed(3)})` });
+  }
+  return play(el, frames, { duration: ms, easing: SPRING(), fill: "forwards" });
+}
+// Signing out: the page's parts go, the last first, and the morning comes in over it all; the welcome's drawn under it,
+// and it clears to that. → { dark: a promise for when it's covered, done(): the welcome's there }
+function dusk() {
+  const still = STILL.matches, box = h("div.dusk", { "aria-hidden": "true" }, h("div.dusk-sky")), parts = [...partsOnScreen(), document.querySelector(".tabbar")].filter(Boolean).reverse();
+  document.body.append(box);
+  parts.forEach((el, i) => play(el, still ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(14px) scale(.985)" }], { duration: still ? 200 : 280, delay: still ? 0 : Math.min(i, 10) * 35, easing: still ? "ease" : EASE_IN, fill: "forwards" }));
+  const dark = played(play(box.firstChild, [{ opacity: 0 }, { opacity: 1 }], { duration: still ? 250 : 380, delay: still ? 100 : 260, easing: "ease", fill: "forwards" }), 1200);
+  return { dark, done() { for (const el of parts) el.getAnimations?.().forEach((x) => x.cancel()); played(play(box, [{ opacity: 1 }, { opacity: 0 }], { duration: still ? 250 : 520, easing: "ease", fill: "forwards" }), 900).then(() => box.remove()); } };
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for the sign-in
 // (the site's: Fitness keeps none of its own). A code from anywhere else, or one that's run out, is used up and goes no
@@ -1224,9 +1341,13 @@ async function signOutHere(already = false) {
   if (already !== true && morningOf()) await morningOffHere();
   if (already !== true) { try { await A.signOut(); } catch (e) { if (e.status !== 401) return toast(e.message, true); } }
   if (sheetEl.open) await closeSheet();
+  // (signing out yourself: the page goes and the morning comes back; found out, it's just the welcome)
+  const d = already !== true && S.me ? dusk() : null;
+  if (d) await d.dark;
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
   idb.clear().catch(() => {});
-  welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.");
+  welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
+  d?.done();
 }
 
 // (the sign-in gone, found out mid-way: signed out here too, and said so)
@@ -1237,6 +1358,8 @@ const signedOutHere = () => signOutHere(true);
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
   const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
   if (code) history.replaceState(null, "", location.pathname + location.search);
+  // (its sky and you, over Fitness till you're in: theme.js put them up for the first frame, this carries them on)
+  const arv = code || document.documentElement.classList.contains("arriving") ? arriving() : null;
   const want = location.hash.slice(1);
   if (TABS.some(([id]) => id === want)) S.tab = want;
   else if (want === "plan") S.tab = "today";
@@ -1250,12 +1373,14 @@ const signedOutHere = () => signOutHere(true);
       m = await fetchMe(kept);
     }
   } catch (e) {
+    arv?.away();
     if (early) return;   // (offline: what was here last stays)
     return welcome(e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
   }
-  if (!m.signedIn) return early ? signOutHere(true) : welcome();
+  if (!m.signedIn) { arv?.away(); return early ? signOutHere(true) : welcome(); }
   if (early && m.id !== early.id) return location.reload();
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
+  arv?.in();
 })();
 
 // (what the screens, each its own module, take from here)

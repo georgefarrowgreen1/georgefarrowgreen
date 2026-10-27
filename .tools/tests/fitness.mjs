@@ -132,14 +132,14 @@ const P = await browser('phone');
 await P.p.goto(`${FIT}/`);
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 const welcome = await P.p.evaluate(() => ({ text: document.querySelector('main').innerText.replace(/\s+/g, ' '), tabs: getComputedStyle(document.querySelector('.tabbar')).display, btns: [...document.querySelectorAll('main button')].map((x) => x.textContent) }));
-ok(/^Training that fits your week Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
+ok(/^Fitness Training that fits your week Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
   'signed out: its mark and a line, Sign in, and a way in for someone new (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
 await P.p.setInputFiles('#files', FILES.slice(0, 1)); await settle(P, 800);
 ok(!(await P.p.$('#sheet[open]')) && await P.p.$('.welcome #sign-in'), 'a file given it signed out: nothing read, nothing kept');
 const outMe = await api(P, '/api/fitness/me'), outPut = await api(P, '/api/fitness/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"base":0,"data":{}}' });
 const outFile = await api(P, '/api/fitness/acts/i123');
 ok(JSON.parse(outMe.body).signedIn === false && outPut.status === 401 && outFile.status === 401, 'its API, signed out: who\'s signed in (no one), and nothing else', `${outMe.body} ${outPut.status} ${outFile.status}`);
-await P.p.screenshot({ path: `${out}/welcome.png` });
+await settle(P, 3600); await P.p.screenshot({ path: `${out}/welcome.png` });
 // (the site's own address, and a preview's, open it at /fitness/: no sign-in there, so it says where)
 const L = await browser('laptop');
 await L.p.goto('http://localhost:8788/fitness/');
@@ -200,6 +200,9 @@ await P.p.waitForSelector('.welcome #sign-in');
 await P.p.click('#sign-in');
 await onAccountPage(P.p, { email: 'sam@example.com', password: PW });
 await P.p.waitForURL((u) => u.hostname.startsWith('fitness.'), { timeout: 30000 });
+// (coming back: the account page's sky and you over Fitness, then clearing to it; a frame of each)
+await P.p.screenshot({ path: `${out}/arrive-1.png` }).catch(() => {});
+await P.p.waitForTimeout(450); await P.p.screenshot({ path: `${out}/arrive-2.png` }).catch(() => {});
 const said = await toastSays(P);
 await P.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(/Signed in as Sam/.test(said) && !/signin=/.test(P.p.url()), 'Sign in, on the account\'s page, and back in Fitness signed in (the code out of the address)', `${said} ${P.p.url()}`);
@@ -310,7 +313,9 @@ ok(/Fitness/.test(appCard) && /2 activities/.test(appCard), 'the account\'s page
 await P.p.goto(`${FIT}/`); await P.p.waitForSelector('.head .round.me');
 await you(P);
 await P.p.click('#sheet .row.action.danger');
+await P.p.waitForTimeout(700); await P.p.screenshot({ path: `${out}/dusk.png` }).catch(() => {});
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
+await P.p.waitForTimeout(1500); await P.p.screenshot({ path: `${out}/welcome-again.png` });
 const cached = await P.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('fitness'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => res(q.result); }; r.onerror = () => res(-1); }));
 ok(/Signed out\./.test(await P.p.innerText('main')) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
