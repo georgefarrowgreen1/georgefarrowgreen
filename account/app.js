@@ -108,7 +108,7 @@ function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
-const OPENS = { profile: () => profileView, inflight: () => inflightView };
+const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
@@ -525,13 +525,14 @@ const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; retur
 function signedIn(r) {
   const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
-  // (InFlight's settings that are the account's, a tap from its card: inflightView)
+  // (an app's settings that are the account's, a tap from its card: inflightView, fitnessSetView)
+  const SETS = { inflight: inflightView, fitness: fitnessSetView };
   const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
-    id === "inflight" ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": "inflight-settings", onclick: () => openSheet(inflightView) },
+    SETS[id] ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": `${id}-settings`, onclick: () => openSheet(SETS[id]) },
       icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
   const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
@@ -2648,6 +2649,79 @@ function inflightView() {
     h("div.group", {}, blocked),
     h("p.hint", { text: "Push notifications, Lock InFlight and haptics are set in InFlight, on each phone." }),
     said] };
+}
+
+// ---- Fitness's settings that are the account's (functions/api/account fitness): kilometres or miles, and whether it
+// asks how you are each morning; and everything it keeps, as files, in one zip. Its own Settings opens them here
+// (open=fitness), with the way back to it; its look and its morning reminder are each phone's, and stay in the app ----
+let FX = null, fxFor = null, fxAt = 0;
+function fitnessSetView() {
+  if (fxFor !== S.me.id) { FX = null; fxAt = 0; fxFor = S.me.id; }
+  if (!FX || Date.now() - fxAt > 5000) {
+    fxAt = Date.now();
+    const who = S.me.id;
+    call("fitness").then((r) => { if (who === S.me?.id) { FX = r; if (Sheet.stack.at(-1) === fitnessSetView) redraw(); } },
+      (e) => { if (who === S.me?.id && !FX) { FX = { error: e.message }; redraw(); } });
+  }
+  const back = HANDOFF?.open === "fitness" && fromApp() === "fitness"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Fitness") : null;
+  if (!FX) return { title: "Fitness", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (FX.error) return { title: "Fitness", left: back, body: [h("div.group", {}, h("div.empty", { text: FX.error }))] };
+  const said = h("p.said", { role: "alert" });
+  // a change, kept as it's made (put back, and why, if it can't be)
+  const change = async (patch, undo) => {
+    say(said, "");
+    try { FX = await call("fitness", { method: "PATCH", body: patch }); }
+    catch (e) { undo?.(); toast(e.message, true); }
+  };
+  // (none chosen yet: the app goes by the phone's region, as it says)
+  const here = /-(US|LR|MM)\b/i.test(navigator.language || "") ? "imperial" : "metric";
+  const units = seg("Distances", [["metric", "Kilometres"], ["imperial", "Miles"]], FX.units || here, (v) => change({ units: v }, () => redraw()));
+  const ask = h("input.switch", { type: "checkbox", role: "switch", id: "fx-ask", name: "ask", checked: FX.ask });
+  ask.onchange = async () => { ask.disabled = true; await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); ask.disabled = false; };
+  return { title: "Fitness", left: back, body: [
+    h("p", { text: "For Fitness on every device you use it on." }),
+    h("h4.app-k", { text: "Units" }),
+    h("div.units", {}, h("div.unit", {}, h("span", { text: "Distances" }), units)),
+    !FX.units && h("p.hint", { text: "From your phone’s region, until you choose." }),
+    h("h4.app-k", { text: "Each morning" }),
+    h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Ask how I am" }), h("small", { text: "Or check in from the card on Today" })), ask)),
+    h("h4.app-k", { text: "Your files" }),
+    h("div.group", {}, h("button.row", { type: "button", onclick: (e) => exportFitness(e.currentTarget, said) },
+      h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every activity’s file, and your workouts, in one zip" })),
+      h("span.get", {}, icon("download", 20, 2.2)))),
+    said,
+    h("p.hint", { text: "Appearance and the morning reminder are set in Fitness, on each device." })] };
+}
+// Everything, as files: each activity as it came, and your workouts as FIT (and ZWO, for a ride), drawn with the app's
+// own code (formats.js, shared with it)
+async function exportFitness(btn, said) {
+  try {
+    const file = await busy(btn, "Gathering…", async () => {
+      const [x, F] = await Promise.all([call("fitness/export"), import("./formats.js")]), files = [], seen = new Set();
+      const unzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b ? new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()) : u8);
+      for (const [i, a] of x.acts.entries()) {
+        const lbl = btn.querySelector("span:not(.spin)"); if (lbl) lbl.textContent = `Gathering ${i + 1} of ${x.acts.length}…`;
+        const r = await fetch(`${API}/fitness/file?id=${encodeURIComponent(a.id)}`, { credentials: "same-origin" });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "One of your files couldn’t be fetched. Try again.");
+        const bytes = await unzip(new Uint8Array(await r.arrayBuffer()));
+        // (a file of several parts, kept once)
+        if (seen.has(a.file + bytes.length)) continue;
+        seen.add(a.file + bytes.length);
+        files.push({ name: `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`, data: bytes });
+      }
+      for (const w of x.workouts) {
+        files.push({ name: `workouts/${F.fileName(w.name, "fit")}`, data: F.fitFromWorkout(w, { pace: w.sport === "run" ? x.pace.run : w.sport === "swim" ? x.pace.swim : 4 }) });
+        if (w.sport === "ride") files.push({ name: `workouts/${F.fileName(w.name, "zwo")}`, data: F.zwoFromWorkout(w) });
+      }
+      return files.length ? new Blob([F.zip(files)], { type: "application/zip" }) : null;
+    });
+    if (!file) return toast("Nothing to export yet: add an activity in Fitness first.");
+    const a = h("a", { href: URL.createObjectURL(file), download: "Fitness export.zip" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast("Your Fitness files are downloading.");
+  } catch (e) { if (!e.quiet) say(said, e.message); }
 }
 
 // ---- your data, as a file ----

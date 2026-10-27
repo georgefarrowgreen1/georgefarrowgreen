@@ -433,21 +433,20 @@ function settingsView() {
         devices.map((d) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(S.acts.filter((a) => a.device === d).length, "file")}`, chev: false })))),
       section("Preferences", h("div.group", {},
         row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
-        row({ icon: "ruler", tint: "blue", title: "Units", sub: S.unitsSet ? null : "From your region, until you choose", value: U.metric ? "Kilometres" : "Miles", onclick: () => { U.metric = !U.metric; S.unitsSet = true; keep("prefs"); redraw(true); } }),
         rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
-        row({ icon: "heart", tint: "green", title: "Ask how I am each morning", sub: "Or check in from the card on Today", value: S.ask === false ? "Off" : "On", onclick: () => { S.ask = S.ask === false; keep("prefs"); Sheet.redraw(); } }))),
+        // (units, the morning check-in and exporting everything: your account's, on its page, for every device)
+        row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · ${S.ask === false ? "No morning check-in" : "Asks how you are each morning"}`, onclick: () => openAccount("fitness") }))),
       section("Your data", h("div.group", {},
-        row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }),
-        row({ icon: "zip", tint: "green", title: "Export everything", sub: "Every activity’s file, in one zip", onclick: exportAll }))),
+        row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }))),
       section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
     ],
   };
 }
 // Your account's page, opened signed in as you (a code good once, for a minute), with the way back here
-async function openAccount() {
+async function openAccount(open) {
   const page = A.accountPage();
   if (!page) return toast("Your account is at account.georgefarrowgreen.com");
-  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness" })}`); }
+  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness", ...(typeof open === "string" ? { open } : {}) })}`); }
   catch (e) { if (e.status === 401) return signedOutHere(); toast(e.message, true); }
 }
 // (a number's note: worked out from your rides, or a starting guess, until you set it yourself)
@@ -566,30 +565,6 @@ function calendar(wks) {
   // (iCalendar files aren't among the kinds claude.ai's viewer hands over: there, it goes in a zip like the rest)
   saveFile(F.fileName(`Fitness week ${wks[0].week}`, "ics"), ics);
 }
-// Everything: each of your activities as its file came (fetched from the account where this device hasn't it), and your
-// workouts as FIT and ZWO
-async function exportAll() {
-  const files = [], seen = new Set(), own = S.own;
-  for (let i = 0; i < own.length; i++) {
-    const a = own[i];
-    toast(`Gathering ${i + 1} of ${own.length}…`, false, 60000);
-    try {
-      let bytes = await idb.get(fileKey(a)).catch(() => null);
-      if (!bytes) { bytes = await A.fileOf(a.id); idb.put(fileKey(a), bytes).catch(() => {}); }
-      // (a file of several parts, kept once)
-      const name = `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`;
-      if (!seen.has(a.file + bytes.length)) { seen.add(a.file + bytes.length); files.push({ name, data: bytes }); }
-    } catch (e) { if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
-  }
-  for (const w of S.mine) {
-    files.push({ name: `workouts/${F.fileName(w.name, "fit")}`, data: F.fitFromWorkout(w, { pace: paceFor(w.sport) }) });
-    if (w.sport === "ride") files.push({ name: `workouts/${F.fileName(w.name, "zwo")}`, data: F.zwoFromWorkout(w) });
-  }
-  toastEl.classList.remove("on");
-  if (!files.length) return toast("Nothing to export yet: import a ride first");
-  saveFile("Fitness export.zip", F.zip(files));
-}
-
 // Importing: chosen, or dropped anywhere on the page
 function chooseFiles() { filesEl.value = ""; filesEl.click(); }
 filesEl.addEventListener("change", () => { if (filesEl.files.length) importFiles([...filesEl.files]); });

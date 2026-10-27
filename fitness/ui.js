@@ -56,6 +56,7 @@ const ICONS = {
   mountain: '<path d="M3 19 9.5 8l3.8 6.2L15.5 11 21 19z"/>',
   scale: '<path d="M6.5 20h11a2 2 0 0 0 2-2.3l-1.2-8.5a2 2 0 0 0-2-1.7H7.7a2 2 0 0 0-2 1.7L4.5 17.7A2 2 0 0 0 6.5 20z"/><path d="M12 7.5V5M10 11.5l2 1.5"/>',
   ruler: '<path d="M3.5 15.5 15.5 3.5l5 5-12 12z"/><path d="m7.5 11.5 2 2m1-5 2 2m1-5 2 2"/>',
+  sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
   contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
   person: '<circle cx="12" cy="8.6" r="3.9"/><path d="M4.6 20c1.2-3.6 4-5.6 7.4-5.6s6.2 2 7.4 5.6"/>',
   device: '<rect x="6" y="3" width="12" height="18" rx="3"/><path d="M9 7.5h6v5H9zM10 17h4"/>',

@@ -299,16 +299,24 @@ ok(st3?.rhythm?.run === true && st3.profile.ftp === ftpWas + 10 && st3.profile.s
 await done(L); await done(L);
 await tab(L, 1);
 ok(/ block · /i.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
-// (units: kilometres at first, from the browsers' region (en-GB); miles, chosen on the phone: the laptop's in miles too,
-// next it's opened)
+// (units: kilometres at first, from the browsers' region (en-GB); miles, chosen on the account's page, from Fitness
+// Settings on the phone, and back: the laptop's in miles too, next it's opened)
 await you(P);
-const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Units' }).innerText();
-await P.p.locator('#sheet .row', { hasText: 'Units' }).click(); await settle(P, 400);
-await done(P);
+const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
+await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).click();
+await P.p.waitForURL(/account\.gfg\.test/, { timeout: 20000 });
+await P.p.waitForSelector('#sheet[open] .seg', { timeout: 30000 }); await settle(P, 600);
+const fxSheet = await P.p.locator('#sheet').innerText();
+ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count()),
+  'Fitness Settings opens its sheet on the account\'s page, with the way back: units, the morning check-in and the export', fxSheet.replace(/\s+/g, ' ').slice(0, 200));
+await P.p.screenshot({ path: `${out}/account-fitness.png` });
+await P.p.locator('#sheet .seg button', { hasText: 'Miles' }).click();
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
+await P.p.locator('#sheet .toapp').click();
+await P.p.waitForURL(/fitness\.gfg\.test/, { timeout: 20000 }); await P.p.waitForSelector('.head .round.me');
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
-const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Units' }).innerText();
-ok(/Kilometres/.test(unitsFirst) && /From your region/.test(unitsFirst) && /Miles/.test(unitsThen) && !/From your region/.test(unitsThen), 'units from your region at first; miles, chosen on the phone: the laptop\'s in miles too', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));
+const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
+ok(/Kilometres/.test(unitsFirst) && /Miles/.test(unitsThen) && state(sam)?.rhythm?.run === true, 'kilometres at first; miles, chosen on the account\'s page: the laptop\'s in miles too, the rest of the record as it was', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));
 await done(L);
 
 // ---- 6. A ride renamed on the phone, and another deleted: so on the laptop ----
@@ -341,6 +349,16 @@ await L.p.goto(`${ACCT}/`);
 await L.p.waitForSelector('main .apps', { timeout: 30000 }); await settle(L, 800);
 const appCard = await L.p.locator('main .apps > .app', { hasText: 'Fitness' }).innerText().catch(() => '');
 ok(/Fitness/.test(appCard) && /2 activities/.test(appCard), 'the account\'s page: Fitness among your apps, with your rides', appCard.replace(/\s+/g, ' '));
+// (its settings, from its card: the morning check-in off; and everything exported, each activity's file in one zip)
+await L.p.locator('main .apps > .app', { hasText: 'Fitness' }).scrollIntoViewIfNeeded(); await L.p.screenshot({ path: `${out}/account-fitness-card.png` });
+await L.p.click('main .apps > .app:has-text("Fitness") .app-set'); await L.p.waitForSelector('#sheet[open] #fx-ask', { timeout: 20000 }); await settle(L, 500);
+await L.p.locator('#sheet label:has(#fx-ask)').click();
+await waitFor(() => state(sam)?.prefs?.ask === false);
+ok(state(sam)?.prefs?.ask === false && state(sam)?.prefs?.units === 'imperial', 'its settings from its card: the morning check-in off, kept with the record', JSON.stringify(state(sam)?.prefs));
+const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 60000 }), L.p.locator('#sheet .row', { hasText: 'Export everything' }).click()]);
+const zipped = readFileSync(await dl.path()), names = [...zipped.toString('latin1').matchAll(/PK\x01\x02[\s\S]{42}([^\x00-\x1f]+?\.(?:fit|gpx|tcx|zwo))/g)].map((m) => m[1]);
+ok(dl.suggestedFilename() === 'Fitness export.zip' && names.filter((n) => n.startsWith('activities/')).length === 2, 'and everything exported: each activity\'s file, in one zip', `${dl.suggestedFilename()}: ${names.join(', ')}`);
+await L.p.keyboard.press('Escape'); await settle(L, 600);
 
 // ---- 8. Signing out on the phone: back to the start, its copies gone; the laptop still signed in ----
 await P.p.goto(`${FIT}/`); await P.p.waitForSelector('.head .round.me');

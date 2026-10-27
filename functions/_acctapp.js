@@ -22,7 +22,7 @@ export const ACCT_SECURITY = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // what it shares with the rest of the site: its address here → where it's kept
-const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png" };
+const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/formats.js": "/fitness/formats.js", "/fit.js": "/fitness/fit.js", "/workouts.js": "/fitness/workouts.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
 // The page's script and styles, and every module the script brings in, stamped with what's in them as sent (?v=: a
 // module's own imports stamped in turn), as InFlight's are (functions/_app.js): so the page always runs the files it
