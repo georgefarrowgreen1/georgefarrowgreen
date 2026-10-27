@@ -4,6 +4,7 @@ import { removeFromGroups } from "./_groups.js";
 import { dropReacts } from "./_reacts.js";
 import { keepSentTo } from "./_retention.js";
 import { dropAccount } from "./_wxpush.js";
+import { dropFitness } from "./_fitness.js";
 
 import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
@@ -11,6 +12,7 @@ export { avatarKey };
 export async function removeAccount(env, id) {
   // (what the site's other apps kept with the account first: should that fail, the account's still here to try again)
   await dropAccount(env, id);
+  await dropFitness(env, id);
   await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);

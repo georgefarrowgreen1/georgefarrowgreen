@@ -37,7 +37,7 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, home: { name: "Home", sub: "" } };
+const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -60,7 +60,7 @@ if (/^#from=home$/.test(location.hash)) {
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
 const SIGN_FOR = (() => {
-  const m = /^#(signin|join)=(inflight|weather|home)(&|$)/.exec(ARRIVED);
+  const m = /^#(signin|join)=(inflight|weather|fitness|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
       const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
@@ -108,7 +108,7 @@ function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
-const OPENS = { profile: () => profileView, inflight: () => inflightView };
+const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
@@ -182,6 +182,10 @@ const ICONS = {
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  watch: '<rect x="7" y="3.5" width="10" height="17" rx="3"/><path d="M10 7.5h4M10 16.5h4"/>',
+  heart: '<path d="M12 20s-7.5-4.7-7.5-10.4A4.1 4.1 0 0 1 12 7.2a4.1 4.1 0 0 1 7.5 2.4C19.5 15.3 12 20 12 20z"/>',
+  wave: '<path d="M3 12h3l2.5-6 4 12 2.5-6H21"/>',
+  map: '<path d="M9 4.5 3.5 6.5v13l5.5-2 6 2 5.5-2v-13l-5.5 2-6-2z"/><path d="M9 4.5v13M15 6.5v13"/>',
   sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
   home: '<path d="M4 11.2 12 4.8l8 6.4"/><path d="M6.2 9.8v9.7h11.6V9.8"/><path d="M10 19.5v-5h4v5"/>',
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
@@ -249,13 +253,13 @@ function siteUrl(sub) {
 }
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
-// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, or <site>/ (beside this page's account.<site>, on the
+// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, fitness.<site>/, or <site>/ (beside this page's account.<site>, on the
 // same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^account\./, "");
-    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], home: [`${site}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${site}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -296,7 +300,7 @@ function theme(pref, fade) {
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top(root.dataset.theme ? isDark() : (m.getAttribute("media") || "").includes("dark")));
   };
   const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;
-  if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) document.startViewTransition(go);
+  if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) viewTransition(go);
   else go();
 }
 const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
@@ -356,7 +360,14 @@ async function load() {
 async function anew(fn) {
   if (sheetEl.open) await closeSheet();
   if (!document.startViewTransition || still.matches || document.hidden) return fn();
-  await document.startViewTransition(fn).updateCallbackDone;
+  await viewTransition(fn).updateCallbackDone;
+}
+// A view transition, started; one the browser gives up on (the window resized as it runs, say) is no error, its change
+// made all the same, so what it'd have said is let go
+function viewTransition(fn) {
+  const t = document.startViewTransition(fn);
+  t.ready.catch(() => {}); t.finished.catch(() => {});
+  return t;
 }
 // once the page has settled in, less a moment (a sheet coming up as it rises made too much move at once)
 const afterRise = (fn, at = 0) => setTimeout(fn, Math.max(at, (S.riseUntil || 0) - 500 - Date.now()));
@@ -525,22 +536,25 @@ const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; retur
 function signedIn(r) {
   const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
-  // (InFlight's settings that are the account's, a tap from its card: inflightView)
-  const open = (id, name) => h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
+  // (an app's settings that are the account's, a tap from its card: inflightView, weatherSetView, fitnessSetView)
+  const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView };
+  const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
-    id === "inflight" ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": "inflight-settings", onclick: () => openSheet(inflightView) },
+    SETS[id] ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": `${id}-settings`, onclick: () => openSheet(SETS[id]) },
       icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
-  const f = ap.inflight || {}, w = ap.weather || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
     app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
       f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
-      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts")))));
+      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
+    app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
+      fx.plan ? "On a plan" : "Training, using AI")))));
   const top = [
     sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
@@ -714,6 +728,7 @@ function codeView() {
 const notifySaid = (n) => [n?.places && `${n.places} ${n.places === 1 ? "place" : "places"}`, n?.brief && "morning brief"].filter(Boolean).join(" · ") || "Off";
 // An app: what it keeps of yours, in a word or two, and the way into it
 function appView(id) {
+  if (id === "fitness") return fitnessView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
     h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
@@ -734,6 +749,18 @@ function appView(id) {
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications" })), h("span.val", { text: notifySaid(w.notify) })),
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Units" })), h("span.val", { text: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }) }))),
     open] };
+}
+
+// What Fitness keeps of yours: your activities (each with its file), the space they take, your plan and your own workouts
+function fitnessView() {
+  const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
+  const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
+  return { title: "Fitness", quiet: true, body: [
+    h("div.app-head", {}, h("img", { src: "/apps/fitness.png", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, using AI" })),
+    h("div.group", {}, row("Activities", String(x.activities || 0)), x.last && row("Latest", day(x.last)),
+      row("Files", mb < 0.1 ? "None" : mb < 1000 ? `${mb.toFixed(mb < 10 ? 1 : 0)} MB` : `${(mb / 1024).toFixed(1)} GB`),
+      row("Plan", x.plan ? "On a plan" : "None"), row("Your workouts", String(x.workouts || 0))),
+    h("a.btn", { href: siteUrl("fitness") }, "Open Fitness", icon("open", 18, 2.4))] };
 }
 
 // (a confirm link sent this last week, as one is as the account's made: said so, rather than offered as if none had
@@ -864,7 +891,7 @@ function gate(to) {
     return ready();
   }
   gating++; main.classList.add("vt-gate");
-  const t = document.startViewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
+  const t = viewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
   t.updateCallbackDone.then(ready);
   t.finished.then(done, done);
 }
@@ -890,7 +917,7 @@ function signedOut(r) {
     mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
       : last ? h("p.lead", { text: `@${last.handle}` })
       : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
-        " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
+        ", ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }), " and ", h("img", { src: "/apps/fitness.png", alt: "" }), h("b", { text: "Fitness" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard()),
     r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
@@ -2257,7 +2284,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? { inflight: "InFlight", weather: "Weather", account: "Account" }[d.app] : d.browser || d.label;
+    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
@@ -2286,7 +2313,7 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 let ADM = null, admComing = null;
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
@@ -2315,7 +2342,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -2635,6 +2662,246 @@ function inflightView() {
     said] };
 }
 
+// ---- Weather's settings that are the account's (functions/api/account weather), signed in and kept with it: its units
+// (the page's own Units), its commute and whether its forecast is tuned for where you are. Its own Settings opens them
+// here (open=weather), with the way back to it; its notifications (each device's), best times, look and the order of its
+// page are set in Weather ----
+let WXS = null, wxFor = null, wxAt = 0;
+function weatherSetView() {
+  if (wxFor !== S.me.id) { WXS = null; wxAt = 0; wxFor = S.me.id; }
+  if (!WXS || Date.now() - wxAt > 5000) {
+    wxAt = Date.now();
+    const who = S.me.id;
+    call("weather").then((r) => { if (who === S.me?.id) { WXS = r; if (Sheet.stack.at(-1) === weatherSetView) redraw(); } },
+      (e) => { if (who === S.me?.id && !WXS) { WXS = { error: e.message }; redraw(); } });
+  }
+  const back = HANDOFF?.open === "weather" && fromApp() === "weather"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Weather") : null;
+  if (!WXS) return { title: "Weather", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (WXS.error) return { title: "Weather", left: back, body: [h("div.group", {}, h("div.empty", { text: WXS.error }))] };
+  // a change, kept as it's made (put back, and why, if it can't be)
+  const change = async (input, patch) => {
+    input.disabled = true;
+    try { WXS = await call("weather", { method: "PATCH", body: patch }); }
+    catch (e) { if (input.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
+    finally { input.disabled = false; if (Sheet.stack.at(-1) === weatherSetView) redraw(); }
+  };
+  const sw = (id, title, sub, on, patch) => {
+    const input = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on });
+    input.onchange = () => change(input, patch(input.checked));
+    return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+  };
+  // (a time, each quarter of an hour)
+  const at = (k, title) => {
+    const times = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`), v = WXS.commute[k];
+    if (!times.includes(v)) times.push(v), times.sort();
+    const sel = h("select", { "aria-label": title, id: `wx-${k}`, name: k }, times.map((t) => h("option", { value: t, selected: t === v, text: t })));
+    const val = h("span.val", { text: v });
+    sel.onchange = () => { val.textContent = sel.value; change(sel, { commute: { [k]: sel.value } }); };
+    return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
+  };
+  const c = WXS.commute, u = { ...unitsHere(), ...(S.me.prefs.units || {}) };
+  return { title: "Weather", left: back, body: [
+    h("p", { text: "For Weather on every device it’s signed in on." }),
+    h("div.group", {}, row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid(u), onclick: () => pushSheet(unitsView) })),
+    h("h4.app-k", { text: "Commute" }),
+    h("div.group", {}, sw("wx-commute", "On weekdays", null, c.on, (v) => ({ commute: { on: v } })), c.on && at("am", "Leave"), c.on && at("pm", "Return")),
+    h("p.hint", { text: "The weather for your journeys there and back, in Highlights." }),
+    h("h4.app-k", { text: "Forecast" }),
+    h("div.group", {}, sw("wx-tune", "Tune highs and lows for here", null, WXS.tune, (v) => ({ tune: v }))),
+    h("p.hint", { text: "Highs, lows and wind put right by how far the forecast has been out where you are lately." }),
+    h("p.hint", { text: "Notifications, Best times, Appearance and Arrange your page are set in Weather." })] };
+}
+
+// ---- Fitness's settings that are the account's (functions/api/account fitness): kilometres or miles, and whether it
+// asks how you are each morning; and everything it keeps, as files, in one zip. Its own Settings opens them here
+// (open=fitness), with the way back to it; its look and its morning reminder are each phone's, and stay in the app ----
+let FX = null, fxFor = null, fxAt = 0;
+function fitnessSetView() {
+  if (fxFor !== S.me.id) { FX = null; fxAt = 0; fxFor = S.me.id; }
+  if (!FX || Date.now() - fxAt > 5000) {
+    fxAt = Date.now();
+    const who = S.me.id;
+    call("fitness").then((r) => { if (who === S.me?.id) { FX = r; if (Sheet.stack.at(-1) === fitnessSetView) redraw(); } },
+      (e) => { if (who === S.me?.id && !FX) { FX = { error: e.message }; redraw(); } });
+  }
+  const back = HANDOFF?.open === "fitness" && fromApp() === "fitness"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Fitness") : null;
+  if (!FX) return { title: "Fitness", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (FX.error) return { title: "Fitness", left: back, body: [h("div.group", {}, h("div.empty", { text: FX.error }))] };
+  const said = h("p.said", { role: "alert" });
+  // a change, kept as it's made (put back, and why, if it can't be)
+  const change = async (patch, undo) => {
+    say(said, "");
+    try { FX = await call("fitness", { method: "PATCH", body: patch }); }
+    catch (e) { undo?.(); toast(e.message, true); }
+  };
+  // (none chosen yet: the app goes by the phone's region, as it says)
+  const here = /-(US|LR|MM)\b/i.test(navigator.language || "") ? "imperial" : "metric";
+  const units = seg("Distances", [["metric", "Kilometres"], ["imperial", "Miles"]], FX.units || here, (v) => change({ units: v }, () => redraw()));
+  const ask = h("input.switch", { type: "checkbox", role: "switch", id: "fx-ask", name: "ask", checked: FX.ask });
+  ask.onchange = async () => { ask.disabled = true; await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); ask.disabled = false; };
+  const fx = (k) => FX[k] || {};
+  const maps = seg("Maps", [["tap", "When you tap"], ["always", "Always"]], FX.maps || "tap", (v) => change({ maps: v }, () => redraw()));
+  return { title: "Fitness", left: back, body: [
+    h("p", { text: "For Fitness on every device you use it on." }),
+    h("h4.app-k", { text: "Where your rides come from" }),
+    h("div.group", {},
+      row({ icon: "watch", tint: "garmin", title: "Garmin Connect", sub: fxSaid(fx("garmin"), "Your rides and nights, in by themselves"), onclick: () => pushSheet(fxGarminView) }),
+      fx("strava").ready !== false && row({ icon: "wave", tint: "strava", title: "Strava", sub: fxSaid(fx("strava"), "What you record on Strava, in by itself"), onclick: () => pushSheet(fxStravaView) }),
+      row({ icon: "heart", tint: "health", title: "Apple Health", sub: fx("health").on ? (fx("health").last ? `Last sent ${ago(fx("health").last)}` : "Waiting for the Shortcut’s first morning") : "Your nights from your Apple Watch, by a Shortcut", onclick: () => pushSheet(fxHealthView) }),
+      (FX.devices || []).length > 0 && row({ icon: "watch", tint: "grey", title: "Devices", sub: `${FX.devices.length === 1 ? "1 device" : `${FX.devices.length} devices`} seen in your files`, onclick: () => pushSheet(fxDevicesView) })),
+    h("h4.app-k", { text: "Maps" }),
+    h("div.units", {}, h("div.unit", {}, h("span", { text: "Show a ride’s map" }), maps)),
+    h("p.hint", { text: "Maps come from OpenFreeMap, which sees where they’re shown. Until you tap, Fitness draws the route itself." }),
+    h("h4.app-k", { text: "Units" }),
+    h("div.units", {}, h("div.unit", {}, h("span", { text: "Distances" }), units)),
+    !FX.units && h("p.hint", { text: "From your phone’s region, until you choose." }),
+    h("h4.app-k", { text: "Each morning" }),
+    h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Ask how I am" }), h("small", { text: "Or check in from the card on Today" })), ask)),
+    h("h4.app-k", { text: "Your files" }),
+    h("div.group", {}, h("button.row", { type: "button", onclick: (e) => exportFitness(e.currentTarget, said) },
+      h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every activity’s file, and your workouts, in one zip" })),
+      h("span.get", {}, icon("download", 20, 2.2)))),
+    said,
+    h("p.hint", { text: "Fitness looks as this page does (Appearance, in your settings). The morning reminder and uploading files are in Fitness, on each phone." })] };
+}
+// (a connection, said: whose, and when it last looked)
+function fxSaid(c, off) {
+  if (!c.on) return c.n ? `Not connected · ${c.n === 1 ? "1 activity" : `${c.n} activities`} from before` : off;
+  if (!c.ok) return c.said === "revoked" || c.said === "expired" ? "Stopped letting Fitness in: connect again" : "Connected, but not answering";
+  return `${c.name ? `${c.name} · ` : "Connected · "}${c.last ? `checked ${ago(c.last)}` : "connected"}`;
+}
+// Disconnecting, or clearing up after: what it brought in kept, or removed (not yours, say)
+function fxLeave(kind, label) {
+  const c = FX[kind] || {}, n = c.n || 0;
+  if (!c.on && !n) return null;
+  const go = async (b, acts) => {
+    try { const r = await busy(b, acts ? "Removing…" : "Disconnecting…", () => call(`fitness/${kind}${acts ? "?acts=1" : ""}`, { method: "DELETE" })); FX = r;
+      stepBack(); toast([c.on && `Disconnected from ${label}`, acts && `${r.gone === 1 ? "1 activity" : `${r.gone || 0} activities`} removed`].filter(Boolean).join("; ")); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  };
+  const sure = h("div.group", { hidden: true },
+    c.on && h("button.row.plain.act", { type: "button", onclick: (e) => go(e.currentTarget, false) }, h("span.tx", {}, h("b", { text: n ? `Disconnect, and keep its ${n === 1 ? "activity" : `${n} activities`}` : "Disconnect" }))),
+    n > 0 && h("button.row.plain.act.danger", { type: "button", onclick: (e) => go(e.currentTarget, true) }, h("span.tx", {}, h("b", { text: `${c.on ? "Disconnect, and remove" : "Remove"} ${n === 1 ? "the activity" : `all ${n} activities`} from ${label}` }))));
+  const first = h("button.row.plain.act.danger", { type: "button", onclick: (e) => { e.currentTarget.closest(".group").hidden = true; sure.hidden = false; } }, h("span.tx", {}, h("b", { text: c.on ? "Disconnect" : `Remove what ${label} brought in` })));
+  return [h("h4.app-k", { text: c.on ? "Disconnecting" : `From ${label} before` }), h("div.group", {}, first), sure,
+    h("p.hint", { text: c.on ? "New activities stop coming in. You choose whether the ones it brought in stay." : `${n === 1 ? "1 activity" : `${n} activities`} in Fitness came from ${label}. If they’re not yours, remove them.` })];
+}
+const fxStat = (k, v) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
+// Garmin Connect: your Personal API key, pasted (locked with your account, never shown again)
+function fxGarminView() {
+  const c = FX.garmin || {};
+  if (!c.on) {
+    const key = h("input", { type: "password", id: "fx-garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key" });
+    const btn = h("button.btn", { type: "button", onclick: async () => {
+      if (!key.value.trim()) return key.focus();
+      try { FX = await busy(btn, "Connecting…", () => call("fitness/garmin", { method: "POST", body: { key: key.value } })); key.value = ""; redraw(); toast("Connected: your rides come in as you open Fitness"); }
+      catch (e) { if (!e.quiet) toast(e.message, true); }
+    } }, "Connect");
+    return { title: "Garmin Connect", body: [
+      h("p", { text: "Your rides, runs and swims, and your nights, in Fitness by themselves." }),
+      h("ol.steps-list", {}, h("li", { text: "In Garmin Connect: Settings › Personal API Key › Create" }), h("li", { text: "Copy it, and paste it here: Garmin shows it only once" })),
+      field("Personal API key", key), btn,
+      h("p.hint", { text: "Kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in the last six months, then each new one." }),
+      ...(fxLeave("garmin", "Garmin") || [])] };
+  }
+  const all = h("button.btn.quiet", { type: "button", onclick: async () => {
+    try { FX = await busy(all, "Starting…", () => call("fitness/garmin/all", { method: "POST" })); redraw(); toast("All your rides are coming in: open Fitness to see them"); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.back ? "Carry on bringing them in" : "Bring in all your rides");
+  return { title: "Garmin Connect", body: [
+    h("div.group", {}, fxStat("Status", fxSaid(c, "")), fxStat("Activities from it", String(c.n || 0))),
+    all, h("p.hint", { text: c.back ? "Part way through all your history: it carries on by itself." : "Everything on Garmin Connect, not just the last six months, oldest first. Carries on by itself." }),
+    ...(fxLeave("garmin", "Garmin") || [])] };
+}
+// Strava: its own page to say yes on, which sends you back to Fitness, the rides coming in
+function fxStravaView() {
+  const c = FX.strava || {};
+  const go = h("button.btn.strava", { type: "button", onclick: async () => {
+    try { const { url } = await busy(go, "Opening Strava…", () => call("fitness/strava", { method: "POST" })); location.assign(url); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.on ? "Connect with Strava again" : "Connect with Strava");
+  if (!c.on) return { title: "Strava", body: [
+    h("p", { text: "Your rides, runs and swims from Strava, in Fitness by themselves: the last six months, then each new one." }),
+    go, h("p.hint", { text: "Strava shows its own page, so you see whose Strava it is; then you’re back in Fitness, the rides coming in. Fitness only reads: it never posts to Strava." }),
+    ...(fxLeave("strava", "Strava") || []), h("p.hint.powered", { text: "Powered by Strava" })] };
+  const all = h("button.btn.quiet", { type: "button", onclick: async () => {
+    try { FX = await busy(all, "Starting…", () => call("fitness/strava/all", { method: "POST" })); redraw(); toast("All your rides are coming in: open Fitness to see them"); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.back ? "Carry on bringing them in" : "Bring in all your rides");
+  return { title: "Strava", body: [
+    h("div.group", {}, fxStat("Status", fxSaid(c, "")), fxStat("Activities from it", String(c.n || 0))),
+    !c.ok && go, c.ok && all,
+    h("p.hint", { text: "Strava tells Fitness as each new activity’s saved, so it’s there a minute or two after." }),
+    ...(fxLeave("strava", "Strava") || []), h("p.hint.powered", { text: "Powered by Strava" })] };
+}
+// Apple Health: a key for a Shortcut that sends last night each morning (made here, shown once, with the steps)
+let fxKey = null;
+function fxHealthView() {
+  const c = FX.health || {};
+  const make = h("button.btn" + (c.on ? ".quiet" : ""), { type: "button", onclick: async () => {
+    try { const r = await busy(make, "Making your key…", () => call("fitness/health", { method: "POST" })); fxKey = r.address; FX = r; redraw(); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.on ? "Make a new key, and see the steps again" : "Make my key");
+  const copy = (text) => h("button.btn.quiet", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast("Address copied"), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy the address");
+  const steps = fxKey && [
+    h("h4.app-k", { text: "Your address" }), h("p.fx-addr", { text: fxKey }), copy(fxKey),
+    h("p.hint", { text: "Yours alone, and shown this once: copy it now. It can only send your nights to Fitness." }),
+    h("h4.app-k", { text: "Make the Shortcut" }),
+    h("ol.steps-list", {},
+      h("li", { text: "Shortcuts › Automation › New Automation: Time of Day, 07:30, Daily, Run Immediately; then New Blank Automation." }),
+      h("li", { text: "Find Health Samples: Heart Rate Variability, Start Date in the last 12 hours." }),
+      h("li", { text: "Find Health Samples: Resting Heart Rate, in the last 1 day (if it says Filter, tap Health Samples and Clear it)." }),
+      h("li", { text: "Find Health Samples: Sleep, in the last 16 hours, Value not In Bed, not Awake; then Get Details of Health Samples: Duration." }),
+      h("li", { text: "Get Contents of URL: paste your address. Method POST, Request Body JSON." }),
+      h("li", { text: "Three fields: hrv, step 2’s Health Samples; rhr, step 3’s; sleep, step 4’s Duration (each a blue variable chip). Then tap Run once." }))];
+  const off = c.on && h("button.row.plain.act.danger", { type: "button", onclick: async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.querySelector("b").textContent = "Turn off: the key stops, its nights forgotten"; return; }
+    try { FX = await call("fitness/health", { method: "DELETE" }); fxKey = null; stepBack(); toast("Apple Health off"); } catch (er) { toast(er.message, true); }
+  } }, h("span.tx", {}, h("b", { text: "Turn off" })));
+  return { title: "Apple Health", body: [
+    c.on ? h("div.group", {}, fxStat("Last sent", c.last ? ago(c.last) : "Not yet"), fxStat("Nights", String(c.nights || 0)))
+      : h("p", { text: "Apple keeps Health on your iPhone, with no way for a website to ask for it. So a Shortcut sends it: each morning, last night’s HRV, resting heart rate and sleep, with a key of your own. Rhythm eases the day when your night says you need it." }),
+    ...(steps || []), make,
+    off && h("div.group", {}, off)] };
+}
+function fxDevicesView() {
+  return { title: "Devices", body: [h("p", { text: "What your activities were recorded on, from their files." }),
+    h("div.group", {}, (FX.devices || []).map(([d, n]) => fxStat(d, n === 1 ? "1 file" : `${n} files`)))] };
+}
+// Everything, as files: each activity as it came, and your workouts as FIT (and ZWO, for a ride), drawn with the app's
+// own code (formats.js, shared with it)
+async function exportFitness(btn, said) {
+  try {
+    const file = await busy(btn, "Gathering…", async () => {
+      const [x, F] = await Promise.all([call("fitness/export"), import("./formats.js")]), files = [], seen = new Set();
+      const unzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b ? new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()) : u8);
+      for (const [i, a] of x.acts.entries()) {
+        const lbl = btn.querySelector("span:not(.spin)"); if (lbl) lbl.textContent = `Gathering ${i + 1} of ${x.acts.length}…`;
+        const r = await fetch(`${API}/fitness/file?id=${encodeURIComponent(a.id)}`, { credentials: "same-origin" });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "One of your files couldn’t be fetched. Try again.");
+        const bytes = await unzip(new Uint8Array(await r.arrayBuffer()));
+        // (a file of several parts, kept once)
+        if (seen.has(a.file + bytes.length)) continue;
+        seen.add(a.file + bytes.length);
+        files.push({ name: `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`, data: bytes });
+      }
+      for (const w of x.workouts) {
+        files.push({ name: `workouts/${F.fileName(w.name, "fit")}`, data: F.fitFromWorkout(w, { pace: w.sport === "run" ? x.pace.run : w.sport === "swim" ? x.pace.swim : 4 }) });
+        if (w.sport === "ride") files.push({ name: `workouts/${F.fileName(w.name, "zwo")}`, data: F.zwoFromWorkout(w) });
+      }
+      return files.length ? new Blob([F.zip(files)], { type: "application/zip" }) : null;
+    });
+    if (!file) return toast("Nothing to export yet: add an activity in Fitness first.");
+    const a = h("a", { href: URL.createObjectURL(file), download: "Fitness export.zip" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast("Your Fitness files are downloading.");
+  } catch (e) { if (!e.quiet) say(said, e.message); }
+}
+
 // ---- your data, as a file ----
 function exportView() {
   const said = h("p.said", { role: "alert" });
@@ -2670,6 +2937,7 @@ function deleteView() {
   return { title: "Delete account", body: [
     h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
     h("ul.gone", {}, h("li", { text: "InFlight: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
+      h("li", { text: "Fitness: your activities and their files, your plan and your workouts" }),
       h("li", { text: "Your profile, password and passkeys" })),
     h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),
     h("form.form", { onsubmit: async (e) => {

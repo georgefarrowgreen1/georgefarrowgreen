@@ -1,7 +1,7 @@
 // The site's admin, on its admin's account page (account/app.js): its own file, fetched only for the account that's the
 // site's admin, so no one else's page carries it. The page hands over what it draws with (setup), and gets back the
 // Admin row for the page and the Admin sheet.
-export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
+export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
@@ -265,9 +265,9 @@ export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, d
     note.addEventListener("input", () => { AD.note = note.value; });
     const make = h("button.btn", { type: "submit" }, icon("link", 20, 2.2), "Make an invite link");
     const open = (i) => !i.usedAt && !i.revokedAt;
-    const item = (i) => h("div.row", {}, h(`span.ic.${i.usedAt ? "green" : i.revokedAt ? "grey" : "blue"}`, {}, icon(i.usedAt ? "people" : "link", 19)),
+    const item = (i) => h("div.row", {}, h(`span.ic.${i.usedAt ? "green" : "blue"}`, {}, icon(i.usedAt ? "people" : "link", 19)),
       h("span.tx", {}, h("b", { text: i.note || "Invite" }), h("small", { text: i.usedAt ? `Used by ${i.by?.handle ? "@" + i.by.handle : "an account since deleted"} · ${day(i.usedAt)}`
-        : i.revokedAt ? `Cancelled · ${day(i.revokedAt)}` : `Unused · made ${when(i.createdAt)}` })),
+        : `Unused · made ${when(i.createdAt)}` })),
       open(i) && h("button.mini", { type: "button", onclick: async (e) => {
         say(said, "");
         try { await admPost(e.currentTarget, "", "invite-revoke", { id: i.id }); i.revokedAt = Date.now(); admChanged(); redraw(); toast("Invite cancelled."); }
@@ -281,7 +281,8 @@ export function setup({ $, API, S, Sheet, again, ago, avatar, busy, call, day, d
       } }, h("label.field", {}, note), make),
       AD.invite && admCopy(AD.invite, "Copy it now: it isn’t shown again. It makes one account, then stops working."),
       said,
-      !x ? admWait("invites") : x.invites.length > 0 && h("div.group", {}, [...x.invites.filter(open), ...x.invites.filter((i) => !open(i)).slice(0, 20)].map(item))] };
+      // (the unused first, then those used; one cancelled isn't shown again)
+      !x ? admWait("invites") : ((list) => list.length > 0 && h("div.group", {}, list.map(item)))([...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 20)])] };
   }
 
   // Insights: how InFlight is used, in totals over everyone (functions/_insights.js), never who sent what to whom

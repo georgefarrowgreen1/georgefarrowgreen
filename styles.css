@@ -46,14 +46,14 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   min-height: 100vh;
-  background: #2b2c2e;   /* (the colour as the page loads: Safari reads the status bar's from it then, not as it changes) */
+  background: #07090d;
   color: var(--text);
   touch-action: manipulation;     /* (pinching still zooms; a quick double tap on a button doesn't) */
   font: 17px/1.4 var(--font);
   letter-spacing: -0.2px;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 1.2s ease;   /* (the photo's colour at its top, as each comes: app.js tint) */
+  transition: background-color 1.2s ease;   /* (under the photos where they end: the photo's own at its foot, app.js footOf) */
 }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -69,7 +69,14 @@ svg { display: block; flex: none; }
 }
 
 /* ---------------- the photos, fixed behind everything ---------------- */
-.bg { position: fixed; inset: 0; overflow: hidden; background: #2b2c2e; transition: background-color 1.2s ease; }
+/* (the layer's own colour, as the page loads, is the one an iPhone tints the strip behind its status bar with: a grey
+   near the photos' at their top, not black) */
+.bg { position: fixed; inset: 0; overflow: hidden; background: #2b2c2e; }
+/* (on a phone or a tablet, the photos end above Safari's bar at the foot, fading out into the page's own colour, so the
+   page carries on under the bar: with a layer fixed down to the foot of the screen, Safari fills under its bar solid) */
+@media (hover: none) {
+  .bg, .soft { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+}
 .bg::after {
   content: ""; position: absolute; inset: 0; z-index: 2;     /* (over the photos: the one showing is z-index 1) */
   background: linear-gradient(180deg, rgba(5, 7, 12, 0.32) 0%, rgba(5, 7, 12, 0.04) 32%, rgba(5, 7, 12, 0.52) 72%, rgba(5, 7, 12, 0.86) 100%);
@@ -86,12 +93,6 @@ svg { display: block; flex: none; }
 .slide.was { opacity: 1; }
 /* as you scroll, the photo softens behind what's over it: a softened copy of it faded in (app.js soften), not a blur
    redrawn each frame; the copy itself fades in when it's made, rather than appearing over the plain tint */
-/* the photo's own colour at its top, solid along the top edge and fading out (app.js tint): Safari tints the strip behind
-   the status bar with what's along the top of the page, only where that's one colour all the way across, and a photo's
-   edge never is */
-@property --top-tint { syntax: "<color>"; inherits: true; initial-value: #2b2c2e; }
-.toptint { position: fixed; z-index: 1; top: 0; left: 0; right: 0; height: 28px; pointer-events: none;
-  background: linear-gradient(var(--top-tint), color-mix(in srgb, var(--top-tint) 0%, transparent)); transition: --top-tint 1.2s ease; }
 .soft {
   position: fixed; inset: 0;
   opacity: 0; visibility: hidden;
@@ -254,6 +255,21 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app > * { position: relative; }
 .app.inflight { --glow: #2f7bff; }
 .app.weather { --glow: #ffb43a; }
+.app.fitness { --glow: #ff6a3d; }
+/* (on a phone or a tablet, on one line, swiped across, as the account's page has them: each a little narrower than half
+   the width, so the next peeks in from the edge, and it's seen there's more; each comes to rest in line with the page.
+   The line runs out to the screen's edges, past the page's margins. On a wide screen, all three side by side: below) */
+@media (max-width: 899px) {
+  .apps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 12px) / 2.15);
+    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
+    margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) -14px calc(-1 * max(16px, env(safe-area-inset-left)));
+    padding: 4px max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left)); scroll-padding-inline: max(16px, env(safe-area-inset-left)); }
+  .apps::-webkit-scrollbar { display: none; }
+  .apps > .app { scroll-snap-align: start; }
+}
+@media (max-width: 360px) { .apps { grid-auto-columns: 78%; } }
+/* (between a phone and a wide screen, where the line ends short of the screen's edge, it fades out there) */
+@media (min-width: 601px) and (max-width: 899px) { .apps { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); } }
 .app img { width: 56px; height: 56px; border-radius: 13px; margin-bottom: 10px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app b { font-size: 19px; font-weight: 600; }
 .app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; transition: color var(--dur-fast) var(--ease-out); }
@@ -554,6 +570,8 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .head { margin-top: 18px; }
   .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; }
   .grid > section { min-width: 0; }
+  /* (the apps side by side, so the page still fits on one screen) */
+  .apps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {

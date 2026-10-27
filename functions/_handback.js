@@ -3,7 +3,7 @@
 // signed in already, carry on as yourself); and the page hands the sign-in back to the app, with a code in the
 // address's # that's good once, for two minutes, and only with the app's secret. So a code seen anywhere else, or one
 // a page elsewhere sends you back with, signs nothing in. The app swaps it for a sign-in of its own (InFlight's:
-// functions/api/pigeon handback; Weather's: functions/_wxacct.js).
+// functions/api/pigeon handback; Weather's: functions/_wxacct.js; Fitness's: functions/api/fitness).
 //
 // For InFlight it brings what unlocks the key there (box): the password's first half, or the PRF secret of a passkey
 // with its own copy of the key (pk: which one, for that copy), sealed on the account's page to a key pair InFlight
@@ -12,7 +12,7 @@
 
 import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, safeEqual } from "./_pigeon.js";
 
-const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather"]);
+const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness"]);
 const WORD = /^[A-Za-z0-9_-]{43}$/, CODE = /^[A-Za-z0-9_-]{20,64}$/;
 export const PASSKEY_ID = /^[A-Za-z0-9_-]{16,1400}$/;
 

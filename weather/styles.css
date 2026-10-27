@@ -182,6 +182,12 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
   --s1: #3f5670; --s2: #5d7189; --p2: 60%; --s3: #6c7f95; --p3: 80%; --s4: #7b8ca0;
   background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%);
   transition: --s1 1s var(--ease), --s2 1s var(--ease), --s3 1s var(--ease), --s4 1s var(--ease), --p2 1s var(--ease), --p3 1s var(--ease), --glow 1s var(--ease), --glow-2 1s var(--ease); }
+/* (on a phone or a tablet, the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at its
+   foot (app.js SKY_FOOT), so the page carries on under the bar: with a layer fixed down to the foot of the screen, Safari
+   fills under its bar solid) */
+@media (hover: none) {
+  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+}
 /* light in the sky for the glass to catch: a glow where the sun or moon would be */
 .sky::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
 .sky::after { content: ""; position: absolute; inset: auto auto -30% -25%; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow-2, rgba(120, 160, 255, 0.12)), transparent 60%); pointer-events: none; }
@@ -292,9 +298,11 @@ body.sheet-up :is(.sky, .sky > *) { transition-duration: 0s; }
   background: rgba(12, 18, 30, 0.5); border-bottom: 0.5px solid rgba(255, 255, 255, 0.16); box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.3);
   -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); }
 .top.scrolled::before { opacity: 1; }
-/* (behind a sheet, or the radar full screen, its glass isn't blurred (as the page's isn't: below): made more solid
-   instead, so the cards under it don't show through the bar as if over the buttons) */
-body:is(.sheet-up, .no-scroll) .top::before { background-color: rgba(12, 18, 30, 0.88); }
+/* (behind the radar full screen, its glass isn't blurred (as the page's isn't: below): made more solid instead, so the
+   cards under it don't show through the bar as if over the buttons; behind a sheet, where the page steps back, it goes:
+   stepping back with the page, it was a dark box, short of the screen's edges and the strip at its top, under the dim) */
+body.no-scroll .top::before { background-color: rgba(12, 18, 30, 0.88); }
+body.sheet-up .top::before { opacity: 0; }
 /* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
 .top .place, .top .icon-btn { transition: background-color 0.3s, transform var(--dur-release) var(--spring), filter 0.25s; }
 .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
@@ -472,6 +480,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
 .brief b { font-weight: 650; color: #fff; }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1.4em; }
+/* (and no room kept for it while it says nothing: the brief and what's under it, a warning, closer) */
+.status:empty { margin: 0; min-height: 0; }
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */

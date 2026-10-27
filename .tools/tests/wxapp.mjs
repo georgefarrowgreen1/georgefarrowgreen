@@ -930,7 +930,7 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
 await p.click('#settings-btn');
 await p.waitForSelector('#settings[open]'); await p.waitForTimeout(300);
 {
-  const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
+  const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].filter((b) => !b.closest('li')?.hidden).map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
     hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
   ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
     'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
@@ -1208,6 +1208,19 @@ await ctx.close();
   await seed({ places: [], brief: null });
   await p.goto(`${HOST}/?lat=51.51&lon=-0.14&name=Soho`); await p.waitForSelector('.day-row', { timeout: 20000 });
   ok(asked === 1, 'a link to near there that isn\'t one of its own notifications: asked about, as any shared link is', `${asked} asked`);
+  await ctx.close();
+}
+// the strip behind an iPhone's status bar: it takes the page's theme-color as the page arrives, and no notice of it changed
+// after; so the sky's colour is kept, and the app's own worker writes it into the page as it gives it (sw.js tinted)
+{
+  const { ctx, p } = await open({}, { sw: true, settle: false });
+  await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 }).catch(() => {});
+  await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
+  await p.waitForFunction(async () => !!(await (await caches.open('wx-tint')).match(new URL('./tint', location.href))), null, { timeout: 10000, polling: 200 }).catch(() => {});
+  const top = await p.evaluate(() => document.querySelector('meta[name="theme-color"]').content);
+  const r = await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
+  const sent = /<meta name="theme-color" content="([^"]*)"/.exec(await r.text())?.[1];
+  ok(r.fromServiceWorker() && sent === top && top !== '#2b5d96', 'the page arrives with the sky\'s colour as its theme-color, written in by its worker', `${sent} (the sky's ${top})`);
   await ctx.close();
 }
 // fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a

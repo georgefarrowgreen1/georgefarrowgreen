@@ -13,7 +13,7 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import { joinInFlight, signInInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry';
+const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', FIT = 'http://fitness.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
@@ -84,16 +84,16 @@ ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!(await L.p
 await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
-ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home), 'your apps: both of them', home);
+ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home) && /Fitness/.test(home), 'your apps: all three of them', home);
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
-ok(opens.join() === `${CHAT}/,${WX}/`, 'each app\'s card opens the app, on this site', opens.join());
+ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/`, 'each app\'s card opens the app, on this site', opens.join());
 const links = [];
-for (const name of ['InFlight', 'Weather']) {
+for (const name of ['InFlight', 'Weather', 'Fitness']) {
   await L.p.click(`main .app:has(b:text-is("${name}")) .about`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
   links.push(await L.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))); await closeSheet(L);
 }
-ok(links.join() === `${CHAT}/,${WX}/`, 'and its ⓘ, what it keeps of yours, with the way in too', links.join());
+ok(links.join() === `${CHAT}/,${WX}/,${FIT}/`, 'and its ⓘ, what it keeps of yours, with the way in too', links.join());
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
 // (Sign-in and security: a row on the page saying how it stands, by the check-up; the check-up at the head of its
 // sheet, then its rows, each saying how things are)

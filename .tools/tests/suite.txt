@@ -43,3 +43,4 @@ acctsignin
 acctinflight
 sitepaths
 acctpkmsg
+fitness

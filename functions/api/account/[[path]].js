@@ -42,6 +42,10 @@ import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
+import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
+import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
+import { connectUrl as stravaUrl, disconnectStrava, stravaOf, stravaAll } from "../../_strava.js";
+import { newKey as healthKey, forget as healthOff, healthOf } from "../../_health.js";
 import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
@@ -52,6 +56,29 @@ async function weatherOf(env, userId) {
   const r = await (await wxdb(env)).prepare("SELECT data, ver FROM wx_accts WHERE user_id = ?").bind(userId).first().catch(() => null);
   let data = null; try { data = r ? JSON.parse(r.data) : null; } catch (_) {}
   return { ver: r?.ver || 0, data };
+}
+// A change to Weather's settings as the account keeps them (functions/_wxacct.js), from the version kept, tried again on
+// one made meanwhile on a device; Weather takes it up as it next comes into step. New units: every device's notifications
+// say them from now on.
+async function setWeather(env, userId, set) {
+  const D = await wxdb(env);
+  for (let i = 0; i < 3; i++) {
+    const wx = await weatherOf(env, userId), data = wx.data || { places: [], settings: {}, notify: { places: [], brief: null, briefAt: "07:00" } };
+    data.settings = { ...(data.settings || {}), ...set };
+    const r = wx.ver === 0
+      ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(userId, JSON.stringify(data), Date.now()).run()
+      : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(userId, JSON.stringify(data), Date.now(), wx.ver).run();
+    if (r.meta?.changes) break;
+    if (i === 2) throw new HttpError(409, "Weather was changing that on another device. Try again.");
+  }
+  if (Object.keys(set).some((k) => k in UNITS)) await unitsForAccount(env, userId, (await weatherOf(env, userId)).data?.settings || {});
+}
+// Weather's settings that are the account's, besides its units (on the page's Units): its commute, and whether its
+// forecast is tuned for where you are
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+async function weatherSettings(env, u) {
+  const s = (await weatherOf(env, u.id)).data?.settings || {}, c = s.commute || {};
+  return { commute: { on: !!c.on, am: HHMM.test(c.am || "") ? c.am : "08:00", pm: HHMM.test(c.pm || "") ? c.pm : "17:30" }, tune: s.tune !== false };
 }
 // Weather's emails: { warn, brief (each on or off), warnFor (the places with warnings on), briefFor (the briefing's place),
 // briefAt }
@@ -78,20 +105,22 @@ async function inflightOf(D, id) {
   return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
 }
 // What each app keeps of yours, in a line, for the site's home page (functions/api/me): InFlight's friends and pigeons
-// sent, Weather's places and whether it sends you anything (null for an app the account hasn't used)
+// sent, Weather's places and whether it sends you anything, Fitness's activities and whether you're on a plan (null for
+// an app the account hasn't used)
 export async function appFigures(env, id) {
-  const [inflight, wx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id)]);
+  const [inflight, wx, fx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id), fitnessOf(env, id)]);
   const places = Array.isArray(wx.data?.places) ? wx.data.places.length : 0, n = wx.data?.notify;
   return {
     inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent } : null,
     weather: places ? { places, alerts: !!((n?.places || []).length || n?.brief) } : null,
+    fitness: fx.activities || fx.plan ? { activities: fx.activities, plan: !!fx.plan } : null,
   };
 }
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight, last, admin] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
@@ -99,6 +128,7 @@ async function view(env, u) {
     inflightOf(D, u.id),
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
     adminOf(env).catch(() => null),
+    fitnessOf(env, u.id),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -120,7 +150,7 @@ async function view(env, u) {
     // sign-in an account page opened from an app came from)
     devices: ss.map((x) => {
       const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
-      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
@@ -136,6 +166,7 @@ async function view(env, u) {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
         notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
       inflight,
+      fitness,
     },
   };
 }
@@ -150,6 +181,30 @@ async function inflightSettings(env, u) {
     blocked: results.map((p) => ({ id: p.id, handle: p.handle, name: p.name })) };
 }
 const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
+// Fitness's settings that are the account's (as its record has them, functions/_fitness.js): kilometres or miles (none
+// chosen: the phone's region's, in the app), and whether it asks how you are each morning
+// and where its rides and nights come from (Garmin Connect, Strava, Apple Health), the devices they were recorded on,
+// and whether maps show by themselves; each said as the app says it (not its keys, nor its files waiting)
+async function fitnessSettings(env, u) {
+  const p = (await fitnessKept(env, u.id)).data?.prefs || {}, quiet = (x) => x.catch(() => ({ on: false }));
+  const [g, s, hl, dv] = await Promise.all([quiet(garminOf(env, u.id)), quiet(stravaOf(env, u.id)), quiet(healthOf(env, u.id)),
+    fitdb(env).then((D) => D.prepare("SELECT device, COUNT(*) AS n FROM fx_acts WHERE user_id = ? AND device IS NOT NULL AND device != '' GROUP BY device ORDER BY n DESC LIMIT 60").bind(u.id).all()).then((r) => r.results, () => [])]);
+  const n = (pre) => fitdb(env).then((D) => D.prepare("SELECT COUNT(*) AS n FROM fx_acts WHERE user_id = ? AND id GLOB ?").bind(u.id, `${pre}[0-9]*`).first()).then((r) => r?.n || 0, () => 0);
+  const [gn, sn] = await Promise.all([n("g"), n("s")]);
+  return { units: p.units === "metric" || p.units === "imperial" ? p.units : null, ask: p.ask !== false, maps: p.maps === "always" ? "always" : "tap",
+    garmin: g.on ? { on: true, ok: g.ok, said: g.said, last: g.last, since: g.since, back: !!g.back, n: gn } : { on: false, n: gn },
+    strava: s.ready === false ? { ready: false } : s.on ? { on: true, ok: s.ok, said: s.said, last: s.last, since: s.since, name: s.name, back: !!s.back, n: sn } : { on: false, n: sn },
+    health: hl.on ? { on: true, last: hl.last, said: hl.said, nights: hl.well?.length || 0 } : { on: false },
+    devices: dv.map((d) => [d.device, d.n]) };
+}
+// (Fitness's own address, beside this page's: where Strava sends you back to, and where the Shortcut sends your nights)
+const fitnessOrigin = (request) => { const u = new URL(request.url); u.hostname = u.hostname.replace(/^account\./, "fitness."); return u.origin; };
+// (every one of your activities, as the app has them, newest first: a page at a time)
+async function allActs(env, id) {
+  let { acts, more } = await fitnessActs(env, id);
+  while (more && acts.length < 5000) { const last = acts.at(-1), r = await fitnessOlder(env, id, last.start, last.id); acts = acts.concat(r.acts); more = r.more; }
+  return acts;
+}
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
@@ -558,17 +613,7 @@ const ROUTES = {
     if (b.units !== undefined) {
       const U = b.units && typeof b.units === "object" ? b.units : {}, set = {};
       for (const [k, ok] of Object.entries(UNITS)) if (U[k] !== undefined) { if (!ok.includes(U[k])) throw new HttpError(400, "Choose one of the units shown."); set[k] = U[k]; }
-      const D = await wxdb(env);
-      for (let i = 0; i < 3; i++) {
-        const wx = await weatherOf(env, u.id), data = wx.data || { places: [], settings: {}, notify: { places: [], brief: null, briefAt: "07:00" } };
-        data.settings = { ...(data.settings || {}), ...set };
-        const r = wx.ver === 0
-          ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(u.id, JSON.stringify(data), Date.now()).run()
-          : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(u.id, JSON.stringify(data), Date.now(), wx.ver).run();
-        if (r.meta?.changes) break;
-      }
-      const s = (await weatherOf(env, u.id)).data?.settings || {};
-      await unitsForAccount(env, u.id, s);
+      await setWeather(env, u.id, set);
     }
     return json(await view(env, now));
   },
@@ -595,6 +640,109 @@ const ROUTES = {
     }
     return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
   },
+  // ---- Weather's settings (weatherSettings), as its Settings sends you here for them (signed in, kept with the account) ----
+  "GET weather": async ({ request, env }) => json(await weatherSettings(env, await signedIn(request, env))),
+  "PATCH weather": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024), set = {};
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.tune !== undefined) { if (typeof b.tune !== "boolean") throw new HttpError(400, "Choose on or off."); set.tune = b.tune; }
+    if (b.commute !== undefined) {
+      const c = b.commute && typeof b.commute === "object" ? b.commute : null, now = (await weatherSettings(env, u)).commute;
+      if (!c || (c.on !== undefined && typeof c.on !== "boolean") || (c.am !== undefined && !HHMM.test(c.am)) || (c.pm !== undefined && !HHMM.test(c.pm))) throw new HttpError(400, "Choose a time.");
+      set.commute = { ...now, ...c };
+    }
+    if (Object.keys(set).length) await setWeather(env, u.id, set);
+    return json(await weatherSettings(env, u));
+  },
+
+  // ---- Fitness's settings (fitnessSettings), as its Settings sends you here for them: a change to its record from the
+  // version that's kept (tried again on one made meanwhile on a phone), taken up by the app as it next opens ----
+  "GET fitness": async ({ request, env }) => json(await fitnessSettings(env, await signedIn(request, env))),
+  "PATCH fitness": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024), set = {};
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    if (b.units !== undefined) { if (b.units !== "metric" && b.units !== "imperial") throw new HttpError(400, "Choose kilometres or miles."); set.units = b.units; }
+    if (b.ask !== undefined) { if (typeof b.ask !== "boolean") throw new HttpError(400, "Choose on or off."); set.ask = b.ask; }
+    if (b.maps !== undefined) { if (b.maps !== "tap" && b.maps !== "always") throw new HttpError(400, "Choose when you tap, or always."); set.maps = b.maps; }
+    for (let i = 0; i < 4; i++) {
+      const k = await fitnessKept(env, u.id), prefs = { ...(k.data?.prefs || {}), ...set };
+      if (prefs.ask !== false) delete prefs.ask;     // (the app keeps it only when it's off)
+      if (prefs.maps !== "always") delete prefs.maps;     // (and maps only when they're always shown)
+      const r = await fitnessSave(env, u.id, k.ver, { ...(k.data || {}), prefs });
+      if (!r.conflict) return json(await fitnessSettings(env, u));
+    }
+    throw new HttpError(409, "Fitness was changing that on another device. Try again.");
+  },
+  // ---- where Fitness's rides and nights come from, connected here as in the app (functions/_garmin.js, _strava.js,
+  // _health.js); the app reads what each brings in as it next opens ----
+  "POST fitness/garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 8 * 1024);
+    await garminConnect(env, u.id, b.key);
+    return json(await fitnessSettings(env, u));
+  },
+  "POST fitness/garmin/all": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await garminAll(env, u.id);
+    return json(await fitnessSettings(env, u));
+  },
+  // (acts=1: and every activity it brought in, removed)
+  "DELETE fitness/garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), acts = new URL(request.url).searchParams.get("acts") === "1";
+    await garminOff(env, u.id);
+    const gone = acts ? await fitnessDrop(env, u.id, "g") : 0;
+    return json({ ...(await fitnessSettings(env, u)), gone });
+  },
+  // (Strava's page to say yes on, which sends you back to Fitness: its address is the one Strava knows)
+  "POST fitness/strava": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await stravaUrl(env, (await signedIn(request, env)).id, fitnessOrigin(request)));
+  },
+  "POST fitness/strava/all": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await stravaAll(env, u.id);
+    return json(await fitnessSettings(env, u));
+  },
+  "DELETE fitness/strava": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), acts = new URL(request.url).searchParams.get("acts") === "1";
+    await disconnectStrava(env, u.id);
+    const gone = acts ? await fitnessDrop(env, u.id, "s") : 0;
+    return json({ ...(await fitnessSettings(env, u)), gone });
+  },
+  // (a new key for the Shortcut, shown this once, with the address it goes in: Fitness's)
+  "POST fitness/health": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), r = await healthKey(env, u.id);
+    return json({ ...(await fitnessSettings(env, u)), key: r.key, address: `${fitnessOrigin(request)}/api/fitness/health/${r.key}` });
+  },
+  "DELETE fitness/health": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await healthOff(env, u.id);
+    return json(await fitnessSettings(env, u));
+  },
+  // what's needed to export everything: each activity's name and kind, your workouts, and the paces they're drawn at
+  "GET fitness/export": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, "fxexport:" + u.id, 30, DAY);
+    const d = (await fitnessKept(env, u.id)).data || {}, p = d.profile || {};
+    const acts = (await allActs(env, u.id)).map((a) => ({ id: a.id, start: a.start, name: a.name, type: a.type, file: a.file }));
+    return json({ acts, workouts: Array.isArray(d.workouts) ? d.workouts : [], pace: { run: 1000 / (p.runPace || 330), swim: 100 / (p.css || 120) } });
+  },
+  // one activity's file, as it came (gzipped, if it was kept so: the page unpacks it)
+  "GET fitness/file": async ({ request, env }) => {
+    const u = await signedIn(request, env), id = new URL(request.url).searchParams.get("id") || "";
+    if (!id || id.length > 200) throw new HttpError(400, "Bad request.");
+    const f = await fitnessFile(env, u.id, id);
+    return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
+  },
   // someone blocked in InFlight, unblocked (only lifted: they aren't told, as they weren't told of the block)
   "DELETE inflight/block": async ({ request, env }) => {
     sameOrigin(request);
@@ -612,7 +760,7 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
@@ -623,6 +771,9 @@ const ROUTES = {
       all("SELECT name, created_at, km FROM pg_birds WHERE owner = ?", u.id),
       weatherOf(env, u.id),
       devicesOf(env, u.id).catch(() => []),
+      fitnessKept(env, u.id).catch(() => ({ data: null })),
+      allActs(env, u.id).catch(() => []),   // (every one, newest first)
+      fitnessNights(env, u.id).catch(() => null),   // (your nights: hrv in ms, rhr in beats a minute, sleep in seconds)
     ]);
     let photo = null;
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
@@ -648,6 +799,8 @@ const ROUTES = {
           shareNews: !u.hide_news, liveTracker: !u.hide_tracker, approximateLocation: !!u.loc_approx },
       },
       weather: { places: wx.data?.places || [], settings: wx.data?.settings || {}, notifications: wx.data?.notify || null, devices: wxDevices.map((d) => d.label) },
+      // (each activity's figures; its file, as imported, is in Fitness: Export everything)
+      fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })), nights: fxNights },
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

@@ -22,7 +22,7 @@ jobs:
       - name: Every file parses
         run: |
           fail=0
-          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
+          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
       - name: Unit tests
         run: node --test .tools/tests/unit/*.test.mjs

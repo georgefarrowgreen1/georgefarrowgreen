@@ -61,9 +61,10 @@ ok(/1 key changed: check it/.test(await txt('#screen > main.view [data-act=encry
 await shot('security');
 
 // 2. Encryption: what it does, your key as a pattern, each friend's standing
-await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .enchero'); await slow(1800);
-ok(/End-to-End Encrypted/.test(await txt('.sheet .enchero')) && await p.locator('.sheet .encsteps .wnrow').count() === 3, 'Encryption: what it means, in three steps');
-ok(await p.locator('.sheet .keycell svg.keyart rect').count() > 4, 'your key, drawn as a pattern you’d know');
+await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(1800);
+ok(/Sealed with your key/.test(await txt('.sheet .keyhero')) && (await txt('.sheet .keyhero .mono')).replace(/\s+/g, '').length === 32 && await p.isVisible('.sheet .keyhero [data-act=copyfp]'), 'Encryption: your key at the top, its digits and Copy');
+ok(await p.locator('.sheet .keyhero svg.keyart rect').count() > 4, 'your key, drawn as a pattern you’d know');
+ok(await p.isVisible('.sheet [data-act=scanany]') && /How it works/.test(await txt('.sheet details.learn summary')) && !(await p.$('.sheet details.learn[open]')), 'Verify a Friend, and how it works folded away');
 await shot('encryption');
 await scroll(600);
 const rows = await p.locator('.sheet [data-act=safety]').allInnerTexts();
@@ -83,7 +84,7 @@ await p.click('.sheet [data-act=scansafe]'); await p.waitForSelector('.scanbox v
 ok(await p.waitForSelector('.sheet .safehero.won', { timeout: 15000 }).then(() => true, () => false), 'her code read: back to her safety number, which marks it');
 await p.waitForTimeout(700); await shot('safety-won'); await slow(1800);
 ok(/Verified in person/.test(await txt('.sheet .safehero')) && /You checked together/.test(await txt('.sheet .safedone')) && !(await p.$('.sheet .safecard')), 'Verified in person: it says so, and stops asking you to scan');
-await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .enchero'); await slow(800); await scroll(600);
+await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(800); await scroll(600);
 ok(/2 of 3 verified/.test(await txt('.sheet .ghead .gcount')), 'and Encryption now says 2 of 3');
 // Sam's changed key
 await p.click('.sheet [data-act=safety] >> text=Sam'); await p.waitForSelector('.sheet .safehero.s-warn'); await slow(1500);
@@ -93,6 +94,21 @@ await shot('safety-changed');
 await p.click('.sheet [data-act=trustsafe]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 10000 }); await slow(900);
 await slow(900);
 ok(/2 of 3 friends verified · Sam next/.test(await txt('#screen > main.view [data-act=encryptionsheet]')), 'the Encryption row: 2 of 3 verified, and who to check next', await txt('#screen > main.view [data-act=encryptionsheet]'));
+// Verify a Friend: the camera, whoever's code it reads (Sam's), found and marked, without finding him first
+await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(800);
+await p.click('.sheet [data-act=safety] >> text=Sam'); await p.waitForSelector('.sheet .safehero.s-none'); await slow(600);
+const samDigits = (await p.locator('.sheet .digits').innerText()).replace(/\s+/g, '');
+await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(600);
+await p.evaluate(() => { window.__code = 'inflight-safety:1:' + '0'.repeat(60); });
+await p.click('.sheet [data-act=scanany]'); await p.waitForSelector('.scanbox video');
+ok(await p.waitForFunction(() => /isn’t your safety number with any of your friends/.test(document.querySelector('.sheet .scanmsg')?.textContent || ''), null, { timeout: 15000 }).then(() => true, () => false), 'Verify a Friend: a code that\'s no friend\'s says so');
+await p.evaluate((d) => { window.__code = 'inflight-safety:1:' + d; }, samDigits);
+await p.click('.sheet [data-act=scanany]');      // (Try Again: the reader's loaded now, so it can be read before the camera's seen)
+ok(await p.waitForSelector('.sheet .safehero.won', { timeout: 15000 }).then(() => true, () => false) && /Sam/.test(await txt('.sheet .safehero')) && /Verified in person/.test(await txt('.sheet .safehero')), 'Verify a Friend: Sam\'s code read, and it\'s Sam, verified', await txt('.sheet .safehero'));
+await shot('verify-friend');
+await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(600);
+ok(/3 of 3 verified/.test(await txt('.sheet .ghead .gcount')), 'and Encryption now says 3 of 3');
+await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
 
 // 4. Passkeys, explained when there are none (Lock InFlight needs one: turning it on opens them)
 await p.click('#screen > main.view [data-act=applock]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
@@ -120,7 +136,7 @@ await p.evaluate(() => { localStorage.removeItem('inflight-lock'); localStorage.
 await fetch(K.BASE + '/api/pigeon/me', { method: 'PATCH', headers: { Authorization: 'Bearer ' + gs.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: 'dark' }) });
 await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(600);
 await p.click('[data-act=tab][data-id=account]'); await p.evaluate(() => document.querySelector('#screen > main.view [data-act=encryptionsheet]').scrollIntoView({ block: 'center' })); await p.waitForTimeout(1200); await shot('security-dark');
-await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .enchero'); await p.waitForTimeout(1200); await shot('encryption-dark');
+await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await p.waitForTimeout(1200); await shot('encryption-dark');
 await p.evaluate(() => document.querySelector('.sheet .body')?.scrollBy({ top: 600 })); await p.waitForTimeout(500);
 await p.click('.sheet [data-act=safety] >> text=Mira'); await p.waitForSelector('.sheet .safehero'); await p.waitForTimeout(1200); await shot('safety-dark');
 await ctx.close();

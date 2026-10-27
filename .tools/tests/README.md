@@ -37,6 +37,14 @@ reports). It turns notifications on with a push subscription whose keys it holds
 arrives in the push stand-in's box. The app's reasoning has unit tests of its own (`unit/wxinsights.test.mjs`,
 `unit/wxnext.test.mjs`).
 
+`fitness.mjs` is Fitness's (fitness/), at fitness.gfg.test (mapped to this machine, as `wxacct.mjs` maps chat. and
+weather., so the browser shares the site's sign-in between its addresses), signed in only: signed out, just Sign in
+(and its API closed); signed up to InFlight, Fitness signed in already; files imported (a Wahoo's FIT, a GPX, a ZWO, a
+Garmin Connect zip) and kept with the account; a second browser signing in on the account's page, handed back, with the
+first's rides, one opened from its file and exported; a plan and a workout from two browsers at once, both kept; a ride
+renamed and one deleted on both; and signing out. It reads what's kept straight from the local D1 (`fx_state`,
+`fx_acts`). Its files' unit tests, and the server's checks and the merge, are `unit/fitness.test.mjs`.
+
 `acctjoin.mjs` runs the site as the real one is, new accounts by invite only (`OPEN_SIGNUP=0` to `server.sh`; every
 other test has open sign-up), for joining with an invite, a forgotten password and its reset link, and each app's
 sign-in.

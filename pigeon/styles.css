@@ -1,27 +1,38 @@
-/* InFlight: iOS 26 styling. Liquid Glass controls float over content: round
-   glass nav buttons, a glass tab bar, glass composer, menus and sheets.
-   Light by default; dark is a soft graphite grey, not black. */
+/* InFlight: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
+   (dawn in light, night in dark: the account page's own), and Liquid Glass over it: groups, the Messages list, cards,
+   friends' bubbles and sheets are panes of glass with a bright rim and a soft lift; the nav buttons, the tab bar, the
+   composer and menus float over everything in a stronger glass. Light by default. */
 :root{
-  --bg:#f2f2f7;            /* grouped background */
-  --bg-plain:#f2f2f7;      /* chats and the Messages list: the same grey as everywhere else */
-  --cell:#ffffff;
-  --cell-2:#f2f2f7;
-  --fill:rgba(120,120,128,.12);
-  --fill-2:rgba(120,120,128,.2);
+  /* the sky (the account page's: its gradient, its three lights, and the colour under them, which the phone tints
+     its status bar with), and the glass over it: a pane, a stronger one for what floats, a bright rim, a soft lift,
+     a sheen in its top corner */
+  --sky-a:#e9eefc; --sky-b:#f3f0fb; --sky-c:#f7f8fc; --sky-top:#dde3fb;
+  --aura-1:rgba(110,150,255,.42); --aura-2:rgba(200,150,255,.36); --aura-3:rgba(90,210,240,.3);
+  --pane:rgba(255,255,255,.58); --pane-strong:rgba(250,251,255,.9);
+  --edge:inset 0 1px .5px rgba(255,255,255,.95),inset 0 -1px .5px rgba(255,255,255,.4),inset 0 0 22px rgba(255,255,255,.3);
+  --lift:0 0 0 .5px rgba(20,30,60,.08),0 22px 44px -20px rgba(40,50,100,.28),0 2px 6px rgba(40,50,100,.06);
+  --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.7),rgba(255,255,255,0) 46%);
+  --blur:blur(28px) saturate(180%);
+  --bg:#eef0fb;            /* the sky as one colour: for a ring cut round something on it */
+  --bg-plain:#eef0fb;
+  --cell:#f9fafe;          /* a pane on the sky as one colour: small things drawn solid, and rings cut round things on glass */
+  --cell-2:#eef0fb;
+  --fill:rgba(20,30,60,.06);
+  --fill-2:rgba(20,30,60,.12);
   --label:#000000;
-  --label-2:rgba(60,60,67,.76);      /* (4.5:1 or better on every background) */
-  --label-3:rgba(60,60,67,.3);
-  --sep:rgba(60,60,67,.18);
+  --label-2:rgba(20,24,44,.66);      /* (4.5:1 or better on every background) */
+  --label-3:rgba(20,24,44,.3);
+  --sep:rgba(20,24,44,.1);
   --tint:#0068e8;                      /* a touch deeper than iOS blue, so white text on it and it as text both read */
   --on-tint:#ffffff;
   --green:#34c759; --orange:#ff9500; --red:#d63129;
   --green-t:#1d7f37; --orange-t:#a85000; --tint-fill:#0068e8;     /* the same colours for words: darker, so they read */ --indigo:#5856d6; --teal:#30b0c7; --teal-t:#0b7285; --tint-t:#0054c4; --gray:#8e8e93; --yellow:#ffcc00;
-  --bubble-in:#ffffff;     /* white bubbles stand out on the grey */
-  --glass:rgba(255,255,255,.62);
-  --glass-strong:rgba(255,255,255,.9);
+  --bubble-in:rgba(255,255,255,.62);     /* friends' bubbles: glass, as the groups are */
+  --glass:rgba(250,251,255,.9);
+  --glass-strong:rgba(250,251,255,.9);
   --glass-hi:rgba(255,255,255,.95);
-  --glass-edge:rgba(0,0,0,.07);
-  --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
+  --glass-edge:rgba(20,30,60,.08);
+  --glass-shadow:0 22px 44px -20px rgba(40,50,100,.28),0 2px 6px rgba(40,50,100,.06);
   --scrim:rgba(0,0,0,.22);
   --sea:#d3e6f5; --shelf:#e4f0fa; --relief-hi:#ffffff; --relief-lo:#b9a98a; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
   --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#8a6408; --p-ring:transparent;   /* pigeon kinds */
@@ -33,25 +44,37 @@
 /* Dark mode: picked in Account → Appearance (saved on this phone), or
    Automatic, which follows the phone. Light is the default. */
 :root[data-theme="dark"]{
-    --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
-    --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
-    --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
+    --sky-a:#121a3c; --sky-b:#0a0f26; --sky-c:#05060e; --sky-top:#1b2860;
+    --aura-1:rgba(80,120,255,.55); --aura-2:rgba(160,90,255,.4); --aura-3:rgba(40,190,230,.32);
+    --pane:rgba(34,40,66,.5); --pane-strong:rgba(28,33,56,.86);
+    --edge:inset 0 1px .5px rgba(255,255,255,.42),inset 0 -1px .5px rgba(255,255,255,.08),inset 0 0 22px rgba(255,255,255,.03);
+    --lift:0 0 0 .5px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16);
+    --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 46%);
+    --bg:#0e1430; --bg-plain:#0e1430; --cell:#1a2040; --cell-2:#232a4c;
+    --fill:rgba(255,255,255,.08); --fill-2:rgba(255,255,255,.14);
+    --label:#f5f6fb; --label-2:rgba(235,238,250,.72); --label-3:rgba(235,238,250,.34); --sep:rgba(255,255,255,.1);
     --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
-    --bubble-in:#3a3a3f;
-    --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
-    --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
+    --bubble-in:rgba(44,50,80,.55);
+    --glass:rgba(28,33,56,.86); --glass-strong:rgba(28,33,56,.86); --glass-hi:rgba(255,255,255,.3); --glass-edge:rgba(0,0,0,.4);
+    --glass-shadow:0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16); --scrim:rgba(0,0,0,.4);
     --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
   :root[data-theme="auto"]{
-    --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
-    --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
-    --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
+    --sky-a:#121a3c; --sky-b:#0a0f26; --sky-c:#05060e; --sky-top:#1b2860;
+    --aura-1:rgba(80,120,255,.55); --aura-2:rgba(160,90,255,.4); --aura-3:rgba(40,190,230,.32);
+    --pane:rgba(34,40,66,.5); --pane-strong:rgba(28,33,56,.86);
+    --edge:inset 0 1px .5px rgba(255,255,255,.42),inset 0 -1px .5px rgba(255,255,255,.08),inset 0 0 22px rgba(255,255,255,.03);
+    --lift:0 0 0 .5px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16);
+    --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 46%);
+    --bg:#0e1430; --bg-plain:#0e1430; --cell:#1a2040; --cell-2:#232a4c;
+    --fill:rgba(255,255,255,.08); --fill-2:rgba(255,255,255,.14);
+    --label:#f5f6fb; --label-2:rgba(235,238,250,.72); --label-3:rgba(235,238,250,.34); --sep:rgba(255,255,255,.1);
     --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
-    --bubble-in:#3a3a3f;
-    --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
-    --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
+    --bubble-in:rgba(44,50,80,.55);
+    --glass:rgba(28,33,56,.86); --glass-strong:rgba(28,33,56,.86); --glass-hi:rgba(255,255,255,.3); --glass-edge:rgba(0,0,0,.4);
+    --glass-shadow:0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16); --scrim:rgba(0,0,0,.4);
     --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
   }
@@ -59,10 +82,10 @@
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{height:100%;background:var(--bg)}
+html{height:100%;background:var(--sky-top)}
 /* with the keyboard up: the page is only as tall as the space above it, so there's nothing for iOS to slide */
 html.kbup,html.kbup body{height:var(--app-h,100%);overflow:hidden}
-body{height:100%;margin:0;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--bg);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{height:100%;margin:0;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--sky-top);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 button,input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 /* the app can't be copied from (a pinch still zooms it); typing and pasting still work */
 input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
@@ -77,18 +100,44 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 .one{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt{margin-top:22px!important}.mt-s{margin-top:14px!important}.mt-xs{margin-top:10px!important}
 
-/* Liquid Glass: blur + saturation, a bright top edge, a hairline rim, a soft lift */
+/* Liquid Glass, as the account page has it: blur + saturation, a sheen, a bright rim, a soft lift. This is the stronger
+   glass, for what floats over everything (the bars and their buttons, menus, toasts); what lies on the sky is a clearer
+   pane of it (the end of this file). */
 .glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
-  background:var(--glass);
-  -webkit-backdrop-filter:blur(24px) saturate(190%);backdrop-filter:blur(24px) saturate(190%);
-  box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow);
+  background:var(--sheen),var(--glass);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  box-shadow:var(--edge),var(--lift);
+}
+
+/* ---------- the sky: three slow lights drifting over the gradient (the account page's, index.html .sky) ----------
+   Each light is soft at its edge by its own gradient rather than by a blur, and moves on in small steps, twice a
+   second: a slow drift looks the same, and the glass over it is blurred afresh twice a second rather than at every
+   frame. Held still with Reduce Motion. */
+.sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:radial-gradient(120% 80% at 50% -10%,var(--sky-a),var(--sky-b) 52%,var(--sky-c)) var(--sky-top)}
+.aura{position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.9;will-change:transform}
+.a1{background:radial-gradient(circle closest-side,color-mix(in srgb,var(--aura-1) 73%,transparent),color-mix(in srgb,var(--aura-1) 66%,transparent) 20%,color-mix(in srgb,var(--aura-1) 49%,transparent) 40%,
+  color-mix(in srgb,var(--aura-1) 29%,transparent) 60%,color-mix(in srgb,var(--aura-1) 12%,transparent) 80%,transparent);top:-32vmax;left:-22vmax;animation:drift1 38s steps(76) infinite alternate}
+.a2{background:radial-gradient(circle closest-side,color-mix(in srgb,var(--aura-2) 73%,transparent),color-mix(in srgb,var(--aura-2) 66%,transparent) 20%,color-mix(in srgb,var(--aura-2) 49%,transparent) 40%,
+  color-mix(in srgb,var(--aura-2) 29%,transparent) 60%,color-mix(in srgb,var(--aura-2) 12%,transparent) 80%,transparent);top:10vmax;right:-34vmax;animation:drift2 46s steps(92) infinite alternate}
+.a3{background:radial-gradient(circle closest-side,color-mix(in srgb,var(--aura-3) 73%,transparent),color-mix(in srgb,var(--aura-3) 66%,transparent) 20%,color-mix(in srgb,var(--aura-3) 49%,transparent) 40%,
+  color-mix(in srgb,var(--aura-3) 29%,transparent) 60%,color-mix(in srgb,var(--aura-3) 12%,transparent) 80%,transparent);bottom:-40vmax;left:4vmax;animation:drift3 54s steps(108) infinite alternate}
+@keyframes drift1{to{transform:translate(14vmax,10vmax) scale(1.12)}}
+@keyframes drift2{to{transform:translate(-16vmax,8vmax) scale(.9)}}
+@keyframes drift3{to{transform:translate(10vmax,-12vmax) scale(1.08)}}
+/* (held where they are under a sheet, and while the welcome's own night sky is up instead) */
+.app:has(> .screen.sheeted) .aura,html.night .aura{animation-play-state:paused}
+html.night .sky{visibility:hidden}
+@media (prefers-reduced-motion:reduce){.aura{animation:none}}
+/* Reduce Transparency: solid glass, as the account page's is */
+@media (prefers-reduced-transparency:reduce){
+  .glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
 
 /* ---------- shell ---------- */
 .page{height:var(--app-h,100%);display:flex;flex-direction:column;align-items:center}
-.app{position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
+.app{position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--sky-top);padding-top:env(safe-area-inset-top,0px)}
 @media (min-width:600px){
-  html,body{background:var(--fill)}
+  html,body{background:var(--sky-top)}
   .page{justify-content:center;padding:16px}
   .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep)}
 }
@@ -116,8 +165,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
   .rotate svg{font-size:44px;color:var(--tint)}
   .rotate p{margin:0}
 }
-.screen{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg)}
-.screen.plain{background:var(--bg-plain)}
+.screen{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
 .view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .view.tabs-pad{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
 /* offline: a pill that floats in under the navigation bar (a banner above everything shoved the whole screen down) */
@@ -129,10 +177,9 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 /* ---------- navigation: floating glass buttons, soft scroll edge ---------- */
 .navbar{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:56px;padding:6px 14px}
 .navbar::before{content:"";position:absolute;inset:0 0 -22px 0;z-index:-1;pointer-events:none;opacity:0;transition:opacity .2s;
-  background:linear-gradient(to bottom,var(--bg) 35%,transparent);
+  background:linear-gradient(to bottom,var(--sky-top) 35%,transparent);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent);mask-image:linear-gradient(to bottom,#000 55%,transparent)}
-.plain .navbar::before{background:linear-gradient(to bottom,var(--bg-plain) 35%,transparent)}
 .scrolled .navbar::before,.navbar.solid::before{opacity:1}
 .nb-left{display:flex;align-items:center;justify-self:start;min-width:0}
 .nb-right{display:flex;align-items:center;justify-self:end;border-radius:999px}
@@ -207,7 +254,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .av .online.new{animation:pop .5s var(--bouncy)}
 .av.xl .online{box-shadow:0 0 0 4px var(--dot-bg,var(--bg))}
 .group .av,.chatwho .av{--dot-bg:var(--cell)}
-.screen.plain .mrow .av{--dot-bg:var(--bg-plain)}
+.mlist .mrow .av{--dot-bg:var(--cell)}
 .on-now{color:var(--green-t);font-weight:500}
 .av.xs{width:28px;height:28px;font-size:11px}
 .av.s{width:36px;height:36px;font-size:14px}
@@ -281,7 +328,7 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .warn .btn{align-self:flex-start}
 
 /* composer: a floating glass field over the conversation */
-.compose{flex:none;position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));transition:padding-bottom .35s var(--snappy);background:linear-gradient(to top,var(--bg-plain) 55%,transparent)}
+.compose{flex:none;position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));transition:padding-bottom .35s var(--snappy)}
 /* the home-bar gap goes only once the keyboard is really up (on the tap itself, moving the box under the
    finger let the phone's late tap land on the messages above and put the keyboard away again) */
 html.kbup .compose{padding-bottom:6px}
@@ -377,8 +424,8 @@ html.kbup .compose{padding-bottom:6px}
 /* ---------- sheets ---------- */
 .layer:empty,.poplayer:empty,.toasts:empty{display:none}
 .scrim{position:absolute;inset:0;z-index:20;background:var(--scrim)}
-.sheet{position:absolute;left:0;right:0;bottom:0;top:12px;z-index:21;display:flex;flex-direction:column;background:var(--bg);border-radius:38px 38px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18)}
-.sheet.plainbg{background:var(--bg-plain)}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:12px;z-index:21;display:flex;flex-direction:column;border-radius:38px 38px 0 0;
+  background:var(--sheen),var(--pane-strong);-webkit-backdrop-filter:blur(36px) saturate(190%);backdrop-filter:blur(36px) saturate(190%);box-shadow:var(--edge),0 -10px 40px rgba(0,0,0,.18)}
 .grab{flex:none;width:36px;height:5px;border-radius:3px;background:var(--label-3);margin:7px auto 0}
 .sheet > header{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:60px;padding:2px 14px 0}
 .sheet > header h2{margin:0;font-size:17px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:56vw}
@@ -586,22 +633,25 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .view.nav-fade{animation:tab-in .45s var(--nav)}
 .view.nav-tab-r{animation:tab-r .34s var(--nav)}
 .view.nav-tab-l{animation:tab-l .34s var(--nav)}
-.nav-ghost{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none;background:var(--bg)}
-.nav-ghost > .view{flex:1;min-height:0;overflow:hidden}
-.nav-ghost > .compose{flex:none}
+/* (the screens are clear over the sky, so one going under another is cut off at the other's edge as it goes: the copy
+   slides aside a whole width while what's in it slides back 72% of one, showing the 28% iOS slides it, never under the
+   new screen. The same for the screen a swipe back shows, app.js underlay.) */
+.nav-ghost{position:absolute;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none}
+.ghost-in{position:absolute;inset:0;display:flex;flex-direction:column}
+.ghost-in > .view{flex:1;min-height:0;overflow:hidden}
+.ghost-in > .compose{flex:none}
 .nav-ghost-push{z-index:0;animation:ghost-under .5s var(--nav) forwards}
+.nav-ghost-push > .ghost-in{animation:ghost-under-in .5s var(--nav) forwards}
 .nav-ghost-push::after{content:"";position:absolute;inset:0;background:#000;opacity:0;animation:ghost-dim .5s var(--nav) forwards}
 .nav-ghost-pop{z-index:7;animation:ghost-away .5s var(--nav) forwards;box-shadow:-16px 0 36px rgba(0,0,0,.14)}   /* over the tab bar, which waits underneath */
 .nav-ghost-tab{z-index:0;animation:fade-out .3s ease forwards}
-.nav-ghost.plain{background:var(--bg-plain)}
 .view.nav-push,.view.nav-pop,.view.nav-tab-r,.view.nav-tab-l,.view.nav-fade{position:relative;z-index:1}
-.view.nav-push,.view.nav-tab-r,.view.nav-tab-l,.view.nav-fade{background:var(--bg)}
-.screen.plain .view.nav-push,.screen.plain .view.nav-tab-r,.screen.plain .view.nav-tab-l,.screen.plain .view.nav-fade{background:var(--bg-plain)}
-@keyframes ghost-under{to{transform:translateX(-28%)}}
+@keyframes ghost-under{to{transform:translateX(-100%)}}
+@keyframes ghost-under-in{to{transform:translateX(72%)}}
 @keyframes ghost-dim{to{opacity:.14}}
 @keyframes ghost-away{to{transform:translateX(100%)}}
 @keyframes push{from{transform:translateX(100%)}}
-@keyframes pop-back{from{transform:translateX(-28%);opacity:.7}}
+@keyframes pop-back{from{transform:translateX(-28%);clip-path:inset(0 72% 0 0);opacity:.7}}   /* (cut off at the edge of the screen going) */
 @keyframes tab-r{from{transform:translateX(22px);opacity:0}}
 @keyframes tab-l{from{transform:translateX(-22px);opacity:0}}
 @keyframes tab-in{from{opacity:0;transform:scale(.985)}}
@@ -1185,7 +1235,7 @@ svg.fillico{fill:currentColor;stroke:none}
 @media (prefers-reduced-motion: reduce){.recdot,.recbar{animation:none}}
 .vwave i.on{opacity:1}
 /* the app lock */
-.lockscreen{position:absolute;inset:0;z-index:39;display:grid;place-items:center;padding:24px;background:var(--bg);animation:lockin .35s ease}
+.lockscreen{position:absolute;inset:0;z-index:39;display:grid;place-items:center;padding:24px;background:radial-gradient(120% 80% at 50% -10%,var(--sky-a),var(--sky-b) 52%,var(--sky-c)) var(--sky-top);animation:lockin .35s ease}
 .lockscreen.out{animation:lock-out .32s var(--ease-out) forwards;pointer-events:none}
 @keyframes lock-out{to{opacity:0;transform:scale(1.04)}}
 @keyframes lockin{from{opacity:0}}
@@ -1231,20 +1281,16 @@ svg.fillico{fill:currentColor;stroke:none}
 .mprev .draft{color:var(--red-on);font-weight:500}
 /* swiping back: the screen you came from waits underneath */
 .screen.swiping{overflow:hidden}
-.under{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;background:var(--bg);pointer-events:none;transform:translateX(-28%)}
-.under.plain{background:var(--bg-plain)}
+.under{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;transform:translateX(-100%)}
+.under > .ghost-in{transform:translateX(72%)}
 .under .view{flex:1;min-height:0;overflow:hidden}
 .under-dim{position:absolute;inset:0;background:#000;opacity:.14}
-.swiped{position:relative;z-index:2;background:var(--bg);box-shadow:-14px 0 34px rgba(0,0,0,.16);clip-path:inset(0 0 0 -60px)}
-.screen.plain .swiped,.compose.swiped{background:var(--bg-plain)}
+.swiped{position:relative;z-index:2;box-shadow:-14px 0 34px rgba(0,0,0,.16);clip-path:inset(0 0 0 -60px)}
 /* already ticked before a redraw: no second pop */
 .cell.kept .tickbox,.cell.kept .val.tick svg,.skin2.kept .sbig{animation:none}
 /* opening another chat: its pigeon choice is just there */
-/* a chat sliding in: nothing of the screen it covers shows through the composer's fade */
-.compose.nav-push{background:var(--bg-plain)}
 /* swiping between tabs: the next one waits beside this one, and the highlight follows the finger */
-.view.tabpeek{position:absolute;left:0;right:0;z-index:1;overflow:hidden;pointer-events:none;background:var(--bg);transition:none}
-.view.tabpeek.plain{background:var(--bg-plain)}
+.view.tabpeek{position:absolute;left:0;right:0;z-index:1;overflow:hidden;pointer-events:none;transition:none}
 .tabs.paging::before{transition:none}
 /* holding a chat: it sinks a little, then lifts above the blurred screen with its menu */
 .mlist .mrow{transition:background-color .45s var(--ease-out),transform .3s var(--snappy)}
@@ -1334,7 +1380,7 @@ svg.fillico{fill:currentColor;stroke:none}
    A plain bar with who, their time and how far; each message with its own
    time inside it; colour only on what's in the air; one row to write in. */
 .navbar.chatnav{grid-template-columns:auto minmax(0,1fr) auto;gap:0;min-height:58px;padding:4px 6px 4px 2px}
-.navbar.chatnav::before{inset:0;opacity:1;background:color-mix(in srgb,var(--bg-plain) 84%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
+.navbar.chatnav::before{inset:0;opacity:1;background:color-mix(in srgb,var(--sky-top) 75%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
 .chatnav .nbtn,.chatnav .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
 .chatnav .nbtn{color:var(--tint)}
 .chatnav .chatwho{justify-self:stretch;max-width:none;gap:10px;padding:4px 8px 4px 0;border-radius:14px;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;text-align:left}
@@ -1452,8 +1498,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .navbar.root .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:2px}
 .navbar.root .nbtn{color:var(--tint);background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
 .navbar.root .nbtn svg{font-size:22px}
-.navbar:not(.chatnav)::before{inset:0;background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
-.plain .navbar:not(.chatnav)::before{background:color-mix(in srgb,var(--bg-plain) 84%,transparent)}
+.navbar:not(.chatnav)::before{inset:0;background:color-mix(in srgb,var(--sky-top) 55%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
 
 /* in the air, at the top of Messages: outlined like the pigeon in the chat */
 .acard{background:none;box-shadow:inset 0 0 0 1.5px var(--label-3);gap:6px;padding:12px 14px 11px;border-radius:20px}
@@ -1680,7 +1725,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 /* invite only */
 .welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
 /* the welcome: night, a pigeon crossing, very few words */
-html.night,html.night body{background:#03050c}
+html.night,html.night body,html.night .app{background:#03050c}
 html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
 html.night .view{background:transparent}
 .nightsky{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
@@ -1719,7 +1764,8 @@ html.night .nightsky{display:block}
    and one screen gives way to the next in a slow dissolve rather than a slide */
 .auth.night{--label:#eef2ff;--label-2:rgba(214,224,255,.66);--label-3:rgba(214,224,255,.34);--cell:rgba(110,140,255,.08);--cell-2:rgba(110,140,255,.12);
   --fill:rgba(160,190,255,.12);--fill-2:rgba(160,190,255,.2);--sep:rgba(160,190,255,.16);--tint:#a9c6ff;--tint-fill:rgba(120,160,255,.16);--red:#ff8278;--green:#5fe08a;
-  --glass:rgba(120,150,255,.1);--glass-strong:rgba(20,28,60,.9);--glass-hi:rgba(160,190,255,.2);--glass-edge:rgba(160,190,255,.2);--bg:#03050c;color-scheme:dark;color:var(--label)}
+  --glass:rgba(120,150,255,.1);--glass-strong:rgba(20,28,60,.9);--glass-hi:rgba(160,190,255,.2);--glass-edge:rgba(160,190,255,.2);--bg:#03050c;color-scheme:dark;color:var(--label);
+  --pane:var(--cell);--sheen:none;--edge:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge);--lift:0 8px 28px rgba(0,0,0,.3)}
 .auth.night .navbar::before{display:none}
 .auth.night .large,.auth.night .hero h1{font-weight:300;letter-spacing:.06em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.4)}
 .auth.night .group{border:1px solid rgba(160,190,255,.14);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -1734,6 +1780,7 @@ html.night .nightsky{display:block}
 html.night .view.nav-push,html.night .view.nav-pop{background:transparent;animation:ndawn .7s cubic-bezier(.2,.7,.2,1)}
 @keyframes ndawn{from{opacity:0;transform:translateY(12px)}}
 html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s ease forwards}
+html.night .nav-ghost > .ghost-in{animation:none}
 @keyframes ndusk{to{opacity:0;transform:translateY(-6px)}}
 .nav-ghost .night{background:#03050c}          /* a night screen left for the day: it goes as it was */
 html.night .nav-ghost .night{background:none}
@@ -1781,8 +1828,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .padlock .plcap{margin:0;font-size:15px;font-weight:500;color:var(--label-2);white-space:nowrap}
 /* going: a lifeless copy of the screen (whose rows fall away without the app redrawing them), then night over it */
 .dusk{position:absolute;inset:0;z-index:45;overflow:hidden;pointer-events:none}
-.dusk-copy{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
-.dusk-copy.plain{background:var(--bg-plain)}
+.dusk-copy{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden}
+.screen:has(> .dusk > .dusk-copy) > :is(.view,.tabbar,.compose){visibility:hidden}   /* (the copy is clear: the screen itself goes from under it) */
 .dusk-copy > .view{flex:1;min-height:0;overflow:hidden}
 .dusk-night{position:absolute;inset:0;z-index:47;opacity:0;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
 /* a friend's loft */
@@ -1836,7 +1883,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
    flight's timeline (app.js flightCard). It springs between the two (its
    height, with the map re-fitting above it), its rows rise in one by one and
    the line flown draws down to the pigeon, which pulses gently where it is now. */
-.mapcard.fc{padding:6px 16px 14px;gap:12px;transition:transform .5s var(--snappy),border-radius .4s var(--smooth)}
+.mapcard.fc{padding:6px 16px 14px;gap:12px;transition:transform .5s var(--snappy),border-radius .4s var(--smooth);
+  max-height:calc(100% - 28px - env(safe-area-inset-bottom,0px))}   /* (never taller than the map: a long flight's timeline scrolls in it rather than the card's top going under the title) */
 .mapcard.fc.fold{padding:6px 14px 12px;gap:10px;border-radius:26px}
 .mapcard.fc.drag{transition:none}
 .mapcard.fc.morph{overflow:hidden;transition:height .6s var(--snappy),transform .5s var(--snappy),border-radius .4s var(--smooth)}
@@ -2101,16 +2149,19 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .b.once.up > .ft{margin:0 -2px 0 8px}
 /* lost on the way: an outline with a broken edge, where the message would have been */
 .b.me.lost{opacity:1;background:none;color:var(--label-2);box-shadow:none;border:1.5px dashed color-mix(in srgb,var(--red) 45%,transparent);padding:6.5px 11.5px 7.5px}
-/* Messages-style bubbles: the last of a run from one person gets a tail */
+/* Messages-style bubbles: the last of a run from one person gets a tail, its curve cut by a mask (rather than covered
+   over in the colour behind, which the sky hasn't one of). Yours tucks under your bubble; a friend's, as clear as its
+   bubble, is only where the bubble isn't, the bubble's corner tightened to meet it. */
 .b{z-index:0}
 .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before,
 .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{content:"";position:absolute;z-index:-1;bottom:0;width:20px;height:20px}
-.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::after,
-.b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::after{content:"";position:absolute;z-index:-1;bottom:0;width:10px;height:20px;background:var(--bg-plain)}
-.b.me:not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before{right:-7px;background:var(--tint);border-bottom-left-radius:16px 14px}
-.b.me:not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::after{right:-10px;border-bottom-left-radius:10px}
-.b:not(.me):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{left:-7px;background:var(--bubble-in);border-bottom-right-radius:16px 14px}
-.b:not(.me):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::after{left:-10px;border-bottom-right-radius:10px}
+.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before{right:-7px;background:var(--tint);border-bottom-left-radius:16px 14px;
+  -webkit-mask:linear-gradient(#000,#000) 0 0/13px 100% no-repeat,radial-gradient(circle at 23px 0,transparent 10px,#000 10.5px) 0 100%/100% 10px no-repeat;
+  mask:linear-gradient(#000,#000) 0 0/13px 100% no-repeat,radial-gradient(circle at 23px 0,transparent 10px,#000 10.5px) 0 100%/100% 10px no-repeat}
+.b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed))){border-bottom-left-radius:6px}
+.b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{left:-7px;background:var(--bubble-in);
+  -webkit-mask:radial-gradient(circle at -3px 0,transparent 10px,#000 10.5px) 0 100%/7px 10px no-repeat,radial-gradient(circle at 6px 0,transparent 6px,#000 6.5px) 7px 100%/6px 6px no-repeat;
+  mask:radial-gradient(circle at -3px 0,transparent 10px,#000 10.5px) 0 100%/7px 10px no-repeat,radial-gradient(circle at 6px 0,transparent 6px,#000 6.5px) 7px 100%/6px 6px no-repeat}
 .b{border-radius:20px;padding:7px 14px 8px}
 .b.gap-top{margin-top:12px}
 /* one to three emoji on their own: big, no bubble */
@@ -2121,7 +2172,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .meta.rstat{margin:3px 4px 4px;font-size:11px;font-weight:500;color:var(--label-2)}
 .menu-pop .mtime{padding:2px 14px 8px;font-size:12px;line-height:16px;color:var(--label-2);text-align:center;font-variant-numeric:tabular-nums}
 /* the blue settles before the bottom, so the tail meets it exactly */
-.b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint) calc(100% - 20px))}
+.b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.35),rgba(255,255,255,0) 46%),linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint) calc(100% - 20px));
+  box-shadow:inset 0 1px .5px rgba(255,255,255,.5),0 8px 18px -10px color-mix(in srgb,var(--tint) 80%,#000)}
 /* How It Flies, refined: the chosen pigeon tinted, the ones you can't send now a little smaller,
    chips picked with a soft fill rather than an outline, and the sections closer together */
 .flysheet .ghead{margin:20px 36px 8px}
@@ -2323,9 +2375,9 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 /* how protected you are, at a glance: a shield in a ring that fills as each thing is done */
 .keyart{display:block;flex:none}
 .keyart.tile{width:30px;height:30px;padding:0;background:none;box-shadow:none;border-radius:9px}
-.keyart.big{width:52px;height:52px}
-.keycell .csub{line-height:19px;margin-top:2px}
-.keycell .val{color:var(--tint)}
+.keyart.keyhuge{width:96px;height:96px;margin-bottom:8px}
+.keyhero .mono{font-family:var(--mono);font-size:15px;line-height:22px;letter-spacing:.4px;margin-top:2px}
+.keyhero .btn{margin-top:6px}
 details.learn{margin:10px 36px 0;font-size:13px;line-height:18px;color:var(--label-2)}
 details.learn summary{cursor:pointer;color:var(--tint);list-style:none;font-weight:500}
 details.learn summary::-webkit-details-marker{display:none}
@@ -2335,10 +2387,7 @@ details.learn p{margin:6px 0 0}
 details.learn[open] p{animation:fc-in .3s var(--snappy)}
 
 /* Encryption: three steps, your key, and each friend's standing */
-.enchero .wnlogo{background:linear-gradient(160deg,color-mix(in srgb,var(--green) 65%,#fff),var(--green));box-shadow:0 8px 22px color-mix(in srgb,var(--green) 35%,transparent)}
-.enchero p,.pkhero p{max-width:30ch;text-wrap:balance}
-.encsteps .wnlist{padding:18px 18px}
-.encsteps .wnrow .tile{width:36px;height:36px;font-size:19px}
+.pkhero p{max-width:30ch;text-wrap:balance}
 .spill{flex:none;display:inline-flex;white-space:nowrap;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:13px;font-weight:600;color:var(--label-2);background:var(--cell-2,rgba(120,120,128,.12))}
 .spill .ico{flex:none;width:13px;height:13px;stroke-width:2.6}
 .spill.ok{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
@@ -2419,4 +2468,31 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   -webkit-text-fill-color: var(--label); caret-color: var(--label);
   transition: background-color 0s 600000s, color 0s 600000s;
   -webkit-background-clip: text; background-clip: text;
+}
+
+/* ---------- the sky's glass (in keeping with the account page and Weather) ----------
+   Last, so that what lies on the sky is a pane of it wherever an earlier rule gave it a colour of its own. A clear pane
+   with a sheen, a bright rim and a soft lift, and no blur: over the sky's soft light a blur would change next to
+   nothing, and cost one for every pane on the screen (and turn each a shade on ending any fade it's in). What floats
+   over moving things (the bars, sheets, menus) has one. */
+.group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard{background:var(--sheen),var(--pane);box-shadow:var(--edge),var(--lift)}
+.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--sheen),var(--pane);box-shadow:var(--edge),0 0 0 .5px var(--sep)}
+.search{box-shadow:var(--edge),0 0 0 .5px var(--sep)}
+.sheet .group{box-shadow:var(--edge),0 0 0 .5px var(--sep)}
+/* the Messages list: one pane, as Settings' groups are */
+.mlist{margin:0 12px;padding:4px 0;border-radius:28px}
+.mlist:not(:has(> *)){display:none}         /* (no chats yet: no empty pane) */
+/* friends' bubbles: glass, as the groups are (the photo, voice, gone and big-emoji ones as they were) */
+.b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)){background:var(--sheen),var(--bubble-in);box-shadow:var(--edge),0 6px 16px -10px rgba(0,0,0,.35)}
+/* tiles and pictures with a little depth: a light along the top, a shadow under */
+.tile{position:relative;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 5px 12px -4px rgba(0,0,0,.35)}
+.tile::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(160deg,rgba(255,255,255,.38),rgba(255,255,255,0) 55%);pointer-events:none}
+.tile.kb::after,.tile.emo::after{display:none}
+.av{box-shadow:0 0 0 1.5px rgba(255,255,255,.45),0 6px 14px -6px rgba(0,0,0,.45)}
+/* the floating glass that had colours of its own: the same glass as the rest */
+.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{background:var(--sheen),var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--edge),var(--lift)}
+@media (prefers-reduced-transparency:reduce){
+  .group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard,.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--cell)}
+  .b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)),.b:not(.me)::before{background:var(--cell)}
+  .sheet,.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }

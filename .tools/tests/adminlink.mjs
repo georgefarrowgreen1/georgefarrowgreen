@@ -168,7 +168,7 @@ await G.p.fill('#sheet form input', 'Sam'); await G.p.click('#sheet form .btn');
 ok(/#invite=/.test(await sheetText(G)) && /Sam/.test(await sheetText(G)), 'an invite made: its link once, and in the list', await sheetText(G));
 await G.p.click('#sheet .row:has(b:text-is("Sam")) .mini');
 await G.p.waitForFunction(() => /Invite cancelled/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
-ok(/Cancelled/.test(await sheetText(G)), 'and cancelled');
+ok(!(await G.p.$('#sheet .row:has(b:text-is("Sam"))')) && !/Cancelled/.test(await sheetText(G)), 'and cancelled: gone from the list, not shown again', await sheetText(G));
 await G.p.click('#sheet .x'); await settle(G, 600);
 await adminRow(G, 'Insights'); ok(await waitSheet(G, /Pigeons sent/), 'Insights', (await sheetText(G)).slice(0, 120));
 await G.p.click('#sheet .x'); await settle(G, 600);
