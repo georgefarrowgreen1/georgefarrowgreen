@@ -179,7 +179,7 @@ await settle(P, 3600); await P.p.screenshot({ path: `${out}/welcome.png` });
 const L = await browser('laptop');
 await L.p.goto('http://localhost:8788/fitness/');
 await L.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
-ok(await L.p.$eval('#sign-in', (x) => x.disabled) && /Signing in is at fitness\.georgefarrowgreen\.com/.test(await L.p.innerText('main')), 'away from its own address: Sign in off, and where it is');
+ok(await L.p.$eval('#sign-in', (x) => x.disabled) && /Signing in is at fitness\.inflite\.ai/.test(await L.p.innerText('main')), 'away from its own address: Sign in off, and where it is');
 const elsewhere = await api(L, '/api/fitness/me');
 ok(elsewhere.status === 404, 'and its API answers only at its own address', String(elsewhere.status));
 
@@ -306,7 +306,7 @@ ok(/ block · /i.test(await L.p.locator('.head .sub').innerText()), 'and the lap
 await you(P);
 const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
 await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).click();
-await P.p.waitForURL(/account\.gfg\.test/, { timeout: 20000 });
+await P.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 });
 await P.p.waitForSelector('#sheet[open] .seg', { timeout: 30000 }); await settle(P, 600);
 const fxSheet = await P.p.locator('#sheet').innerText();
 ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count())
@@ -316,7 +316,7 @@ await P.p.screenshot({ path: `${out}/account-fitness.png` });
 await P.p.locator('#sheet .seg button', { hasText: /^mi$/ }).click();
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
 await P.p.locator('#sheet .toapp').click();
-await P.p.waitForURL(/fitness\.gfg\.test/, { timeout: 20000 }); await P.p.waitForSelector('.head .round.me');
+await P.p.waitForURL(/fitness\.ifl\.test/, { timeout: 20000 }); await P.p.waitForSelector('.head .round.me');
 await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
 const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
 ok(/Kilometres/.test(unitsFirst) && /Miles/.test(unitsThen) && state(sam)?.rhythm?.run === true, 'kilometres at first; miles, chosen on the account\'s page: the laptop\'s in miles too, the rest of the record as it was', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));

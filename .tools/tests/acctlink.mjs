@@ -89,15 +89,15 @@ const wxSays = await meAt(F1, `${WX}/api/weather/me`);
 const handBack = await F1.p.evaluate(async () => (await fetch('/api/account/handback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: 'weather', ask: 'a'.repeat(43) }) })).status);
 ok(handedHere === true && wxSays.signedIn === false && handBack === 403, 'that sign-in is the account page\'s alone: Weather says signed out, and no app is handed it', `${handedHere} ${JSON.stringify(wxSays).slice(0, 60)} ${handBack}`);
 // (Weather's Sign in, from there: Continue to Weather asks it's you first, then it's the browser's own)
-await F1.ctx.route(/\/\/weather\.gfg\.test/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Weather</title>' }));
+await F1.ctx.route(/\/\/weather\.ifl\.test/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Weather</title>' }));
 await F1.p.goto('about:blank'); await F1.p.goto(`${ACCT}/#signin=weather&ask=${'b'.repeat(43)}&back=${encodeURIComponent(WX + '/')}`);
 await F1.p.waitForSelector('main .welcome .signin .btn', { timeout: 20000 }); await F1.p.waitForTimeout(600);
 await F1.p.click('main .welcome .signin .btn');
 const asks = await F1.p.waitForSelector('#sheet[open] input[type=password]', { timeout: 15000 }).then(() => true, () => false);
 const asked = await text(F1.p, '#sheet');
 await F1.p.fill('#sheet input[type=password]', PW); await F1.p.click('#sheet form .btn');
-const went = await F1.p.waitForURL(/^http:\/\/weather\.gfg\.test:\d+\/#signin=[A-Za-z0-9_-]{20,}/, { timeout: 20000 }).then(() => true, () => false);
-await F1.ctx.unroute(/\/\/weather\.gfg\.test/);
+const went = await F1.p.waitForURL(/^http:\/\/weather\.ifl\.test:\d+\/#signin=[A-Za-z0-9_-]{20,}/, { timeout: 20000 }).then(() => true, () => false);
+await F1.ctx.unroute(/\/\/weather\.ifl\.test/);
 ok(asks && /Confirm it’s you/.test(asked) && went && (await meAt(F1, `${WX}/api/weather/me`)).signedIn === true,
   'Continue to Weather: it asks it\'s you first, then hands the sign-in on, and Weather has it too', `${asks} ${went} ${F1.p.url().slice(0, 60)}`);
 const F2 = await browser('fresh2'); await F2.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`); await F2.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await F2.p.waitForTimeout(900);

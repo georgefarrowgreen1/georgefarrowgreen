@@ -216,13 +216,13 @@ await closeSheet(L);
 {
   await settings(P);
   const [W] = await Promise.all([P.ctx.waitForEvent('page'), P.p.click('#acct-open')]);
-  await W.waitForURL(/account\.gfg\.test:8788\/$/, { timeout: 20000 }).catch(() => {});
+  await W.waitForURL(/account\.ifl\.test:8788\/$/, { timeout: 20000 }).catch(() => {});
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
   // (deleting the account is under Your data now, with the rest of what's yours)
   ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
-  ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
+  ok(/^http:\/\/account\.ifl\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   await W.waitForSelector('#sheet[open] .pv-frame img', { timeout: 15000 }); await W.waitForTimeout(500);

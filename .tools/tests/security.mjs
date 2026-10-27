@@ -52,7 +52,7 @@ const s1 = await call(a, 'sync'); ok(s1.h.get('x-content-type-options') === 'nos
 const r400 = await acctCall('signin/password', { email: 'alice@example.com', proof: '***' }, { ip: '10.0.0.99' }); ok(r400.s === 400 || r400.s === 401, 'malformed proof is not a server error', r400.s);
 // (and InFlight's own sign-in, from before, says where it is now)
 const gone = await call(null, 'login', { body: { email: 'alice@example.com', proof: b64u(rnd(32)) } });
-ok(gone.s === 410 && /account\.georgefarrowgreen\.com/.test(gone.j.error), 'InFlight’s own sign-in is gone: it says to sign in on the account’s page', `${gone.s} ${gone.j.error}`);
+ok(gone.s === 410 && /account\.inflite\.ai/.test(gone.j.error), 'InFlight’s own sign-in is gone: it says to sign in on the account’s page', `${gone.s} ${gone.j.error}`);
 // a photo message, and a second send with the same id
 const id = crypto.randomUUID();
 const fd = () => { const f = new FormData(); f.set('meta', JSON.stringify({ id, to: B.j.me.id, ct: 'x'.repeat(40), pigeon: 'rocket', once: false })); f.set('photo', new Blob([rnd(2000)])); return f; };

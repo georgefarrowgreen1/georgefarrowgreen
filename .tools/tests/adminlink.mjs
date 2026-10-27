@@ -85,10 +85,10 @@ ok(r.status === 200, 'the linked account being deleted: back to the owner’s em
 sql(`UPDATE pg_users SET delete_at = NULL WHERE id = '${pat}'`); sql("DELETE FROM pg_meta WHERE k = 'admin_user'");
 
 // ---- 3. The old dashboard's addresses come here; its API is gone ----
-await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
+await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.ifl\.test/, { timeout: 15000 }).catch(() => {});
 ok(G.p.url().startsWith(`${ACCT}/#admin`) || G.p.url().startsWith(ACCT), 'the old dashboard’s address: on to Admin on the account’s page', G.p.url());
 ok(await G.p.waitForSelector('#sheet[open] #sheet-title:text-is("Admin")', { timeout: 15000 }).then(() => true, () => false), 'with its folder open');
-await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
+await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.ifl\.test/, { timeout: 15000 }).catch(() => {});
 ok(G.p.url().startsWith(ACCT), 'and InFlight’s /admin', G.p.url());
 r = await req(G, `${CHAT}/api/pigeon/admin-users`);
 const r2 = await req(G, `${CHAT}/api/pigeon/admin-status`);

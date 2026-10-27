@@ -292,11 +292,16 @@ await account(L); await signIn(L); await settle(L, 900);
 const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
 ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
 const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
-ok(halves[0].join() === 'Your apps' && halves[1].join() === 'Account,Preferences', 'two even columns: who you are and your apps; and the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
+ok(halves[0].join() === '' && halves[1].join() === 'Your apps,Account,Preferences', 'two columns: who you are; and your apps (three across), the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
 // (a short window, so the profile can scroll away: side by side, with the account two rows, the page is short)
 await L.p.setViewportSize({ width: 1280, height: 320 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
-ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on: whose account, in a bar at the top');
+ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on, in a short window: whose account, in a bar at the top');
+// (a tall one: who you are stays in sight beside the rest, so there's no bar for it)
+await L.p.setViewportSize({ width: 1280, height: 900 }); await L.p.evaluate(() => scrollTo(0, 400)); await settle(L, 500);
+ok(await L.p.evaluate(() => { const c = document.querySelector('.col-a').getBoundingClientRect(); return c.top >= 0 && getComputedStyle(document.querySelector('.col-a')).position === 'sticky' && !document.querySelector('.whobar').classList.contains('on'); }),
+  'scrolled on, in a tall one: who you are stays in sight beside the rest (no bar for it)', await L.p.evaluate(() => JSON.stringify({ top: document.querySelector('.col-a').getBoundingClientRect().top, y: scrollY, h: document.documentElement.scrollHeight, bar: document.querySelector('.whobar').className, pos: getComputedStyle(document.querySelector('.col-a')).position })));
+await L.p.setViewportSize({ width: 1280, height: 320 });
 await L.p.setViewportSize({ width: 1280, height: 860 }); await L.p.evaluate(() => scrollTo(0, 0));
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
 ok(one >= 0, 'a phone: one column', String(one));
