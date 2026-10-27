@@ -8,9 +8,12 @@
 
 import { notFound } from "./_app.js";
 
+import { oldApp } from "./_sites.js";
 export const FITNESS_HOST = "fitness.inflite.ai";
 // (FITNESS_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
-export const isFitness = (url, env) => (env.FITNESS_HOST || FITNESS_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isFitness = (url, env) => (env.FITNESS_HOST || FITNESS_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "fitness";
 
 export const FIT_SECURITY = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com https://tiles.openfreemap.org; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",

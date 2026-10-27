@@ -24,9 +24,12 @@ export const SECURITY = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 };
 const FOREVER = "public, max-age=31536000, immutable";
+import { oldApp } from "./_sites.js";
 export const CHAT_HOST = "chat.inflite.ai";
 // (CHAT_HOST in the environment: tests, which run the new address on local names, a comma between them)
-export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "chat";
 // the app's own paths, as they are at the new address ("/api/pigeon/…" is the API's, and stays)
 const atRoot = (text) => text.replace(/(?<![\w.-])\/pigeon\//g, "/");
 

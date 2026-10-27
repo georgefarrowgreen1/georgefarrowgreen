@@ -7,9 +7,12 @@
 
 import { notFound } from "./_app.js";
 
+import { oldApp } from "./_sites.js";
 export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
-export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "account";
 
 export const ACCT_SECURITY = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",

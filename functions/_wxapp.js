@@ -11,9 +11,12 @@
 
 import { notFound } from "./_app.js";
 
+import { oldApp } from "./_sites.js";
 export const WEATHER_HOST = "weather.inflite.ai";
 // (WEATHER_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
-export const isWeather = (url, env) => (env.WEATHER_HOST || WEATHER_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isWeather = (url, env) => (env.WEATHER_HOST || WEATHER_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "weather";
 
 const CONNECT = [
   "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com", "https://marine-api.open-meteo.com",

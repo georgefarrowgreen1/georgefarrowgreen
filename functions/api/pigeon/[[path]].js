@@ -1,3 +1,4 @@
+import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
@@ -1441,8 +1442,8 @@ const ROUTES = {
 };
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
-// (and the tests' own addresses for the app: CHAT_HOST, functions/_app.js)
-const hostOk = (h, env) => HOSTS.test(h) || String(env.CHAT_HOST || "").split(",").includes(h);
+// (and InFlight's own address, chat.inflite.ai, or the tests' own for it: CHAT_HOST, functions/_app.js)
+const hostOk = (h, env) => HOSTS.test(h) || isChat({ hostname: h }, env);
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
