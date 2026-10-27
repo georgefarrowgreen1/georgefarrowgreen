@@ -103,7 +103,9 @@ export function cleanState(d) {
     // (and where your nights come from, once you've chosen: Apple Watch or Garmin)
     ...(["apple", "garmin"].includes(d.prefs?.nights) ? { nights: d.prefs.nights } : {}),
     // (and once its first-use welcome's been seen, on any phone: not shown again)
-    ...(d.prefs?.onboarded === true ? { onboarded: true } : {}) };
+    ...(d.prefs?.onboarded === true ? { onboarded: true } : {}),
+    // (and maps shown by themselves, where you've chosen that: the account's page, Fitness)
+    ...(d.prefs?.maps === "always" ? { maps: "always" } : {}) };
   // Rhythm: minutes each day of the week (Monday first, none a rest day), a run and a swim, its lean, build or hold, the
   // Monday it began and the day it was set up, and an event you're riding towards
   const r = d.rhythm, rhythm = obj(r) && Array.isArray(r.days) && r.days.length === 7 ? { days: r.days.map((x) => Math.round(num(x, 0, 600) ?? 0)), run: r.run === true, swim: r.swim === true,

@@ -51,7 +51,9 @@ import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom,
 async function view(env, u, since = null) {
   const at = Date.now() - 2000;
   const [k, got, garmin, health, strava] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava };
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava,
+    // (the look, as the account has it: its page's Appearance)
+    appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 

@@ -158,6 +158,8 @@ const acts = (uid) => rows(`SELECT id, name, sport, file, type, size FROM fx_act
 const state = (uid) => { const r = rows(`SELECT data, ver FROM fx_state WHERE user_id = '${uid}'`)[0]; return r ? { ver: r.ver, ...JSON.parse(r.data) } : null; };
 // (the time given counted only while this script is free: reading the database holds every page's requests meanwhile)
 const waitFor = async (fn, ms = 10000) => { for (let free = 0; ; free += 300) { const v = await fn(); if (v || free > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
+// (a sheet of the app's opened by itself: those set up on the account's page now, as the welcome still has them)
+const openIn = (x, name) => x.p.evaluate(async (n) => { const m = await import('./app.js'); if (n === 'healthView') m.healthView.key = null; m.openSheet(m[n]); }, name);
 const api = (x, path, init = {}) => x.p.evaluate(async ([path, init]) => { const r = await fetch(path, { credentials: 'same-origin', ...init }); return { status: r.status, body: await r.text() }; }, [path, init]);
 
 // ---- 1. Signed out: what Fitness is, and Sign in; nothing else ----
@@ -307,8 +309,9 @@ await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).click();
 await P.p.waitForURL(/account\.gfg\.test/, { timeout: 20000 });
 await P.p.waitForSelector('#sheet[open] .seg', { timeout: 30000 }); await settle(P, 600);
 const fxSheet = await P.p.locator('#sheet').innerText();
-ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count()),
-  'Fitness Settings opens its sheet on the account\'s page, with the way back: units, the morning check-in and the export', fxSheet.replace(/\s+/g, ' ').slice(0, 200));
+ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count())
+  && /Where your rides come from/i.test(fxSheet) && /Garmin Connect/.test(fxSheet) && /Apple Health/.test(fxSheet) && /Show a ride’s map/i.test(fxSheet),
+  'Fitness Settings opens its sheet on the account\'s page, with the way back: where your rides come from, maps, units, the morning check-in and the export', fxSheet.replace(/\s+/g, ' ').slice(0, 200));
 await P.p.screenshot({ path: `${out}/account-fitness.png` });
 await P.p.locator('#sheet .seg button', { hasText: 'Miles' }).click();
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
@@ -420,8 +423,7 @@ await L.p.locator('.checkin.done').screenshot({ path: `${out}/checkin.png` });
 
 // ---- 8c. Garmin Connect on the laptop: a key Garmin won't take, then yours; the morning's ride comes in, the
 // Wahoo's ride (on Garmin too) isn't kept twice; one recorded later is fetched by the scheduler and read as the app opens ----
-await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet #garmin-key'); await settle(L, 500);
+await openIn(L, 'garminView'); await L.p.waitForSelector('#sheet #garmin-key'); await settle(L, 500);
 await L.p.fill('#garmin-key', 'not-the-right-key-0123456789');
 await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
 const refused = await waitFor(async () => { const t = await toastSays(L); return /Garmin/.test(t) && t; }, 15000);
@@ -432,8 +434,7 @@ await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
 const joined = await waitFor(async () => (await toastSays(L)).match(/Connected.*/)?.[0], 20000);
 await settle(L, 600);
 ok(!(await L.p.$('#sheet[open]')) && /Activities/.test(await L.p.locator('.head h1').innerText()) && !(await L.p.$('.card.bringing')), 'connected: back on Activities, the six months in', joined);
-await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
+await openIn(L, 'garminView'); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
 const gKept = acts(sam), gRow = rows(`SELECT apikey, ok FROM fx_garmin WHERE user_id = '${sam}'`)[0];
 ok(gKept.some((a) => a.id === 'g9001' && a.name === 'Morning gravel' && a.type === 'fit') && !gKept.some((a) => a.id === 'g9002') && gKept.length === 3,
   'connected: the morning’s ride in, by its Garmin name; the Wahoo’s ride, on Garmin too, not kept twice', `${joined} | ${gKept.map((a) => a.id + ':' + a.name).join(', ')}`);
@@ -459,8 +460,7 @@ ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM
 // ---- all your history: a ride from over a year ago, not in the six months; brought in when asked for ----
 const gOld = gAt - 400 * 86400;
 GACTS.push({ activityId: 9004, activityName: 'Old gravel', startTimeGMT: gTimes(gOld), file: zipOf('9004_ACTIVITY.fit', Buffer.from(gride(gOld, 1800))) });
-await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Garmin Connect' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
+await openIn(L, 'garminView'); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
 const gAllSheet = await L.p.locator('#sheet').innerText();
 await L.p.locator('#sheet .btn', { hasText: 'Bring in all your rides' }).click();
 const gAll = await waitFor(() => acts(sam).find((a) => a.id === 'g9004'), 30000);
@@ -474,8 +474,7 @@ const gWell = rows(`SELECT day, hrv, hrv_lo, rhr, sleep, score FROM fx_well WHER
 ok(gWell.length === 1 && gWell[0].hrv === 41 && gWell[0].hrv_lo === 52 && gWell[0].rhr === 49 && gWell[0].sleep === 25200 && gWell[0].score === 78 && meWell.length === 1 && glog.some((l) => l.includes('/hrv-service/hrv/daily/')),
   'Garmin: your night’s HRV, resting heart rate and sleep kept, and the page told', JSON.stringify({ gWell, meWell }));
 // ---- Apple Health, by a Shortcut: a key made in Fitness, and the morning's post with it (no cookie: from Shortcuts) ----
-await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
+await openIn(L, 'healthView'); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Make my key' }).click(); await L.p.waitForSelector('#sheet .hk-key'); await settle(L, 400);
 const hAddr = (await L.p.locator('#sheet .hk-key').first().innerText()).replace(/\s+/g, ''), hKey = hAddr.split('/').pop(), hSteps = await L.p.locator('#sheet').innerText();
 ok(hAddr === `${FIT}/api/fitness/health/${hKey}` && /^fxh_[A-Za-z0-9_-]{30,}$/.test(hKey) && /Get Contents of URL/.test(hSteps) && !/Authorization/.test(hSteps), 'Apple Health: an address of your own (the key in it, nothing else to copy), and the Shortcut’s steps', hAddr.slice(0, 60));
@@ -492,8 +491,7 @@ const hRow = rows(`SELECT hrv, rhr, sleep FROM fx_health WHERE user_id = '${sam}
 ok(hNo.status === 401 && hBad.status === 401 && hYes.status === 200 && /Fitness has it: HRV 51.7 ms, resting 51 bpm, 7 h 0 min asleep/.test(hYes.body) && hRow?.hrv === 51.7 && hRow.rhr === 51 && hRow.sleep === 25200,
   'the Shortcut’s morning: nothing without the key; to your address, last night read as Shortcuts writes it, and kept', `${hNo.status} ${hBad.status} ${hYes.body} ${JSON.stringify(hRow)}`);
 ok(hForm.status === 200 && hFormRow?.hrv === 51.5 && hFormRow.rhr === 52 && hFormRow.sleep === 27000, 'and as a form, with the key as a header', `${hForm.status} ${hForm.body}`);
-await done(L); await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Apple Health' }).click(); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
+await done(L); await openIn(L, 'healthView'); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 400);
 await L.p.locator('#sheet .btn', { hasText: 'Check again' }).click(); await L.p.waitForFunction(() => /Last morning/.test(document.querySelector('#sheet .sheet-top')?.textContent || '')); await settle(L, 400);
 ok(/Last morning: HRV 51.7 ms, resting heart rate 51, 7 h 0 min asleep/.test(await L.p.locator('#sheet .sheet-top').innerText()), 'and Fitness shows what came', await L.p.locator('#sheet .sheet-top').innerText());
 // (a day ahead isn't taken as said: it'd never be pruned; and a key that can't be one, turned away unread)
@@ -552,7 +550,7 @@ ok(oOpen && /Hi Jo\. Training that fits your week\./.test(oHi) && /Bring your ri
 await OC.close();
 
 // ---- 8e. Strava: connected on its own page, and back; its activities in by themselves, as Garmin's are ----
-await you(L); await L.p.locator('#sheet .row', { hasText: 'Strava' }).click(); await L.p.waitForSelector('#sheet .btn.strava'); await settle(L, 400);
+await openIn(L, 'stravaView'); await L.p.waitForSelector('#sheet .btn.strava'); await settle(L, 400);
 await L.p.screenshot({ path: `${out}/strava-off.png` });
 await L.p.click('#sheet .btn.strava');
 const sIn = await L.p.waitForFunction(async () => { const { S } = await import('./app.js'); return S.own.some((a) => a.id === 's7001') && S.own.some((a) => a.id === 's7002'); }, null, { timeout: 60000, polling: 500 }).then(() => true, () => false);

@@ -909,3 +909,11 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   transition: background-color 0s 600000s, color 0s 600000s;
   -webkit-background-clip: text; background-clip: text;
 }
+
+/* Fitness's connections, on its sheet: Garmin's, Strava's and Apple Health's own colours; a Shortcut's steps; its address */
+.ic.garmin { background: linear-gradient(160deg, #2b3440, #0b0f14); } .ic.strava { background: linear-gradient(160deg, #ff7a3d, #fc5200); } .ic.health { background: linear-gradient(160deg, #ff6b8a, #e8304f); }
+.btn.strava { background: #fc5200; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 26px -12px #fc5200; }
+.steps-list { margin: 0; padding: 0 6px 0 26px; display: grid; gap: 8px; font-size: 15px; line-height: 1.45; color: var(--text-2); }
+.fx-addr { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--field); font: 500 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.hint.powered { text-align: center; font-weight: 600; }
+.row.plain.act { justify-content: center; } .row.plain.act b { font-weight: 500; color: var(--tint-text); } .row.plain.act.danger b { color: var(--danger); }

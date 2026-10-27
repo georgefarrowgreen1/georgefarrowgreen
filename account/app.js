@@ -182,6 +182,10 @@ const ICONS = {
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  watch: '<rect x="7" y="3.5" width="10" height="17" rx="3"/><path d="M10 7.5h4M10 16.5h4"/>',
+  heart: '<path d="M12 20s-7.5-4.7-7.5-10.4A4.1 4.1 0 0 1 12 7.2a4.1 4.1 0 0 1 7.5 2.4C19.5 15.3 12 20 12 20z"/>',
+  wave: '<path d="M3 12h3l2.5-6 4 12 2.5-6H21"/>',
+  map: '<path d="M9 4.5 3.5 6.5v13l5.5-2 6 2 5.5-2v-13l-5.5 2-6-2z"/><path d="M9 4.5v13M15 6.5v13"/>',
   sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
   home: '<path d="M4 11.2 12 4.8l8 6.4"/><path d="M6.2 9.8v9.7h11.6V9.8"/><path d="M10 19.5v-5h4v5"/>',
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
@@ -296,7 +300,7 @@ function theme(pref, fade) {
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top(root.dataset.theme ? isDark() : (m.getAttribute("media") || "").includes("dark")));
   };
   const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;
-  if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) document.startViewTransition(go);
+  if (fade && looks !== isDark() && document.startViewTransition && !still.matches && !document.hidden) viewTransition(go);
   else go();
 }
 const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
@@ -356,7 +360,14 @@ async function load() {
 async function anew(fn) {
   if (sheetEl.open) await closeSheet();
   if (!document.startViewTransition || still.matches || document.hidden) return fn();
-  await document.startViewTransition(fn).updateCallbackDone;
+  await viewTransition(fn).updateCallbackDone;
+}
+// A view transition, started; one the browser gives up on (the window resized as it runs, say) is no error, its change
+// made all the same, so what it'd have said is let go
+function viewTransition(fn) {
+  const t = document.startViewTransition(fn);
+  t.ready.catch(() => {}); t.finished.catch(() => {});
+  return t;
 }
 // once the page has settled in, less a moment (a sheet coming up as it rises made too much move at once)
 const afterRise = (fn, at = 0) => setTimeout(fn, Math.max(at, (S.riseUntil || 0) - 500 - Date.now()));
@@ -880,7 +891,7 @@ function gate(to) {
     return ready();
   }
   gating++; main.classList.add("vt-gate");
-  const t = document.startViewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
+  const t = viewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
   t.updateCallbackDone.then(ready);
   t.finished.then(done, done);
 }
@@ -2679,8 +2690,19 @@ function fitnessSetView() {
   const units = seg("Distances", [["metric", "Kilometres"], ["imperial", "Miles"]], FX.units || here, (v) => change({ units: v }, () => redraw()));
   const ask = h("input.switch", { type: "checkbox", role: "switch", id: "fx-ask", name: "ask", checked: FX.ask });
   ask.onchange = async () => { ask.disabled = true; await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); ask.disabled = false; };
+  const fx = (k) => FX[k] || {};
+  const maps = seg("Maps", [["tap", "When you tap"], ["always", "Always"]], FX.maps || "tap", (v) => change({ maps: v }, () => redraw()));
   return { title: "Fitness", left: back, body: [
     h("p", { text: "For Fitness on every device you use it on." }),
+    h("h4.app-k", { text: "Where your rides come from" }),
+    h("div.group", {},
+      row({ icon: "watch", tint: "garmin", title: "Garmin Connect", sub: fxSaid(fx("garmin"), "Your rides and nights, in by themselves"), onclick: () => pushSheet(fxGarminView) }),
+      fx("strava").ready !== false && row({ icon: "wave", tint: "strava", title: "Strava", sub: fxSaid(fx("strava"), "What you record on Strava, in by itself"), onclick: () => pushSheet(fxStravaView) }),
+      row({ icon: "heart", tint: "health", title: "Apple Health", sub: fx("health").on ? (fx("health").last ? `Last sent ${ago(fx("health").last)}` : "Waiting for the Shortcut’s first morning") : "Your nights from your Apple Watch, by a Shortcut", onclick: () => pushSheet(fxHealthView) }),
+      (FX.devices || []).length > 0 && row({ icon: "watch", tint: "grey", title: "Devices", sub: `${FX.devices.length === 1 ? "1 device" : `${FX.devices.length} devices`} seen in your files`, onclick: () => pushSheet(fxDevicesView) })),
+    h("h4.app-k", { text: "Maps" }),
+    h("div.units", {}, h("div.unit", {}, h("span", { text: "Show a ride’s map" }), maps)),
+    h("p.hint", { text: "Maps come from OpenFreeMap, which sees where they’re shown. Until you tap, Fitness draws the route itself." }),
     h("h4.app-k", { text: "Units" }),
     h("div.units", {}, h("div.unit", {}, h("span", { text: "Distances" }), units)),
     !FX.units && h("p.hint", { text: "From your phone’s region, until you choose." }),
@@ -2691,7 +2713,112 @@ function fitnessSetView() {
       h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every activity’s file, and your workouts, in one zip" })),
       h("span.get", {}, icon("download", 20, 2.2)))),
     said,
-    h("p.hint", { text: "Appearance and the morning reminder are set in Fitness, on each device." })] };
+    h("p.hint", { text: "Fitness looks as this page does (Appearance, in your settings). The morning reminder and uploading files are in Fitness, on each phone." })] };
+}
+// (a connection, said: whose, and when it last looked)
+function fxSaid(c, off) {
+  if (!c.on) return c.n ? `Not connected · ${c.n === 1 ? "1 activity" : `${c.n} activities`} from before` : off;
+  if (!c.ok) return c.said === "revoked" || c.said === "expired" ? "Stopped letting Fitness in: connect again" : "Connected, but not answering";
+  return `${c.name ? `${c.name} · ` : "Connected · "}${c.last ? `checked ${ago(c.last)}` : "connected"}`;
+}
+// Disconnecting, or clearing up after: what it brought in kept, or removed (not yours, say)
+function fxLeave(kind, label) {
+  const c = FX[kind] || {}, n = c.n || 0;
+  if (!c.on && !n) return null;
+  const go = async (b, acts) => {
+    try { const r = await busy(b, acts ? "Removing…" : "Disconnecting…", () => call(`fitness/${kind}${acts ? "?acts=1" : ""}`, { method: "DELETE" })); FX = r;
+      stepBack(); toast([c.on && `Disconnected from ${label}`, acts && `${r.gone === 1 ? "1 activity" : `${r.gone || 0} activities`} removed`].filter(Boolean).join("; ")); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  };
+  const sure = h("div.group", { hidden: true },
+    c.on && h("button.row.plain.act", { type: "button", onclick: (e) => go(e.currentTarget, false) }, h("span.tx", {}, h("b", { text: n ? `Disconnect, and keep its ${n === 1 ? "activity" : `${n} activities`}` : "Disconnect" }))),
+    n > 0 && h("button.row.plain.act.danger", { type: "button", onclick: (e) => go(e.currentTarget, true) }, h("span.tx", {}, h("b", { text: `${c.on ? "Disconnect, and remove" : "Remove"} ${n === 1 ? "the activity" : `all ${n} activities`} from ${label}` }))));
+  const first = h("button.row.plain.act.danger", { type: "button", onclick: (e) => { e.currentTarget.closest(".group").hidden = true; sure.hidden = false; } }, h("span.tx", {}, h("b", { text: c.on ? "Disconnect" : `Remove what ${label} brought in` })));
+  return [h("h4.app-k", { text: c.on ? "Disconnecting" : `From ${label} before` }), h("div.group", {}, first), sure,
+    h("p.hint", { text: c.on ? "New activities stop coming in. You choose whether the ones it brought in stay." : `${n === 1 ? "1 activity" : `${n} activities`} in Fitness came from ${label}. If they’re not yours, remove them.` })];
+}
+const fxStat = (k, v) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
+// Garmin Connect: your Personal API key, pasted (locked with your account, never shown again)
+function fxGarminView() {
+  const c = FX.garmin || {};
+  if (!c.on) {
+    const key = h("input", { type: "password", id: "fx-garmin-key", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Personal API key" });
+    const btn = h("button.btn", { type: "button", onclick: async () => {
+      if (!key.value.trim()) return key.focus();
+      try { FX = await busy(btn, "Connecting…", () => call("fitness/garmin", { method: "POST", body: { key: key.value } })); key.value = ""; redraw(); toast("Connected: your rides come in as you open Fitness"); }
+      catch (e) { if (!e.quiet) toast(e.message, true); }
+    } }, "Connect");
+    return { title: "Garmin Connect", body: [
+      h("p", { text: "Your rides, runs and swims, and your nights, in Fitness by themselves." }),
+      h("ol.steps-list", {}, h("li", { text: "In Garmin Connect: Settings › Personal API Key › Create" }), h("li", { text: "Copy it, and paste it here: Garmin shows it only once" })),
+      field("Personal API key", key), btn,
+      h("p.hint", { text: "Kept locked with your account and never shown again. Garmin’s personal keys only read: Fitness brings in the last six months, then each new one." }),
+      ...(fxLeave("garmin", "Garmin") || [])] };
+  }
+  const all = h("button.btn.quiet", { type: "button", onclick: async () => {
+    try { FX = await busy(all, "Starting…", () => call("fitness/garmin/all", { method: "POST" })); redraw(); toast("All your rides are coming in: open Fitness to see them"); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.back ? "Carry on bringing them in" : "Bring in all your rides");
+  return { title: "Garmin Connect", body: [
+    h("div.group", {}, fxStat("Status", fxSaid(c, "")), fxStat("Activities from it", String(c.n || 0))),
+    all, h("p.hint", { text: c.back ? "Part way through all your history: it carries on by itself." : "Everything on Garmin Connect, not just the last six months, oldest first. Carries on by itself." }),
+    ...(fxLeave("garmin", "Garmin") || [])] };
+}
+// Strava: its own page to say yes on, which sends you back to Fitness, the rides coming in
+function fxStravaView() {
+  const c = FX.strava || {};
+  const go = h("button.btn.strava", { type: "button", onclick: async () => {
+    try { const { url } = await busy(go, "Opening Strava…", () => call("fitness/strava", { method: "POST" })); location.assign(url); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.on ? "Connect with Strava again" : "Connect with Strava");
+  if (!c.on) return { title: "Strava", body: [
+    h("p", { text: "Your rides, runs and swims from Strava, in Fitness by themselves: the last six months, then each new one." }),
+    go, h("p.hint", { text: "Strava shows its own page, so you see whose Strava it is; then you’re back in Fitness, the rides coming in. Fitness only reads: it never posts to Strava." }),
+    ...(fxLeave("strava", "Strava") || []), h("p.hint.powered", { text: "Powered by Strava" })] };
+  const all = h("button.btn.quiet", { type: "button", onclick: async () => {
+    try { FX = await busy(all, "Starting…", () => call("fitness/strava/all", { method: "POST" })); redraw(); toast("All your rides are coming in: open Fitness to see them"); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.back ? "Carry on bringing them in" : "Bring in all your rides");
+  return { title: "Strava", body: [
+    h("div.group", {}, fxStat("Status", fxSaid(c, "")), fxStat("Activities from it", String(c.n || 0))),
+    !c.ok && go, c.ok && all,
+    h("p.hint", { text: "Strava tells Fitness as each new activity’s saved, so it’s there a minute or two after." }),
+    ...(fxLeave("strava", "Strava") || []), h("p.hint.powered", { text: "Powered by Strava" })] };
+}
+// Apple Health: a key for a Shortcut that sends last night each morning (made here, shown once, with the steps)
+let fxKey = null;
+function fxHealthView() {
+  const c = FX.health || {};
+  const make = h("button.btn" + (c.on ? ".quiet" : ""), { type: "button", onclick: async () => {
+    try { const r = await busy(make, "Making your key…", () => call("fitness/health", { method: "POST" })); fxKey = r.address; FX = r; redraw(); }
+    catch (e) { if (!e.quiet) toast(e.message, true); }
+  } }, c.on ? "Make a new key, and see the steps again" : "Make my key");
+  const copy = (text) => h("button.btn.quiet", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast("Address copied"), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy the address");
+  const steps = fxKey && [
+    h("h4.app-k", { text: "Your address" }), h("p.fx-addr", { text: fxKey }), copy(fxKey),
+    h("p.hint", { text: "Yours alone, and shown this once: copy it now. It can only send your nights to Fitness." }),
+    h("h4.app-k", { text: "Make the Shortcut" }),
+    h("ol.steps-list", {},
+      h("li", { text: "Shortcuts › Automation › New Automation: Time of Day, 07:30, Daily, Run Immediately; then New Blank Automation." }),
+      h("li", { text: "Find Health Samples: Heart Rate Variability, Start Date in the last 12 hours." }),
+      h("li", { text: "Find Health Samples: Resting Heart Rate, in the last 1 day (if it says Filter, tap Health Samples and Clear it)." }),
+      h("li", { text: "Find Health Samples: Sleep, in the last 16 hours, Value not In Bed, not Awake; then Get Details of Health Samples: Duration." }),
+      h("li", { text: "Get Contents of URL: paste your address. Method POST, Request Body JSON." }),
+      h("li", { text: "Three fields: hrv, step 2’s Health Samples; rhr, step 3’s; sleep, step 4’s Duration (each a blue variable chip). Then tap Run once." }))];
+  const off = c.on && h("button.row.plain.act.danger", { type: "button", onclick: async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.querySelector("b").textContent = "Turn off: the key stops, its nights forgotten"; return; }
+    try { FX = await call("fitness/health", { method: "DELETE" }); fxKey = null; stepBack(); toast("Apple Health off"); } catch (er) { toast(er.message, true); }
+  } }, h("span.tx", {}, h("b", { text: "Turn off" })));
+  return { title: "Apple Health", body: [
+    c.on ? h("div.group", {}, fxStat("Last sent", c.last ? ago(c.last) : "Not yet"), fxStat("Nights", String(c.nights || 0)))
+      : h("p", { text: "Apple keeps Health on your iPhone, with no way for a website to ask for it. So a Shortcut sends it: each morning, last night’s HRV, resting heart rate and sleep, with a key of your own. Rhythm eases the day when your night says you need it." }),
+    ...(steps || []), make,
+    off && h("div.group", {}, off)] };
+}
+function fxDevicesView() {
+  return { title: "Devices", body: [h("p", { text: "What your activities were recorded on, from their files." }),
+    h("div.group", {}, (FX.devices || []).map(([d, n]) => fxStat(d, n === 1 ? "1 file" : `${n} files`)))] };
 }
 // Everything, as files: each activity as it came, and your workouts as FIT (and ZWO, for a ride), drawn with the app's
 // own code (formats.js, shared with it)

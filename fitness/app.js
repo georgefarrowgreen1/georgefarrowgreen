@@ -99,6 +99,7 @@ function adopt(d) {
   S.ask = d?.prefs?.ask !== false;
   S.nightsFrom = ["apple", "garmin"].includes(d?.prefs?.nights) ? d.prefs.nights : "auto";
   S.onboarded = d?.prefs?.onboarded === true;
+  S.maps = d?.prefs?.maps === "always" ? "always" : "tap";
   S.examples = false;   // (the example rides are gone: your own alone)
   setActs();
   // (new numbers, from another device: every ride's stress worked out again for them)
@@ -107,7 +108,7 @@ function adopt(d) {
 const numbers = () => [P().ftp, P().lthr, P().runPace, P().css].join("/");
 // what's kept with the account, as this device has it now
 const record = () => ({ profile: (({ name, ...p }) => p)(S.profile), plan: S.chosen, rhythm: S.rhythm, swaps: S.swaps, feel: S.feel, workouts: S.mine,
-  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}), ...(S.nightsFrom && S.nightsFrom !== "auto" ? { nights: S.nightsFrom } : {}), ...(S.onboarded ? { onboarded: true } : {}) } });
+  prefs: { ...(S.unitsSet ? { units: U.metric ? "metric" : "imperial" } : {}), examples: S.examples, ...(S.ask === false ? { ask: false } : {}), ...(S.nightsFrom && S.nightsFrom !== "auto" ? { nights: S.nightsFrom } : {}), ...(S.maps === "always" ? { maps: "always" } : {}), ...(S.onboarded ? { onboarded: true } : {}) } });
 // Your numbers from your rides, for those you haven't set: FTP from your best 20 minutes of the last 90 days (95% of
 // it), max heart rate the highest in any of them (and threshold heart rate 90% of that, unless you've set it)
 const isSet = (k) => (P().set || []).includes(k);
@@ -402,7 +403,7 @@ function mapCredit() {
 }
 // Maps (OpenFreeMap's tiles, fetched by the phone: it sees where they're shown): by default only when you tap for one,
 // each route otherwise Fitness's own drawing, which asks nothing of anyone; or always, chosen in You. (This phone's.)
-const mapsAlways = () => store.get("maps", "tap") === "always";
+const mapsAlways = () => S.maps === "always";
 // the route's map, the whole sheet, to move and zoom
 function bigMapView(name, route) {
   const holder = h("div.map-gl.big", {}, mapCredit());
@@ -413,7 +414,6 @@ function bigMapView(name, route) {
 // ---- you, and settings ----
 function settingsView() {
   const p = P(), wkg = (p.ftp / p.weight).toFixed(2);
-  const devices = [...new Set(S.acts.map((a) => a.device).filter(Boolean))];
   return {
     title: "You",
     body: [
@@ -430,17 +430,11 @@ function settingsView() {
         h("p.foot", { text: "Every zone, target and training stress follows these." })),
       section("Power zones", h("div.group", {}, ZONES.map((z, i) => h("div.row.plain", {}, h("span.zone-chip.bg-" + z.c, { text: `Z${z.n}` }), h("span.tx", {}, h("b", { text: z.name })),
         h("span.val", { text: `${i ? Math.round(ZONES[i - 1].top * p.ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * p.ftp) - 1}` : "+"} W` }))))),
-      section("Your devices", h("div.group", {},
-        row({ tile: h("span.ic.brand.garmin", {}, icon("device", 18, 2)), title: "Garmin Connect", sub: garminSaid(), onclick: () => pushSheet(garminView) }),
-        S.strava?.ready !== false && row({ tile: h("span.ic.brand.strava", {}, icon("wave", 18, 2.2)), title: "Strava", sub: stravaSaid(), onclick: () => pushSheet(stravaView) }),
-        row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Apple Health", sub: healthSaid(), onclick: () => { healthView.key = null; pushSheet(healthView); } }),
-        devices.length > 0 && row({ icon: "device", tint: "grey", title: "Devices", sub: `${plural(devices.length, "device")} seen in your files`, onclick: () => pushSheet(devicesView) }))),
       section("Preferences", h("div.group", {},
-        row({ icon: "open", tint: "teal", title: "Maps", sub: "From OpenFreeMap, which sees where they’re shown", value: mapsAlways() ? "Always" : "When you tap", onclick: () => { store.set("maps", mapsAlways() ? "tap" : "always"); Sheet.redraw(); } }),
-        row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[store.get("appearance", "auto")] || "Automatic", onclick: () => pushSheet(appearanceView) }),
         rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
-        // (units, the morning check-in and exporting everything: your account's, on its page, for every device)
-        row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · ${S.ask === false ? "No morning check-in" : "Asks how you are each morning"}`, onclick: () => openAccount("fitness") }))),
+        // (where your rides come from, the devices, maps, units, the morning check-in and exporting everything: your
+        // account's, on its page, for every device; Fitness looks as that page does)
+        row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }))),
       section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
@@ -487,6 +481,14 @@ function numbersView() {
       h("p", { text: isSet("ftp") ? "FTP is the power you could hold for about an hour. Ride harder than it says for 20 minutes and Fitness will offer a rise; it never talks it down. Think it’s too high? A 20-minute test will tell you." : "FTP is the power you could hold for about an hour. Until you set it, Fitness works it out from your hardest rides, and it rises by itself when you ride harder." }),
     ],
   };
+}
+// The look, as the account has it (its page's Appearance, for every app on the site): Automatic, Light or Dark, kept on
+// this phone too, so theme.js has it for the first frame next time
+function lookOf(v) {
+  v = v === "light" || v === "dark" ? v : "auto";
+  if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  try { localStorage.setItem("fitness:appearance", v); } catch (_) {}
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", v === "dark" ? "#24224f" : v === "light" ? "#f8e2da" : m.media.includes("dark") ? "#24224f" : "#f8e2da");
 }
 function appearanceView() {
   const now = store.get("appearance", "auto"), set = (v) => {
@@ -1449,6 +1451,7 @@ async function fetchMe(base = meBase) {
 // (kept: the copy kept on this phone, drawn at once; it may be another account's, the site having been signed into as
 // someone else since, so nothing's done for it, nothing fetched or kept, till the account says it's the same one)
 function arrive(m, kept = false) {
+  if (!kept && m.appearance) lookOf(m.appearance);
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
@@ -1481,6 +1484,7 @@ function background(m) {
 // the account as fetched, taken up over what's on the screen (this device's changes not yet kept winning)
 function takeUp(m) {
   document.body.dataset.fresh = "1";
+  if (m.appearance) lookOf(m.appearance);
   S.me = { ...S.me, name: m.name, handle: m.handle, photoAt: m.photoAt, garmin: m.garmin }; S.ver = m.ver; S.pulledAt = Date.now();
   adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
@@ -1598,4 +1602,6 @@ const signedOutHere = () => signOutHere(true);
 // (what the screens, each its own module, take from here)
 export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways };
+// (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
+export { stravaView, healthView };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

@@ -42,7 +42,10 @@ import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { avatarKey } from "../../_profile.js";
-import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile } from "../../_fitness.js";
+import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
+import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
+import { connectUrl as stravaUrl, disconnectStrava, stravaOf, stravaAll } from "../../_strava.js";
+import { newKey as healthKey, forget as healthOff, healthOf } from "../../_health.js";
 import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
@@ -157,10 +160,22 @@ async function inflightSettings(env, u) {
 const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
 // Fitness's settings that are the account's (as its record has them, functions/_fitness.js): kilometres or miles (none
 // chosen: the phone's region's, in the app), and whether it asks how you are each morning
+// and where its rides and nights come from (Garmin Connect, Strava, Apple Health), the devices they were recorded on,
+// and whether maps show by themselves; each said as the app says it (not its keys, nor its files waiting)
 async function fitnessSettings(env, u) {
-  const p = (await fitnessKept(env, u.id)).data?.prefs || {};
-  return { units: p.units === "metric" || p.units === "imperial" ? p.units : null, ask: p.ask !== false };
+  const p = (await fitnessKept(env, u.id)).data?.prefs || {}, quiet = (x) => x.catch(() => ({ on: false }));
+  const [g, s, hl, dv] = await Promise.all([quiet(garminOf(env, u.id)), quiet(stravaOf(env, u.id)), quiet(healthOf(env, u.id)),
+    fitdb(env).then((D) => D.prepare("SELECT device, COUNT(*) AS n FROM fx_acts WHERE user_id = ? AND device IS NOT NULL AND device != '' GROUP BY device ORDER BY n DESC LIMIT 60").bind(u.id).all()).then((r) => r.results, () => [])]);
+  const n = (pre) => fitdb(env).then((D) => D.prepare("SELECT COUNT(*) AS n FROM fx_acts WHERE user_id = ? AND id GLOB ?").bind(u.id, `${pre}[0-9]*`).first()).then((r) => r?.n || 0, () => 0);
+  const [gn, sn] = await Promise.all([n("g"), n("s")]);
+  return { units: p.units === "metric" || p.units === "imperial" ? p.units : null, ask: p.ask !== false, maps: p.maps === "always" ? "always" : "tap",
+    garmin: g.on ? { on: true, ok: g.ok, said: g.said, last: g.last, since: g.since, back: !!g.back, n: gn } : { on: false, n: gn },
+    strava: s.ready === false ? { ready: false } : s.on ? { on: true, ok: s.ok, said: s.said, last: s.last, since: s.since, name: s.name, back: !!s.back, n: sn } : { on: false, n: sn },
+    health: hl.on ? { on: true, last: hl.last, said: hl.said, nights: hl.well?.length || 0 } : { on: false },
+    devices: dv.map((d) => [d.device, d.n]) };
 }
+// (Fitness's own address, beside this page's: where Strava sends you back to, and where the Shortcut sends your nights)
+const fitnessOrigin = (request) => { const u = new URL(request.url); u.hostname = u.hostname.replace(/^account\./, "fitness."); return u.origin; };
 // (every one of your activities, as the app has them, newest first: a page at a time)
 async function allActs(env, id) {
   let { acts, more } = await fitnessActs(env, id);
@@ -621,13 +636,67 @@ const ROUTES = {
     await limit(env, "prefs:" + u.id, 120, 3600e3);
     if (b.units !== undefined) { if (b.units !== "metric" && b.units !== "imperial") throw new HttpError(400, "Choose kilometres or miles."); set.units = b.units; }
     if (b.ask !== undefined) { if (typeof b.ask !== "boolean") throw new HttpError(400, "Choose on or off."); set.ask = b.ask; }
+    if (b.maps !== undefined) { if (b.maps !== "tap" && b.maps !== "always") throw new HttpError(400, "Choose when you tap, or always."); set.maps = b.maps; }
     for (let i = 0; i < 4; i++) {
       const k = await fitnessKept(env, u.id), prefs = { ...(k.data?.prefs || {}), ...set };
       if (prefs.ask !== false) delete prefs.ask;     // (the app keeps it only when it's off)
+      if (prefs.maps !== "always") delete prefs.maps;     // (and maps only when they're always shown)
       const r = await fitnessSave(env, u.id, k.ver, { ...(k.data || {}), prefs });
       if (!r.conflict) return json(await fitnessSettings(env, u));
     }
     throw new HttpError(409, "Fitness was changing that on another device. Try again.");
+  },
+  // ---- where Fitness's rides and nights come from, connected here as in the app (functions/_garmin.js, _strava.js,
+  // _health.js); the app reads what each brings in as it next opens ----
+  "POST fitness/garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 8 * 1024);
+    await garminConnect(env, u.id, b.key);
+    return json(await fitnessSettings(env, u));
+  },
+  "POST fitness/garmin/all": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await garminAll(env, u.id);
+    return json(await fitnessSettings(env, u));
+  },
+  // (acts=1: and every activity it brought in, removed)
+  "DELETE fitness/garmin": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), acts = new URL(request.url).searchParams.get("acts") === "1";
+    await garminOff(env, u.id);
+    const gone = acts ? await fitnessDrop(env, u.id, "g") : 0;
+    return json({ ...(await fitnessSettings(env, u)), gone });
+  },
+  // (Strava's page to say yes on, which sends you back to Fitness: its address is the one Strava knows)
+  "POST fitness/strava": async ({ request, env }) => {
+    sameOrigin(request);
+    return json(await stravaUrl(env, (await signedIn(request, env)).id, fitnessOrigin(request)));
+  },
+  "POST fitness/strava/all": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await stravaAll(env, u.id);
+    return json(await fitnessSettings(env, u));
+  },
+  "DELETE fitness/strava": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), acts = new URL(request.url).searchParams.get("acts") === "1";
+    await disconnectStrava(env, u.id);
+    const gone = acts ? await fitnessDrop(env, u.id, "s") : 0;
+    return json({ ...(await fitnessSettings(env, u)), gone });
+  },
+  // (a new key for the Shortcut, shown this once, with the address it goes in: Fitness's)
+  "POST fitness/health": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), r = await healthKey(env, u.id);
+    return json({ ...(await fitnessSettings(env, u)), key: r.key, address: `${fitnessOrigin(request)}/api/fitness/health/${r.key}` });
+  },
+  "DELETE fitness/health": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await healthOff(env, u.id);
+    return json(await fitnessSettings(env, u));
   },
   // what's needed to export everything: each activity's name and kind, your workouts, and the paces they're drawn at
   "GET fitness/export": async ({ request, env }) => {
