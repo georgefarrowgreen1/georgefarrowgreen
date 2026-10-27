@@ -1,7 +1,6 @@
 // The move to inflite.ai: the apps on a site of their own (stood in for by ifl.test), the home page on its own
-// (gfg.test). georgefarrowgreen.com says inflite.ai's apps may use its passkeys; inflite.ai itself is the home page's
-// apps for now; the apps' old addresses send every page on to the new ones, signed in still if the browser was (a hop:
-// functions/_hop.js), and their service worker is a stand-in that only shows notifications; the home page, back from
+// (gfg.test). georgefarrowgreen.com says inflite.ai's apps may use its passkeys; the apps' old addresses send every
+// page on to the new ones, signed in still if the browser was (a hop: functions/_hop.js), and their service worker is a stand-in that only shows notifications; the home page, back from
 // signing in on the account's page, is signed in itself, and signed out with it. A hop can't be forged or used twice.
 import { chromium } from 'playwright';
 import http from 'http';
@@ -36,8 +35,6 @@ const wk = await get(`${HOME}/.well-known/webauthn`);
 let origins = []; try { origins = JSON.parse(wk.body).origins; } catch (_) {}
 ok(wk.status === 200 && /application\/json/.test(wk.type) && [ACCT, CHAT, WX, 'http://fitness.ifl.test:8788'].every((o) => origins.includes(o)),
   'the home page’s site says the apps on inflite.ai may use its passkeys', wk.body);
-const apex = await get('http://ifl.test:8788/');
-ok(apex.status === 302 && apex.location === `${HOME}/#apps`, 'inflite.ai itself: the home page’s apps, for now', apex.location);
 
 // ---- 2. an account, made on the account's page (signed in for the apps' site) ----
 const A = await browser('a');

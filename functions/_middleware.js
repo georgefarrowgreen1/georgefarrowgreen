@@ -2,11 +2,11 @@
 // weather.inflite.ai: Weather, the same way (functions/_wxapp.js).
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
-// inflite.ai itself: the home page's apps, for now.
+// (inflite.ai itself is kept for something else: not this project's.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
 // still (functions/_hop.js). Every other address carries straight on (the home page).
 import { serveApp, isChat, notFound } from "./_app.js";
-import { oldApp, appOrigin, homeOrigin, appsSite, homeSite } from "./_sites.js";
+import { oldApp, appOrigin, homeSite } from "./_sites.js";
 import { hop, hopTo } from "./_hop.js";
 import { cookieToken } from "./_account.js";
 import { HttpError } from "./_http.js";
@@ -43,8 +43,6 @@ export async function onRequest(ctx) {
   // an app's old address: on to its new one
   const was = oldApp(url.hostname, ctx.env);
   if (was) return movedOn(ctx, url, was);
-  // inflite.ai itself, and www.: the home page's apps, until it has a page of its own
-  if (url.hostname === appsSite(ctx.env) || url.hostname === "www." + appsSite(ctx.env)) return Response.redirect(`${homeOrigin(ctx.env, ctx.request)}/#apps`, 302);
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isFitness(url, ctx.env)) return fitnessHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);

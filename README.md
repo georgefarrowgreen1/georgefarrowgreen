@@ -2,7 +2,7 @@
 
 Two sites from one Pages project (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
 live at **inflite.ai**: InFlight (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
-each below. inflite.ai itself sends you to the home page's Apps for now.
+each below. inflite.ai itself is kept for another project, not this one.
 
 - **One account, two sign-ins.** The account's cookie is each site's own (`Domain=inflite.ai` for every app;
   `georgefarrowgreen.com` for the home page). The home page's **Sign in** goes to the account's page, and comes back
@@ -16,8 +16,8 @@ each below. inflite.ai itself sends you to the home page's Apps for now.
   the same place at inflite.ai, signed in still if the browser was (a hop). Their `sw.js` is a stand-in that keeps no
   files and only shows the notifications still sent to a phone that hasn't moved, opening them at the new address; their
   APIs still answer a page left open from before (and the Apple Health shortcut).
-- **Setting up the domain** (once): inflite.ai on Cloudflare; chat., weather., fitness. and account.inflite.ai, and
-  inflite.ai itself, as custom domains of the Pages project; Strava's Authorization Callback Domain fitness.inflite.ai.
+- **Setting up the domain** (once): inflite.ai on Cloudflare; chat., weather., fitness. and account.inflite.ai as
+  custom domains of the Pages project; Strava's Authorization Callback Domain fitness.inflite.ai.
 - **Tests** stand in both sites: gfg.test for the home page (`ACCOUNT_SITE`), ifl.test for the apps (`APPS_SITE`), with
   passkeys the apps' site's (`PASSKEY_SITE`: a test over plain http can't fetch the related-origins file).
 
