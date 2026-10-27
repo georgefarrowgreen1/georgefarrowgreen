@@ -415,7 +415,7 @@ function settingsView() {
     body: [
       // (your account's card: its page, opened signed in as you, for your photo, name and the rest)
       h("button.card.glass.acct", { type: "button", onclick: openAccount, "aria-label": "Your account" },
-        h("div.wx", {}, h("div.round.me", { "aria-hidden": "true" }, face()), h("div", {}, h("b", { text: S.me?.name || "You" }), h("span", { text: `@${S.me?.handle} · georgefarrowgreen.com` })),
+        h("div.wx", {}, h("div.round.me", { "aria-hidden": "true" }, face()), h("div", {}, h("b", { text: S.me?.name || "You" }), h("span", { text: `@${S.me?.handle}` })),
           h("span.chev", {}, icon("chev", 17, 2.4)))),
       section("Your numbers", h("div.group", {},
         row({ icon: "bolt", tint: "coral", title: "FTP", value: [`${p.ftp} W`, h("small", { text: `${wkg} W/kg` })], onclick: () => pushSheet(numbersView) }),
