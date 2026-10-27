@@ -313,7 +313,7 @@ ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')
   && /Where your rides come from/i.test(fxSheet) && /Garmin Connect/.test(fxSheet) && /Apple Health/.test(fxSheet) && /Show a ride’s map/i.test(fxSheet),
   'Fitness Settings opens its sheet on the account\'s page, with the way back: where your rides come from, maps, units, the morning check-in and the export', fxSheet.replace(/\s+/g, ' ').slice(0, 200));
 await P.p.screenshot({ path: `${out}/account-fitness.png` });
-await P.p.locator('#sheet .seg button', { hasText: 'Miles' }).click();
+await P.p.locator('#sheet .seg button', { hasText: /^mi$/ }).click();
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
 await P.p.locator('#sheet .toapp').click();
 await P.p.waitForURL(/fitness\.gfg\.test/, { timeout: 20000 }); await P.p.waitForSelector('.head .round.me');

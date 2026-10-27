@@ -189,6 +189,11 @@ const ICONS = {
   sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
   home: '<path d="M4 11.2 12 4.8l8 6.4"/><path d="M6.2 9.8v9.7h11.6V9.8"/><path d="M10 19.5v-5h4v5"/>',
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/>',
+  block: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
+  car: '<path d="M5 16v-5l2-4.5h10l2 4.5v5"/><path d="M3.5 16h17v2.5h-17z"/><path d="M5 11h14"/>',
 };
 function icon(name, size = 20, width = 2) {
   const t = document.createElement("template");
@@ -2586,80 +2591,130 @@ function emailsView() {
 let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0, ifStale = false;
 // (a fetch dropped for a change: the sheet drawn again once the last change is back, from what that gave back, so the
 // rows it didn't touch don't stay as they were cached; and, if one couldn't be kept, fetched again as it's drawn)
-const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (Sheet.stack.at(-1) === inflightView) redraw(); };
-const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off", "When a friend sends you one"], ["rerouted", "A pigeon changes course", "When a friend moves while yours is flying"],
-  ["lost", "A pigeon is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
+// (on any of its pages: the sheet's own, its notifications, who sees what, and who's blocked)
+const onIf = () => [inflightView, ifNotifyView, ifPrivacyView, ifBlockedView].includes(Sheet.stack.at(-1));
+const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (onIf()) redraw(); };
+const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "Takes off", "When a friend sends you one"], ["rerouted", "Changes course", "When a friend moves while yours is flying"],
+  ["lost", "Is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
   ["accepted", "Request accepted"], ["reactions", "Reactions", "When someone reacts to your message"], ["moments", "Mid-air moments", "Near misses, cheers, ships, and friends’ pigeons flying over you"],
   ["streaks", "Flight streaks", "A few hours before a streak with a friend runs out"], ["weekly", "Your week in flight", "Sunday evening: miles flown and badges earned"]];
 const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
   ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
-function inflightView() {
-  // (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it comes. Another account's,
-  // signed in here since, never shown; and what comes dropped if a change was made since it was asked for, or is still
-  // being made, as what that change gave back is newer)
+// InFlight's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
+// comes. Another account's, signed in here since, never shown; and what comes dropped if a change was made since it was
+// asked for, or is still being made, as what that change gave back is newer) → the parts its pages are drawn with, or
+// what to show while there are none
+function ifParts(title) {
   if (ifFor !== S.me.id) { IF = null; ifAt = 0; ifFor = S.me.id; }
   if (!IF || Date.now() - ifAt > 5000) {
     ifAt = Date.now();
     const s = ++ifSeq, who = S.me.id;
     call("inflight").then((r) => {
       if (who !== S.me?.id) return;
-      if (s === ifSeq && !ifBusy) { IF = r; redraw(); } else { ifStale = true; ifCaughtUp(); }
+      if (s === ifSeq && !ifBusy) { IF = r; if (onIf()) redraw(); } else { ifStale = true; ifCaughtUp(); }
     }, (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
   }
-  const back = HANDOFF?.open === "inflight" && fromApp() === "inflight"
+  const back = title === "InFlight" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
-  if (!IF) return { title: "InFlight", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
-  if (IF.error) return { title: "InFlight", left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] };
+  if (!IF) return { wait: { title, left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] } };
+  if (IF.error) return { wait: { title, left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] } };
   const said = h("p.said", { role: "alert" });
   // a change, as it's made: kept, and what's kept shown (the switch put back, or the hour drawn again as it's kept, and
-  // why, if it can't be: said where it's seen, wherever the sheet's scrolled to)
+  // why, if it can't be)
   const change = async (input, patch, after) => {
     input.disabled = true; ifSeq++; ifBusy++;
     try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
-    catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (Sheet.stack.at(-1) === inflightView) redraw(); toast(e.message, true); }
+    catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (onIf()) redraw(); toast(e.message, true); }
     finally { ifBusy--; input.disabled = false; ifCaughtUp(); }
   };
-  const sw = (key, title, sub, on, patch, { after, disabled } = {}) => {
-    const input = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });
-    input.onchange = () => change(input, patch(input.checked), after);
-    return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+  const input = (key, on, patch, { after, disabled } = {}) => {
+    const el = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });
+    el.onchange = () => change(el, patch(el.checked), after);
+    return el;
   };
+  const sw = (key, title, sub, on, patch, opts) => switchRow({ title, sub, input: input(key, on, patch, opts) });
+  return { back, said, change, input, sw };
+}
+const hhRange = (n) => `${hh(n.quietFrom)}–${hh(n.quietTo)}`;
+function inflightView() {
+  const P = ifParts("InFlight");
+  if (P.wait) return P.wait;
+  const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => IF.privacy[k]).length;
+  return { title: "InFlight", quiet: true, left: P.back, body: [
+    setHead("inflight", "InFlight"),
+    h("div.group", {},
+      row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(ifNotifyView) }),
+      switchRow({ icon: "mail", tint: "blue", title: "Email me", sub: IF.emailOk ? "After 10 minutes unread" : "Confirm your email first",
+        input: P.input("email", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk }) })),
+    h("h4.app-k", { text: "Privacy" }),
+    h("div.group", {},
+      row({ icon: "eye", tint: "teal", title: "Who sees what", value: shared === IF_PRIVACY.length ? "All shared" : shared ? `${shared} of ${IF_PRIVACY.length}` : "Nothing", onclick: () => pushSheet(ifPrivacyView) }),
+      row({ icon: "block", tint: "grey", title: "Blocked", value: IF.blocked.length ? String(IF.blocked.length) : "No one", onclick: () => pushSheet(ifBlockedView) })),
+    P.said,
+    ...openIn("inflight", "InFlight", "For push, Lock InFlight and haptics, on each phone")] };
+}
+// which notifications, how they read on the lock screen, and quiet hours
+function ifNotifyView() {
+  const P = ifParts("Notifications");
+  if (P.wait) return P.wait;
   const n = IF.notify, notify = (k) => (v) => ({ notify: { [k]: v } });
   const hour = (k, title) => {
     const sel = h("select", { "aria-label": title, id: `if-${k}`, name: k }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: n[k] === i, text: hh(i) })));
     const val = h("span.val", { text: hh(n[k]) });
-    sel.onchange = () => { val.textContent = hh(Number(sel.value)); change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }, redraw); };
+    sel.onchange = () => { val.textContent = hh(Number(sel.value)); P.change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }, redraw); };
     return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
   };
-  const blocked = IF.blocked.length ? IF.blocked.map((b) => h("div.row.plain", { "data-id": b.id },
+  const list = (ks) => IF_NOTIFY.filter(([k]) => ks.includes(k)).map(([k, t, sub]) => P.sw(k, t, sub, n[k], notify(k)));
+  return { title: "Notifications", body: [
+    h("h4.app-k", { text: "Pigeons" }),
+    h("div.group", {}, list(["landed", "takeoff", "rerouted", "lost", "delays"])),
+    h("h4.app-k", { text: "Friends" }),
+    h("div.group", {}, list(IF_NOTIFY.map(([k]) => k).filter((k) => !["landed", "takeoff", "rerouted", "lost", "delays"].includes(k)))),
+    h("h4.app-k", { text: "On the lock screen" }),
+    h("div.group", {}, P.sw("names", "Show names", n.names ? "Who sent it, never what it says" : "Just “A pigeon has landed”", n.names, notify("names"), { after: redraw })),
+    h("h4.app-k", { text: "Quiet hours" }),
+    h("div.group", {}, P.sw("quiet", "Quiet hours", n.quiet ? `In ${n.tz} time: those that land meanwhile, when they end` : "Hold them overnight, or whenever suits", n.quiet,
+      (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
+      n.quiet && hour("quietFrom", "From"), n.quiet && hour("quietTo", "To")),
+    P.said] };
+}
+// who sees what (each works both ways)
+function ifPrivacyView() {
+  const P = ifParts("Who sees what");
+  if (P.wait) return P.wait;
+  return { title: "Who sees what", body: [
+    h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => P.sw(k, t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
+    h("p.hint", { text: "Online, read receipts and news work both ways: turn one off and you won’t see other people’s either." }),
+    P.said] };
+}
+// who's blocked, each to be unblocked
+function ifBlockedView() {
+  const P = ifParts("Blocked");
+  if (P.wait) return P.wait;
+  const rows = IF.blocked.length ? IF.blocked.map((b) => h("div.row.plain", { "data-id": b.id },
     h("span.ic.grey.initial", { text: String(b.name || b.handle).trim().charAt(0).toUpperCase() }),
     h("span.tx", {}, h("b", { text: b.name }), h("small", { text: `@${b.handle}` })),
     twice("Unblock", "Unblock?", async (btn) => {
       ifSeq++;
       try { IF = await busy(btn, "", () => call("inflight/block", { method: "DELETE", body: { id: b.id } })); redraw(); toast(`${b.name} is unblocked.`); }
-      catch (e) { say(said, e.message); }
+      catch (e) { say(P.said, e.message); }
     }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in InFlight." })))];
-  return { title: "InFlight", left: back, body: [
-    h("p", { text: "For InFlight on every phone you use it on." }),
-    h("h4.app-k", { text: "Notify me when" }),
-    h("div.group", {}, IF_NOTIFY.map(([k, t, sub]) => sw(k, t, sub, n[k], notify(k)))),
-    h("h4.app-k", { text: "Lock screen" }),
-    h("div.group", {}, sw("names", "Show names", n.names ? "Notifications say who sent a pigeon" : "Just “A pigeon has landed”, not who sent it", n.names, notify("names"), { after: redraw })),
-    h("p.hint", { text: "Never what a message says: only your phone can read that." }),
-    h("h4.app-k", { text: "Quiet hours" }),
-    h("div.group", {}, sw("quiet", "Quiet hours", null, n.quiet, (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
-      n.quiet && hour("quietFrom", "From"), n.quiet && hour("quietTo", "To")),
-    h("p.hint", { text: n.quiet ? `Nothing arrives between ${hh(n.quietFrom)} and ${hh(n.quietTo)} (${n.tz} time). Pigeons that land meanwhile are announced when quiet hours end.` : "Hold notifications overnight, or whenever suits." }),
-    h("h4.app-k", { text: "Email" }),
-    h("div.group", {}, sw("email", "Email me", IF.emailOk ? "Only when a pigeon has waited 10 minutes unread, at most every half hour" : "Confirm your email first", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk })),
-    h("h4.app-k", { text: "Who sees what" }),
-    h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => sw(k, t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
-    h("p.hint", { text: "Online, read receipts and news work both ways: turn one off and you won’t see other people’s either." }),
-    h("h4.app-k", { text: "Blocked" }),
-    h("div.group", {}, blocked),
-    h("p.hint", { text: "Push notifications, Lock InFlight and haptics are set in InFlight, on each phone." }),
-    said] };
+  return { title: "Blocked", body: [h("div.group", {}, rows), P.said] };
+}
+
+// ---- an app's settings sheet: its head, its rows, and the way into the app ----
+const setHead = (id, name) => h("div.app-head.set", {}, h("img", { src: `/apps/${id}.png`, alt: "", width: 64, height: 64 }), h("b", { text: name }),
+  h("span", { text: "Kept with your account, on every device" }));
+// (what's set in the app itself, on each device: the way in, and what's there)
+const openIn = (id, name, what) => [h("a.pill.open-in", { href: siteUrl(APPS[id].sub) }, `Open ${name}`, icon("open", 15, 2.6)), h("p.hint", { text: what })];
+// a row that ends in a switch, or a choice of two (w: the choice's width)
+const switchRow = ({ icon: ic, tint, title, sub, input }) => h("label.row.plain.info", {}, ic && h(`span.ic.${tint}`, {}, icon(ic, 19)),
+  h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+function choiceRow({ icon: ic, tint, title, sub, opts, value, onpick, w }) {
+  const el = seg(title, opts, value, onpick);
+  el.classList.add("mini"); if (w) el.style.setProperty("--w", `${w}px`);
+  return h("div.row.plain.info", {}, ic && h(`span.ic.${tint}`, {}, icon(ic, 19)), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), el);
 }
 
 // ---- Weather's settings that are the account's (functions/api/account weather), signed in and kept with it: its units
@@ -2686,10 +2741,10 @@ function weatherSetView() {
     catch (e) { if (input.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
     finally { input.disabled = false; if (Sheet.stack.at(-1) === weatherSetView) redraw(); }
   };
-  const sw = (id, title, sub, on, patch) => {
+  const sw = (id, on, patch) => {
     const input = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on });
     input.onchange = () => change(input, patch(input.checked));
-    return h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), input);
+    return input;
   };
   // (a time, each quarter of an hour)
   const at = (k, title) => {
@@ -2701,16 +2756,14 @@ function weatherSetView() {
     return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
   };
   const c = WXS.commute, u = { ...unitsHere(), ...(S.me.prefs.units || {}) };
-  return { title: "Weather", left: back, body: [
-    h("p", { text: "For Weather on every device it’s signed in on." }),
-    h("div.group", {}, row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid(u), onclick: () => pushSheet(unitsView) })),
-    h("h4.app-k", { text: "Commute" }),
-    h("div.group", {}, sw("wx-commute", "On weekdays", null, c.on, (v) => ({ commute: { on: v } })), c.on && at("am", "Leave"), c.on && at("pm", "Return")),
-    h("p.hint", { text: "The weather for your journeys there and back, in Highlights." }),
-    h("h4.app-k", { text: "Forecast" }),
-    h("div.group", {}, sw("wx-tune", "Tune highs and lows for here", null, WXS.tune, (v) => ({ tune: v }))),
-    h("p.hint", { text: "Highs, lows and wind put right by how far the forecast has been out where you are lately." }),
-    h("p.hint", { text: "Notifications, Best times, Appearance and Arrange your page are set in Weather." })] };
+  return { title: "Weather", quiet: true, left: back, body: [
+    setHead("weather", "Weather"),
+    h("div.group", {},
+      row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid(u), onclick: () => pushSheet(unitsView) }),
+      switchRow({ icon: "chart", tint: "indigo", title: "Tune the forecast", sub: "For how it’s been here lately", input: sw("wx-tune", WXS.tune, (v) => ({ tune: v })) }),
+      switchRow({ icon: "car", tint: "amber", title: "Commute", sub: "Weekdays, in Highlights", input: sw("wx-commute", c.on, (v) => ({ commute: { on: v } })) }),
+      c.on && at("am", "Leave"), c.on && at("pm", "Return")),
+    ...openIn("weather", "Weather", "For notifications, best times, its look and your page")] };
 }
 
 // ---- Fitness's settings that are the account's (functions/api/account fitness): kilometres or miles, and whether it
@@ -2738,33 +2791,28 @@ function fitnessSetView() {
   };
   // (none chosen yet: the app goes by the phone's region, as it says)
   const here = /-(US|LR|MM)\b/i.test(navigator.language || "") ? "imperial" : "metric";
-  const units = seg("Distances", [["metric", "Kilometres"], ["imperial", "Miles"]], FX.units || here, (v) => change({ units: v }, () => redraw()));
   const ask = h("input.switch", { type: "checkbox", role: "switch", id: "fx-ask", name: "ask", checked: FX.ask });
   ask.onchange = async () => { ask.disabled = true; await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); ask.disabled = false; };
   const fx = (k) => FX[k] || {};
-  const maps = seg("Maps", [["tap", "When you tap"], ["always", "Always"]], FX.maps || "tap", (v) => change({ maps: v }, () => redraw()));
-  return { title: "Fitness", left: back, body: [
-    h("p", { text: "For Fitness on every device you use it on." }),
-    h("h4.app-k", { text: "Where your rides come from" }),
+  return { title: "Fitness", quiet: true, left: back, body: [
+    setHead("fitness", "Fitness"),
+    h("h4.app-k", { text: "Sources" }),
     h("div.group", {},
       row({ icon: "watch", tint: "garmin", title: "Garmin Connect", sub: fxSaid(fx("garmin"), "Your rides and nights, in by themselves"), onclick: () => pushSheet(fxGarminView) }),
       fx("strava").ready !== false && row({ icon: "wave", tint: "strava", title: "Strava", sub: fxSaid(fx("strava"), "What you record on Strava, in by itself"), onclick: () => pushSheet(fxStravaView) }),
       row({ icon: "heart", tint: "health", title: "Apple Health", sub: fx("health").on ? (fx("health").last ? `Last sent ${ago(fx("health").last)}` : "Waiting for the Shortcut’s first morning") : "Your nights from your Apple Watch, by a Shortcut", onclick: () => pushSheet(fxHealthView) }),
-      (FX.devices || []).length > 0 && row({ icon: "watch", tint: "grey", title: "Devices", sub: `${FX.devices.length === 1 ? "1 device" : `${FX.devices.length} devices`} seen in your files`, onclick: () => pushSheet(fxDevicesView) })),
-    h("h4.app-k", { text: "Maps" }),
-    h("div.units", {}, h("div.unit", {}, h("span", { text: "Show a ride’s map" }), maps)),
-    h("p.hint", { text: "Maps come from OpenFreeMap, which sees where they’re shown. Until you tap, Fitness draws the route itself." }),
-    h("h4.app-k", { text: "Units" }),
-    h("div.units", {}, h("div.unit", {}, h("span", { text: "Distances" }), units)),
-    !FX.units && h("p.hint", { text: "From your phone’s region, until you choose." }),
-    h("h4.app-k", { text: "Each morning" }),
-    h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Ask how I am" }), h("small", { text: "Or check in from the card on Today" })), ask)),
-    h("h4.app-k", { text: "Your files" }),
+      (FX.devices || []).length > 0 && row({ icon: "watch", tint: "grey", title: "Devices", value: String(FX.devices.length), onclick: () => pushSheet(fxDevicesView) })),
+    h("h4.app-k", { text: "Preferences" }),
+    h("div.group", {},
+      // (none chosen yet: the app goes by the phone's region, as it says)
+      choiceRow({ icon: "ruler", tint: "blue", title: "Distances", sub: FX.units ? null : "From your phone’s region", opts: [["metric", "km"], ["imperial", "mi"]], value: FX.units || here, onpick: (v) => change({ units: v }, () => redraw()), w: 104 }),
+      choiceRow({ icon: "map", tint: "teal", title: "Ride maps", sub: "From OpenFreeMap, which sees where", opts: [["tap", "On tap"], ["always", "Always"]], value: FX.maps || "tap", onpick: (v) => change({ maps: v }, () => redraw()), w: 150 }),
+      switchRow({ icon: "sun", tint: "amber", title: "Ask how I am", sub: "Each morning, on Today", input: ask })),
     h("div.group", {}, h("button.row", { type: "button", onclick: (e) => exportFitness(e.currentTarget, said) },
-      h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every activity’s file, and your workouts, in one zip" })),
+      h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every file and workout, in one zip" })),
       h("span.get", {}, icon("download", 20, 2.2)))),
     said,
-    h("p.hint", { text: "Fitness looks as this page does (Appearance, in your settings). The morning reminder and uploading files are in Fitness, on each phone." })] };
+    ...openIn("fitness", "Fitness", "For its morning reminder and uploading files, on each phone")] };
 }
 // (a connection, said: whose, and when it last looked)
 function fxSaid(c, off) {

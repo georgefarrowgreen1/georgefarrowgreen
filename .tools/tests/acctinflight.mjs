@@ -5,7 +5,7 @@
 // page's own address only, and InFlight shows it once it's synced. The site's addresses are stood in for by gfg.test.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { joinInFlight } from './join.mjs';
+import { joinInFlight, ifPage } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -54,18 +54,23 @@ await shot(A.p, '01-inflight-settings');
 // ---- 2. the row: the account's page in a window of its own, signed in by InFlight's code, open at InFlight's settings ----
 await A.ctx.clearCookies();       // (as a Home Screen app's browser knows nothing of it)
 const [W] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
-const go = await W.waitForSelector('main .welcome .btn, #sheet[open] #if-landed', { timeout: 20000 });
+const go = await W.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go.evaluate((e) => e.matches('.btn'))) await go.click();
-await W.waitForSelector('#sheet[open] #if-landed', { timeout: 20000 }); await W.waitForTimeout(700);
+await W.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); await W.waitForTimeout(700);
 const sheet = await text(W, '#sheet');
-ok(/^InFlight/.test(await text(W, '#sheet .sheet-head h2')) && /Notify me when/i.test(sheet) && /Quiet hours/i.test(sheet) && /Who sees what/i.test(sheet) && /Blocked/i.test(sheet) && /Sam Taylor/.test(sheet),
-  'the page opens at InFlight’s settings: notifications, quiet hours, email, who sees what, and Sam blocked', sheet.slice(0, 200));
+ok(/^InFlight/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*11 of 11/.test(sheet) && /Email me/.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open InFlight/.test(sheet) && !(await W.$('#if-landed')),
+  'the page opens at InFlight’s settings: notifications (on their own page), email, who sees what, and one blocked, and the way into the app', sheet.replace(/\s+/g, ' ').slice(0, 260));
 ok(!!(await W.$('#sheet .toapp')) && /InFlight/.test(await text(W, '#sheet .toapp')), 'with the way back to InFlight');
-ok(await W.isChecked('#if-landed') && !(await W.isChecked('#if-quiet')) && await W.isChecked('#if-receipts') && !(await W.isDisabled('#if-email')), 'as the account has them (email, its address confirmed, can be turned on)');
+ok(!(await W.isDisabled('#if-email')), 'email, its address confirmed, can be turned on');
 await shot(W, '02-account-sheet');
+await ifPage(W, 'Notifications');
+ok(await W.isChecked('#if-landed') && !(await W.isChecked('#if-quiet')) && await W.isChecked('#if-names') && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')),
+  'Notifications, on a page of their own, as the account has them: pigeons, friends, the lock screen and quiet hours');
+await shot(W, '02b-notifications');
 
 // ---- 3. changes, each saved by InFlight's own rules ----
 const flip = async (k) => { await W.locator('#if-' + k).scrollIntoViewIfNeeded(); await W.click('#if-' + k); await W.waitForFunction((k) => !document.getElementById('if-' + k)?.disabled, k); await W.waitForTimeout(250); };
+const back = async () => { await W.click('#sheet .sheet-head .back'); await W.waitForSelector('#sheet[open] #if-email'); await W.waitForTimeout(500); };
 await flip('reactions');
 ok(prefs('rowan').reactions === false, 'Reactions off: saved to the account', JSON.stringify(prefs('rowan')));
 await flip('quiet'); await W.waitForSelector('#if-quietFrom');
@@ -73,19 +78,25 @@ await W.selectOption('#if-quietFrom', '21'); await W.waitForFunction(() => !docu
 await W.selectOption('#if-quietTo', '6'); await W.waitForFunction(() => !document.getElementById('if-quietTo').disabled); await W.waitForTimeout(250);
 const p1 = prefs('rowan');
 ok(p1.quiet === true && p1.quietFrom === 21 && p1.quietTo === 6 && p1.tz === 'Europe/London', 'Quiet hours, 21:00 to 06:00, in the phone’s time zone', JSON.stringify(p1));
-ok(/Nothing arrives between 21:00 and 06:00/.test(await text(W, '#sheet')), 'and said, under them');
+ok(/In Europe\/London time/.test(await text(W, '#sheet')), 'and said, in its row');
+await back();
+ok(/Notifications\s*Quiet 21:00–06:00\s*10 of 11/.test(await text(W, '#sheet')), 'and on the first page: 10 of 11, quiet 21:00–06:00', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 200));
 await flip('email');
 ok(row('rowan').notify_email === 1, 'Email me: on');
+await ifPage(W, 'Who sees what');
 await flip('receipts'); await flip('shareTracker'); await flip('approxLocation');
 const r1 = row('rowan');
 ok(r1.no_receipts === 1 && r1.hide_tracker === 1 && r1.loc_approx === 1 && r1.hide_online === 0, 'who sees what: read receipts and the tracker off, location approximate, online still shown', JSON.stringify(r1));
 await shot(W, '03-changed');
+await back();
+ok(/Who sees what\s*3 of 5/.test(await text(W, '#sheet')), 'and on the first page: 3 of 5 shared');
 // Sam, unblocked (Unblock, then Unblock? to be sure)
-await W.locator('#sheet .row[data-id] button').scrollIntoViewIfNeeded();
+await ifPage(W, 'Blocked');
 await W.click('#sheet .row[data-id] button'); await W.waitForTimeout(400); await W.click('#sheet .row[data-id] button');
 await W.waitForFunction(() => !document.querySelector('#sheet .row[data-id]'), null, { timeout: 10000 }).catch(() => {});
 ok(!rows(`SELECT 1 FROM pg_links WHERE a = '${r0.id}' AND status = 'blocked'`).length && /No one/.test(await text(W, '#sheet')), 'Sam unblocked: gone from the list, and on the server');
 await shot(W, '04-unblocked');
+await back();
 
 // ---- 4. the page's own rules: only from its address, and only what the app would take ----
 const api = (path, method, body, headers = {}) => W.evaluate(async ([path, method, body, headers]) => { const r = await fetch('/api/account/' + path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body && JSON.stringify(body) }); return [r.status, await r.json().catch(() => null)]; }, [path, method, body, headers]);
@@ -105,8 +116,8 @@ await W.click('#sheet .sheet-head .x'); await W.waitForTimeout(900);
 ok(!!(await W.$('[data-sec="apps"] .app-set')) && (await W.getAttribute('[data-sec="apps"] .app-set', 'aria-label')) === 'InFlight settings', 'InFlight’s card: its settings beside Open');
 await W.evaluate(() => document.querySelector('[data-sec="apps"]').scrollIntoView({ block: 'center' })); await W.waitForTimeout(500);
 await shot(W, '05-card');
-await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector('#sheet[open] #if-landed', { timeout: 10000 }); await W.waitForTimeout(600);
-ok(!(await W.isChecked('#if-receipts')) && await W.isChecked('#if-quiet'), 'opened from there: as they were left');
+await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector('#sheet[open] #if-email', { timeout: 10000 }); await W.waitForTimeout(600);
+ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*3 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
 await W.close();
 
 // ---- 6. back in InFlight: what's set, as the account has it ----

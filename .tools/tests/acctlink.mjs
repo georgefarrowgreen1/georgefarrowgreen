@@ -129,10 +129,10 @@ ok(noAuth === 401, 'and only a signed-in InFlight can ask for one', String(noAut
 await A.ctx.clearCookies();
 const [pop2] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
 // (no cookie here now: the page asks, Continue as Rowan, then opens at InFlight's settings)
-const go2 = await pop2.waitForSelector('main .welcome .btn, #sheet[open] #if-landed', { timeout: 20000 });
+const go2 = await pop2.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go2.evaluate((e) => e.matches('.btn'))) await go2.click();
-await pop2.waitForSelector('#sheet[open] #if-landed', { timeout: 20000 }).catch(() => {}); await pop2.waitForTimeout(800);
-ok(/Rowan Ash Hale/.test(await text(pop2)) && !!(await pop2.$('#sheet[open] #if-landed')) && !!(await pop2.$('#sheet[open] .toapp')), 'InFlight Settings: the page, signed in too, at InFlight’s settings, with the way back');
+await pop2.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }).catch(() => {}); await pop2.waitForTimeout(800);
+ok(/Rowan Ash Hale/.test(await text(pop2)) && !!(await pop2.$('#sheet[open] #if-email')) && !!(await pop2.$('#sheet[open] .toapp')), 'InFlight Settings: the page, signed in too, at InFlight’s settings, with the way back');
 
 
 ok(errs.length === 0, 'no errors on any page', errs.slice(0, 4).join(' | '));

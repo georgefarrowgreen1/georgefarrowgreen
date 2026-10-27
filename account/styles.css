@@ -614,6 +614,17 @@ a.btn { text-decoration: none; }
 .app-head img { width: 76px; height: 76px; border-radius: 18px; margin-bottom: 8px; box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app-head b { font: 700 24px/1.15 var(--font-d); }
 .app-head span { color: var(--text-2); font-size: 15px; }
+/* ---- an app's settings that are the account's (app.js setHead and the rest): its icon and name at the head, each row's
+   words under it rather than said below, a choice of two in its row, and the way into the app at the foot ---- */
+.app-head.set { gap: 2px; padding: 0 0 4px; }
+.app-head.set img { width: 64px; height: 64px; border-radius: 15px; }
+.app-head.set b { font-size: 22px; }
+.app-head.set span { font-size: 14px; }
+.seg.mini { flex: none; width: var(--w, 128px); padding: 2px; border-radius: 11px; }
+.seg.mini .thumb { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--n, 2)); border-radius: 9px; }
+.seg.mini button { min-height: 32px; font-size: 14px; border-radius: 9px; padding: 0 8px; }
+.open-in { justify-self: center; margin-top: 2px; text-decoration: none; color: var(--tint-text); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); font-weight: 600; font-size: 15px; }
+.open-in + .hint { text-align: center; margin-top: -8px; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .stat { display: grid; gap: 2px; align-content: start; padding: 14px 16px; border-radius: 16px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
 .stat b { font: 700 28px/1.1 var(--font-d); font-variant-numeric: tabular-nums; }

@@ -105,15 +105,23 @@ export async function joinInFlight(page, inflight, { name, handle, email, passwo
 }
 
 // InFlight's settings on the account's page, as its Settings opens them (InFlight Settings: a window of its own, signed
-// in there by the code InFlight hands over, with the sheet open): → that window, its switches #if-<setting> (landed,
-// names, quiet, email, receipts, approxLocation…) and hours (#if-quietFrom, #if-quietTo). Each change is saved as it's
-// made; InFlight takes it up as it next syncs.
-export async function inflightSettings(page) {
+// in there by the code InFlight hands over, with the sheet open): → that window. Its first page has Email me (#if-email);
+// sub (its row's title: Notifications, Who sees what, Blocked) opens one of its own pages, with its switches
+// #if-<setting> (landed, names, quiet… on Notifications, receipts, approxLocation… on Who sees what) and hours
+// (#if-quietFrom, #if-quietTo). Each change is saved as it's made; InFlight takes it up as it next syncs.
+export async function inflightSettings(page, sub = null) {
   await page.click('[data-act=tab][data-id=account]'); await page.waitForTimeout(500);
   const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('#screen > main.view [data-act=ifsettings]')]);
   await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
-  const go = await w.waitForSelector('#sheet[open] #if-landed, main .welcome .btn', { timeout: 20000 });
-  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-landed', { timeout: 20000 }); }
+  const go = await w.waitForSelector('#sheet[open] #if-email, main .welcome .btn', { timeout: 20000 });
+  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); }
   await w.waitForTimeout(400);
+  if (sub) await ifPage(w, sub);
   return w;
+}
+// one of InFlight's settings' own pages, from its first (by its row's title), drawn once what's kept is in
+export async function ifPage(w, sub) {
+  await w.locator('#sheet .row', { hasText: sub }).first().click();
+  await w.waitForSelector(`#sheet .sheet-head h2:text-is("${sub}")`, { timeout: 10000 });
+  await w.waitForTimeout(600);
 }

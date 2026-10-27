@@ -153,7 +153,7 @@ ok(rowsIn.includes('Weather settings') && !rowsIn.includes('Units') && !rowsIn.i
   'signed in: Units, Commute and Forecast give way to Weather settings, on the account\'s page', rowsIn.join(', '));
 const [WS] = await Promise.all([P.ctx.waitForEvent('page'), P.p.click('#acct-set-go')]);
 await WS.waitForSelector('#sheet[open] #wx-tune', { timeout: 30000 }); await WS.waitForTimeout(600);
-ok(/Weather/.test(await WS.locator('#sheet .toapp').innerText().catch(() => '')) && /On weekdays/.test(await WS.locator('#sheet').innerText()), 'it opens Weather\'s sheet on the account\'s page, with the way back');
+ok(/Weather/.test(await WS.locator('#sheet .toapp').innerText().catch(() => '')) && /Commute\s*Weekdays, in Highlights/.test(await WS.locator('#sheet').innerText()) && /Open Weather/.test(await WS.locator('#sheet').innerText()), 'it opens Weather\'s sheet on the account\'s page, with the way back');
 await WS.locator('#sheet .row', { hasText: 'Units' }).click(); await WS.waitForSelector('#sheet .units .seg'); await WS.waitForTimeout(500);
 await WS.locator('#sheet .unit', { hasText: 'Temperature' }).locator('button', { hasText: '°F' }).click();
 await waitFor(() => kept('sam')?.settings?.temp === 'f');
