@@ -5,7 +5,7 @@ import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
-import { shareView, mapsAlways } from "./app.js";
+import { shareView, mapsAlways, wide, mainW } from "./app.js";
 import * as SH from "./share.js";
 
 // ---- Activities ----
@@ -21,11 +21,12 @@ function whenSeen(btn) {
 function activitiesView() {
   const sports = [["all", "All"], ["ride", "Rides"], ["run", "Runs"], ["other", "Other"]], at = sports.findIndex(([k]) => k === S.actSport);
   const list = S.acts.filter((a) => S.actSport === "all" || a.sport === S.actSport || (S.actSport === "other" && a.sport !== "ride" && a.sport !== "run"));
-  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ""}` : "None yet", h("button.round", { type: "button", "aria-label": "Upload files", onclick: () => openSheet(uploadFilesView) }, icon("upload", 21, 2.1)))];
+  const out = [head("Activities", S.acts.length ? `${plural(S.acts.length, "activity", "activities")}${S.bringing ? " so far" : ""}` : "None yet", h("button.round.up", { type: "button", "aria-label": "Upload files", onclick: () => openSheet(uploadFilesView) }, icon("upload", 21, 2.1)))];
   // Garmin's six months coming in
   if (S.bringing) out.push(bringingCard());
   // none yet: Garmin, or files
   if (!S.acts.length) return S.bringing ? out : [...out, ...firstUpload()];
+  if (wide()) return [...out, ...actsWide(list, sports, at)];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
   const tot = recent.reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving || 0; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
@@ -45,6 +46,93 @@ function activitiesView() {
   if (list.length > show) { const more = h("button.more-acts.pill", { type: "button", onclick: () => { S.actShow = show + PAGE * 2; redraw(); } }, `Show more · ${(list.length - show).toLocaleString("en-GB")} older`); out.push(h("div.more-wrap", {}, more)); whenSeen(more); }
   if (list.length) out.push(h("p.foot", { vars: { "text-align": "center" } }, h("button.link", { type: "button", onclick: () => openSheet(uploadFilesView) }, "Upload more activities")));
   return out;
+}
+// On a computer: the four weeks' totals against the four before, then the list beside the one that's open (a click on
+// a row opens it there rather than in a sheet; ↑ and ↓ move through them, app.js), found by its name, device or day
+function actsWide(list, sports, at) {
+  const total = (from, to) => S.acts.filter((a) => a.start >= from && a.start < to).reduce((t, a) => { const s = sumOf(a); if (s) { t.secs += s.moving || 0; t.dist += s.dist || 0; t.tss += s.tss || 0; t.asc += s.ascent || 0; } return t; }, { secs: 0, dist: 0, tss: 0, asc: 0 });
+  const now = total(addDays(TODAY, -27), addDays(TODAY, 1)), then = total(addDays(TODAY, -55), addDays(TODAY, -27));
+  const vs = (k) => { if (!then[k] || !now[k]) return null; const p = Math.round((now[k] / then[k] - 1) * 100); return h("small.a-vs" + (p < 0 ? ".dn" : ""), { text: `${p > 0 ? "+" : p < 0 ? "−" : "±"}${Math.abs(p)}% on the 4 before` }); };
+  const tot = (label, v, unit, k) => h("div.card.glass.a-tot", {}, h("small", { text: label }), S.summed ? h("b", {}, v, unit && h("u", { text: unit })) : wait(30), S.summed && vs(k));
+  const [dv, du] = distNum(now.dist), [hv, hu] = height(now.asc);
+  const totals = h("div.a-tots", {}, tot("The last 4 weeks", hm(now.secs), now.secs >= 3600 ? "h" : null, "secs"), tot("Distance", dv, du, "dist"), tot("Climbing", hv, hu, "asc"), tot("Training stress", Math.round(now.tss).toLocaleString("en-GB"), "TSS", "tss"));
+  const q = (S.actQ || "").trim().toLowerCase();
+  const found = q ? list.filter((a) => `${a.name} ${a.device || ""} ${dayLong(a.start)} ${dayShort(a.start)}`.toLowerCase().includes(q)) : list;
+  const show = S.actShow || PAGE, shown = found.slice(0, show), sel = found.find((a) => a.id === S.actSel) || shown[0] || null;
+  S.actSel = sel?.id ?? null;
+  const find = h("input.field.a-find", { type: "search", id: "act-find", placeholder: "Find: a name, a device, a day", value: S.actQ || "", autocomplete: "off", "aria-label": "Find an activity", "aria-keyshortcuts": "Meta+K",
+    oninput: (e) => { const at = e.target.selectionStart; S.actQ = e.target.value; S.actShow = 0; redraw(); const f = document.getElementById("act-find"); if (f) { f.focus(); f.setSelectionRange(at, at); } } });
+  const side = [h("div.a-tools", {}, find, h("div.seg", { vars: { "--n": 4, "--at": at }, role: "group", "aria-label": "Sport" }, sports.map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.actSport === k), onclick: () => { S.actSport = k; S.actShow = 0; redraw(); } }, label))))];
+  const byWeek = new Map(), thisMon = mondayOf(TODAY);
+  for (const a of shown) { const k = mondayOf(a.start); if (!byWeek.has(k)) byWeek.set(k, []); byWeek.get(k).push(a); }
+  if (!found.length) side.push(h("p.foot.none", { text: q ? `Nothing called “${S.actQ.trim()}”.` : `No ${sports[at][1].toLowerCase()} yet.` }));
+  for (const [mon, acts] of byWeek) {
+    const name = mon === thisMon ? "This week" : mon === addDays(thisMon, -7) ? "Last week" : `${dateShort(mon)} – ${dateShort(addDays(mon, 6))}`;
+    side.push(section([name, h("span.aside", { text: S.summed ? dur(acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0)) : "" })], h("div.group.glass", {}, acts.map((a) => actRow(a)))));
+  }
+  if (found.length > show) { const more = h("button.more-acts.pill", { type: "button", onclick: () => { S.actShow = show + PAGE * 2; redraw(); } }, `Show more · ${(found.length - show).toLocaleString("en-GB")} older`); side.push(h("div.more-wrap", {}, more)); whenSeen(more); }
+  return [totals, h("div.a-split", {}, h("div.a-list", {}, side), h("section.a-pane.glass", { "aria-label": sel ? sel.name : "Activity" }, paneOf(sel)))];
+}
+// The one that's open, beside the list: as its sheet has it, its file read first where it isn't here yet (and kept as
+// drawn while nothing it shows has changed, so the map isn't drawn afresh each time the list is)
+const paneW = () => Math.round(((mainW() - 20) * 1.3) / 2.3) - 36 - 36;
+let inPane = false, paneHeld = null;
+const opening = new Set(), unopened = new Set();
+function paneOf(a) {
+  if (!a) return h("p.foot.none", { text: "Nothing to show." });
+  const key = [a.id, a.name, P().ftp, P().lthr, U.metric, lightNow(), paneW()].join("|");
+  if (paneHeld?.key === key) return paneHeld.el;
+  if (!full(a)) {
+    const top = (said) => h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }), h("div.sub", { text: said }));
+    if (unopened.has(a.id)) return h("div.a-pane-in", {}, top("Its file couldn’t be opened just now."));
+    if (!opening.has(a.id)) {
+      opening.add(a.id);
+      load(a).then(() => { opening.delete(a.id); if (S.tab === "activities" && S.actSel === a.id) redraw(); },
+        (e) => { opening.delete(a.id); if (e.status === 401) return signedOutHere(); unopened.add(a.id); toast(e.message, true); if (S.tab === "activities") redraw(); });
+    }
+    return h("div.a-pane-in", {}, top("Opening its file…"), wait(240), wait(160));
+  }
+  inPane = true;
+  let v; try { v = actView(a); } finally { inPane = false; }
+  const el = h("div.a-pane-in", {}, v.body);
+  paneHeld = { key, el };
+  return el;
+}
+function pick(a) {
+  if (S.actSel !== a.id) { S.actSel = a.id; redraw(); }
+  document.querySelector(".a-pane")?.scrollTo(0, 0);
+}
+// ↑ and ↓: the one before or after the open one, in the list as it's shown
+function stepAct(k) {
+  const rows = [...document.querySelectorAll(".a-list .row[data-id]")], i = rows.findIndex((r) => r.dataset.id === S.actSel), next = rows[Math.max(0, Math.min(rows.length - 1, i + k))];
+  if (!next || next.dataset.id === S.actSel) return;
+  S.actSel = next.dataset.id; redraw();
+  document.querySelector(".a-pane")?.scrollTo(0, 0);
+  [...document.querySelectorAll(".a-list .row[data-id]")].find((r) => r.dataset.id === S.actSel)?.scrollIntoView({ block: "nearest" });
+}
+// A right-click on one: open it, rename it, see it on Strava, or delete it (asked twice)
+let menuEl = null;
+const closeMenu = () => { menuEl?.remove(); menuEl = null; removeEventListener("pointerdown", menuOut, true); removeEventListener("keydown", menuKey, true); };
+const menuOut = (e) => { if (!menuEl?.contains(e.target)) closeMenu(); };
+const menuKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMenu(); } };
+function actMenu(e, a) {
+  e.preventDefault(); closeMenu();
+  const del = h("button.del", { type: "button", role: "menuitem", onclick: () => { if (!del.dataset.sure) { del.dataset.sure = "1"; del.textContent = "Delete it, for good"; return; } closeMenu(); removeAct(a); } }, "Delete");
+  menuEl = h("div.ctx-menu", { role: "menu", "aria-label": a.name },
+    h("button", { type: "button", role: "menuitem", onclick: () => { closeMenu(); pick(a); } }, "Open"),
+    !a.sample && h("button", { type: "button", role: "menuitem", onclick: () => { closeMenu(); openSheet(() => renameView(a)); } }, "Rename"),
+    /^s\d{1,20}$/.test(a.id) && h("a", { role: "menuitem", href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer", onclick: closeMenu }, "View on Strava"),
+    !a.sample && h("hr"), !a.sample && del);
+  document.body.append(menuEl);
+  const r = menuEl.getBoundingClientRect();
+  menuEl.style.left = `${Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8))}px`; menuEl.style.top = `${Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8))}px`;
+  menuEl.querySelector("button")?.focus({ preventScroll: true });
+  addEventListener("pointerdown", menuOut, true); addEventListener("keydown", menuKey, true); addEventListener("scroll", closeMenu, { once: true, passive: true });
+}
+async function removeAct(a) {
+  try { await A.remove(a.id); } catch (err) { if (err.status === 401) return signedOutHere(); return toast(err.message, true); }
+  S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); held.delete(a.id); idb.del(fileKey(a)).catch(() => {});
+  closeSheet(); toast("Deleted"); redraw();
 }
 // Your first activities: Garmin connected (six months in at once, then each new one by itself), or files uploaded,
 // and what they're for
@@ -99,7 +187,8 @@ function routeTile(r, sport) {
 function actRow(a) {
   const s = sumOf(a), r = s?.route, pid = a.sample ? null : plannedOn(startOfDay(a.start)), pw = pid && pid !== "event" ? wkById(pid) : null;
   const named = s?.dist > 100 && !/\d\s?(km|mi)\b/i.test(a.name) ? `${a.name} · ${dist(s.dist)}` : a.name;
-  return h("button.row", { type: "button", onclick: () => openAct(a) }, r ? routeTile(r, a.sport) : sportTile(a.sport),
+  const big = wide();
+  return h("button.row" + (big && a.id === S.actSel ? ".on" : ""), { type: "button", "data-id": big ? a.id : null, "aria-current": big && a.id === S.actSel ? "true" : null, onclick: () => (wide() ? pick(a) : openAct(a)), oncontextmenu: big ? (e) => actMenu(e, a) : null }, r ? routeTile(r, a.sport) : sportTile(a.sport),
     h("span.tx", {}, h("b", { text: named }), h("small.one-line", { text: `${dayShort(a.start)} · ${pw && pw.sport === a.sport ? pw.name : a.device || (a.sample ? "Example" : "Uploaded")}` })),
     h("span.val", {}, s ? hm(s.moving) : "", h("small", { text: s?.tss != null ? `TSS ${s.tss}` : "" })));
 }
@@ -150,10 +239,12 @@ function actView(a) {
   // (one of yours worked out afresh from its file, its zones and all, for your numbers now)
   const x = full(a), s = a.sample ? sumOf(a) || summarise(x, P()) : summarise(x, P()), ps = perSecond(x), w = a.workout ? wkById(a.workout) : null, plannedId = plannedOn(startOfDay(a.start));
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
+  // (beside the list on a computer: drawn to the pane's width, and what it opens in a sheet of its own)
+  const SW = inPane ? paneW() : sheetW(), sub = inPane ? (v) => openSheet(v) : pushSheet, pane = inPane;
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    h("div.sub.act-links", {}, !a.sample && h("button.link.small", { type: "button", onclick: () => pushSheet(() => renameView(a)) }, "Rename"),
-      h("button.link.small", { type: "button", onclick: () => pushSheet(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share"),
+    h("div.sub.act-links", {}, !a.sample && h("button.link.small", { type: "button", onclick: () => sub(() => renameView(a)) }, "Rename"),
+      h("button.link.small", { type: "button", onclick: () => sub(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share"),
       /^s\d{1,20}$/.test(a.id) && h("a.link.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
@@ -161,19 +252,19 @@ function actView(a) {
   if (x.s.lat) {
     const roll = ps.pwr ? rollAvg(ps.pwr, 30) : null;
     const zoneAt = roll ? (i) => zoneOf((roll[Math.min(roll.length - 1, Math.round(x.s.t[i]))] || 0) / P().ftp).c : null;
-    const r = C.route(x.s, zoneAt, sheetW() + 36, U.metric), box = h("div.map", {}, r.el);
+    const r = C.route(x.s, zoneAt, SW + 36, U.metric), box = h("div.map", {}, r.el);
     let gl = null;
     const sampleAt = (sec) => { let lo = 0, hi = x.s.t.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (x.s.t[m] < sec) lo = m + 1; else hi = m; } return lo; };
     mapAt = (sec) => { if (sec == null) { r.at(null); gl?.at(null); return; } const i = sampleAt(sec); r.at(i); if (gl && x.s.lat[i] != null) gl.at([x.s.lon[i], x.s.lat[i]]); };
     // (on a real map, where the phone can draw one: the route as ridden, over it; a tap opens it to explore)
     const real = () => {
-      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => pushSheet(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
+      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => sub(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
       box.replaceChildren(holder);
       // (and where it can't after all, its own drawing of the route back)
       M.routeMap(holder, { ...route, light: lightNow() }).then((g) => { gl = g; }).catch(() => box.replaceChildren(r.el));
     };
     if (M.able()) {
-      if (mapsAlways()) real();
+      if (mapsAlways() || pane) real();
       else box.append(h("button.pill.small.map-show", { type: "button", onclick: real }, icon("open", 14, 2.4), "Show on map"));
     }
     body.push(box);
@@ -187,7 +278,7 @@ function actView(a) {
     s.avgCad > 0 && stat("Cadence", s.avgCad, a.sport === "run" ? "spm" : "rpm"), s.kj != null ? stat("Work", s.kj.toLocaleString("en-GB"), "kJ") : stat("Energy", s.kcal, "kcal"))));
   // power, heart rate and height, with a cursor that says what each was there (and moves a marker on the map)
   if (ps.moving.length > 60) {
-    const cw = sheetW(), pic = C.streams(ps, s.secs, cw), cur = pic.querySelector(".cursor"), read = h("p.readout", { text: "Touch the chart to see each moment." });
+    const cw = SW, pic = C.streams(ps, s.secs, cw), cur = pic.querySelector(".cursor"), read = h("p.readout", { text: "Touch the chart to see each moment." });
     const show = (e) => {
       const r = pic.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), sec = Math.round(f * (ps.moving.length - 1));
       cur.setAttribute("x1", f * cw); cur.setAttribute("x2", f * cw); cur.setAttribute("visibility", "visible");
@@ -208,7 +299,7 @@ function actView(a) {
   if (s.curve && Object.keys(s.curve).length > 2) {
     // (an FTP read from the best 20 minutes only where they were ridden hard: an easy ride's says nothing about it)
     const best20 = s.curve[1200], est = best20 ? Math.round(best20 * 0.95) : 0;
-    body.push(card(null, "Best efforts", C.curve(s.curve, ftp, sheetW()), best20 > 0 && h("p.line-said", { text: `Your best 20 minutes: ${best20} W, ${pct(best20 / ftp)} of your FTP.${est > ftp + 4 ? ` That’s an FTP of about ${est} W, above your ${ftp} W: worth a test.` : ""}` })));
+    body.push(card(null, "Best efforts", C.curve(s.curve, ftp, SW), best20 > 0 && h("p.line-said", { text: `Your best 20 minutes: ${best20} W, ${pct(best20 / ftp)} of your FTP.${est > ftp + 4 ? ` That’s an FTP of about ${est} W, above your ${ftp} W: worth a test.` : ""}` })));
   }
   if (x.laps.length > 1 && x.laps.length <= 30) {
     body.push(section(`Laps (${x.laps.length})`, h("div.group", {}, x.laps.map((l, i) => {
@@ -226,9 +317,7 @@ function actView(a) {
   if (!a.sample) body.push(h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async (e) => {
     const b = e.currentTarget;
     if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Delete it, and its file, for good"; return; }
-    try { await A.remove(a.id); } catch (err) { if (err.status === 401) return signedOutHere(); return toast(err.message, true); }
-    S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); held.delete(a.id); idb.del(fileKey(a)).catch(() => {});
-    closeSheet(); toast("Deleted"); redraw();
+    removeAct(a);
   } }, "Delete this activity")));
   return { title: a.name, body };
 }
@@ -286,4 +375,4 @@ function formView() {
   };
 }
 
-export { actRow, activitiesView, figuresOf, formView, openAct, rollAvg, routes, staying, uploadFilesView, withFigures, zoneBars };
+export { actRow, activitiesView, figuresOf, formView, openAct, rollAvg, routes, staying, stepAct, uploadFilesView, withFigures, zoneBars };
