@@ -44,7 +44,7 @@ function progressView() {
   const said = gain > 0 ? `Up ${gain} since ${monthOf(from)}${ramp >= 1 ? `, never more than ${Math.ceil(ramp)} a week` : ""}.${proj && proj > fit ? ` At this rate, ${proj} by ${ahead >= 28 ? monthOf(addDays(TODAY, ahead)) : dayShort(addDays(TODAY, ahead))}.` : ""}`
     : gain < 0 ? `Down ${-gain} since ${monthOf(from)}: ${last.tsb > 5 ? "fresher for it." : "a lighter spell."}` : `Level since ${monthOf(from)}.`;
   out.push(h("div.card.p-hero", {},
-    h("span.p-badge", {}, icon("trend", 12, 3), badge),
+    h("span.p-badge", {}, icon(badge === "Easing off" ? "fall" : badge === "Holding steady" ? "level" : "trend", 12, 3), badge),
     h("div.p-big", {}, h("b", { text: String(fit) }), h("span", { text: "fitness" }), h("span.p-gain", { text: gain >= 0 ? `+${gain}` : `−${-gain}` })),
     h("p", { text: said }), heroChart(pts, proj, from, acts, ahead)));
   // the tiles: FTP, power to weight, your average week, and form

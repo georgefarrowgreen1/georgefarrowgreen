@@ -1041,10 +1041,17 @@ function drawSheet(dir = null) {
   const bodyEl = h("div.sheet-body" + (dir ? ".swap" + (dir === "back" ? ".back" : "") : ""), {}, v.body);
   const headEl = h("div.sheet-head", {},
     Sheet.stack.length > 1 ? h("button.link.back.l", { type: "button", onclick: sheetBack, "aria-label": "Back" }, icon("back", 22, 2.4), "Back") : h("span.l"),
-    h("h2#sheet-title", { text: v.title || "" }),
+    h("h2", { id: "sheet-title", text: v.title || "" }),
     v.right || h("button.link.done.r", { type: "button", onclick: closeSheet }, "Done"));
   sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), headEl, bodyEl);
   drag(headEl);
+  // (as iOS's large titles: where the sheet's own title says what its bar does, the bar's comes in only as that one
+  // scrolls away; and once anything has gone under the bar, an edge, the content fading under it)
+  const big = bodyEl.querySelector(".sheet-top h1"), lt = !!big && big.textContent.trim() === (v.title || "").trim();
+  const edges = () => { sheetEl.classList.toggle("edge", bodyEl.scrollTop > 2); if (lt && big.offsetHeight) sheetEl.classList.toggle("past", big.getBoundingClientRect().bottom < bodyEl.getBoundingClientRect().top + 10); };
+  // (measured once it's open: it's drawn just before)
+  sheetEl.classList.toggle("lt", lt); sheetEl.classList.remove("past", "edge"); requestAnimationFrame(edges);
+  bodyEl.addEventListener("scroll", edges, { passive: true });
   Sheet.redraw = () => { const top = bodyEl.scrollTop; drawSheet(); sheetEl.querySelector(".sheet-body").scrollTop = top; };
 }
 async function closeSheet() {

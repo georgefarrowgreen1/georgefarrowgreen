@@ -12,7 +12,7 @@
   --sky-top: #24224f;
   --aura-1: rgba(255, 110, 70, 0.4); --aura-2: rgba(160, 90, 255, 0.36); --aura-3: rgba(40, 190, 230, 0.3);
   --text: #f5f6fb; --text-2: rgba(235, 238, 250, 0.72); --text-3: rgba(235, 238, 250, 0.56);
-  --glass: rgba(34, 38, 62, 0.5); --glass-strong: rgba(28, 31, 52, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
+  --glass: rgba(34, 38, 62, 0.5); --glass-strong: rgba(28, 31, 52, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1); --cell: rgba(255, 255, 255, 0.07); --sheet: rgba(26, 29, 50, 0.94);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
   /* (buttons and links in the site's blue, as the account page's, InFlight's and Weather's; coral is Fitness's own, for its icon and rides) */
   --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --on-tint: #fff;
@@ -49,7 +49,7 @@
     --sky-a: #fbe9e3; --sky-b: #f3f0fb; --sky-c: #f7f8fc; --sky-top: #f8e2da;
     --aura-1: rgba(255, 140, 100, 0.36); --aura-2: rgba(200, 150, 255, 0.32); --aura-3: rgba(90, 210, 240, 0.26);
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
-    --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
+    --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06); --cell: rgba(255, 255, 255, 0.78); --sheet: rgba(244, 245, 251, 0.95);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
     --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
@@ -67,7 +67,7 @@
     --sky-a: #fbe9e3; --sky-b: #f3f0fb; --sky-c: #f7f8fc; --sky-top: #f8e2da;
     --aura-1: rgba(255, 140, 100, 0.36); --aura-2: rgba(200, 150, 255, 0.32); --aura-3: rgba(90, 210, 240, 0.26);
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
-    --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
+    --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06); --cell: rgba(255, 255, 255, 0.78); --sheet: rgba(244, 245, 251, 0.95);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
     --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
@@ -314,6 +314,10 @@ button.row:active, a.row:active { background-color: var(--press); }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
   transition: transform var(--dur-sheet-out) var(--ease-glide), opacity var(--dur-fast); }
 body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
+/* (the scroll edge behind it: the page softens and fades as it goes under the bar, as Liquid Glass's do) */
+.tabbar::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: calc(100% + 30px); pointer-events: none;
+  background: linear-gradient(color-mix(in srgb, var(--sky-c) 0%, transparent), color-mix(in srgb, var(--sky-c) 60%, transparent));
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); -webkit-mask-image: linear-gradient(transparent, #000 55%); mask-image: linear-gradient(transparent, #000 55%); }
 .tabs { position: relative; pointer-events: auto; display: flex; width: 100%; max-width: 380px; padding: 5px; border-radius: 999px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); transition: transform 0.5s var(--ease-spring); }
 .tabs:has(.tab:active) { transform: scale(1.03); }
@@ -419,7 +423,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 
 /* ---- sheets ---- */
 dialog.sheet { position: fixed; padding: 0; border: 0; color: var(--text); width: calc(100% - 16px); max-width: 600px; max-height: calc(100vh - var(--top) - 24px); max-height: calc(100svh - var(--top) - 24px);
-  margin: auto 8px 8px; margin-inline: auto; border-radius: var(--r-sheet); overflow: hidden; background: var(--sheen), var(--glass-strong);
+  margin: auto 8px 8px; margin-inline: auto; border-radius: var(--r-sheet); overflow: hidden; background: var(--sheen), var(--sheet);
   -webkit-backdrop-filter: blur(36px) saturate(190%); backdrop-filter: blur(36px) saturate(190%); box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.5); }
 dialog.sheet.tall { height: calc(100svh - var(--top) - 24px); }
 dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in var(--dur-sheet-in) var(--ease-glide); }
@@ -447,11 +451,17 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-head .r { justify-self: end; grid-column: 3; }
 .sheet-head .back { display: inline-flex; align-items: center; gap: 0; padding: 0 8px 0 0; margin-left: -6px; }
 .sheet-head .link.done { font-weight: 600; }
+/* (its title, where the sheet's own large one says the same: in only once that has scrolled away, as iOS's) */
+.sheet-head h2 { transition: opacity var(--dur-fast), translate var(--dur-base) var(--ease-out); }
+dialog.sheet.lt:not(.past) .sheet-head h2 { opacity: 0; translate: 0 5px; }
+/* (the scroll edge: what's gone under the bar fades into it, as Liquid Glass bars have it, and the same at the foot) */
+.sheet-body { -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); }
+dialog.sheet.edge .sheet-body { -webkit-mask-image: linear-gradient(transparent, #000 22px, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(transparent, #000 22px, #000 calc(100% - 22px), transparent); }
 /* (each row as tall as what's in it: a grid that's fuller than the sheet would otherwise squash what clips its edges,
    the map and the groups, to nothing) */
 .sheet-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px calc(24px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: 16px; align-content: start; }
 .sheet-body > p { margin: 0 6px; color: var(--text-2); font-size: 15px; line-height: 1.45; }
-.sheet-body .group, .sheet-body .card { background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+.sheet-body .group, .sheet-body .card, .rh-daystep { background: var(--cell); box-shadow: inset 0 0 0 0.5px var(--line); }
 .sheet-body .card { margin: 0; }
 .sheet-body .section { margin: 0; }
 .sheet-body.swap { animation: swap var(--dur-base) var(--ease-out) backwards; }
@@ -514,7 +524,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
   .wait::after { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .status, .toast, dialog.sheet, .tabs, .round { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass, .status, .toast, dialog.sheet, .tabs, .round, .tabbar::before, .p-card, .p-mini.green { -webkit-backdrop-filter: none; backdrop-filter: none; }
   .glass, .status, .toast, dialog.sheet, .tabs, .round:not(.me) { background: var(--glass-strong); }
 }
 
@@ -784,7 +794,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .first-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--text-2); }
 /* Rhythm's days: the tapped day, a quarter hour at a time */
 .rh-day .track.sel { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tint) 40%, transparent); }
-.rh-daystep { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 10px 14px; border-radius: 18px; background: var(--glass-strong); box-shadow: var(--edge); }
+.rh-daystep { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 10px 14px; border-radius: 18px; }
 .rh-daystep > b { flex: 1; font-size: 16px; font-weight: 600; }
 .rh-daystep .stepper button { width: 40px; height: 40px; }
 .rh-daystep .stepper output { min-width: 72px; font-size: 15px; }
@@ -833,7 +843,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-hero-chart text { font-size: 10px; fill: rgba(255, 255, 255, 0.75); } .p-hero-chart .lab { fill: rgba(255, 255, 255, 0.6); }
 .p-hero-chart .m-off { fill: #ffd36b; } .p-hero-chart .m-best { fill: #b8ffd9; }
 /* the tiles, each with its own small chart */
-.p-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+.p-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
 .p-tile { display: grid; gap: 2px; padding: 14px 14px 10px; border: 0; border-radius: 22px; text-align: left; color: var(--text); font: inherit; background: var(--sheen), var(--glass); box-shadow: var(--edge), var(--lift); }
 .p-tile > small { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .p-tile > small i { width: 8px; height: 8px; border-radius: 50%; }
@@ -848,17 +858,30 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-ring .bg { fill: none; stroke: var(--glass-ctl); stroke-width: 7; } .p-ring .fg { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
 .p-ring text { font-size: 14px; font-weight: 800; fill: var(--text); }
 /* what stands out: cards to swipe through */
-.p-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
+.p-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
 .p-cards::-webkit-scrollbar { display: none; }
-.p-card { flex: none; width: min(290px, 80vw); scroll-snap-align: start; display: grid; gap: 8px; align-content: start; padding: 16px; border: 0; border-radius: 24px; text-align: left; font: inherit; color: #0d1020; }
+.p-card { flex: none; width: min(290px, 80vw); scroll-snap-align: start; display: grid; gap: 8px; align-content: start; padding: 16px; border: 0; border-radius: 24px; text-align: left; font: inherit; }
 .p-card-top { display: flex; align-items: center; gap: 10px; }
 .p-card-top .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
 .p-card-top small { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
 .p-card > b { font: 700 21px/1.18 var(--font-d); letter-spacing: -0.3px; } .p-card > span { font-size: 14px; line-height: 1.4; }
-.p-card.gold { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } .p-card.gold small { color: #8a5a00; } .p-card.gold > span { color: rgba(60, 40, 0, 0.75); }
-.p-card.red { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); } .p-card.red small { color: #a3241a; } .p-card.red > span { color: rgba(80, 10, 0, 0.72); }
-.p-card.blue { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } .p-card.blue small { color: #1f4fa8; } .p-card.blue > span { color: rgba(10, 30, 80, 0.72); }
-.p-card.green { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } .p-card.green small { color: #127a40; } .p-card.green > span { color: rgba(10, 60, 30, 0.72); }
+/* (each in its colour: by night, tinted glass with light words; by day, as before, a pale wash with dark ones) */
+.p-card, .p-mini.green { color: var(--text); background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 34%, transparent), color-mix(in srgb, var(--pc) 14%, transparent)), var(--glass);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--pc) 40%, transparent), var(--edge); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+.p-card small { color: color-mix(in srgb, var(--pc) 55%, #fff); } .p-card > span, .p-mini.green small { color: var(--text-2); }
+.p-card.gold { --pc: #f2a516; } .p-card.red { --pc: #f0483d; } .p-card.blue { --pc: #3a86f5; } .p-card.green, .p-mini.green { --pc: #26b866; }
+.p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); }
+.p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .p-card.gold { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } :root:not([data-theme="dark"]) .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } :root:not([data-theme="dark"]) .p-card.gold small { color: #8a5a00; } :root:not([data-theme="dark"]) .p-card.gold > span { color: rgba(60, 40, 0, 0.75); }
+  :root:not([data-theme="dark"]) .p-card.red { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } :root:not([data-theme="dark"]) .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); } :root:not([data-theme="dark"]) .p-card.red small { color: #a3241a; } :root:not([data-theme="dark"]) .p-card.red > span { color: rgba(80, 10, 0, 0.72); }
+  :root:not([data-theme="dark"]) .p-card.blue { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } :root:not([data-theme="dark"]) .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } :root:not([data-theme="dark"]) .p-card.blue small { color: #1f4fa8; } :root:not([data-theme="dark"]) .p-card.blue > span { color: rgba(10, 30, 80, 0.72); }
+  :root:not([data-theme="dark"]) .p-card.green { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } :root:not([data-theme="dark"]) .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } :root:not([data-theme="dark"]) .p-card.green small { color: #127a40; } :root:not([data-theme="dark"]) .p-card.green > span { color: rgba(10, 60, 30, 0.72); }
+}
+:root[data-theme="light"] .p-card.gold { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } :root[data-theme="light"] .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } :root[data-theme="light"] .p-card.gold small { color: #8a5a00; } :root[data-theme="light"] .p-card.gold > span { color: rgba(60, 40, 0, 0.75); }
+:root[data-theme="light"] .p-card.red { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } :root[data-theme="light"] .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); } :root[data-theme="light"] .p-card.red small { color: #a3241a; } :root[data-theme="light"] .p-card.red > span { color: rgba(80, 10, 0, 0.72); }
+:root[data-theme="light"] .p-card.blue { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } :root[data-theme="light"] .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } :root[data-theme="light"] .p-card.blue small { color: #1f4fa8; } :root[data-theme="light"] .p-card.blue > span { color: rgba(10, 30, 80, 0.72); }
+:root[data-theme="light"] .p-card.green { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } :root[data-theme="light"] .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } :root[data-theme="light"] .p-card.green small { color: #127a40; } :root[data-theme="light"] .p-card.green > span { color: rgba(10, 60, 30, 0.72); }
 /* every day: a square each */
 .p-cal { padding: 14px; }
 .p-cal-grid { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: 3px; }
@@ -928,8 +951,12 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .p-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0 0; }
 .p-mini { display: grid; gap: 6px; align-content: start; padding: 16px; border-radius: 24px; }
 .p-mini b { font-size: 16px; } .p-mini small { font-size: 13px; line-height: 1.35; }
-.p-mini.green { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; } .p-mini.green small { color: rgba(10, 60, 30, 0.72); }
-.p-mini.green .p-ring .bg { stroke: rgba(20, 120, 60, 0.15); } .p-mini.green .p-ring text { fill: #0f5a31; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .p-mini.green { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } :root:not([data-theme="dark"]) .p-mini.green small { color: rgba(10, 60, 30, 0.72); }
+  :root:not([data-theme="dark"]) .p-mini.green .p-ring .bg { stroke: rgba(20, 120, 60, 0.15); } :root:not([data-theme="dark"]) .p-mini.green .p-ring text { fill: #0f5a31; }
+}
+:root[data-theme="light"] .p-mini.green { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } :root[data-theme="light"] .p-mini.green small { color: rgba(10, 60, 30, 0.72); }
+:root[data-theme="light"] .p-mini.green .p-ring .bg { stroke: rgba(20, 120, 60, 0.15); } :root[data-theme="light"] .p-mini.green .p-ring text { fill: #0f5a31; }
 /* (the run of weeks: in Progress's indigo, as new records are, by night and by day) */
 .p-mini.orange { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
 .p-mini.orange small { color: var(--text-2); }
