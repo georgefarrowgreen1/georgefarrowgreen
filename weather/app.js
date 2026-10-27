@@ -1,5 +1,5 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, extrasDue, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept } from "./data.js";
+import { load, due, extrasDue, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
@@ -11,6 +11,7 @@ import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS 
 import { radar, rainAt } from "./radar.js";
 import { blend } from "./rainmap.js";
 import { oneRain } from "./agree.js";
+import { sunSpell, solarSay, FACES, PITCHES } from "./solar.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 import * as A from "./account.js";
 
@@ -52,7 +53,7 @@ const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, r
 const defaults = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
 // the page's cards, in their usual order (index.html), each with its element and its name in Settings (Arrange your
 // page: settings.js); the warnings aren't one of them, always first, under the temperature
-const CARDS = [["nowcast", "Next 4 hours"], ["hourly", "Next 48 hours"], ["right-now", "Right now"], ["daily", "16-day forecast"], ["radar", "Rain radar"],
+const CARDS = [["nowcast", "Next 4 hours"], ["solar", "Solar"], ["hourly", "Next 48 hours"], ["right-now", "Right now"], ["daily", "16-day forecast"], ["radar", "Rain radar"],
   ["insights-card", "Highlights"], ["windows", "Best times"], ["accuracy", "Forecast accuracy"], ["climate", "This time of year"]];
 // as you've arranged them: { order (every card, any the app has gained since put where it usually goes), off }
 function layoutOf(v) {
@@ -61,9 +62,15 @@ function layoutOf(v) {
   for (const [i, k] of ids.entries()) if (!order.includes(k)) order.splice(Math.min(i, order.length), 0, k);
   return { order, off: [...new Set((Array.isArray(o.off) ? o.off : []).filter((k) => ids.includes(k)))] };
 }
+// Settings › Solar: { on, faces, pitch, and the place the panels are: lat, lon, name }
+function solarOf(v) {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? v : {}, spot = Number.isFinite(o.lat) && Number.isFinite(o.lon);
+  return { on: !!o.on && spot, faces: FACES.some((x) => x[0] === o.faces) ? o.faces : "S", pitch: PITCHES.includes(o.pitch) ? o.pitch : 35,
+    ...(spot ? { lat: o.lat, lon: o.lon, name: String(o.name || "").slice(0, 60) } : {}) };
+}
 function loadSettings() {
   const d = {
-    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
+    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true, solar: { on: false, faces: "S", pitch: 35 },
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
   };
   // (only values the app knows: a damaged or out-of-date one falls back to the default)
@@ -73,7 +80,7 @@ function loadSettings() {
     temp: one(o.temp, ["c", "f"], d.temp), wind: one(o.wind, ["mph", "kmh", "ms", "kn"], d.wind), precip: one(o.precip, ["mm", "in"], d.precip),
     pressure: one(o.pressure, ["hpa", "inhg", "mmhg"], d.pressure), clock: one(o.clock, ["12", "24"], d.clock), tune: o.tune !== false,
     glass: one(o.glass, ["clear", "standard", "tinted"], "standard"),
-    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: notifyOf(o.notify), layout: layoutOf(o.layout),
+    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), solar: solarOf(o.solar), notify: notifyOf(o.notify), layout: layoutOf(o.layout),
     activities: Array.isArray(o.activities) ? o.activities.filter((a) => a && typeof a === "object" && typeof a.name === "string") : d.activities,
   };
   S.f = makeFormat(S.settings);
@@ -943,7 +950,7 @@ function render() {
     $("brief").textContent = ""; delete $("brief").dataset.said;
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("hourly-strip")._sig = $("insights")._sig = null;
-    $("nowcast").hidden = true;
+    $("nowcast").hidden = $("solar").hidden = true;
     status(); layoutPager();
     // (Try again pressed, and back with nothing: the focus back on it, rather than lost to the page as it was hidden
     // meanwhile)
@@ -971,6 +978,7 @@ function render() {
   part(hero, wx, now, fresh);
   part(pinOnMap, wx, now);
   part(nowcast, wx, now, { fresh });
+  part(solar, wx, now, { fresh });
   part(cards, wx, now, fresh);
   part(nudge);
   part(hourly, wx, now);
@@ -1296,6 +1304,50 @@ function nowcast(wx, now, { fresh = false, tick = false } = {}) {
     tip: (p) => ({ title: p.radar ? `${f.time(p.t)} · radar` : f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? ["light", "moderate", "heavy"][heaviness(p.mm * 4) - 1] : "dry"]] }),
     table: { head: ["Time", "Rain"], rows: m.map((x) => [f.time(x.t), f.rate(x.precip * 4)]) },
   });
+}
+
+/* ---------- solar ---------- */
+// The Solar card (Settings › Solar), for the place your panels are: shown from two hours before the sun comes out on
+// them until it goes in (solar.js), with when and how long; folded away otherwise. The sunlight on the roof asked for
+// at most every half hour, kept for when the app's offline
+const sunKept = new Map();
+let sunAsking = null;
+function sunHours(s) {
+  const k = `solar:${cell(s.lat, s.lon)}|${s.faces}|${s.pitch}`;
+  if (!sunKept.has(k)) { const v = store.get(k); if (v?.hours) sunKept.set(k, v); }
+  const kept = sunKept.get(k);
+  if ((!kept || Date.now() - kept.at > 30 * 60e3) && sunAsking !== k) {
+    sunAsking = k;
+    fetchSolar(s.lat, s.lon, s.faces, s.pitch).then((hours) => {
+      const v = { at: Date.now(), hours }; sunKept.set(k, v); store.set(k, v);
+      if (S.wx) solar(S.wx, nowWall(S.wx.place.offset));
+    }, () => {}).finally(() => { if (sunAsking === k) sunAsking = null; });
+  }
+  return kept?.hours || null;
+}
+function solar(wx, now, { fresh = false } = {}) {
+  const box = $("solar"), s = S.settings.solar, here = s?.on && s.lat != null && cell(s.lat, s.lon) === cell(wx.place.lat, wx.place.lon);
+  const sp = here && !R ? (() => { const hs = sunHours(s); return hs && sunSpell(hs, now); })() : null;
+  if (!sp) { if (fresh || R) box.hidden = true; else fold(box); return; }
+  const was = !box.hidden && !box._fold;
+  if (fresh) box.hidden = false; else unfold(box);
+  const say = solarSay(sp, now, S.f);
+  swap($("solar-say"), say.title, was); swap($("solar-text"), say.text, was);
+  $("solar-chart").innerHTML = sunChart(sp, now);
+}
+// today's sun on the roof, each hour against the day's best, the spell in gold, and now
+function sunChart(sp, now) {
+  const hs = sp.hours, f = S.f;
+  if (hs.length < 2) return "";
+  const a = hs[0].t - HOUR, b = hs[hs.length - 1].t, W = 320, top = 4, base = 56, x = (t) => 6 + ((t - a) / (b - a)) * (W - 12), bw = Math.max(3, (W - 12) / hs.length - 4);
+  let s = `<svg viewBox="0 0 ${W} 74" width="100%" role="img" aria-label="Sun on your panels today: strongest from ${f.time(sp.start)} to ${f.said(sp.end)}">`;
+  s += `<rect x="${x(sp.start)}" y="${top}" width="${x(sp.end) - x(sp.start)}" height="${base - top}" rx="6" fill="rgba(255,196,61,.16)"/>`;
+  for (const h of hs) { const bh = Math.max(1.5, h.v * (base - top - 4));
+    s += `<rect x="${x(h.t - HOUR) + 2}" y="${base - bh}" width="${bw}" height="${bh}" rx="2.5" fill="${h.in ? "#ffc23d" : "currentColor"}"${h.in ? "" : ' opacity=".4"'}/>`; }
+  if (now > a && now < b) s += `<line x1="${x(now)}" x2="${x(now)}" y1="${top}" y2="${base}" stroke="currentColor" stroke-width="1.5"/>`;
+  s += `<line x1="6" x2="${W - 6}" y1="${base}" y2="${base}" stroke="currentColor" opacity=".35"/>`;
+  for (let t = Math.ceil(a / (3 * HOUR)) * 3 * HOUR; t <= b; t += 3 * HOUR) s += `<text x="${Math.min(W - 18, Math.max(18, x(t)))}" y="${base + 14}" fill="currentColor" opacity=".8" font-size="10.5" text-anchor="middle">${f.time(t)}</text>`;
+  return s + "</svg>";
 }
 
 function insightCard(c) {
@@ -2284,7 +2336,7 @@ async function notifySaved() {
 // kept with it, in step on every device you're signed in on. S.acct: { name, handle, devices, state } while signed in;
 // kept (wx:acct) with the version last in step and what was kept then (snap), so a change made meanwhile, here or on
 // another device, is put together with the other's rather than either being lost.
-const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities", "layout"];
+const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities", "layout", "solar"];
 const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
@@ -3089,7 +3141,7 @@ function wire() {
     const now = nowWall(S.wx.place.offset), hr = Math.floor(now / HOUR), d = I.dayOf(S.wx, now);
     if (tickHour != null && hr !== tickHour) render();
     else {
-      sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now, { tick: true }); status();
+      sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now, { tick: true }); solar(S.wx, now); status();
       if ([d?.sunrise, d?.sunset].some((t) => t && t > now && t - now <= HOUR) && !$("tiles").contains(document.activeElement)) tiles(S.wx, now);
     }
     tickHour = hr;

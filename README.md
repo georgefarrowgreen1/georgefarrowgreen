@@ -478,6 +478,13 @@ so there's nothing to set up beyond the address.
 
 **What it tells you**
 
+- **Solar** (Settings › Solar: where your panels are, the way the roof faces and
+  its pitch): a card only when the sun's coming out on them, from two hours
+  before until it goes in ("Sun coming out from about 11:00", "Your panels should
+  work well until about 15:00, at their best around 12:30"), with today's sun on
+  the roof by the hour, the spell in gold. A spell is an hour or more with at least
+  half the day's best on the roof and over 200 W/m² (Open-Meteo's global tilted
+  irradiance, asked for every half hour: `weather/solar.js`); nothing on grey days.
 - **A briefing** for the next day or so, in words ("Cloudy until about 16:00,
   then rain until around 20:00. High 14°"), its first sentence (what's coming)
   in bold, and each day of the fortnight described part by part (morning,

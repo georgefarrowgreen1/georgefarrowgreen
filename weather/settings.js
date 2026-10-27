@@ -2,6 +2,7 @@
 // signing in), opened from the page (app.js openSettings) and fetched the first time it is: seldom wanted, it needn't
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
+import { FACES, PITCHES } from "./solar.js";
 import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, PERSON, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
@@ -17,6 +18,7 @@ export function drawSettings() {
   form.commute.checked = !!S.settings.commute?.on;
   fillTimes(form.am, S.settings.commute?.am || "08:00"); fillTimes(form.pm, S.settings.commute?.pm || "17:30");
   form.tune.checked = S.settings.tune !== false;
+  drawSolar();
   for (const k of ["laundry", "stars", "sunset"]) form[`x_${k}`].checked = S.settings.extras?.[k] !== false;
   drawNotify(); drawActs(); drawArrange(); drawFolders();
   // the word about the alerts, put away on the page: here instead, a row of its own at the top, till they're on
@@ -34,6 +36,8 @@ function drawFolders() {
   const acts = s.activities.filter((a) => a.on !== false).map((a) => a.name);
   $("fv-notify").textContent = notifying(s.notify) ? "On" : "Off";
   $("fv-commute").textContent = s.commute?.on ? `${atText(s.commute.am)}, ${atText(s.commute.pm)}` : "Off";
+  const sol = s.solar;
+  $("fv-solar").textContent = sol?.on ? `${FACES.find((x) => x[0] === sol.faces)[1]}, ${sol.pitch}°` : "Off";
   $("fv-acts").textContent = acts.length ? acts.join(", ") : "Off";
   $("fv-units").textContent = ["temp", "wind", "precip"].map(said).join(", ");
   $("fv-look").textContent = said("glass");
@@ -46,6 +50,28 @@ function drawFolders() {
   for (const k of ["units", "commute", "forecast"]) $("settings").querySelector(`[data-go="${k}"]`).closest("li").hidden = onAcct;
   $("acct-set").hidden = !onAcct;
   if (onAcct) $("acct-set-sub").textContent = `${$("fv-units").textContent} · Commute ${s.commute?.on ? "on" : "off"} · ${s.tune !== false ? "Tuned" : "Not tuned"}`;
+}
+
+/* ---------- solar ---------- */
+// Settings › Solar: on or off, where the panels are (one of your places; the one shown, when it's first turned on),
+// and the way the roof faces and its pitch
+function drawSolar() {
+  const form = $("settings-form"), s = S.settings.solar, here = place();
+  const spots = [...S.places.filter((p) => !p.gps)];
+  if (s.lat != null && !spots.some((p) => nkey(p) === nkey(s))) spots.unshift({ name: s.name, lat: s.lat, lon: s.lon });
+  form.solar.checked = !!s.on;
+  form.solarAt.replaceChildren(...spots.map((p) => h("option", { value: nkey(p) }, p.name || "Your place")));
+  form.solarAt.value = s.lat != null ? nkey(s) : here && !here.gps ? nkey(here) : spots[0] ? nkey(spots[0]) : "";
+  form.solarFaces.replaceChildren(...FACES.map(([k, name]) => h("option", { value: k }, name)));
+  form.solarFaces.value = s.faces;
+  form.solarPitch.replaceChildren(...PITCHES.map((p) => h("option", { value: String(p) }, p ? `${p}°` : "Flat")));
+  form.solarPitch.value = String(s.pitch);
+  for (const k of ["solarAt", "solarFaces", "solarPitch"]) form[k].disabled = !spots.length;
+}
+function solarRead() {
+  const form = $("settings-form"), key = form.solarAt.value, was = S.settings.solar;
+  const p = S.places.find((x) => !x.gps && nkey(x) === key) || (was.lat != null && nkey(was) === key ? was : null);
+  return { on: form.solar.checked && !!p, faces: form.solarFaces.value || "S", pitch: Number(form.solarPitch.value) || 0, ...(p ? { lat: p.lat, lon: p.lon, name: p.name || "" } : {}) };
 }
 
 /* ---------- arranging the page ---------- */
@@ -178,6 +204,7 @@ function readSettings(e) {
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
+  S.settings.solar = solarRead();
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
   // (the glass alone is only how the cards look, eased from one to the other by styles.css: nothing to draw again)
   saveSettings(); if (JSON.stringify({ ...S.settings, glass: null }) !== drawn) afterFrame(redraw); drawFolders();
