@@ -187,25 +187,24 @@ ok(elsewhere.status === 404, 'and its API answers only at its own address', Stri
 // ---- 2. Signed up to Chat on a laptop: Fitness in the same browser is signed in already ----
 await joinChat(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
 const sam = userId('sam');
-// (Chat's InFlite menu, from the photo at the top left: the apps, Chat ringed, no Mail: Sam isn't its admin)
+// (Chat's InFlite menu, from the photo at the top left: you, Chat's own rows, its version; no row of apps)
 await L.p.waitForSelector('.chead .ifh-me', { timeout: 20000 }).catch(() => {});
 if (await L.p.$('.chead .ifh-me')) {
   await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
   await L.p.screenshot({ path: `${out}/menu-chat.png` });
-  ok((await L.p.$$eval('.ifm-app', (a) => a.map((x) => x.querySelector('.ifm-app-n').textContent).join())) === 'Chat,Weather,Fitness,Account' && !!(await L.p.$('.ifm-app.here.ifm-chat')) && /Chat V[\d.]+ · Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
+  ok(!(await L.p.$('.ifm-pop .ifm-apps')) && /Notifications/.test(await L.p.innerText('.ifm-pop')) && /Chat V[\d.]+ · Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
   await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 } else ok(false, "Chat: your photo at the top left, for InFlite's menu");
 await L.p.goto(`${FIT}/`);
 await L.p.waitForSelector('.ifh-me', { timeout: 20000 });
 ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.ifh-me')).trim() === 'S' && await L.p.isVisible('.tabbar'), 'Fitness in the same browser: signed in already, as Sam (no sign-in of its own)');
-// InFlite's menu, from the photo, now at the top left: you, the apps (Fitness ringed; no Mail), Fitness's own rows, its
-// version and Sign Out; and tapped again, closed
+// InFlite's menu, from the photo, now at the top left: you, Fitness's own rows, its version and Sign Out (no row of
+// apps); and tapped again, closed
 ok(await L.p.$eval('.ifh', (x) => x.firstElementChild.classList.contains('ifh-me')) && /^Today|^Tomorrow|^Yesterday|day$/.test(await L.p.textContent('.ifh .ifh-name')), "InFlite's header: your photo at the top left, then the screen's name");
 await L.p.click('.ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 700);
 await L.p.screenshot({ path: `${out}/menu.png` });
 const menuSays = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
-ok(/Sam Taylor @sam/.test(menuSays) && (await L.p.$$eval('.ifm-app', (a) => a.map((x) => x.querySelector('.ifm-app-n').textContent).join())) === 'Chat,Weather,Fitness,Account'
-  && !!(await L.p.$('.ifm-app.here.ifm-fitness')) && /Distances/.test(menuSays) && /Fitness V\d+\.\d\d · Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
+ok(/Sam Taylor @sam/.test(menuSays) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Distances/.test(menuSays) && /Fitness V\d+\.\d\d · Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
 await L.p.mouse.click(20, 20); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 ok(true, 'and closed with a tap off it');
 await you(L);

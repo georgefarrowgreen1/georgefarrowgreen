@@ -2623,7 +2623,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
-.ifm-layer, .ifm-note, .ifm-here {
+.ifm-layer, .ifm-note {
   --ifm-sheet: rgba(250, 250, 253, 0.86);
   --ifm-panel: rgba(255, 255, 255, 0.9);
   --ifm-line: rgba(60, 60, 67, 0.14);
@@ -2632,26 +2632,24 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   --ifm-text-3: rgba(60, 60, 67, 0.36);
   --ifm-press: rgba(120, 120, 128, 0.14);
   --ifm-red: #e5342a;
-  --ifm-ok: #1f9d55;
-  --ifm-ready: #c86a00;
   --ifm-dim: rgba(14, 18, 40, 0.14);
   --ifm-tint: #2f6be6;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note, .ifm-here) {
+  :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note) {
     --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
     --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-ok: #4cd585; --ifm-ready: #ffab3d; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-dim: rgba(0, 0, 0, 0.32);
   }
 }
-:root[data-theme="dark"] :is(.ifm-layer, .ifm-note, .ifm-here) {
+:root[data-theme="dark"] :is(.ifm-layer, .ifm-note) {
   --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
   --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-ok: #4cd585; --ifm-ready: #ffab3d; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-dim: rgba(0, 0, 0, 0.32);
 }
-/* each app's own colour, for the ring round the app you're in */
+/* each app's own colour: its focus rings, and Update ready */
 .ifm-in-chat { --ifm-tint: #2b6fe6; }
 .ifm-in-weather { --ifm-tint: #3a86f0; }
 .ifm-in-fitness { --ifm-tint: #f0542e; }
@@ -2684,24 +2682,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifm-who b { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-who small { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.2; color: var(--ifm-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-chev { width: 17px; height: 17px; stroke-width: 2.6; color: var(--ifm-text-3); flex: none; }
-
-/* the apps */
-.ifm-apps { display: flex; justify-content: space-around; gap: 2px; padding: 12px 6px 10px; border-radius: 24px; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
-.ifm-here .ifm-apps { --ifm-tint: #5b4fe0; }
-.ifm-app { text-decoration: none !important; flex: 0 1 62px; display: grid !important; justify-items: center; gap: 6px; padding: 0 !important; text-align: center !important; color: var(--ifm-text-2) !important; }
-.ifm-app-ic { position: relative; width: 50px; height: 50px; display: block; border-radius: 12px; transition: transform 0.25s cubic-bezier(0.32, 1.25, 0.5, 1); }
-.ifm-app-ic img { width: 100%; height: 100%; display: block; border-radius: 12px; box-shadow: 0 6px 14px -8px rgba(20, 30, 60, 0.55); }
-a.ifm-app:active .ifm-app-ic { transform: scale(0.9); }
-.ifm-app.here .ifm-app-ic::after { content: ""; position: absolute; inset: -4px; border-radius: 15px; border: 2.5px solid var(--ifm-tint); }
-.ifm-app-n { font-size: 12px; font-weight: 500; letter-spacing: 0; white-space: nowrap; }
-.ifm-app.here .ifm-app-n { color: var(--ifm-text); font-weight: 650; }
-.ifm-v { margin-top: -3px; font-size: 11px; font-weight: 600; letter-spacing: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ifm-v.ok { color: var(--ifm-ok); }
-.ifm-v.ok::after { content: " ✓"; }
-.ifm-v.ready { color: var(--ifm-ready); }
-.ifm-v.none { color: var(--ifm-text-3); font-weight: 500; }
-.ifm-apps.versions { justify-content: space-between; padding: 14px 10px 12px; }
-.ifm-apps.versions .ifm-app { flex-basis: 64px; }
 
 /* the app's own rows */
 .ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }

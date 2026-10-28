@@ -1,12 +1,9 @@
-// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), your apps
-// (the one you're in ringed), the app's own few rows, and a foot with its version and Sign Out. With it: each app's
-// version, kept where Account can read it (a cookie on the apps' own site, inflite.ai), the same note in every app
-// after it's updated itself, and the row of apps, with their versions, Account's page shows.
+// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
+// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself.
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["mail", "Mail"], ["account", "Account"]];
-  const SUB = { chat: "chat", weather: "weather", fitness: "fitness", mail: "email", account: "account" };
   const NAME = Object.fromEntries(APPS);
   const ICONS = /*ICONS*/{};
   const GLYPHS = {
@@ -38,23 +35,6 @@ const IFL = (() => {
     return n;
   };
 
-  // where the apps are: this one's neighbours on its own site (chat. → weather., on inflite.ai or a test's stand-in);
-  // from anywhere else (an old address, a preview), inflite.ai's
-  const here = location.hostname.split(".");
-  const onSite = here.length > 1 && Object.values(SUB).includes(here[0]);
-  const site = onSite ? here.slice(1).join(".") : "inflite.ai";
-  const href = (a) => (onSite ? `${location.protocol}//${SUB[a]}.${site}${location.port ? ":" + location.port : ""}/` : `https://${SUB[a]}.inflite.ai/`);
-
-  // kept on the site, for every app on it to read: each app's version on this device, and whether Mail's yours
-  const cookie = (k, v) => {
-    if (!onSite) return;
-    const domain = site.includes(".") ? `; domain=${site}` : "";
-    document.cookie = `${k}=${encodeURIComponent(v)}${domain}; path=/; max-age=${v ? 31536000 : 0}; samesite=lax${location.protocol === "https:" ? "; secure" : ""}`;
-  };
-  const cookies = () => Object.fromEntries(document.cookie.split(/;\s*/).filter(Boolean).map((c) => { const i = c.indexOf("="); return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))]; }));
-  const versions = () => { const c = cookies(), v = {}; for (const [a] of APPS) if (c[`ifl_v_${a}`]) v[a] = c[`ifl_v_${a}`]; return v; };
-  const admin = (on) => { if (on === undefined) return cookies().ifl_admin === "1"; cookie("ifl_admin", on ? "1" : ""); return !!on; };
-
   // the same short note in every app
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
@@ -68,30 +48,11 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
-  // this app's version, as it opens: kept for Account, and said once if it's new since last time
+  // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
     try { was = localStorage.getItem(`ifl-build:${app}`); localStorage.setItem(`ifl-build:${app}`, build); } catch (_) {}
-    cookie(`ifl_v_${app}`, build);
     if (was && was !== build) setTimeout(() => note(app, `${NAME[app]} updated`, `Now V${build}`), 600);
-  }
-
-  // the row of apps: the one you're in ringed in its own colour; each with its version underneath, when asked
-  // (Account's: { v: this device's, latest: the newest }); Mail only for its admin
-  function appsRow(app, { withVersions = null, mail = admin() || app === "mail" } = {}) {
-    const row = el("div", "ifm-apps" + (withVersions ? " versions" : ""));
-    for (const [a, name] of APPS) {
-      if (a === "mail" && !mail) continue;
-      const img = el("img"); img.src = iconUrl(a); img.alt = "";
-      const ver = withVersions && a !== "account" ? withVersions[a] || {} : null;
-      const said = !ver ? null : !ver.v ? el("small", "ifm-v none", "Not opened") : ver.latest && ver.latest !== ver.v ? el("small", "ifm-v ready", `V${ver.latest} ready`) : el("small", "ifm-v ok", `V${ver.v}`);
-      const link = el(a === app ? "span" : "a", `ifm-app ifm-${a}` + (a === app ? " here" : ""), el("span", "ifm-app-ic", img), el("span", "ifm-app-n", name), said);
-      if (a !== app) link.href = href(a);
-      else link.setAttribute("aria-current", "page");
-      link.setAttribute("aria-label", name + (ver?.v ? `, version ${ver.v}${ver.latest && ver.latest !== ver.v ? `, version ${ver.latest} ready` : ""}` : ""));
-      row.append(link);
-    }
-    return row;
   }
 
   // the menu, from your photo: o = { app, build, me: { name, line, photo: an element }, rows: [{ icon, color, label,
@@ -139,7 +100,7 @@ const IFL = (() => {
     else status = el("span", "", "Up to date");
     const out = el("button", "ifm-out", "Sign Out"); out.type = "button"; out.onclick = act(o.signOut);
     const foot = el("div", "ifm-foot", mark, el("span", "ifm-ver", `${NAME[o.app]} V${o.build}`, el("i", "", " · "), status), o.signOut ? out : null);
-    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, appsRow(o.app), rows.childNodes.length ? rows : null, foot);
+    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rows.childNodes.length ? rows : null, foot);
     pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
@@ -202,5 +163,5 @@ const IFL = (() => {
   }
   const glyph = (name) => svg(name);
 
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, isOpen: () => !!open, built, note, appsRow, versions, admin, href, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, isOpen: () => !!open, built, note, iconUrl };
 })();
