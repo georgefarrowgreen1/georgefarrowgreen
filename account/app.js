@@ -550,13 +550,18 @@ function signedIn(r) {
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
   // (an app's settings that are the account's, a tap from its card: inflightView, weatherSetView, fitnessSetView)
   const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView };
+  // (and those kept in the app itself: Mail's addresses are its own, so its settings button opens Mail at them)
+  const SET_LINKS = { mail: "#settings" };
   const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
     SETS[id] ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": `${id}-settings`, onclick: () => openSheet(SETS[id]) },
-      icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
+      icon("sliders", 18, 2.1)), open(id, name))
+      : SET_LINKS[id] ? h("div.app-acts", {}, h("a.app-set", { href: siteUrl(APPS[id].sub) + SET_LINKS[id], "aria-label": `${name} settings`, "data-k": `${id}-settings` },
+        icon("sliders", 18, 2.1)), open(id, name))
+      : open(id, name));
   const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
