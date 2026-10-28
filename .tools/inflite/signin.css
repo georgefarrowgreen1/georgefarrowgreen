@@ -1,0 +1,102 @@
+/* InFlite's way in, the same in every app (Chat, Fitness, Mail): where everything on it sits, so no app's drifts.
+   Markup, in each app's own words:
+     .ifl-in                      the screen
+       .ifl-top                   at its head, held from the top of the screen:
+         .ifl-logo > the mark     the app's icon, 96px, in a 150px box for its glow
+         .ifl-title, .ifl-tagline its name and its line (either may be left out)
+       .ifl-cta                   at its foot, held 55px over the screen's safe area:
+         .ifl-brand               Powered by InFlite: <img src="inflite.svg"> and the words
+         the app's Sign in button, .ifl-go
+         .ifl-new                 New here? (if the app has it), just under the button
+   Each app keeps its own colours, glow, scene and motion; the pill takes its colours from --ifl-pill, --ifl-pill-ink
+   and --ifl-pill-edge, set on .ifl-in. Both blocks are measured from the screen itself (position: fixed), not from a
+   viewport unit, which a phone's Home Screen can make a toolbar's height short. */
+.ifl-in .ifl-top {
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: calc(env(safe-area-inset-top, 0px) + max(16vh, 80px));
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.ifl-in .ifl-logo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  margin: 0 0 -18px;
+}
+
+.ifl-in .ifl-title {
+  margin: 0;
+  font-size: 40px;
+  line-height: 1.05;
+}
+
+.ifl-in .ifl-tagline {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
+
+.ifl-in .ifl-cta {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: calc(55px + env(safe-area-inset-bottom, 0px));
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 max(20px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.ifl-in .ifl-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 24px;
+  padding: 5px 13px 5px 5px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--ifl-pill-ink, rgba(20, 24, 50, 0.62));
+  background: var(--ifl-pill, rgba(255, 255, 255, 0.6));
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: var(--ifl-pill-edge, 0 0 0 0.5px rgba(20, 24, 60, 0.1), 0 6px 18px -10px rgba(0, 0, 0, 0.3));
+}
+
+.ifl-in .ifl-brand img {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.ifl-in .ifl-go {
+  width: 100%;
+  max-width: 420px;
+}
+
+.ifl-in .ifl-new {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 15px;
+}

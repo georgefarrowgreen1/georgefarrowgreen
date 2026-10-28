@@ -1889,8 +1889,8 @@ function keptAdd() {
 }
 const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/") + hash;
 // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
-const brandLine = `<p class="wbrand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
-const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
+const brandLine = `<p class="wbrand ifl-brand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
+const newHere = () => `<p class="wnew ifl-new">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 // Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as (on the
@@ -1902,9 +1902,9 @@ async function resumeCheck() {
 // while it's taken up)
 function welcomeCta() {
   const r = S.resumable;
-  if (S.signingIn) return `<div class="wcta"><div class="stack"><button class="btn wide wglow" disabled>Signing in…</button></div></div>`;
-  if (r) return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="acctsignin">Continue as ${esc(first(r.name))}</button></div></div>`;
-  return `<div class="wcta">${brandLine}<div class="stack"><button class="btn wide wglow" data-act="acctsignin">Sign in</button></div>${newHere()}</div>`;
+  if (S.signingIn) return `<div class="wcta ifl-cta">${brandLine}<button class="btn wide wglow ifl-go" disabled>Signing in…</button></div>`;
+  if (r) return `<div class="wcta ifl-cta">${brandLine}<button class="btn wide wglow ifl-go" data-act="acctsignin">Continue as ${esc(first(r.name))}</button></div>`;
+  return `<div class="wcta ifl-cta">${brandLine}<button class="btn wide wglow ifl-go" data-act="acctsignin">Sign in</button>${newHere()}</div>`;
 }
 // Signing in is on the account's own page (account.<site>), where every app on the site signs in: there with a word for
 // the sign-in, and a key pair for what unlocks the key here (pigeon/crypto.js handbackPair: kept on this phone, with the
@@ -5362,9 +5362,9 @@ const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
 function vAuth() {
   switch (S.view) {
     case "loading": return `<div class="loading">Opening Chat…</div>`;
-    case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
-        <div class="wtop">
-          <h1 class="wlogo" aria-label="Chat"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+    case "welcome": return `<div class="auth welcome night ifl-in${S.welcomed ? " again" : ""}">
+        <div class="wtop ifl-top">
+          <h1 class="wlogo ifl-logo" aria-label="Chat"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;

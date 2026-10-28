@@ -1299,18 +1299,19 @@ function welcome(note = null, { again = !!welcome.shown } = {}) {
   S.me = null;
   document.body.classList.add("out");
   const page = A.accountPage();
-  main.replaceChildren(h("div.welcome.dawn" + (again ? ".again" : ""), {},
+  main.replaceChildren(h("div.welcome.dawn.ifl-in" + (again ? ".again" : ""), {},
     courseScene(),
-    h("div.w-top", {}, h("div.wlogo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
-      h("h1.wtitle", { "aria-label": "Fitness" }, [..."Fitness"].map((c) => h("span", { "aria-hidden": "true", text: c }))),
-      h("p.tagline", { text: "Training that fits your week" })),
+    // (where each part sits is InFlite's way in, shared by every app: .tools/inflite/signin.css)
+    h("div.w-top.ifl-top", {}, h("div.wlogo.ifl-logo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
+      h("h1.wtitle.ifl-title", { "aria-label": "Fitness" }, [..."Fitness"].map((c) => h("span", { "aria-hidden": "true", text: c }))),
+      h("p.tagline.ifl-tagline", { text: "Training that fits your week" })),
     // (Sign in at the foot of the page, as on the site's other apps)
-    h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
+    h("div.w-cta.ifl-cta", {}, note && h("p.small.said", { role: "status", text: note }),
       // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
-      page && h("p.wbrand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
-      h("button.btn.wbeat", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
+      page && h("p.wbrand.ifl-brand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
+      h("button.btn.wbeat.ifl-go", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
       !page && h("p.small", { text: "Signing in is at fitness.inflite.ai." }),
-      page && h("p.new-here", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
+      page && h("p.new-here.ifl-new", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Fitness";
 }
