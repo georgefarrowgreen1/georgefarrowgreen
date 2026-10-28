@@ -5,7 +5,7 @@ import * as TC from "./todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dlFor, download, moveView, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
-import { mapsAlways, wide } from "./app.js";
+import { mapsAlways, meBtn, wide } from "./app.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
 
 // ---- Today ----
@@ -21,8 +21,7 @@ function todayView() {
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
   const title = isToday ? "Today" : sel === addDays(TODAY, 1) ? "Tomorrow" : sel === addDays(TODAY, -1) ? "Yesterday" : new Date(sel).toLocaleDateString("en-GB", { weekday: "long" });
   // (the date over the title, as Apple's own apps have Today; with Rhythm, where you are in its block)
-  const out = [h("div.head.dated", {}, h("div.t", {}, h("div.sub", { text: rhythmOn() ? rhythmSaid() : dayLong(sel) }), h("h1", { text: title })),
-    h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, face()))];
+  const out = [h("div.head.dated", {}, meBtn(), h("div.t", {}, h("div.sub", { text: rhythmOn() ? rhythmSaid() : dayLong(sel) }), h("h1", { text: title })))];
   if (S.examples) {
     out.push(h("div.note.glass", {}, h("span.ic", {}, icon("sparkle", 16, 2.2)), h("div", {},
       h("b", { text: "Example rides are on. " }), "They’re made up, for a rider five weeks into a sportive plan, so there’s something to see. Import your own from a Garmin or a Wahoo, then turn the examples off to see only yours.",

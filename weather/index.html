@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-114" />
+  <meta name="app-version" content="wx-115" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -38,6 +38,7 @@
 
   <div class="page">
   <header class="top">
+    <button class="me-btn" id="me-btn" type="button" aria-label="You and your apps" aria-haspopup="dialog" hidden></button>
     <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
       <span class="place-name"><span id="place-name">Weather</span><span class="pg-name pg-name-prev" aria-hidden="true"></span><span class="pg-name pg-name-next" aria-hidden="true"></span><span class="place-temp" id="place-temp" aria-hidden="true"></span></span>
       <span class="place-line"><span class="place-sub" id="place-sub"></span><span class="place-now" id="place-now" aria-hidden="true"></span><span class="pg-sub pg-sub-prev" aria-hidden="true"></span><span class="pg-sub pg-sub-next" aria-hidden="true"></span></span>

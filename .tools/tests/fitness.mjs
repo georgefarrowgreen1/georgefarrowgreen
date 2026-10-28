@@ -150,7 +150,7 @@ async function browser(name) {
 const settle = (x, ms = 600) => x.p.waitForTimeout(ms);
 // (the nth tab of the tab bar: counted among the tabs alone, as the bar also holds the sidebar's own parts on a computer)
 const tab = async (x, n) => { await x.p.locator('#tabs .tab').nth(n - 1).click(); await settle(x); };
-const you = async (x) => { await x.p.click('.head .round.me'); await x.p.waitForSelector('#sheet[open] .acct'); await settle(x, 500); };
+const you = async (x) => { await x.p.click('.head .round.me'); await x.p.click('.ifm-pop .ifm-row.go:has-text("Settings")'); await x.p.waitForSelector('#sheet[open] .acct'); await settle(x, 500); };
 const done = async (x) => { await x.p.keyboard.press('Escape'); await settle(x, 700); };
 const toastSays = (x) => x.p.waitForFunction(() => document.querySelector('#toast.on')?.textContent || null, null, { timeout: 15000 }).then((v) => v.jsonValue(), () => '');
 const download = async (x, click) => { const [d] = await Promise.all([x.p.waitForEvent('download'), click()]); return { name: d.suggestedFilename(), bytes: readFileSync(await d.path()) }; };
@@ -187,9 +187,27 @@ ok(elsewhere.status === 404, 'and its API answers only at its own address', Stri
 // ---- 2. Signed up to Chat on a laptop: Fitness in the same browser is signed in already ----
 await joinChat(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
 const sam = userId('sam');
+// (Chat's InFlite menu, from the photo at the top left: the apps, Chat ringed, no Mail: Sam isn't its admin)
+await L.p.waitForSelector('.navbar.me .mebtn', { timeout: 20000 }).catch(() => {});
+if (await L.p.$('.navbar.me .mebtn')) {
+  await L.p.click('.navbar.me .mebtn'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
+  await L.p.screenshot({ path: `${out}/menu-chat.png` });
+  ok((await L.p.$$eval('.ifm-app', (a) => a.map((x) => x.querySelector('.ifm-app-n').textContent).join())) === 'Chat,Weather,Fitness,Account' && !!(await L.p.$('.ifm-app.here.ifm-chat')) && /Chat V[\d.]+ · Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
+  await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+} else ok(false, "Chat: your photo at the top left, for InFlite's menu");
 await L.p.goto(`${FIT}/`);
 await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
 ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.head .round.me')).trim() === 'S' && await L.p.isVisible('.tabbar'), 'Fitness in the same browser: signed in already, as Sam (no sign-in of its own)');
+// InFlite's menu, from the photo, now at the top left: you, the apps (Fitness ringed; no Mail), Fitness's own rows, its
+// version and Sign Out; and tapped again, closed
+ok(await L.p.$eval('.head', (x) => x.firstElementChild.classList.contains('me')), 'your photo at the top left');
+await L.p.click('.head .round.me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 700);
+await L.p.screenshot({ path: `${out}/menu.png` });
+const menuSays = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
+ok(/Sam Taylor @sam/.test(menuSays) && (await L.p.$$eval('.ifm-app', (a) => a.map((x) => x.querySelector('.ifm-app-n').textContent).join())) === 'Chat,Weather,Fitness,Account'
+  && !!(await L.p.$('.ifm-app.here.ifm-fitness')) && /Distances/.test(menuSays) && /Fitness V\d+\.\d\d · Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
+await L.p.mouse.click(20, 20); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+ok(true, 'and closed with a tap off it');
 await you(L);
 const card = await L.p.innerText('#sheet .acct');
 ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));

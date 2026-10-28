@@ -415,7 +415,7 @@ function drawNotifyAcct() {
 }
 
 
-async function openAccount(open) {
+export async function openAccount(open) {
   const w = window.open("", "_blank");
   // (and in step with it again as soon as it's back here: what's changed there taken up)
   S.pullNext = true;

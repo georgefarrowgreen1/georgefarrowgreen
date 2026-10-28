@@ -69,7 +69,9 @@ const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await 
 const settings = async (x) => {
   for (let i = 0; i < 3; i++) {
     if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
-    if (await x.p.click('#settings-btn', { timeout: 5000 }).then(() => true, () => false)) break;
+    // (signed in, Settings is a row in InFlite's menu, from your photo; signed out, its gear)
+    const viaMe = await x.p.isVisible('#me-btn');
+    if (await (viaMe ? x.p.click('#me-btn', { timeout: 5000 }).then(() => x.p.click('.ifm-pop .ifm-row.go:has-text("Settings")', { timeout: 5000 })) : x.p.click('#settings-btn', { timeout: 5000 })).then(() => true, () => false)) break;
   }
   await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
 };
@@ -114,6 +116,14 @@ ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page i
 ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email or rows here)', lSays);
 ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);
+// InFlite's menu, from your photo at the top left, now you're signed in (Settings' gear gone: it's a row in the menu)
+await L.p.waitForSelector('#me-btn:not([hidden])', { timeout: 10000 }).catch(() => {});
+ok(await L.p.isVisible('#me-btn') && await L.p.isHidden('#settings-btn'), "signed in: your photo at the top left, for InFlite's menu");
+await L.p.click('#me-btn'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
+await L.p.screenshot({ path: `${out}/menu.png` });
+const wm = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
+ok(/Sam Taylor @sam/.test(wm) && !!(await L.p.$('.ifm-app.here.ifm-weather')) && /Notifications/.test(wm) && /Weather V\d+\.\d\d · Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
+await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 
 // ---- 2. A phone with places of its own: signed in to Weather, on the account's page, with email and password; the two
 // lots put together ----

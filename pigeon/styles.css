@@ -202,6 +202,10 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .navbar.root + .large{margin-top:-48.5px;margin-right:20px;font-size:17px;font-weight:600;letter-spacing:0}
 .navbar.root.b1 + .large{margin-right:72px}
 .navbar.root.b2 + .large{margin-right:112px}
+/* your photo at the left of a tab's top screen: InFlite's menu (app.js youMenu); the title along from it */
+.navbar.root.me + .large{margin-left:66px}
+.nbtn.mebtn{width:44px;height:44px;margin-left:2px;background:none;box-shadow:none}
+.nbtn.mebtn .av{width:38px;height:38px;font-size:15px;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 4px 10px -4px rgba(20,30,60,.4)}
 
 /* ---------- search ---------- */
 .search{display:flex;align-items:center;gap:7px;margin:0 16px 12px;padding:0 14px;height:42px;border-radius:999px;background:var(--fill);color:var(--label-2)}
@@ -2610,3 +2614,129 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   font-size: 15px;
 }
 /* ==== end of InFlite's way in ==== */
+
+/* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
+/* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
+   app's, light or dark as the app is (data-theme, else the device) */
+.ifm-layer, .ifm-note, .ifm-here {
+  --ifm-sheet: rgba(250, 250, 253, 0.86);
+  --ifm-panel: rgba(255, 255, 255, 0.9);
+  --ifm-line: rgba(60, 60, 67, 0.14);
+  --ifm-text: #11131c;
+  --ifm-text-2: rgba(60, 60, 67, 0.62);
+  --ifm-text-3: rgba(60, 60, 67, 0.36);
+  --ifm-press: rgba(120, 120, 128, 0.14);
+  --ifm-red: #e5342a;
+  --ifm-ok: #1f9d55;
+  --ifm-ready: #c86a00;
+  --ifm-dim: rgba(14, 18, 40, 0.14);
+  --ifm-tint: #2f6be6;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note, .ifm-here) {
+    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-ok: #4cd585; --ifm-ready: #ffab3d; --ifm-dim: rgba(0, 0, 0, 0.32);
+  }
+}
+:root[data-theme="dark"] :is(.ifm-layer, .ifm-note, .ifm-here) {
+  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-ok: #4cd585; --ifm-ready: #ffab3d; --ifm-dim: rgba(0, 0, 0, 0.32);
+}
+/* each app's own colour, for the ring round the app you're in */
+.ifm-in-chat { --ifm-tint: #2b6fe6; }
+.ifm-in-weather { --ifm-tint: #3a86f0; }
+.ifm-in-fitness { --ifm-tint: #f0542e; }
+.ifm-in-mail { --ifm-tint: #1aa58f; }
+.ifm-in-account { --ifm-tint: #5b4fe0; }
+
+.ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
+.ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
+.ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
+  text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
+.ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
+.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+
+.ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
+.ifm-pop.open { transform: none; opacity: 1; }
+.ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
+.ifm-pop *, .ifm-pop *::before, .ifm-pop *::after { box-sizing: border-box; }
+
+/* you */
+.ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
+.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
+  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+.ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
+.ifm-photo img { object-fit: cover; display: block; }
+.ifm-who { min-width: 0; }
+.ifm-who b { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-who small { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.2; color: var(--ifm-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-chev { width: 17px; height: 17px; stroke-width: 2.6; color: var(--ifm-text-3); flex: none; }
+
+/* the apps */
+.ifm-apps { display: flex; justify-content: space-around; gap: 2px; padding: 12px 6px 10px; border-radius: 24px; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-here .ifm-apps { --ifm-tint: #5b4fe0; }
+.ifm-app { text-decoration: none !important; flex: 0 1 62px; display: grid !important; justify-items: center; gap: 6px; padding: 0 !important; text-align: center !important; color: var(--ifm-text-2) !important; }
+.ifm-app-ic { position: relative; width: 50px; height: 50px; display: block; border-radius: 12px; transition: transform 0.25s cubic-bezier(0.32, 1.25, 0.5, 1); }
+.ifm-app-ic img { width: 100%; height: 100%; display: block; border-radius: 12px; box-shadow: 0 6px 14px -8px rgba(20, 30, 60, 0.55); }
+a.ifm-app:active .ifm-app-ic { transform: scale(0.9); }
+.ifm-app.here .ifm-app-ic::after { content: ""; position: absolute; inset: -4px; border-radius: 15px; border: 2.5px solid var(--ifm-tint); }
+.ifm-app-n { font-size: 12px; font-weight: 500; letter-spacing: 0; white-space: nowrap; }
+.ifm-app.here .ifm-app-n { color: var(--ifm-text); font-weight: 650; }
+.ifm-v { margin-top: -3px; font-size: 11px; font-weight: 600; letter-spacing: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ifm-v.ok { color: var(--ifm-ok); }
+.ifm-v.ok::after { content: " ✓"; }
+.ifm-v.ready { color: var(--ifm-ready); }
+.ifm-v.none { color: var(--ifm-text-3); font-weight: 500; }
+.ifm-apps.versions { justify-content: space-between; padding: 14px 10px 12px; }
+.ifm-apps.versions .ifm-app { flex-basis: 64px; }
+
+/* the app's own rows */
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
+.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
+.ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
+.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
+.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
+.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
+.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
+.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
+.ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
+.ifm-row .ifm-chev { width: 15px; height: 15px; }
+.ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
+.ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
+.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+/* its version, and Sign Out */
+.ifm-foot { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 14px 4px 16px; font-size: 13.5px; color: var(--ifm-text-3); }
+.ifm-foot-ic { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.ifm-ver { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ifm-ver i { font-style: normal; }
+.ifm-upd { color: var(--ifm-tint) !important; font-weight: 600; }
+.ifm-out { flex: none; padding: 8px 2px !important; color: var(--ifm-red) !important; font-size: 16px; font-weight: 600; }
+.ifm-out:active { opacity: 0.5; }
+
+/* the note after an update */
+.ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
+.ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
+.ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
+.ifm-note-tx { display: grid; line-height: 1.2; }
+.ifm-note-tx b { font-size: 16px; font-weight: 600; }
+.ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+/* ==== end of InFlite's menu ==== */
