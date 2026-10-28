@@ -121,7 +121,7 @@ const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
 const signedOutRow = await acctSays(P);
-ok(/^Sign in with InFlite Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
+ok(/^Sign in Powered by InFlite/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
 await signInPage(P);
 // (whether an account can be made here is asked as the page is drawn, and said under the card once it's known)
 await P.p.waitForFunction(() => document.getElementById('joinline')?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});
@@ -286,8 +286,8 @@ ok(!!(await K.p.$('.tabs')), 'and back in Chat, open, on the same sign-in');
 await K.p.goto('http://account.ifl.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
 await K.p.click('.row.action:text-is("Sign out")'); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 await weather(K); await settings(K);
-await K.p.waitForFunction(() => /Your places on every device/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
-ok(/Your places on every device/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
+await K.p.waitForFunction(() => /Powered by InFlite/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(/Powered by InFlite/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome', { timeout: 20000 }).catch(async () => { await K.p.screenshot({ path: `${out}/signedout-inflight.png` }); console.log('DEBUG inflight after weather signout:', (await K.p.evaluate(() => document.body.innerText.slice(0, 300))).replace(/\s+/g, ' ')); });
 ok(!!(await K.p.$('.welcome')) && !/Continue as/.test(await K.p.textContent('.welcome')), 'and Chat in that browser is signed out too');
 

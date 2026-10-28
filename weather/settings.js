@@ -385,7 +385,7 @@ export function drawAccount() {
     // where Weather's served at an address with no account's page beside it)
     if (!accountPage()) { box.hidden = true; return; }
     if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", onclick: toAccountSignIn }, h("img", { class: "acct-ic inflite", src: "inflite.svg", alt: "" }),
-      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in with InFlite"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
+      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Powered by InFlite")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
     return;
   }
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
