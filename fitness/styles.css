@@ -1792,5 +1792,10 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 @media (prefers-reduced-transparency: reduce) { .ctx-menu { -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* InFlite, over Sign in: its mark and its one account */
-.welcome .wbrand { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 5px 13px 5px 5px; border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--text-2); background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 0 0 0.5px var(--line), 0 6px 18px -10px rgba(0, 0, 0, 0.3); }
+.welcome .wbrand { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 24px; padding: 5px 13px 5px 5px; border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--text-2); background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 0 0 0.5px var(--line), 0 6px 18px -10px rgba(0, 0, 0, 0.3); }
 .welcome .wbrand img { width: 22px; height: 22px; border-radius: 5px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); }
+
+/* (and held at the foot of the screen itself, 55px over its safe area, as Chat's is: measured from the screen, not from
+   100svh, which a phone's Home Screen can make a toolbar's height short, leaving Sign in high) */
+.welcome.dawn > .w-cta { position: fixed; z-index: 2; left: 0; right: 0; bottom: calc(55px + env(safe-area-inset-bottom, 0px)); width: auto; max-width: 420px;
+  margin: 0 auto; padding: 0 max(20px, env(safe-area-inset-left, 0px)); }
