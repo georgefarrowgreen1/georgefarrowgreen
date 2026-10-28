@@ -37,6 +37,26 @@ const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 
+// ---- on the Home Screen, the screen's foot ----
+// iOS can lay a Home Screen app's page out shorter than the screen, leaving what's held at its foot (Sign in, the
+// welcome's hills, the tab bar) high, with a band under it: by how much is --ifl-short, which they're held lower by
+// (the whole screen's height, when the window is the whole screen, less the page's; never more than 200px, the
+// keyboard aside). Measured again as the window changes or the app comes back.
+function screenFoot() {
+  let short = 0;
+  if (navigator.standalone === true && screen.width && screen.height) {
+    const portrait = matchMedia("(orientation: portrait)").matches;
+    const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    const gap = full - innerHeight;
+    if (Math.abs(innerWidth - w) < 2 && gap > 1 && gap < 200) short = Math.round(gap);
+  }
+  document.documentElement.style.setProperty("--ifl-short", `${short}px`);
+}
+screenFoot();
+for (const ev of ["resize", "pageshow", "orientationchange"]) addEventListener(ev, () => requestAnimationFrame(screenFoot));
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && screenFoot());
+
 // ---- kept in this browser ----
 const store = {
   get(k, d) { try { const v = localStorage.getItem("fitness:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },

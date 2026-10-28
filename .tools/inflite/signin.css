@@ -8,7 +8,8 @@
          .ifl-brand               Powered by InFlite: <img src="inflite.svg"> and the words
          the app's Sign in button, .ifl-go
          .ifl-new                 New here? (if the app has it), just under the button
-   Each app keeps its own colours, glow, scene and motion; the pill takes its colours from --ifl-pill, --ifl-pill-ink
+   (--ifl-short, set by an app that finds its Home Screen page laid out short of the screen, holds the foot lower by as
+   much.) Each app keeps its own colours, glow, scene and motion; the pill takes its colours from --ifl-pill, --ifl-pill-ink
    and --ifl-pill-edge, set on .ifl-in. Both blocks are measured from the screen itself (position: fixed), not from a
    viewport unit, which a phone's Home Screen can make a toolbar's height short. */
 .ifl-in .ifl-top {
@@ -51,7 +52,7 @@
   z-index: 2;
   left: 0;
   right: 0;
-  bottom: calc(55px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(55px + env(safe-area-inset-bottom, 0px) - var(--ifl-short, 0px));
   max-width: 420px;
   margin: 0 auto;
   padding: 0 max(20px, env(safe-area-inset-left, 0px));
