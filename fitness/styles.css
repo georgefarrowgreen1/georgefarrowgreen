@@ -1834,13 +1834,18 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 
 .ifl-in .ifl-title {
   margin: 0;
+  padding: 0;
   font-size: 40px;
+  font-weight: 750;
   line-height: 1.05;
+  letter-spacing: -0.4px;
 }
 
 .ifl-in .ifl-tagline {
   margin: 4px 0 0;
   font-size: 16px;
+  font-style: normal;
+  letter-spacing: normal;
 }
 
 .ifl-in .ifl-cta {

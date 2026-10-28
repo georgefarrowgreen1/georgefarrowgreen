@@ -5364,7 +5364,9 @@ function vAuth() {
     case "loading": return `<div class="loading">Opening Chat…</div>`;
     case "welcome": return `<div class="auth welcome night ifl-in${S.welcomed ? " again" : ""}">
         <div class="wtop ifl-top">
-          <h1 class="wlogo ifl-logo" aria-label="Chat"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+          <div class="wlogo ifl-logo"><span class="appicon" aria-hidden="true">${I.bird}</span></div>
+          <h1 class="wtitle ifl-title" aria-label="Chat">${[..."Chat"].map((c) => `<span aria-hidden="true">${c}</span>`).join("")}</h1>
+          <p class="whisper ifl-tagline">Letters carried by pigeon</p>
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
