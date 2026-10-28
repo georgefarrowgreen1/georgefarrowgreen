@@ -949,11 +949,11 @@ function signedOut(r) {
     r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
 }
-// (how a new account's made: here, where anyone can, or with the invite this page was opened with; else by invitation,
-// said plainly rather than a link to a page that says so)
+// (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
+// nothing said: the line kept, empty)
 function joinLine() {
   return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
-    : h("p.foot.new.invite", { id: "joinline" }, ...(S.join && !S.join.pending ? [h("b", { text: "New here?" }), " Accounts are by invitation: open the link you were sent to make yours."] : []));
+    : h("p.foot.new.invite", { id: "joinline" });
 }
 // Opened from an app, signed in there: carry on as that account here, said yes to
 function handoffPage(r) {

@@ -55,10 +55,10 @@ async function fillJoin(x, { name, handle, email, password = PW }) {
 // ---- 1. Without an invite: no way to make one, on the page or past it ----
 const V = await browser('visitor');
 await open(V, `${ACCT}/`);
-await waitText(V, /Accounts are by invitation/);
+await waitText(V, /Forgot password\?/); await V.p.waitForTimeout(2500);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && /New here\? Accounts are by invitation: open the link you were sent to make yours\./.test(signin) && /One sign-in for Chat, Weather and Fitness/.test(signin) && !/Create your account/.test(signin),
-  'the account\'s page, signed out: a passkey, then email and password; and, with no invite, accounts said to be by invitation', signin.slice(-160));
+ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && !/New here|by invitation/.test(signin) && /One sign-in for Chat, Weather and Fitness/.test(signin) && !/Create your account/.test(signin),
+  'the account\'s page, signed out: a passkey, then email and password; and, with no invite, no way to make one, nor anything said of it', signin.slice(-160));
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
 ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${ACCT}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
 const noInvite = await V.p.evaluate(async () => { const r = await fetch('/api/account/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X', handle: 'xxx', email: 'x@example.com' }) }); return [r.status, (await r.json()).field]; });
