@@ -563,7 +563,9 @@ function signedIn(r) {
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
     app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
-      fx.plan ? "On a plan" : "Training, using AI")))));
+      fx.plan ? "On a plan" : "Training, using AI"),
+    // (Mail, the site's inbox, is the admin's alone: functions/_mailapp.js)
+    m.admin && app("mail", "Mail", "/apps/mail.png", "The site’s inbox", "Yours alone, as admin")))));
   const top = [
     sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
@@ -737,6 +739,7 @@ const notifySaid = (n) => [n?.places && `${n.places} ${n.places === 1 ? "place" 
 // An app: what it keeps of yours, in a word or two, and the way into it
 function appView(id) {
   if (id === "fitness") return fitnessView();
+  if (id === "mail") return mailView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
     h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
@@ -760,6 +763,13 @@ function appView(id) {
 }
 
 // What Fitness keeps of yours: your activities (each with its file), the space they take, your plan and your own workouts
+// (Mail: what it is, and where; its mail is kept by Mail itself, not here)
+function mailView() {
+  return { title: "Mail", quiet: true, body: [
+    h("div.app-head", {}, h("img", { src: "/apps/mail.png", alt: "", width: 64, height: 64 }), h("b", { text: "Mail" }), h("span", { text: "The site’s inbox" })),
+    h("p.hint", { text: "Mail sent to any address at inflite.ai arrives here, and you can send from any of them. Only the site’s admin can open it, with a passkey, confirming it’s you every 12 hours." }),
+    h("a.btn", { href: siteUrl("email") }, "Open Mail", icon("open", 18, 2.4))] };
+}
 function fitnessView() {
   const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
