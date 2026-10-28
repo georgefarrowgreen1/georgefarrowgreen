@@ -23,12 +23,15 @@ function fromMail(request, env) {
   if (request.headers.get("Origin") !== appOrigin("email", env, request)) throw new HttpError(403, "That request didn’t come from Mail.");
 }
 
-// The account as Mail needs it: whether it's the admin's, with a passkey on it, and shown it's them lately (fresh)
+// The account as Mail needs it: whether it's the admin's, with a passkey on it, and shown it's them lately (fresh); and
+// its Appearance, as the other apps have it
 async function mailView(env, u) {
   const admin = await adminOf(env).catch(() => null), isAdmin = !!admin && admin.id === u.id;
   return {
     signedIn: true, admin: isAdmin, passkey: isAdmin && admin.passkeys > 0, fresh: Date.now() - (u.authAt || 0) < ADMIN_LOOK,
     name: u.name, handle: u.handle, email: isAdmin ? u.email : null, photoAt: u.avatar_at || null,
+    // (the account's look, for every app on the site: Automatic, Light or Dark)
+    appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto",
   };
 }
 

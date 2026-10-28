@@ -60,6 +60,10 @@ sql(`UPDATE pg_sessions SET auth_at = ${Date.now() - 13 * 3600e3} WHERE user_id 
 r = await mail('GET', 'me', { cookie: gail });
 ok(r.j.admin && r.j.fresh === false, 'shown it’s them 13 hours ago: not fresh (Mail asks again)', JSON.stringify(r.j));
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${gid}'`);
+ok(r.j.appearance === 'auto', 'the account’s look, Automatic until chosen', JSON.stringify(r.j.appearance));
+sql(`UPDATE pg_users SET appearance = 'light' WHERE id = '${gid}'`);
+r = await mail('GET', 'me', { cookie: gail });
+ok(r.j.appearance === 'light', 'chosen Light on the account’s page: Mail is told', JSON.stringify(r.j.appearance));
 
 // ---- 2. Handed back to Mail: a code for Mail, swapped only with Mail's word, from Mail's own page, once ----
 let { w, ask } = word();
