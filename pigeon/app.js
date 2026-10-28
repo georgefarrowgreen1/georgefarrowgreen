@@ -1889,7 +1889,7 @@ function keptAdd() {
 }
 const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/") + hash;
 // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
-const brandLine = `<p class="wbrand"><img src="inflite.svg" alt="" width="22" height="22">One InFlite account for every app</p>`;
+const brandLine = `<p class="wbrand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
 const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
