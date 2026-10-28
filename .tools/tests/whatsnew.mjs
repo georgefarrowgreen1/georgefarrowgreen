@@ -1,4 +1,4 @@
-// What's New: never pops up; tap the version at the foot of Account.
+// What's New: never pops up; and no version at the foot of Account (it's in InFlite's menu). The sheet itself, opened as its act would.
 import { kit } from './lib.mjs';
 import { readFileSync } from 'fs';
 const [,, S, out] = process.argv;
@@ -16,10 +16,11 @@ await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.waitForTimeout
 ok(await open() === 0, 'it never pops up on its own, even after an update');
 await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700);
 await G.p.locator('#screen > main.view .aver').scrollIntoViewIfNeeded();
-const ver = await G.p.locator('#screen > main.view .aver .averbtn').innerText();
-ok(ver.includes(`Chat ${V}`), `the version, ${V}, at the foot of Account`, ver);
-await G.p.screenshot({ path: `${out}/account-version.png` });
-await G.p.click('#screen > main.view .aver .averbtn'); await G.p.waitForSelector('.sheet .wnhero'); await G.p.waitForTimeout(1200);
+const foot = await G.p.locator('#screen > main.view .aver').innerText();
+ok(!foot.includes(V) && !(await G.p.$('#screen > main.view [data-act=whatsnew]')), 'no version at the foot of Account', foot);
+await G.p.screenshot({ path: `${out}/account-foot.png` });
+await G.p.evaluate(() => { const x = document.createElement('button'); x.hidden = true; x.dataset.act = 'whatsnew'; document.querySelector('#screen').append(x); x.click(); x.remove(); });
+await G.p.waitForSelector('.sheet .wnhero'); await G.p.waitForTimeout(1200);
 const heads = await G.p.locator('.sheet .ghead').allInnerTexts(), rows = await G.p.locator('.sheet .wnrow b').allInnerTexts();
 // (every release since you joined, newest first: this account joined before 1.0.2)
 const since = VS.slice(0, VS.indexOf('1.0.2') + 1);

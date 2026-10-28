@@ -202,7 +202,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.1";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.4.1";            // shown in InFlite's menu (and What's New)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2955,7 +2955,7 @@ async function openNote(id, from, to, ct) {
   }
 }
 /* ---------- What's New ----------
-   Every release, newest first: tap the version at the foot of Account. */
+   Every release, newest first (its way in was the version at the foot of Account, taken away on 29 Oct 2026). */
 const RELEASES = [
   { v: "1.4.1", at: Date.UTC(2026, 9, 28), title: "A new name", items: [
     ["bubble", "blue", "InFlight is now Chat", "The same app, your letters, friends and pigeons as they were, under a new name: Chat, at chat.inflite.ai."],
@@ -4371,7 +4371,7 @@ function vAccount() {
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-    <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="Chat ${APP_VERSION}: what’s new">Chat ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
+    <p class="aver"><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
 // Encryption & Safety Numbers, as a row (Privacy & Security, where that's in the app): a friend's key

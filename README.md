@@ -1430,9 +1430,10 @@ planning, 15-minute showers, ensemble landing ranges and steadier turns.
 
 **1.0.3** (a fresh chat, and the Earth itself): Messages-style bubbles,
 magnetic storms, volcanoes and wildfires, the flight card as a story, flying
-together, cleverer routes, tidier photos and folded-up near misses. Tap the
-version at the foot of Account for **What's New**: every release, newest first
-(`RELEASES` in `pigeon/app.js`; it never pops up on its own). Add an entry to
+together, cleverer routes, tidier photos and folded-up near misses. **What's New**
+lists every release, newest first (`RELEASES` in `pigeon/app.js`; it never pops up
+on its own). It opened from the version at the foot of Account until that was taken
+away (Chat's version is in InFlite's menu); it has no way in now. Add an entry to
 `RELEASES` and bump `APP_VERSION` with each update.
 
 **1.0.2** (security, privacy, stability and speed): a pigeon from someone
