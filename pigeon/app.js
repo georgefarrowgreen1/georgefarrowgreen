@@ -4388,12 +4388,10 @@ function vAccount() {
     <div class="ghead">Flying</div>
     <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
-    <div class="ghead">Settings</div>
-    <div class="group">
-      ${accountPage() ? "" : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
+    ${accountPage() ? `<div class="group mt">` : `<div class="ghead">Settings</div>
+    <div class="group">${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
-    ${accountPage() ? `<div class="gfoot">Saved to your account, so it’s the same on every phone. Chat’s other settings are there too: Settings, in the menu from your photo.</div>` : ""}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="Chat ${APP_VERSION}: what’s new">Chat ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
