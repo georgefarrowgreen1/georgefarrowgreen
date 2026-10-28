@@ -1,6 +1,6 @@
 // Your data as a document (account/app.js exportView): what the export gives (functions/api/account/[[path]].js
 // POST export), set out to read and keep. Your profile, then sign-in and security, recent activity, preferences,
-// InFlight and Weather, each as rows and tables, A4, page numbers at the foot. Written by pdf.js; text Helvetica can't
+// Chat and Weather, each as rows and tables, A4, page numbers at the foot. Written by pdf.js; text Helvetica can't
 // show is drawn by the page's canvas, in the system's own font.
 
 import { PDF, Flow } from "./pdf.js";
@@ -10,7 +10,7 @@ const day = (t) => (t ? new Date(t).toLocaleDateString("en-GB", { day: "numeric"
 const when = (t) => (t ? `${day(t)}, ${new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "");
 const onOff = (v) => (v ? "On" : "Off");
 const hour = (h) => `${String(h).padStart(2, "0")}:00`;
-// InFlight's notifications, as InFlight names them
+// Chat's notifications, as Chat names them
 const NOTES = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off"], ["rerouted", "A pigeon changes course"], ["lost", "A pigeon is lost"],
   ["delays", "Weather delays"], ["requests", "Friend requests"], ["accepted", "Request accepted"], ["reactions", "Reactions"], ["moments", "Mid-air moments"],
   ["streaks", "Flight streaks"], ["weekly", "Your week in flight"], ["names", "Show names"]];
@@ -81,7 +81,7 @@ export async function dataPdf(data, { did, units }) {
   pdf.text(f.p, tx + pdf.measure(a.email, es) + 8, cy + 71, ok, { size: 8.5, bold: true, color: a.emailConfirmed ? GOOD : WARN });
   if (a.createdAt) pdf.text(f.p, tx, cy + 86, `Your account since ${new Date(a.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`, { size: 9, color: INK3, bg: CARD });
   f.y = cy + ch + 14;
-  f.para("Everything kept with your account that can be read, in every app on the site. Your InFlight letters aren’t here: they’re end-to-end encrypted, with keys only your phones have, so the server can’t read them.", { size: 9.5, color: INK2, after: 4 });
+  f.para("Everything kept with your account that can be read, in every app on the site. Your Chat letters aren’t here: they’re end-to-end encrypted, with keys only your phones have, so the server can’t read them.", { size: 9.5, color: INK2, after: 4 });
 
   // ---- the pieces: sections, labelled rows, tables, figures ----
   // (a heading kept with what follows it: never left alone at the foot of a page)
@@ -167,8 +167,8 @@ export async function dataPdf(data, { did, units }) {
   section("Preferences");
   rows([["Appearance", { auto: "Automatic", light: "Light", dark: "Dark" }[a.appearance] || "Automatic"], ["Units", units(wx.settings || {})]]);
 
-  // ---- InFlight ----
-  section("InFlight", icons.inflight);
+  // ---- Chat ----
+  section("Chat", icons.inflight);
   const pg = inf.pigeons || {};
   figures([[(inf.friends || []).length, "friends"], [(inf.groups || []).length, "groups"], [pg.sent || 0, "pigeons sent"], [pg.received || 0, "pigeons received"],
     [(inf.passport || []).length, "places in your passport"], [(inf.birds || []).length, "birds"]]);

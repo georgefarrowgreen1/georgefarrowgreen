@@ -1,10 +1,10 @@
-// A passkey added on the account's page opens InFlight's messages too, as one added in InFlight does: the device's PRF
+// A passkey added on the account's page opens Chat's messages too, as one added in Chat does: the device's PRF
 // secret for it locks its own copy of the key (made on the page from the password-locked one, the password asked once),
-// so signing in to InFlight with it opens the messages with no password. One added before that can be set up from its
+// so signing in to Chat with it opens the messages with no password. One added before that can be set up from its
 // own page. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in acctlink.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -24,8 +24,8 @@ await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2
 const shot = (n) => p.screenshot({ path: `${out}/${n}.png` });
 const sheetText = () => p.evaluate(() => document.querySelector('#sheet')?.innerText.replace(/\s+/g, ' ').trim() || '');
 
-// an account, with InFlight's key, and no passkey
-await joinInFlight(p, `${CHAT}/`, { name: 'Ivy Moss', handle: 'ivy', email: 'ivy@example.com', password: PW, city: 'London' });
+// an account, with Chat's key, and no passkey
+await joinChat(p, `${CHAT}/`, { name: 'Ivy Moss', handle: 'ivy', email: 'ivy@example.com', password: PW, city: 'London' });
 const uid = rows(`SELECT id FROM pg_users WHERE handle = 'ivy'`)[0].id;
 
 // 1. on the account's page: a passkey added, then (the password once) its own copy of the key
@@ -44,26 +44,26 @@ await shot('01-keycopy');
 await p.fill('#sheet form input[type=password]', 'not my password'); await p.click('#sheet form .btn[type=submit]'); await p.waitForTimeout(1500);
 ok(/isn’t right/.test(await sheetText()) && rows(`SELECT 1 FROM pg_passkeys WHERE user_id = '${uid}' AND vault IS NOT NULL`).length === 0, 'a wrong password: said, and nothing made');
 await p.fill('#sheet form input[type=password]', PW); await p.click('#sheet form .btn[type=submit]');
-await p.waitForFunction(() => /opens your InFlight messages too/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+await p.waitForFunction(() => /opens your Chat messages too/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
 const pk = rows(`SELECT id, vault IS NOT NULL AS v FROM pg_passkeys WHERE user_id = '${uid}'`);
 ok(pk.length === 1 && pk[0].v === 1, 'the right one: the passkey has its own copy of the key', JSON.stringify(pk));
 await p.click(`#sheet .row:has(b:text-is("${await p.$eval('#sheet .row b', (e) => e.textContent).catch(() => 'iPhone')}"))`).catch(() => {});
 await p.waitForTimeout(700);
-ok(/InFlight messages\s*Opens them/.test(await sheetText()), 'its page says it opens the messages', (await sheetText()).slice(0, 200));
+ok(/Chat messages\s*Opens them/.test(await sheetText()), 'its page says it opens the messages', (await sheetText()).slice(0, 200));
 await shot('02-passkey');
 
-// 2. InFlight, signed out, then in with the passkey alone: the messages open, no password asked
+// 2. Chat, signed out, then in with the passkey alone: the messages open, no password asked
 await p.goto(`${CHAT}/`); await p.waitForSelector('.tabs', { timeout: 30000 });
 await p.evaluate(() => new Promise((res) => { const r = indexedDB.deleteDatabase('inflight'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
 await p.evaluate(() => fetch('/api/pigeon/signout', { method: 'POST' }).catch(() => {}));
 await ctx.clearCookies();
 await p.goto(`${CHAT}/`); await p.waitForSelector('.welcome', { timeout: 30000 });
-// (signing in is on the account's page: its passkey, which hands InFlight what opens the passkey's copy of the key)
+// (signing in is on the account's page: its passkey, which hands Chat what opens the passkey's copy of the key)
 await p.click('.welcome [data-act=acctsignin]'); await p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
 await p.waitForSelector('main .btn:has-text("Sign in with a passkey")', { timeout: 20000 }); await p.click('main .btn:has-text("Sign in with a passkey")');
 const where = await Promise.race([p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).then(() => p.waitForSelector('.tabs', { timeout: 30000 })).then(() => 'app'),
   p.waitForFunction(() => /One more step/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 30000 }).then(() => 'password')]).catch(() => 'nothing');
-ok(where === 'app' && /chat\./.test(p.url()), 'signed in to InFlight with the passkey, on the account’s page: the messages open, no password asked', where);
+ok(where === 'app' && /chat\./.test(p.url()), 'signed in to Chat with the passkey, on the account’s page: the messages open, no password asked', where);
 await shot('03-inflight');
 
 // 3. a passkey from before, with no copy: set up from its own page
@@ -73,11 +73,11 @@ if (await p.$('#sheet[open]')) { await p.keyboard.press('Escape'); await p.waitF
 await p.click('main .row:has(b:text-is("Sign-in and security"))'); await p.waitForSelector('#sheet[open]'); await p.waitForTimeout(500);
 await p.click('#sheet .row:has(b:text-is("Passkeys"))'); await p.waitForTimeout(600);
 await p.click('#sheet .group .row >> nth=0'); await p.waitForTimeout(700);
-ok(/InFlight messages\s*Needs your password/.test(await sheetText()), 'one with no copy says so', (await sheetText()).slice(0, 200));
-await p.click('#sheet .row.action:has-text("Use it for InFlight messages")');
+ok(/Chat messages\s*Needs your password/.test(await sheetText()), 'one with no copy says so', (await sheetText()).slice(0, 200));
+await p.click('#sheet .row.action:has-text("Use it for Chat messages")');
 await p.waitForSelector('#sheet form input[type=password]', { timeout: 20000 }).catch(() => {});
 await p.fill('#sheet form input[type=password]', PW); await p.click('#sheet form .btn[type=submit]');
-await p.waitForFunction(() => /opens your InFlight messages too/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+await p.waitForFunction(() => /opens your Chat messages too/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
 ok(rows(`SELECT 1 FROM pg_passkeys WHERE user_id = '${uid}' AND vault IS NOT NULL`).length === 1, 'set up from its page: it has its copy again');
 
 console.log('errs', errs);

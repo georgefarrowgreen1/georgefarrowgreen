@@ -1,6 +1,6 @@
 // Signing in on the account's page, as seamless as it can be: who signed in here last remembered (Not you? forgets
 // them), a passkey asked for in the keyboard as the card's drawn (the passkey button still working past it), a passkey
-// offered after a password sign-in for an app (made there, with its own copy of InFlight's key), the password field's
+// offered after a password sign-in for an app (made there, with its own copy of Chat's key), the password field's
 // eye and Caps Lock line, and the sky's dawn and dusk. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in
 // acctjoin.mjs.
 import { chromium } from 'playwright';
@@ -18,7 +18,7 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${ex
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
-// (each a phone with a passkey maker of its own, one that can hold a copy of InFlight's key: PRF)
+// (each a phone with a passkey maker of its own, one that can hold a copy of Chat's key: PRF)
 // (autofill: a passkey offered in the keyboard, as mapopen.mjs leaves out unless asked)
 async function browser(name, autofill) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE });
@@ -91,7 +91,7 @@ const autofill = await A.p.evaluate(() => PublicKeyCredential.isConditionalMedia
 ok(A.asked.length >= 1 || !autofill, 'the sign-in card asks for a passkey for the keyboard as it\'s drawn, with nothing tapped', `${A.asked.length} asked; conditional ${autofill}`);
 ok(await A.p.getAttribute('main .signin input[name=email]', 'autocomplete') === 'username webauthn', 'its email field offers passkeys (autocomplete "username webauthn")');
 
-// ---- 3. Signed in with a password for an app: a passkey offered on the way back, with InFlight's key copied ----
+// ---- 3. Signed in with a password for an app: a passkey offered on the way back, with Chat's key copied ----
 const B = await browser('rowan-phone');
 await B.p.goto(`${CHAT}/`);
 await B.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 }); await B.p.click('.welcome [data-act=acctsignin]');
@@ -101,13 +101,13 @@ await B.p.fill('main .signin input[name=email]', 'rowan@example.com'); await B.p
 await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main .signin.offer', { timeout: 30000 }).catch(() => {});
 const offer = await text(B, 'main .signin');
-ok(/Next time, just a glance/.test(offer) && /Add a passkey/.test(offer) && /Not now/.test(offer) && /InFlight messages/.test(offer), 'a passkey offered before going back to InFlight', offer);
+ok(/Next time, just a glance/.test(offer) && /Add a passkey/.test(offer) && /Not now/.test(offer) && /Chat messages/.test(offer), 'a passkey offered before going back to Chat', offer);
 await settle(B); await shot(B, '02-offer');
 await B.p.click('main .signin.offer .btn');
 await B.p.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 40000 }).catch(() => {});
 await B.p.waitForSelector('.tabs, #city', { state: 'attached', timeout: 40000 }).catch(() => {});
 const pk = rows("SELECT COUNT(*) AS n, SUM(p.vault IS NOT NULL) AS v FROM pg_passkeys p JOIN pg_users u ON u.id = p.user_id WHERE u.handle = 'rowan'")[0];
-ok(!B.p.url().includes('account.') && pk?.n === 1 && pk.v === 1, 'Add a passkey: made, with its own copy of InFlight\'s key, and back in InFlight', JSON.stringify(pk));
+ok(!B.p.url().includes('account.') && pk?.n === 1 && pk.v === 1, 'Add a passkey: made, with its own copy of Chat\'s key, and back in Chat', JSON.stringify(pk));
 
 // ---- 4. Last time with a passkey: that one first, the password a tap away ----
 await open(B, `${ACCT}/`);

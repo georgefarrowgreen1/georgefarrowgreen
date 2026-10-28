@@ -44,7 +44,7 @@ import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonVie
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs } from "../../_notify.js";
 
-// All of InFlight's API lives under /api/pigeon/*. One router keeps the
+// All of Chat's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
 
 const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters of text is far less)
@@ -61,7 +61,7 @@ async function meOf(D, u, t) { return { ...meView(u, t), skin: await skinNow(D, 
 
 /* ---------------- accounts ----------------
    New accounts are made on the account's own page (account.inflite.ai: functions/_join.js), with an
-   invite; forgotten passwords are reset there too; and you sign in there, InFlight being handed the sign-in back, with
+   invite; forgotten passwords are reset there too; and you sign in there, Chat being handed the sign-in back, with
    what unlocks its key (handback: functions/_handback.js). (A copy of the app from before that still asks here is
    told where to go.) */
 const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.inflite.ai.`, "moved"); };
@@ -69,7 +69,7 @@ const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at a
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
 // nothing but this (and password resets, which prove the same thing). The email is the
 // account's (from "Account", to its page: functions/_account.js), as it's the account's
-// address; InFlight's older #verify= links still work.
+// address; Chat's older #verify= links still work.
 const CONFIRM_TTL = 7 * DAY;
 async function sendConfirm(env, u, request) {
   if (!emailReady(env)) return false;
@@ -106,8 +106,8 @@ async function salt({ request, env }) {
   return json({ salt: await saltFor(env, request, (await body(request)).email) });
 }
 
-// Signed in on the account's page, for InFlight (functions/_handback.js): the code it was handed back with, and the
-// word the app kept for it, swapped for InFlight's own sign-in (as fresh as the page's, no fresher); with the
+// Signed in on the account's page, for Chat (functions/_handback.js): the code it was handed back with, and the
+// word the app kept for it, swapped for Chat's own sign-in (as fresh as the page's, no fresher); with the
 // password-locked key, and the passkey's own copy where it was a passkey that can open it, for what the page sealed to
 // the app to unlock (box). Where the browser shares the site's sign-in, it's the one the page just made, moved to this
 // one (as Continue as did), with all that was the page's; where it doesn't (a test server's separate addresses), this
@@ -344,7 +344,7 @@ async function passkeyRegister({ request, env, waitUntil }) {
   requireFresh(u);
   const b = await body(request);
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
-  if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
+  if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type Chat doesn’t support.");
   if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
   const count = await checkRegistration(request, env, b);
   const D = await db(env), provider = providerOf(b.authenticatorData);
@@ -378,7 +378,7 @@ async function pinsPut({ request, env }) {
   await (await db(env)).prepare("UPDATE pg_users SET pins = ? WHERE id = ?").bind(s, u.id).run();
   return json({ ok: true });
 }
-// Your profile (photo, name, handle) is the account's, edited on its own page (account.<site>): InFlight hands its
+// Your profile (photo, name, handle) is the account's, edited on its own page (account.<site>): Chat hands its
 // sign-in over with a code good once, for a minute, so the page opens signed in as you, in whatever browser it opens in
 // (a Home Screen app's links open in the browser, which has its own cookies). The code goes in the address's #, never
 // to a server, and the page swaps it straight away (functions/api/account handoff).
@@ -1096,7 +1096,7 @@ async function notifyPasskeyAdded(env, u, label, request) {
   await accountMail(env, u, { icon: "passkey", title: "A passkey was added", subject: "A passkey was added to your account",
     line: `a new passkey (“${label}”) can now sign in to your account.`,
     after: "If this wasn’t you, remove it in Passkeys and change your password straight away.",
-    pill: ["passkey", label], rows: [["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
+    pill: ["passkey", label], rows: [["Added in", "Chat"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
 
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
@@ -1110,7 +1110,7 @@ async function pwned({ request, env }) {
   await limit(env, "pwned:" + clientIp(request), 40, 15 * 60e3);
   const p = new URL(request.url).searchParams.get("p") || "";
   if (!/^[0-9A-F]{5}$/.test(p)) throw new HttpError(400, "Send the first 5 characters of the hash.");
-  const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.inflite.ai)" } }).catch(() => null);
+  const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "Chat (chat.inflite.ai)" } }).catch(() => null);
   const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
   return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
@@ -1187,7 +1187,7 @@ async function adminStorage({ request, env }) {
   await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await storageReport(env, await db(env), Date.now()));
 }
-// How InFlight is used, in totals (functions/_insights.js)
+// How Chat is used, in totals (functions/_insights.js)
 async function adminInsights({ request, env }) {
   await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await insights(env, await db(env), Date.now()));
@@ -1283,12 +1283,12 @@ async function adminTestEmail({ request, env }) {
   const to = ownerEmail(env);
   const { text, html } = emailBody({
     brand: "inflight", origin: linkOrigin(request), icon: "bird", title: "Email is working",
-    preheader: "InFlight can send password resets and notifications.",
+    preheader: "Chat can send password resets and notifications.",
     lines: ["This is a test from the site’s admin. Password resets and notifications will arrive just like this."],
     pill: ["mail", emailFrom(env, "inflight").replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
     button: { label: "Back to admin", url: `${accountPage(request, env)}/#admin` },
   });
-  await sendEmail(env, { brand: "inflight", to, subject: "InFlight email is working", text, html }, { explain: true });
+  await sendEmail(env, { brand: "inflight", to, subject: "Chat email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);
   return json({ message: `Test email sent to ${to} from ${emailFrom(env, "inflight")}. Check your inbox.` });
 }
@@ -1377,7 +1377,7 @@ async function pushUnsubscribe({ request, env }) {
 async function pushTest({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, "pushtest:" + u.id, 10, 60 * 60e3);
-  const n = await pushTo(env, u.id, { title: "InFlight", body: "Notifications are on. You’ll hear when a pigeon lands.", tag: "test", url: "/pigeon/" });
+  const n = await pushTo(env, u.id, { title: "Chat", body: "Notifications are on. You’ll hear when a pigeon lands.", tag: "test", url: "/pigeon/" });
   return json({ sent: n });
 }
 async function notifyTick({ request, env }) {
@@ -1387,7 +1387,7 @@ async function notifyTick({ request, env }) {
 // The link at the bottom of notification emails. GET shows a button (so mail
 // scanners that follow links don't unsubscribe anyone); POST turns email off,
 // which also serves one-click unsubscribe (RFC 8058).
-const unsubPage = (title, msg, form) => new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>InFlight Emails</title>
+const unsubPage = (title, msg, form) => new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>Chat Emails</title>
 <style>
   :root{--bg:#f2f2f7;--card:#fff;--label:#1c1c1e;--label-2:#6e6e73;--tint:#0a7aff}
   @media (prefers-color-scheme:dark){:root{--bg:#1c1c1f;--card:#2a2a2e;--label:#f5f5f7;--label-2:#a1a1a6;--tint:#3d9bff}}
@@ -1401,7 +1401,7 @@ const unsubPage = (title, msg, form) => new Response(`<!doctype html><html lang=
   .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;border:0;border-radius:999px;background:var(--tint);color:#fff;font:600 17px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;text-decoration:none;cursor:pointer}
   .btn.plain{background:none;color:var(--tint);margin-top:6px}
 </style></head>
-<body><main><img src="/pigeon/icon-192.png" alt=""><h1>${title}</h1><p>${msg}</p>${form || `<a class="btn" href="/pigeon/">Open InFlight</a>`}</main></body></html>`,
+<body><main><img src="/pigeon/icon-192.png" alt=""><h1>${title}</h1><p>${msg}</p>${form || `<a class="btn" href="/pigeon/">Open Chat</a>`}</main></body></html>`,
   { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
 async function unsubUser(env, request) {
@@ -1410,16 +1410,16 @@ async function unsubUser(env, request) {
   return u && u.unsub && safeEqual(u.unsub, tok) ? u : null;
 }
 async function unsubscribeGet({ request, env }) {
-  if (!(await unsubUser(env, request))) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in InFlight, under Account → Notifications.");
+  if (!(await unsubUser(env, request))) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in Chat, under Account → Notifications.");
   const q = new URL(request.url).search.replace(/"/g, "");
   return unsubPage("Turn off emails?", "You won’t get emails when pigeons land or friends add you. Notifications on your phone aren’t affected.",
     `<form method="post" action="/api/pigeon/unsubscribe${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="/pigeon/">Keep Them On</a>`);
 }
 async function unsubscribePost({ request, env }) {
   const u = await unsubUser(env, request);
-  if (!u) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in InFlight, under Account → Notifications.");
+  if (!u) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in Chat, under Account → Notifications.");
   await (await db(env)).prepare("UPDATE pg_users SET notify_email = 0 WHERE id = ?").bind(u.id).run();
-  return unsubPage("Emails turned off", "InFlight won’t email you any more. You can turn them back on any time in Account → Notifications.");
+  return unsubPage("Emails turned off", "Chat won’t email you any more. You can turn them back on any time in Account → Notifications.");
 }
 
 const ROUTES = {
@@ -1442,7 +1442,7 @@ const ROUTES = {
 };
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
-// (and InFlight's own address, chat.inflite.ai, or the tests' own for it: CHAT_HOST, functions/_app.js)
+// (and Chat's own address, chat.inflite.ai, or the tests' own for it: CHAT_HOST, functions/_app.js)
 const hostOk = (h, env) => HOSTS.test(h) || isChat({ hostname: h }, env);
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);

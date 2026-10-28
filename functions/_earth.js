@@ -1,4 +1,4 @@
-// The Earth itself, for InFlight's pigeons, from two free sources with no key:
+// The Earth itself, for Chat's pigeons, from two free sources with no key:
 //
 // - Magnetic storms: NOAA's Space Weather Prediction Center publishes the
 //   planetary K index (Kp, 0 to 9), observed and forecast three days ahead.
@@ -18,7 +18,7 @@
 
 import { HOUR, haversineKm } from "./_pigeon.js";
 
-const KEEP = 30 * 60e3, KEEP_FAILED = 5 * 60e3, UA = "InFlight/1.0 (https://chat.inflite.ai/)";
+const KEEP = 30 * 60e3, KEEP_FAILED = 5 * 60e3, UA = "Chat/1.0 (https://chat.inflite.ai/)";
 export const MAG_KP = 5;
 // how much ash or smoke a pigeon keeps clear of (km from the volcano or the fire)
 export const HAZARD_KM = { volcanoes: 120, wildfires: 40 };

@@ -1,8 +1,8 @@
 # Cloudflare Pages headers (https://developers.cloudflare.com/pages/configuration/headers/)
-# The whole site shares an origin with InFlight (/pigeon), whose keys live in
+# The whole site shares an origin with Chat (/pigeon), whose keys live in
 # this origin's storage, so every page here runs only its own scripts too
 # (plus Cloudflare Web Analytics' beacon, which Cloudflare injects and pins
-# with a hash; InFlight's own pages leave it out).
+# with a hash; Chat's own pages leave it out).
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
@@ -32,7 +32,7 @@
 /mail/*
   X-Robots-Tag: noindex
 
-# InFlight (/pigeon): allow location and passkeys here only, and lock the app
+# Chat (/pigeon): allow location and passkeys here only, and lock the app
 # down to its own scripts, since it handles private keys.
 /pigeon/*
   ! Permissions-Policy
@@ -47,7 +47,7 @@
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   Cache-Control: no-cache
 
-# InFlight map data never changes once published, so phones can keep it a week.
+# Chat map data never changes once published, so phones can keep it a week.
 /pigeon/map/*
   ! Cache-Control
   Cache-Control: public, max-age=604800

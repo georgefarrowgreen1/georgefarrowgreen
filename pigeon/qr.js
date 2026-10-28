@@ -1,4 +1,4 @@
-// QR codes for InFlight's add-a-friend links, made on the phone (no service
+// QR codes for Chat's add-a-friend links, made on the phone (no service
 // sees them). Byte mode, error correction level M, versions 1 to 10: plenty
 // for a link. After Project Nayuki's QR Code generator (MIT), cut down.
 

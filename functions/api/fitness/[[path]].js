@@ -284,7 +284,7 @@ export async function onRequest(ctx) {
     : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
     : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
-  // (only at Fitness's own address; the scheduler's turn at the site's own, as InFlight's and Weather's are)
+  // (only at Fitness's own address; the scheduler's turn at the site's own, as Chat's and Weather's are)
   const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";
   if (!route || !(isFitness(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
   try { return await route({ ...ctx, id }); }

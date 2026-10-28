@@ -17,7 +17,7 @@ ok(await open() === 0, 'it never pops up on its own, even after an update');
 await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700);
 await G.p.locator('#screen > main.view .aver').scrollIntoViewIfNeeded();
 const ver = await G.p.locator('#screen > main.view .aver .averbtn').innerText();
-ok(ver.includes(`InFlight ${V}`), `the version, ${V}, at the foot of Account`, ver);
+ok(ver.includes(`Chat ${V}`), `the version, ${V}, at the foot of Account`, ver);
 await G.p.screenshot({ path: `${out}/account-version.png` });
 await G.p.click('#screen > main.view .aver .averbtn'); await G.p.waitForSelector('.sheet .wnhero'); await G.p.waitForTimeout(1200);
 const heads = await G.p.locator('.sheet .ghead').allInnerTexts(), rows = await G.p.locator('.sheet .wnrow b').allInnerTexts();

@@ -6,7 +6,7 @@
 // gives it to the browser as a cookie for the whole site as well: HttpOnly (no page's own script can read it),
 // SameSite=Lax, and Secure. So signed in for one app, you're signed in to the others in that browser, and signing out
 // of any of them ends the session for them all. The cookie carries a token of its own for the session (site_hash), not
-// the session's bearer token: it opens nothing of InFlight's. An app that keeps its own copy of the session (InFlight's
+// the session's bearer token: it opens nothing of Chat's. An app that keeps its own copy of the session (Chat's
 // bearer token, for its keys and its messages) carries on with that; with none, it gets one only from a hand-back,
 // which brings what unlocks its key; one that keeps nothing (Weather) asks with the cookie each time, for its own things
 // only, and only from its own pages (sameOrigin). The cookie's only given in answer to a sign-in from the site's own
@@ -65,7 +65,7 @@ export function withoutSession(res, request, env) {
   return res;
 }
 // The account the browser's signed in to on the site, from its cookie (null if none, or if it's ended). (inflight: asked
-// by InFlight, so a day of it; another app's use keeps the sign-in going without counting as InFlight's)
+// by Chat, so a day of it; another app's use keeps the sign-in going without counting as Chat's)
 // An account being deleted (functions/api/account) is signed in only on its own page, to keep it (deleting).
 export async function cookieUser(request, env, inflight = false, { deleting = false } = {}) {
   const token = cookieToken(request, env);
@@ -187,7 +187,7 @@ export async function accountMail(env, u, { icon = "shield", title, line, after,
   return true;
 }
 
-// "A new sign-in", to the account's phones (in InFlight, as InFlight says it, with where to sign it out) and by email,
+// "A new sign-in", to the account's phones (in Chat, as Chat says it, with where to sign it out) and by email,
 // from the account, saying which app it was in (or for, signed in on the account's page for an app: inflight, or
 // forApp "weather")
 export async function tellSignIn(env, u, request, how, origin, inflight = true, forApp = null) {
@@ -195,10 +195,10 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true, 
   const device = deviceOf(request) || "a new phone";
   let where = regionOf(request.cf?.country);
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
-  const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your InFlight account" : "Your account";
+  const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your Chat account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   const host = new URL(request.url).hostname;
-  const app = inflight ? "InFlight" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : "Account page";
+  const app = inflight ? "Chat" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : "Account page";
   // (where it was, once, in the pill: the words and the details don't say it again)
   await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account", pill: ["phone", [device, where.replace(/^the /, "")].filter(Boolean).join(" · ")],
     line: "someone just signed in to your account. If it was you, there’s nothing to do.",

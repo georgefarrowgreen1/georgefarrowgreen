@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import http from 'http';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q.replace(/"/g, '\\"')}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -128,8 +128,8 @@ ok(!(await V.p.evaluate(() => document.querySelector('#contact-sheet').open || d
 
 // ---- 3. The owner: their account (the site owner's email, confirmed); someone else's ----
 const G = await browser('owner'), P = await browser('pat');
-await joinInFlight(G.p, `${CHAT}/`, { name: 'Gail Owner', handle: 'gail', email: 'owner@example.com', password: PW, city: 'London', passkey: true });
-await joinInFlight(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
+await joinChat(G.p, `${CHAT}/`, { name: 'Gail Owner', handle: 'gail', email: 'owner@example.com', password: PW, city: 'London', passkey: true });
+await joinChat(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
 const gail = idOf('gail'), pat = idOf('pat');
 sql(`UPDATE pg_users SET email_ok = 1 WHERE id = '${gail}'`);
 await signInHome(P); await signInHome(G);

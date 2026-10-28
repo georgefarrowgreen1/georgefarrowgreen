@@ -1,5 +1,5 @@
 // The account's own page, at account.<site>: signed in already where the site is (the shared sign-in), your profile
-// (name, handle, photo), your apps, a new password (the key locked anew with it, so InFlight still opens with it), passkeys
+// (name, handle, photo), your apps, a new password (the key locked anew with it, so Chat still opens with it), passkeys
 // (added, after showing it's you; taken away), signed-in devices (one signed out from another), signing out and in
 // (password, passkey), and deleting the account; its API only at its own address and only from its own pages; and how it
 // looks, dark and light. And: the security check-up, confirming the email and changing it (by the emails' links), the
@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import http from 'http';
-import { joinInFlight, signInInFlight } from './join.mjs';
+import { joinChat, signInChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -73,23 +73,23 @@ const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet 
 // the once-a-minute tick (its housekeeping, now, whenever it last ran)
 const tick = async (x) => { sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'"); return req(x, `${CHAT}/api/pigeon/notify-tick`, { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } }); };
 
-// ---- 1. An account made here, then InFlight (with a passkey): the account's page in the same browser is signed in ----
+// ---- 1. An account made here, then Chat (with a passkey): the account's page in the same browser is signed in ----
 const L = await browser('laptop');
-await joinInFlight(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London', passkey: true });
-// (InFlight's ways here: its account card, and InFlight Settings)
+await joinChat(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London', passkey: true });
+// (Chat's ways here: its account card, and Chat Settings)
 await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForSelector('#screen > main.view [data-act=ifsettings]', { timeout: 15000 }).catch(() => {});
-ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(await text(L, '#screen > main.view [data-act=ifsettings]')), 'InFlight leads here, without naming any other app');
+ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(await text(L, '#screen > main.view [data-act=ifsettings]')), 'Chat leads here, without naming any other app');
 // (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in
 // this tab, where the browser's signed in already)
 await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
-ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home) && /Fitness/.test(home), 'your apps: all three of them', home);
+ok(/Your apps/i.test(home) && /Chat/.test(home) && /Weather/.test(home) && /Fitness/.test(home), 'your apps: all three of them', home);
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
 ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/`, 'each app\'s card opens the app, on this site', opens.join());
 const links = [];
-for (const name of ['InFlight', 'Weather', 'Fitness']) {
+for (const name of ['Chat', 'Weather', 'Fitness']) {
   await L.p.click(`main .app:has(b:text-is("${name}")) .about`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
   links.push(await L.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))); await closeSheet(L);
 }
@@ -101,7 +101,7 @@ const ckRow = await secRow(L);
 ok(!(await L.p.$('main .checkup')) && /Sign-in and security 1 to do/.test(ckRow) && !/Passkeys|Security check-up/.test(home), 'the check-up isn\'t on the page itself: the row for Sign-in and security says how it stands', ckRow);
 await openRow(L, 'Sign-in and security');
 const sec = await sheetText(L);
-ok(/Passkeys 1/.test(sec) && /Signed-in devices (1|This \w+)/.test(sec), 'sign-in and security: the passkey made in InFlight, and this device', sec.match(/Passkeys \S+|Signed-in devices (This )?\S+/g)?.join(' | '));
+ok(/Passkeys 1/.test(sec) && /Signed-in devices (1|This \w+)/.test(sec), 'sign-in and security: the passkey made in Chat, and this device', sec.match(/Passkeys \S+|Signed-in devices (This )?\S+/g)?.join(' | '));
 ok(/Password Set today/.test(sec) && /Recent activity Today/.test(sec), 'each row says how things are: the password set today, the latest activity today', sec.match(/Password \S+ \S+|Recent activity \S+/g)?.join(' | '));
 const ck = await text(L, '#sheet .checkup');
 ok(/1 thing to do/.test(ck) && /Confirm your email/.test(ck) && /Passkey saved/.test(ck) && /Password not in a known data breach/.test(ck) && /No devices left unused/.test(ck),
@@ -136,7 +136,7 @@ ok(xo.status() === 403 && xp.status() === 403 && user('rowan').name === 'Rowan H
 const n0 = mails().length;
 await L.p.click('.banner .mini');
 const cm = await waitMail('rowan@example.com', /Confirm your email for your account/, 15000, n0);   // (the one just sent: it replaces the one sent when the account was made)
-ok(cm && tokenIn(cm, 'confirm') && /georgefarrowgreen\.com/.test(cm.html) && !/>InFlight</.test(cm.html), 'a confirm link, as the account\'s (no app named)', cm?.subject);
+ok(cm && tokenIn(cm, 'confirm') && /georgefarrowgreen\.com/.test(cm.html) && !/>Chat</.test(cm.html), 'a confirm link, as the account\'s (no app named)', cm?.subject);
 await L.p.goto('about:blank'); await L.p.goto(`${ACCT}/#confirm=${tokenIn(cm, 'confirm')}`); await L.p.waitForSelector('main:not([aria-busy])'); await settle(L);
 ok(user('rowan').email_ok > 0 && /Your email is confirmed/.test(await text(L, '#toast')) && !(await L.p.$('.banner')) && (await L.p.url()) === `${ACCT}/`,
   'opened: confirmed, said, the banner gone, the link out of the address bar', await text(L, '#toast'));
@@ -194,7 +194,7 @@ ok(photo[0]?.[0] === 512 && photo[0]?.[1] === 512 && photo[1]?.[0] === 1000 && p
   'a photo: the middle square, 512 pixels, for every app, and the whole of it for your card, shown at once', JSON.stringify(photo));
 await shot(L, '04-photo');
 
-// ---- 4. A new password: the key locked anew with it, here; InFlight opens with it on a new phone ----
+// ---- 4. A new password: the key locked anew with it, here; Chat opens with it on a new phone ----
 await openSecure(L, 'Password');
 await shot(L, '05-password');
 const pwField = (n) => `#sheet .field:has(span:text-is("${n}")) input`;
@@ -219,15 +219,15 @@ await L.p.waitForSelector('#sheet', { state: 'hidden', timeout: 40000 }).catch((
 await settle(L, 300);
 ok(user('rowan_h').salt !== salt0 && /Password changed/.test(await text(L, '#toast')), 'changed: a new salt, and said', await text(L, '#toast'));
 const Ph = await browser('phone');
-await signInInFlight(Ph.p, `${CHAT}/`, { email: 'rowan@example.com', password: PW2 });
+await signInChat(Ph.p, `${CHAT}/`, { email: 'rowan@example.com', password: PW2 });
 const opened = await Ph.p.waitForSelector('.tabs', { timeout: 40000 }).then(() => true).catch(() => false);
-ok(opened, 'InFlight on a new phone opens with the new password: the key it locks came through whole');
+ok(opened, 'Chat on a new phone opens with the new password: the key it locks came through whole');
 
 // ---- 5. Passkeys: a name of your own; adding one needs you to show it's you; one's taken away ----
 sql(`UPDATE pg_sessions SET auth_at = 0 WHERE user_id = '${user('rowan_h').id}'`);
 await account(L);
 await openSecure(L, 'Passkeys');
-ok((await L.p.$$('#sheet .row')).length === 1 && /added/.test(await sheetText(L)), 'your passkeys: the one from InFlight', await sheetText(L));
+ok((await L.p.$$('#sheet .row')).length === 1 && /added/.test(await sheetText(L)), 'your passkeys: the one from Chat', await sheetText(L));
 await L.p.click('#sheet .row'); await L.p.waitForSelector('#sheet .field input'); await settle(L, 500);
 ok(/Saved in/.test(await sheetText(L)) && /Last used/.test(await sheetText(L)), 'one passkey: where it\'s saved, when added and last used', await sheetText(L));
 await shot(L, '08-passkey');
@@ -249,7 +249,7 @@ await L.p.click(rm);
 await L.p.waitForFunction(() => /No passkeys yet/.test(document.getElementById('sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${user('rowan_h').id}'`).length === 0, 'taken away (no asking again: it\'s been shown it\'s you), and back to the list');
 await L.p.click('#sheet .btn:has-text("Add a passkey")');
-// (then a word on InFlight's messages, which a passkey can open too: not now, here)
+// (then a word on Chat's messages, which a passkey can open too: not now, here)
 await L.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await L.p.waitForFunction(() => document.querySelectorAll('#sheet .row').length === 1, null, { timeout: 20000 }).catch(() => {});
 const pks = rows(`SELECT label FROM pg_passkeys WHERE user_id = '${user('rowan_h').id}'`);
@@ -258,7 +258,7 @@ await closeSheet(L);
 
 // ---- 6. Signed-in devices: the phone's, unused for months, signed out from the laptop; the phone's page notices ----
 await account(Ph);
-ok(/Rowan Ash Hale/.test(await text(Ph)), 'on the phone: signed in already, from InFlight there');
+ok(/Rowan Ash Hale/.test(await text(Ph)), 'on the phone: signed in already, from Chat there');
 sql(`UPDATE pg_sessions SET seen_at = ${Date.now() - 100 * 86400e3} WHERE user_id = '${user('rowan_h').id}' AND created_at = (SELECT MAX(created_at) FROM pg_sessions WHERE user_id = '${user('rowan_h').id}')`);
 await account(L);
 await openRow(L, 'Sign-in and security');
@@ -281,7 +281,7 @@ ok(/Sign in with a passkey/.test(await text(Ph)) && /signed out/.test(await text
 await openSecure(L, 'Recent activity');
 await L.p.waitForSelector('#sheet .day', { timeout: 15000 }).catch(() => {});
 const act = await sheetText(L);
-ok(/today/i.test(act) && /Signed in/.test(act) && /Password changed/.test(act) && /Passkey added/.test(act) && /Passkey removed/.test(act) && /Signed out 1 unused device/.test(act) && /Email confirmed/.test(act) && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'InFlight') && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'Account'),
+ok(/today/i.test(act) && /Signed in/.test(act) && /Password changed/.test(act) && /Passkey added/.test(act) && /Passkey removed/.test(act) && /Signed out 1 unused device/.test(act) && /Email confirmed/.test(act) && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'Chat') && (await L.p.$$eval('#sheet .app-mark', (m) => m.map((i) => i.alt))).some((a) => a === 'Account'),
   'recent activity: sign-ins, the new password, passkeys, devices and the email, with the app each was in', act.replace(/ · [^·]*Safari · [^0-9A-Z]*/g, ' ').slice(0, 900));
 await settle(L, 500);
 await shot(L, '11-activity');
@@ -305,10 +305,10 @@ const changed = await waitMail('rowan@example.com', /email was changed/);
 ok(user('rowan_h').email === 'rowan.hale@example.com' && user('rowan_h').email_ok > 0 && changed,
   'opened: the email\'s changed (and confirmed), and the old one told', await text(L, '#toast'));
 
-// ---- 6d. Preferences: appearance (here and InFlight) and units (Weather); your data as a file ----
+// ---- 6d. Preferences: appearance (here and Chat) and units (Weather); your data as a file ----
 await openRow(L, 'Appearance');
 await L.p.click('#sheet .appear:has-text("Light")'); await settle(L, 900);
-ok(await L.p.evaluate(() => document.documentElement.dataset.theme) === 'light' && user('rowan_h').appearance === 'light', 'Light: here at once, and kept for the account (InFlight\'s own setting)');
+ok(await L.p.evaluate(() => document.documentElement.dataset.theme) === 'light' && user('rowan_h').appearance === 'light', 'Light: here at once, and kept for the account (Chat\'s own setting)');
 await shot(L, '13-appearance');
 await L.p.click('#sheet .appear:has-text("Automatic")'); await settle(L, 600);
 ok(await L.p.evaluate(() => !document.documentElement.dataset.theme) && user('rowan_h').appearance === 'auto', 'back to Automatic');
@@ -319,19 +319,19 @@ await shot(L, '14-units');
 const wxs = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').settings || {};
 ok(wxs.temp === 'f' && wxs.wind === 'kmh', 'units: kept in Weather\'s record for the account, for every device it\'s on', JSON.stringify(wxs));
 await closeSheet(L);
-// ---- emails: what each app sends you; InFlight's turned on here ----
+// ---- emails: what each app sends you; Chat's turned on here ----
 const emRow = () => L.p.locator('main .row:has(b:text-is("Emails"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(/Emails Security only/.test(await emRow()), 'emails: the account\'s, about signing in, always; InFlight\'s off to start with', await emRow());
+ok(/Emails Security only/.test(await emRow()), 'emails: the account\'s, about signing in, always; Chat\'s off to start with', await emRow());
 await openRow(L, 'Emails');
 const em = await sheetText(L);
 ok(/Sign-ins and security/.test(em) && /Always on/.test(em) && /Notifications by email/.test(em) && /Warnings Official warnings, for the places you choose in Weather/.test(em)
   && /Morning briefing For the place you choose in Weather/.test(em) && /Rain alerts stay on your phone/.test(em) && !(await L.p.$eval('#sheet input.switch', (e) => e.disabled)),
-  'its page: the account\'s always on, InFlight\'s a switch, Weather\'s warnings and briefing a switch each', em);
+  'its page: the account\'s always on, Chat\'s a switch, Weather\'s warnings and briefing a switch each', em);
 await L.p.click('#sheet input.switch'); await settle(L, 1000);
 const ne = rows("SELECT notify_email FROM pg_users WHERE handle = 'rowan_h'")[0]?.notify_email;
-ok(ne === 1, 'InFlight\'s emails turned on from here', String(ne));
+ok(ne === 1, 'Chat\'s emails turned on from here', String(ne));
 await closeSheet(L);
-ok(/Emails InFlight/.test(await emRow()), 'and its row says which app emails', await emRow());
+ok(/Emails Chat/.test(await emRow()), 'and its row says which app emails', await emRow());
 await openRow(L, 'Emails');
 for (const k of ['Warnings', 'Morning briefing']) { await L.p.click(`#sheet label.row:has(b:text-is("${k}")) input.switch`); await settle(L, 1000); }
 await shot(L, '14b-emails');
@@ -347,7 +347,7 @@ const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 60000 })
 const data = await L.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(data.account?.handle === 'rowan_h' && data.account.email === 'rowan.hale@example.com' && /^data:image\/jpeg;base64,/.test(data.account.photo || '') && Array.isArray(data.inflight?.friends)
   && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'georgefarrowgreen-account-rowan_h.pdf',
-  'your data: the profile and photo, sign-in, InFlight\'s and Weather\'s, as a file (and why the letters aren\'t in it)', dl.suggestedFilename());
+  'your data: the profile and photo, sign-in, Chat\'s and Weather\'s, as a file (and why the letters aren\'t in it)', dl.suggestedFilename());
 await closeSheet(L);
 
 // ---- 7. Signed out: how it looks; signing in with a password (wrong first), and with a passkey ----
@@ -371,7 +371,7 @@ ok(/Rowan Ash Hale/.test(await text(L)), 'signed in with the passkey added here'
 
 // ---- 8. Light mode, and a wide screen ----
 const D = await browser('light', { scheme: 'light' });
-await signInInFlight(D.p, `${CHAT}/`, { email: 'rowan.hale@example.com', password: PW2 }); await D.p.waitForSelector('.tabs', { timeout: 40000 });
+await signInChat(D.p, `${CHAT}/`, { email: 'rowan.hale@example.com', password: PW2 }); await D.p.waitForSelector('.tabs', { timeout: 40000 });
 await account(D);
 const bg = await D.p.evaluate(() => getComputedStyle(document.body).color);
 ok(bg === 'rgb(13, 16, 32)', 'light mode: dark text on the dawn sky', bg);
@@ -405,12 +405,12 @@ ok(del && del.delete_at > Date.now() + 6.9 * 86400e3 && /will be deleted on/.tes
   'asked: to be deleted in 7 days, and signed out everywhere', await text(L, '#toast'));
 const km = await waitMail('rowan.hale@example.com', /will be deleted/);
 ok(tokenIn(km, 'keep'), 'an email with a link to keep it', km?.subject);
-// InFlight won't sign in to it: its Sign in, on this page, stays here, to keep it
+// Chat won't sign in to it: its Sign in, on this page, stays here, to keep it
 await Ph.p.goto(`${CHAT}/`); await Ph.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 20000 }); await Ph.p.click('.welcome [data-act=acctsignin]');
 await Ph.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 });
 await signInPw(Ph, 'rowan.hale@example.com', PW2);
 await Ph.p.waitForFunction(() => /being deleted/.test(document.body.innerText), null, { timeout: 30000 }).catch(() => {});
-ok(/being deleted/.test(await Ph.p.evaluate(() => document.body.innerText)) && !(await Ph.p.$('.tabs')), 'InFlight won\'t sign in to it, and says where to keep it');
+ok(/being deleted/.test(await Ph.p.evaluate(() => document.body.innerText)) && !(await Ph.p.$('.tabs')), 'Chat won\'t sign in to it, and says where to keep it');
 await signInPw(L, 'rowan.hale@example.com', PW2);
 await waitText(L, /being deleted/);
 await settle(L, 600);

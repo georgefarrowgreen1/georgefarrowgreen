@@ -1292,7 +1292,7 @@ addEventListener("scroll", () => document.documentElement.style.setProperty("--b
 // on this device for half an hour, or until it's used), and back with a code for it (signedBack)
 // Signed out: Fitness's own morning sky, and a course across the foot of it, hills behind hills, its route drawing
 // itself along the ridge in the zones' colours and you, a dot of light, riding it; the mark coming up out of the haze,
-// its name a letter at a time, and Sign in, warm, pulsing as a heart does. (InFlight's welcome, in Fitness's world.)
+// its name a letter at a time, and Sign in, warm, pulsing as a heart does. (Chat's welcome, in Fitness's world.)
 // again: shown before in this visit (after signing out): no slow start, the rest as it was
 function welcome(note = null, { again = !!welcome.shown } = {}) {
   welcome.shown = true;
@@ -1355,7 +1355,7 @@ async function toAccountSignIn(e, mode = "signin") {
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 
-// ---- signing in and out, in motion, as InFlight does it: going, the account page's sky comes in over Fitness; coming
+// ---- signing in and out, in motion, as Chat does it: going, the account page's sky comes in over Fitness; coming
 // back, that sky and you are there from the first frame (theme.js), then the sky clears, your picture flies up into
 // your own button, and the page comes in a part at a time; signing out, the page goes, a part at a time, and the
 // morning comes back in ----

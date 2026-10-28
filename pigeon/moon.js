@@ -1,4 +1,4 @@
-// InFlight — space, on the phone: the pictures (the Moon and Mars to pick a spot on, and a
+// Chat — space, on the phone: the pictures (the Moon and Mars to pick a spot on, and a
 // pigeon on its way: to the Moon, across it, by laser to Mars, or round the Earth in orbit).
 // The numbers are pigeon/space.js, shared with the server (functions/_moon.js).
 import { LAND } from "./land.js";
@@ -125,7 +125,7 @@ function halo(ctx, cx, cy, R, rgb, a) {
   ctx.fillStyle = g; ctx.fillRect(cx - R * 1.4, cy - R * 1.4, R * 2.8, R * 2.8);
 }
 // The land as a 0.5° grid (1: land), from the coastlines: once, the first time it's needed.
-// Rings are joined across the date line and Antarctica closed over its pole, as on InFlight Live.
+// Rings are joined across the date line and Antarctica closed over its pole, as on Chat Live.
 let LANDMAP = null;
 function landMap() {
   if (LANDMAP) return LANDMAP;

@@ -1,4 +1,4 @@
-// GIF search for InFlight, through this server so GIPHY never sees who is
+// GIF search for Chat, through this server so GIPHY never sees who is
 // searching: it gets the search words from this server, not from anyone's
 // phone, and the GIFs themselves are fetched here too. A GIF someone picks is
 // then sent like any other: sealed on their phone, so GIPHY never learns what

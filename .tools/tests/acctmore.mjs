@@ -1,5 +1,5 @@
 // The account page's newer touches (acctpage.mjs has the rest): the photo changed by tapping it; your code (a QR code of
-// the link that adds you in InFlight, and the link copied); what each app keeps of yours, in its sheet (InFlight's
+// the link that adds you in Chat, and the link copied); what each app keeps of yours, in its sheet (Chat's
 // counts, pigeons sent counted as its log does; Weather's places, notifications and units); a word about a passkey after
 // a password sign-in, only where the device can make one, and one made from it; the check-up folded to a line when all's
 // done, and opened; "Not you?" on a password sign-in from another device (not a passkey one, nor this browser's), which
@@ -10,7 +10,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { writeFileSync } from 'fs';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => { writeFileSync(`${S}/acctmore.sql`, q); return execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --file ${S}/acctmore.sql --json`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString(); };
@@ -68,9 +68,9 @@ async function drag(x, sel, dx, dy = 0) {
   await settle(x, 700);
 }
 
-// ---- 1. A new account, in InFlight without a passkey; what it's done there and in Weather, as if over months ----
+// ---- 1. A new account, in Chat without a passkey; what it's done there and in Weather, as if over months ----
 const P = await browser('phone');
-await joinInFlight(P.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
+await joinChat(P.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const uid = rows("SELECT id FROM pg_users WHERE handle = 'rowan'")[0].id, t = Date.now(), DAY = 86400e3;
 // 4 friends (and one asked, not yet a friend), 2 groups; 3 pigeons now, a group pigeon to 2 people, and 4 whose messages
 // went after a month (9 sent, as its log counts them; and 1 had); 6 places stamped; 4 of Weather's places (one Helvetica
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS wx_accts (user_id TEXT PRIMARY KEY, data TEXT NOT NUL
 INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('${uid}', '${JSON.stringify(wx)}', 1, ${t});
 `);
 await account(P);
-ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from InFlight');
+ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from Chat');
 
 // ---- 2. Your photo: none yet (your colours and initial, and Add a photo); one picked, what shows of it chosen, saved ----
 ok(await P.p.$('main .poster-card.none .pc-initial') && await P.p.$('main .poster-card .pc-add'), 'no photo yet: the card in your colours, your initial, and Add a photo');
@@ -146,7 +146,7 @@ const refused = await nudge(), again = await nudge(), after = rows(`SELECT poste
 ok(/changed elsewhere/.test(refused) && /Saved/.test(again) && after.poster_at === saved.poster_at + 1 && after.poster_focus !== moved.poster_focus,
   'changed elsewhere: refused and said, then the photo there now moved', JSON.stringify({ refused, again, after }));
 
-// ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
+// ---- 3. Your code: the link that adds you in Chat, as a QR code, and copied ----
 await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
 const link = `${CHAT}/#add=rowan`;
 const drawn = await P.p.evaluate(async (l) => {
@@ -155,7 +155,7 @@ const drawn = await P.p.evaluate(async (l) => {
   const want = new DOMParser().parseFromString(qrSvg(l), 'image/svg+xml').querySelector('path').getAttribute('d');
   return { same: svg.querySelector('path')?.getAttribute('d') === want, label: svg.getAttribute('aria-label') };
 }, link);
-ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in InFlight', JSON.stringify(drawn));
+ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in Chat', JSON.stringify(drawn));
 ok(/Rowan Hale/.test(await sheetText(P)) && /@rowan/.test(await sheetText(P)), 'with who it adds');
 await P.p.click('#sheet .btn:has-text("Copy link")'); await settle(P, 400);
 const copied = await P.p.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
@@ -165,13 +165,13 @@ await closeSheet(P);
 
 // ---- 4. Each app's sheet: what it keeps of yours, and the way into it ----
 const cards = await P.p.$$eval('main .app', (as) => as.map((a) => a.innerText.replace(/\s+/g, ' ').trim()));
-ok(/^InFlight 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
-await P.p.click('main .app:has(b:text-is("InFlight")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
+ok(/^Chat 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
+await P.p.click('main .app:has(b:text-is("Chat")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
 const inf = await sheetText(P);
-ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'InFlight: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
+ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'Chat: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
 const counted = await P.p.$$eval('#sheet .stats .stat span', (ss) => ss.map((x) => x.textContent));
 ok(counted.length === 4 && !counted.some((c) => /letter|message/i.test(c)) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', JSON.stringify(counted));
-ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'InFlight', 'the sheet named, for a screen reader');
+ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'Chat', 'the sheet named, for a screen reader');
 await shot(P, '03-app-inflight');
 await closeSheet(P);
 await P.p.click('main .app:has(b:text-is("Weather")) .about'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
@@ -190,7 +190,7 @@ ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-i
 ok(Number(await P.p.evaluate(() => localStorage.getItem('acct:nudged'))) > t, 'noted, so it\'s not said again for a month');
 await shot(P, '05-nudge');
 await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P, PW);
-// (then a word on InFlight's messages, which a passkey can open too: not now, here)
+// (then a word on Chat's messages, which a passkey can open too: not now, here)
 await P.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
 const made = await text(P, '#toast');
@@ -325,8 +325,8 @@ const strict = sh(`python3 -c "import pypdf,sys; r=pypdf.PdfReader(sys.argv[1], 
 ok(strict === String(pages), 'well formed (read strictly)', strict.slice(0, 200));
 const words = sh(`pdftotext -layout "${pdfPath}" -`).replace(/[ \t]+/g, ' ');
 for (const [re, what] of [[/Your data/, 'its title'], [/Rowan Hale/, 'your name'], [/@rowan/, 'handle'], [/rowan@example\.com Confirmed/, 'email, confirmed'], [/Sign-in and security/, 'sign-in'],
-  [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'InFlight\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
-  [/Place 1/, 'the passport'], [/A pigeon lands On/, 'InFlight\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
+  [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'Chat\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
+  [/Place 1/, 'the passport'], [/A pigeon lands On/, 'Chat\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
   [/°C · km\/h · mm/, 'units'], [new RegExp(`Page 1 of ${pages}`), 'page numbers']]) ok(re.test(words), `the PDF: ${what}`, re.test(words) ? '' : words.slice(0, 600));
 ok(!/Łódź/.test(words) && !/\?\?d\?/.test(words), 'a name Helvetica can\'t show: not as broken text...');
 const imgs = sh(`pdfimages -list "${pdfPath}"`).trim().split('\n').slice(2);
@@ -335,7 +335,7 @@ ok(imgs.length >= 4 && imgs.some((l) => /\bjpeg\b/.test(l) && /\b64\b|\b512\b|\b
 sh(`pdftoppm -r 70 -png "${pdfPath}" "${out}/pdf-page"`);
 const json = await P.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
-  'and the export it\'s written from: pigeons sent and had counted as InFlight\'s log counts them', JSON.stringify(json.inflight?.pigeons));
+  'and the export it\'s written from: pigeons sent and had counted as Chat\'s log counts them', JSON.stringify(json.inflight?.pigeons));
 await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');

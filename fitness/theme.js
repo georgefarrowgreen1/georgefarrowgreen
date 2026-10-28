@@ -9,7 +9,7 @@ try {
   }
 } catch (_) {}
 // Back from signing in on the account's page (#signin=…): the page's last picture, its sky and you, from the very first
-// frame (styles.css html.arriving), until app.js puts up its own copy of it (arriving), as InFlight's does. You: the
+// frame (styles.css html.arriving), until app.js puts up its own copy of it (arriving), as Chat's does. You: the
 // initial and the small copy of your photo the page sent in the # (f, p), the photo made a blob: here
 try {
   if (/^#signin=/.test(location.hash)) {

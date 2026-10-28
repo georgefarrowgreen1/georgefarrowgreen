@@ -1,7 +1,7 @@
 // Fitness's morning notification: today's session (or a rest day), at the time you chose, on each phone you turned it
 // on on. The app writes the next days' words itself, from Rhythm as it has it (Rhythm is worked out on the phone, never
 // here), and sends them again whenever it opens; the site's scheduler (workers/ticker) sends the day's, once, when your
-// time comes where you are. Sent as InFlight's and Weather's are (functions/_notify.js: the site's one VAPID key).
+// time comes where you are. Sent as Chat's and Weather's are (functions/_notify.js: the site's one VAPID key).
 //
 // fx_push: one row a phone (its subscription's endpoint), the account it's for, the time (minutes after midnight, in its
 // time zone), the days' words ({ "2026-10-26": { title, body } }, a week or so ahead), and the last day it was sent.

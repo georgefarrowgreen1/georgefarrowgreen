@@ -74,7 +74,7 @@ ok(plain.status === 302 && plain.location === `${CHAT}/tracker`, 'not signed in:
 const signed = await get('http://chat.gfg.test:8788/tracker', { cookie: `account=${homeCookie.value}` });
 ok(signed.status === 302 && signed.location.startsWith(`${ACCT}/api/hop/start?to=`), 'signed in: through a hop', signed.location);
 const pigeon = await get(`${HOME}/pigeon/#open=x`);
-ok(pigeon.status === 302 && pigeon.location === `${CHAT}/`, 'InFlight’s first address, /pigeon/, too', pigeon.location);
+ok(pigeon.status === 302 && pigeon.location === `${CHAT}/`, 'Chat’s first address, /pigeon/, too', pigeon.location);
 await C.p.goto('http://fitness.gfg.test:8788/'); ok(C.p.url() === 'http://fitness.ifl.test:8788/', 'Fitness’s too', C.p.url());
 
 // ---- 5. the old address's service worker: notifications only, opened at the new address ----

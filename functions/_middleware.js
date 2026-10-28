@@ -1,4 +1,4 @@
-// chat.inflite.ai: InFlight, the app at the address's root.
+// chat.inflite.ai: Chat, the app at the address's root.
 // weather.inflite.ai: Weather, the same way (functions/_wxapp.js).
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
@@ -49,7 +49,7 @@ export async function onRequest(ctx) {
   if (!isChat(url, ctx.env)) {
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
-    // (InFlight's old admin dashboard: Admin's on the admin's account page now)
+    // (Chat's old admin dashboard: Admin's on the admin's account page now)
     if (/^\/pigeon\/admin(\/|$)/.test(url.pathname)) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
     // (the apps' icons, for the home page's Apps: kept with each app, and Weather's own address is its own host; asked
     // with the browser's own request, so a browser asking about the copy it has is told it's the same, kept a day more)
@@ -65,9 +65,9 @@ export async function onRequest(ctx) {
     if (res.headers.get("X-Content-Type-Options")) return res;
     const r = new Response(res.body, res); r.headers.set("X-Content-Type-Options", "nosniff"); return r;
   }
-  // here, only InFlight's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
+  // here, only Chat's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/pigeon/") ? ctx.next() : notFound();
-  // (InFlight's admin: on the admin's account page)
+  // (Chat's admin: on the admin's account page)
   if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
   // an old address on the new host (a link from before, a notification): the same place, at the root
   if (url.pathname === "/pigeon" || url.pathname.startsWith("/pigeon/")) {
@@ -97,8 +97,8 @@ async function movedOn(ctx, url, app) {
   const nav = ctx.request.method === "GET" && ctx.request.headers.get("Sec-Fetch-Dest") !== "script";
   return Response.redirect(nav && cookieToken(ctx.request, ctx.env) ? hopTo(to, ctx.request, ctx.env) : to, 302);
 }
-const NAMES = { chat: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" };
-// (prefix: where the old one's pages were: InFlight's under /pigeon/ on the home page)
+const NAMES = { chat: "Chat", weather: "Weather", fitness: "Fitness", account: "Account" };
+// (prefix: where the old one's pages were: Chat's under /pigeon/ on the home page)
 export function forwardWorker(app, to, prefix = "") {
   const js = `// ${NAMES[app]} has moved to ${to}. This worker stands in for the old one at this address: it shows the notifications
 // still sent here, opens them at the new address, and keeps nothing (so the pages here go on to the new one).

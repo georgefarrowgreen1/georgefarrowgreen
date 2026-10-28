@@ -1,6 +1,6 @@
 // Argon2id: new accounts use it; an account from before (PBKDF2) moves on at its next password sign-in.
 import { kit } from './lib.mjs';
-import { signInInFlight } from './join.mjs';
+import { signInChat } from './join.mjs';
 import { acctCall } from './handback.mjs';
 import http from 'http';
 import { readFileSync } from 'fs';
@@ -12,7 +12,7 @@ const PW = 'an older test password';
 // ---- an account as made before: PBKDF2, a bare salt ----
 const id = await E2E.newIdentity(), salt = crypto.getRandomValues(new Uint8Array(16));
 const old = await E2E.fromPassword(PW, salt);
-// (made where accounts are made: the account's page, account.localhost beside InFlight run locally; its API answers only there)
+// (made where accounts are made: the account's page, account.localhost beside Chat run locally; its API answers only there)
 const acctPost = (path, data) => new Promise((done, no) => {
   const q = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode })); });
   q.on('error', no); q.end(data);
@@ -23,9 +23,9 @@ ok(r.status === 201, 'an account from before (PBKDF2): made as it was (on the ac
 K.sql("UPDATE pg_users SET lat = 52.63, lon = 1.29, place = 'Norwich', email_ok = 1 WHERE handle = 'olive'");
 const before = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0];
 ok(!before.salt.startsWith('a2:'), 'stored with a bare salt');
-// ---- it signs in on a phone (on the account's page, which moves it on, and back to InFlight with the new key's half) ----
+// ---- it signs in on a phone (on the account's page, which moves it on, and back to Chat with the new key's half) ----
 const O = await K.phone('olive');
-await signInInFlight(O.p, K.URL, { email: 'olive@example.com', password: PW });
+await signInChat(O.p, K.URL, { email: 'olive@example.com', password: PW });
 ok(await O.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'it signs in with its password (PBKDF2)');
 let after = before; for (let k = 0; k < 30 && !after.salt.startsWith('a2:'); k++) { await O.p.waitForTimeout(300); after = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0]; }
 ok(after.salt.startsWith('a2:') && after.proof_hash !== before.proof_hash, 'and moves on to Argon2id quietly', after.salt.slice(0, 6));
@@ -36,7 +36,7 @@ const noted = one("SELECT COUNT(*) AS n FROM pg_events e JOIN pg_users u ON u.id
 ok(Number(noted) === 1 && !!told && /get a reset link/.test(told.text || '') && !/change your password/.test(told.text || ''), 'noted in Recent activity, and emailed (a reset the way back, if it wasn\'t you), as the server can\'t tell it\'s the same password', `${noted} ${told?.subject}`);
 // ---- and signs in again, now with Argon2id, on another phone ----
 const O2 = await K.phone('olive2');
-const t0 = Date.now(); await signInInFlight(O2.p, K.URL, { email: 'olive@example.com', password: PW });
+const t0 = Date.now(); await signInChat(O2.p, K.URL, { email: 'olive@example.com', password: PW });
 ok(await O2.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'it signs in again with Argon2id, and its key unlocks', `${Date.now() - t0} ms`);
 const pubAfter = await O2.p.evaluate(() => new Promise((res) => { const q = indexedDB.open('inflight'); q.onsuccess = () => { const g = q.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result?.pub?.x); }; }));
 ok(pubAfter === id.pub.x, 'the same key as before (nothing was lost)');
@@ -60,7 +60,7 @@ const signedIn = await acctCall('signin/password', { email: 'olive@example.com',
 const up = await acctCall('password/upgrade', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) }, { cookie: signedIn.cookie });
 ok(signedIn.s === 200 && up.s === 200 && one("SELECT salt FROM pg_users WHERE handle = 'olive'")[0].salt === after.salt, 'once moved on, the upgrade does nothing more', `${signedIn.s} ${up.s}`);
 const [gone] = await api((await K.sess(O2)).token, 'password-upgrade', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
-ok(gone === 410, 'InFlight’s own upgrade is gone (it signs in on the account’s page)', String(gone));
+ok(gone === 410, 'Chat’s own upgrade is gone (it signs in on the account’s page)', String(gone));
 const [change] = await api((await K.sess(O2)).token, 'password', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });
 ok(change === 410, 'and its own password change (that’s on the account’s page too)', String(change));
 console.log(`FAILS ${K.fails()}`); process.exit(0);

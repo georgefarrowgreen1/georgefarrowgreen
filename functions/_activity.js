@@ -10,7 +10,7 @@ import { db, deviceOf, placeOf, appKey, DAY, fromB64url } from "./_pigeon.js";
 
 export const KEEP_DAYS = 30;
 // which app a request came from, by its API, as a word for the list
-const appOf = (request) => ({ inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" })[appKey(request)] || null;
+const appOf = (request) => ({ inflight: "Chat", weather: "Weather", fitness: "Fitness", account: "Account" })[appKey(request)] || null;
 export async function logEvent(env, userId, kind, request, detail = null) {
   try {
     const D = await db(env), t = Date.now();
@@ -24,7 +24,8 @@ export async function logEvent(env, userId, kind, request, detail = null) {
 export async function activityOf(env, userId) {
   const { results } = await (await db(env)).prepare("SELECT at, kind, app, device, place, detail FROM pg_events WHERE user_id = ? AND at >= ? ORDER BY at DESC LIMIT 100")
     .bind(userId, Date.now() - KEEP_DAYS * DAY).all();
-  return results.map((r) => ({ at: r.at, kind: r.kind, app: r.app || null, device: r.device || null, place: r.place || null, detail: r.detail || null }));
+  // (Chat was InFlight until 28 Oct 2026: what was noted before then says so)
+  return results.map((r) => ({ at: r.at, kind: r.kind, app: (r.app === "InFlight" ? "Chat" : r.app) || null, device: r.device || null, place: r.place || null, detail: r.detail || null }));
 }
 
 // The best-known passkey providers' AAGUIDs (the community list at github.com/passkeydeveloper/passkey-authenticator-aaguids)

@@ -4,7 +4,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
 import http from 'http';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 // (TEST_BASE: another local copy of the site, on another port)
 export async function kit(S, out, BASE = process.env.TEST_BASE || 'http://localhost:8788') {
 const PORT = BASE.match(/:(\d+)\/?$/)?.[1] || '80';
@@ -67,8 +67,8 @@ async function phone(name, keys) {
   return { p, ctx, name };
 }
 const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace(/\s+/g, ' ');
-// (made on the account's own page, then InFlight signed in to: join.mjs)
-const signup = (ph, name, handle, email, city) => joinInFlight(ph.p, URL, { name, handle, email, city });
+// (made on the account's own page, then Chat signed in to: join.mjs)
+const signup = (ph, name, handle, email, city) => joinChat(ph.p, URL, { name, handle, email, city });
 // (retry once: the local server can drop an idle keep-alive connection while sql() runs)
 const tick = async (secret = 'tick-test-secret') => { const go = () => fetch(BASE + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer ' + secret } });
   let r; try { r = await go(); } catch (_) { r = await go(); } return { status: r.status, ...(await r.json()) }; };
@@ -116,7 +116,7 @@ const send = async (ph, kind, text) => {
 async function pushOn(ph) {
   await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
   await ph.p.click('#screen > main.view [data-act=pushtoggle]'); await ph.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
-  // (whether Mid-air Moments is on: the account's, as InFlight has it from its sync)
+  // (whether Mid-air Moments is on: the account's, as Chat has it from its sync)
   return ph.p.evaluate(() => new Promise((res) => {
     const r = indexedDB.open('inflight'); r.onerror = () => res(null);
     r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onerror = () => res(null);

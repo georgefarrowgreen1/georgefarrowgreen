@@ -1,6 +1,6 @@
 {
-  "name": "InFlight",
-  "short_name": "InFlight",
+  "name": "Chat",
+  "short_name": "Chat",
   "description": "End-to-end encrypted letters carried by pigeon, at the real distance between you.",
   "start_url": "/pigeon/",
   "scope": "/pigeon/",

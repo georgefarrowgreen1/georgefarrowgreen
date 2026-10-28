@@ -1,4 +1,4 @@
-// InFlight's end-to-end encryption, on Web Crypto only.
+// Chat's end-to-end encryption, on Web Crypto only.
 //
 // Identity: an ECDH P-256 key pair made on the phone. Two friends' keys give
 // both of them the same shared secret (ECDH), which HKDF turns into a fresh
@@ -16,8 +16,8 @@
 // which locks a second copy of the private key for password-free recovery.
 //
 // Signing in happens on the account's own page (account.<site>), which hands
-// the sign-in back to InFlight with what unlocks the key there (the password's
-// first half, or a passkey's PRF secret), sealed to a key pair InFlight's tab
+// the sign-in back to Chat with what unlocks the key there (the password's
+// first half, or a passkey's PRF secret), sealed to a key pair Chat's tab
 // made for the trip: only that tab can open it (handbackPair, sealFor, unseal).
 
 export const te = new TextEncoder(), td = new TextDecoder();
@@ -99,7 +99,7 @@ export const E2E = {
       const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
       bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: typeof salt === "string" ? fromB64url(salt) : salt, iterations: PBKDF2_ITER }, base, 512));
     }
-    // (lock: the first half as it is, only for handing to InFlight from the account's page, sealed: sealFor)
+    // (lock: the first half as it is, only for handing to Chat from the account's page, sealed: sealFor)
     return { lockKey: await aesKey(bits.slice(0, 32), ["encrypt", "decrypt"]), proof: b64url(bits.slice(32)), lock: b64url(bits.slice(0, 32)) };
   },
   // the password's first half, handed back from the account's page, as the key it is

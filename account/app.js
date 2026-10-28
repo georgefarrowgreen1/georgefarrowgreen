@@ -5,7 +5,7 @@
 // someone had only your sign-in asks you to show it's you first (functions/api/account/[[path]].js). The page never
 // holds the sign-in itself: the browser keeps it, out of any page's reach, and the page asks with it.
 //
-// The password is stretched here as everywhere on the site (crypto.js, InFlight's own, served here too): it never leaves
+// The password is stretched here as everywhere on the site (crypto.js, Chat's own, served here too): it never leaves
 // this device, only a proof of it. A new one locks your key anew with it, here, so nothing that's locked changes hands.
 //
 // Also: a security check-up (email confirmed, a passkey, the password against data breaches, devices long unused), your
@@ -14,7 +14,7 @@
 // up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
 // #keep=).
 //
-// And: your photo changed by tapping it; your code (a QR code of the link that adds you in InFlight); each app's card, a
+// And: your photo changed by tapping it; your code (a QR code of the link that adds you in Chat); each app's card, a
 // way into it and what you have there (what it keeps of yours in its own sheet, behind ⓘ); the check-up kept in Sign-in
 // and security, opened as a sheet; rows that say how things are (and, where there's something to do, a button); your
 // name and photo kept at the top once the profile's scrolled away; what each app emails you; recent activity with a
@@ -34,12 +34,12 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
-// Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
+// Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
 // (the home page's site, for the apps' one: siteUrl)
 const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
+const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -54,9 +54,9 @@ if (/^#from=home$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
   try { sessionStorage.setItem("acct-from", "home"); } catch (_) {}
 }
-// Sent here by an app to sign in: InFlight's welcome, Weather's Settings, the home page's Sign in (#signin=<app>, or
+// Sent here by an app to sign in: Chat's welcome, Weather's Settings, the home page's Sign in (#signin=<app>, or
 // #join=<app> to make an account first). With it, the app's word for this sign-in (ask: the hash of what that tab
-// keeps: functions/_handback.js), InFlight's key for what unlocks its own key there (seal), and where the app is (back).
+// keeps: functions/_handback.js), Chat's key for what unlocks its own key there (seal), and where the app is (back).
 // Signed in, or carrying on as yourself, you're sent straight back, the sign-in handed back with a code good once, for
 // two minutes, in that tab alone. Taken out of the address at once, and kept for the visit (half an hour), so a reload,
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
@@ -75,7 +75,7 @@ const SIGN_FOR = (() => {
   history.replaceState(null, "", location.pathname + location.search);
   const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
   const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now() };
-  // (an app asks with its word, and InFlight with its key as well: without them, it didn't come from the app; and one
+  // (an app asks with its word, and Chat with its key as well: without them, it didn't come from the app; and one
   // kept from before is dropped, as arriving any other way drops it)
   if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) {
     try { sessionStorage.removeItem("acct-for"); } catch (_) {}
@@ -105,14 +105,14 @@ function confirmForHome() {
 }
 // a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
-// (which app sent you here: InFlight's profile, or Weather's account card)
+// (which app sent you here: Chat's profile, or Weather's account card)
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
-// (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
+// (what an app's link opens straight away: Edit profile, or Chat's settings, from its own Settings)
 const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
-// back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
+// back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
 function backToApp() {
   if (S.signFor) return leaveFor(S.signFor.app === "home" ? homeVia(S.signFor.back) : S.signFor.back);
@@ -270,7 +270,7 @@ function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
-    // (and InFlight at /pigeon/, where the home page and the apps are one: locally)
+    // (and Chat at /pigeon/, where the home page and the apps are one: locally)
     const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
@@ -295,7 +295,7 @@ function when(t) {
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
+// ---- appearance: the account's (Automatic, Light or Dark, as Chat has it), remembered here for next time ----
 // (fade: changed while you're looking, the page and any sheet on it cross-fade from one to the other, where the
 // browser can and motion's welcome; else, and as the page opens, at once). (What's put is the last asked for, so a fade
 // still on its way doesn't undo one asked for since: a choice put back, as it couldn't be kept.)
@@ -558,7 +558,7 @@ function signedIn(r) {
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
-    app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
+    app("inflight", "Chat", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
       f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
@@ -715,11 +715,11 @@ async function savePhoto(btn, said) {
     say(said, e.message);
   }
 }
-// Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
+// Your code: a QR code of the link that adds you in Chat, to show a friend (or share the link itself)
 function codeView() {
   const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
   import("./qr.js").then(({ qrSvg }) => {
-    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in InFlight` });   // (on its card, whichever its colour: styles.css --qr-card)
+    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in Chat` });   // (on its card, whichever its colour: styles.css --qr-card)
     // (drawn in on its card, not just there)
     qr.firstElementChild?.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: tok("--ease-out") });
   })
@@ -729,7 +729,7 @@ function codeView() {
     h("div.code-who", {}, avatar(m, true), h("div", {}, h("b", { text: m.name }), h("span", { text: `@${m.handle}` }))),
     h("div.code-big", {}, qr),
     h("div.code-acts" + (navigator.share ? ".two" : ""), {},
-      navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on InFlight`, text: `Add me on InFlight: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
+      navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on Chat`, text: `Add me on Chat: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
       h("button.btn" + (navigator.share ? ".quiet" : ""), { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied."); } catch (_) { toast(link); } } }, "Copy link")),
   ] };
 }
@@ -739,12 +739,12 @@ function appView(id) {
   if (id === "fitness") return fitnessView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
-    h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
+    h("b", { text: inflight ? "Chat" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
   const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
-  const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "InFlight" : "Weather"}`, icon("open", 18, 2.4));
+  const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "Chat" : "Weather"}`, icon("open", 18, 2.4));
   if (inflight) {
     const f = ap.inflight || {};
-    return { title: "InFlight", quiet: true, body: [head,
+    return { title: "Chat", quiet: true, body: [head,
       h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
         stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
       open] };
@@ -924,7 +924,7 @@ function signedOut(r) {
     // (sent here by an app: which, as that's where you'll be once you're in)
     mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
       : last ? h("p.lead", { text: `@${last.handle}` })
-      : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
+      : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "Chat" }),
         ", ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }), " and ", h("img", { src: "/apps/fitness.png", alt: "" }), h("b", { text: "Fitness" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard()),
     r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
@@ -952,8 +952,8 @@ function handoffPage(r) {
     r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];
 }
 // ---- sent here by an app to sign in (S.signFor): back to it once you're in, the sign-in handed back (functions/
-// _handback.js), and for InFlight what unlocks its key there, sealed to its tab ----
-// Signed in here already: carrying on as yourself. For InFlight, once you've shown it's you, as what opens its key goes
+// _handback.js), and for Chat what unlocks its key there, sealed to its tab ----
+// Signed in here already: carrying on as yourself. For Chat, once you've shown it's you, as what opens its key goes
 // back with you: a passkey with its own copy of the key, or your password (just the password, after signing in with a
 // passkey that hasn't one, or can't give its secret in this browser: S.need).
 function continuePage(r) {
@@ -967,7 +967,7 @@ function continuePage(r) {
     r(go ? h("div.signin.glass", {}, go, said) : unlockCard(m, said)),
     r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => { S.need = null; signOut(e.currentTarget); } }, "Sign out"))))];
 }
-// (InFlight's key, opened there with what you show here)
+// (Chat's key, opened there with what you show here)
 function unlockCard(m, said) {
   const pks = S.need ? [] : (m.passkeys || []).filter((p) => p.messages), byKey = passkeysWork() && pks.length > 0;
   const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
@@ -1007,18 +1007,18 @@ function unlockCard(m, said) {
   } }, icon("face", 21, 1.9), "Continue with a passkey");
   const or = key && h("div.or", { text: "or with your password" });
   return h("div.signin.glass", {},
-    h("p.hint.center", { text: S.need ? "Your InFlight messages are locked with a key only your devices hold, and that passkey can’t open it here. Enter your password, and they open in InFlight."
-      : "Your InFlight messages are locked with a key only your devices hold. Show it’s you, and they open in InFlight." }),
+    h("p.hint.center", { text: S.need ? "Your Chat messages are locked with a key only your devices hold, and that passkey can’t open it here. Enter your password, and they open in Chat."
+      : "Your Chat messages are locked with a key only your devices hold. Show it’s you, and they open in Chat." }),
     key, or, form, said);
 }
-// Back to the app, signed in (way: what opens InFlight's key, for InFlight: { lock } or { prf, id }): its code made, and
-// off there with it; for the home page, which shares this page's sign-in, just back. With nothing to open InFlight's key
+// Back to the app, signed in (way: what opens Chat's key, for Chat: { lock } or { prf, id }): its code made, and
+// off there with it; for the home page, which shares this page's sign-in, just back. With nothing to open Chat's key
 // with (a passkey that can't), the password's asked for first; with anything else wrong, it's said, to try again.
 async function handBack(m, way, btn) {
   const a = S.signFor;
   S.me = m; S.pulled = Date.now(); stopAutofill();
   // (a sign-in an app handed over to this browser, signed in to nothing, is this page's alone: it goes on to an app once
-  // you've shown it's you here, as InFlight's way on always asks anyway)
+  // you've shown it's you here, as Chat's way on always asks anyway)
   if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; m.fresh = true; }
   // (Mail, the site's inbox, is the admin's alone, and opens only once you've shown it's you: as Admin's lists do)
   if (a.app === "mail" && !m.fresh) { if (!(await shownHere())) return; m.fresh = true; }
@@ -1043,7 +1043,7 @@ const shownHere = () => new Promise((ok) => {
   Sheet.cancel = () => ok(false);
   openSheet(() => confirmView(() => { Sheet.cancel = null; closeSheet(); ok(true); }, closeSheet));
 });
-// what opens InFlight's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
+// what opens Chat's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
 // used, if it has its own copy of the key; else nothing (the password's needed)
 async function keyFor(m, way) {
   if (way.lock) return { box: await E2E.sealFor(S.signFor.seal, { lock: way.lock }) };
@@ -1057,7 +1057,7 @@ function leaveFor(url) {
   location.replace(url);
 }
 // An account from before Argon2id, signed in to with its password: stretched again the new way (a new salt, and the
-// key locked anew with what that gives; the same password and key), as InFlight did when it signed in itself. → what
+// key locked anew with what that gives; the same password and key), as Chat did when it signed in itself. → what
 // the new one gives, and its salt; or nothing, if that didn't happen (the old one still works)
 async function restretch(pw, k) {
   try {
@@ -1172,7 +1172,7 @@ function joinCard() {
     h("div.jstep", { hidden: true }, field("Choose a handle", h("div.at", {}, "@", handle)), hstat),
     h("div.jstep", { hidden: true }, field("Email", email), h("p.hint", { text: "For sign-in alerts and a forgotten password. Never shown to anyone." })),
     h("div.jstep", { hidden: true }, pwField("Choose a password", pw), meter, hint,
-      h("p.hint", { text: "It also locks your InFlight encryption key, here on this device: the key is never sent anywhere unlocked." })),
+      h("p.hint", { text: "It also locks your Chat encryption key, here on this device: the key is never sent anywhere unlocked." })),
   ];
   let at = 0;
   const back = h("button.link.back", { type: "button", disabled: true, onclick: () => { say(said, ""); toStep(at - 1); } }, icon("back", 16, 2.4), "Back");
@@ -1270,11 +1270,11 @@ function forgotCard() {
       morph(box, () => box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message }))));
     } catch (err) { say(said, err.message, email); }
   } }, field("Email", email), go),
-  h("p.hint.center", { text: "With a passkey, a reset keeps your InFlight messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
+  h("p.hint.center", { text: "With a passkey, a reset keeps your Chat messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
   return box;
 }
 // A reset link's own page: who it's for, and a new password. With a passkey that holds a copy of the key (one made in
-// InFlight, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
+// Chat, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
 // new key pair, and older messages stay sealed.
 // (again: asked again from Try again, the page drawn anew only if the answer's changed)
 async function resetCheck(again) {
@@ -1337,14 +1337,14 @@ function resetPage(r) {
       h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
         h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
         pwField("New password", pw), meter, hint),
-      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
+      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your Chat messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
       S.me?.signedIn && h("button.link", { type: "button", onclick: () => anew(() => { S.reset = null; S.settled = false; render(); }) }, "Cancel"),
       said))),
   ];
 }
-// → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for InFlight (where it sent you here: what
+// → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for Chat (where it sent you here: what
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
 async function signInWithPasskey(only) {
   const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
@@ -1403,7 +1403,7 @@ function remember(m, way, id) {
 }
 function forget() { try { localStorage.removeItem(LAST); } catch (_) {} }
 // Signed in with a password, for an app, on a device that can make a passkey, with none yet: one offered before going
-// back, once a month at most (with a nudge here, the same month); for InFlight with its own copy of the key, made now
+// back, once a month at most (with a nudge here, the same month); for Chat with its own copy of the key, made now
 // the password's here to open it
 async function offerFits(m) {
   if (!passkeysWork() || m.passkeys?.length || m.deleting) return false;
@@ -1431,7 +1431,7 @@ function offerThen(m, k, card) {
   cardTo(card, h("div.signin.glass.offer", {},
     h("div.offer-art", { "aria-hidden": "true" }, icon("face", 40, 1.6)),
     h("h2", { text: "Next time, just a glance" }),
-    h("p", { text: `A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site${inflight ? ", and opens your InFlight messages too" : ""}.` }),
+    h("p", { text: `A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site${inflight ? ", and opens your Chat messages too" : ""}.` }),
     yes, no, said));
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
@@ -2032,7 +2032,7 @@ function profileView() {
     try {
       S.me = await busy(done, "Saving…", () => call("me/profile", { method: "PATCH", body: changes }));
       closeSheet(); render(); toast(changes.handle ? `You’re @${S.me.handle} now.` : "Profile saved.");
-      if (justEditing()) setTimeout(backToApp, 1100);         // (back to InFlight, where it shows already)
+      if (justEditing()) setTimeout(backToApp, 1100);         // (back to Chat, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
   for (const i of [name, handle]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
@@ -2203,7 +2203,7 @@ function passkeyView(id) {
   return { title: p.label, right: save, body: [
     h("div.form", {}, field("Name", name)),
     h("div.group", {}, info("Saved in", p.provider || "Not known"), info("Added", day(p.createdAt)), info("Last used", p.usedAt ? ago(p.usedAt) : "Not yet"),
-      info("InFlight messages", p.messages ? "Opens them" : "Needs your password")),
+      info("Chat messages", p.messages ? "Opens them" : "Needs your password")),
     !p.messages && passkeysWork() && h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
       try {
@@ -2211,7 +2211,7 @@ function passkeyView(id) {
         if (secret) pushSheet(() => keyCopyView(id, secret));
         else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
       } catch (err) { say(said, err.message); }
-    } }, "Use it for InFlight messages")),
+    } }, "Use it for Chat messages")),
     h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
       try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
       catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
@@ -2242,8 +2242,8 @@ async function addPasskey() {
   return { id: cred.id, secret };
 }
 
-// ---- a passkey that opens InFlight's messages too: what only it can work out (its PRF secret, for the site's one salt)
-// locks its own copy of the key to them, made here from the password-locked one, as InFlight does with one added there.
+// ---- a passkey that opens Chat's messages too: what only it can work out (its PRF secret, for the site's one salt)
+// locks its own copy of the key to them, made here from the password-locked one, as Chat does with one added there.
 // So on a new phone, signing in with it opens the messages with no password. ----
 const prfOf = (cred) => { const r = cred?.getClientExtensionResults?.().prf; return r?.results?.first ? new Uint8Array(r.results.first) : null; };
 async function prfByUse(id, rpId) {
@@ -2267,11 +2267,11 @@ function keyCopyView(id, secret, added = "") {
         const inner = await E2E.unlock(lockKey, vault);
         S.me = await post("passkeys/vault", { id, vault: await E2E.lock(await E2E.fromSecret(secret), inner) });
       });
-      patch(); popSheet(); toast("This passkey opens your InFlight messages too.");
+      patch(); popSheet(); toast("This passkey opens your Chat messages too.");
     } catch (err) { say(said, err.message, pw); }
   } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
-  return { title: added ? "Passkey added" : "InFlight messages", body: [
-    h("p.hint", { text: "Your InFlight messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
+  return { title: added ? "Passkey added" : "Chat messages", body: [
+    h("p.hint", { text: "Your Chat messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
     form,
     h("button.link", { type: "button", onclick: () => { popSheet(); if (added) toast(added); } }, "Not now"),
     said] };
@@ -2294,7 +2294,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", mail: "Mail", account: "Account" }[d.app] : d.browser || d.label;
+    const name = d.app ? { inflight: "Chat", weather: "Weather", fitness: "Fitness", mail: "Mail", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
@@ -2352,7 +2352,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -2545,13 +2545,13 @@ function unitsView() {
 }
 
 // ---- emails: what each app sends you (each from its own address). The account's, about signing in and its security,
-// always; InFlight's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
+// always; Chat's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
 // briefing, a switch each (for which places and when, its Notifications say) ----
 // What the apps email besides the account's own: all of it, none, or which apps
 function emailsSaid(e = {}) {
   const on = [e.inflight, e.weather?.warn, e.weather?.brief];
   if (on.every(Boolean)) return "All on";
-  const apps = [e.inflight && "InFlight", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
+  const apps = [e.inflight && "Chat", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
   return apps.length ? apps.join(", ") : "Security only";
 }
 function emailsView() {
@@ -2577,7 +2577,7 @@ function emailsView() {
     head("/icon.svg?v=2", "Account"),
     h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Sign-ins and security" }), h("small", { text: "So you’d know if it wasn’t you" })),
       h("span.val", { text: "Always on" }))),
-    head("/apps/inflight.png", "InFlight"),
+    head("/apps/inflight.png", "Chat"),
     h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications by email" }),
       h("small", { text: m.emailOk ? "Pigeons landing, friend requests and your week in flight, as its Notifications have them" : "Confirm your email first" })), sw)),
     head("/apps/weather.png", "Weather"),
@@ -2588,7 +2588,7 @@ function emailsView() {
     said] };
 }
 
-// ---- InFlight's settings that are the account's (functions/api/account inflight): which notifications, how they read
+// ---- Chat's settings that are the account's (functions/api/account inflight): which notifications, how they read
 // on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
 // (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
 // (ifFor: whose they are; ifSeq, ifBusy: what's been asked for, and the changes on their way; ifStale: a fetch dropped
@@ -2606,7 +2606,7 @@ const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "Takes off", "When 
 const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
   ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
-// InFlight's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
+// Chat's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
 // comes. Another account's, signed in here since, never shown; and what comes dropped if a change was made since it was
 // asked for, or is still being made, as what that change gave back is newer) → the parts its pages are drawn with, or
 // what to show while there are none
@@ -2620,8 +2620,8 @@ function ifParts(title) {
       if (s === ifSeq && !ifBusy) { IF = r; if (onIf()) redraw(); } else { ifStale = true; ifCaughtUp(); }
     }, (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
   }
-  const back = title === "InFlight" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
-    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
+  const back = title === "Chat" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Chat") : null;
   if (!IF) return { wait: { title, left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] } };
   if (IF.error) return { wait: { title, left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] } };
   const said = h("p.said", { role: "alert" });
@@ -2643,11 +2643,11 @@ function ifParts(title) {
 }
 const hhRange = (n) => `${hh(n.quietFrom)}–${hh(n.quietTo)}`;
 function inflightView() {
-  const P = ifParts("InFlight");
+  const P = ifParts("Chat");
   if (P.wait) return P.wait;
   const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => k === "approxLocation" ? !IF.privacy[k] : IF.privacy[k]).length;
-  return { title: "InFlight", quiet: true, left: P.back, body: [
-    setHead("inflight", "InFlight"),
+  return { title: "Chat", quiet: true, left: P.back, body: [
+    setHead("inflight", "Chat"),
     h("div.group", {},
       row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(ifNotifyView) }),
       switchRow({ icon: "mail", tint: "blue", title: "Email me", sub: IF.emailOk ? "After 10 minutes unread" : "Confirm your email first",
@@ -2657,7 +2657,7 @@ function inflightView() {
       row({ icon: "eye", tint: "teal", title: "Who sees what", value: shared === IF_PRIVACY.length ? "All shared" : shared ? `${shared} of ${IF_PRIVACY.length}` : "Nothing", onclick: () => pushSheet(ifPrivacyView) }),
       row({ icon: "block", tint: "grey", title: "Blocked", value: IF.blocked.length ? String(IF.blocked.length) : "No one", onclick: () => pushSheet(ifBlockedView) })),
     P.said,
-    ...openIn("inflight", "InFlight", "For push, Lock InFlight and haptics, on each phone")] };
+    ...openIn("inflight", "Chat", "For push, Lock Chat and haptics, on each phone")] };
 }
 // which notifications, how they read on the lock screen, and quiet hours
 function ifNotifyView() {
@@ -2704,7 +2704,7 @@ function ifBlockedView() {
       ifSeq++;
       try { IF = await busy(btn, "", () => call("inflight/block", { method: "DELETE", body: { id: b.id } })); redraw(); toast(`${b.name} is unblocked.`); }
       catch (e) { say(P.said, e.message); }
-    }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in InFlight." })))];
+    }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in Chat." })))];
   return { title: "Blocked", body: [h("div.group", {}, rows), P.said] };
 }
 
@@ -2989,7 +2989,7 @@ function deleteView() {
   sure.addEventListener("input", () => { go.disabled = sure.value.trim().replace(/^@/, "").toLowerCase() !== m.handle; });
   return { title: "Delete account", body: [
     h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
-    h("ul.gone", {}, h("li", { text: "InFlight: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
+    h("ul.gone", {}, h("li", { text: "Chat: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
       h("li", { text: "Fitness: your activities and their files, your plan and your workouts" }),
       h("li", { text: "Your profile, password and passkeys" })),
     h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),

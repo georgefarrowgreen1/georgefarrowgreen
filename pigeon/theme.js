@@ -10,9 +10,9 @@
   var dark = t === "dark" || (t === "auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
   var m = document.querySelector('meta[name="theme-color"]');
   if (m) m.setAttribute("content", dark ? "#1b2860" : "#dde3fb");
-  // InFlight is for phones and iPads. An iPad asks for desktop sites, calling
+  // Chat is for phones and iPads. An iPad asks for desktop sites, calling
   // itself a Mac, but a Mac has no touchscreen. Anything else (a computer) is
-  // shown a page saying InFlight isn't available, and the app never starts.
+  // shown a page saying Chat isn't available, and the app never starts.
   var ua = navigator.userAgent || "";
   var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   if (!mobile) root.setAttribute("data-device", "computer");
@@ -32,7 +32,7 @@
         root.style.setProperty("--arv-p", 'url("' + window.arvPhoto + '")'); root.style.setProperty("--arv-i", '""'); root.classList.add("arv-face");
       }
     } catch (e) { /* no picture of you: the sky alone */ }
-    // and the code it brought swapped for InFlight's sign-in straight away, with the word kept for it, rather than once
+    // and the code it brought swapped for Chat's sign-in straight away, with the word kept for it, rather than once
     // the app itself has come (app.js signInBack takes up the answer: arvSwap)
     try {
       var code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash), k = JSON.parse(localStorage.getItem("inflight-signin") || "null");

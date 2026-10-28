@@ -1,6 +1,6 @@
 // The account's page and the files it runs (functions/_acctapp.js): its script, and every module that brings in, asked
 // for stamped with what's in them, so a new script always comes with the modules it was made with (a phone that kept
-// an older crypto.js ran the new page with it, and couldn't hand a sign-in back to InFlight).
+// an older crypto.js ran the new page with it, and couldn't hand a sign-in back to Chat).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';

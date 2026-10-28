@@ -8,7 +8,7 @@ import { readdirSync, writeFileSync } from 'node:fs';
 import { demo, samples, PROFILE } from '../../fitness/sample.js';
 import { summarise } from '../../fitness/load.js';
 import { routeShape } from '../../fitness/formats.js';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const N = Number(process.env.PERF_N) || 2000;
 const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
@@ -27,7 +27,7 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/6
 const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: UA, reducedMotion: 'reduce' });
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
 const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.text().startsWith('TIME ') && process.env.PERF_TRACE) console.log(m.text()); });
-await joinInFlight(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
+await joinChat(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
 await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
 // (Rhythm on, so Today is as full as it gets: kept, and the page reloaded with it, till it's there)
 let me;

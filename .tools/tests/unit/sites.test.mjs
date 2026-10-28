@@ -21,7 +21,7 @@ test('each app answers at its inflite.ai address, and at its old one (its API, f
   assert.equal(siteOf('account.inflite.ai', {}), 'apps'); assert.equal(siteOf('georgefarrowgreen.com', {}), 'home'); assert.equal(siteOf('x.pages.dev', {}), null);
   assert.equal(appOrigin('fitness', {}), 'https://fitness.inflite.ai');
 });
-test('InFlight’s API answers at its own address (not only at the addresses a test names)', () => {
+test('Chat’s API answers at its own address (not only at the addresses a test names)', () => {
   const api = readFileSync(new URL('../../../functions/api/pigeon/[[path]].js', import.meta.url), 'utf8');
   assert.match(api, /const hostOk = \(h, env\) => HOSTS\.test\(h\) \|\| isChat\(\{ hostname: h \}, env\);/);
 });

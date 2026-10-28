@@ -16,8 +16,8 @@ async function call(tok, path, opt = {}) {
   const txt = await r.text(); let j = {}; try { j = JSON.parse(txt); } catch (_) {}
   return { s: r.status, j, h: r.headers };
 }
-// An account, made where accounts are made (the account's page: account.localhost beside InFlight run locally, its API
-// answering only there and only from its own page), and signed in to InFlight from there, as a phone is (handback.mjs)
+// An account, made where accounts are made (the account's page: account.localhost beside Chat run locally, its API
+// answering only there and only from its own page), and signed in to Chat from there, as a phone is (handback.mjs)
 async function signup(name, handle) {
   ip++;
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
@@ -50,9 +50,9 @@ await call(a, 'friends', { body: { handle: 'bob' } }); await call(bt, 'friends-r
 const s1 = await call(a, 'sync'); ok(s1.h.get('x-content-type-options') === 'nosniff', 'API replies carry nosniff');
 // bad base64 is a 400, not a 500 (signing in is the account's page's, for every app)
 const r400 = await acctCall('signin/password', { email: 'alice@example.com', proof: '***' }, { ip: '10.0.0.99' }); ok(r400.s === 400 || r400.s === 401, 'malformed proof is not a server error', r400.s);
-// (and InFlight's own sign-in, from before, says where it is now)
+// (and Chat's own sign-in, from before, says where it is now)
 const gone = await call(null, 'login', { body: { email: 'alice@example.com', proof: b64u(rnd(32)) } });
-ok(gone.s === 410 && /account\.inflite\.ai/.test(gone.j.error), 'InFlight’s own sign-in is gone: it says to sign in on the account’s page', `${gone.s} ${gone.j.error}`);
+ok(gone.s === 410 && /account\.inflite\.ai/.test(gone.j.error), 'Chat’s own sign-in is gone: it says to sign in on the account’s page', `${gone.s} ${gone.j.error}`);
 // a photo message, and a second send with the same id
 const id = crypto.randomUUID();
 const fd = () => { const f = new FormData(); f.set('meta', JSON.stringify({ id, to: B.j.me.id, ct: 'x'.repeat(40), pigeon: 'rocket', once: false })); f.set('photo', new Blob([rnd(2000)])); return f; };
@@ -85,7 +85,7 @@ const piece = '{"email":"' + 'x'.repeat(16 * 1024);
 const salt1 = await raw('account.localhost', 'POST', '/api/account/signin/salt', { chunks: Array(8).fill(piece) });
 ok(salt1.s === 413, 'the account’s salt: a body past 64 KB sent in pieces, with no length, is refused', `${salt1.s} ${salt1.j.error}`);
 const salt2 = await raw('localhost', 'POST', '/api/pigeon/salt', { chunks: Array(40).fill(piece) });
-ok(salt2.s === 413, 'InFlight’s: one past 512 KB, the same', `${salt2.s} ${salt2.j.error}`);
+ok(salt2.s === 413, 'Chat’s: one past 512 KB, the same', `${salt2.s} ${salt2.j.error}`);
 const salt3 = await raw('account.localhost', 'POST', '/api/account/signin/salt', { chunks: ['{"email":', '"alice@example.com"}'] });
 ok(salt3.s === 200 && salt3.j.salt, 'a small one sent in pieces is read as it was sent', `${salt3.s} ${JSON.stringify(salt3.j)}`);
 
@@ -114,7 +114,7 @@ ok(pw.s === 200 && pw.j.emailNew === null && pw.j.password.setAt >= t0, 'a new p
 const links = [await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc), await acctCall('email/confirm-send', {}, dc)];
 ok(links[0].s === 200 && links[1].s === 200 && links[2].s === 429 && /^Too many tries\. Try again in (2[34]h \d+m|24 hours)\.$/.test(links[2].j.error), 'the fourth confirm link in a day: try again in hours and minutes', JSON.stringify(links.map((r) => [r.s, r.j.error])));
 
-// InFlight's notification settings changed twice at once, on the account's page: both kept
+// Chat's notification settings changed twice at once, on the account's page: both kept
 const two = await Promise.all([raw('account.localhost', 'PATCH', '/api/account/inflight', { body: JSON.stringify({ notify: { reactions: false } }), cookie: D.cookie }),
   raw('account.localhost', 'PATCH', '/api/account/inflight', { body: JSON.stringify({ notify: { moments: false } }), cookie: D.cookie })]);
 const nset = (await raw('account.localhost', 'GET', '/api/account/inflight', { cookie: D.cookie })).j.notify || {};

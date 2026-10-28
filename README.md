@@ -1,7 +1,7 @@
 # George Farrow-Green — georgefarrowgreen.com, and the apps at inflite.ai
 
 Two sites from one Pages project (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
-live at **inflite.ai**: InFlight (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
+live at **inflite.ai**: Chat (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
 each below. inflite.ai itself is kept for another project, not this one.
 
 - **One account, two sign-ins.** The account's cookie is each site's own (`Domain=inflite.ai` for every app;
@@ -10,7 +10,7 @@ each below. inflite.ai itself is kept for another project, not this one.
   the one you're signed in to (a code for that note, good once for two minutes), finish back where it started (a sign-in
   of its own, that ends when the apps' does).
 - **Passkeys stay georgefarrowgreen.com's**, so every passkey made before the move still works, and with it the key
-  InFlight unlocks with one: `https://georgefarrowgreen.com/.well-known/webauthn` lists the apps' addresses as related
+  Chat unlocks with one: `https://georgefarrowgreen.com/.well-known/webauthn` lists the apps' addresses as related
   origins.
 - **The old addresses** (chat., weather., fitness. and account.georgefarrowgreen.com, and /pigeon/) send each page on to
   the same place at inflite.ai, signed in still if the browser was (a hop). Their `sw.js` is a stand-in that keeps no
@@ -22,7 +22,7 @@ each below. inflite.ai itself is kept for another project, not this one.
   passkeys the apps' site's (`PASSKEY_SITE`: a test over plain http can't fetch the related-origins file).
 
 The home page, then each app, below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
-look: my name, a line above it and one under it, then **Apps** (InFlight, Weather and Fitness) and **Get in touch** (a message,
+look: my name, a line above it and one under it, then **Apps** (Chat, Weather and Fitness) and **Get in touch** (a message,
 or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
 behind it (`functions/`), the words in **KV**, the photos in **R2**.
 
@@ -34,7 +34,7 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   keep it for good (`/api/background`). With Reduce Motion on, the first photo stays, still.
 - **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
   whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
-  (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from InFlight or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
+  (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from Chat or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar (the buttons,
   once faded, can't be tapped or tabbed to, and the slideshow's segments go with them).
   **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
@@ -46,7 +46,7 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
   name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and
   the page is opened afresh.
-- **Apps:** InFlight, Weather and Fitness, each with its icon (served here at `/apps/`, from each app), what it is, and
+- **Apps:** Chat, Weather and Fitness, each with its icon (served here at `/apps/`, from each app), what it is, and
   **Open**. Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on", "12
   activities · On a plan" (`GET /api/me`).
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
@@ -176,7 +176,7 @@ its name, its colours, its pictures and what's said at the foot of its emails.
 | Brand | From | Colours | Its emails |
 |---|---|---|---|
 | `account` | **Account** `<account@…>` | indigo; a red tile for deleting | sign-ins in any app, the password, passkeys, the email address, reset links, keeping or deleting the account (`functions/_account.js` `accountMail`) |
-| `inflight` | **InFlight** `<inflight@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), Admin's test |
+| `inflight` | **Chat** `<chat@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), Admin's test |
 | `weather` | **Weather** `<weather@…>` | Weather's sky blue; a warning's tile in its colour (yellow, amber, red) | official warnings and the morning briefing, for those signed in who turn them on (`functions/_wxpush.js`, worded by `weather/alerts.js` briefMail and warningMail) |
 | `website` | **Website** `<website@…>` | the home page's periwinkle to violet | the contact form's messages, to the site's owner (`functions/api/contact.js`) |
 
@@ -218,7 +218,8 @@ the brands (the tiles' gradients, the badge, the symbols' colour are each brand'
 `art`). The first emails' pictures stay in `pigeon/mail/`, and the old address of
 these, `pigeon/mail/v2/`, sends to `mail/`, so emails already sent keep theirs.
 
-**A new app** is a new entry in `BRANDS` (its name, which is also its address;
+**A new app** is a new entry in `BRANDS` (its name; its key, which is also its address unless `from` names another, as
+Chat's does: its key is still `inflight`, its name until 28 October 2026, as its pictures' are;
 its colours; its icon and tiles), then `node .tools/tests/mailicons.mjs`. The unit
 tests check every brand's pictures are drawn.
 
@@ -259,7 +260,7 @@ Motion, solid with Reduce Transparency.
   is: a flat indigo sky (the page's own night sky, at dusk), a flat warm head where Weather has its sun, and frosted
   glass shoulders where Weather has its cloud, the head showing softly through them, with the same fine light rim and
   faint shadow. It's the mark at the top of the page where you sign in, join, or carry on from an app.
-- **Signed out:** under "Your account" (and "One sign-in for InFlight, Weather and Fitness", with their icons), sign in with a
+- **Signed out:** under "Your account" (and "One sign-in for Chat, Weather and Fitness", with their icons), sign in with a
   passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
@@ -276,27 +277,27 @@ Motion, solid with Reduce Transparency.
   your passkey** (that one asked for) if that's how you did, with the password a tap away; **Not you? Use another
   account** forgets it, as deleting the account does. Signed in with a password for an app, on a device that can make a passkey and with none yet,
   "Next time, just a glance" offers one before going back (once a month at most, sharing the nudge's month); for
-  InFlight it gets its own copy of the key there and then, the password being here to open it. Password fields have an
+  Chat it gets its own copy of the key there and then, the password being here to open it. Password fields have an
   eye to show what's typed and say when Caps Lock's on; what's wrong shakes. Buttons turn into a spinner while they
   work and a tick when done; leaving for an app, the tick lifts to where the app takes over, becoming your photo on the
   way, as dawn breaks and the sky's drifting lights go (one movement, nothing held); the app carries on from just that
-  picture. For InFlight, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
-  server, and taken out at once), so InFlight draws you from its very first frame (`theme.js`, the photo made a `blob:`
+  picture. For Chat, your initial and a small copy of your photo go in the address's `#` (`f`, `p`: never sent to a
+  server, and taken out at once), so Chat draws you from its very first frame (`theme.js`, the photo made a `blob:`
   there) rather than you going and coming back once it has the sign-in. The page's lights fade in as it opens, and its
   placeholder only shows if it's slow to start; the account's asked for as the page is read (`account/boot.js`), not
   once `app.js` has come and started, and Light or Dark, where chosen, is on before it's first drawn (`account/theme.js`).
   Signing out, dusk passes over it. The way there is one movement too:
   each app fades this page's sky in over everything as it goes (opacity only), so the page opens on what was already in
   sight. Your initial and photo go back to every app
-  (InFlight `theme.js`, Weather `early.js`, the home page `signedin.js`), and InFlight swaps the code on its first frame
+  (Chat `theme.js`, Weather `early.js`, the home page `signedin.js`), and Chat swaps the code on its first frame
   (`theme.js` arvSwap), not once the app has come. While you sign in, the page opens the connection back to the app,
   and a password's stretched in a worker (`pigeon/argon2w.js`), so the page never stops while it is (on the page, as
   before, where a worker can't be made). Joining is a step at a
   time (name, handle, email, password), the card sliding to each and growing or shrinking to fit, with Back; a handle
   that's taken is said, with free ones to tap, before going on (`.tools/tests/acctsignin.mjs`).
-- **Every app signs in here, and only here** (`functions/_handback.js`). InFlight's **Sign in** (and **Continue as …**,
+- **Every app signs in here, and only here** (`functions/_handback.js`). Chat's **Sign in** (and **Continue as …**,
   and **Create your account**), Weather's Settings row, Fitness's **Sign in** and the home page's pill open this page with `#signin=<app>` (or
-  `#join=<app>`): "Sign in to continue to InFlight", with **‹ InFlight** to go back. Signed in (a passkey, or email and
+  `#join=<app>`): "Sign in to continue to Chat", with **‹ Chat** to go back. Signed in (a passkey, or email and
   password; or a new account made), you're sent straight back, the sign-in handed back with a code in the address's
   `#` that's good once, for two minutes, and only for the app that asked: it keeps a secret for it (on the device, for
   half an hour or until it's used: not just in the tab, as a Home Screen app can open this page in a view of its own),
@@ -304,35 +305,35 @@ Motion, solid with Reduce Transparency.
   /api/weather/handback`, `POST /api/fitness/handback`), so a code seen anywhere else, or one a page elsewhere sends you back with, signs nothing in.
   The sign-in an app gets is no fresher than the one here (it counts as having shown it's you only if that one does).
   Where the address it goes back to is checked: only the app's own (chat.<site>/, weather.<site>/, fitness.<site>/, <site>/, or
-  InFlight's old <site>/pigeon/). For InFlight it brings what unlocks the key there: the password's first half, or the
+  Chat's old <site>/pigeon/). For Chat it brings what unlocks the key there: the password's first half, or the
   PRF secret of a passkey with its own copy of the key (asked for with the sign-in), sealed on this page to a key pair
-  InFlight made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
+  Chat made for the trip (ECDH P-256 and AES-GCM: `pigeon/crypto.js` handbackPair, sealFor, unseal), so
   neither the server nor anyone with the code can open it, and you show it's you once, here. A passkey that can't open
   the messages (no copy of the key, or no PRF in that browser) asks for the password too, as "One more step for
-  InFlight". Signed in here already, it says who: "@sam. Continue to InFlight as this account?", with your password or
-  a passkey that opens the messages (a code for InFlight is made only for a sign-in that's just shown it's you), or one
+  Chat". Signed in here already, it says who: "@sam. Continue to Chat as this account?", with your password or
+  a passkey that opens the messages (a code for Chat is made only for a sign-in that's just shown it's you), or one
   tap for Weather and the home page; **Not you? Sign out** to use another. An account from before Argon2id is moved on
-  when its password's used here (`POST /api/account/password/upgrade`), as InFlight did when it signed in itself; as
+  when its password's used here (`POST /api/account/password/upgrade`), as Chat did when it signed in itself; as
   the server can't tell it's the same password, that's in Recent activity ("Password protection strengthened") and
   emailed (if it wasn't you, a reset link is the way back, as the password may be someone else's by then).
-  The "new sign-in" email and push name the app it was for. InFlight's own sign-in (`POST /api/pigeon/login`,
+  The "new sign-in" email and push name the app it was for. Chat's own sign-in (`POST /api/pigeon/login`,
   `passkey-login`, `resume` with a password, and `password-upgrade`) now answers 410, saying where to sign in, as does
   its old password change (`POST /api/pigeon/password`); Weather has none.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
-  No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
+  No app makes one: Chat's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
-  in a data breach, said as it's typed). The slow parts start while it's typed: the InFlight key pair is made here and
+  in a data breach, said as it's typed). The slow parts start while it's typed: the Chat key pair is made here and
   locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
   link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
   and the confirm email sent (the banner up top says so, with **Send again**, as a newer link stops that one working;
   one that couldn't be sent, Resend refusing it or not answering in 10 seconds, isn't said to be on its way, and
   **Send link** tries again, saying why if it still can't);
-  InFlight then opens with **Continue as**, and only needs the password to unlock the key.
+  Chat then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
   there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
-  (`#reset=`, InFlight's older ones passed on here) says who it's for (the email half hidden) and asks for a new
-  password. With a passkey that holds a copy of the InFlight key (one made in InFlight, which can), **Keep messages
+  (`#reset=`, Chat's older ones passed on here) says who it's for (the email half hidden) and asks for a new
+  password. With a passkey that holds a copy of the Chat key (one made in Chat, which can), **Keep messages
   with passkey** unlocks the key here and locks it anew; otherwise, or by choice, **Start fresh**: a new key, friends
   kept, older messages sealed. Either way every sign-in and passkey ends, a pending email change is called off, and
   this browser's signed in. (The server key the passkey's proof is checked against is the link's own, made as it's
@@ -340,7 +341,7 @@ Motion, solid with Reduce Transparency.
 - **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
   you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
   sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
-  server too, 409), and what the app's link was to open (Edit profile, InFlight's settings) isn't opened for that one;
+  server too, 409), and what the app's link was to open (Edit profile, Chat's settings) isn't opened for that one;
   nor is it where the code can't be checked (run out, or refused), as whose it was isn't known. A browser that wasn't
   signed in is signed in on this page alone (`pg_sessions.handed`), as a name is anyone's to give their own account:
   the rest of the site and every app treat it as signed out, and none is handed it, until you've shown it's you here
@@ -372,15 +373,15 @@ Motion, solid with Reduce Transparency.
   fix, which opens over the sheet (Back returns to it); all done, just that it's well protected, not the list. A
   password found in a data breach is the one check also said up top, in a banner with **Change**, as an unconfirmed
   email is.
-- **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
+- **Your code:** a QR code of the link that adds you in Chat (`#add=handle`, drawn by Chat's own `pigeon/qr.js`,
   shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
 - **Your apps:** each card says what you have there ("4 friends · 9 sent", "6 places in your passport"; "4 places",
-  "Alerts on") with **Open** to go to it; its ⓘ opens a sheet of what that app keeps of yours. InFlight: how many
+  "Alerts on") with **Open** to go to it; its ⓘ opens a sheet of what that app keeps of yours. Chat: how many
   friends, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have
   gone after a month), places in your passport and groups; counts only, as its letters are end-to-end encrypted.
   Weather: its saved places (the first few by name), its notifications (how many places, and the morning brief) and
   units.
-- **Email.** Not confirmed: a banner up top sends a confirm link (the same one InFlight sends, said as the account's).
+- **Email.** Not confirmed: a banner up top sends a confirm link (the same one Chat sends, said as the account's).
   A new email: a link to it (good for 2 days) and a word to the old one, confirmed or not (the new one half hidden; if it
   wasn't you, change your password, which calls it off and signs every other device out); nothing changes until the
   link's opened, then the old one's told (if it wasn't you, ask the site's admin for a reset link, as sign-ins and resets
@@ -395,13 +396,13 @@ Motion, solid with Reduce Transparency.
   for the check-up. One password's asked about once a visit, however often it's typed or sent.
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
-  `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
+  `functions/_activity.js` providerOf; Chat sends it too now). Signed in here with a password, with no passkey yet,
   on a device that can make one (Face ID, Touch ID, Windows Hello: it asks the browser), a sheet offers one, at most
   once a month on that device.
 - **Signed-in devices:** each with where and when; those unused for 3 months are marked, with **Sign out N unused
   devices**, as well as one at a time or all the others. On an iPhone each Home Screen app keeps cookies of its own (apart
   from Safari's and each other's), so each is a sign-in of its own: a sign-in's named by the app it's used in (Weather,
-  InFlight, with its icon) where that's just one, and otherwise by its browser (Safari), what apps it's been used in
+  Chat, with its icon) where that's just one, and otherwise by its browser (Safari), what apps it's been used in
   noted as it's used (`pg_sessions.apps`). The account's page is named **Account** only when it's on the Home Screen
   (it says so with each ask, `X-Home-Screen`, noted as `pg_sessions.home`); in Safari it's Safari. The account's page opened from an app (its hand-off) isn't a device of its
   own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
@@ -412,31 +413,31 @@ Motion, solid with Reduce Transparency.
 - **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset (or an older one's protection
   strengthened), passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
-  with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
+  with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from Chat's own sign-in and
   security too), each on one line with its time on the right and the app it happened in on its icon, where most of a
   day's happened said once by the day; **All**, **Sign-ins** or **Changes**. A password sign-in from another device or
   place has **Not you?**: it signs every other device out, then asks for a new password. Passkey sign-ins don't, as a
   passkey needs your own device.
 - **Preferences, for every app on the site that has them:** **Appearance** (Automatic, Light, Dark): this page and
-  InFlight, which already kept it with the account (InFlight now keeps it only once it's been chosen, not its default).
+  Chat, which already kept it with the account (Chat now keeps it only once it's been chosen, not its default).
   **Units** (temperature, wind, rain, pressure, time; °C, mph, mm, hPa and 24-hour until chosen): Weather's, kept in
   its record for the account so every device it's signed in on takes them up, and its notifications say them at once.
   **Emails**: what each app emails you, each from its own address: the account's, about sign-ins and security, always;
-  InFlight's notifications by email, on or off here as in its own Notifications (`pg_users.notify_email`, through
+  Chat's notifications by email, on or off here as in its own Notifications (`pg_users.notify_email`, through
   `PUT /api/account/prefs`); Weather's warnings and morning briefing by email, a switch each, kept with Weather's own
   choices (`functions/_wxacct.js` setMail), for the places and time chosen in its Notifications (said under each). The
   row says "All on", "Security only", or which apps email.
-- **InFlight's settings** that are the account's rather than a phone's: on InFlight's card under Your apps, a round
-  button beside **Open**, and what InFlight's own **InFlight Settings** opens (with `open=inflight` in the code it hands
-  over, and **‹ InFlight** to go back). Which notifications (the eleven of Notify me when), names on the lock screen,
+- **Chat's settings** that are the account's rather than a phone's: on Chat's card under Your apps, a round
+  button beside **Open**, and what Chat's own **Chat Settings** opens (with `open=inflight` in the code it hands
+  over, and **‹ Chat** to go back). Which notifications (the eleven of Notify me when), names on the lock screen,
   quiet hours (in the phone's time zone), email; who sees what (online, read receipts, news, approximate location, the
   live tracker); and who's blocked, to unblock (Unblock, then Unblock? to be sure). `GET`/`PATCH /api/account/inflight`
-  and `DELETE /api/account/inflight/block`, from this page's address only, changing them by InFlight's own rules
-  (`functions/_notify.js` cleanPrefs, `functions/api/pigeon` setPrivacy, shared with its `PATCH me`); InFlight takes a
+  and `DELETE /api/account/inflight/block`, from this page's address only, changing them by Chat's own rules
+  (`functions/_notify.js` cleanPrefs, `functions/api/pigeon` setPrivacy, shared with its `PATCH me`); Chat takes a
   change up as it next syncs (`.tools/tests/acctinflight.mjs`).
 - **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
-  activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
-  them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,
+  activity; Chat's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
+  them); Weather's places, settings and notifications. Chat's letters aren't in it: they're end-to-end encrypted,
   with keys only your phones have. **As a PDF** to read and keep: A4, your profile up top, then each part as rows and
   tables, page numbers at the foot. It's written in the browser from what the export gives, with no library
   (`account/pdf.js` writes the file, `account/datapdf.js` sets it out): the text is Helvetica, which every PDF reader
@@ -448,22 +449,22 @@ Motion, solid with Reduce Transparency.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
   email's link keeps it too, once its **Keep my account** is tapped (it asks first, so a mail scanner that opens the
   link doesn't keep it). A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
-  dueDeletions). (InFlight has no Delete Account of its own: deleting is on the account's page.)
+  dueDeletions). (Chat has no Delete Account of its own: deleting is on the account's page.)
 - **Keeping up:** the page looks again when you come back to it (and every minute while it's open), so a device
   signed out elsewhere, or a change made in another app, shows without a reload.
 - What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, a new email,
   your data, the account deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or
   your password), then carries on with what you were doing. Changes to the password, passkeys and email are emailed to
   the account, from **Account** (account@georgefarrowgreen.com), with its icon at the top;
-  so is every sign-in, saying which app it was in (InFlight, Weather or this page), with **Review your account**.
+  so is every sign-in, saying which app it was in (Chat, Weather or this page), with **Review your account**.
 - The page acts only with the site's sign-in (the HttpOnly cookie, never in the page's reach), and only from its own
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
   `argon2.js`) and the apps' icons.
-- Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
+- Weather's account card and Chat's Edit Profile and Your Account open it, signed in (a code handed over, and said
   yes to), with the way back to the app.
-- Tests: `.tools/tests/acctpage.mjs` (79 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
-  by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
+- Tests: `.tools/tests/acctpage.mjs` (79 checks: an account made here, then signed in to Chat, the check-up, the email confirmed and changed
+  by its links, the password checked, the profile and photo, a new password that Chat then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
@@ -471,10 +472,10 @@ Motion, solid with Reduce Transparency.
   counts, the passkey offer only where one can be made, the check-up's row and sheet (a fix opened over it, Back to it, a leaked password's banner), "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
   back by poppler and pypdf, and the export it's written from), `.tools/tests/acctjoin.mjs` (41 checks: accounts by invite only: none without one,
-  InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
+  Chat's invite link passed on, the account made, the invite used up and refused again; Chat's and Weather's
   Sign in opening this page for them, in the same order and words, and the way back; a new account and a forgotten
   password only here; a reset link by email,
-  passed on from InFlight's older address, keeping the key with a passkey (the link opened in another tab first), then
+  passed on from Chat's older address, keeping the key with a passkey (the link opened in another tab first), then
   starting fresh, the old password refused; a new email's words to the old address), `.tools/tests/acctlink.mjs` (24
   checks: the hand-off code: said yes to first, once, for a minute, only here, and never over another account's sign-in;
   a browser it signs in is this page's alone until it's shown it's you), `unit/pdf.test.mjs` (the PDF writer: Windows
@@ -835,7 +836,7 @@ so there's nothing to set up beyond the address.
   colour, and how many more (`weather/alerts.js` briefMail, warningMail). Mail
   apps are asked not to make times into links. Each has a link to turn them off
   (GET shows a button, POST turns them off: `/api/weather/email-off`, with the
-  account's own token, as InFlight's emails have) and the mail app's own
+  account's own token, as Chat's emails have) and the mail app's own
   Unsubscribe (RFC 8058). The site's sending plan is shared by every app's email
   (Resend's free plan: 100 a day, 3,000 a month), so Weather sends at most
   **`WX_MAIL_DAY`** a day (60 unless set; raise it on a paid plan), a briefing
@@ -878,7 +879,7 @@ so there's nothing to set up beyond the address.
   (account.<site>: the profile, email, password, passkeys, devices, and signing
   out), signed in as you in whichever browser it opens in (Weather asks for a
   code good once, for a minute, `POST /api/weather/account-link`, and the page
-  swaps it for a sign-in of its own, as InFlight's Edit Profile does; the page
+  swaps it for a sign-in of its own, as Chat's Edit Profile does; the page
   shows the way back to Weather). Where notifications go is said in
   Notifications ("Notifications go to this device and Mac · Chrome", with "Send
   them here too" where this one isn't among them). Signed out there (or
@@ -1064,9 +1065,9 @@ Share a place with `?lat=…&lon=…&name=…`.
 project → Custom domains → Set up a custom domain → `weather.inflite.ai`.
 The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
 else: notifications are sent by `.github/workflows/weather-tick.yml` every 10
-minutes with InFlight's tick secret (`INFLIGHT_TICK_SECRET` in GitHub,
+minutes with Chat's tick secret (`INFLIGHT_TICK_SECRET` in GitHub,
 `PIGEON_TICK_SECRET` in Cloudflare), unless `WEATHER_TICK_SECRET` is set on
-both sides; they use the site's D1 database and InFlight's push key. georgefarrowgreen.com/weather sends you to
+both sides; they use the site's D1 database and Chat's push key. georgefarrowgreen.com/weather sends you to
 the new address; preview deployments (`*.pages.dev/weather/`) serve the app
 directly, so a branch can be tried before it's merged.
 
@@ -1083,12 +1084,12 @@ directly, so a branch can be tried before it's merged.
 
 **Its own address.** At weather.inflite.ai only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
-site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
+site's and Chat's. Its Content-Security-Policy runs only its own scripts and
 lets it fetch only from Open-Meteo, BigDataCloud (and OpenStreetMap's Nominatim
 when BigDataCloud can't name a place), RainViewer and OpenFreeMap (the map's
 tiles, fonts and relief), and show map tiles only from RainViewer, OpenFreeMap
 and OpenStreetMap (the map without WebGL 2); the map's own worker is the app's
-own file. It's the only place, with InFlight, that may ask for your location.
+own file. It's the only place, with Chat, that may ask for your location.
 
 **What the server keeps.** For notifications: the phone's push subscription,
 the place (to two decimal places, about a kilometre) and its name, which
@@ -1286,7 +1287,7 @@ into readiness.
 timestamps, a ride round FIT, GPX and TCX with the same figures, real devices' quirks, workouts out to every format and
 back, zips, the training-load maths; the record and an activity's figures made safe, a file checked to be what it says,
 and two devices' records put together) and `.tools/tests/fitness.mjs` (end to end, at fitness.gfg.test: signed out,
-only Sign in, and the API closed; away from its own address, no sign-in; signed up to InFlight, Fitness signed in
+only Sign in, and the API closed; away from its own address, no sign-in; signed up to Chat, Fitness signed in
 already; five files imported at once from a Wahoo, a GPX, Zwift, Garmin Connect's zip and one it can't read, each
 ride's file kept with the account, the same ride again not kept twice; a phone signing in on the account's page and
 handed back, with the laptop's rides, one opened from its file and out as FIT with every sample; a plan chosen on one
@@ -1294,11 +1295,19 @@ and a new FTP on the other from the version before, both kept; miles on one, mil
 and another deleted, on both; Fitness on the account's page; signing out, the phone's copies gone; and no screen wider
 than a 320 px phone).
 
-## InFlight (chat.inflite.ai) — 1.3.5
+## Chat (chat.inflite.ai) — 1.4.1
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
 
-**1.3.5** (in keeping): InFlight looks like the account page and Weather. Behind every screen is the account page's
+**1.4.1** (a new name): InFlight is now **Chat**, everywhere it's named: the app and its Home Screen name, the welcome
+and sign-in, the home page's and the account page's apps, Weather and Fitness where they mention it, its emails (from
+**Chat** `<chat@…>` now) and notifications, Chat Live, and this README. What only the code sees keeps the old name, so
+nothing anyone has is lost: the phone's storage (`inflight` in IndexedDB, the `inflight-…` settings), the API
+(`/api/pigeon/`, the account's `/api/account/inflight`), the email brand and its pictures, `INFLIGHT_TICK_SECRET`.
+Recent activity noted before the change says Chat too. A Home Screen icon added before keeps its old name until it's
+added again.
+
+**1.3.5** (in keeping): Chat looks like the account page and Weather. Behind every screen is the account page's
 sky (its gradient, and three slow lights drifting over it in steps, twice a second: dawn in Light, night in Dark; held
 still with Reduce Motion and under a sheet; `index.html` `.sky`), and over it Liquid Glass: groups, the Messages list
 (one pane, as Settings' groups are), cards and friends' bubbles are clear panes with a sheen in the corner, a bright
@@ -1316,23 +1325,23 @@ Skies on Messages); what's typed while a message sends is kept; with read receip
 from landing; a reaction carries its message's id inside its seal; pinch zoom; focus kept through redraws and inside
 sheets; and the account's settings, below.
 
-**Settings on your account** (1.3.4): InFlight's Settings has one row, **InFlight Settings**, which opens the
-account's page at InFlight's settings (notifications, lock screen names, quiet hours, email, who sees what, who's
+**Settings on your account** (1.3.4): Chat's Settings has one row, **Chat Settings**, which opens the
+account's page at Chat's settings (notifications, lock screen names, quiet hours, email, who sees what, who's
 blocked) and says in a line what's set ("10 of 11 notifications on · quiet 22:00–07:00 · 1 blocked"). **Location**
-stays, and **This Phone** has what's each phone's own: Push Notifications (and a test), Lock InFlight, Haptics, and
+stays, and **This Phone** has what's each phone's own: Push Notifications (and a test), Lock Chat, Haptics, and
 Encryption & Safety Numbers (a friend's changed key said on its row). Appearance is the account's page's, as it already
-was. With no account page beside it, InFlight keeps its own Notifications and Privacy & Security, as before.
+was. With no account page beside it, Chat keeps its own Notifications and Privacy & Security, as before.
 
 **1.3.3** (coming and going): signing in is one movement. **Sign in** fades the account page's sky in as it goes
-there (`handOff`; the page is preconnected), and back signed in InFlight opens on the picture that page
+there (`handOff`; the page is preconnected), and back signed in Chat opens on the picture that page
 ended on, you in it from the first frame (`theme.js` marks the page before it's drawn, styles.css `html.arriving`;
-your initial and photo from the address's `#`): the sky (InFlight's own now, since 1.3.5) clears to Messages as a padlock opens in the middle ("Messages
+your initial and photo from the address's `#`): the sky (Chat's own now, since 1.3.5) clears to Messages as a padlock opens in the middle ("Messages
 unlocked"), your picture flies down into Account, and your chats come in a row at a time (`arriving`), all overlapping,
 in about a second and a half. Someone new goes straight on to choosing where they
 are. Signing out goes the other way: the screen's rows fall away, the padlock shuts and night comes in, clearing to the
 welcome (`dusk`). With Reduce Motion each part fades where it is; none of it ever takes a tap or stays on screen.
 
-**1.3.2** (one sign-in): InFlight signs in on the account's page, the one place every app on the site signs in. Its
+**1.3.2** (one sign-in): Chat signs in on the account's page, the one place every app on the site signs in. Its
 welcome's **Sign in** (or **Continue as …**, signed in elsewhere on the site already) and **Create your account** go
 there, and it's handed the sign-in back with what unlocks the key, sealed to this tab, so your messages open as you come
 back and you show it's you once (*Your account* above). Its own sign-in screen and Unlock Messages screen are gone, and
@@ -1354,13 +1363,13 @@ pigeons each frame and the whole map at most twice a second, fold and unfold fro
 waiting for the first draw, and morph when a pigeon lands. The tracker reads its colours once, glides its zoom and
 keeps + and − still. Reduce Motion fades instead of moving, rather than cutting.
 
-**1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.inflite.ai, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
+**1.3.0** (one way in): Chat only signs in. New accounts are made on the account's page (account.inflite.ai, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to Chat's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to Chat signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
 **Icon**: the same blue square and white pigeon, with depth: the bird stands off the blue, its pale-blue side showing beneath, a lit top edge and a soft shadow. `pigeon/icon.svg` (rounded) for the tab and in the app, `icon-192.png` and `icon-512.png` rounded, `icon-180.png` square (iOS rounds it, as do the site's pages that show it), `icon-maskable-512.png` square for Android's masks, and `badge-96.png`, the white pigeon alone on transparent, for Android's notification badge.
 
 **1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
-**1.2.8** (your profile, on your account): your photo, name and handle are the georgefarrowgreen.com account's, so My Profile shows them and Edit Profile changes them on the account's page (account.inflite.ai) rather than in InFlight. It opens signed in, whatever browser it opens in (a Home Screen app's links open in the browser, which has its own cookies): InFlight asks for a code (`POST /api/pigeon/account-link`, good once, for a minute, in `pg_handoff`), puts it in the address's `#` (never sent to a server), and the page swaps it for a sign-in of its own (`POST /api/account/handoff`, only at the account's address and from its own page; it takes the code out of the address at once). That sign-in shows in Signed-in devices and never counts as having just shown it's you, so a new password or passkey still asks. The page opens straight at Edit profile with the way back to InFlight; Done or Cancel closes it, and InFlight shows the change as you come back. Privacy & Security's Your Account opens the page the same way (`.tools/tests/acctlink.mjs`).
+**1.2.8** (your profile, on your account): your photo, name and handle are the georgefarrowgreen.com account's, so My Profile shows them and Edit Profile changes them on the account's page (account.inflite.ai) rather than in Chat. It opens signed in, whatever browser it opens in (a Home Screen app's links open in the browser, which has its own cookies): Chat asks for a code (`POST /api/pigeon/account-link`, good once, for a minute, in `pg_handoff`), puts it in the address's `#` (never sent to a server), and the page swaps it for a sign-in of its own (`POST /api/account/handoff`, only at the account's address and from its own page; it takes the code out of the address at once). That sign-in shows in Signed-in devices and never counts as having just shown it's you, so a new password or passkey still asks. The page opens straight at Edit profile with the way back to Chat; Done or Cancel closes it, and Chat shows the change as you come back. Privacy & Security's Your Account opens the page the same way (`.tools/tests/acctlink.mjs`).
 
 **1.2.7** (tidier, after a review of 1.2.2–1.2.6): Look Up's camera and location watch stop whenever the sheet stops being Look Up (Back, X, another sheet, even after the pigeon has landed) and when the app goes to the background; a second tap while the camera starts cancels it rather than opening another; the lens angle when zoomed is right (it was doubled); no location no longer stops the drawing. A way blurred a month on keeps what it said (`w_dodged`, `w_shelter`, `w_ship` on `pg_msgs` / `pg_gdeliv`), so a pigeon tidied away after its blur keeps its storms, shelter and ship in the flight log; the clean-up claims its turn in one step (no warning email twice); a warning never names a day gone by; an account's deletion keeps the landed pigeons its friends sent it as unnamed lines; a full sheet redraw waiting for the slide isn't lost to a lighter one; a safety number for someone no longer found closes; signing out one phone asks first. Times read "2 hours ago" everywhere. `placegrid.js` is fetched with the rest at start (about 0.2 s sooner on a slow line). Insights: days used are noted (`pg_active`, a row per account per London day, 60 kept), so People active counts opening the app and Coming Back shows who used it in their second week; days follow the clocks changing; photos, losses (not recalls) and pigeons in the air counted right; Count Again keeps your place.
 
@@ -1404,15 +1413,15 @@ the trip is as long as the Moon is far away that day (`functions/_moon.js`,
 from its orbit). Between two people on the Moon a pigeon bounds over the
 surface. A lunar flight keeps none of the Earth's places on its row (its two
 ends are in `moon`, an Earth end only to the half degree), so routing,
-weather, flyovers, the passport's countries and InFlight Live's dots all
+weather, flyovers, the passport's countries and Chat Live's dots all
 pass it by; the phone draws the trip instead (`pigeon/moon.js`). In a group,
 pigeons to or from someone on the Moon go as lunar pigeons by themselves.
-The passport gets a Moon stamp, there's a Moonshot badge, and InFlight Live
+The passport gets a Moon stamp, there's a Moonshot badge, and Chat Live
 counts the pigeons out in space (a number only).
 
-**1.0.8** (a new home, and InFlight Live): InFlight moved to
+**1.0.8** (a new home, and Chat Live): Chat moved to
 chat.inflite.ai, bringing each phone's sign-in across, and the
-old address says where it went; InFlight Live shows every pigeon in the air
+old address says where it went; Chat Live shows every pigeon in the air
 on a computer, with no one in it.
 
 **1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
@@ -1455,7 +1464,7 @@ stay put. For the subdomain, in Cloudflare (the georgefarrowgreen.com zone):
 (If chat.inflite.ai is added to the Pages project as a custom domain
 instead, its /pigeon pages still send you to the main address.)
 
-**Phones and iPads only.** On a computer, /pigeon shows a page saying InFlight
+**Phones and iPads only.** On a computer, /pigeon shows a page saying Chat
 isn't available there, with a QR code that opens the same link (an add-a-friend
 or reset link included) on a phone; the app itself never starts, so nothing is
 signed in, synced or stored. `pigeon/theme.js` decides before anything is
@@ -1471,9 +1480,9 @@ apart on the server, so this is decided on the device).
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
-**Notifications.** Push (Web Push, works on Android, and on iPhone and iPad once InFlight is added to the Home Screen)
+**Notifications.** Push (Web Push, works on Android, and on iPhone and iPad once Chat is added to the Home Screen)
 is switched on per phone, in Account → This Phone (with **Send a Test Notification**); the rest, and Email (via
-Resend), are the account's, on the account's page (Account → **InFlight Settings**, which says in a line what's set):
+Resend), are the account's, on the account's page (Account → **Chat Settings**, which says in a line what's set):
 which events notify (a pigeon lands, takes off, friend requests, accepted
 requests), whether names show on the lock screen, and quiet hours in the
 phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
@@ -1506,7 +1515,7 @@ domain's bot protection blocks GitHub's servers). Optional: `PIGEON_CONTACT` = a
 contact about your pushes.
 
 **Updates.** `functions/pigeon/_middleware.js` stamps every script and
-stylesheet an InFlight page loads (and every module `app.js` imports) with
+stylesheet a Chat page loads (and every module `app.js` imports) with
 `?v=<fingerprint of that file>`. Pages are never cached, so a refresh always
 pulls whatever changed; fingerprinted files are cached for good. Open copies
 check the page's `inflight-version` when the app comes back to the screen and
@@ -1579,7 +1588,7 @@ accepts a look whose badge you've earned (`SKINS` and `skinOpen` in
 pinch to zoom; the globe button switches to the flat map and back. Both show:
 - the trail, solid where the pigeon has flown and dashed ahead;
 - night and twilight, worked out from where the sun really is, with the sun drawn where it's overhead;
-- the wind everywhere, as thousands of drifting trails, brighter where it blows harder. Tap anywhere for the wind there, as direction and mph. The layers button turns it off, and the route gets its own green or orange tailwind and headwind streaks instead. The grid comes from Open-Meteo through InFlight (`functions/_windmap.js`): only a box of the world is sent, never who is looking, and it's cached for everyone per place and hour;
+- the wind everywhere, as thousands of drifting trails, brighter where it blows harder. Tap anywhere for the wind there, as direction and mph. The layers button turns it off, and the route gets its own green or orange tailwind and headwind streaks instead. The grid comes from Open-Meteo through Chat (`functions/_windmap.js`): only a box of the world is sent, never who is looking, and it's cached for everyone per place and hour;
 - the rain, as a weather radar: light blue drizzle through blue and purple rain to orange and yellow cloudbursts. The same grid carries how hard it's raining (Open-Meteo's last 15 minutes, as mm an hour); it's blended smoothly, given a radar's streaky grain by noise that drifts slowly, and worked out at a third of the screen's resolution a few times a second. Whatever held a pigeon up (storms, heavy rain, snow) is always on it, as an intense cell where it was worst, labelled, even with the layer off; fog and gales are drawn as fog banks and gusts. Still with Reduce Motion;
 - shallow water along the coasts, softly shaded mountain ranges, and country names as you zoom in (`pigeon/countries.js`);
 - a pigeon that flaps, tilts with its course and flutters as it takes off and lands. Only the pigeon is redrawn each frame; the map stays as it was drawn.
@@ -1864,7 +1873,7 @@ rank; only you see its career (`functions/_birds.js`). For a message to a
 group, your named pigeon flies the longest of its routes.
 
 **Passport.** Every country and sea your pigeons have flown over, stamped in a
-passport. The Flight Log shows it closed (a burgundy cover with the InFlight
+passport. The Flight Log shows it closed (a burgundy cover with the Chat
 crest, how many journeys and pages, the last stamp); it opens as a book you
 swipe through: a photo page (your name, loft and handle, how long you've kept
 pigeons, miles flown, countries of 195, seas, your furthest flight, your named
@@ -1900,7 +1909,7 @@ passport (`functions/_passport.js`).
 shop on accessories for your named pigeons. (In the code and the database they're
 still called feathers: `functions/_feathers.js`, `pg_feathers`.)
 
-**InFlight Live** (`chat.inflite.ai/tracker`, computers only). A
+**Chat Live** (`chat.inflite.ai/tracker`, computers only). A
 public world map of every pigeon in the air, made so that nobody is in it. The
 server decides what may be shown (`functions/_tracker.js`, `GET /api/pigeon/tracker`)
 and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
@@ -1917,7 +1926,7 @@ and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
   under 300 km never show;
 - in a shuffled order with no ids, so a dot now can't be linked to a dot later;
 - a pigeon shows only if both its sender and the person it's flying to leave
-  **Live tracker** on, in InFlight Settings on the account's page (it's on unless switched off);
+  **Live tracker** on, in Chat Settings on the account's page (it's on unless switched off);
 - one answer a minute for everyone, kept at the edge: no sign-in, no cookies,
   nothing about who looked is stored, and asking more often learns nothing.
 
@@ -1974,8 +1983,8 @@ the ones kept from before), ignoring case and accents, newest first, with the
 word highlighted. Tap one to open the chat at that message. It all happens on
 the phone; what you search for is never sent anywhere.
 
-**App lock.** Account → This Phone → Lock InFlight (per phone; needs a
-passkey). InFlight then locks when you leave it, straight away or after 1, 15
+**App lock.** Account → This Phone → Lock Chat (per phone; needs a
+passkey). Chat then locks when you leave it, straight away or after 1, 15
 or 60 minutes, and opens with Face ID, Touch ID or the passkey: a
 user-verified passkey check made on the phone itself, so it works offline.
 Turning it on checks it's you first, so you can't lock yourself out by
@@ -2007,7 +2016,7 @@ deletes what's waiting.
 **Opens at once.** After every sync the phone keeps a copy of what the server
 sent, and of the last 12 chats you opened, in IndexedDB. Message contents stay
 sealed in it; they're opened with the key that's already on the phone, as they
-are anyway. At launch InFlight draws your chats from that copy straight away,
+are anyway. At launch Chat draws your chats from that copy straight away,
 then swaps in the fresh one; with no connection, you still see the last-known
 state. Before there's any copy (a new phone), placeholder rows shimmer instead
 of a misleading "No messages yet". Signing out deletes the copy.
@@ -2145,7 +2154,7 @@ spot, at its own speed (still within its 3-day limit); the turn is stored in
 setting). Location changes are limited to 30 per 15 minutes (automatic
 updates check about once a minute). *Update
 Automatically* (off by default) refreshes your location each time you open
-InFlight, only if location permission was already given.
+Chat, only if location permission was already given.
 
 **Encryption.** Each phone makes an ECDH P-256 key pair. Two friends' keys give
 them a shared secret, and each scroll is sealed with its own AES-256-GCM key
@@ -2183,13 +2192,13 @@ Each sign-in starts a session and also gives the browser a cookie for the whole 
 georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signed in for one app,
 you're signed in to the others in that browser, and signing out of any of them (or deleting the account, or a password
 reset) ends it for all. The cookie holds a token of its own for the session (`pg_sessions.site_hash`), not the
-session's bearer token, so it opens nothing of InFlight's; and it's only given in answer to a sign-in from the app's
+session's bearer token, so it opens nothing of Chat's; and it's only given in answer to a sign-in from the app's
 own pages (the browser's Origin), so a sign-in another site sends in your browser, even with a good password, can't
-sign the browser in. InFlight keeps its own bearer token as before, given to it by the hand-back with what unlocks its
+sign the browser in. Chat keeps its own bearer token as before, given to it by the hand-back with what unlocks its
 key (where the browser shares the site's sign-in, the one the account's page just made is moved to it, so it's one
 sign-in); it gives an existing sign-in a cookie the first time it syncs; and, opened signed out where the browser's
 signed in elsewhere on the site, its welcome has **Continue as …**, which takes you to the
-account's page to show it's you (the cookie alone starts no InFlight session). Apps that keep nothing themselves (Weather) ask with the cookie, only from
+account's page to show it's you (the cookie alone starts no Chat session). Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
 made for the site (rpId georgefarrowgreen.com) at chat., the site's own address, weather. and account., so one passkey works at
 all of them; an answer from one is taken only at the address it was given at. The profile (photo, name, handle, email) is the
@@ -2199,7 +2208,7 @@ same whichever app it's tried in. A web app added to an iPhone's Home Screen kee
 signs in on its own, the account's page opening inside it to do it (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
 chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
 page, account.inflite.ai (above), is where its password, passkeys and signed-in devices are for every app
-(InFlight's account card at the top of Account), and InFlight's settings that are the account's (InFlight Settings).
+(Chat's account card at the top of Account), and Chat's settings that are the account's (Chat Settings).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
@@ -2218,7 +2227,7 @@ older scrolls stay sealed and friends see a key-change warning. Every change
 signs out the account's other phones and emails a "your password was changed"
 notice.
 
-InFlight's emails (a pigeon landed, a friend request, the week in flight, Admin's
+Chat's emails (a pigeon landed, a friend request, the week in flight, Admin's
 test) and the account's (sign-ins, the password, passkeys, the email
 address, reset links, keeping or deleting it) go through the site's email, below
 under **Email**. Press **Send a test email** in Admin → Email to check it's set
@@ -2251,7 +2260,7 @@ Home page (its photos and when its words last changed, and Edit, which opens it
 straight into changing them: `#edit`), each a step further in, with Back.
 Messages are new until they've been shown (`messages.read_at`): the new ones in
 full, the rest a line each, opened with a tap. The admin is the account linked to it (`pg_meta`
-`admin_user`: linked once from InFlight's old dashboard, since removed), or, with
+`admin_user`: linked once from Chat's old dashboard, since removed), or, with
 none (or that one gone, or being deleted), the account with the site owner's
 email (`PIGEON_ADMIN_EMAIL`, else `CONTACT_TO`) once that email's confirmed: the
 same as a reset link to that inbox would give, so it can't be lost for good.
@@ -2262,7 +2271,7 @@ there in the sheet you're in (a card under what you were doing: the passkey
 first, the password if you'd rather, or Not now), from the page itself; each
 change is in your Recent activity too, and you can't delete your own account
 from Admin. The
-old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on InFlight's)
+old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on Chat's)
 lead there (`#admin`, which opens the folder). The same account is the home page's owner, with its Edit (above).
 `.tools/tests/adminlink.mjs` tests all of it (Messages: `.tools/tests/home.mjs`).
 
@@ -2290,10 +2299,10 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
 
 ## Running reliably
 
-- **The notification jobs** (InFlight's landings and moments, Weather's rain alerts, warnings and morning briefing) run
+- **The notification jobs** (Chat's landings and moments, Weather's rain alerts, warnings and morning briefing) run
   whenever they're asked for, one at a time. GitHub's schedule (`.github/workflows`) asks every 5 and 10 minutes but
   in practice runs hours late, so: the apps' own traffic asks too, when the last run was over 5 minutes ago
-  (`maybeTick`, `maybeWxTick`, from InFlight's and Weather's APIs), and `workers/ticker` is a small Cloudflare Worker
+  (`maybeTick`, `maybeWxTick`, from Chat's and Weather's APIs), and `workers/ticker` is a small Cloudflare Worker
   that asks every 5 minutes on Cloudflare's own schedule. It's deployed on each push to main by
   `.github/workflows/ticker-deploy.yml`, with the repository's `INFLIGHT_TICK_SECRET` (and `WEATHER_TICK_SECRET`, if set),
   once the repository has a `CLOUDFLARE_API_TOKEN` secret (a token from the "Edit Cloudflare Workers" template; add
@@ -2314,7 +2323,7 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
 
 A pass over every app for UI and UX, motion, speed, stability and how the apps work together. What changed:
 
-- **InFlight:** a friend's last-seen time no longer redraws the screen every minute, and a redraw that news brings waits
+- **Chat:** a friend's last-seen time no longer redraws the screen every minute, and a redraw that news brings waits
   while a finger's down or a list is gliding. A friend's `#add=` link is kept for a day (`inflight-add`) and shown on the
   welcome, so it survives making the account on its page. Pages' unstamped `Link: modulepreload` header is dropped
   (`functions/_app.js`). The welcome isn't held up by the old address's handover. The welcome sky draws its planet once
@@ -2336,7 +2345,7 @@ A pass over every app for UI and UX, motion, speed, stability and how the apps w
   was the heaviest download on the map). The rain-alerts card shows only when there's something to do. Radar playback
   rests under a sheet. The offline copy is checked with the server when it updates, not downloaded a second time.
 - **Server:** Weather's tables are set up once (a fingerprint in `wx_meta`), not a dozen trips on each fresh copy of the
-  server; warnings are kept by the phone 3 minutes; InFlight's message look-ups are one query each (the ids as one JSON
+  server; warnings are kept by the phone 3 minutes; Chat's message look-ups are one query each (the ids as one JSON
   list, `json_each`); the home page's owner check is skipped for signed-out visitors and cached a minute.
 
 Left for the Cloudflare dashboard (not in the repo): Caching → Browser Cache TTL → **Respect Existing Headers** (it
@@ -2362,14 +2371,14 @@ where possible; and with Reduce Motion things dissolve (150–200 ms) rather tha
 | `--dur-fast` / `--dur-base` | .2 s / .35 s | fades / most moves |
 | `--dur-sheet-in` / `--dur-sheet-out` | .5 s / .34 s | sheets |
 
-Each app keeps its own older names as aliases (InFlight's `--nav` and `--snappy`, Weather's and the account page's
+Each app keeps its own older names as aliases (Chat's `--nav` and `--snappy`, Weather's and the account page's
 `--glide`, `--spring` and `--ease`).
 
 - **Home page:** the slideshow crossfades over the slide before it, with the blurred backdrop following; sheets open
   and close from wherever they are and ease to new heights; Send shows a spinner, errors ease in and go as you type;
   edits show at once, with Undo; photo tiles appear as they upload, removing one is asked on the photo itself, and
   images are shrunk off the main thread (`OffscreenCanvas`); leaving for an app, the page steps back.
-- **InFlight:** see 1.3.1 under InFlight above.
+- **Chat:** see 1.3.1 under Chat above.
 - **Account page:** the sheet eases to each new height (pushes, Back, data arriving, errors) and redraws in place,
   keeping its scroll and focus; going on or back slides the old view away; tapping the title no longer closes it, and
   a double tap doesn't either; closing mid-opening turns back from where it is; rows that go fade and fold; the theme
@@ -2401,17 +2410,17 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   devices, a new password, a reset), it's no longer the account's by the next tick, as if signed out on it, so a phone
   someone else had signed in hears nothing more of the account. Deleting an account removes Weather's share first (so a
   failure can be tried again), ends any waiting hand-over codes and disappearing-message settings, and keeps the
-  handles it had lately held for no one; an account being deleted gets no InFlight emails, and the "Keep my account"
-  link goes only to a confirmed address. InFlight's old instant `DELETE /api/pigeon/me` is gone (410: the account's
+  handles it had lately held for no one; an account being deleted gets no Chat emails, and the "Keep my account"
+  link goes only to a confirmed address. Chat's old instant `DELETE /api/pigeon/me` is gone (410: the account's
   page, with its week's grace). A reset says it removes your passkeys. The account page has Sign out when opened from
-  the home page. (Weather once had a copy of the password code, kept in step with InFlight's by a test; it signs in on
+  the home page. (Weather once had a copy of the password code, kept in step with Chat's by a test; it signs in on
   the account's page now, so it has none: `unit/signin.test.mjs` checks the hand-back's sealing and word, where the page
   will send a sign-in back to, and that no app signs in by itself.)
-- **Passkeys open InFlight's messages wherever they're added.** One added on the account's page asks the device for its
-  PRF secret (as InFlight does), then the password once, and locks the passkey's own copy of the key to the messages
+- **Passkeys open Chat's messages wherever they're added.** One added on the account's page asks the device for its
+  PRF secret (as Chat does), then the password once, and locks the passkey's own copy of the key to the messages
   with it (`POST /api/account/passkeys/vault`; the key is unlocked and locked again on the page, never sent as it is).
-  So signing in to InFlight on a new phone with it opens the messages with no password. Each passkey's page says
-  whether it does ("InFlight messages: Opens them"), and one that doesn't can be set up there
+  So signing in to Chat on a new phone with it opens the messages with no password. Each passkey's page says
+  whether it does ("Chat messages: Opens them"), and one that doesn't can be set up there
   (`.tools/tests/acctpkmsg.mjs`).
 - **Shown it's you lately, for the owner's changes and people's details.** Changing the home page (its words, photos,
   Undo) needs the owner to have shown it's them in the last 12 hours, as a phone left signed in, or a sign-in handed
@@ -2419,13 +2428,13 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   (`#confirm=edit`) and comes back editing, so nothing typed is lost. Admin's lists with people's details (accounts,
   the site's messages, the log) need the same 12 hours, asked on the page as a change is; its figures (the summary,
   Insights, Storage, invites) are as signed in. A change in Admin still needs the last 10 minutes.
-- **Nothing of InFlight's left at the old address.** Once InFlight is signed in at chat.inflite.ai, it tells
+- **Nothing of Chat's left at the old address.** Once Chat is signed in at chat.inflite.ai, it tells
   the old address's hidden handover page (`pigeon/handover.js`, which only the new address may open or speak to) to
   clear what that browser kept there: the sign-in, the key, trusted keys and settings, as that address is the home
   page's too. Once per browser, for one that moved before as well (`inflight-oldcleared`); an old tab still open there
   lets go of its copy when asked (`.tools/tests/movein.mjs`). Home Screen apps keep their own storage, untouched.
 - **Passkeys checked as they're made, sign-ins that end, HTTPS everywhere.** A passkey being added (on the account's
-  page or in InFlight) is taken only if what the authenticator itself says of it matches: made for this site, a person
+  page or in Chat) is taken only if what the authenticator itself says of it matches: made for this site, a person
   there and verified, and the same id and public key as the page sends (`checkRegistration`, reading its
   authenticator data and COSE key; `unit/passkeyreg.test.mjs`). One that counts its uses must count up each time
   (`pg_passkeys.sign_count`): one that's fallen behind is a copy, and isn't taken. A sign-in lasts while it's used, up
@@ -2436,11 +2445,11 @@ has, so they stop partway (their other checks, run past that point, pass as befo
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
-  HSTS), because the home page shares its origin with InFlight, whose keys live in
+  HSTS), because the home page shares its origin with Chat, whose keys live in
   this origin's storage. `README.md`, `wrangler.toml` and `blokk/` aren't
   served.
 
-### InFlight's security model
+### Chat's security model
 
 - **Verify in person:** a friend's Safety Number sheet shows your shared 60-digit
   number as a QR code. Scan theirs (the camera, read by the browser's own
@@ -2481,7 +2490,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   itself, so neither server ever sees the password or its hash.
 - **New sign-ins are announced:** a push to your other phones and an email
   (device, country, how), saying how to sign it out.
-- **Approximate Location** (InFlight Settings, on the account's page) keeps your spot to a 10 km
+- **Approximate Location** (Chat Settings, on the account's page) keeps your spot to a 10 km
   grid instead of a 1-mile one.
 - **A copy of the database alone is no use:** each password's proof hash and
   the private key it locks are locked again with `PIGEON_PEPPER`, a secret set
@@ -2490,8 +2499,8 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   within a minute of it being set. **Once set, never change or lose it:**
   every password would stop working.
 - **Two addresses, kept apart:** chat.inflite.ai serves only
-  InFlight's own pages (the app, the tracker) and its own API (`/api/pigeon/`);
-  the site's API, its owner's sign-in and InFlight's admin stay on
+  Chat's own pages (the app, the tracker) and its own API (`/api/pigeon/`);
+  the site's API, its owner's sign-in and Chat's admin stay on
   georgefarrowgreen.com (`/admin` there redirects). At either address anything
   else is "Not found", never the site's home page as a fallback
   (`functions/_middleware.js`, `functions/_app.js`). The old address's handover
@@ -2528,7 +2537,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   email addresses ordinary ones, and request bodies are capped at 512 KB.
 - **Signed-in devices** (the account's page, Sign-in and security) lists every sign-in, as "iPhone ·
   Safari" with when it was last used, to sign out one or all the others.
-- **One address.** InFlight's pages on Cloudflare's preview addresses
+- **One address.** Chat's pages on Cloudflare's preview addresses
   (`*.pages.dev`) redirect to georgefarrowgreen.com, so there's never a second
   origin holding sign-ins or keys. The wind map asks Open-Meteo only within a
   share per person and per hour.
@@ -2543,7 +2552,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   for 30 days. **Blocking** (from a request, a chat's menu or contact info)
   ends the friendship and stops their requests, pigeons, and access to your
   picture and place (in a group you're both still in, neither sees the other's
-  reactions, whose flight times would say how far away they are); they aren't told, and InFlight Settings (on the account's page) lists them under Blocked, to
+  reactions, whose flight times would say how far away they are); they aren't told, and Chat Settings (on the account's page) lists them under Blocked, to
   unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
   only friends see it. A month after a pigeon lands, its route's ends are

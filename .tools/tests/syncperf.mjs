@@ -11,8 +11,8 @@ const api = async (t, path, body, method) => { const r = await fetch(BASE + '/ap
   return [r.status, await r.json().catch(() => ({})), r.headers]; };
 const rnd = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 const realPub = async () => { const k = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']); const j = await crypto.subtle.exportKey('jwk', k.publicKey); return { kty: j.kty, crv: j.crv, x: j.x, y: j.y }; };
-// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; and signed in to
-// InFlight from there, as a phone is: handback.mjs)
+// (made where accounts are made, the account's page: account.localhost beside Chat run locally; and signed in to
+// Chat from there, as a phone is: handback.mjs)
 const user = async (h, name, lat, lon, place) => { const proof = rnd(), email = h + '@example.com';
   const u = (await madeIn({ name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() })).j;
   await api(u.token, 'me', { lat, lon, place }, 'PATCH'); return u; };

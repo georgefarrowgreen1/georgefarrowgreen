@@ -1,4 +1,4 @@
-// InFlight Live (tracker.html): every pigeon in the air, on a computer, with no one in it.
+// Chat Live (tracker.html): every pigeon in the air, on a computer, with no one in it.
 // What it draws comes from /api/pigeon/tracker (functions/_tracker.js), which decides what
 // may be shown: this page only ever has rough dots, never a name, a route or an id.
 import { LAND } from "./land.js";
@@ -211,7 +211,7 @@ function start() {
   }
   function ago() {
     const live = $(".tk-live");
-    if (!when) { $(".tk-when").textContent = failed ? "Can’t reach InFlight right now" : "Looking for pigeons…"; live.classList.toggle("off", failed); return; }
+    if (!when) { $(".tk-when").textContent = failed ? "Can’t reach Chat right now" : "Looking for pigeons…"; live.classList.toggle("off", failed); return; }
     const s = Math.max(0, Math.round((Date.now() - when) / 1000));
     $(".tk-when").textContent = failed ? `Offline · last seen ${Math.round(s / 60)} min ago` : s < 10 ? "Live · just now" : s < 90 ? `Live · ${s} s ago` : `Live · ${Math.round(s / 60)} min ago`;
     live.classList.toggle("off", failed);

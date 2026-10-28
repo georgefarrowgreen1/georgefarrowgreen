@@ -1,10 +1,10 @@
-// InFlight's profile is the account's: My Profile shows your photo, name and handle, and Edit Profile opens the account's
+// Chat's profile is the account's: My Profile shows your photo, name and handle, and Edit Profile opens the account's
 // page signed in as you (a code good once, for a minute, handed over in the address's #), straight to editing them, in
-// whatever browser it opens in; Done takes you back, where InFlight shows the change. The code can't be used twice, or
+// whatever browser it opens in; Done takes you back, where Chat shows the change. The code can't be used twice, or
 // late, or anywhere but the account's page. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { joinInFlight, makeAccount } from './join.mjs';
+import { joinChat, makeAccount } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', WX = 'http://weather.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -25,10 +25,10 @@ async function browser(name, scheme = 'dark') {
 const shot = (p, n) => p.screenshot({ path: `${out}/${n}.png` });
 const text = (p, sel = 'main') => p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 
-// ---- InFlight, signed in to a new account (a Home Screen app has its own cookies: the browser it opens links in knows
+// ---- Chat, signed in to a new account (a Home Screen app has its own cookies: the browser it opens links in knows
 // nothing of it) ----
 const A = await browser('app');
-await joinInFlight(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
+await joinChat(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }))).token;
 
 // ---- 1. Account: a card as Weather's (photo, name, "@handle"); Location, Sign Out and Delete
@@ -51,11 +51,11 @@ await pop.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await po
 ok(pop.url() === `${ACCT}/`, 'the account\'s page, the code already gone from the address', pop.url());
 // (who it's for, said yes to first: a page elsewhere could send a browser here with a code for an account of its own)
 const confirmSays = await text(pop);
-ok(/Rowan Hale/.test(confirmSays) && /@rowan, from InFlight\. Carry on as this account in this browser\?/.test(confirmSays) && /Continue as Rowan/.test(confirmSays) && /Not you\? Sign in/.test(confirmSays)
+ok(/Rowan Hale/.test(confirmSays) && /@rowan, from Chat\. Carry on as this account in this browser\?/.test(confirmSays) && /Continue as Rowan/.test(confirmSays) && /Not you\? Sign in/.test(confirmSays)
   && rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n === 1, 'first, who it\'s for: Continue as Rowan, or Not you', confirmSays);
 await shot(pop, '02a-continue-as');
 await pop.click('main .signin .btn'); await pop.waitForSelector('main .hero', { timeout: 20000 }); await pop.waitForTimeout(900);
-ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.backapp')), 'signed in as you, with the way back to InFlight');
+ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.backapp')), 'signed in as you, with the way back to Chat');
 const dev = rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n;
 ok(dev === 2, 'a sign-in of its own (seen in Signed-in devices)', String(dev));
 ok(!(await pop.evaluate(async () => (await (await fetch('/api/account/me')).json()).fresh)), 'which doesn\'t count as showing it\'s you (a password change still asks)');
@@ -64,18 +64,18 @@ await shot(pop, '02-account-page');
 await pop.click('.hero .pill'); await pop.waitForSelector('#sheet[open] .sheet-body'); await pop.waitForTimeout(600);
 await pop.fill('#sheet input[autocomplete=name]', 'Rowan Ash Hale'); await pop.click('#sheet .done'); await pop.waitForTimeout(1200);
 ok(rows(`SELECT name FROM pg_users WHERE handle = 'rowan'`)[0].name === 'Rowan Ash Hale', 'the new name is the account\'s');
-// back to InFlight
+// back to Chat
 const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () => false);
 // (the page can close before the click's done with it)
 await pop.click('.backapp').catch((e) => { if (!/closed/.test(e.message)) throw e; });
-ok(await closed, 'InFlight: the page goes, back to the app');
+ok(await closed, 'Chat: the page goes, back to the app');
 await A.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await A.p.waitForTimeout(2500);
-ok(/Rowan Ash Hale/.test(await text(A.p, '#screen > main.view .me-cell')), 'and InFlight shows the new name', await text(A.p, '#screen > main.view .me-cell'));
+ok(/Rowan Ash Hale/.test(await text(A.p, '#screen > main.view .me-cell')), 'and Chat shows the new name', await text(A.p, '#screen > main.view .me-cell'));
 await shot(A.p, '03-back');
 // ---- 3. the code: once, for a minute, and only at the account's page ----
-// (a code from InFlight's own API, as the app asks for one)
+// (a code from Chat's own API, as the app asks for one)
 const c1 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
-ok(/^[A-Za-z0-9_-]{20,}$/.test(c1 || ''), 'InFlight asks for a code', String(c1).slice(0, 6) + '…');
+ok(/^[A-Za-z0-9_-]{20,}$/.test(c1 || ''), 'Chat asks for a code', String(c1).slice(0, 6) + '…');
 const F1 = await browser('fresh'); await F1.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`);
 await F1.p.waitForSelector('main .signin .btn', { timeout: 20000 });
 ok(rows(`SELECT COUNT(*) AS n FROM pg_handoff`)[0].n === 1, 'looked at, the code is still there: nothing\'s signed in until it\'s said yes to');
@@ -108,7 +108,7 @@ await F2.p.goto(`${ACCT}/#handoff=${c2}`); await F2.p.waitForSelector('main:not(
 ok(/Sign in/.test(await text(F2.p)), 'a code over a minute old: refused');
 const c3 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
 const other = await A.p.evaluate(async (c) => { const r = await fetch('/api/account/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c }) }); return r.status; }, c3);
-ok(other === 404, 'only the account\'s page takes one (not InFlight\'s address, say)', String(other));
+ok(other === 404, 'only the account\'s page takes one (not Chat\'s address, say)', String(other));
 // a browser signed in to another account: not swapped for this one (asked, or sent straight to the server)
 const M = await browser('mira');
 await makeAccount(M.p, `${ACCT}/`, { name: 'Mira Okafor', handle: 'mira', email: 'mira@example.com', password: PW });
@@ -123,16 +123,16 @@ await M.p.goto('about:blank'); await M.p.goto(`${ACCT}/#handoff=${c2}&open=infli
 const gToast = await text(M.p, '#toast'), gSheet = !!(await M.p.$('#sheet[open]'));
 ok(/run out/.test(gToast) && !gSheet, 'and a code that can\'t be checked: said, and what it was to open not opened for whoever\'s signed in here', `${gToast} | sheet ${gSheet}`);
 const noAuth = await A.p.evaluate(async () => (await fetch('/api/pigeon/account-link', { method: 'POST' })).status);
-ok(noAuth === 401, 'and only a signed-in InFlight can ask for one', String(noAuth));
+ok(noAuth === 401, 'and only a signed-in Chat can ask for one', String(noAuth));
 
-// ---- 4. InFlight Settings: the account's page, signed in too, open at InFlight's settings ----
+// ---- 4. Chat Settings: the account's page, signed in too, open at Chat's settings ----
 await A.ctx.clearCookies();
 const [pop2] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
-// (no cookie here now: the page asks, Continue as Rowan, then opens at InFlight's settings)
+// (no cookie here now: the page asks, Continue as Rowan, then opens at Chat's settings)
 const go2 = await pop2.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go2.evaluate((e) => e.matches('.btn'))) await go2.click();
 await pop2.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }).catch(() => {}); await pop2.waitForTimeout(800);
-ok(/Rowan Ash Hale/.test(await text(pop2)) && !!(await pop2.$('#sheet[open] #if-email')) && !!(await pop2.$('#sheet[open] .toapp')), 'InFlight Settings: the page, signed in too, at InFlight’s settings, with the way back');
+ok(/Rowan Ash Hale/.test(await text(pop2)) && !!(await pop2.$('#sheet[open] #if-email')) && !!(await pop2.$('#sheet[open] .toapp')), 'Chat Settings: the page, signed in too, at Chat’s settings, with the way back');
 
 
 ok(errs.length === 0, 'no errors on any page', errs.slice(0, 4).join(' | '));

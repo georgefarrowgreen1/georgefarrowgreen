@@ -1,4 +1,4 @@
-/* InFlight: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
+/* Chat: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
    (dawn in light, night in dark: the account page's own), and Liquid Glass over it: groups, the Messages list, cards,
    friends' bubbles and sheets are panes of glass with a bright rim and a soft lift; the nav buttons, the tab bar, the
    composer and menus float over everything in a stronger glass. Light by default. */
@@ -226,7 +226,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .cell .val{flex:none;max-width:55%;color:var(--label-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell .val .mono,.cell .val.mono{font-family:var(--mono);font-size:15px}
 .cell .chev{font-size:14px;color:var(--label-3);stroke-width:2.8}
-.cell .chev.away{font-size:13px;stroke-width:2.6}   /* (opens the account's page: InFlight Settings) */
+.cell .chev.away{font-size:13px;stroke-width:2.6}   /* (opens the account's page: Chat Settings) */
 .cell.action{color:var(--tint)}
 .cell.center{justify-content:center;text-align:center}
 .cell.destructive{color:var(--red)}
@@ -1539,7 +1539,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .mapcard .frow.flying b{color:var(--label)}
 .mapcard .skyrow b{color:var(--label)}
 
-/* Messages wears the app's name where its title was: the icon and InFlight */
+/* Messages wears the app's name where its title was: the icon and Chat */
 .brand{display:inline-flex;align-items:center;gap:.3em;min-width:0;vertical-align:middle}
 .brand .bicon{flex:none;display:grid;place-items:center;width:1.05em;height:1.05em;border-radius:.27em;color:#fff;
   background:linear-gradient(160deg,#5fb0ff,#0a5fe0);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 8px -2px rgba(10,95,224,.45)}
@@ -1792,7 +1792,7 @@ html.night .nav-ghost .night{background:none}
 
 /* ---------- signing in and out, in motion (app.js: handOff, arriving, dusk) ----------
    The account's page, where you sign in, has a sky of its own: pale lavender, or deep blue when the phone is dark (the
-   phone's, not InFlight's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
+   phone's, not Chat's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
 /* (the account page's sky exactly: its gradient, and its dawn, warm along the foot with a cool light at the top) */
 :root{--acct-sky:#f3f0fb;--acct-sky-a:#e9eefc;--acct-sky-c:#f7f8fc;
   --acct-heaven:radial-gradient(120% 80% at 50% -10%,var(--acct-sky-a),var(--acct-sky) 52%,var(--acct-sky-c));
@@ -1868,7 +1868,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 @media (max-width:360px){.mapcard.fc.fold .big{font-size:19px;letter-spacing:-.4px}.mapcard.fc.fold .big small{font-size:13px}.mapcard.fc.fold .fcpeek{gap:10px}}   /* a small phone: the folded card still says when it lands */
 /* a message held for its menu sinks a little first, as a chat in the list does */
 .msgs .b.pressing{transform:scale(.96);transition:transform .34s var(--smooth)}
-/* if InFlight can't start: what happened, and a way out */
+/* if Chat can't start: what happened, and a way out */
 .bootfail{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 28px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
 .bootfail h1{margin:8px 0 0;font-size:22px}
 .bootfail p{margin:0 0 12px;color:var(--label-2);font-size:16px;line-height:21px;max-width:34ch}

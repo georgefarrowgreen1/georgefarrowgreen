@@ -1,4 +1,4 @@
-# InFlight's tests
+# Chat's tests
 
 **Unit tests** (`unit/`, Node's own test runner, no dependencies): the space maths and lunar
 eclipses (against real eclipses, to the minute), pigeons following someone between worlds, and
@@ -11,7 +11,7 @@ every file parses.
 fresh local copy of the site for each test (`wrangler pages dev` on :8788, an empty database),
 with stand-ins for Web Push, email, GIPHY, the weather and Have I Been Pwned (`mocks/`). People
 make accounts and sign in (from the app, on the account's page, and back, as everyone does now: `join.mjs`; a test
-that drives InFlight's API directly signs in the same way, `handback.mjs`), add friends, send pigeons, and the tests
+that drives Chat's API directly signs in the same way, `handback.mjs`), add friends, send pigeons, and the tests
 check what lands, what's drawn and what's pushed.
 
     cd .tools/tests && npm ci
@@ -39,7 +39,7 @@ arrives in the push stand-in's box. The app's reasoning has unit tests of its ow
 
 `fitness.mjs` is Fitness's (fitness/), at fitness.gfg.test (mapped to this machine, as `wxacct.mjs` maps chat. and
 weather., so the browser shares the site's sign-in between its addresses), signed in only: signed out, just Sign in
-(and its API closed); signed up to InFlight, Fitness signed in already; files imported (a Wahoo's FIT, a GPX, a ZWO, a
+(and its API closed); signed up to Chat, Fitness signed in already; files imported (a Wahoo's FIT, a GPX, a ZWO, a
 Garmin Connect zip) and kept with the account; a second browser signing in on the account's page, handed back, with the
 first's rides, one opened from its file and exported; a plan and a workout from two browsers at once, both kept; a ride
 renamed and one deleted on both; and signing out. It reads what's kept straight from the local D1 (`fx_state`,

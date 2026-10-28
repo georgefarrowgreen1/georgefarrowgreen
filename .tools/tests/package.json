@@ -1,7 +1,7 @@
 {
   "name": "inflight-tests",
   "private": true,
-  "description": "InFlight's end-to-end tests (Playwright against wrangler pages dev) and unit tests (node:test)",
+  "description": "Chat's end-to-end tests (Playwright against wrangler pages dev) and unit tests (node:test)",
   "type": "module",
   "scripts": {
     "unit": "node --test unit/*.test.mjs",

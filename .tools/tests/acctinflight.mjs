@@ -1,11 +1,11 @@
-// InFlight's settings that are the account's, on the account's page: InFlight's Settings has one row, InFlight
-// Settings, that opens them (the page signed in by the code InFlight hands over, open at InFlight's settings, with the
-// way back), and says what's set; This Phone keeps what's each phone's own. On the page, InFlight's card has them beside
+// Chat's settings that are the account's, on the account's page: Chat's Settings has one row, Chat
+// Settings, that opens them (the page signed in by the code Chat hands over, open at Chat's settings, with the
+// way back), and says what's set; This Phone keeps what's each phone's own. On the page, Chat's card has them beside
 // Open. Each change is saved by the app's own rules (GET/PATCH /api/account/inflight, DELETE inflight/block), from the
-// page's own address only, and InFlight shows it once it's synced. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test).
+// page's own address only, and Chat shows it once it's synced. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { joinInFlight, ifPage } from './join.mjs';
+import { joinChat, ifPage } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -30,19 +30,19 @@ const prefs = (k) => JSON.parse(row(k)?.notify_prefs || '{}');
 
 // ---- two accounts: Sam, and Rowan, who's blocked Sam ----
 const Z = await browser('sam');
-await joinInFlight(Z.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'Paris' });
+await joinChat(Z.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'Paris' });
 await Z.ctx.close();
 const A = await browser('rowan');
-await joinInFlight(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
+await joinChat(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const [r0] = rows("SELECT id FROM pg_users WHERE handle = 'rowan'"), [z0] = rows("SELECT id FROM pg_users WHERE handle = 'sam'");
 sql(`INSERT INTO pg_links (a, b, status, created_at) VALUES ('${r0.id}', '${z0.id}', 'blocked', ${Date.now()})`);
 sql("UPDATE pg_users SET email_ok = 1 WHERE handle = 'rowan'");
 await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 
-// ---- 1. InFlight's Settings: one row to the account's page, and This Phone ----
+// ---- 1. Chat's Settings: one row to the account's page, and This Phone ----
 await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view [data-act=ifsettings]'); await A.p.waitForTimeout(600);
 const sum0 = await text(A.p, '#screen > main.view [data-act=ifsettings]');
-ok(/InFlight Settings/.test(sum0) && /notifications on/.test(sum0) && /1 blocked/.test(sum0), 'InFlight Settings, saying what’s set', sum0);
+ok(/Chat Settings/.test(sum0) && /notifications on/.test(sum0) && /1 blocked/.test(sum0), 'Chat Settings, saying what’s set', sum0);
 ok(!(await A.p.$('#screen > main.view [data-act=notifysheet]')) && !(await A.p.$('#screen > main.view [data-act=securitysheet]')) && !(await A.p.$('#screen > main.view [data-act=appearancesheet]')),
   'no Notifications, Privacy & Security or Appearance rows: they’re the account’s');
 const phone = await text(A.p, '#screen > main.view');
@@ -51,16 +51,16 @@ ok(/This Phone/.test(phone) && !!(await A.p.$('#screen > main.view [data-act=pus
 await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=ifsettings]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
 await shot(A.p, '01-inflight-settings');
 
-// ---- 2. the row: the account's page in a window of its own, signed in by InFlight's code, open at InFlight's settings ----
+// ---- 2. the row: the account's page in a window of its own, signed in by Chat's code, open at Chat's settings ----
 await A.ctx.clearCookies();       // (as a Home Screen app's browser knows nothing of it)
 const [W] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
 const go = await W.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go.evaluate((e) => e.matches('.btn'))) await go.click();
 await W.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); await W.waitForTimeout(700);
 const sheet = await text(W, '#sheet');
-ok(/^InFlight/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*10 of 11/.test(sheet) && /Email me/.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open InFlight/.test(sheet) && !(await W.$('#if-landed')),
-  'the page opens at InFlight’s settings: notifications (on their own page), email, who sees what, and one blocked, and the way into the app', sheet.replace(/\s+/g, ' ').slice(0, 260));
-ok(!!(await W.$('#sheet .toapp')) && /InFlight/.test(await text(W, '#sheet .toapp')), 'with the way back to InFlight');
+ok(/^Chat/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*10 of 11/.test(sheet) && /Email me/.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open Chat/.test(sheet) && !(await W.$('#if-landed')),
+  'the page opens at Chat’s settings: notifications (on their own page), email, who sees what, and one blocked, and the way into the app', sheet.replace(/\s+/g, ' ').slice(0, 260));
+ok(!!(await W.$('#sheet .toapp')) && /Chat/.test(await text(W, '#sheet .toapp')), 'with the way back to Chat');
 ok(!(await W.isDisabled('#if-email')), 'email, its address confirmed, can be turned on');
 await shot(W, '02-account-sheet');
 await ifPage(W, 'Notifications');
@@ -68,7 +68,7 @@ ok(await W.isChecked('#if-landed') && !(await W.isChecked('#if-quiet')) && !(awa
   'Notifications, on a page of their own, as the account has them: pigeons, friends, the lock screen and quiet hours');
 await shot(W, '02b-notifications');
 
-// ---- 3. changes, each saved by InFlight's own rules ----
+// ---- 3. changes, each saved by Chat's own rules ----
 const flip = async (k) => { await W.locator('#if-' + k).scrollIntoViewIfNeeded(); await W.click('#if-' + k); await W.waitForFunction((k) => !document.getElementById('if-' + k)?.disabled, k); await W.waitForTimeout(250); };
 const back = async () => { await W.click('#sheet .sheet-head .back'); await W.waitForSelector('#sheet[open] #if-email'); await W.waitForTimeout(500); };
 await flip('reactions');
@@ -107,27 +107,27 @@ ok(st === 400, 'a privacy switch that isn’t on or off is refused', String(st))
 [st] = await api('inflight', 'PATCH', { email: 1 });
 ok(st === 400, 'so is an email setting that isn’t', String(st));
 const cross = await A.p.evaluate(async (u) => { try { return (await fetch(u + '/api/account/inflight', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{"privacy":{"receipts":true}}' })).status; } catch (_) { return 'blocked'; } }, ACCT);
-ok(cross !== 200 && row('rowan').no_receipts === 1, 'nothing changes from InFlight’s own address (or anywhere but the page)', String(cross));
+ok(cross !== 200 && row('rowan').no_receipts === 1, 'nothing changes from Chat’s own address (or anywhere but the page)', String(cross));
 const anonCtx = await b.newContext(), anon = (await (await anonCtx.newPage()).goto(ACCT + '/api/account/inflight')).status(); await anonCtx.close();
 ok(anon === 401, 'and nothing to see without the account', String(anon));
 
-// ---- 5. the page itself: InFlight's card has them beside Open ----
+// ---- 5. the page itself: Chat's card has them beside Open ----
 await W.click('#sheet .sheet-head .x'); await W.waitForTimeout(900);
-ok(!!(await W.$('[data-sec="apps"] .app-set')) && (await W.getAttribute('[data-sec="apps"] .app-set', 'aria-label')) === 'InFlight settings', 'InFlight’s card: its settings beside Open');
+ok(!!(await W.$('[data-sec="apps"] .app-set')) && (await W.getAttribute('[data-sec="apps"] .app-set', 'aria-label')) === 'Chat settings', 'Chat’s card: its settings beside Open');
 await W.evaluate(() => document.querySelector('[data-sec="apps"]').scrollIntoView({ block: 'center' })); await W.waitForTimeout(500);
 await shot(W, '05-card');
 await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector('#sheet[open] #if-email', { timeout: 10000 }); await W.waitForTimeout(600);
 ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*2 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
 await W.close();
 
-// ---- 6. back in InFlight: what's set, as the account has it ----
+// ---- 6. back in Chat: what's set, as the account has it ----
 await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 }); await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForTimeout(800);
 const sum1 = await text(A.p, '#screen > main.view [data-act=ifsettings]');
-ok(/10 of 11 notifications on|9 of 11 notifications on/.test(sum1) && /quiet 21:00–06:00/.test(sum1) && /read receipts off/.test(sum1) && !/blocked/.test(sum1), 'InFlight Settings, back in InFlight: what changed on the account’s page', sum1);
+ok(/10 of 11 notifications on|9 of 11 notifications on/.test(sum1) && /quiet 21:00–06:00/.test(sum1) && /read receipts off/.test(sum1) && !/blocked/.test(sum1), 'Chat Settings, back in Chat: what changed on the account’s page', sum1);
 await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=ifsettings]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
 await shot(A.p, '06-inflight-after');
 
-// (the browser's word for the try from InFlight's address, refused: that's step 4's point, not an error)
+// (the browser's word for the try from Chat's address, refused: that's step 4's point, not an error)
 const real = errs.filter((e) => !(/\/api\/account\/inflight/.test(e) && /Content Security Policy/.test(e)));
 ok(real.length === 0, 'no errors on any page', real.slice(0, 4).join(' | '));
 console.log(`FAILS ${fails}`);

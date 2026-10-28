@@ -1,4 +1,4 @@
-// InFlight (/pigeon) — the server half.
+// Chat (/pigeon) — the server half.
 //
 // What this side knows: accounts (email, handle, a hash of a password-derived
 // proof), public keys, who is friends with whom, and when each pigeon lands.
@@ -359,9 +359,9 @@ const MIGRATIONS = [
   // an account unused for almost a year: when it was told it would be deleted (functions/_retention.js)
   "ALTER TABLE pg_users ADD COLUMN warned_at INTEGER",
   // the session's token for the browser's cookie for the whole site (functions/_account.js): its own, so the cookie
-  // isn't a key to InFlight's API
+  // isn't a key to Chat's API
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
-  // a sign-in handed from InFlight to the account's page (functions/api/pigeon account-link, functions/api/account
+  // a sign-in handed from Chat to the account's page (functions/api/pigeon account-link, functions/api/account
   // handoff): a code good once, for a minute
   // what went wrong on the server, for the admin (Admin's alerts): when, where and what, kept 14 days (functions/_notify.js tick)
   "CREATE TABLE IF NOT EXISTS pg_errors (at INTEGER NOT NULL, src TEXT NOT NULL, msg TEXT NOT NULL)",
@@ -401,7 +401,7 @@ const MIGRATIONS = [
   // stays in view ("x y", in percent)
   "ALTER TABLE pg_users ADD COLUMN poster_at INTEGER", "ALTER TABLE pg_users ADD COLUMN poster_focus TEXT",
   // a sign-in made on the account's page for an app that sent you there, handed back to it (functions/_handback.js): a
-  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for InFlight, what
+  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for Chat, what
   // unlocks the key there, sealed to that tab (box), and the passkey whose own copy of the key it opens (pk)
   "CREATE TABLE IF NOT EXISTS pg_handback (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, app TEXT NOT NULL, ask TEXT NOT NULL, box TEXT, pk TEXT, expires INTEGER NOT NULL)",
 ];
@@ -411,7 +411,7 @@ const MIGRATIONS = [
 const SCHEMA_FP = (() => { let h = 2166136261; for (const c of [...SCHEMA, ...MIGRATIONS].join("\n")) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "s" + h.toString(36); })();
 let schemaReady = null;
 export async function db(env) {
-  if (!env.DB) throw new HttpError(503, "InFlight isn’t set up on this server yet (no database).");
+  if (!env.DB) throw new HttpError(503, "Chat isn’t set up on this server yet (no database).");
   // one setup per copy of the server, shared by every request that arrives while it runs
   await (schemaReady ||= setUp(env).catch((e) => { schemaReady = null; throw e; }));
   return env.PIGEON_COUNT_DB ? counted(env.DB) : env.DB;
@@ -595,7 +595,7 @@ export async function requireUser(request, env) {
   return u;
 }
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
-// browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
+// browser's cookie for the site (functions/_account.js), which is a different one. (inflight: Chat itself is being
 // used, a day of it noted for its Insights; request: the app it's used in noted, as it's first used there)
 // Something gone wrong, noted for the admin (pg_errors): never throws, and no more than 20 a minute from one copy of the
 // server, so a loop of failures can't fill the database. (Also to the console, as before.)
@@ -945,7 +945,7 @@ export function cleanPlace(b, approx = false) {
   return { ...snapTo(lat, lon, approx ? APPROX_KM : MILE_KM), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
 }
 
-// Where links into the app point: InFlight's address (chat.inflite.ai), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
+// Where links into the app point: Chat's address (chat.inflite.ai), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
 // (The site's email, every app's, is functions/_email.js.)
 export const APP = "https://chat.inflite.ai";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;

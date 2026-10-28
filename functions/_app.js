@@ -1,4 +1,4 @@
-// InFlight's files, as a phone gets them, at either of its addresses:
+// Chat's files, as a phone gets them, at either of its addresses:
 // georgefarrowgreen.com/pigeon/ (where it has always been) and
 // chat.inflite.ai/ (where it's moving), the same files at both.
 //
@@ -70,13 +70,13 @@ async function stampImports(ctx, path, js, chat) {
 // The response for one of the app's files: `res` is the file as stored (at `path`, under /pigeon/)
 export async function serveApp(ctx, res, path, chat) {
   const url = new URL(ctx.request.url);
-  // (one that isn't anything: the site's own page for that is the site's, not InFlight's)
+  // (one that isn't anything: the site's own page for that is the site's, not Chat's)
   if (res.status === 404) return notFound();
   if (res.status !== 200 || !["GET", "HEAD"].includes(ctx.request.method)) return withSecurity(res);
   const type = res.headers.get("content-type") || "", head = ctx.request.method === "HEAD";
 
   if (type.includes("text/html")) {
-    // only InFlight's own pages: anything else here would be the site's home page, served as a fallback
+    // only Chat's own pages: anything else here would be the site's home page, served as a fallback
     if (!APP_PAGES.test(path)) return notFound();
     let html = await res.text();
     const refs = [...new Set([...html.matchAll(/(?:src|href)="(\/pigeon\/[\w./-]+\.(?:js|css))"/g)].map((m) => m[1]))];
@@ -117,7 +117,7 @@ export async function serveApp(ctx, res, path, chat) {
   return withSecurity(res);
 }
 
-// the pages InFlight has (under /pigeon/, as stored)
+// the pages Chat has (under /pigeon/, as stored)
 const APP_PAGES = /^\/pigeon\/(index(\.html)?|tracker(\.html)?|handover(\.html)?)?$/;
 export const notFound = () => withSecurity(new Response("Not found.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }));
 

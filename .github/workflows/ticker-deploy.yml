@@ -1,6 +1,6 @@
 name: Deploy the scheduler
 
-# workers/ticker: a small Cloudflare Worker that asks for InFlight's and Weather's
+# workers/ticker: a small Cloudflare Worker that asks for Chat's and Weather's
 # notification jobs every 5 minutes, on Cloudflare's own schedule (GitHub's runs late).
 # Deployed on each push to main, with the jobs' secrets the repository already has
 # (INFLIGHT_TICK_SECRET, and WEATHER_TICK_SECRET if it's set). Needs one more secret:
@@ -49,5 +49,5 @@ jobs:
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           $W deploy
           printf '%s' "$INFLIGHT_TICK_SECRET" | $W secret put INFLIGHT_TICK_SECRET
-          # (only when the site's Weather secret differs: otherwise the scheduler uses InFlight's for both)
+          # (only when the site's Weather secret differs: otherwise the scheduler uses Chat's for both)
           if [ -n "$WEATHER_TICK_SECRET" ]; then printf '%s' "$WEATHER_TICK_SECRET" | $W secret put WEATHER_TICK_SECRET; fi

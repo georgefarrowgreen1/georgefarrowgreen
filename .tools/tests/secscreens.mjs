@@ -51,11 +51,11 @@ const slow = (ms) => p.waitForTimeout(DEMO ? ms : Math.min(ms, 600));
 const scroll = async (y) => { await p.evaluate((y) => document.querySelector('.sheet .body')?.scrollBy({ top: y, behavior: 'smooth' }), y); await slow(1300); };
 const shot = (n) => p.screenshot({ path: `${out}/${n}.png` });
 
-// 1. Account: InFlight Settings (on the account's page), and This Phone: what's each phone's own
+// 1. Account: Chat Settings (on the account's page), and This Phone: what's each phone's own
 await p.click('[data-act=tab][data-id=account]'); await slow(900);
 await p.evaluate(() => document.querySelector('#screen > main.view [data-act=encryptionsheet]').scrollIntoView({ block: 'center' })); await slow(1600);
 ok(await p.isVisible('#screen > main.view [data-act=ifsettings]') && await p.isVisible('#screen > main.view [data-act=pushtoggle]') && await p.isVisible('#screen > main.view [data-act=applock]') && await p.isVisible('#screen > main.view [data-act=haptics]'),
-  'Account: InFlight Settings, then This Phone: push, the lock, haptics and encryption');
+  'Account: Chat Settings, then This Phone: push, the lock, haptics and encryption');
 ok(!(await p.$('#screen > main.view [data-act=securitysheet]')) && !(await p.$('#screen > main.view [data-act=notifysheet]')), 'no Privacy & Security or Notifications in the app: they’re on the account’s page');
 ok(/1 key changed: check it/.test(await txt('#screen > main.view [data-act=encryptionsheet]')), 'the Encryption row says a friend’s key changed');
 await shot('security');
@@ -110,9 +110,9 @@ await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelect
 ok(/3 of 3 verified/.test(await txt('.sheet .ghead .gcount')), 'and Encryption now says 3 of 3');
 await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
 
-// 4. Passkeys, explained when there are none (Lock InFlight needs one: turning it on opens them)
+// 4. Passkeys, explained when there are none (Lock Chat needs one: turning it on opens them)
 await p.click('#screen > main.view [data-act=applock]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
-ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisible('.sheet .wnfoot [data-act=pkadd]'), 'Lock InFlight with no passkey: Passkeys, what they’re for, and one big Add button');
+ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisible('.sheet .wnfoot [data-act=pkadd]'), 'Lock Chat with no passkey: Passkeys, what they’re for, and one big Add button');
 await shot('passkeys');
 await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
 
@@ -128,7 +128,7 @@ const ready = await p.evaluate(() => !!document.querySelector('[data-act=tab][da
 if (ready) {
   await p.click('[data-act=tab][data-id=account]'); await slow(700);
   await p.evaluate(() => document.querySelector('#screen > main.view [data-act=applock]').scrollIntoView({ block: 'center' })); await slow(1800);
-  ok(await p.locator('#screen > main.view [data-act=applock][aria-checked=true]').count() === 1, 'with a passkey and the lock on: Lock InFlight on, in This Phone');
+  ok(await p.locator('#screen > main.view [data-act=applock][aria-checked=true]').count() === 1, 'with a passkey and the lock on: Lock Chat on, in This Phone');
   await shot('security-done');
 } else ok(false, 'the app opened after the lock was turned on');
 // dark (the app picks its theme as it opens; the lock off first, as a test phone can't unlock it)

@@ -1,5 +1,5 @@
 // Signing in happens on the account's own page and only there (functions/_handback.js): every app sends you there,
-// and is handed the sign-in back with a code good only in the tab that asked (its word's hash went with it), InFlight
+// and is handed the sign-in back with a code good only in the tab that asked (its word's hash went with it), Chat
 // with what unlocks its key sealed to that tab. Here: the sealing, the word, where the page will send a sign-in back
 // to, and that no app signs in by itself any more.
 import { test } from 'node:test';
@@ -13,7 +13,7 @@ import { signInWord } from '../../../weather/account.js';
 const read = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 const hashOf = (w) => createHash('sha256').update(w).digest('base64url');
 
-test('what unlocks InFlight’s key opens only with the private half its tab kept', async () => {
+test('what unlocks Chat’s key opens only with the private half its tab kept', async () => {
   const tab = await E2E.handbackPair(), other = await E2E.handbackPair();
   assert.equal(hashOf(tab.word), tab.ask, 'the word’s hash is what goes to the account’s page');
   assert.match(tab.pub, /^[A-Za-z0-9_-]{87}$/); assert.match(tab.ask, /^[A-Za-z0-9_-]{43}$/);
@@ -65,7 +65,7 @@ test('the account’s page sends a sign-in back only to the app’s own address'
 test('no app signs in by itself any more: the account’s page does, and hands it back', () => {
   const inflight = read('pigeon/app.js'), weather = read('weather/account.js') + read('weather/app.js');
   const inflightApi = read('functions/api/pigeon/[[path]].js'), weatherApi = read('functions/_wxacct.js');
-  assert.doesNotMatch(inflight, /api\("(login|passkey-login)"/, 'InFlight asks nothing of its old sign-in');
+  assert.doesNotMatch(inflight, /api\("(login|passkey-login)"/, 'Chat asks nothing of its old sign-in');
   assert.doesNotMatch(weather, /signin\//, 'nor Weather of its own');
   assert.match(inflightApi, /"POST login": elsewhere\("Sign in"\)/); assert.match(inflightApi, /"POST passkey-login": elsewhere\("Sign in"\)/);
   assert.match(weatherApi, /accountRoutes\(view, \{[^}]*signIn: false \}\)/);

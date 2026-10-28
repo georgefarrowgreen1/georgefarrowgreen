@@ -2,7 +2,7 @@ name: Weather notifications
 
 # Rain alerts and morning briefings (functions/_wxpush.js) go out on a timer: this asks
 # the site to send whatever's due, every 10 minutes. It uses the repository secret
-# WEATHER_TICK_SECRET if there is one, else InFlight's INFLIGHT_TICK_SECRET; it must match
+# WEATHER_TICK_SECRET if there is one, else Chat's INFLIGHT_TICK_SECRET; it must match
 # WEATHER_TICK_SECRET (or, failing that, PIGEON_TICK_SECRET) in Cloudflare.
 on:
   schedule:

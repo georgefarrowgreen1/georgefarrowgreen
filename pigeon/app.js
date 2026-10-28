@@ -1,4 +1,4 @@
-// InFlight — the phone app. Everything readable is encrypted and decrypted
+// Chat — the phone app. Everything readable is encrypted and decrypted
 // here; the server (functions/api/pigeon) only ever sees ciphertext.
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.0";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.4.1";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -85,10 +85,10 @@ const S = {
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
-// passkeys belong to georgefarrowgreen.com, which lets InFlight's address on inflite.ai use them (as the server has it: rpIdFor)
+// passkeys belong to georgefarrowgreen.com, which lets Chat's address on inflite.ai use them (as the server has it: rpIdFor)
 const RP_ID = /(^|\.)(georgefarrowgreen\.com|inflite\.ai)$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
-// where InFlight is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.inflite.ai"
-// InFlight lives at chat.inflite.ai now. At its old address (georgefarrowgreen.com/pigeon)
+// where Chat is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.inflite.ai"
+// Chat lives at chat.inflite.ai now. At its old address (georgefarrowgreen.com/pigeon)
 // this is where it went; null at the new address. (Locally, tests turn the old address on.)
 const NEW_HOME = (() => {
   if (/^chat\./.test(location.host)) return null;
@@ -243,7 +243,7 @@ function gavatar(g, size = "") {
   return `<span class="gav ${size}" aria-hidden="true">${avatar(two[0], "", false, true)}${avatar(two[1], "", false, true)}</span>`;
 }
 // An open app checks in every 15 s and the server notes it once a minute, so
-// anyone seen in the last 2½ minutes has InFlight open now.
+// anyone seen in the last 2½ minutes has Chat open now.
 const ONLINE_MS = 150e3;
 const isOnline = (p) => !!p?.seenAt && now() - p.seenAt < ONLINE_MS;
 // 5m ago, then Today 21:38, Yesterday 21:38, Mon 21:38, 3 Oct 2026
@@ -1852,7 +1852,7 @@ async function useKeys(token, me, privJwk) {
   await restorePins();
   checkMyKey(me);
   const saved = await idb.set("session", { token, me, priv: S.priv, pub: S.myPub });
-  if (saved === null) console.warn("InFlight: couldn’t save the session on this phone; you’ll sign in again next time.");
+  if (saved === null) console.warn("Chat: couldn’t save the session on this phone; you’ll sign in again next time.");
 }
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
@@ -1919,10 +1919,10 @@ async function toAccountSignIn(e, mode) {
     await covered;
     const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
     location.assign(toAccount(`#${q}`));
-  } catch (_) { handBack(); toast("This browser can’t sign in to InFlight. Try Safari or Chrome."); }
+  } catch (_) { handBack(); toast("This browser can’t sign in to Chat. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
-// InFlight's own sign-in, and the key unlocked with what the page sealed to this phone (the password's first half, or the
+// Chat's own sign-in, and the key unlocked with what the page sealed to this phone (the password's first half, or the
 // PRF secret of a passkey with its own copy of the key). A code from anywhere else, or one that's run out, is used up
 // and goes no further.
 async function signInBack(code) {
@@ -1954,7 +1954,7 @@ async function signInBack(code) {
     if (k.link && !S.pendingLink) S.pendingLink = k.link;
     S.signingIn = false;
     await afterSignIn();
-    arrival?.in();                         // (in: the sky clears to InFlight, signed in)
+    arrival?.in();                         // (in: the sky clears to Chat, signed in)
   } catch (err) {
     S.signingIn = false; render(); resumeCheck();
     arrival?.away();
@@ -1964,9 +1964,9 @@ async function signInBack(code) {
 
 /* ---------- signing in and out, in motion ----------
    Signing in is on the account's page, so going there and coming back are one movement. Going, what you tapped grows
-   into that page's sky (handOff). Coming back, InFlight starts from the page's last picture: its sky and a dawn along
+   into that page's sky (handOff). Coming back, Chat starts from the page's last picture: its sky and a dawn along
    the bottom, waiting while the sign-in is taken up (arriving). Your picture comes into it, where the page had it; the
-   sky clears to InFlight with a padlock opening in the middle; your picture flies down into Account; and
+   sky clears to Chat with a padlock opening in the middle; your picture flies down into Account; and
    your chats come in, a row at a time. Signing out goes the other way (dusk). With Reduce Motion each part fades where
    it is instead, and none of it ever catches a tap or stays over the screen. */
 const acctSky = () => cssVar(document.documentElement, "--acct-sky") || (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
@@ -1994,7 +1994,7 @@ function handOff() {
     return played(sky, 700);
   } catch (_) { return Promise.resolve(); }
 }
-// The sky taken away again: the trip didn't start, or InFlight came back from the browser's back-forward cache as it was
+// The sky taken away again: the trip didn't start, or Chat came back from the browser's back-forward cache as it was
 // when you left it
 function handBack() {
   const h = handing; handing = null; if (!h) return;
@@ -2047,7 +2047,7 @@ function rowsOnScreen() {
     .filter((el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > vr.top && r.top < vr.bottom; });
 }
 
-/* coming back from the account's page, signed in there: its last picture over InFlight until InFlight is in. (A
+/* coming back from the account's page, signed in there: its last picture over Chat until Chat is in. (A
    sign-in that goes wrong, or is slow, clears it to the welcome; it never stays.) */
 let arrival = null;
 // (you: the initial the account's page sent; with it, you're there from the first frame, as the page left you, your
@@ -2075,8 +2075,8 @@ function arriving(you) {
   const late = setTimeout(() => a.away(), 12000);
   const gone = (el, ms, to = "none") => play(el, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: still ? "none" : to }], { duration: still ? 200 : ms, easing: E.out, fill: "forwards" });
   const a = {
-    // who it is, once the account's page's sign-in is InFlight's: their picture comes into the sky (their initial,
-    // and their photo once InFlight, signed in, has fetched it)
+    // who it is, once the account's page's sign-in is Chat's: their picture comes into the sky (their initial,
+    // and their photo once Chat, signed in, has fetched it)
     me(p) {
       try {
         if (over || !p || (face && (!held || face.querySelector("img")))) return;
@@ -2097,7 +2097,7 @@ function arriving(you) {
         if (p.avatarAt) look();
       } catch (_) {}
     },
-    // in: the sky clears to InFlight (drawn under it already, the chats held back), a padlock opens in the middle, your
+    // in: the sky clears to Chat (drawn under it already, the chats held back), a padlock opens in the middle, your
     // picture flies down into Account (which says welcome back), and your chats come in a row at a time. A new account
     // goes on to choose where it is: the sky just clears to that, your picture rising away with it.
     in() {
@@ -2139,7 +2139,7 @@ function arriving(you) {
             rows.forEach((el, i) => kPlay(el, still ? KF.fade : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: Math.min(i, 10) * 45, easing: E.out, fill: "backwards" }));
           });
         }
-        // your picture: down into Account, where InFlight shows you, landing with a spring (or, where Account isn't in
+        // your picture: down into Account, where Chat shows you, landing with a spring (or, where Account isn't in
         // sight, or with Reduce Motion, it fades where it is, and Account answers)
         at(still ? 600 : 240, () => {
           if (!face) return;
@@ -2304,7 +2304,7 @@ async function addPasskey() {
   const o = await api("passkey-options", { method: "POST", body: { mode: "register" } });
   const prfSalt = await E2E.prfSalt();
   const cred = await navigator.credentials.create({ publicKey: {
-    challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlight" },
+    challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "Chat" },
     user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
     pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
     authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
@@ -2312,7 +2312,7 @@ async function addPasskey() {
     attestation: "none", timeout: 120000, extensions: { prf: { eval: { first: prfSalt } } } } });
   const resp = cred.response;
   const spki = resp.getPublicKey?.(), alg = resp.getPublicKeyAlgorithm?.();
-  if (!spki) throw new Error("This browser can’t save passkeys for InFlight yet.");
+  if (!spki) throw new Error("This browser can’t save passkeys for Chat yet.");
   await api("passkey-register", { method: "POST", body: {
     challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(resp.clientDataJSON), label: deviceLabel(),
     authenticatorData: resp.getAuthenticatorData ? b64url(resp.getAuthenticatorData()) : undefined } });
@@ -2524,7 +2524,7 @@ async function startScan(p, want) {
   if (!v) return;
   const scan = S.scan = { on: true, stream: null, sheet: S.sheet };
   try { scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
-  catch (_) { S.scan = null; return say("InFlight can’t use the camera here. Compare the 60 digits instead."); }
+  catch (_) { S.scan = null; return say("Chat can’t use the camera here. Compare the 60 digits instead."); }
   if (!scan.on || S.scan !== scan) { scan.stream.getTracks().forEach((t) => t.stop()); return; }     // (closed, or another scan began, while asking)
   v.addEventListener("playing", () => v.classList.add("on"), { once: true });          // (it fades in once there's a picture: styles.css)
   v.srcObject = scan.stream; await v.play().catch(() => {});
@@ -2721,7 +2721,7 @@ async function applyChat(fid, d, live) {
   }
 }
 
-/* ---------- the last-known state, kept on this phone so InFlight opens at once ----------
+/* ---------- the last-known state, kept on this phone so Chat opens at once ----------
    What the server last sent (message contents still sealed; they open with the
    key that's already on this phone) and the last few chats you opened. Shown
    straight away at launch while the fresh copy loads; deleted on sign out. */
@@ -2765,25 +2765,29 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.4.1", at: Date.UTC(2026, 9, 28), title: "A new name", items: [
+    ["bubble", "blue", "InFlight is now Chat", "The same app, your letters, friends and pigeons as they were, under a new name: Chat, at chat.inflite.ai."],
+    ["bell", "orange", "On your Home Screen", "An icon you added before keeps the old name until you add Chat to your Home Screen again."],
+  ] },
   { v: "1.4.0", at: Date.UTC(2026, 9, 27), title: "A new address", items: [
-    ["globe", "blue", "InFlight is at chat.inflite.ai", "The apps have a home of their own now. Links to the old address still bring you here, signed in as you were."],
+    ["globe", "blue", "Chat is at chat.inflite.ai", "The apps have a home of their own now. Links to the old address still bring you here, signed in as you were."],
     ["lock", "green", "Your passkeys still work", "The passkey you have already signs you in here, and opens your messages."],
-    ["bell", "orange", "On your Home Screen", "Add InFlight to your Home Screen again from here, and turn notifications on there. Until then the old one still tells you when a pigeon lands, so you can remove it once you have."],
+    ["bell", "orange", "On your Home Screen", "Add Chat to your Home Screen again from here, and turn notifications on there. Until then the old one still tells you when a pigeon lands, so you can remove it once you have."],
   ] },
   { v: "1.3.5", at: Date.UTC(2026, 9, 25), title: "In keeping", items: [
-    ["sun", "blue", "A sky behind everything", "InFlight now has your account’s sky: slow light drifting behind every screen, dawn in Light and night in Dark."],
+    ["sun", "blue", "A sky behind everything", "Chat now has your account’s sky: slow light drifting behind every screen, dawn in Light and night in Dark."],
     ["bubble", "indigo", "Glass, all through", "Your chats, friends and settings sit on panes of glass, as they do on your account’s page and in Weather; friends’ bubbles too."],
     ["key", "teal", "Encryption, simpler", "Encryption opens on your key, as a pattern and its digits, with Verify a Friend straight under it."],
   ] },
   { v: "1.3.4", at: Date.UTC(2026, 9, 25), title: "Steadier", items: [
-    ["sliders", "indigo", "Your settings, on your account", "InFlight Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
+    ["sliders", "indigo", "Your settings, on your account", "Chat Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
     ["search", "blue", "Search finds people again", "Searching Messages for a friend’s or a group’s name shows their chat, as it should."],
-    ["bird", "green", "Easier on your battery", "InFlight asks the server for less while you’re in it: a chat you’ve left, a phone that hasn’t moved and an open chat that hasn’t changed all cost nothing now."],
+    ["bird", "green", "Easier on your battery", "Chat asks the server for less while you’re in it: a chat you’ve left, a phone that hasn’t moved and an open chat that hasn’t changed all cost nothing now."],
     ["lock", "orange", "Quieter about you", "With read receipts off, a disappearing message counts from landing, so no one learns when you read it; and a reaction is sealed to its message."],
     ["person", "teal", "Easier to use", "Pinch to zoom, bigger buttons by the message box, and the keyboard and screen readers keep their place."],
   ] },
   { v: "1.3.3", at: Date.UTC(2026, 9, 24), title: "Coming and going", items: [
-    ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in InFlight, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
+    ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in Chat, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
     ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
   ] },
   { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
@@ -2810,7 +2814,7 @@ const RELEASES = [
     ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
     ["phone", "blue", "Sign out, sure?", "Signing out another phone asks first, and says which one and roughly where it is."],
     ["clock", "green", "Times as you’d say them", "“2 hours ago”, not “2h 0m ago”, everywhere."],
-    ["bird", "indigo", "A quicker first open", "InFlight fetches all it needs at once when it opens after an update."],
+    ["bird", "indigo", "A quicker first open", "Chat fetches all it needs at once when it opens after an update."],
   ] },
   { v: "1.2.6", at: Date.UTC(2026, 9, 23), title: "Where you’re signed in", items: [
     ["phone", "green", "Signed-In Phones, clearer", "How many places your account is signed in, this phone with how and since when, and every other one with roughly where it is."],
@@ -2818,7 +2822,7 @@ const RELEASES = [
     ["lock", "teal", "Who to verify next", "Privacy & Security shows how many friends you’ve verified, with a bar, and who to check next."],
   ] },
   { v: "1.2.5", at: Date.UTC(2026, 9, 22), title: "Safer, at a glance", items: [
-    ["shield", "green", "How protected you are", "Privacy & Security opens with a shield that fills as you confirm your email, add a passkey and lock InFlight, with anything left a tap away."],
+    ["shield", "green", "How protected you are", "Privacy & Security opens with a shield that fills as you confirm your email, add a passkey and lock Chat, with anything left a tap away."],
     ["lock", "teal", "What encryption means", "Encryption shows how your pigeons are sealed, your key as a pattern you’d know, and where you stand with each friend: verified, not checked, or their key changed."],
     ["check", "blue", "Verify together", "A friend’s safety number shows plainly whether you’ve checked, and scanning their code marks it with a moment of its own."],
     ["key", "indigo", "Passkeys explained", "What a passkey does for you, and when each one was last used."],
@@ -2835,7 +2839,7 @@ const RELEASES = [
   ] },
   { v: "1.2.2", at: Date.UTC(2026, 9, 19), title: "Lighter", items: [
     ["clock", "indigo", "Messages are kept for a month", "Each message is deleted for everyone 30 days after it lands, photos and all. Your Flight Log, passport, badges and rare pigeons keep every flight."],
-    ["person", "gray", "Unused accounts", "An account nobody has signed in to for a year is deleted, with an email a week before. Opening InFlight keeps it."],
+    ["person", "gray", "Unused accounts", "An account nobody has signed in to for a year is deleted, with an email a week before. Opening Chat keeps it."],
     ["bird", "blue", "Smoother", "Sheets slide up without a judder, chats slide in and out more smoothly, tabs glide, and moving between sheets slides like pages."],
   ] },
   { v: "1.2.1", at: Date.UTC(2026, 9, 18), title: "Wherever you go", items: [
@@ -2856,7 +2860,7 @@ const RELEASES = [
     ["bird", "gray", "Lunar pigeons", "Only they fly to the Moon and back: about 3 days, like Apollo, or a day by Lunar Express. The trip is as long as the Moon is far away that day."],
     ["globe", "blue", "Watch the trip", "Earth, the Moon and your pigeon between them: halfway, into the Moon’s pull, behind the far side, re-entry and touchdown."],
     ["pin", "orange", "Across the Moon", "Between two friends on the Moon, pigeons bound over the surface in the low gravity. No air, no wind, no weather."],
-    ["map", "teal", "A Moon stamp", "Your passport gets a Moon stamp, there’s a Moonshot badge, and InFlight Live counts the pigeons out in space."],
+    ["map", "teal", "A Moon stamp", "Your passport gets a Moon stamp, there’s a Moonshot badge, and Chat Live counts the pigeons out in space."],
   ] },
   { v: "1.0.9", at: Date.UTC(2026, 9, 16), title: "Safer by design", items: [
     ["clock", "indigo", "Disappearing messages", "In a chat’s info: messages disappear 1, 7 or 30 days after they’re read, wiped from the server too. The flight stays in your Flight Log."],
@@ -2865,9 +2869,9 @@ const RELEASES = [
     ["bell", "red", "New sign-in alerts", "When your account signs in on a new phone, your other phones and your email hear about it."],
     ["loc", "blue", "Approximate Location", "Privacy & Security: keep your spot to about 10 km instead of a mile."],
   ] },
-  { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and InFlight Live", items: [
-    ["globe", "blue", "A new home", "InFlight now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
-    ["map", "indigo", "InFlight Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
+  { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and Chat Live", items: [
+    ["globe", "blue", "A new home", "Chat now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
+    ["map", "indigo", "Chat Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
     ["shield", "green", "Your pigeons, your choice", "Privacy & Security → Live Tracker keeps your pigeons off it. One only shows if you and your friend both leave it on."],
     ["ship", "teal", "The right sea", "A ship’s voyage is named for the sea it really crosses: the North Atlantic, not the English Channel it sails out by."],
   ] },
@@ -3923,8 +3927,8 @@ function pinChat() {
 // root: a tab's top screen, whose large title shares the row with the buttons
 const navbar = (title, { left = "", right = "", solid = false, root = false, titleHtml = null } = {}) =>
   `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${titleHtml ?? esc(title)}</div><div class="nb-right">${right}</div></div>`;
-// The app's own name where Messages' title would be: its icon and InFlight
-const brandMark = () => `<span class="brand"><span class="bicon" aria-hidden="true">${I.bird}</span><span class="bword">InFlight</span></span>`;
+// The app's own name where Messages' title would be: its icon and Chat
+const brandMark = () => `<span class="brand"><span class="bicon" aria-hidden="true">${I.bird}</span><span class="bword">Chat</span></span>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
 const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
 const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
@@ -3936,7 +3940,7 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
 };
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 // The account's own page (account.<site>, beside chat.<site>), where your password, passkeys and devices are for every
-// app on the site; none where InFlight's served at an address of another kind
+// app on the site; none where Chat's served at an address of another kind
 const accountPage = () => location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
   : location.hostname === "georgefarrowgreen.com" ? "https://account.inflite.ai/"
   : /(^|\.)localhost$/.test(location.hostname) ? `${location.protocol}//account.localhost${location.port ? ":" + location.port : ""}/` : null;
@@ -4019,7 +4023,7 @@ function vMessages() {
     </button>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
   if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1><div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
+    <h1 class="large brandh" aria-label="Chat: Messages">${brandMark()}</h1><div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -4030,7 +4034,7 @@ function vMessages() {
         <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
   return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1>
+    <h1 class="large brandh" aria-label="Chat: Messages">${brandMark()}</h1>
     ${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     ${seasonCard()}<div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
@@ -4125,7 +4129,7 @@ function vAccount() {
     <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
       `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}
       ${meStats(L)}</div>
-    ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "InFlight Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
+    ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "Chat Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
     ${((space) => `<div class="group loft">${space.length > 1 ? `<div class="lrow">${earth}</div><div class="lrow space"><span class="lcap">Space</span>${space.join("")}</div>` : `<div class="lrow five">${earth}${space[0]}</div>`}</div>`)(
       [col("orbital", "Orbital", "Orbital"), ...(on("moon") ? [col("lunar", "Lunar", "Lunar"), col("lunarx", "Lunar Express", "Express")] : []), ...(on("mars") ? [col("laser", "Laser", "Laser")] : [])])}
@@ -4139,17 +4143,17 @@ function vAccount() {
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Settings</div>
     <div class="group">
-      ${accountPage() ? `<button type="button" class="cell has-icon" data-act="ifsettings"><span class="tile indigo">${I.sliders}</span><span class="ctext"><span>InFlight Settings</span><span class="csub">${ifSummary(u)}</span></span>${I.away.replace('class="ico"', 'class="ico chev away"')}</button>`
+      ${accountPage() ? `<button type="button" class="cell has-icon" data-act="ifsettings"><span class="tile indigo">${I.sliders}</span><span class="ctext"><span>Chat Settings</span><span class="csub">${ifSummary(u)}</span></span>${I.away.replace('class="ico"', 'class="ico chev away"')}</button>`
         : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
     ${accountPage() ? `<div class="gfoot">Saved to your account, so they’re the same on every phone. Appearance is there too.</div>` : ""}
     ${thisPhone()}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-    <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
+    <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="Chat ${APP_VERSION}: what’s new">Chat ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
-// InFlight Settings, in a line: how many notifications are on, quiet hours, and who's blocked (as the account's page
+// Chat Settings, in a line: how many notifications are on, quiet hours, and who's blocked (as the account's page
 // has them: taken up as the app next syncs, so a change made there shows here on the way back)
 const IF_KEYS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
 function ifSummary(u) {
@@ -4166,19 +4170,19 @@ function encCell(bar) {
   return `<button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
             ${bar && S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>`;
 }
-// What's this phone's own, under Settings: pushes on or off here, InFlight's lock, haptics, and the key (only ever on
-// your phones); the rest of InFlight's settings are the account's, on its page (InFlight Settings)
+// What's this phone's own, under Settings: pushes on or off here, Chat's lock, haptics, and the key (only ever on
+// your phones); the rest of Chat's settings are the account's, on its page (Chat Settings)
 function thisPhone() {
   if (!accountPage()) return "";
   const ps = pushState(), lock = !!lockPrefs();
   const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
-  const pushFoot = { homescreen: "On iPhone, notifications need InFlight on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings.",
+  const pushFoot = { homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings.",
     unsupported: "This browser can’t show notifications." }[ps];
   return `<div class="ghead">This Phone</div>
     <div class="group">
       ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
       ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
-      ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
+      ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock Chat", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
       ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
         <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
       ${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", on: hapticsOn() })}
@@ -4199,8 +4203,8 @@ const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
 function vNotifySheet() {
   const u = S.me, n = u.notify || {}, ps = pushState();
   const pushFoot = {
-    homescreen: "On iPhone, notifications need InFlight on your Home Screen: tap Share, then Add to Home Screen, and open it from there.",
-    denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings, then come back here.",
+    homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen, and open it from there.",
+    denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings, then come back here.",
     unsupported: "This browser can’t show notifications. Email still works.",
   }[ps] || "Push notifications are set for each phone. The settings below apply to all of them.";
   const t = (key, icon, tile, label, sub) => toggleCell({ act: "npref", id: key, icon, tile, label, sub, on: !!n[key] });
@@ -4616,7 +4620,7 @@ async function postcardCard(m, withName) {
   });
   // whose it is
   appIcon(g, left, 1214, 64);
-  g.fillStyle = INK; g.font = `800 30px ${CARD_FONT}`; g.fillText("InFlight", left + 84, 1243);
+  g.fillStyle = INK; g.font = `800 30px ${CARD_FONT}`; g.fillText("Chat", left + 84, 1243);
   g.fillStyle = INK2; g.font = `500 22px ${CARD_FONT}`; g.fillText("Messages that fly the real distance", left + 84, 1273);
   g.textAlign = "right"; g.font = `600 22px ${CARD_FONT}`; g.fillText(F.site, W - left, 1256); g.textAlign = "left";
   g.restore();
@@ -4632,7 +4636,7 @@ async function storyCard(m, withName) {
   gr = g.createLinearGradient(0, 900, 0, 1290); gr.addColorStop(0, "rgba(17,17,19,0)"); gr.addColorStop(0.5, "rgba(17,17,19,.86)"); gr.addColorStop(1, BG); g.fillStyle = gr; g.fillRect(0, 900, W, 391);
   g.textBaseline = "alphabetic";
   appIcon(g, 64, 84, 76);
-  g.fillStyle = "#fff"; g.font = `800 44px ${CARD_FONT}`; g.fillText("InFlight", 162, 138);
+  g.fillStyle = "#fff"; g.font = `800 44px ${CARD_FONT}`; g.fillText("Chat", 162, 138);
   g.fillStyle = ink; g.font = `800 24px ${CARD_FONT}`; spaced(g, F.name ? `FROM ${F.name.toUpperCase()}` : "AIRMAIL", W - 64, 131, 7, "right");
   g.fillStyle = "#fff"; fitFont(g, F.longMiles, 900, 156, W - 128, 60); g.fillText(F.longMiles, 64, 1275);
   g.fillStyle = ink; fitFont(g, `by ${KIND[F.k].name.toLowerCase()} pigeon`, 700, 52, W - 128); g.fillText(`by ${KIND[F.k].name.toLowerCase()} pigeon`, 64, 1360);
@@ -4691,7 +4695,7 @@ async function shareRender(s) {
 async function shareImage() {
   const s = S.sheet, blob = s?.blobs?.[s.fmt], m = (S.msgs.get(s?.chat) || []).find((x) => x.id === s?.id);
   if (!blob || !m) return;
-  const name = `InFlight ${m.fromPlace || ""} to ${m.toPlace || ""}`.replace(/[^\w .-]+/g, "").replace(/\s+/g, " ").trim() + ".jpg";
+  const name = `Chat ${m.fromPlace || ""} to ${m.toPlace || ""}`.replace(/[^\w .-]+/g, "").replace(/\s+/g, " ").trim() + ".jpg";
   const file = new File([blob], name, { type: blob.type });
   if (canShareFiles()) {
     try { await navigator.share({ files: [file] }); }
@@ -4932,7 +4936,7 @@ function ppData(d) {
   const line2 = esc(`${String(pp.countries || 0).padStart(4, "0")}IF195<${pp.seas || 0}SEA${Math.round((d.km || 0) * 0.621371)}MI`.padEnd(40, "<").slice(0, 40));
   const birds = S.birds.slice(0, 2).map((b) => b.name).join(" · ");
   const f = (label, val, cls = "") => `<span class="ppf ${cls}"><small>${label}</small><b>${val}</b></span>`;
-  return `<div class="ppdata"><div class="pptop"><b>PASSPORT</b><small>PASSEPORT · INFLIGHT</small><em>TYPE P · LOFT</em></div>
+  return `<div class="ppdata"><div class="pptop"><b>PASSPORT</b><small>PASSEPORT · CHAT</small><em>TYPE P · LOFT</em></div>
     <div class="ppid"><span class="ppphoto">${avatar(me, "xl")}</span><span class="ppfs">${f("Surname / Nom", up(sur))}${f("Given names / Prénoms", up(rest.length ? given : ""))}${f("Home loft / Pigeonnier", up(me.place))}${f("Handle", `@${up(me.handle)}`)}</span></div>
     <div class="ppgrid">${f("Keeping pigeons since", up(d.since ? fmtDate(d.since).replace(/^\d+ /, "") : ""))}${f("Miles flown / Milles", `${n((d.km || 0) * 0.621371)} MI`)}
       ${f("Countries / Pays", `${pp.countries || 0} OF 195`)}${f("Seas / Mers", n(pp.seas || 0))}
@@ -4941,7 +4945,7 @@ function ppData(d) {
     <div class="ppmrz" aria-label="Machine readable zone">${line1}<br>${line2}</div></div>`;
 }
 const passportCover = () => `<svg viewBox="0 0 250 350" class="ppcover"><rect width="250" height="350" rx="14" class="ppleather"/><rect x="6" width="5" height="350" fill="rgba(0,0,0,.25)"/>
-  <g class="ppgold"><text x="125" y="70" class="ppc1">INFLIGHT</text><circle cx="125" cy="170" r="46"/><circle cx="125" cy="170" r="39" stroke-width="1"/>
+  <g class="ppgold"><text x="125" y="70" class="ppc1">CHAT</text><circle cx="125" cy="170" r="46"/><circle cx="125" cy="170" r="39" stroke-width="1"/>
   <g transform="translate(125 172) scale(2.9)" class="ppgoldf">${ppBird}</g><path d="M74 205c-14-14-16-38-4-56M176 205c14-14 16-38 4-56M70 196l-8-2M66 184l-8-1M66 171l-8 1M70 159l-7 4M180 196l8-2M184 184l8-1M184 171l8 1M180 159l7 4" stroke-width="1.6"/>
   <text x="125" y="270" class="ppc2">PASSPORT</text><text x="125" y="290" class="ppc3">PASSEPORT · PASAPORTE</text><rect x="111" y="312" width="28" height="18" rx="3" stroke-width="1.4"/><circle cx="125" cy="321" r="4.5" stroke-width="1.2"/></g></svg>`;
 // the ink: a little rough at the edges, and worn in places (one set for the whole book)
@@ -5355,10 +5359,10 @@ function field(name, placeholder, type, ac, prefix) {
 const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
 function vAuth() {
   switch (S.view) {
-    case "loading": return `<div class="loading">Opening InFlight…</div>`;
+    case "loading": return `<div class="loading">Opening Chat…</div>`;
     case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
         <div class="wtop">
-          <h1 class="wlogo" aria-label="InFlight"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
+          <h1 class="wlogo" aria-label="Chat"><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
@@ -5370,7 +5374,7 @@ function vAuth() {
         <div class="group">
           <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a city instead</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
-          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep it up to date", sub: "While InFlight is open, so pigeons find you", on: S.onbAuto !== false })}
+          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep it up to date", sub: "While Chat is open, so pigeons find you", on: S.onbAuto !== false })}
         </div>${ferr}
         ${S.me?.place ? `<div class="stack"><button class="btn wide plain" data-act="locdone">Continue</button></div>` : ""}</div>`;
     case "pkoffer": return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.face}</span>
@@ -5598,7 +5602,7 @@ function renderTabs() {
     if (was != null && was !== "-1" && i >= 0) { tabs.classList.remove("moving"); void tabs.offsetWidth; tabs.classList.add("moving"); }
     tabs.dataset.tab = String(i);
   }
-  document.title = unread ? `(${unread}) InFlight` : "InFlight";
+  document.title = unread ? `(${unread}) Chat` : "Chat";
 }
 function filterLists() {
   const run = (list, q) => { const el = $(`[data-list="${list}"]`); if (!el) return; q = q.trim().toLowerCase(); el.querySelectorAll("[data-find]").forEach((r) => { r.hidden = !!q && !r.dataset.find.includes(q); }); };
@@ -5669,7 +5673,7 @@ function addLookup() {
       invalid: `<p class="gfoot bad">Handles use 3 to 20 letters, numbers or underscores.</p>`,
       none: row("No one has that handle yet", `<button type="button" class="btn small gray" data-act="share">Invite</button>`, "dim looking", hd),
       self: row("That’s you", "", "looking", hd),
-      new: row("On InFlight", `<button type="button" class="btn small" data-act="addgo" data-id="${esc(r.handle)}">Add</button>`, "looking", hd),
+      new: row("On Chat", `<button type="button" class="btn small" data-act="addgo" data-id="${esc(r.handle)}">Add</button>`, "looking", hd),
       sent: row("Request sent · waiting for them", `<button type="button" class="btn small gray" data-act="cancelreq" data-id="${esc(r.id)}">Cancel</button>`, "looking", hd),
       incoming: row("Wants to be your friend", `<button type="button" class="btn small" data-act="accept" data-id="${esc(r.id)}">Accept</button>`, "looking", hd),
       friends: row("Already friends", `<button type="button" class="btn small gray" data-act="addchat" data-id="${esc(r.id)}">Message</button>`, "looking", hd),
@@ -6123,7 +6127,7 @@ function drawSheet(refresh) {
         </div>
         <div class="ghead">This Phone</div>
         <div class="group">
-          ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
+          ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock Chat", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
           ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
             <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
           ${cell({ act: "sessionssheet", icon: I.phone, tile: "blue", label: "Signed-In Phones", val: S.sessN || null, chev: true })}
@@ -6157,7 +6161,7 @@ function drawSheet(refresh) {
           <div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
           <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>`
         : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}
-        <details class="learn"><summary>How it works</summary><p>Only you and the people you write to can read your pigeons: not InFlight, and no one in between. Your key is made on this phone; a locked copy lets you sign in on a new one, and only your password or passkey opens it. Every pigeon (its words, photos, voice and reactions) is sealed before it flies, so the server only carries sealed scrolls it can’t open. Your safety number with a friend is your two keys together: the same on both phones, and no one could have swapped in a different key. Your key changes only if you reset your password without a passkey, or make a new account, and your friends are told if it does.</p></details>`, { left: toSecurity() });
+        <details class="learn"><summary>How it works</summary><p>Only you and the people you write to can read your pigeons: not Chat, and no one in between. Your key is made on this phone; a locked copy lets you sign in on a new one, and only your password or passkey opens it. Every pigeon (its words, photos, voice and reactions) is sealed before it flies, so the server only carries sealed scrolls it can’t open. Your safety number with a friend is your two keys together: the same on both phones, and no one could have swapped in a different key. Your key changes only if you reset your password without a passkey, or make a new account, and your friends are told if it does.</p></details>`, { left: toSecurity() });
       return;
     }
     case "safetylist":
@@ -6223,7 +6227,7 @@ function drawSheet(refresh) {
       // built once; searching and loading more only touch the grid
       if (!$("#gif-q", $layer)) {
         $layer.innerHTML = sheetHtml("GIFs", `<label class="search gifsearch">${I.search}<input type="search" id="gif-q" placeholder="Search GIPHY" autocomplete="off" enterkeyhint="search" aria-label="Search GIFs"></label>
-          <div class="gifgrid" role="group" aria-label="GIFs"></div><p class="giphy">Powered by GIPHY. Searches go through InFlight, so GIPHY doesn’t see who’s looking. What you send is end-to-end encrypted.</p>`,
+          <div class="gifgrid" role="group" aria-label="GIFs"></div><p class="giphy">Powered by GIPHY. Searches go through Chat, so GIPHY doesn’t see who’s looking. What you send is end-to-end encrypted.</p>`,
           { left: { label: "Cancel", act: "close" }, right: null });
         $("#gif-q", $layer).value = s.q || "";
       }
@@ -6569,7 +6573,7 @@ function drawSheet(refresh) {
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
     case "moved": {
-      // InFlight's new address, from its old one: in a browser it's one tap (the sign-in comes
+      // Chat's new address, from its old one: in a browser it's one tap (the sign-in comes
       // too, pigeon/handover.js); a Home Screen app has its own storage, so it's a few steps
       // (drawn once: it never changes while it's open, and a redraw would play its rows in again)
       if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
@@ -6579,16 +6583,16 @@ function drawSheet(refresh) {
         ["globe", "blue", `1. Open it in ${ios ? "Safari" : "your browser"}`, home],
         ["plus", "green", ios ? "2. Add it to your Home Screen" : "2. Install it", ios ? "Tap Share, then Add to Home Screen." : "From the browser’s menu: Install App, or Add to Home Screen."],
         ["key", "orange", "3. Sign in there", "With Face ID or your password. Your chats and pigeons come with you."],
-        ["bell", "red", "4. Turn notifications on there", "Then delete this InFlight from your Home Screen."],
+        ["bell", "red", "4. Turn notifications on there", "Then delete this Chat from your Home Screen."],
       ] : [
         ["check", "green", "Everything comes with you", "You’ll be signed in, with your chats, pigeons in flight and settings."],
         ["bell", "red", "Notifications move too", "Turn them on again there, from Account."],
       ];
-      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>InFlight Has Moved</h2><p>It now lives at <b>${esc(home)}</b></p></div>
+      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>Chat Has Moved</h2><p>It now lives at <b>${esc(home)}</b></p></div>
         <div class="wnlist">${rows.map(row).join("")}</div>
         <div class="wnfoot stack"><a class="btn wide" href="${esc(NEW_HOME)}/"${app ? ` target="_blank" rel="noopener"` : ""} data-act="movego">${app ? `Open ${esc(home)}` : `Go to ${esc(home)}`}</a>
           ${app ? `<button type="button" class="btn wide plain" data-act="movecopy">Copy the Address</button>` : ""}
-          <button type="button" class="btn wide plain" data-act="close">Not Now</button></div>`, { name: "InFlight Has Moved" });
+          <button type="button" class="btn wide plain" data-act="close">Not Now</button></div>`, { name: "Chat Has Moved" });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     }
@@ -6597,7 +6601,7 @@ function drawSheet(refresh) {
       if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
       const list = RELEASES;
       const rows = (r) => `<div class="wnlist">${r.items.map(([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic] || I.bird}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`).join("")}</div>`;
-      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in InFlight</h2><p>Version ${APP_VERSION}</p></div>
+      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in Chat</h2><p>Version ${APP_VERSION}</p></div>
         ${list.map((r) => `<div class="ghead">${esc(r.v)} · ${esc(r.title)}</div>${rows(r)}`).join("")}
         <div class="wnfoot"><button type="button" class="btn wide" data-act="close">Done</button></div>`, { name: "What’s New" });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
@@ -6622,7 +6626,7 @@ function drawSheet(refresh) {
         <div class="group">${out("https://www.naturalearthdata.com/", I.globe, "orange", "Natural Earth", "Coastlines, countries and places · public domain")}</div>
         <div class="ghead">GIFs</div>
         <div class="group">${out("https://giphy.com/", `<span class="gifico" aria-hidden="true">GIF</span>`, "indigo", "GIPHY", "Search and trending GIFs")}</div>
-        <div class="gfoot">The maps and heights are kept on InFlight’s own server, and it asks for the weather, the Earth’s news and GIFs itself, so none of these see who you are.</div>`);
+        <div class="gfoot">The maps and heights are kept on Chat’s own server, and it asks for the weather, the Earth’s news and GIFs itself, so none of these see who you are.</div>`);
       return;
     }
     case "appearance":
@@ -6647,7 +6651,7 @@ function drawSheet(refresh) {
         : `<div class="wnhero pkhero"><span class="wnlogo" aria-hidden="true">${I.face}</span><h2>No Password to Forget</h2><p>Sign in with Face ID or your fingerprint, the way you unlock your phone.</p></div>
           <div class="wnlist">${[["lock", "green", "Safer than a password", "Nothing to guess, reuse or type into the wrong site."],
             ["key", "indigo", "Keeps your messages", "On newer phones it also unlocks them, so a password reset doesn’t lose them."],
-            ["face", "teal", "Lets InFlight lock", "Lock InFlight when you leave it, and open it with a glance."]].map(([ic, tile, t, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${t}</b><small>${sub}</small></span></div>`).join("")}</div>
+            ["face", "teal", "Lets Chat lock", "Lock Chat when you leave it, and open it with a glance."]].map(([ic, tile, t, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${t}</b><small>${sub}</small></span></div>`).join("")}</div>
           <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: toSecurity() });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
@@ -6685,7 +6689,7 @@ function drawSheet(refresh) {
           ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
           <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
-          ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Every minute while InFlight is open", on: u.autoLocation })}
+          ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Every minute while Chat is open", on: u.autoLocation })}
           ${cell({ act: "moonpick", id: "moon", icon: I.moon, tile: "indigo", label: "Go to the Moon", sub: "Only lunar pigeons fly there", chev: true })}
           ${cell({ act: "moonpick", id: "mars", icon: I.up, tile: "red", label: "Go to Mars", sub: "Only laser pigeons reach it, at the speed of light", chev: true })}
         </div>`}
@@ -7497,7 +7501,7 @@ function cheerState(btn, m) {
 /* ---------- Look up: which way your pigeon is, right now ----------
    Hold the phone up and turn: the sky ahead of you, with the pigeon where it really is (most often far past the
    curve of the Earth, so below the horizon), how far, and over where. A space pigeon: the Moon or Mars, where it is
-   in your sky, or an orbital one going over. It uses where you've told InFlight you are, and the phone's compass
+   in your sky, or an orbital one going over. It uses where you've told Chat you are, and the phone's compass
    (iPhone asks first); without a compass, a dial says which way to face. */
 const lookState = (btn, m) => { const on = !!lookAt(m); if (btn.hidden === on) btn.hidden = !on; btn.dataset.id = m.id; };
 // where a pigeon in the air is from here: { az, el, km, over?, sky?, orbit? }, or null (landed, lost, not on the map,
@@ -8155,13 +8159,13 @@ async function onClick1(e, t) {
       flashMsg(el, id); return;
     }
     case "applock": {
-      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); render(); return renderSheet(); }
-      if (!S.passkeys?.length) { toast("Add a passkey first: it’s what unlocks InFlight."); S.sheet = { type: "passkeys" }; return renderSheet(); }
-      try { await lockCheck(); } catch (_) { return toast("Couldn’t check it’s you, so InFlight won’t lock yet."); }
-      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); render(); return renderSheet();
+      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("Chat won’t lock."); render(); return renderSheet(); }
+      if (!S.passkeys?.length) { toast("Add a passkey first: it’s what unlocks Chat."); S.sheet = { type: "passkeys" }; return renderSheet(); }
+      try { await lockCheck(); } catch (_) { return toast("Couldn’t check it’s you, so Chat won’t lock yet."); }
+      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("Chat locks when you leave it."); render(); return renderSheet();
     }
     case "unlock": return unlock();
-    case "lockout": return openActions({ message: "Sign out of InFlight on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "lockout": return openActions({ message: "Sign out of Chat on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     case "reauthpk": {
       try { await busyBtn(t, "Waiting for your passkey…", reauthPasskey); const s = S.sheet; S.sheet = s.back || null; renderSheet(); haptic("success"); s.resolve(true); }
       catch (err) { if (err?.name !== "NotAllowedError") toast(esc(err.message || "That passkey didn’t work.")); }
@@ -8325,7 +8329,7 @@ async function onClick1(e, t) {
     case "sessendgo":
       try { await api("sessions-end", { method: "POST", body: { id } }); haptic("success"); toast("Signed out."); } catch (err) { toast(esc(err.message)); }
       return loadSessions();
-    case "sessothers": return openActions({ message: "Sign out of InFlight everywhere except this phone? They’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out Other Phones", act: "sessothersgo", destructive: true }] });
+    case "sessothers": return openActions({ message: "Sign out of Chat everywhere except this phone? They’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out Other Phones", act: "sessothersgo", destructive: true }] });
     case "sessothersgo":
       try { await api("sessions-end", { method: "POST", body: { others: true } }); haptic("success"); toast("Your other phones were signed out."); } catch (err) { toast(esc(err.message)); }
       return loadSessions();
@@ -8486,7 +8490,7 @@ const agoText = (at) => {
   const m = Math.round((now() - at) / MIN), h = Math.round(m / 60), d = Math.round(m / 1440);
   return m < 2 ? "just now" : m < 60 ? `${m} min ago` : h < 24 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${d} day${d > 1 ? "s" : ""} ago`;
 };
-// Opt-in: keep your location fresh while InFlight is open (a web page can't
+// Opt-in: keep your location fresh while Chat is open (a web page can't
 // look in the background), so pigeons on their way can follow you. It never
 // asks for permission by itself (only when you turn it on). It checks every
 // minute, saves when you've moved to a new square mile, and otherwise just
@@ -8504,7 +8508,7 @@ async function setAutoLocation(on, btn) {
   catch (err) { S.me = { ...S.me, autoLocation: !on }; render(); refreshProfile(); return toast(esc(err.message)); }
   if (on) autoLocate(true); else stopLocWatch();
 }
-// While InFlight is open (and you've turned it on) the phone watches your
+// While Chat is open (and you've turned it on) the phone watches your
 // location: iPhone asks once a session, then reports as you move. The minute
 // timer saves what it last heard (a new square mile at once; otherwise a
 // "still here" every ten minutes, timed on this phone: the server's "Updated"
@@ -8583,9 +8587,9 @@ function locate(btn) {
 }
 async function shareHandle() {
   const url = myLink();
-  const text = `Send me a pigeon on InFlight: @${S.me.handle}`;
+  const text = `Send me a pigeon on Chat: @${S.me.handle}`;
   try {
-    if (navigator.share) await navigator.share({ title: "InFlight", text, url });
+    if (navigator.share) await navigator.share({ title: "Chat", text, url });
     else { await navigator.clipboard.writeText(`${text} ${url}`); toast("Link copied."); }
   } catch (_) { /* share sheet closed */ }
 }
@@ -8735,7 +8739,7 @@ async function prepGif(blob) {
   return { ...g, gif: true, preview: URL.createObjectURL(new Blob([g.bytes], { type: "image/gif" })) };
 }
 /* ---------- GIF search ----------
-   Through InFlight's server (functions/_gifs.js): it asks GIPHY and fetches
+   Through Chat's server (functions/_gifs.js): it asks GIPHY and fetches
    the GIFs, so GIPHY never sees who's looking. The one picked is attached like
    a GIF from the phone: sealed before it leaves. */
 const gifPrev = new Map();            // id → blob URL of its little moving preview
@@ -8834,7 +8838,7 @@ function showUpload(stage, f = 0) {
   upAnim.set(f);
 }
 /* ---------- the app lock ----------
-   Optional, per phone: InFlight locks when you leave it (straight away, or
+   Optional, per phone: Chat locks when you leave it (straight away, or
    after a minute, 15 minutes or an hour), and opens with Face ID, Touch ID
    or the phone's passkey. The check is the phone's own (a user-verified
    passkey assertion), so it works with no signal too. While locked nothing
@@ -8857,8 +8861,8 @@ function drawLock() {
   if (!S.locked) { if (el && !el.classList.contains("out")) { el.classList.add("out"); el.inert = true; setTimeout(() => { if (el.classList.contains("out")) el.remove(); }, STILL.matches ? 220 : 360); } return; }
   if (el?.classList.contains("out")) { el.classList.remove("out"); el.inert = false; }     // (locked again as it went)
   if (!el) {
-    el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "InFlight is locked");
-    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with ${isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey"}.</p>
+    el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Chat is locked");
+    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>Chat is locked</h2><p>Unlock with ${isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey"}.</p>
       <button type="button" class="btn wide" data-act="unlock">${I.face}Unlock</button><button type="button" class="link" data-act="lockout">Sign Out Instead</button></div>`;
     root().appendChild(el);
   }
@@ -8927,7 +8931,7 @@ async function recStart() {
   let stream; const chat = S.chat;
   recAsking = true;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-  catch (e) { return toast(e?.name === "NotAllowedError" ? "InFlight needs the microphone for voice pigeons. You can allow it in Settings." : "Couldn’t use the microphone."); }
+  catch (e) { return toast(e?.name === "NotAllowedError" ? "Chat needs the microphone for voice pigeons. You can allow it in Settings." : "Couldn’t use the microphone."); }
   finally { recAsking = false; }
   if (S.view !== "chat" || S.chat !== chat || S.busy || S.attach) { stream.getTracks().forEach((t) => t.stop()); return; }   // (left, or busy, while it asked)
   const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((m) => window.MediaRecorder.isTypeSupported?.(m)) || "";
@@ -9241,7 +9245,7 @@ window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change",
 /* ============================================================
    Notifications
    ============================================================ */
-// Push needs a service worker, and on iPhone only works once InFlight is on the Home Screen.
+// Push needs a service worker, and on iPhone only works once Chat is on the Home Screen.
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
 const standalone = () => !!(window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone);
@@ -9273,7 +9277,7 @@ async function pushEnable() {
   S.pushBusy = true; render();
   try {
     const perm = await Notification.requestPermission();    // first, while the tap still counts
-    if (perm !== "granted") { if (perm === "denied") toast("Notifications are blocked. Turn them on for InFlight in your phone’s Settings."); return; }
+    if (perm !== "granted") { if (perm === "denied") toast("Notifications are blocked. Turn them on for Chat in your phone’s Settings."); return; }
     S.pushOn = !!(await pushSub(true));
     if (S.pushOn) toast("Notifications are on. You’ll hear when a pigeon lands.");
   } catch (err) { console.warn("push", err); toast("Couldn’t turn on notifications on this phone."); }
@@ -9323,7 +9327,7 @@ async function offerNotify() {
   const ps = pushState();
   if (ps === "off") toast("Want to hear when the reply lands?", "Notify Me", () => pushEnable());
   else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
-  else if (ps === "homescreen") toast("Add InFlight to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
+  else if (ps === "homescreen") toast("Add Chat to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
 }
 async function openFlightLog(at) {
   const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
@@ -9363,23 +9367,23 @@ function textSize() {
   const ts = px > 0 && CSS.supports?.("font", "-apple-system-body") ? Math.min(1.6, Math.max(0.85, px / 17)) : 1;
   document.documentElement.style.setProperty("--ts", ts.toFixed(3));
 }
-// A computer: the page says InFlight isn't available (theme.js decided, before
+// A computer: the page says Chat isn't available (theme.js decided, before
 // anything was drawn), with a code to scan that opens this same link on a phone.
 // Nothing else runs: no session, no sync, nothing stored.
 function notAvailable() {
   const site = $(".na-site"); if (site) site.textContent = NEW_HOME ? NEW_HOME.replace(/^https?:\/\//, "") : HERE();
   const box = $(".na-qr"); if (!box) return;
   const link = /#(add|reset|verify|open|invite)=/.test(location.hash);
-  box.innerHTML = `${qrSvg(NEW_HOME ? `${NEW_HOME}/${location.hash}` : location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
+  box.innerHTML = `${qrSvg(NEW_HOME ? `${NEW_HOME}/${location.hash}` : location.href, { title: link ? "QR code for this link" : "QR code for Chat" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
   box.hidden = false;
 }
-// The move to chat.inflite.ai: the first time InFlight starts at the new
+// The move to chat.inflite.ai: the first time Chat starts at the new
 // address on a phone, it brings over what the phone kept at the old one (the sign-in,
 // unsent pigeons, trusted keys, settings) from a hidden page there (pigeon/handover.js),
 // so nobody has to sign in again. Once only: signing out here doesn't bring it back.
 // Then, signed in here, what was kept there is cleared (once, for a phone that moved before
 // too), so the key isn't left at an address the home page shares.
-// (InFlight's on a site of its own now, inflite.ai, whose pages can't see what the old one kept: there's no handing over
+// (Chat's on a site of its own now, inflite.ai, whose pages can't see what the old one kept: there's no handing over
 // from there any more, so this is off. Signing in brings the key back, with a passkey or the password.)
 const OLD_HOME = null;
 async function moveIn() {
@@ -9398,7 +9402,7 @@ async function moveIn() {
     post();
   });
   const got = await ask("handover", 5000, () => {
-    f.hidden = true; f.title = "InFlight’s old address"; f.src = new URL("pigeon/handover", OLD_HOME + "/").href;   // (written so: the new address rewrites "/pigeon/…" paths to its root)
+    f.hidden = true; f.title = "Chat’s old address"; f.src = new URL("pigeon/handover", OLD_HOME + "/").href;   // (written so: the new address rewrites "/pigeon/…" paths to its root)
     document.body.append(f);
   });
   if (!got) return f.remove();
@@ -9419,7 +9423,7 @@ async function moveIn() {
   f.remove();
 }
 
-// At the old address: say where InFlight went (at most once a day, and from Account any time)
+// At the old address: say where Chat went (at most once a day, and from Account any time)
 function movedNote(force) {
   if (!NEW_HOME) return;
   try { const last = Number(localStorage.getItem("inflight-movednote") || 0); if (!force && Date.now() - last < DAY) return; localStorage.setItem("inflight-movednote", String(Date.now())); } catch (_) {}
@@ -9455,7 +9459,7 @@ async function start() {
   // an invite, or a reset link (from before they were the account's page's): passed on to it
   const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (away) return location.replace(toAccount(`#${away[1]}=${away[2]}`));
-  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); arrival?.away(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
+  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); arrival?.away(); return toast("This browser can’t run Chat’s encryption. Try Safari or Chrome."); }
   // the old address asked for what it kept: signed in here already, that's only clearing it, done alongside; signed out,
   // the welcome is up while it's asked (what it hands over, a sign-in, is taken up below)
   if ((await idb.get("session"))?.token) moveIn().catch(() => {});
@@ -9505,9 +9509,9 @@ async function start() {
     } catch (e) { console.error("start", e); }
     }
   } else { if (S.view !== "welcome") go("welcome"); movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); }
-  // (InFlight as it was before you went to sign in, brought back by the browser: anew, if you're signed in now)
+  // (Chat as it was before you went to sign in, brought back by the browser: anew, if you're signed in now)
   addEventListener("pageshow", (e) => { if (e.persisted && !S.me) idb.get("session").then((x) => (x?.token ? location.reload() : resumeCheck()), () => {}); });
-  // an add-a-friend link opened while InFlight is already open in this tab (an invite or a reset link: passed on)
+  // an add-a-friend link opened while Chat is already open in this tab (an invite or a reset link: passed on)
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
     const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
@@ -9554,7 +9558,7 @@ async function checkUpdate() {
     || S.view === "chat" || inField(document.activeElement)               // (never under your fingers: a reload would take the keyboard away)
     || rec || onceOpen || (S.player && !S.player.paused) || S.busy;       // (never mid-recording, mid-photo, mid-voice-note or mid-send)
   if (!busy) return reloadHere();
-  toast("A new version of InFlight is ready.", "Update", reloadHere);
+  toast("A new version of Chat is ready.", "Update", reloadHere);
 }
 // When a pigeon you can see lands, fetch it straight away instead of waiting for the next poll.
 let nextLanding = 0;
@@ -9569,14 +9573,14 @@ function flightCheck() {
   const due = lands.filter((x) => x <= t);
   if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
 }
-// if starting goes wrong, say so and offer a way out, rather than "Opening InFlight…" for ever
+// if starting goes wrong, say so and offer a way out, rather than "Opening Chat…" for ever
 function bootFail(err) {
   console.error("start", err);
   document.documentElement.classList.remove("arriving"); arrival?.away();      // (never the account's page's sky over what went wrong)
   if (S.view !== "loading" && $view?.firstElementChild && !$(".loading", root())) return;
   try { if (S.me?.id) idb.del("cache:" + S.me.id); } catch (_) {}
   const scr = root(); if (!scr) return;
-  scr.innerHTML = `<div class="bootfail" role="alert"><div class="appicon">${I.bird}</div><h1>InFlight couldn’t open</h1>
+  scr.innerHTML = `<div class="bootfail" role="alert"><div class="appicon">${I.bird}</div><h1>Chat couldn’t open</h1>
     <p>Something on this phone got in the way. Your messages are safe: they’re on the server, and your key is still here.</p>
     <button type="button" class="btn wide" id="bootretry">Try Again</button></div>`;
   $("#bootretry")?.addEventListener("click", () => location.reload());

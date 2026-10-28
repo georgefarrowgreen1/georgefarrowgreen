@@ -1291,7 +1291,7 @@ ph.input.addEventListener("change", async () => {
     for (const [i, f] of files.entries()) {
       if (files.length > 1) fadeText($(".lbl", ph.add), `Adding ${i + 1} of ${files.length}…`);
       const [image, small] = await shrinkBoth(f);
-      // (a minute and a half to go up, as InFlight gives a file: it's megabytes, and a phone's signal sends slowly)
+      // (a minute and a half to go up, as Chat gives a file: it's megabytes, and a phone's signal sends slowly)
       photos = (await api("/api/background", { method: "PUT", body: { image, small }, timeout: 90000 })).images || photos;
       photosChanged();
     }

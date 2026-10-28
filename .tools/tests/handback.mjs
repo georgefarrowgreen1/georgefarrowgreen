@@ -1,10 +1,10 @@
-// Signing in to InFlight from a test's own requests, as a phone does it now: on the account's page (account.localhost
-// beside InFlight run locally), which hands the sign-in back to InFlight with a code, good only with the word the app
-// kept for it (functions/_handback.js). For the tests that drive InFlight's API directly.
+// Signing in to Chat from a test's own requests, as a phone does it now: on the account's page (account.localhost
+// beside Chat run locally), which hands the sign-in back to Chat with a code, good only with the word the app
+// kept for it (functions/_handback.js). For the tests that drive Chat's API directly.
 //   acctCall(path, body, { cookie, ip })   the account's API, from its page: { s, j, cookie (the sign-in it gave) }
-//   inflightFrom(cookie, { ip })           that sign-in handed to InFlight: InFlight's answer { s, j: { token, me, vault, … } }
-//   madeIn(signupBody, { ip })             an account made on the account's page and signed in to InFlight: { s, j }
-//   signedIn({ email, proof }, { ip })     an account signed in to on the account's page, then InFlight: { s, j }
+//   inflightFrom(cookie, { ip })           that sign-in handed to Chat: Chat's answer { s, j: { token, me, vault, … } }
+//   madeIn(signupBody, { ip })             an account made on the account's page and signed in to Chat: { s, j }
+//   signedIn({ email, proof }, { ip })     an account signed in to on the account's page, then Chat: { s, j }
 //   hostCall(host, path, body, { cookie, ip })  a POST to any of the site's addresses (the tests' gfg.test ones too),
 //                                          from its own page: { s, j, cookie }
 import http from 'http';

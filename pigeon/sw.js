@@ -1,4 +1,4 @@
-// InFlight service worker: shows push notifications and opens the right chat
+// Chat service worker: shows push notifications and opens the right chat
 // when one is tapped, and keeps a copy of the app so it opens with no signal.
 //
 // The page is always asked of the network first (so a new version arrives as
@@ -80,7 +80,7 @@ self.addEventListener("push", (e) => {
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : "" }; }
   // an open app catches up at once (a pigeon that changed course is redrawn on its map straight away)
   e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => cs.forEach((c) => c.postMessage({ inflight: "sync" }))).catch(() => {}));
-  e.waitUntil(self.registration.showNotification(d.title || "InFlight", {
+  e.waitUntil(self.registration.showNotification(d.title || "Chat", {
     body: d.body || "A pigeon has landed.",
     icon: "/pigeon/icon-192.png",
     badge: "/pigeon/badge-96.png",                // (Android draws this small, from its shape alone: the white pigeon)

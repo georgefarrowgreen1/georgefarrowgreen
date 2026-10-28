@@ -1,5 +1,5 @@
 // Fitness (fitness/), at its own address (fitness.<site>), signed in only, with the site's one account: signed out,
-// just what it is and Sign in (on the account's page, handed back); signed up to InFlight in a browser, Fitness there is
+// just what it is and Sign in (on the account's page, handed back); signed up to Chat in a browser, Fitness there is
 // signed in already. Files come in (a Wahoo's FIT ride, a GPX, a ZWO workout, a zip as Garmin Connect's "Export
 // original" makes it, and one it can't read), and each ride's kept with the account, its file as it came; another device
 // signed in has them, each opened from its file, and out again as FIT with every sample. A plan chosen on one device and
@@ -18,7 +18,7 @@ import { readFit, writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
 import { demo, samples, PROFILE } from '../../fitness/sample.js';
-import { joinInFlight, onAccountPage } from './join.mjs';
+import { joinChat, onAccountPage } from './join.mjs';
 
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
@@ -134,7 +134,7 @@ createServer((req, res) => {
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
-// a browser: its own cookies and storage (a laptop, a phone: both, to InFlight, a phone, as it opens only on one)
+// a browser: its own cookies and storage (a laptop, a phone: both, to Chat, a phone, as it opens only on one)
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const pages = [];
 async function browser(name) {
@@ -183,8 +183,8 @@ ok(await L.p.$eval('#sign-in', (x) => x.disabled) && /Signing in is at fitness\.
 const elsewhere = await api(L, '/api/fitness/me');
 ok(elsewhere.status === 404, 'and its API answers only at its own address', String(elsewhere.status));
 
-// ---- 2. Signed up to InFlight on a laptop: Fitness in the same browser is signed in already ----
-await joinInFlight(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
+// ---- 2. Signed up to Chat on a laptop: Fitness in the same browser is signed in already ----
+await joinChat(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
 const sam = userId('sam');
 await L.p.goto(`${FIT}/`);
 await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
@@ -524,7 +524,7 @@ ok(/Today|Activities|Progress/.test(offTxt) && !/needs JavaScript|You’re offli
 // (a phone as the others, but never welcomed: the welcome's for it)
 const O = await browser('new'), OC = O.ctx;
 await OC.addInitScript(() => { try { localStorage.removeItem('fitness:welcomed'); } catch (_) {} });
-await joinInFlight(O.p, `${CHAT}/`, { name: 'Jo Bloggs', handle: 'jobloggs', email: 'jo@example.com', password: PW, city: 'York' }).catch(async (e) => { await O.p.screenshot({ path: `${out}/onb-join-fail.png` }); console.log('JOINFAIL', O.p.url(), e.message.split('\n')[0]); throw e; });
+await joinChat(O.p, `${CHAT}/`, { name: 'Jo Bloggs', handle: 'jobloggs', email: 'jo@example.com', password: PW, city: 'York' }).catch(async (e) => { await O.p.screenshot({ path: `${out}/onb-join-fail.png` }); console.log('JOINFAIL', O.p.url(), e.message.split('\n')[0]); throw e; });
 await O.p.goto(`${FIT}/`);
 const oOpen = await O.p.waitForSelector('dialog.sheet.full[open] .onb-title', { timeout: 30000 }).then(() => true, () => false);
 const oHi = oOpen ? await O.p.locator('.onb-title').innerText() : '';
@@ -570,7 +570,7 @@ ok(slog.some((x) => x.startsWith('GET /oauth/authorize') && x.includes('approval
   'Strava always shows its own page (so you see whose Strava it is), and Fitness says whose it is');
 // ---- one person's Strava and Garmin, one Fitness account: another account can't take them, nor their rides ----
 const X = await browser('second');
-await joinInFlight(X.p, `${CHAT}/`, { name: 'Alex Reed', handle: 'alex', email: 'alex@example.com', password: PW, city: 'Leeds' });
+await joinChat(X.p, `${CHAT}/`, { name: 'Alex Reed', handle: 'alex', email: 'alex@example.com', password: PW, city: 'Leeds' });
 await X.p.goto(`${FIT}/`); await X.p.waitForSelector('.head .round.me', { timeout: 30000 }); await settle(X, 1500);
 const alex = rows("SELECT id FROM pg_users WHERE handle = 'alex'")[0]?.id;
 const xGo = JSON.parse((await api(X, '/api/fitness/strava/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).body).url;

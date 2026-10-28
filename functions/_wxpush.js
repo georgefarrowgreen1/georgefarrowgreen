@@ -379,7 +379,7 @@ export async function unlinkEnded(D, userId = null) {
 }
 
 // Ticks are asked for every 5 minutes by schedulers, which can run late (GitHub's by hours): so the site's traffic
-// asks too, as InFlight's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
+// asks too, as Chat's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
 // every 20 seconds from one copy of the server.)
 let wxLook = 0;
 export async function maybeWxTick(env, origin) {

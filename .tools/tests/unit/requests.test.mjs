@@ -1,6 +1,6 @@
 // What every app's server takes from a request, and says back: a body no bigger than its cap however it's sent
 // (functions/_pigeon.js readCapped, and the body() helpers on it), how long a limit says to wait (waitText), and
-// InFlight's notification settings kept a change at a time (functions/_notify.js savePrefs)
+// Chat's notification settings kept a change at a time (functions/_notify.js savePrefs)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';

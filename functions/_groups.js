@@ -1,4 +1,4 @@
-// InFlight groups: the server half.
+// Chat groups: the server half.
 //
 // A group message is sealed on the sender's phone under its own random key.
 // The server stores that sealed body once, plus the key sealed separately for

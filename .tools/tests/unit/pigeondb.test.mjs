@@ -1,4 +1,4 @@
-// InFlight's server against a real database (node:sqlite, made to look like D1, with the real schema): seasonal looks
+// Chat's server against a real database (node:sqlite, made to look like D1, with the real schema): seasonal looks
 // counted after messages go, disappearing messages and read receipts, what one person is sent of others' reactions and
 // flights together, and the minute tick finding what it needs by index
 import { test } from 'node:test';

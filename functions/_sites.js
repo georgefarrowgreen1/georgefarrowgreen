@@ -1,9 +1,9 @@
-// The two sites. The apps live at inflite.ai: InFlight at chat., Weather at weather., Fitness at fitness., and the
+// The two sites. The apps live at inflite.ai: Chat at chat., Weather at weather., Fitness at fitness., and the
 // account they all sign in with at account. (one sign-in there for them all). georgefarrowgreen.com is the home page,
 // which signs in with that account too, and where the apps used to be: their old addresses there send you on to the
 // new ones (functions/_middleware.js, functions/_hop.js). Passkeys still belong to georgefarrowgreen.com, which says
 // inflite.ai's apps may use them (/.well-known/webauthn): so every passkey made before still works, and with it the
-// key InFlight unlocks with one.
+// key Chat unlocks with one.
 // (Tests stand in sites of their own, over plain http: ACCOUNT_SITE for the home page's (gfg.test), APPS_SITE for the
 // apps' (ifl.test).)
 export const HOME_SITE = "georgefarrowgreen.com", APPS_SITE = "inflite.ai";

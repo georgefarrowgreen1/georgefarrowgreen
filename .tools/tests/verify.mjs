@@ -1,6 +1,6 @@
 // Verify in person: the safety number as a QR code, scanned with the camera (jsQR), or marked by hand.
 import { kit } from './lib.mjs';
-import { signInInFlight } from './join.mjs';
+import { signInChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
 const { ok, sql, api, sess, openChat } = K;
@@ -104,7 +104,7 @@ await G2.ctx.addInitScript(() => {
     return f.apply(this, arguments);
   };
 });
-await signInInFlight(G2.p, K.URL, { email: 'george@example.com' }); await G2.p.waitForSelector('.tabs', { timeout: 40000 }); await G2.p.waitForTimeout(3500);
+await signInChat(G2.p, K.URL, { email: 'george@example.com' }); await G2.p.waitForSelector('.tabs', { timeout: 40000 }); await G2.p.waitForTimeout(3500);
 const posts = () => G2.p.evaluate(() => +(localStorage.getItem('pins-posts') || 0));
 ok(await posts() === 0 && (await serverPins(G))['old:' + ELSE]?.length === 1, 'a new phone that couldn’t fetch the trusted keys saves nothing over them');
 await G2.p.evaluate(() => { localStorage.setItem('pins-ok', '1'); dispatchEvent(new Event('online')); }); await G2.p.waitForTimeout(3500);

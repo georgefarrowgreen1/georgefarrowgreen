@@ -139,7 +139,7 @@ const tr = await fetch(K.BASE + '/api/pigeon/tracker').then((r) => r.json());
 ok(Array.isArray(tr.pigeons) && tr.moon >= 2, 'the live tracker counts the pigeons out in space (a number only)', JSON.stringify(tr).slice(0, 200));
 const dctx = await K.b.newContext({ viewport: { width: 1440, height: 900 } }), dpage = await dctx.newPage(); 
 await dpage.goto(K.BASE + '/pigeon/tracker'); await dpage.waitForTimeout(2500);
-ok(!(await dpage.locator('.tk-moon').isHidden()), 'InFlight Live shows it', await dpage.locator('.tk-moon').innerText().catch(() => ''));
+ok(!(await dpage.locator('.tk-moon').isHidden()), 'Chat Live shows it', await dpage.locator('.tk-moon').innerText().catch(() => ''));
 await dpage.screenshot({ path: `${out}/17-inflight-live.png` });
 
 // ---- Mira comes home ----
