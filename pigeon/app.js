@@ -202,7 +202,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.1";            // shown in InFlite's menu (and What's New)
+const APP_VERSION = "1.4.1";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2954,157 +2954,6 @@ async function openNote(id, from, to, ct) {
     try { const o = await E2E.open(await pairFor(pubFromId(k)), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); return; } catch (_) {}
   }
 }
-/* ---------- What's New ----------
-   Every release, newest first (its way in was the version at the foot of Account, taken away on 29 Oct 2026). */
-const RELEASES = [
-  { v: "1.4.1", at: Date.UTC(2026, 9, 28), title: "A new name", items: [
-    ["bubble", "blue", "InFlight is now Chat", "The same app, your letters, friends and pigeons as they were, under a new name: Chat, at chat.inflite.ai."],
-    ["bell", "orange", "On your Home Screen", "An icon you added before keeps the old name until you add Chat to your Home Screen again."],
-  ] },
-  { v: "1.4.0", at: Date.UTC(2026, 9, 27), title: "A new address", items: [
-    ["globe", "blue", "Chat is at chat.inflite.ai", "The apps have a home of their own now. Links to the old address still bring you here, signed in as you were."],
-    ["lock", "green", "Your passkeys still work", "The passkey you have already signs you in here, and opens your messages."],
-    ["bell", "orange", "On your Home Screen", "Add Chat to your Home Screen again from here, and turn notifications on there. Until then the old one still tells you when a pigeon lands, so you can remove it once you have."],
-  ] },
-  { v: "1.3.5", at: Date.UTC(2026, 9, 25), title: "In keeping", items: [
-    ["sun", "blue", "A sky behind everything", "Chat now has your account’s sky: slow light drifting behind every screen, dawn in Light and night in Dark."],
-    ["bubble", "indigo", "Glass, all through", "Your chats, friends and settings sit on panes of glass, as they do on your account’s page and in Weather; friends’ bubbles too."],
-    ["key", "teal", "Encryption, simpler", "Encryption opens on your key, as a pattern and its digits, with Verify a Friend straight under it."],
-  ] },
-  { v: "1.3.4", at: Date.UTC(2026, 9, 25), title: "Steadier", items: [
-    ["sliders", "indigo", "Your settings, on your account", "Chat Settings opens your account’s page, where notifications, quiet hours and who sees what are kept for every phone."],
-    ["search", "blue", "Search finds people again", "Searching Messages for a friend’s or a group’s name shows their chat, as it should."],
-    ["bird", "green", "Easier on your battery", "Chat asks the server for less while you’re in it: a chat you’ve left, a phone that hasn’t moved and an open chat that hasn’t changed all cost nothing now."],
-    ["lock", "orange", "Quieter about you", "With read receipts off, a disappearing message counts from landing, so no one learns when you read it; and a reaction is sealed to its message."],
-    ["person", "teal", "Easier to use", "Pinch to zoom, bigger buttons by the message box, and the keyboard and screen readers keep their place."],
-  ] },
-  { v: "1.3.3", at: Date.UTC(2026, 9, 24), title: "Coming and going", items: [
-    ["lock", "blue", "Signing in, in one movement", "Sign In opens out into your account’s page. Back in Chat, a padlock opens, your picture flies down into Account and your chats come in, one by one."],
-    ["moon", "indigo", "Signing out at dusk", "Sign out and your rows fall away, the padlock shuts and night comes in, back to the welcome. With Reduce Motion it all fades instead."],
-  ] },
-  { v: "1.3.2", at: Date.UTC(2026, 9, 24), title: "One sign-in", items: [
-    ["lock", "blue", "Sign in on your account’s page", "Sign In takes you to account.georgefarrowgreen.com, where you sign in for every app on the site, and brings you straight back."],
-    ["person", "green", "Your messages open as you come back", "The password or passkey you sign in with there unlocks them here too, so you only show it’s you once."],
-  ] },
-  { v: "1.3.1", at: Date.UTC(2026, 9, 24), title: "Smoother", items: [
-    ["bubble", "blue", "Messages that move", "A pigeon comes down as it lands in front of you, chats slide to the top as news arrives, and what’s new fades in instead of jumping."],
-    ["up", "green", "Sent at once", "What you send shows straight away as it takes off, and the box is ready for the next. Scrolled up, a pill says when a pigeon arrives below."],
-    ["bird", "orange", "Everything glides", "Screens, sheets, menus, banners and the map move smoothly in and out, and with Reduce Motion they fade instead of cutting."],
-  ] },
-  { v: "1.3.0", at: Date.UTC(2026, 9, 23), title: "One way in", items: [
-    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on georgefarrowgreen.com: a passkey first, or your email and password."],
-    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.georgefarrowgreen.com, where a forgotten password is reset too. Invite links still work: they open it."],
-  ] },
-  { v: "1.2.9", at: Date.UTC(2026, 9, 23), title: "Your account, at the top", items: [
-    ["person", "blue", "The same card as Weather", "Account opens with your photo, name and handle, as Weather’s Settings do. Tap it for your account’s page, already signed in."],
-    ["pin", "teal", "Location has its own row", "Where you are is under Settings now, and Sign Out is at the foot of Account."],
-  ] },
-  { v: "1.2.8", at: Date.UTC(2026, 9, 23), title: "Your profile, on your account", items: [
-    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your georgefarrowgreen.com account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
-  ] },
-  { v: "1.2.7", at: Date.UTC(2026, 9, 22), title: "Tidier", items: [
-    ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
-    ["phone", "blue", "Sign out, sure?", "Signing out another phone asks first, and says which one and roughly where it is."],
-    ["clock", "green", "Times as you’d say them", "“2 hours ago”, not “2h 0m ago”, everywhere."],
-    ["bird", "indigo", "A quicker first open", "Chat fetches all it needs at once when it opens after an update."],
-  ] },
-  { v: "1.2.6", at: Date.UTC(2026, 9, 23), title: "Where you’re signed in", items: [
-    ["phone", "green", "Signed-In Phones, clearer", "How many places your account is signed in, this phone with how and since when, and every other one with roughly where it is."],
-    ["warn", "orange", "A new one stands out", "A phone that signed in today is marked New, so one that wasn’t you is easy to spot and sign out."],
-    ["lock", "teal", "Who to verify next", "Privacy & Security shows how many friends you’ve verified, with a bar, and who to check next."],
-  ] },
-  { v: "1.2.5", at: Date.UTC(2026, 9, 22), title: "Safer, at a glance", items: [
-    ["shield", "green", "How protected you are", "Privacy & Security opens with a shield that fills as you confirm your email, add a passkey and lock Chat, with anything left a tap away."],
-    ["lock", "teal", "What encryption means", "Encryption shows how your pigeons are sealed, your key as a pattern you’d know, and where you stand with each friend: verified, not checked, or their key changed."],
-    ["check", "blue", "Verify together", "A friend’s safety number shows plainly whether you’ve checked, and scanning their code marks it with a moment of its own."],
-    ["key", "indigo", "Passkeys explained", "What a passkey does for you, and when each one was last used."],
-  ] },
-  { v: "1.2.4", at: Date.UTC(2026, 9, 21), title: "Look up, closer", items: [
-    ["compass", "teal", "Its whole way", "Look Up draws the pigeon’s way across your sky: where it set off, the part it has flown, and the rest of the way to where it lands."],
-    ["loc", "blue", "From where you are", "Tap Where I Am to measure from where you are now instead of your profile’s place. It’s used only while Look Up is open and never leaves your phone."],
-    ["camera", "gray", "Sharper through the camera", "On phones with several cameras it picks the main one, and allows for zoom, so the drawing sits on the real view."],
-  ] },
-  { v: "1.2.3", at: Date.UTC(2026, 9, 20), title: "Look up", items: [
-    ["compass", "teal", "Which way is it?", "Open a pigeon in the air and tap Look Up, then hold your phone up and turn: it shows the sky ahead with your pigeon where it really is, how far, and over where. Most are far past the curve of the Earth, below the horizon."],
-    ["camera", "gray", "Through the camera", "Tap Camera to see it over the real view ahead. The picture stays on your phone, and the camera goes off as soon as you leave."],
-    ["moon", "indigo", "In space too", "A lunar pigeon: the Moon, where it is in your sky right now. A laser pigeon: Mars. An orbital one: going over, 250 miles up."],
-  ] },
-  { v: "1.2.2", at: Date.UTC(2026, 9, 19), title: "Lighter", items: [
-    ["clock", "indigo", "Messages are kept for a month", "Each message is deleted for everyone 30 days after it lands, photos and all. Your Flight Log, passport, badges and rare pigeons keep every flight."],
-    ["person", "gray", "Unused accounts", "An account nobody has signed in to for a year is deleted, with an email a week before. Opening Chat keeps it."],
-    ["bird", "blue", "Smoother", "Sheets slide up without a judder, chats slide in and out more smoothly, tabs glide, and moving between sheets slides like pages."],
-  ] },
-  { v: "1.2.1", at: Date.UTC(2026, 9, 18), title: "Wherever you go", items: [
-    ["up", "indigo", "Pigeons follow you to other worlds", "Leave for the Moon or Mars and the pigeons already on their way come too: one over Europe is handed to a lunar pigeon there and then; one in space gets to where you were and is relayed on by laser."],
-    ["moon", "gray", "Eclipses to the minute", "The Moon and the Earth’s shadow are worked out properly now, so a lunar eclipse on a pigeon’s trip is when it really is, shallow ones too."],
-    ["shield", "green", "Fixes", "Notifications keep up when lots are flying, pigeons grounded by an unfriending go back in their loft, and wrong passwords elsewhere can’t lock you out."],
-  ] },
-  { v: "1.2.0", at: Date.UTC(2026, 9, 17), title: "Further out", items: [
-    ["up", "red", "Live on Mars", "My Profile → Location → Go to Mars. Only laser pigeons reach it: pulses of light, there in 3 to 22 minutes as the planets go round the Sun."],
-    ["globe", "blue", "Orbital pigeons", "Earth to Earth by way of orbit: up 250 miles, round every 92 minutes, and down on the first pass near your friend. Two a day."],
-    ["moon", "indigo", "Day and night up there", "A friend on the Moon has a sunrise every month; on Mars, every 24 hours 39 minutes. Their chat says which, and when it changes."],
-    ["bell", "orange", "Moments from space", "Halfway to the Moon, behind it, re-entry, into orbit, a lunar eclipse on the way: you hear as it happens."],
-    ["map", "teal", "Postmarks out there", "Tranquility Base, Tycho, Olympus Mons, Jezero and more, and Supermoon, Through the Shadow, Red Planet and Orbiter badges."],
-    ["share", "green", "Replay and share a trip", "Scrub through any space trip, and share it as a postcard or a story."],
-  ] },
-  { v: "1.1.0", at: Date.UTC(2026, 9, 16), title: "To the Moon", items: [
-    ["moon", "indigo", "Live on the Moon", "My Profile → Location → Go to the Moon. Pick a crater or a sea, near side or far side, and your friends see you there. Your spot on Earth isn’t kept while you’re away."],
-    ["bird", "gray", "Lunar pigeons", "Only they fly to the Moon and back: about 3 days, like Apollo, or a day by Lunar Express. The trip is as long as the Moon is far away that day."],
-    ["globe", "blue", "Watch the trip", "Earth, the Moon and your pigeon between them: halfway, into the Moon’s pull, behind the far side, re-entry and touchdown."],
-    ["pin", "orange", "Across the Moon", "Between two friends on the Moon, pigeons bound over the surface in the low gravity. No air, no wind, no weather."],
-    ["map", "teal", "A Moon stamp", "Your passport gets a Moon stamp, there’s a Moonshot badge, and Chat Live counts the pigeons out in space."],
-  ] },
-  { v: "1.0.9", at: Date.UTC(2026, 9, 16), title: "Safer by design", items: [
-    ["clock", "indigo", "Disappearing messages", "In a chat’s info: messages disappear 1, 7 or 30 days after they’re read, wiped from the server too. The flight stays in your Flight Log."],
-    ["shield", "teal", "Verify in person", "Scan each other’s Safety Number code to mark a friend Verified. If their key ever changes, you’ll know."],
-    ["key", "orange", "Stronger passwords", "Passwords are stretched with Argon2id, and ones that have turned up in a data breach are refused."],
-    ["bell", "red", "New sign-in alerts", "When your account signs in on a new phone, your other phones and your email hear about it."],
-    ["loc", "blue", "Approximate Location", "Privacy & Security: keep your spot to about 10 km instead of a mile."],
-  ] },
-  { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and Chat Live", items: [
-    ["globe", "blue", "A new home", "Chat now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
-    ["map", "indigo", "Chat Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
-    ["shield", "green", "Your pigeons, your choice", "Privacy & Security → Live Tracker keeps your pigeons off it. One only shows if you and your friend both leave it on."],
-    ["ship", "teal", "The right sea", "A ship’s voyage is named for the sea it really crosses: the North Atlantic, not the English Channel it sails out by."],
-  ] },
-  { v: "1.0.7", at: Date.UTC(2026, 9, 16), title: "Coots", items: [
-    ["coin", "yellow", "Coots Coins", "Feathers are now Coots Coins, kept at Coots, the bank in Account. Every coin you had is still there."],
-  ] },
-  { v: "1.0.6", at: Date.UTC(2026, 9, 16), title: "A real passport", items: [
-    ["globe", "red", "Your passport, as a passport", "Open it from your Flight Log: a photo page with how far your pigeons have flown, then visa pages filling up with rubber stamps, a journey at a time."],
-    ["map", "green", "Every country’s own stamp", "Each in its own ink with the country’s outline inside; seas crossed, and “Arrived by sea” after a voyage."],
-    ["loc", "indigo", "Every landmark’s own postmark", "Big Ben is a clock tower, Pisa leans, and Fuji has snow on top: all 69 drawn on their own."],
-  ] },
-  { v: "1.0.5", at: Date.UTC(2026, 9, 16), title: "Ships on the map, and no ships", items: [
-    ["ship", "teal", "The voyage on the map", "The lane a ship sails is drawn in teal with its two ports, and the card says the day the ship gets in."],
-    ["bell", "orange", "Boarded, and ashore", "You’re told when a pigeon boards its ship and when it comes ashore, under Mid-air Moments."],
-    ["bird", "blue", "In a hurry? No ships", "How It Flies → By Sea: a standard pigeon can fly the ocean itself, days quicker, but a long way with nowhere to land."],
-    ["clock", "green", "Quicker to plan", "How It Flies works out every pigeon’s way in a fraction of the time, and a pigeon slowed by a headwind has the forecast all the way."],
-  ] },
-  { v: "1.0.4", at: Date.UTC(2026, 9, 15), title: "Ships, coasts and surer times", items: [
-    ["ship", "teal", "Across oceans by ship", "A standard pigeon can’t fly an ocean, so it rides a ship along the real shipping lanes, then flies on from the port."],
-    ["waves", "blue", "Along the coast", "Standard pigeons keep to the coast rather than cross open sea with nowhere to rest."],
-    ["map", "green", "Over the mountains", "Turbo and rocket pigeons fly high enough to go straight over all but the highest ranges."],
-    ["wind", "indigo", "Cleverer with the wind", "Routes are planned on a finer grid, with the wind as it will be when the pigeon gets there."],
-    ["rain", "orange", "Showers, and steadier turns", "Showers in the next two hours are planned for, pigeons don’t swing back and forth between routes, and any pigeon over land waits out storms close ahead."],
-    ["clock", "pink", "Surer landing times", "The likely landing time comes from how much many forecasts agree about the wind."],
-  ] },
-  { v: "1.0.3", at: Date.UTC(2026, 9, 15), title: "A fresh chat, and the Earth itself", items: [
-    ["bubble", "blue", "Chats that feel like Messages", "Tails on bubbles, the time over each stretch of a chat, Read under your latest, and big emoji. Tap a message for when it was sent, landed and read."],
-    ["volcano", "red", "Volcanoes, wildfires and magnetic storms", "Pigeons fly around volcanic ash and wildfire smoke, and wander a little in magnetic storms, from live NASA and NOAA data."],
-    ["map", "teal", "The flight as a story", "Pull up the card on the map: storms dodged, passes, rests, near misses and when it lands, likely give or take a little."],
-    ["people", "green", "Flying together", "Two pigeons off the same way at once fly together, each a little quicker for it."],
-    ["wind", "indigo", "Cleverer routes", "Rockets ride the jet stream, named pigeons stop for a breather, and The Way shows the other routes faintly."],
-    ["once", "pink", "Tidier photos", "Opened and expired photos fold into a small pill, and a view-once photo can’t be opened twice."],
-    ["pass", "orange", "Near misses, folded up", "A run of them in a chat folds into one line. Tap it to see each."],
-  ] },
-  { v: "1.0.2", at: Date.UTC(2026, 8, 1), title: "Safer, steadier, faster", items: [
-    ["shield", "green", "Privacy that holds everywhere", "Blocks hold inside groups, and Opened, Updated and lofts follow your privacy switches both ways."],
-    ["clock", "blue", "Opens with no signal", "The app starts from a saved copy, never hangs on a slow request, and keeps trying queued pigeons."],
-    ["trash", "red", "Deleting means deleting", "Deleting your account removes everything of it."],
-  ] },
-];
-
 /* ---------- view-once photos ----------
    Downloaded only when tapped, and only once (the server hands it over a
    single time, then deletes it). Shown full screen for at most 15 seconds,
@@ -6790,17 +6639,6 @@ function drawSheet(refresh) {
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     }
-    case "whatsnew": {
-      // what's new: every release, newest first (drawn once, like the move's)
-      if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
-      const list = RELEASES;
-      const rows = (r) => `<div class="wnlist">${r.items.map(([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic] || I.bird}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`).join("")}</div>`;
-      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in Chat</h2><p>Version ${APP_VERSION}</p></div>
-        ${list.map((r) => `<div class="ghead">${esc(r.v)} · ${esc(r.title)}</div>${rows(r)}`).join("")}
-        <div class="wnfoot"><button type="button" class="btn wide" data-act="close">Done</button></div>`, { name: "What’s New" });
-      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
-      return;
-    }
     case "credits": {
       // where the weather, the heights and the maps come from, as their licences ask
       if (s.drawn && $(".sheet .body", $layer)) return; s.drawn = true;
@@ -8580,7 +8418,6 @@ async function onClick1(e, t) {
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     }
     case "creditsheet": S.sheet = { type: "credits" }; return renderSheet();
-    case "whatsnew": S.sheet = { type: "whatsnew" }; return renderSheet();
     case "moved": return movedNote(true);
     case "movego": if (!standalone()) { e?.preventDefault?.(); location.href = `${NEW_HOME}/${S.view === "welcome" ? location.hash : ""}`; } return;
     case "movecopy": try { await navigator.clipboard.writeText(NEW_HOME + "/"); toast("Address copied."); } catch (_) { toast(esc(NEW_HOME.replace(/^https?:\/\//, ""))); } return;

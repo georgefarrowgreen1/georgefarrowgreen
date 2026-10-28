@@ -87,9 +87,6 @@ await G.p.click('.sheet [data-act=passport]'); await G.p.waitForSelector('.ppboo
 for (let i = 0; i < 3; i++) { await G.p.evaluate(() => { const b = document.querySelector('.ppbook'); b.scrollLeft += b.clientWidth; }); await G.p.waitForTimeout(500); }
 await shot(G, '12c-passport-moon-stamp');
 await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300); await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300);
-await G.p.evaluate(() => { const x = document.createElement('button'); x.hidden = true; x.dataset.act = 'whatsnew'; document.querySelector('#screen').append(x); x.click(); x.remove(); }); await G.p.waitForSelector('.sheet'); await G.p.waitForTimeout(600);
-await shot(G, '12d-whats-new');
-await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300);
 await M.p.click('.compose .kind'); await M.p.waitForSelector('.sheet [data-act=pigeon][data-id=lunarx]');
 await M.p.click('.sheet [data-act=pigeon][data-id=lunarx]'); await M.p.waitForTimeout(400); await M.p.click('.sheet header [data-act=close]'); await M.p.waitForTimeout(400);
 await M.p.fill('#msg', 'The view of Earth is unreal'); await M.p.click('.send'); await M.p.waitForTimeout(2000);

@@ -133,7 +133,6 @@ const screens = [
   ['newsall', async () => { await act(G, 'tab', 'friends'); await act(G, 'newsall'); await G.waitForSelector('.sheet'); await G.waitForTimeout(800); }],
   ['stampsall', async () => { await act(G, 'tab', 'account'); await act(G, 'flightlog'); await G.waitForSelector('.sheet'); await G.waitForTimeout(800); await act(G, 'stampsall'); await G.waitForTimeout(600); }],
 
-  ['whatsnew', async () => { await act(G, 'tab', 'account'); await act(G, 'whatsnew'); await G.waitForSelector('.sheet'); }],
   ['credits', async () => { await act(G, 'tab', 'account'); await act(G, 'creditsheet'); await G.waitForSelector('.sheet'); }],
   ['profile', async () => { await act(G, 'tab', 'account'); await act(G, 'profile'); await G.waitForSelector('.sheet'); }],
   ['passkeys', async () => { await act(G, 'passkeys'); await G.waitForSelector('.sheet'); }],
