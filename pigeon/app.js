@@ -4342,23 +4342,6 @@ function vFriends() {
 }
 
 /* ---------- Account ---------- */
-const meStats = (L) => {
-  const num = (x) => L ? Math.round(x).toLocaleString("en-GB") : "–";
-  return `<button type="button" class="cell mestats" data-key="mestats" data-sig="${L ? `${Math.round(L.mi)}|${L.sent}|${L.countries}` : ""}" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
-        <span><b>${num(L?.mi)}</b><small>miles flown</small></span><span><b>${num(L?.sent)}</b><small>pigeons sent</small></span><span><b>${num(L?.countries)}</b><small>${L?.countries === 1 ? "country" : "countries"}</small></span></button>`;
-};
-// Account's line of figures (miles, pigeons sent, countries): the Flight Log's, fetched when Account shows
-// and it's over 10 minutes old; Account redraws when it comes
-function logSummary() {
-  const L = S.logSum;
-  if (!S.logSumBusy && (!L || now() - L.at > 10 * 60e3)) {
-    S.logSumBusy = true;
-    // (just the line redrawn, in place: the rest of Account stays as it is, under a finger)
-    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; const el = S.view === "account" && $(".mestats", $view); if (el) { el.outerHTML = meStats(S.logSum); kPlay($(".mestats", $view), KF.chg, { duration: 300, easing: "ease-out" }); } })
-      .catch(() => {}).finally(() => { S.logSumBusy = false; });
-  }
-  return L;
-}
 function vAccount() {
   const u = S.me;
   // today's pigeons, one column each: how many are in your loft, and when the next hatches
@@ -4369,13 +4352,8 @@ function vAccount() {
   };
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
-  // your flying so far, from the Flight Log (fetched now and then, and shown once it's here)
-  const L = logSummary();
   const earth = col("rocket", "Rocket", "Rocket", "9×") + col("turbo", "Turbo", "Turbo", "3×") + col("swift", "Swift", "Swift", "2×") + col("mystery", "Mystery", "Mystery");
   return `${navbar("Account", { root: true })}
-    <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
-      `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}
-      ${meStats(L)}</div>
     ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "Chat Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
     ${((space) => `<div class="group loft">${space.length > 1 ? `<div class="lrow">${earth}</div><div class="lrow space"><span class="lcap">Space</span>${space.join("")}</div>` : `<div class="lrow five">${earth}${space[0]}</div>`}</div>`)(

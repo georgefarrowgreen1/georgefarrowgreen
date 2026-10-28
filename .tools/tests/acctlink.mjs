@@ -31,11 +31,14 @@ const A = await browser('app');
 await joinChat(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }))).token;
 
-// ---- 1. Account: a card as Weather's (photo, name, "@handle"); Location, Sign Out and Delete
-// Account below ----
-await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view .me-cell'); await A.p.waitForTimeout(600);
-const card = await text(A.p, '#screen > main.view .me-cell');
-ok(/Rowan Hale/.test(card) && /@rowan\b/.test(card) && !/georgefarrowgreen/.test(card) && !/Edit Profile/.test(card), 'Account: your photo, name and "@handle", as in Weather', card);
+// ---- 1. Account: you in InFlite's menu, from your photo (photo, name, "@handle"), not on the tab; Location and
+// Sign Out on it (deleting the account is on its own page) ----
+const youCard = async () => { await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open .ifm-card'); return text(A.p, '.ifm-pop .ifm-card'); };
+const shut = async () => { await A.p.keyboard.press('Escape'); await A.p.waitForSelector('.ifm-layer', { state: 'detached' }); };
+await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view [data-act=profile]'); await A.p.waitForTimeout(600);
+ok(!(await A.p.$('#screen > main.view [data-act=accountopen], #screen > main.view .mestats')), 'Account: no card of you on the tab (you\'re in the menu from your photo)');
+const card = await youCard(); await shut();
+ok(/Rowan Hale/.test(card) && /@rowan\b/.test(card) && !/georgefarrowgreen/.test(card) && !/Edit Profile/.test(card), 'the menu: your photo, name and "@handle", as in Weather', card);
 ok(!!(await A.p.$('#screen > main.view [data-act=profile]')) && /London/.test(await text(A.p, '#screen > main.view [data-act=profile]')) && !!(await A.p.$('#screen > main.view [data-act=signout]')) && !(await A.p.$('#screen > main.view [data-act=delask]')),
   'Location its own row (where you are), and Sign Out at the foot (deleting the account is on its own page)');
 await A.p.click('#screen > main.view [data-act=profile]'); await A.p.waitForSelector('.sheet [data-act=locate]'); await A.p.waitForTimeout(500);
@@ -43,10 +46,11 @@ ok(/Location/.test(await text(A.p, '.sheet header')) && !(await A.p.$('.sheet in
 await A.p.click('.sheet header [data-act=close]'); await A.p.waitForTimeout(500);
 await shot(A.p, '01-account');
 
-// ---- 2. the card: the account's page, signed in ----
+// ---- 2. you, in the menu: the account's page, signed in ----
 // (this browser has no sign-in for the site: the page opens in a fresh one, as from a Home Screen app)
 await A.ctx.clearCookies();
-const [pop] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view .me-cell')]);
+await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open .ifm-card');
+const [pop] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('.ifm-pop .ifm-card')]);
 await pop.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await pop.waitForTimeout(900);
 ok(pop.url() === `${ACCT}/`, 'the account\'s page, the code already gone from the address', pop.url());
 // (who it's for, said yes to first: a page elsewhere could send a browser here with a code for an account of its own)
@@ -70,7 +74,8 @@ const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () 
 await pop.click('.backapp').catch((e) => { if (!/closed/.test(e.message)) throw e; });
 ok(await closed, 'Chat: the page goes, back to the app');
 await A.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await A.p.waitForTimeout(2500);
-ok(/Rowan Ash Hale/.test(await text(A.p, '#screen > main.view .me-cell')), 'and Chat shows the new name', await text(A.p, '#screen > main.view .me-cell'));
+const after = await youCard(); await shut();
+ok(/Rowan Ash Hale/.test(after), 'and Chat shows the new name', after);
 await shot(A.p, '03-back');
 // ---- 3. the code: once, for a minute, and only at the account's page ----
 // (a code from Chat's own API, as the app asks for one)
