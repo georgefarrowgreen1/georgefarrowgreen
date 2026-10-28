@@ -121,7 +121,7 @@ const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
 const signedOutRow = await acctSays(P);
-ok(/^Sign in Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
+ok(/^Sign in with InFlite Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
 await signInPage(P);
 // (whether an account can be made here is asked as the page is drawn, and said under the card once it's known)
 await P.p.waitForFunction(() => document.getElementById('joinline')?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2e3a70"/><stop offset="1" stop-color="#141938"/></linearGradient>
+<radialGradient id="glow" cx="512" cy="512" r="420" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd44f" stop-opacity="0.28"/><stop offset="1" stop-color="#ffd44f" stop-opacity="0"/></radialGradient>
+<linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd84f"/><stop offset="1" stop-color="#f9b425"/></linearGradient>
+<linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.38"/><stop offset="0.55" stop-color="#fff" stop-opacity="0.08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="rimFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.6" stop-color="#fff" stop-opacity="0.25"/><stop offset="1" stop-color="#fff" stop-opacity="0.1"/></linearGradient>
+<mask id="rim"><rect x="-512" y="-512" width="2048" height="2048" fill="url(#rimFade)"/></mask>
+<filter id="shade" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="16"/></filter>
+<linearGradient id="p0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5aa9ff"/><stop offset="1" stop-color="#2b69de"/></linearGradient><linearGradient id="p1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8f62"/><stop offset="1" stop-color="#ef5236"/></linearGradient><linearGradient id="p2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fdcd0"/><stop offset="1" stop-color="#119a95"/></linearGradient><linearGradient id="p3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a8cff"/><stop offset="1" stop-color="#5a4fe0"/></linearGradient></defs>
+<rect width="1024" height="1024" fill="url(#sky)"/><rect width="1024" height="1024" fill="url(#glow)"/>
+<g transform="rotate(-45 512 512)">
+<rect x="430" y="140" width="164" height="312" rx="82" fill="#000" fill-opacity="0.35" filter="url(#shade)" transform="translate(0 14)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#p0)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#sheen)"/>
+<rect x="433" y="143" width="158" height="306" rx="79" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="5" mask="url(#rim)"/></g><g transform="rotate(45 512 512)">
+<rect x="430" y="140" width="164" height="312" rx="82" fill="#000" fill-opacity="0.35" filter="url(#shade)" transform="translate(0 14)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#p1)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#sheen)"/>
+<rect x="433" y="143" width="158" height="306" rx="79" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="5" mask="url(#rim)"/></g><g transform="rotate(135 512 512)">
+<rect x="430" y="140" width="164" height="312" rx="82" fill="#000" fill-opacity="0.35" filter="url(#shade)" transform="translate(0 14)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#p2)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#sheen)"/>
+<rect x="433" y="143" width="158" height="306" rx="79" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="5" mask="url(#rim)"/></g><g transform="rotate(225 512 512)">
+<rect x="430" y="140" width="164" height="312" rx="82" fill="#000" fill-opacity="0.35" filter="url(#shade)" transform="translate(0 14)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#p3)"/>
+<rect x="430" y="140" width="164" height="312" rx="82" fill="url(#sheen)"/>
+<rect x="433" y="143" width="158" height="306" rx="79" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="5" mask="url(#rim)"/></g>
+<circle cx="512" cy="530" r="104" fill="#7a4a00" fill-opacity="0.35" filter="url(#shade)"/>
+<circle cx="512" cy="512" r="104" fill="url(#sun)"/>
+<circle cx="512" cy="512" r="101" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="5" mask="url(#rim)"/>
+</svg>

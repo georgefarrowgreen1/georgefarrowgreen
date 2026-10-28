@@ -1306,6 +1306,8 @@ function welcome(note = null, { again = !!welcome.shown } = {}) {
       h("p.tagline", { text: "Training that fits your week" })),
     // (Sign in at the foot of the page, as on the site's other apps)
     h("div.w-cta", {}, note && h("p.small.said", { role: "status", text: note }),
+      // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
+      page && h("p.wbrand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "One InFlite account for every app"),
       h("button.btn.wbeat", { type: "button", id: "sign-in", disabled: !page, onclick: toAccountSignIn }, "Sign in"),
       !page && h("p.small", { text: "Signing in is at fitness.inflite.ai." }),
       page && h("p.new-here", {}, "New here? ", h("button.link", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));

@@ -1898,3 +1898,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   transition: background-color 0s 600000s, color 0s 600000s;
   -webkit-background-clip: text; background-clip: text;
 }
+
+/* (signing in: InFlite's mark, whose one account signs you in to every app) */
+.acct-ic.inflite { border-radius: 11px; background: none; box-shadow: 0 4px 14px -4px rgba(10, 14, 40, 0.6); }

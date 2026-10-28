@@ -167,7 +167,7 @@ const P = await browser('phone');
 await P.p.goto(`${FIT}/`);
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 const welcome = await P.p.evaluate(() => ({ text: document.querySelector('main').innerText.replace(/\s+/g, ' '), tabs: getComputedStyle(document.querySelector('.tabbar')).display, btns: [...document.querySelectorAll('main button')].map((x) => x.textContent) }));
-ok(/^Fitness Training that fits your week Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
+ok(/^Fitness Training that fits your week One InFlite account for every app Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
   'signed out: its mark and a line, Sign in, and a way in for someone new (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
 await P.p.setInputFiles('#files', FILES.slice(0, 1)); await settle(P, 800);
 ok(!(await P.p.$('#sheet[open]')) && await P.p.$('.welcome #sign-in'), 'a file given it signed out: nothing read, nothing kept');

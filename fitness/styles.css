@@ -1790,3 +1790,7 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .ctx-menu hr { margin: 4px 6px; border: 0; height: 1px; background: var(--line); }
 .ctx-menu .del { color: var(--danger); }
 @media (prefers-reduced-transparency: reduce) { .ctx-menu { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+/* InFlite, over Sign in: its mark and its one account */
+.welcome .wbrand { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 5px 13px 5px 5px; border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--text-2); background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 0 0 0.5px var(--line), 0 6px 18px -10px rgba(0, 0, 0, 0.3); }
+.welcome .wbrand img { width: 22px; height: 22px; border-radius: 5px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); }
