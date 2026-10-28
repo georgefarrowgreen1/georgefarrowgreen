@@ -1,7 +1,7 @@
 {
-  "name": "Your inflite.ai account",
+  "name": "Your InFlite account",
   "short_name": "Account",
-  "description": "One sign-in for every app on inflite.ai: your profile, password, passkeys and devices.",
+  "description": "One sign-in for every app on InFlite: your profile, password, passkeys and devices.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,27 +9,27 @@
   "theme_color": "#1b2860",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/inflite.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     },
     {
-      "src": "/icon-180.png",
+      "src": "/inflite-180.png",
       "sizes": "180x180",
       "type": "image/png"
     },
     {
-      "src": "/icon-192.png",
+      "src": "/inflite-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/inflite-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/icon-maskable-512.png",
+      "src": "/inflite-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

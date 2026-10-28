@@ -430,7 +430,7 @@ function render() {
   main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
-  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · inflite.ai";
+  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
   whoBar();
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
@@ -899,8 +899,9 @@ function keepPage(r) {
 // (#join, #forgot and #invite= open the last two, as the apps link here) ----
 const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // the way between them: the form below changed in place, the rest of the page staying put
-// the account's own icon (icon.svg: a warm head, frosted glass shoulders, as Weather's sun and cloud)
-const logo = () => h("div.mark.logo", {}, h("img", { src: "/icon.svg?v=2", alt: "", width: 92, height: 92 }));
+// InFlite's own mark (inflite.svg: a petal in each app's colour round the sun), where you sign in to them all; the
+// account's icon (icon.svg: a warm head, frosted glass shoulders) is kept for the account among the apps
+const logo = () => h("div.mark.logo", {}, h("img", { src: "/inflite.svg?v=1", alt: "", width: 92, height: 92 }));
 // (where the browser can, and motion's welcome, the card goes to its new size as the title and what's in it cross-fade:
 // the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
 let gating = 0;
@@ -926,7 +927,7 @@ function signedOut(r) {
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
-      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on inflite.ai. Once it’s made, you’re straight back in ${to}.` : "One account for every app on inflite.ai, made here and used everywhere."],
+      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on InFlite. Once it’s made, you’re straight back in ${to}.` : "One account for every app on InFlite, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
@@ -2236,7 +2237,7 @@ async function addPasskey() {
   let cred;
   try {
     cred = await passkeyMake({ publicKey: {
-      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "inflite.ai" },
+      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlite" },
       user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
       authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
