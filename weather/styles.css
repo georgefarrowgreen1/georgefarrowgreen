@@ -2066,7 +2066,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* InFlite's header, the same in every app (its copy just above), on Weather's own bar: your photo (or, signed out, an
    outline that signs in), the place's name large with its line under it (where it is; scrolled, the weather now), and the
    location (and, signed out, Settings) in one capsule; compact as it's scrolled (--p: app.js) */
-.top.wx-ifh { --p: 0; --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: #fff; --ifh-glass: rgba(255, 255, 255, 0.16);
+/* (held under the status bar as it's scrolled, not under it: the page starts below it, the bar's glass reaching up behind it) */
+.top.wx-ifh { top: env(safe-area-inset-top, 0px); --p: 0; --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: #fff; --ifh-glass: rgba(255, 255, 255, 0.16);
   justify-content: flex-start; gap: 12px; min-height: 0; box-sizing: border-box; height: calc(80px - 24px * var(--p)); margin-bottom: calc(24px * var(--p));
   padding-top: calc(10px - 4px * var(--p)); padding-bottom: calc(12px - 6px * var(--p)); }
 .wx-ifh .me-btn { --ifh-photo: linear-gradient(160deg, #6fb0ff, #2b62d6); }
