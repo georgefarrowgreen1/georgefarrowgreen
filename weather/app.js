@@ -36,6 +36,15 @@ const IFL = (() => {
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+    at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    rain: '<path d="M7 18a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 7.9"/><path d="M9 20l-1 2M13 20l-1 2M17 20l-1 2"/>',
+    watch: '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+    shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
+    data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
@@ -77,7 +86,7 @@ const IFL = (() => {
   }
 
   // the menu, from your photo: o = { app, build, me: { name, line, photo: an element }, rows: [{ icon, color, label,
-  // on, toggle(next) → on, value, open }], account(), signOut(), update: a function when a newer version's ready }
+  // on, toggle(next) → on, value, warn (the value in amber: it needs you), open }], account(), signOut(), update: a function when a newer version's ready }
   let open = null;
   function close(now) {
     const m = open;
@@ -115,7 +124,8 @@ const IFL = (() => {
           sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
           rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
         } else {
-          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
+          // (a value or none, its chevron in the same column: lined up with every other row's)
+          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), el("span", "ifm-val" + (r.warn ? " warn" : ""), r.value || ""));
           b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
           b.type = "button"; b.onclick = r.stay ? () => r.open?.(b) : act(r.open);
           if (r.key) b.dataset.k = r.key;
@@ -2649,7 +2659,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.05";
+const BUILD = "1.06";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -2661,17 +2671,27 @@ function drawMe() {
   b.replaceChildren(photoOf(a));
   settingsJs().catch(() => {});
 }
+// Weather's own rows in the menu: rain alerts (how many places), the morning briefing (when), units and how it looks;
+// Settings on its own (units are the account's, signed in: on its page)
+const UNIT_SAID = { c: "°C", f: "°F", mph: "mph", kmh: "km/h", ms: "m/s", kn: "knots" }, GLASS_SAID = { clear: "Clear", standard: "Standard", tinted: "Tinted" };
+function menuRows() {
+  const s = S.settings, n = s.notify, rain = n.places.filter((p) => p.rain).length;
+  return [
+    { icon: "rain", color: "blue", label: "Rain Alerts", value: rain ? `${rain} place${rain === 1 ? "" : "s"}` : "Off", open: () => openSettings("notify") },
+    { icon: "sun", color: "orange", label: "Morning Briefing", value: n.brief ? n.briefAt || "07:00" : "Off", open: () => openSettings("notify") },
+    { icon: "ruler", color: "indigo", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => (SE() ? SE().openAccount("weather") : openSettings()) },
+    { icon: "moon", color: "grey", label: "Appearance", value: GLASS_SAID[s.glass] || "", open: () => openSettings("look") },
+    "-",
+    { icon: "sliders", color: "grey", label: "Settings", open: () => openSettings() },
+  ];
+}
 function youMenu(e) {
   const a = S.acct;
   if (!a) return accountPage() ? toAccountSignIn(e) : openSettings();
   IFL.menu($("me-btn"), {
     app: "weather", build: BUILD,
     me: { name: a.name, line: a.handle ? `@${a.handle}` : "", photo: h("span", { class: "acct-av" }, photoOf(a)) },
-    rows: [
-      { icon: "bell", color: "red", label: "Notifications", value: notifying(S.settings.notify) ? "On" : "Off", open: () => openSettings("notify") },
-      { icon: "sun", color: "indigo", label: "Appearance", open: () => openSettings("look") },
-      { icon: "sliders", color: "grey", label: "Settings", open: () => openSettings() },
-    ],
+    rows: menuRows(),
     account: () => (SE() ? SE().openAccount() : openSettings()),
     signOut: signOutHere,
     update: newApp ? () => location.reload() : null,

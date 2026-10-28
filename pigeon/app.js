@@ -29,6 +29,15 @@ const IFL = (() => {
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+    at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    rain: '<path d="M7 18a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 7.9"/><path d="M9 20l-1 2M13 20l-1 2M17 20l-1 2"/>',
+    watch: '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+    shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
+    data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
@@ -70,7 +79,7 @@ const IFL = (() => {
   }
 
   // the menu, from your photo: o = { app, build, me: { name, line, photo: an element }, rows: [{ icon, color, label,
-  // on, toggle(next) → on, value, open }], account(), signOut(), update: a function when a newer version's ready }
+  // on, toggle(next) → on, value, warn (the value in amber: it needs you), open }], account(), signOut(), update: a function when a newer version's ready }
   let open = null;
   function close(now) {
     const m = open;
@@ -108,7 +117,8 @@ const IFL = (() => {
           sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
           rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
         } else {
-          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
+          // (a value or none, its chevron in the same column: lined up with every other row's)
+          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), el("span", "ifm-val" + (r.warn ? " warn" : ""), r.value || ""));
           b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
           b.type = "button"; b.onclick = r.stay ? () => r.open?.(b) : act(r.open);
           if (r.key) b.dataset.k = r.key;
@@ -4020,7 +4030,10 @@ function phoneRows() {
     lock && { key: "lockafter", icon: "clock", color: "green", label: "Lock", value: LOCK_AFTER.find(([ms]) => ms === (lock.after || 0))?.[1] || "Immediately",
       open: () => openActions({ title: "When to lock", actions: LOCK_AFTER.map(([ms, l]) => ({ label: l, act: "lockpick", id: String(ms) })) }) },
     { key: "haptics", icon: "haptics", color: "indigo", label: "Haptics", on: hapticsOn(), toggle: (on) => { try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return on; } },
-    { key: "encryptionsheet", icon: "lock", color: "green", label: "Encryption", value: changed ? `${changed} changed` : S.friends.length ? `${ver} of ${S.friends.length}` : "", open: () => doAct("encryptionsheet") },
+    { key: "encryptionsheet", icon: "lock", color: "green", label: "Safety Numbers", value: changed ? `${changed} changed` : S.friends.length ? `${ver} of ${S.friends.length} verified` : "", warn: !!changed, open: () => doAct("encryptionsheet") },
+    "-",
+    // (the way friends find you, a tap from anywhere: your link, to share)
+    { key: "share", icon: "link", color: "blue", label: "Share My Link", open: () => doAct("share") },
     "-",
     // (Chat's settings: the account's, on its page, opened signed in; where Chat has no account page, the Account tab)
     { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: () => (accountPage() ? doAct("ifsettings") : go("account")) },

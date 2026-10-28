@@ -88,6 +88,12 @@ await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', {
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
 ok(/Your apps/i.test(home) && /Chat/.test(home) && /Weather/.test(home) && /Fitness/.test(home), 'your apps: all three of them', home);
+// InFlite's menu, from your photo: what needs you (amber), passkeys, appearance and units; Your Data on its own
+await L.p.click('main .ifh .ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 600);
+const am = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
+ok(/Sign-in and Security \d to do/.test(am) && !!(await L.p.$('.ifm-pop .ifm-val.warn')) && /Passkeys/.test(am) && /Appearance/.test(am) && /Units °C|Units °F/.test(am) && /Your Data/.test(am) && /Account V\d+\.\d\d/.test(am), "the account's menu: what needs you first, then passkeys, appearance, units and your data", am);
+await shot(L, '01a-menu');
+await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
 ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/`, 'each app\'s card opens the app, on this site', opens.join());

@@ -1924,6 +1924,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   --ifm-red: #e5342a;
   --ifm-dim: rgba(14, 18, 40, 0.14);
   --ifm-tint: #2f6be6;
+  --ifm-warn: #c86a00;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -1931,13 +1932,13 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note) {
     --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
     --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
   }
 }
 :root[data-theme="dark"] :is(.ifm-layer, .ifm-note) {
   --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
   --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
 }
 /* each app's own colour: its focus rings, and Update ready */
 .ifm-in-chat { --ifm-tint: #2b6fe6; }
@@ -1988,8 +1989,10 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
 .ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
 .ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
+.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
+.ifm-val.warn { color: var(--ifm-warn, #c86a00); font-weight: 600; }
 .ifm-row .ifm-chev { width: 15px; height: 15px; }
 .ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
 .ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
