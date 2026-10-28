@@ -317,7 +317,7 @@ button.row:active, a.row:active { background-color: var(--press); }
 .link { border: 0; background: none; padding: 0; color: var(--tint-text); font-size: 17px; font-weight: 500; }
 
 /* ---- the tab bar: a capsule of glass at the foot, its highlight sliding like a drop (Chat's) ---- */
-.tabbar { position: fixed; left: 0; right: 0; bottom: calc(0px - var(--ifl-short, 0px)); z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
   transition: transform var(--dur-sheet-out) var(--ease-glide), opacity var(--dur-fast); }
 body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 /* (the scroll edge behind it: the page softens and fades as it goes under the bar, as Liquid Glass's do) */
@@ -1565,7 +1565,7 @@ dialog.sheet.fresh .month-bars .mbars { transform-box: fill-box; transform-origi
 /* ---- signed out: the morning, and a course across it (app.js welcome, courseScene) ---- */
 .welcome.dawn { position: relative; isolation: isolate; }
 .welcome.dawn > :not(.course, .ifl-top, .ifl-cta) { position: relative; z-index: 1; }
-.welcome .course { position: fixed; left: 0; right: 0; bottom: calc(0px - var(--ifl-short, 0px)); width: 100%; height: 48svh; z-index: 0; pointer-events: none; }
+.welcome .course { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; height: 48svh; z-index: 0; pointer-events: none; }
 :root { --c-far: rgba(255, 150, 120, 0.16); --c-mid: rgba(190, 140, 255, 0.16); --c-near: rgba(110, 150, 255, 0.18); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --c-far: rgba(255, 140, 100, 0.16); --c-mid: rgba(180, 130, 240, 0.15); --c-near: rgba(90, 130, 240, 0.14); } }
 :root[data-theme="light"] { --c-far: rgba(255, 140, 100, 0.16); --c-mid: rgba(180, 130, 240, 0.15); --c-near: rgba(90, 130, 240, 0.14); }
