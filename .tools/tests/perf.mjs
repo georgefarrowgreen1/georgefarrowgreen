@@ -28,7 +28,7 @@ const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'e
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
 const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.text().startsWith('TIME ') && process.env.PERF_TRACE) console.log(m.text()); });
 await joinChat(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
-await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
+await p.goto(`${FIT}/`); await p.waitForSelector('.ifh-me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
 // (Rhythm on, so Today is as full as it gets: kept, and the page reloaded with it, till it's there)
 let me;
 for (let k = 0; k < 4; k++) {
@@ -38,7 +38,7 @@ for (let k = 0; k < 4; k++) {
     data.rhythm = { days: [0, 60, 75, 60, 0, 150, 90], lean: 'balanced', mode: 'build', at: d.getTime() - 28 * 864e5, level: 'regular' };
     return (await fetch('/api/fitness/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base: ver, data }) })).status; }, me);
   console.log('rhythm put', st);
-  await p.reload(); await p.waitForSelector('.head .round.me'); await p.waitForTimeout(1500);
+  await p.reload(); await p.waitForSelector('.ifh-me'); await p.waitForTimeout(1500);
 }
 console.log('rhythm on:', !!me.data?.rhythm);
 // (the rides, into the database the server's running on)

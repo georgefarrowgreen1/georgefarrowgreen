@@ -29,6 +29,15 @@ const IFL = (() => {
     haptics: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M3 9v6M21 9v6"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    locate: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
+    share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    addp: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   };
   const svg = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name] || ""}</svg>`;
   const urls = {};
@@ -168,7 +177,43 @@ const IFL = (() => {
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
     card.focus({ preventScroll: true });
   }
-  return { APPS, NAME, menu, close, isOpen: () => !!open, built, note, appsRow, versions, admin, href, iconUrl };
+  // InFlite's header, the same in every app: your photo (InFlite's menu; signed out, an outline that signs in) · the
+  // screen's name, large, with its one line under it (a ▾ after the name when tapping it switches) · the app's actions in
+  // one capsule. Scrolled, the same row, compact, on a soft glass band: --p, from 0 to 1 over the first 64px, set on each
+  // .ifh in what's scrolled (watch), and again whenever the page is drawn anew (settle)
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // o: { me: your photo's html (none: signed out), meAttrs, title, pickAttrs (set: the name's a button, with ▾), line: html,
+  //      acts: [{ icon: a glyph's name or svg html, label, attrs }] } (attrs: the app's own, as html: data-act="…", id="…")
+  function headerHtml(o) {
+    const me = `<button type="button" class="ifh-me${o.me ? "" : " out"}" aria-label="${o.me ? "You and your apps" : "Sign in"}" aria-haspopup="${o.me ? "dialog" : "false"}" ${o.meAttrs || ""}>${o.me || svg("person")}</button>`;
+    const name = o.pickAttrs != null ? `<button type="button" class="ifh-pick" ${o.pickAttrs}><span>${esc(o.title)}</span>${svg("down", "ifh-down")}</button>` : esc(o.title);
+    const acts = (o.acts || []).filter(Boolean).map((a) => `<button type="button" class="ifh-act" aria-label="${esc(a.label)}" title="${esc(a.label)}" ${a.attrs || ""}>${GLYPHS[a.icon] ? svg(a.icon) : a.icon}</button>`).join("");
+    return `<header class="ifh${o.cls ? " " + o.cls : ""}">${me}<div class="ifh-t"><h1 class="ifh-name">${name}</h1><span class="ifh-line">${o.line || ""}</span></div><div class="ifh-acts">${acts}</div></header>`;
+  }
+  // as an element, with what's tapped wired: o.onMe(button), o.onPick(button), each act's onclick(button)
+  function header(o) {
+    const t = document.createElement("template");
+    t.innerHTML = headerHtml({ ...o, pickAttrs: o.onPick ? o.pickAttrs || "" : o.pickAttrs });
+    const hd = t.content.firstElementChild;
+    if (o.me instanceof Node) { const b = hd.querySelector(".ifh-me"); b.replaceChildren(o.me); b.classList.remove("out"); b.setAttribute("aria-label", "You and your apps"); }
+    if (o.onMe) hd.querySelector(".ifh-me").onclick = (e) => o.onMe(e.currentTarget);
+    if (o.onPick) hd.querySelector(".ifh-pick").onclick = (e) => o.onPick(e.currentTarget);
+    if (o.lineNode) hd.querySelector(".ifh-line").replaceChildren(o.lineNode);
+    hd.querySelectorAll(".ifh-act").forEach((b, i) => { const a = (o.acts || []).filter(Boolean)[i]; if (a?.onclick) b.onclick = (e) => a.onclick(e.currentTarget); });
+    return hd;
+  }
+  const watched = new Set();
+  function settle(t = window) {
+    const y = t === window ? scrollY : t.scrollTop, p = Math.max(0, Math.min(1, y / 64)).toFixed(3);
+    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { hd.style.setProperty("--p", p); hd.classList.toggle("ifh-up", p > 0); }
+  }
+  function watch(t = window) {
+    if (!watched.has(t)) { watched.add(t); t.addEventListener("scroll", () => settle(t), { passive: true }); }
+    settle(t);
+  }
+  const glyph = (name) => svg(name);
+
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, isOpen: () => !!open, built, note, appsRow, versions, admin, href, iconUrl };
 })();
 // ==== end of InFlite's menu ====
 
@@ -4055,6 +4100,7 @@ function render() {
   if (!chat && S.view === "messages") { airMount(); if (!S.listAt && $(".mlist:not(.skel)", $view)) S.listAt = performance.now(); }
   inRender = true; renderCompose(); inRender = false;
   renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh(); playKeyed(was);
+  IFL.watch($view);                                              // (InFlite's header, compact as far as it's scrolled)
   // (only if nothing else has taken the focus since: the message box, a sheet's title. A card in the air is the same
   // one put back, airMount, so it has its focus back as it is)
   if (fa && fAt === drawnView && (!document.activeElement || document.activeElement === document.body)) {
@@ -4092,10 +4138,23 @@ function pinChat() {
 /* ---------- shared bits ---------- */
 // root: a tab's top screen, whose large title shares the row with the buttons
 // (and your photo at its left, signed in: InFlite's menu, the same in every app: youMenu)
+// A tab's top screen, signed in: InFlite's header, the same in every app (your photo, the screen's name large with its
+// line under it, its buttons in one capsule; compact as it's scrolled: IFL.watch($view))
 const navbar = (title, { left = "", right = "", solid = false, root = false, titleHtml = null } = {}) => {
+  if (root && S.me && !left) return IFL.headerHtml({ title, meAttrs: 'data-act="youmenu"', me: avatar(S.me, "s"), line: rootLine(title), cls: "chead" })
+    .replace('<div class="ifh-acts"></div>', `<div class="ifh-acts">${right.replaceAll('class="nbtn"', 'class="ifh-act"')}</div>`);
   const me = root && S.me && !left;
   return `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}${me ? " me" : ""}"><div class="nb-left">${me ? meBtn() : left}</div><div class="nb-title one">${titleHtml ?? esc(title)}</div><div class="nb-right">${right}</div></div>`;
 };
+// (each tab's one line, under its name: what's true now)
+function rootLine(title) {
+  if (title === "Messages") {
+    const unread = [...S.friends, ...S.groups].reduce((n, f) => n + (f.unread || 0), 0), going = S.outbox.length;
+    return unread ? `<i>${unread} unread</i>` : going ? `<i>${going} on the way</i>` : "All read";
+  }
+  if (title === "Friends") return `${S.friends.length} ${S.friends.length === 1 ? "friend" : "friends"}${S.incoming.length ? ` · <i>${S.incoming.length} asking</i>` : ""}`;
+  return `@${esc(S.me.handle)}`;
+}
 const meBtn = () => `<button type="button" class="nbtn mebtn" data-act="youmenu" aria-label="You and your apps" aria-haspopup="dialog">${avatar(S.me, "s")}</button>`;
 // You, your apps and Chat's own few, from your photo: InFlite's menu
 function youMenu(at) {
@@ -4211,7 +4270,7 @@ function vMessages() {
     </button>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
   if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large brandh" aria-label="Chat: Messages">${brandMark()}</h1><div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
+    <div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -4222,7 +4281,6 @@ function vMessages() {
         <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
   return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large brandh" aria-label="Chat: Messages">${brandMark()}</h1>
     ${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     ${seasonCard()}<div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
@@ -4271,7 +4329,6 @@ function vFriends() {
   const rows = fr.map((f) => `<button class="cell" data-key="f:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
       <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">${friendWhere(f)}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
-    <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search" data-key="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
     ${inc || out ? `<div class="group" data-key="g:req" data-sig="${inc}|${out}|${esc(S.incoming[0]?.id || "")}">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
     ${newsHtml()}
@@ -4313,7 +4370,6 @@ function vAccount() {
   const L = logSummary();
   const earth = col("rocket", "Rocket", "Rocket", "9×") + col("turbo", "Turbo", "Turbo", "3×") + col("swift", "Swift", "Swift", "2×") + col("mystery", "Mystery", "Mystery");
   return `${navbar("Account", { root: true })}
-    <h1 class="large">Account</h1>
     <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
       `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}
       ${meStats(L)}</div>

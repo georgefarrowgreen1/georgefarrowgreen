@@ -26,3 +26,9 @@ test("the template's apps' icons are each app's own", () => {
   const icons = { chat: "pigeon", weather: "weather", fitness: "fitness", account: "account" };
   for (const [a, d] of Object.entries(icons)) assert.equal(readFileSync(`${ROOT}.tools/inflite/icons/${a}.svg`, "utf8"), readFileSync(`${ROOT}${d}/icon.svg`, "utf8"), `.tools/inflite/icons/${a}.svg isn't ${d}/icon.svg`);
 });
+
+test("each app's top is InFlite's header", () => {
+  const uses = { "pigeon/app.js": /IFL\.headerHtml\(/, "fitness/app.js": /IFL\.header\(/, "account/app.js": /IFL\.header\(/, "weather/index.html": /class="me-btn ifh-me[^"]*"[\s\S]*class="top-actions ifh-acts"/ };
+  for (const [f, re] of Object.entries(uses)) assert.match(readFileSync(ROOT + f, "utf8"), re, `${f} doesn't use InFlite's header`);
+  for (const f of ["pigeon/app.js", "fitness/app.js", "account/app.js", "weather/app.js"]) assert.match(readFileSync(ROOT + f, "utf8"), /IFL\.watch\(|style\.setProperty\("--p"/, `${f}'s header isn't made compact as it's scrolled`);
+});

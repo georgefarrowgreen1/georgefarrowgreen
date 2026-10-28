@@ -70,7 +70,7 @@ const settings = async (x) => {
   for (let i = 0; i < 3; i++) {
     if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
     // (signed in, Settings is a row in InFlite's menu, from your photo; signed out, its gear)
-    const viaMe = await x.p.isVisible('#me-btn');
+    const viaMe = await x.p.isHidden('#settings-btn');
     if (await (viaMe ? x.p.click('#me-btn', { timeout: 5000 }).then(() => x.p.click('.ifm-pop .ifm-row.go:has-text("Settings")', { timeout: 5000 })) : x.p.click('#settings-btn', { timeout: 5000 })).then(() => true, () => false)) break;
   }
   await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
@@ -112,7 +112,7 @@ const lSays = await acctSays(L);
 ok(/Sam Taylor/.test(lSays) && /@sam\b/.test(lSays) && !/georgefarrowgreen/.test(lSays) && !/Chat/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
-ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
+ok(!(await L.p.evaluate(() => /(^|;\s*)(__Secure-)?account=/.test(document.cookie))), 'the page itself can\'t read the sign-in');
 ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email or rows here)', lSays);
 ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);

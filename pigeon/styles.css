@@ -204,6 +204,11 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .navbar.root.b2 + .large{margin-right:112px}
 /* your photo at the left of a tab's top screen: InFlite's menu (app.js youMenu); the title along from it */
 .navbar.root.me + .large{margin-left:66px}
+/* InFlite's header on a tab's top screen (its copy at the foot): Chat's colours, under the status bar */
+.ifh.chead{--ifh-ink:var(--label);--ifh-ink-2:var(--label-2);--ifh-tint:var(--tint);--ifh-band:var(--sky-top);--ifh-glass:var(--glass);--ifh-pt:8px;--ifh-mb:6px}
+.ifh.chead .ifh-act svg{font-size:22px;width:22px;height:22px}
+.ifh.chead .ifh-acts{-webkit-backdrop-filter:none;backdrop-filter:none}          /* (its glass near solid already: no blur to work out behind a sheet) */
+.ifh.chead .ifh-me .av{font-size:15px}
 .nbtn.mebtn{width:44px;height:44px;margin-left:2px;background:none;box-shadow:none}
 .nbtn.mebtn .av{width:38px;height:38px;font-size:15px;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 4px 10px -4px rgba(20,30,60,.4)}
 
@@ -2739,4 +2744,49 @@ a.ifm-app:active .ifm-app-ic { transform: scale(0.9); }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+
+/* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
+   under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the
+   band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
+   as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
+   shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+.ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
+  padding: calc(var(--ifh-pt0) - 4px * var(--p)) 16px calc(14px - 6px * var(--p));
+  color: var(--ifh-ink, inherit); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.ifh::before { content: ""; position: absolute; inset: 0 0 -18px; z-index: -1; pointer-events: none; opacity: var(--p);
+  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) 40%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+/* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
+.ifh:not(.ifh-up)::before { display: none; }
+.ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
+.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
+.ifh-me img { object-fit: cover; display: block; }
+.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
+.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-t { min-width: 0; display: grid; }
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
+.ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }
+.ifh-pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ifh-down { flex: none; width: calc(20px - 6px * var(--p)); height: calc(20px - 6px * var(--p)); stroke-width: 2.6; margin-top: 3px; color: var(--ifh-ink-2, currentColor); }
+.ifh-line { display: block; height: calc(20px * (1 - var(--p))); margin-top: calc(2px * (1 - var(--p))); overflow: hidden; opacity: calc(1 - var(--p) * 1.6);
+  font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
+.ifh-line:empty { height: 0; margin: 0; }
+.ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts:empty { display: none; }
+.ifh-act { width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
+.ifh-act[disabled] { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) { .ifh-me, .ifh-act { transition: none; } }
 /* ==== end of InFlite's menu ==== */

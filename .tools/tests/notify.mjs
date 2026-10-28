@@ -104,7 +104,7 @@ ok(tp && /Notifications are on/.test(tp.msg.body), 'phone decrypts the test noti
 ok(await vapidOk(tp.headers), 'VAPID signature verifies against the server’s key');
 
 // ---- friends; Mira gets a request (no push for her), George accepts, Mira... ----
-await M.p.click('[data-act=tab][data-id=friends]'); await M.p.click('.nb-right [data-act=addfriend]'); await M.p.fill('#add-h', 'george');
+await M.p.click('[data-act=tab][data-id=friends]'); await M.p.click('.ifh-acts [data-act=addfriend]'); await M.p.fill('#add-h', 'george');
 t0 = Date.now(); await M.p.click('[data-act=submit][data-id=add-form]'); await M.p.waitForSelector('.toast, .sent', { timeout: 10000 }).catch(() => {}); await M.p.waitForTimeout(1500);
 const fr = await lastPush(gKeys, t0);
 ok(fr && /^Mira \(@mira\) wants to be friends/.test(fr.msg.body) && fr.msg.url === '/pigeon/#requests', 'friend request notifies George', fr?.msg.body);

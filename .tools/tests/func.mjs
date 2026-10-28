@@ -61,7 +61,7 @@ await B.p.waitForTimeout(400); if (await B.p.$('[data-act=pkadd]')) await B.p.cl
 await B.p.waitForSelector('.tabs');
 
 // ---- friends ----
-await tab(A, 'friends'); await A.p.click('.nb-right [data-act=addfriend]'); await A.p.fill('#add-h', 'mira');
+await tab(A, 'friends'); await A.p.click('.ifh-acts [data-act=addfriend]'); await A.p.fill('#add-h', 'mira');
 await A.p.click('[data-act=submit][data-id=add-form]'); await A.p.waitForSelector('.addrow .btn.sent, .toast', { timeout: 10000 });
 ok(/Request sent|joined/i.test(await A.p.locator('.sheet, .toast').first().innerText()), 'friend request sent');
 await B.p.reload(); await B.p.waitForSelector('.tabs'); await tab(B, 'friends'); await B.p.click('[data-act=requests]');
@@ -92,7 +92,8 @@ ok(!(await txt(B, '.msgs')).includes('view from my window'), 'Mira can’t read 
 await B.p.click('.fly'); await B.p.waitForSelector('canvas.map'); await B.p.waitForTimeout(500);
 await B.p.screenshot({ path: process.argv[3] + '/prezoom.png' }); await B.p.evaluate(() => localStorage.setItem('inflight-mapcard', 'peek')); await B.p.click('.sheet [data-act=close].nbtn'); await B.p.waitForTimeout(500); await B.p.click('.fly'); await B.p.waitForSelector('canvas.map'); await B.p.waitForTimeout(600);   // (the card folded, so the zoom buttons show)
 await B.p.click('[data-act=mapzoom][data-id=in]'); await B.p.waitForTimeout(300); await B.p.screenshot({ path: process.argv[3] + '/postzoom.png' });
-ok(await B.p.isVisible('.mapctl .fitbtn'), 'map zooms (route button appears)');
+// (the button comes once the zoomed map's drawn in full: waited for, not guessed at)
+ok(await B.p.waitForSelector('.mapctl.moved .fitbtn', { state: 'visible', timeout: 3000 }).then(() => true, () => false), 'map zooms (route button appears)');
 await B.p.click('[data-act=mapzoom][data-id=fit]'); await B.p.waitForTimeout(800);   // (it glides back)
 ok(!(await B.p.isVisible('.mapctl .fitbtn')), 'map returns to the whole route');
 await B.p.click('.sheet [data-act=close].nbtn');

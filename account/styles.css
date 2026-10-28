@@ -579,9 +579,6 @@ dialog.sheet.dragging { transition: none; }
 /* back to Chat, when it sent you here to edit your profile */
 .backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; justify-self: start; align-self: flex-start; width: max-content; }
 /* (the title in the middle of a bar; opened from an app, the way back on the same line) */
-.titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 40px; margin: 0 0 16px; }
-.titlebar .backapp { margin: 0; align-self: center; }
-.titlebar h1 { margin: 0; font: 600 17px/1.2 var(--font); letter-spacing: 0; }
 
 /* ---- your photo, tapped to change it (the camera badge says so) ---- */
 .avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform var(--dur-release) var(--spring); }
@@ -679,22 +676,20 @@ a.btn { text-decoration: none; }
 }
 
 /* (who you are, kept in view beside the rest as it's scrolled, where the window's tall enough for all of it) */
-@media (min-width: 1000px) and (min-height: 760px) { .col-a { position: sticky; top: 24px; } }
+@media (min-width: 1000px) and (min-height: 760px) { .col-a { position: sticky; top: calc(var(--top) + 96px); } }
 
 /* ---- rows that say how things are: amber where it needs you; a button's look where there's one thing to do ---- */
 .row .val.warn { color: var(--warn); }
 .row .val .mini { display: inline-flex; align-items: center; min-height: 30px; margin: 0; }
 
-/* ---- whose account, kept in sight at the top once the profile's scrolled away (app.js whoBar) ---- */
-.whobar { position: fixed; z-index: 21; top: 0; left: 0; right: 0; height: calc(var(--top) + 52px); padding-top: var(--top); display: flex; align-items: center; justify-content: center; gap: 9px;
-  background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 0.5px 0 var(--line);
-  opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 0.25s var(--ease), transform var(--dur-base) var(--ease); cursor: pointer; }
-.whobar.on { opacity: 1; transform: none; pointer-events: auto; }
-.whobar.on:active { opacity: 0.7; transition-duration: var(--dur-press); }
-.whobar .avatar.small { width: 28px; height: 28px; font-size: 13px; margin: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 18%, transparent); }
-.whobar b { font: 600 16px/1 var(--font-d); letter-spacing: 0.1px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body.sheet-up .whobar { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .whobar { transition: opacity var(--dur-fast) linear; transform: none; } }
+/* ---- InFlite's header, the same in every app (its copy at the foot): the account page's colours, from the very top,
+   under the status bar, across the page ---- */
+.ifh.ahead { --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: var(--tint-text); --ifh-band: var(--glass-strong); --ifh-glass: var(--glass-ctl);
+  --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 14px; margin-top: calc(-1 * (var(--top) + 28px)); margin-left: -16px; margin-right: -16px; }
+.ifh.ahead .ifh-me .avatar { display: grid; place-items: center; }
+.ifh.ahead .ifh-acts .backapp { height: 38px; padding: 0 12px 0 8px; gap: 4px; display: inline-flex; align-items: center; color: var(--tint-text); font-weight: 600; font-size: 15px; }
+body:has(.ifh) .status { display: none; }
+@media (min-width: 760px) { .ifh.ahead { margin-top: calc(-1 * (var(--top) + 72px)); --ifh-pt: calc(var(--top) + 40px); } }
 
 /* ---- emails: each app's, headed by its icon; a switch where there's a choice ---- */
 .app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
@@ -1082,4 +1077,49 @@ a.ifm-app:active .ifm-app-ic { transform: scale(0.9); }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+
+/* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
+   under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the
+   band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
+   as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
+   shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+.ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
+  padding: calc(var(--ifh-pt0) - 4px * var(--p)) 16px calc(14px - 6px * var(--p));
+  color: var(--ifh-ink, inherit); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.ifh::before { content: ""; position: absolute; inset: 0 0 -18px; z-index: -1; pointer-events: none; opacity: var(--p);
+  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) 40%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+/* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
+.ifh:not(.ifh-up)::before { display: none; }
+.ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
+.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
+.ifh-me img { object-fit: cover; display: block; }
+.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
+.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-t { min-width: 0; display: grid; }
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
+.ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }
+.ifh-pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ifh-down { flex: none; width: calc(20px - 6px * var(--p)); height: calc(20px - 6px * var(--p)); stroke-width: 2.6; margin-top: 3px; color: var(--ifh-ink-2, currentColor); }
+.ifh-line { display: block; height: calc(20px * (1 - var(--p))); margin-top: calc(2px * (1 - var(--p))); overflow: hidden; opacity: calc(1 - var(--p) * 1.6);
+  font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
+.ifh-line:empty { height: 0; margin: 0; }
+.ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts:empty { display: none; }
+.ifh-act { width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
+.ifh-act[disabled] { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) { .ifh-me, .ifh-act { transition: none; } }
 /* ==== end of InFlite's menu ==== */
