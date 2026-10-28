@@ -82,13 +82,16 @@ await signup(M, 'Mira Okafor', 'mira', 'mira@example.com', 'Paris');
 const gId = await idOf(G), mId = await idOf(M);
 sql("UPDATE pg_users SET notify_prefs = json_object('names', json('true'))");   // (names on: since 1.0.2 lock-screen names are off unless chosen)
 
-// ---- George turns push on in Account (This Phone) ----
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.waitForSelector('#screen > main.view [data-act=pushtoggle]');
-ok(await G.p.getAttribute('[data-act=pushtoggle]', 'aria-checked') === 'false', 'push starts off');
+// ---- George turns push on in InFlite's menu, from his photo (this phone's own) ----
+const menu = async (x) => { await x.p.click('.chead .ifh-me'); await x.p.waitForSelector('.ifm-pop.open'); };
+const unmenu = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForSelector('.ifm-layer', { state: 'detached' }); };
+await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await menu(G);
+ok(await G.p.getAttribute('.ifm-pop [data-k=pushtoggle]', 'aria-checked') === 'false', 'push starts off');
 ok(await M.p.isVisible('[data-act=tab][data-id=account]') && true, 'Mira signed in');
 let t0 = Date.now();
-await G.p.click('[data-act=pushtoggle]'); await G.p.waitForSelector('[data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
-ok(true, 'turning push on subscribes this phone');
+await G.p.click('.ifm-pop [data-k=pushtoggle]'); await G.p.waitForSelector('.ifm-pop [data-k=pushtoggle][aria-checked=true]', { timeout: 10000 });
+ok(!!(await G.p.waitForSelector('.ifm-pop [data-k=pushtest]', { timeout: 5000 }).catch(() => null)), 'turning push on subscribes this phone (and Send a Test Notification comes into the menu)');
+await unmenu(G);
 ok(/"user_id": "[^"]+"/.test(sql("SELECT user_id, session FROM pg_push")), 'server stored the subscription for this sign-in');
 ok(await G.p.evaluate(async () => !!(await navigator.serviceWorker.getRegistration('/pigeon/'))), 'service worker registered at /pigeon/');
 await G.p.screenshot({ path: `${out}/notify-account.png` });
@@ -96,7 +99,7 @@ const a1 = await G.p.evaluate(AUDIT); ok(!a1.issues.length, 'account screen: no 
 
 // ---- test notification: arrives encrypted, signed, and decrypts on the phone ----
 t0 = Date.now();
-await G.p.click('[data-act=pushtest]'); await G.p.waitForSelector('.toast:has-text("Test sent")');
+await menu(G); await G.p.click('.ifm-pop [data-k=pushtest]'); await G.p.waitForSelector('.toast:has-text("Test sent")'); await unmenu(G);
 const tp = await lastPush(gKeys, t0);
 ok(!!tp && tp.headers['x-endpoint'] === 'https://fcm.googleapis.com/fcm/send/george-device', 'test push sent to the phone’s push service');
 ok(tp && tp.headers['content-encoding'] === 'aes128gcm' && !Buffer.from(tp.body, 'base64').toString().includes('Notifications'), 'payload is encrypted (aes128gcm), unreadable in transit');
@@ -169,8 +172,9 @@ r = await tick(); ok(r.pushes === 0, 'turning it back on doesn’t replay old la
 await W.close();
 // (back in Chat, opened again: push on here, and Chat Settings saying what's on, as the account has it)
 await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700);
-ok(await G.p.getAttribute('#screen > main.view [data-act=pushtoggle]', 'aria-checked') === 'true' && /notifications on/.test(await txt(G, '#screen > main.view [data-act=ifsettings]')),
-  'the Account tab: push on for this phone, and what’s on under Chat Settings', await txt(G, '#screen > main.view [data-act=ifsettings]'));
+await menu(G); const pushHere = await G.p.getAttribute('.ifm-pop [data-k=pushtoggle]', 'aria-checked'); await unmenu(G);
+ok(pushHere === 'true' && /notifications on/.test(await txt(G, '#screen > main.view [data-act=ifsettings]')),
+  'push on for this phone (InFlite\'s menu), and what’s on under Chat Settings', await txt(G, '#screen > main.view [data-act=ifsettings]'));
 
 // ---- tapping it opens the chat ----
 await G.p.goto(URL + `#open=${mId}`); await G.p.waitForSelector('.chatnav', { timeout: 15000 });
@@ -233,7 +237,7 @@ ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"not
 
 // ---- devices that go away stop getting pushes ----
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '410' });
-await G.p.click('.chatnav .back'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=pushtest]'); await G.p.waitForTimeout(800);
+await G.p.click('.chatnav .back'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await menu(G); await G.p.click('.ifm-pop [data-k=pushtest]'); await G.p.waitForTimeout(800); await unmenu(G);
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'a subscription the push service says is gone is deleted');
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '201' });
 await G.p.evaluate(() => localStorage.removeItem('inflight-pushsub'));   // (a day later: the phone re-sends its subscription once a day)
@@ -245,7 +249,7 @@ await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.lo
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'signing out stops notifications to this phone');
 // a sign-in that ends elsewhere (password reset, sign out everywhere) also stops them
 await signInChat(G.p, URL, { email: 'george@example.com' }); await G.p.waitForSelector('.tabs', { timeout: 20000 });
-await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await G.p.click('#screen > main.view [data-act=pushtoggle]'); await G.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]');
+await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700); await menu(G); await G.p.click('.ifm-pop [data-k=pushtoggle]'); await G.p.waitForSelector('.ifm-pop [data-k=pushtoggle][aria-checked=true]'); await unmenu(G);
 sql(`DELETE FROM pg_sessions WHERE user_id = '${gId}'`);
 await tick();
 const before = pushes().length;
@@ -259,7 +263,10 @@ const ictx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobil
 await ictx.addInitScript(() => { delete window.PushManager; });
 const ip = await ictx.newPage();
 await signInChat(ip, URL, { email: 'mira@example.com' }); await ip.waitForSelector('.tabs', { timeout: 20000 }); await ip.click('[data-act=tab][data-id=account]'); await ip.waitForTimeout(700);
-ok(await ip.isDisabled('#screen > main.view [data-act=pushtoggle]') && /Add to Home Screen/.test(await ip.locator('#screen > main.view').innerText()), 'iPhone Safari: explains Add to Home Screen');
+await ip.click('.chead .ifh-me'); await ip.waitForSelector('.ifm-pop.open');
+const ipRow = await ip.$('.ifm-pop button.ifm-row[data-k=pushtoggle]'); await ipRow?.click();
+ok(!!ipRow && !(await ip.$('.ifm-pop [data-k=pushtoggle][role=switch]')) && !!(await ip.waitForSelector('.toast:has-text("Add to Home Screen")', { timeout: 5000 }).catch(() => null)), 'iPhone Safari: explains Add to Home Screen');
+await ip.keyboard.press('Escape'); await ip.waitForSelector('.ifm-layer', { state: 'detached' });
 await ip.waitForTimeout(400); await ip.screenshot({ path: `${out}/notify-iphone.png` });
 const a2 = await ip.evaluate(AUDIT); ok(!a2.issues.length, 'iPhone account screen: no overlaps', a2.issues.join(' '));
 

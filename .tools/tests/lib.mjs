@@ -115,7 +115,7 @@ const send = async (ph, kind, text) => {
 };
 async function pushOn(ph) {
   await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
-  await ph.p.click('#screen > main.view [data-act=pushtoggle]'); await ph.p.waitForSelector('#screen > main.view [data-act=pushtoggle][aria-checked=true]', { timeout: 10000 });
+  await ph.p.click('.chead .ifh-me'); await ph.p.click('.ifm-pop [data-k=pushtoggle]'); await ph.p.waitForSelector('.ifm-pop [data-k=pushtoggle][aria-checked=true]', { timeout: 10000 }); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
   // (whether Mid-air Moments is on: the account's, as Chat has it from its sync)
   return ph.p.evaluate(() => new Promise((res) => {
     const r = indexedDB.open('inflight'); r.onerror = () => res(null);

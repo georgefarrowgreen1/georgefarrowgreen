@@ -42,7 +42,7 @@ const [s2, j2] = await api('passkey-options', 'POST', { mode: 'login' }); ok(s2 
 
 // adding a passkey: the sheet asks for the password first
 await G.click('[data-act=tab][data-id=account]'); await G.waitForTimeout(300);
-await G.waitForSelector('#screen > main.view [data-act=applock]'); await G.click('#screen > main.view [data-act=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock Chat, in This Phone, needs a passkey: it opens Passkeys)
+await G.click('.chead .ifh-me'); await G.click('.ifm-pop [data-k=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock Chat, in InFlite's menu, needs a passkey: it opens Passkeys)
 await G.click('.sheet [data-act=pkadd]'); await G.waitForSelector('#reauth-form', { timeout: 8000 });
 ok(/Confirm It’s You/.test(await txt('.sheet')), 'Add a Passkey opens “Confirm It’s You”');
 ok(!(await G.locator('[data-act=reauthpk]').count()), 'with no passkey saved there’s no passkey option');

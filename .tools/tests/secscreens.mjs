@@ -39,7 +39,12 @@ for (const X of [M, P, Z]) { const xs = await sess(X); await api(gs.token, 'frie
 for (const X of [M, P, Z]) await X.ctx.close();
 await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(1200);       // (George sees, and trusts, each key)
 // Pat verified already; Sam's key then changes
-await p.click('[data-act=tab][data-id=account]'); await p.click('#screen > main.view [data-act=encryptionsheet]');
+// (this phone's own, Encryption among them, in InFlite's menu, from your photo)
+const menuOpen = async () => { await p.click('.chead .ifh-me'); await p.waitForSelector('.ifm-pop.open'); };
+const menuShut = async () => { await p.keyboard.press('Escape'); await p.waitForSelector('.ifm-layer', { state: 'detached' }); };
+const enc = async () => { await menuOpen(); await p.click('.ifm-pop [data-k=encryptionsheet]'); };
+const encSays = async () => { await menuOpen(); const v = (await p.locator('.ifm-pop [data-k=encryptionsheet]').innerText()).replace(/\s+/g, ' '); await menuShut(); return v; };
+await p.click('[data-act=tab][data-id=account]'); await enc();
 await p.click('.sheet [data-act=safety] >> text=Pat'); await p.click('.sheet [data-act=verifyok]'); await p.waitForSelector('.sheet .verified');
 await p.keyboard.press('Escape'); await p.click('[data-act=tab][data-id=chats]').catch(() => {});
 const t0 = Date.now();       // (the video's walk-through starts after this)
@@ -51,17 +56,19 @@ const slow = (ms) => p.waitForTimeout(DEMO ? ms : Math.min(ms, 600));
 const scroll = async (y) => { await p.evaluate((y) => document.querySelector('.sheet .body')?.scrollBy({ top: y, behavior: 'smooth' }), y); await slow(1300); };
 const shot = (n) => p.screenshot({ path: `${out}/${n}.png` });
 
-// 1. Account: Chat Settings (on the account's page), and This Phone: what's each phone's own
+// 1. Account: Chat Settings (on the account's page); and in InFlite's menu, what's each phone's own
 await p.click('[data-act=tab][data-id=account]'); await slow(900);
-await p.evaluate(() => document.querySelector('#screen > main.view [data-act=encryptionsheet]').scrollIntoView({ block: 'center' })); await slow(1600);
-ok(await p.isVisible('#screen > main.view [data-act=ifsettings]') && await p.isVisible('#screen > main.view [data-act=pushtoggle]') && await p.isVisible('#screen > main.view [data-act=applock]') && await p.isVisible('#screen > main.view [data-act=haptics]'),
-  'Account: Chat Settings, then This Phone: push, the lock, haptics and encryption');
+await menuOpen(); await slow(1600);
+const mine = await p.$$eval('.ifm-pop [data-k]', (els) => els.map((e) => e.dataset.k).join());
+await menuShut();
+ok(await p.isVisible('#screen > main.view [data-act=ifsettings]') && /pushtoggle/.test(mine) && /applock/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
+  'Account: Chat Settings; InFlite\'s menu: push, the lock, haptics and encryption', mine);
 ok(!(await p.$('#screen > main.view [data-act=securitysheet]')) && !(await p.$('#screen > main.view [data-act=notifysheet]')), 'no Privacy & Security or Notifications in the app: they’re on the account’s page');
-ok(/1 key changed: check it/.test(await txt('#screen > main.view [data-act=encryptionsheet]')), 'the Encryption row says a friend’s key changed');
+{ const e = await encSays(); ok(/1 changed/.test(e), 'the Encryption row says a friend’s key changed', e); }
 await shot('security');
 
 // 2. Encryption: what it does, your key as a pattern, each friend's standing
-await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(1800);
+await enc(); await p.waitForSelector('.sheet .keyhero'); await slow(1800);
 ok(/Sealed with your key/.test(await txt('.sheet .keyhero')) && (await txt('.sheet .keyhero .mono')).replace(/\s+/g, '').length === 32 && await p.isVisible('.sheet .keyhero [data-act=copyfp]'), 'Encryption: your key at the top, its digits and Copy');
 ok(await p.locator('.sheet .keyhero svg.keyart rect').count() > 4, 'your key, drawn as a pattern you’d know');
 ok(await p.isVisible('.sheet [data-act=scanany]') && /How it works/.test(await txt('.sheet details.learn summary')) && !(await p.$('.sheet details.learn[open]')), 'Verify a Friend, and how it works folded away');
@@ -93,9 +100,9 @@ await shot('safety-changed');
 // trusting it (they matched): no warning any more, and Privacy & Security says who to verify next
 await p.click('.sheet [data-act=trustsafe]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 10000 }); await slow(900);
 await slow(900);
-ok(/2 of 3 friends verified · Sam next/.test(await txt('#screen > main.view [data-act=encryptionsheet]')), 'the Encryption row: 2 of 3 verified, and who to check next', await txt('#screen > main.view [data-act=encryptionsheet]'));
+{ const e = await encSays(); ok(/2 of 3/.test(e), 'the Encryption row: 2 of 3 verified', e); }
 // Verify a Friend: the camera, whoever's code it reads (Sam's), found and marked, without finding him first
-await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(800);
+await enc(); await p.waitForSelector('.sheet .keyhero'); await slow(800);
 await p.click('.sheet [data-act=safety] >> text=Sam'); await p.waitForSelector('.sheet .safehero.s-none'); await slow(600);
 const samDigits = (await p.locator('.sheet .digits').innerText()).replace(/\s+/g, '');
 await p.click('.sheet header [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await slow(600);
@@ -111,7 +118,7 @@ ok(/3 of 3 verified/.test(await txt('.sheet .ghead .gcount')), 'and Encryption n
 await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
 
 // 4. Passkeys, explained when there are none (Lock Chat needs one: turning it on opens them)
-await p.click('#screen > main.view [data-act=applock]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
+await menuOpen(); await p.click('.ifm-pop [data-k=applock]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
 ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisible('.sheet .wnfoot [data-act=pkadd]'), 'Lock Chat with no passkey: Passkeys, what they’re for, and one big Add button');
 await shot('passkeys');
 await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
@@ -127,16 +134,16 @@ await p.evaluate((uid) => localStorage.setItem('inflight-lock', JSON.stringify({
 const ready = await p.evaluate(() => !!document.querySelector('[data-act=tab][data-id=account]'));
 if (ready) {
   await p.click('[data-act=tab][data-id=account]'); await slow(700);
-  await p.evaluate(() => document.querySelector('#screen > main.view [data-act=applock]').scrollIntoView({ block: 'center' })); await slow(1800);
-  ok(await p.locator('#screen > main.view [data-act=applock][aria-checked=true]').count() === 1, 'with a passkey and the lock on: Lock Chat on, in This Phone');
-  await shot('security-done');
+  await menuOpen(); await slow(1800);
+  ok(await p.locator('.ifm-pop [data-k=applock][aria-checked=true]').count() === 1 && await p.locator('.ifm-pop [data-k=lockafter]').count() === 1, 'with a passkey and the lock on: Lock Chat on, in InFlite\'s menu (and when it locks)');
+  await shot('security-done'); await menuShut();
 } else ok(false, 'the app opened after the lock was turned on');
 // dark (the app picks its theme as it opens; the lock off first, as a test phone can't unlock it)
 await p.evaluate(() => { localStorage.removeItem('inflight-lock'); localStorage.setItem('inflight-theme', 'dark'); });
 await fetch(K.BASE + '/api/pigeon/me', { method: 'PATCH', headers: { Authorization: 'Bearer ' + gs.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: 'dark' }) });
 await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(600);
-await p.click('[data-act=tab][data-id=account]'); await p.evaluate(() => document.querySelector('#screen > main.view [data-act=encryptionsheet]').scrollIntoView({ block: 'center' })); await p.waitForTimeout(1200); await shot('security-dark');
-await p.click('#screen > main.view [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .keyhero'); await p.waitForTimeout(1200); await shot('encryption-dark');
+await p.click('[data-act=tab][data-id=account]'); await menuOpen(); await p.waitForTimeout(1200); await shot('security-dark'); await menuShut();
+await enc(); await p.waitForSelector('.sheet .keyhero'); await p.waitForTimeout(1200); await shot('encryption-dark');
 await p.evaluate(() => document.querySelector('.sheet .body')?.scrollBy({ top: 600 })); await p.waitForTimeout(500);
 await p.click('.sheet [data-act=safety] >> text=Mira'); await p.waitForSelector('.sheet .safehero'); await p.waitForTimeout(1200); await shot('safety-dark');
 await ctx.close();

@@ -24,6 +24,9 @@ const IFL = (() => {
     sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     haptics: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M3 9v6M21 9v6"/>',
+    faceid: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9v1.5M15 9v1.5M12 9v4h-1M9 16c1.7 1.3 4.3 1.3 6 0"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
@@ -90,28 +93,38 @@ const IFL = (() => {
     card.type = "button";
     card.setAttribute("aria-label", `${o.me.name || "You"}: your InFlite account`);
     card.onclick = act(o.account);
-    const rows = el("div", "ifm-grp");
-    for (const r of o.rows || []) {
-      const ic = el("span", `ifm-ic ${r.color || "grey"}`); ic.innerHTML = svg(r.icon);
-      if (r.on !== undefined) {
-        const sw = el("button", "ifm-switch"); sw.type = "button"; sw.setAttribute("role", "switch");
-        sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
-        sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
-        rows.append(el("div", "ifm-row", ic, el("span", "ifm-l", r.label), sw));
-      } else {
-        const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
-        b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
-        b.type = "button"; b.onclick = act(r.open);
-        rows.append(b);
+    // (the app's rows: "-" between two starts another group; each row's key, data-k, is its handle)
+    const drawRows = (list) => {
+      const groups = [el("div", "ifm-grp")];
+      for (const r of (list || []).filter(Boolean)) {
+        if (r === "-") { groups.push(el("div", "ifm-grp")); continue; }
+        const rows = groups[groups.length - 1];
+        const ic = el("span", `ifm-ic ${r.color || "grey"}`); ic.innerHTML = svg(r.icon);
+        if (r.on !== undefined) {
+          const sw = el("button", "ifm-switch"); sw.type = "button"; sw.setAttribute("role", "switch");
+          sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
+          if (r.key) sw.dataset.k = r.key;
+          sw.disabled = !!r.disabled;
+          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
+        } else {
+          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
+          b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
+          b.type = "button"; b.onclick = r.stay ? () => r.open?.(b) : act(r.open);
+          if (r.key) b.dataset.k = r.key;
+          rows.append(b);
+        }
       }
-    }
+      return groups.filter((g) => g.childNodes.length);
+    };
+    const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
     const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
     let status;
     if (o.update) { status = el("button", "ifm-upd", "Update ready"); status.type = "button"; status.onclick = act(o.update); }
     else status = el("span", "", "Up to date");
     const out = el("button", "ifm-out", "Sign Out"); out.type = "button"; out.onclick = act(o.signOut);
     const foot = el("div", "ifm-foot", mark, el("span", "ifm-ver", `${NAME[o.app]} V${o.build}`, el("i", "", " · "), status), o.signOut ? out : null);
-    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rows.childNodes.length ? rows : null, foot);
+    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
     pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
@@ -134,7 +147,12 @@ const IFL = (() => {
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, onClose: o.onClose };
+    open = { anchor, layer, pop, key, onClose: o.onClose, redraw: (list) => {
+      // (the focus kept on the row it was on, by its key)
+      const k = document.activeElement?.dataset?.k;
+      rowsBox.replaceChildren(...drawRows(list));
+      if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
+    } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
     card.focus({ preventScroll: true });
   }
@@ -174,7 +192,9 @@ const IFL = (() => {
   }
   const glyph = (name) => svg(name);
 
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, isOpen: () => !!open, built, note, iconUrl };
+  // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
+  const redraw = (rows) => open?.redraw(rows);
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
 })();
 // ==== end of InFlite's menu ====
 
@@ -4117,23 +4137,44 @@ function rootLine(title) {
   return `@${esc(S.me.handle)}`;
 }
 const meBtn = () => `<button type="button" class="nbtn mebtn" data-act="youmenu" aria-label="You and your apps" aria-haspopup="dialog">${avatar(S.me, "s")}</button>`;
-// You, your apps and Chat's own few, from your photo: InFlite's menu
+// You and Chat's own few, from your photo: InFlite's menu. What's this phone's own (notifications, the lock, haptics,
+// and encryption) is here, not in Account; its rows drawn again as one that turns on brings another (when it locks,
+// a test notification). What opens over the page (a sheet, a choice, a word) closes the menu first
 function youMenu(at) {
   const t = document.createElement("template"); t.innerHTML = avatar(S.me, "l").trim();
-  const ps = pushState(), page = accountPage();
+  const page = accountPage();
   IFL.menu(at, {
     app: "chat", build: APP_VERSION,
     me: { name: S.me.name, line: `@${S.me.handle}`, photo: t.content.firstElementChild },
-    rows: [
-      ["on", "off"].includes(ps) ? { icon: "bell", color: "red", label: "Notifications", on: ps === "on", toggle: async (next) => { await (next ? pushEnable() : pushDisable()); render(); return !!S.pushOn; } }
-        : { icon: "bell", color: "red", label: "Notifications", value: "Off", open: () => go("account") },
-      { icon: "haptics", color: "indigo", label: "Haptics", on: hapticsOn(), toggle: (on) => { try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return on; } },
-      { icon: "sliders", color: "grey", label: "Settings", open: () => go("account") },
-    ],
+    rows: phoneRows(),
     account: () => (page ? openAccount(null) : go("account")),
-    signOut: () => onClick1({ preventDefault() {} }, { dataset: { act: "signout" }, closest: () => null, getAttribute: () => null }),
+    signOut: () => doAct("signout"),
     update: updateReady ? reloadHere : null,
   });
+}
+// (an act of the app's, as a tap on a row with it would be)
+const doAct = (name, id) => onClick1({ preventDefault() {} }, { dataset: { act: name, ...(id != null ? { id: String(id) } : {}) }, closest: () => null, getAttribute: () => null });
+function phoneRows() {
+  const ps = pushState(), lock = lockPrefs(), again = () => IFL.redraw(phoneRows());
+  const pushFoot = { homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings.",
+    unsupported: "This browser can’t show notifications." }[ps];
+  const changed = S.friends.filter((f) => f.keyChanged).length, ver = S.friends.filter(isVerified).length;
+  return [
+    pushFoot ? { key: "pushtoggle", icon: "bell", color: "red", label: "Push Notifications", value: "Off", open: () => toast(esc(pushFoot)) }
+      : { key: "pushtoggle", icon: "bell", color: "red", label: "Push Notifications", on: ps === "on", disabled: S.pushBusy, toggle: async (next) => { await (next ? pushEnable() : pushDisable()); render(); again(); return !!S.pushOn; } },
+    ps === "on" && { key: "pushtest", icon: "send", color: "red", label: "Send a Test Notification", open: () => doAct("pushtest") },
+    passkeysSupported() && { key: "applock", icon: "faceid", color: "green", label: "Lock Chat", on: !!lock, toggle: async () => {
+      // (no passkey yet: Passkeys opens, to add one, so the menu goes first)
+      if (!lock && !S.passkeys?.length) { IFL.close(); doAct("applock"); return false; }
+      await doAct("applock"); again(); return !!lockPrefs();
+    } },
+    lock && { key: "lockafter", icon: "clock", color: "green", label: "Lock", value: LOCK_AFTER.find(([ms]) => ms === (lock.after || 0))?.[1] || "Immediately",
+      open: () => openActions({ title: "When to lock", actions: LOCK_AFTER.map(([ms, l]) => ({ label: l, act: "lockpick", id: String(ms) })) }) },
+    { key: "haptics", icon: "haptics", color: "indigo", label: "Haptics", on: hapticsOn(), toggle: (on) => { try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return on; } },
+    { key: "encryptionsheet", icon: "lock", color: "green", label: "Encryption", value: changed ? `${changed} changed` : S.friends.length ? `${ver} of ${S.friends.length}` : "", open: () => doAct("encryptionsheet") },
+    "-",
+    { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: () => go("account") },
+  ];
 }
 // The app's own name where Messages' title would be: its icon and Chat
 const brandMark = () => `<span class="brand"><span class="bicon" aria-hidden="true">${I.bird}</span><span class="bword">Chat</span></span>`;
@@ -4353,7 +4394,6 @@ function vAccount() {
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
     ${accountPage() ? `<div class="gfoot">Saved to your account, so they’re the same on every phone. Appearance is there too.</div>` : ""}
-    ${thisPhone()}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="Chat ${APP_VERSION}: what’s new">Chat ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
@@ -4374,26 +4414,6 @@ function encCell(bar) {
   const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
   return `<button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
             ${bar && S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>`;
-}
-// What's this phone's own, under Settings: pushes on or off here, Chat's lock, haptics, and the key (only ever on
-// your phones); the rest of Chat's settings are the account's, on its page (Chat Settings)
-function thisPhone() {
-  if (!accountPage()) return "";
-  const ps = pushState(), lock = !!lockPrefs();
-  const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
-  const pushFoot = { homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings.",
-    unsupported: "This browser can’t show notifications." }[ps];
-  return `<div class="ghead">This Phone</div>
-    <div class="group">
-      ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
-      ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
-      ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock Chat", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
-      ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
-        <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
-      ${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", on: hapticsOn() })}
-      ${encCell(false)}
-    </div>
-    <div class="gfoot">${pushFoot ? `${pushFoot} ` : ""}Only on this phone.</div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
@@ -5936,7 +5956,7 @@ function onInput(e) {
 /* ---------- sheets ---------- */
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
 // (Back to Privacy & Security, from Encryption and Passkeys: only where it's in the app, with no account page to have
-// its settings: thisPhone)
+// its settings: InFlite's menu has this phone's own, youMenu)
 const toSecurity = () => (accountPage() ? null : { label: "Back", act: "securitysheet" });
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain, name } = {}) {
   const b = (x, cls) => !x ? ""
@@ -8153,6 +8173,7 @@ async function onClick1(e, t) {
   if (t.getAttribute("role") === "switch" || t.dataset.act === "pigeon" || t.dataset.act === "schedpick" || t.dataset.act === "viapick") haptic("tick");
   switch (t.dataset.act) {
     case "tab": return go(id);
+    case "lockpick": { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(id) || 0 }); render(); return renderSheet(); }
     case "youmenu": return youMenu(t);
     case "to": return go(id);
     case "open":

@@ -1,6 +1,6 @@
 // Chat's settings that are the account's, on the account's page: Chat's Settings has one row, Chat
 // Settings, that opens them (the page signed in by the code Chat hands over, open at Chat's settings, with the
-// way back), and says what's set; This Phone keeps what's each phone's own. On the page, Chat's card has them beside
+// way back), and says what's set; InFlite's menu, from your photo, keeps what's each phone's own. On the page, Chat's card has them beside
 // Open. Each change is saved by the app's own rules (GET/PATCH /api/account/inflight, DELETE inflight/block), from the
 // page's own address only, and Chat shows it once it's synced. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test).
 import { chromium } from 'playwright';
@@ -39,15 +39,18 @@ sql(`INSERT INTO pg_links (a, b, status, created_at) VALUES ('${r0.id}', '${z0.i
 sql("UPDATE pg_users SET email_ok = 1 WHERE handle = 'rowan'");
 await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 
-// ---- 1. Chat's Settings: one row to the account's page, and This Phone ----
+// ---- 1. Chat's Settings: one row to the account's page; this phone's own in InFlite's menu ----
 await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view [data-act=ifsettings]'); await A.p.waitForTimeout(600);
 const sum0 = await text(A.p, '#screen > main.view [data-act=ifsettings]');
 ok(/Chat Settings/.test(sum0) && /notifications on/.test(sum0) && /1 blocked/.test(sum0), 'Chat Settings, saying what’s set', sum0);
 ok(!(await A.p.$('#screen > main.view [data-act=notifysheet]')) && !(await A.p.$('#screen > main.view [data-act=securitysheet]')) && !(await A.p.$('#screen > main.view [data-act=appearancesheet]')),
   'no Notifications, Privacy & Security or Appearance rows: they’re the account’s');
 const phone = await text(A.p, '#screen > main.view');
-ok(/This Phone/.test(phone) && !!(await A.p.$('#screen > main.view [data-act=pushtoggle]')) && !!(await A.p.$('#screen > main.view [data-act=haptics]')) && !!(await A.p.$('#screen > main.view [data-act=encryptionsheet]')) && /Location/.test(phone),
-  'Location stays, and This Phone: push, haptics and encryption (and the lock, where passkeys work)');
+await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open');
+const mine = await A.p.$$eval('.ifm-pop [data-k]', (els) => els.map((e) => e.dataset.k).join());
+await A.p.keyboard.press('Escape'); await A.p.waitForSelector('.ifm-layer', { state: 'detached' });
+ok(!/This Phone/.test(phone) && !(await A.p.$('#screen > main.view [data-act=pushtoggle]')) && /Location/.test(phone) && /pushtoggle/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
+  'Location stays; this phone\'s own (push, haptics and encryption, and the lock where passkeys work) are in InFlite\'s menu, from your photo', mine);
 await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=ifsettings]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
 await shot(A.p, '01-inflight-settings');
 

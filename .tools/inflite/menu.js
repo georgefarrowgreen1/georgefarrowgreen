@@ -13,6 +13,9 @@ const IFL = (() => {
     sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     haptics: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M3 9v6M21 9v6"/>',
+    faceid: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9v1.5M15 9v1.5M12 9v4h-1M9 16c1.7 1.3 4.3 1.3 6 0"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
@@ -79,28 +82,38 @@ const IFL = (() => {
     card.type = "button";
     card.setAttribute("aria-label", `${o.me.name || "You"}: your InFlite account`);
     card.onclick = act(o.account);
-    const rows = el("div", "ifm-grp");
-    for (const r of o.rows || []) {
-      const ic = el("span", `ifm-ic ${r.color || "grey"}`); ic.innerHTML = svg(r.icon);
-      if (r.on !== undefined) {
-        const sw = el("button", "ifm-switch"); sw.type = "button"; sw.setAttribute("role", "switch");
-        sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
-        sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
-        rows.append(el("div", "ifm-row", ic, el("span", "ifm-l", r.label), sw));
-      } else {
-        const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
-        b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
-        b.type = "button"; b.onclick = act(r.open);
-        rows.append(b);
+    // (the app's rows: "-" between two starts another group; each row's key, data-k, is its handle)
+    const drawRows = (list) => {
+      const groups = [el("div", "ifm-grp")];
+      for (const r of (list || []).filter(Boolean)) {
+        if (r === "-") { groups.push(el("div", "ifm-grp")); continue; }
+        const rows = groups[groups.length - 1];
+        const ic = el("span", `ifm-ic ${r.color || "grey"}`); ic.innerHTML = svg(r.icon);
+        if (r.on !== undefined) {
+          const sw = el("button", "ifm-switch"); sw.type = "button"; sw.setAttribute("role", "switch");
+          sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
+          if (r.key) sw.dataset.k = r.key;
+          sw.disabled = !!r.disabled;
+          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
+        } else {
+          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), r.value ? el("span", "ifm-val", r.value) : null);
+          b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
+          b.type = "button"; b.onclick = r.stay ? () => r.open?.(b) : act(r.open);
+          if (r.key) b.dataset.k = r.key;
+          rows.append(b);
+        }
       }
-    }
+      return groups.filter((g) => g.childNodes.length);
+    };
+    const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
     const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
     let status;
     if (o.update) { status = el("button", "ifm-upd", "Update ready"); status.type = "button"; status.onclick = act(o.update); }
     else status = el("span", "", "Up to date");
     const out = el("button", "ifm-out", "Sign Out"); out.type = "button"; out.onclick = act(o.signOut);
     const foot = el("div", "ifm-foot", mark, el("span", "ifm-ver", `${NAME[o.app]} V${o.build}`, el("i", "", " · "), status), o.signOut ? out : null);
-    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rows.childNodes.length ? rows : null, foot);
+    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
     pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
@@ -123,7 +136,12 @@ const IFL = (() => {
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, onClose: o.onClose };
+    open = { anchor, layer, pop, key, onClose: o.onClose, redraw: (list) => {
+      // (the focus kept on the row it was on, by its key)
+      const k = document.activeElement?.dataset?.k;
+      rowsBox.replaceChildren(...drawRows(list));
+      if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
+    } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
     card.focus({ preventScroll: true });
   }
@@ -163,5 +181,7 @@ const IFL = (() => {
   }
   const glyph = (name) => svg(name);
 
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, isOpen: () => !!open, built, note, iconUrl };
+  // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
+  const redraw = (rows) => open?.redraw(rows);
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
 })();
