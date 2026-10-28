@@ -148,7 +148,8 @@ async function browser(name) {
   return { ctx, p, name };
 }
 const settle = (x, ms = 600) => x.p.waitForTimeout(ms);
-const tab = async (x, n) => { await x.p.click(`.tab:nth-child(${n})`); await settle(x); };
+// (the nth tab of the tab bar: counted among the tabs alone, as the bar also holds the sidebar's own parts on a computer)
+const tab = async (x, n) => { await x.p.locator('#tabs .tab').nth(n - 1).click(); await settle(x); };
 const you = async (x) => { await x.p.click('.head .round.me'); await x.p.waitForSelector('#sheet[open] .acct'); await settle(x, 500); };
 const done = async (x) => { await x.p.keyboard.press('Escape'); await settle(x, 700); };
 const toastSays = (x) => x.p.waitForFunction(() => document.querySelector('#toast.on')?.textContent || null, null, { timeout: 15000 }).then((v) => v.jsonValue(), () => '');
@@ -253,7 +254,8 @@ await done(P);
 
 // ---- 5. Rhythm set up on the phone (your week), and a new FTP on the laptop from the version before it: put together ----
 await tab(P, 1);
-ok(await P.p.locator('.tab').count() === 3 && !(await P.p.getByText('Or train for an event').count()), 'three tabs, Plan gone into Today: Rhythm alone, no event plans');
+// (the phone's tabs: not the sidebar's Upload files, a computer's alone)
+ok(await P.p.locator('#tabs .tab:not(.side-only)').count() === 3 && !(await P.p.getByText('Or train for an event').count()), 'three tabs, Plan gone into Today: Rhythm alone, no event plans');
 ok(await P.p.locator('main .rhythm-intro').count() === 1 && await P.p.locator('.rh-ex-bars > div').count() === 7, 'before it starts, on Today: an example week, and Set up Rhythm');
 await P.p.locator('main .btn', { hasText: 'Set up Rhythm' }).click(); await settle(P, 800);
 // (1. your days: Monday, a rest day, tapped to a ride day; 2. a run a week; 3. build; 4. the first week, then Start)
