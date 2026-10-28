@@ -67,31 +67,8 @@ async function stamped(ctx, url, html) {
   return html;
 }
 
-// Each app's newest version, for the row of your apps on the page (InFlite's menu: .tools/inflite/menu.js): read from
-// each app's own script as it's served (Mail's from its own address, on the site itself), worked out again each minute
-const BUILD_OF = { chat: ["/pigeon/app.js", /const APP_VERSION = "([\d.]+)"/], weather: ["/weather/app.js", /const BUILD = "([\d.]+)"/], fitness: ["/fitness/app.js", /const BUILD = "([\d.]+)"/] };
-let buildsMemo = null;
-async function builds(ctx, url) {
-  if (!buildsMemo || Date.now() - buildsMemo.at > 60_000) buildsMemo = { at: Date.now(), p: (async () => {
-    const out = {};
-    await Promise.all(Object.entries(BUILD_OF).map(async ([app, [path, re]]) => {
-      const r = await ctx.env.ASSETS.fetch(new Request(new URL(path, url)));
-      const v = r.ok && re.exec(await r.text())?.[1];
-      if (v) out[app] = v;
-    }));
-    if (url.hostname.endsWith(".inflite.ai")) {
-      try { const r = await fetch("https://email.inflite.ai/app.js"), v = r.ok && /const BUILD = "([\d.]+)"/.exec(await r.text())?.[1]; if (v) out.mail = v; } catch (_) {}
-    }
-    return out;
-  })() };
-  const out = new Response(JSON.stringify(await buildsMemo.p), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
-  for (const [k, v] of Object.entries(ACCT_SECURITY)) out.headers.set(k, v);
-  return out;
-}
-
 export async function accountHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
-  if (url.pathname === "/builds.json") return builds(ctx, url);
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/account" || url.pathname.startsWith("/account/")) { const to = new URL(url); to.pathname = url.pathname.slice(8) || "/"; return Response.redirect(to.href, 301); }
   const path = SHARED[url.pathname] || "/account" + (url.pathname === "/index.html" ? "/" : url.pathname);

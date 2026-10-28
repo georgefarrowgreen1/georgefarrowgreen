@@ -85,12 +85,6 @@ await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', {
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
 ok(/Your apps/i.test(home) && /Chat/.test(home) && /Weather/.test(home) && /Fitness/.test(home), 'your apps: all three of them', home);
-// your apps on this device, as each app's menu has them, with each one's version here: Chat's, opened in this browser,
-// the newest (its tick, once the newest are in); the others not opened here yet
-await L.p.waitForSelector('.ifm-here .ifm-v.ok', { timeout: 8000 }).catch(() => {});
-const hereSays = await L.p.$$eval('.ifm-here .ifm-app', (a) => a.map((x) => x.innerText.replace(/\s+/g, ' ').trim()).join(' | '));
-ok(/^Chat V[\d.]+ \| Weather Not opened \| Fitness Not opened \| Account$/.test(hereSays) && (await L.p.$$('.ifm-here .ifm-v.ok')).length === 1 && !!(await L.p.$('.ifm-here .ifm-app.here.ifm-account')), 'your apps on this device, with their versions here', hereSays);
-await L.p.locator('[data-sec=here]').screenshot({ path: `${out}/apps-here.png` }).catch(() => {});
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
 ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/`, 'each app\'s card opens the app, on this site', opens.join());

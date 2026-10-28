@@ -19,7 +19,6 @@ test("each app opens it, and says its version", () => {
     assert.ok(js.includes(`IFL.built("${app}"`), `${f} doesn't say its version (IFL.built)`);
     assert.match(js, /IFL\.menu\(/, `${f} doesn't open InFlite's menu`);
   }
-  assert.match(readFileSync(ROOT + "account/app.js", "utf8"), /IFL\.appsRow\(/);
 });
 
 test("the template's apps' icons are each app's own", () => {

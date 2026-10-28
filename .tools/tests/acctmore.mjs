@@ -292,7 +292,7 @@ await account(L); await signIn(L); await settle(L, 900);
 const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
 ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
 const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
-ok(halves[0].join() === '' && halves[1].join() === 'Your apps,Your apps on this device,Account,Preferences', 'two columns: who you are; and your apps (three across), the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
+ok(halves[0].join() === '' && halves[1].join() === 'Your apps,Account,Preferences', 'two columns: who you are; and your apps (three across), the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
 // (a short window, so the profile can scroll away: side by side, with the account two rows, the page is short)
 await L.p.setViewportSize({ width: 1280, height: 320 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);

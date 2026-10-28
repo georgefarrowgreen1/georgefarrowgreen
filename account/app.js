@@ -243,7 +243,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.01";
+const BUILD = "1.02";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -783,10 +783,8 @@ function signedIn(r) {
       fx.plan ? "On a plan" : "Training, using AI"),
     // (Mail, the site's inbox, is the admin's alone: functions/_mailapp.js)
     m.admin && app("mail", "Mail", MAIL_ICON, "The site’s inbox", "Yours alone, as admin")))));
-  // your apps on this device, as InFlite's menu has them in each app, with each one's version here: a tick when it's the
-  // newest, "ready" when it's behind (it takes it up as it next opens); and Mail, among them in each app, if it's yours
+  // (Mail, among your apps in every app's InFlite menu, if it's yours)
   IFL.admin(!!m.admin);
-  const here = r(sec("here", section(`Your apps on ${deviceWord()}`, appsHere(!!m.admin), "Each app updates itself as it opens; one that’s behind says “ready” here until it next opens.")));
   const top = [
     r(sec("card", posterCard(m))),
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
@@ -814,7 +812,7 @@ function signedIn(r) {
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
     (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
-  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, here, account, prefs, ...ending].filter(Boolean)))];
+  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
 }
 // InFlite's header, the same in every app: your photo (InFlite's menu), Account large with its line under it (your
 // handle, and how safe it is), and, opened from an app, the way back to it in the capsule; compact as it's scrolled
@@ -836,24 +834,6 @@ function youMenu(at, m) {
     account: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }),
     signOut: (!fromApp() || fromApp() === "home") ? () => signOut(at) : null,
   });
-}
-// (this device in a word, as the row of your apps names it)
-const deviceWord = () => { const ua = navigator.userAgent; return /iPhone/.test(ua) ? "this iPhone" : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "this iPad" : /Android/.test(ua) ? "this phone" : "this device"; };
-// each app's newest version (/builds.json: functions/_acctapp.js), once a visit, and the row drawn again when it's come
-let builds = null, buildsAsked = false;
-function appsHere(mail) {
-  const box = h("div.ifm-here", {});
-  const draw = () => {
-    const v = IFL.versions(), w = {};
-    for (const [a] of IFL.APPS) w[a] = { v: v[a], latest: builds?.[a] };
-    box.replaceChildren(IFL.appsRow("account", { withVersions: w, mail }));
-  };
-  draw();
-  if (!buildsAsked) {
-    buildsAsked = true;
-    fetch("/builds.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((b) => { if (b) { builds = b; draw(); } }, () => {});
-  }
-  return box;
 }
 // Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
 // it, your name and handle on it (your email's in Edit profile, and Sign-in and security); no photo, your colours and initial, and Add a photo. The camera opens Your photo.
