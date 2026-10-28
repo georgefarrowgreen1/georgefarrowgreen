@@ -2064,6 +2064,23 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) { .ifh-me, .ifh-act { transition: none; } }
+
+/* InFlite's tab bar, the same in every app with tabs (Chat, Mail, Fitness): each app's bar (its capsule, the pill that
+   slides to the tab you're on, its tabs and their counts, and at most one round button beside it, Search) takes its
+   sizes from these, and its colour from --ift-tint, set by the app: the tab you're on in a soft pill of it, and its counts */
+:root { --ift-h: 64px; --ift-pad: 5px; --ift-gap: 10px; --ift-max: 440px; --ift-label: 11px; --ift-icon: 24px; --ift-pill: 15%; }
+
+/* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
+   (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
+.ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.ifs-hero span { font-size: 14px; opacity: 0.62; }
 /* ==== end of InFlite's menu ==== */
 
 /* InFlite's header, the same in every app (its copy just above), on Weather's own bar: your photo (or, signed out, an

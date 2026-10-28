@@ -103,7 +103,7 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 /* Liquid Glass, as the account page has it: blur + saturation, a sheen, a bright rim, a soft lift. This is the stronger
    glass, for what floats over everything (the bars and their buttons, menus, toasts); what lies on the sky is a clearer
    pane of it (the end of this file). */
-.glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
+.glass,.nbtn,.nb-right,.tabs,.tabacc,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
   background:var(--sheen),var(--glass);
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
   box-shadow:var(--edge),var(--lift);
@@ -130,7 +130,7 @@ html.night .sky{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.aura{animation:none}}
 /* Reduce Transparency: solid glass, as the account page's is */
 @media (prefers-reduced-transparency:reduce){
-  .glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
+  .glass,.nbtn,.nb-right,.tabs,.tabacc,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
 
 /* ---------- shell ---------- */
@@ -376,13 +376,17 @@ html.kbup .compose{padding-bottom:6px}
 .attach button svg{font-size:13px;stroke-width:2.6}
 
 /* ---------- glass tab bar ---------- */
-.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;padding:0 20px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none}
-.tabs{pointer-events:auto;display:flex;width:100%;max-width:320px;padding:5px;border-radius:999px}
-.tab{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 6px;border:0;border-radius:999px;background:none;color:var(--label);font-size:10px;font-weight:600;letter-spacing:.1px;transition:background .2s,color .2s}
-.tab svg{font-size:24px}
-.tab[aria-current="true"]{color:var(--tint)}
+.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;gap:var(--ift-gap);padding:0 16px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none;--ift-tint:var(--tint)}
+.tabs{pointer-events:auto;display:flex;box-sizing:border-box;flex:1 1 auto;max-width:var(--ift-max);height:var(--ift-h);padding:var(--ift-pad);border-radius:999px}
+/* (Search, beside it: InFlite's tab bar's one round button) */
+.tabacc{pointer-events:auto;flex:none;width:var(--ift-h);height:var(--ift-h);border:0;border-radius:50%;display:grid;place-items:center;color:var(--label);padding:0}
+.tabacc svg{font-size:var(--ift-icon)}
+.tabacc:active{transform:scale(.92)}
+.tab{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;border:0;border-radius:999px;background:none;color:var(--label-2);font-size:var(--ift-label);font-weight:600;letter-spacing:.1px;transition:background .2s,color .2s}
+.tab svg{font-size:var(--ift-icon)}
+.tab[aria-current="true"]{color:var(--ift-tint)}
 .tab:active{transform:scale(.95)}
-.tab .badge{position:absolute;top:2px;left:calc(50% + 7px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:12px;line-height:18px;font-weight:600}
+.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ift-tint);color:#fff;font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
 
 /* ---------- forms ---------- */
 .fcell{position:relative;display:flex;align-items:center;gap:6px;min-height:52px;padding:0 8px 0 18px;background:var(--cell)}
@@ -559,7 +563,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* ---- tab bar: the highlight slides and stretches like a drop of glass ---- */
 .tabs{position:relative;transition:transform .5s var(--snappy)}
 .tabs:has(.tab:active){transform:scale(1.04)}
-.tabs::before{content:"";position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px) / 3);border-radius:999px;background:var(--fill);
+.tabs::before{content:"";position:absolute;top:var(--ift-pad);bottom:var(--ift-pad);left:var(--ift-pad);width:calc((100% - 2 * var(--ift-pad)) / 3);border-radius:999px;background:color-mix(in srgb,var(--ift-tint) var(--ift-pill),transparent);
   translate:calc(var(--tab, 0) * 100%) 0;transition:translate .55s var(--snappy);pointer-events:none}
 .tabs.moving::before{animation:squish .55s var(--smooth)}
 @keyframes squish{35%{scale:1.22 .9}}
@@ -2761,4 +2765,21 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) { .ifh-me, .ifh-act { transition: none; } }
+
+/* InFlite's tab bar, the same in every app with tabs (Chat, Mail, Fitness): each app's bar (its capsule, the pill that
+   slides to the tab you're on, its tabs and their counts, and at most one round button beside it, Search) takes its
+   sizes from these, and its colour from --ift-tint, set by the app: the tab you're on in a soft pill of it, and its counts */
+:root { --ift-h: 64px; --ift-pad: 5px; --ift-gap: 10px; --ift-max: 440px; --ift-label: 11px; --ift-icon: 24px; --ift-pill: 15%; }
+
+/* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
+   (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
+.ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.ifs-hero span { font-size: 14px; opacity: 0.62; }
 /* ==== end of InFlite's menu ==== */

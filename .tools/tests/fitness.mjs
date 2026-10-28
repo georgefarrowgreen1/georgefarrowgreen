@@ -351,7 +351,7 @@ await P.p.locator('#sheet .act-links button', { hasText: 'Share' }).click();
 const shared = await P.p.waitForSelector('#sheet .share-img.in', { timeout: 15000 }).then(() => P.p.evaluate(() => { const i = document.querySelector('#sheet .share-img'); return [i.naturalWidth, i.naturalHeight]; })).catch(() => null);
 ok(shared && shared[0] === 1080 && shared[1] === 1350 && !(await P.p.locator('#sheet .btn[disabled]').count()), 'a ride shared: its picture drawn, 1080 by 1350, ready to share', JSON.stringify(shared));
 await P.p.screenshot({ path: `${out}/share-ride.png` });
-await P.p.locator('#sheet .back, #sheet button', { hasText: 'Back' }).first().click(); await settle(P, 600);
+await P.p.locator('#sheet .sheet-head').getByRole('button', { name: 'Back' }).click(); await settle(P, 600);
 await P.p.locator('#sheet').getByRole('button', { name: 'Rename' }).click(); await settle(P);
 await P.p.fill('#sheet input.field', 'Saturday loop');
 await P.p.getByRole('button', { name: 'Save' }).click(); await settle(P, 800);

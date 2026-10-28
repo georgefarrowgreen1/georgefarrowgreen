@@ -617,7 +617,7 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.06";
+const BUILD = "1.07";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -685,8 +685,10 @@ function bigMapView(name, route) {
 function settingsView() {
   const p = P(), wkg = (p.ftp / p.weight).toFixed(2);
   return {
-    title: "You",
+    title: "Settings",
     body: [
+      // (opening on the app, as every app's Settings does)
+      h("div.ifs-hero", {}, h("img", { src: "icon.svg", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, using AI" })),
       // (your account's card: its page, opened signed in as you, for your photo, name and the rest)
       h("button.card.glass.acct", { type: "button", onclick: openAccount, "aria-label": "Your account" },
         h("div.wx", {}, h("div.round.me", { "aria-hidden": "true" }, face()), h("div", {}, h("b", { text: S.me?.name || "You" }), h("span", { text: `@${S.me?.handle}` })),
@@ -1453,9 +1455,10 @@ function drawSheet(dir = null) {
   sheetEl.classList.toggle("tall", Sheet.tall);
   const bodyEl = h("div.sheet-body" + (dir ? ".swap" + (dir === "back" ? ".back" : "") : ""), {}, v.body);
   const headEl = h("div.sheet-head", {},
-    Sheet.stack.length > 1 ? h("button.link.back.l", { type: "button", onclick: sheetBack, "aria-label": "Back" }, icon("back", 22, 2.4), "Back") : h("span.l"),
+    // (InFlite's Settings sheet, the same in every app: a round ‹ back on a page inside, a round ✕ to close)
+    Sheet.stack.length > 1 ? h("button.ifs-btn.back.l", { type: "button", onclick: sheetBack, "aria-label": "Back" }, icon("back", 18, 2.4)) : h("span.l"),
     h("h2", { id: "sheet-title", text: v.title || "" }),
-    v.right || h("button.link.done.r", { type: "button", onclick: closeSheet }, "Done"));
+    v.right || h("button.ifs-btn.done.r", { type: "button", onclick: closeSheet, "aria-label": "Close" }, icon("x", 18, 2.4)));
   sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), headEl, bodyEl);
   drag(headEl);
   // (as iOS's large titles: where the sheet's own title says what its bar does, the bar's comes in only as that one

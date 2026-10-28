@@ -212,7 +212,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.1";            // shown in InFlite's menu
+const APP_VERSION = "1.4.2";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -5638,7 +5638,8 @@ function renderTabs() {
   const badges = { messages: unread, friends: S.incoming.length, account: 0 };
   let tabs = $(".tabs", $tabbar);
   if (!tabs) {
-    $tabbar.innerHTML = `<div class="tabs">${TABS.map(([id, label, icon]) => `<button class="tab" data-act="tab" data-id="${esc(id)}" aria-current="false">${I[icon]}<span>${label}</span></button>`).join("")}</div>`;
+    // (and beside it, InFlite's tab bar's one round button: Search)
+    $tabbar.innerHTML = `<div class="tabs">${TABS.map(([id, label, icon]) => `<button class="tab" data-act="tab" data-id="${esc(id)}" aria-current="false">${I[icon]}<span>${label}</span></button>`).join("")}</div><button type="button" class="tabacc" data-act="tabsearch" aria-label="Search">${I.search}</button>`;
     tabs = $(".tabs", $tabbar);
   }
   for (const btn of tabs.querySelectorAll(".tab")) {
@@ -7991,6 +7992,14 @@ async function onClick1(e, t) {
   if (t.getAttribute("role") === "switch" || t.dataset.act === "pigeon" || t.dataset.act === "schedpick" || t.dataset.act === "viapick") haptic("tick");
   switch (t.dataset.act) {
     case "tab": return go(id);
+    // Search, beside the tabs: Friends' search where you're on Friends, else Messages' (within the tap, so the keyboard comes)
+    case "tabsearch": {
+      if (S.view !== "friends" && S.view !== "messages") go("messages");
+      const f = $(S.view === "friends" ? "#fsearch" : "#msearch", $view);
+      if (!f) return toast(S.view === "friends" ? "No friends to search yet." : "No messages to search yet.");
+      f.scrollIntoView({ block: "center", behavior: STILL.matches ? "auto" : "smooth" }); f.focus({ preventScroll: true });
+      return;
+    }
     case "lockpick": { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(id) || 0 }); render(); return renderSheet(); }
     case "youmenu": return youMenu(t);
     case "to": return go(id);

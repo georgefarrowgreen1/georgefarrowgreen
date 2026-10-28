@@ -15,7 +15,7 @@
   --glass: rgba(34, 38, 62, 0.5); --glass-strong: rgba(28, 31, 52, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1); --cell: rgba(255, 255, 255, 0.07); --sheet: rgba(26, 29, 50, 0.94);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
   /* (buttons and links in the site's blue, as the account page's, Chat's and Weather's; coral is Fitness's own, for its icon and rides) */
-  --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --on-tint: #fff;
+  --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --on-tint: #fff; --ift-tint: #ff7a52;
   --danger: #ff6a5f; --good: #4fdc8e; --good-text: #4fdc8e; --warn: #ffbd4a;
   /* effort, by zone (a share of FTP: workouts.js ZONES), and the lines of fitness, fatigue and form */
   --z1: #a3abc0; --z2: #4aa3ff; --z3: #3fd08f; --z4: #ffd23f; --z5: #ff9440; --z6: #ff5a5a; --z7: #c07bff;
@@ -51,7 +51,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06); --cell: rgba(255, 255, 255, 0.78); --sheet: rgba(244, 245, 251, 0.95);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --ift-tint: #e04e29;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
@@ -69,7 +69,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.68); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06); --cell: rgba(255, 255, 255, 0.78); --sheet: rgba(244, 245, 251, 0.95);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --ift-tint: #e04e29;
     --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
@@ -317,23 +317,23 @@ button.row:active, a.row:active { background-color: var(--press); }
 .link { border: 0; background: none; padding: 0; color: var(--tint-text); font-size: 17px; font-weight: 500; }
 
 /* ---- the tab bar: a capsule of glass at the foot, its highlight sliding like a drop (Chat's) ---- */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
   transition: transform var(--dur-sheet-out) var(--ease-glide), opacity var(--dur-fast); }
 body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 /* (the scroll edge behind it: the page softens and fades as it goes under the bar, as Liquid Glass's do) */
 .tabbar::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: calc(100% + 30px); pointer-events: none;
   background: linear-gradient(color-mix(in srgb, var(--sky-c) 0%, transparent), color-mix(in srgb, var(--sky-c) 60%, transparent));
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); -webkit-mask-image: linear-gradient(transparent, #000 55%); mask-image: linear-gradient(transparent, #000 55%); }
-.tabs { position: relative; pointer-events: auto; display: flex; width: 100%; max-width: 380px; padding: 5px; border-radius: 999px;
+.tabs { position: relative; pointer-events: auto; display: flex; box-sizing: border-box; width: 100%; max-width: var(--ift-max); height: var(--ift-h); padding: var(--ift-pad); border-radius: 999px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); transition: transform 0.5s var(--ease-spring); }
 .tabs:has(.tab:active) { transform: scale(1.03); }
-.tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 3); border-radius: 999px; background: var(--glass-ctl);
+.tabs::before { content: ""; position: absolute; top: var(--ift-pad); bottom: var(--ift-pad); left: var(--ift-pad); width: calc((100% - 2 * var(--ift-pad)) / 3); border-radius: 999px; background: color-mix(in srgb, var(--ift-tint) var(--ift-pill), transparent);
   translate: calc(var(--tab, 0) * 100%) 0; transition: translate 0.55s var(--ease-spring); pointer-events: none; }
 .tabs.moving::before { animation: squish 0.55s var(--ease-glide); }
 @keyframes squish { 35% { scale: 1.18 0.9; } }
-.tab { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; border: 0; border-radius: 999px; background: none;
-  color: var(--text-2); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1px; transition: transform 0.45s var(--ease-spring), color 0.25s; }
-.tab[aria-current="page"] { color: var(--tint-text); }
+.tab { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; border: 0; border-radius: 999px; background: none;
+  color: var(--text-2); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; transition: transform 0.45s var(--ease-spring), color 0.25s; }
+.tab[aria-current="page"] { color: var(--ift-tint); }
 .tab:active { transform: scale(0.9); }
 
 /* ---- charts ---- */
@@ -455,8 +455,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-head h2 { margin: 0; font: 600 17px/1.2 var(--font); text-align: center; grid-column: 2; max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-head .l { justify-self: start; }
 .sheet-head .r { justify-self: end; grid-column: 3; }
-.sheet-head .back { display: inline-flex; align-items: center; gap: 0; padding: 0 8px 0 0; margin-left: -6px; }
-.sheet-head .link.done { font-weight: 600; }
+
 /* (its title, where the sheet's own large one says the same: in only once that has scrolled away, as iOS's) */
 .sheet-head h2 { transition: opacity var(--dur-fast), translate var(--dur-base) var(--ease-out); }
 dialog.sheet.lt:not(.past) .sheet-head h2 { opacity: 0; translate: 0 5px; }
@@ -2065,4 +2064,21 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) { .ifh-me, .ifh-act { transition: none; } }
+
+/* InFlite's tab bar, the same in every app with tabs (Chat, Mail, Fitness): each app's bar (its capsule, the pill that
+   slides to the tab you're on, its tabs and their counts, and at most one round button beside it, Search) takes its
+   sizes from these, and its colour from --ift-tint, set by the app: the tab you're on in a soft pill of it, and its counts */
+:root { --ift-h: 64px; --ift-pad: 5px; --ift-gap: 10px; --ift-max: 440px; --ift-label: 11px; --ift-icon: 24px; --ift-pill: 15%; }
+
+/* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
+   (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
+.ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.ifs-hero span { font-size: 14px; opacity: 0.62; }
 /* ==== end of InFlite's menu ==== */
