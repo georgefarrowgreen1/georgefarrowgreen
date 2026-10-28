@@ -39,6 +39,9 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
 // (the home page's site, for the apps' one: siteUrl)
 const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
+// (Mail's icon, asked for by its version, so a copy kept from before its new look isn't shown)
+const MAIL_ICON = "/apps/mail.png?v=2";
+const appIcon = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
 const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
@@ -565,7 +568,7 @@ function signedIn(r) {
     app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
       fx.plan ? "On a plan" : "Training, using AI"),
     // (Mail, the site's inbox, is the admin's alone: functions/_mailapp.js)
-    m.admin && app("mail", "Mail", "/apps/mail.png", "The site’s inbox", "Yours alone, as admin")))));
+    m.admin && app("mail", "Mail", MAIL_ICON, "The site’s inbox", "Yours alone, as admin")))));
   const top = [
     sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
@@ -766,7 +769,7 @@ function appView(id) {
 // (Mail: what it is, and where; its mail is kept by Mail itself, not here)
 function mailView() {
   return { title: "Mail", quiet: true, body: [
-    h("div.app-head", {}, h("img", { src: "/apps/mail.png", alt: "", width: 64, height: 64 }), h("b", { text: "Mail" }), h("span", { text: "The site’s inbox" })),
+    h("div.app-head", {}, h("img", { src: MAIL_ICON, alt: "", width: 64, height: 64 }), h("b", { text: "Mail" }), h("span", { text: "The site’s inbox" })),
     h("p.hint", { text: "Mail sent to any address at inflite.ai arrives here, and you can send from any of them. Only the site’s admin can open it, with a passkey, confirming it’s you every 12 hours." }),
     h("a.btn", { href: siteUrl("email") }, "Open Mail", icon("open", 18, 2.4))] };
 }
@@ -932,7 +935,7 @@ function signedOut(r) {
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
     // (sent here by an app: which, as that's where you'll be once you're in)
-    mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
+    mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: appIcon(S.signFor.app), alt: "" }), h("b", { text: to }))
       : last ? h("p.lead", { text: `@${last.handle}` })
       : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "Chat" }),
         ", ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }), " and ", h("img", { src: "/apps/fitness.png", alt: "" }), h("b", { text: "Fitness" }))),
@@ -1257,7 +1260,7 @@ function inviteCard() {
     h("ol.invite-steps", { "aria-label": "How it works" },
       step(icon("mail", 22, 1.9), "Open your invite"),
       step(icon("person", 22, 1.9), "Make your account"),
-      step(to && to !== "mail" ? h("img", { src: `/apps/${to}.png`, alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
+      step(to ? h("img", { src: appIcon(to), alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
     h("form.form", { onsubmit: (e) => {
       e.preventDefault(); say(said, "");
       const m = /(?:#invite=|^)([A-Za-z0-9_-]{40,50})(?=[&\s]|$)/.exec(link.value.trim());
@@ -2362,7 +2365,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Mail: MAIL_ICON, Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
