@@ -125,9 +125,10 @@ ok(/run out/.test(gToast) && !gSheet, 'and a code that can\'t be checked: said, 
 const noAuth = await A.p.evaluate(async () => (await fetch('/api/pigeon/account-link', { method: 'POST' })).status);
 ok(noAuth === 401, 'and only a signed-in Chat can ask for one', String(noAuth));
 
-// ---- 4. Chat Settings: the account's page, signed in too, open at Chat's settings ----
+// ---- 4. Settings, in InFlite's menu: the account's page, signed in too, open at Chat's settings ----
 await A.ctx.clearCookies();
-const [pop2] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
+await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open');
+const [pop2] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('.ifm-pop [data-k=settings]')]);
 // (no cookie here now: the page asks, Continue as Rowan, then opens at Chat's settings)
 const go2 = await pop2.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go2.evaluate((e) => e.matches('.btn'))) await go2.click();

@@ -1,6 +1,6 @@
-// Chat's settings that are the account's, on the account's page: Chat's Settings has one row, Chat
-// Settings, that opens them (the page signed in by the code Chat hands over, open at Chat's settings, with the
-// way back), and says what's set; InFlite's menu, from your photo, keeps what's each phone's own. On the page, Chat's card has them beside
+// Chat's settings that are the account's, on the account's page: Settings, in InFlite's menu from your photo, opens
+// them (the page signed in by the code Chat hands over, open at Chat's settings, with the way back); the menu keeps
+// what's each phone's own too. On the page, Chat's card has them beside
 // Open. Each change is saved by the app's own rules (GET/PATCH /api/account/inflight, DELETE inflight/block), from the
 // page's own address only, and Chat shows it once it's synced. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test).
 import { chromium } from 'playwright';
@@ -39,10 +39,9 @@ sql(`INSERT INTO pg_links (a, b, status, created_at) VALUES ('${r0.id}', '${z0.i
 sql("UPDATE pg_users SET email_ok = 1 WHERE handle = 'rowan'");
 await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 
-// ---- 1. Chat's Settings: one row to the account's page; this phone's own in InFlite's menu ----
-await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view [data-act=ifsettings]'); await A.p.waitForTimeout(600);
-const sum0 = await text(A.p, '#screen > main.view [data-act=ifsettings]');
-ok(/Chat Settings/.test(sum0) && /notifications on/.test(sum0) && /1 blocked/.test(sum0), 'Chat Settings, saying what’s set', sum0);
+// ---- 1. Chat's settings: Settings, in InFlite's menu, to the account's page; this phone's own in the menu too ----
+await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view [data-act=profile]'); await A.p.waitForTimeout(600);
+ok(!(await A.p.$('#screen > main.view [data-act=ifsettings]')), 'no Chat Settings row in the Account tab: it\'s Settings, in the menu from your photo');
 ok(!(await A.p.$('#screen > main.view [data-act=notifysheet]')) && !(await A.p.$('#screen > main.view [data-act=securitysheet]')) && !(await A.p.$('#screen > main.view [data-act=appearancesheet]')),
   'no Notifications, Privacy & Security or Appearance rows: they’re the account’s');
 const phone = await text(A.p, '#screen > main.view');
@@ -51,12 +50,13 @@ const mine = await A.p.$$eval('.ifm-pop [data-k]', (els) => els.map((e) => e.dat
 await A.p.keyboard.press('Escape'); await A.p.waitForSelector('.ifm-layer', { state: 'detached' });
 ok(!/This Phone/.test(phone) && !(await A.p.$('#screen > main.view [data-act=pushtoggle]')) && /Location/.test(phone) && /pushtoggle/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
   'Location stays; this phone\'s own (push, haptics and encryption, and the lock where passkeys work) are in InFlite\'s menu, from your photo', mine);
-await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=ifsettings]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
+await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=profile]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
 await shot(A.p, '01-inflight-settings');
 
-// ---- 2. the row: the account's page in a window of its own, signed in by Chat's code, open at Chat's settings ----
+// ---- 2. Settings, in the menu: the account's page in a window of its own, signed in by Chat's code, open at Chat's settings ----
 await A.ctx.clearCookies();       // (as a Home Screen app's browser knows nothing of it)
-const [W] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view [data-act=ifsettings]')]);
+await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open');
+const [W] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('.ifm-pop [data-k=settings]')]);
 const go = await W.waitForSelector('main .welcome .btn, #sheet[open] #if-email', { timeout: 20000 });
 if (await go.evaluate((e) => e.matches('.btn'))) await go.click();
 await W.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); await W.waitForTimeout(700);
@@ -123,11 +123,8 @@ await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector('#sheet[ope
 ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*2 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
 await W.close();
 
-// ---- 6. back in Chat: what's set, as the account has it ----
+// ---- 6. back in Chat ----
 await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 }); await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForTimeout(800);
-const sum1 = await text(A.p, '#screen > main.view [data-act=ifsettings]');
-ok(/10 of 11 notifications on|9 of 11 notifications on/.test(sum1) && /quiet 21:00–06:00/.test(sum1) && /read receipts off/.test(sum1) && !/blocked/.test(sum1), 'Chat Settings, back in Chat: what changed on the account’s page', sum1);
-await A.p.evaluate(() => document.querySelector('#screen > main.view [data-act=ifsettings]').scrollIntoView({ block: 'center' })); await A.p.waitForTimeout(400);
 await shot(A.p, '06-inflight-after');
 
 // (the browser's word for the try from Chat's address, refused: that's step 4's point, not an error)

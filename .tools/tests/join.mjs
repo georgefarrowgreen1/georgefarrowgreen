@@ -104,14 +104,16 @@ export async function joinChat(page, inflight, { name, handle, email, password =
   await page.waitForSelector('.tabs', { timeout: 30000 });
 }
 
-// Chat's settings on the account's page, as its Settings opens them (Chat Settings: a window of its own, signed
+// Chat's settings on the account's page, as Settings in InFlite's menu opens them (a window of its own, signed
 // in there by the code Chat hands over, with the sheet open): → that window. Its first page has Email me (#if-email);
 // sub (its row's title: Notifications, Who sees what, Blocked) opens one of its own pages, with its switches
 // #if-<setting> (landed, names, quiet… on Notifications, receipts, approxLocation… on Who sees what) and hours
 // (#if-quietFrom, #if-quietTo). Each change is saved as it's made; Chat takes it up as it next syncs.
 export async function inflightSettings(page, sub = null) {
   await page.click('[data-act=tab][data-id=account]'); await page.waitForTimeout(500);
-  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('#screen > main.view [data-act=ifsettings]')]);
+  // (Chat's settings: Settings, in InFlite's menu from your photo)
+  await page.click('.chead .ifh-me'); await page.waitForSelector('.ifm-pop.open');
+  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('.ifm-pop [data-k=settings]')]);
   await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
   const go = await w.waitForSelector('#sheet[open] #if-email, main .welcome .btn', { timeout: 20000 });
   if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); }

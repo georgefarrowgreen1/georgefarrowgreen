@@ -4173,7 +4173,8 @@ function phoneRows() {
     { key: "haptics", icon: "haptics", color: "indigo", label: "Haptics", on: hapticsOn(), toggle: (on) => { try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return on; } },
     { key: "encryptionsheet", icon: "lock", color: "green", label: "Encryption", value: changed ? `${changed} changed` : S.friends.length ? `${ver} of ${S.friends.length}` : "", open: () => doAct("encryptionsheet") },
     "-",
-    { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: () => go("account") },
+    // (Chat's settings: the account's, on its page, opened signed in; where Chat has no account page, the Account tab)
+    { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: () => (accountPage() ? doAct("ifsettings") : go("account")) },
   ];
 }
 // The app's own name where Messages' title would be: its icon and Chat
@@ -4389,25 +4390,15 @@ function vAccount() {
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Settings</div>
     <div class="group">
-      ${accountPage() ? `<button type="button" class="cell has-icon" data-act="ifsettings"><span class="tile indigo">${I.sliders}</span><span class="ctext"><span>Chat Settings</span><span class="csub">${ifSummary(u)}</span></span>${I.away.replace('class="ico"', 'class="ico chev away"')}</button>`
-        : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
+      ${accountPage() ? "" : `${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
-    ${accountPage() ? `<div class="gfoot">Saved to your account, so they’re the same on every phone. Appearance is there too.</div>` : ""}
+    ${accountPage() ? `<div class="gfoot">Saved to your account, so it’s the same on every phone. Chat’s other settings are there too: Settings, in the menu from your photo.</div>` : ""}
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="Chat ${APP_VERSION}: what’s new">Chat ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
-// Chat Settings, in a line: how many notifications are on, quiet hours, and who's blocked (as the account's page
-// has them: taken up as the app next syncs, so a change made there shows here on the way back)
-const IF_KEYS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
-function ifSummary(u) {
-  const n = u.notify || {}, on = IF_KEYS.filter((k) => n[k]).length;
-  return [on === IF_KEYS.length ? "All notifications on" : on ? `${on} of ${IF_KEYS.length} notifications on` : "Notifications off",
-    n.quiet && `quiet ${String(n.quietFrom).padStart(2, "0")}:00–${String(n.quietTo).padStart(2, "0")}:00`,
-    u.receipts === false && "read receipts off", S.blocked.length && `${S.blocked.length} blocked`].filter(Boolean).join(" · ");
-}
-// Encryption & Safety Numbers, as a row (This Phone, and Privacy & Security where that's in the app): a friend's key
+// Encryption & Safety Numbers, as a row (Privacy & Security, where that's in the app): a friend's key
 // that's changed first, else how many are verified and who's next (with its bar, in the sheet: its width set as it's drawn)
 function encCell(bar) {
   const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;

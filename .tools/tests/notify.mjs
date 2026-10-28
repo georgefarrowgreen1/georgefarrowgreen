@@ -170,11 +170,10 @@ ok(r.pushes === 0 && !(await lastPush(gKeys, t0)), 'with “A Pigeon Lands” of
 await flip('landed');
 r = await tick(); ok(r.pushes === 0, 'turning it back on doesn’t replay old landings');
 await W.close();
-// (back in Chat, opened again: push on here, and Chat Settings saying what's on, as the account has it)
+// (back in Chat, opened again: push on here, in InFlite's menu)
 await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-act=tab][data-id=account]'); await G.p.waitForTimeout(700);
 await menu(G); const pushHere = await G.p.getAttribute('.ifm-pop [data-k=pushtoggle]', 'aria-checked'); await unmenu(G);
-ok(pushHere === 'true' && /notifications on/.test(await txt(G, '#screen > main.view [data-act=ifsettings]')),
-  'push on for this phone (InFlite\'s menu), and what’s on under Chat Settings', await txt(G, '#screen > main.view [data-act=ifsettings]'));
+ok(pushHere === 'true', 'push on for this phone (InFlite\'s menu)');
 
 // ---- tapping it opens the chat ----
 await G.p.goto(URL + `#open=${mId}`); await G.p.waitForSelector('.chatnav', { timeout: 15000 });

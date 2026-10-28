@@ -56,13 +56,13 @@ const slow = (ms) => p.waitForTimeout(DEMO ? ms : Math.min(ms, 600));
 const scroll = async (y) => { await p.evaluate((y) => document.querySelector('.sheet .body')?.scrollBy({ top: y, behavior: 'smooth' }), y); await slow(1300); };
 const shot = (n) => p.screenshot({ path: `${out}/${n}.png` });
 
-// 1. Account: Chat Settings (on the account's page); and in InFlite's menu, what's each phone's own
+// 1. InFlite's menu: what's each phone's own, and Settings (Chat's, on the account's page)
 await p.click('[data-act=tab][data-id=account]'); await slow(900);
 await menuOpen(); await slow(1600);
 const mine = await p.$$eval('.ifm-pop [data-k]', (els) => els.map((e) => e.dataset.k).join());
 await menuShut();
-ok(await p.isVisible('#screen > main.view [data-act=ifsettings]') && /pushtoggle/.test(mine) && /applock/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
-  'Account: Chat Settings; InFlite\'s menu: push, the lock, haptics and encryption', mine);
+ok(!(await p.$('#screen > main.view [data-act=ifsettings]')) && /settings/.test(mine) && /pushtoggle/.test(mine) && /applock/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
+  'InFlite\'s menu: push, the lock, haptics and encryption, and Settings (no Chat Settings row in Account)', mine);
 ok(!(await p.$('#screen > main.view [data-act=securitysheet]')) && !(await p.$('#screen > main.view [data-act=notifysheet]')), 'no Privacy & Security or Notifications in the app: they’re on the account’s page');
 { const e = await encSays(); ok(/1 changed/.test(e), 'the Encryption row says a friend’s key changed', e); }
 await shot('security');

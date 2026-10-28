@@ -76,9 +76,12 @@ const tick = async (x) => { sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'"
 // ---- 1. An account made here, then Chat (with a passkey): the account's page in the same browser is signed in ----
 const L = await browser('laptop');
 await joinChat(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London', passkey: true });
-// (Chat's ways here: its account card, and Chat Settings)
-await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForSelector('#screen > main.view [data-act=ifsettings]', { timeout: 15000 }).catch(() => {});
-ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(await text(L, '#screen > main.view [data-act=ifsettings]')), 'Chat leads here, without naming any other app');
+// (Chat's ways here: its account card, and Settings in InFlite's menu)
+await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForSelector('#screen > main.view [data-act=accountopen]', { timeout: 15000 }).catch(() => {});
+await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open');
+const setRow = await L.p.$('.ifm-pop [data-k=settings]'), popSays = await L.p.innerText('.ifm-pop');
+await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+ok(!!(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!setRow && !(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(popSays), 'Chat leads here, without naming any other app');
 // (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in
 // this tab, where the browser's signed in already)
 await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
