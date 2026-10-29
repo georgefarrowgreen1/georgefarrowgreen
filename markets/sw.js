@@ -1,10 +1,17 @@
-// Markets's service worker: its price alerts (functions/_markets.js alertTick), and the app's own files, kept so it opens
-// at once and offline (below).
+// Markets's service worker: its price alerts and evening wraps (functions/_markets.js alertTick, wrapTick), with the
+// count of them on the app's icon; and the app's own files, kept so it opens at once and offline (below).
+// (the icon's badge: how many of Markets's notifications are still waiting to be seen)
+const badge = async () => {
+  if (!self.navigator.setAppBadge) return;
+  const n = (await self.registration.getNotifications().catch(() => [])).length;
+  await (n ? self.navigator.setAppBadge(n) : self.navigator.clearAppBadge()).catch(() => {});
+};
 self.addEventListener("push", (e) => {
   let n = {};
   try { n = e.data ? e.data.json() : {}; } catch (_) { n = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(n.title || "Markets", { body: n.body || "", tag: n.tag || undefined, renotify: !!n.tag, icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }));
+  e.waitUntil(self.registration.showNotification(n.title || "Markets", { body: n.body || "", tag: n.tag || undefined, renotify: !!n.tag, icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }).then(badge));
 });
+self.addEventListener("notificationclose", (e) => e.waitUntil(badge()));
 // the browser renewed this phone's subscription by itself: the alerts move to the new one
 self.addEventListener("pushsubscriptionchange", (e) => {
   e.waitUntil((async () => {
@@ -22,6 +29,7 @@ self.addEventListener("pushsubscriptionchange", (e) => {
 // a tap opens the stock it's about (or brings an open copy forward and shows it there)
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
+  e.waitUntil(badge());
   let url = new URL(e.notification.data?.url || "./", self.registration.scope).href;
   if (!url.startsWith(self.registration.scope)) url = self.registration.scope;
   e.waitUntil((async () => {

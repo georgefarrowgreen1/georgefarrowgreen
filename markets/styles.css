@@ -150,6 +150,11 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 /* (a row with no sparkline: an account, the ISA's allowance) */
 .item.two { grid-template-columns: minmax(0, 1fr) auto; }
 .list.flush { padding: 0; }
+/* moving one: it lifts and follows the finger, the others part for it, smoothly */
+#all .item { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform 0.28s var(--ease-out), opacity 0.2s; }
+#all.sorting .item { transition: transform 0.22s var(--ease-out); }
+#all .item.lifted { position: relative; z-index: 2; transition: none; border-radius: 16px; background: var(--glass-strong); box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.45); opacity: 1; }
+.hint.center { text-align: center; padding: 0 24px; }
 /* a buy or a sale: its line, and a way to take it off (tapped twice) */
 .item.buy { grid-template-columns: minmax(0, 1fr) auto auto; }
 .item.buy:active { opacity: 1; }

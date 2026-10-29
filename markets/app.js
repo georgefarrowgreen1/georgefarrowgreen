@@ -3,7 +3,7 @@
 // - Today: what you own, worth now and how it's done today, drawn through the day; one line on what moved it; what's
 //   worth knowing, one card at a time (an odd move, a holding near its high, a big week, how much is in one company,
 //   your dividends, how you've done since you bought); your biggest movers; and London, New York and Bitcoin.
-// - Holdings: everything you own and follow, the ring of your mix, and your accounts (ISA, pension, general) with what's
+// - Holdings: everything you own and follow (in your order: press and hold one to move it), the ring of your mix, and your accounts (ISA, pension, general) with what's
 //   left of your ISA's allowance for the tax year; your income: the dividends you can expect, month by month; and your
 //   year against the market (the FTSE 100, the world's shares, the S&P 500), drawn line against line.
 // - News: the day in two sentences, then the stories about what you hold.
@@ -265,7 +265,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.56";
+const BUILD = "1.57";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -572,7 +572,7 @@ function itemRow(x, i, mode, open = (s) => openStock(s)) {
   const own = x.qty > 0, sp = C.el("svg", { viewBox: "0 0 64 26", "aria-hidden": "true" });
   sp.append(C.el("path", { d: C.spark(q.spark, 64, 26, q.prev), fill: "none", stroke: (q.chgPct || 0) >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 1.6, "stroke-linecap": "round", "data-draw": String(0.15 + i * 0.05) }));
   const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
-  return h("button.item.rise", { type: "button", vars: { i: String(i) }, onclick: () => open(x.symbol) },
+  return h("button.item.rise", { type: "button", vars: { i: String(i) }, "data-sym": x.symbol, onclick: () => open(x.symbol) },
     h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "Following · ") : "", h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
     sp, h("span.r", {}, ...right, h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
 }
@@ -614,12 +614,60 @@ function holdingsView() {
     if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
       h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
   }
-  const ownedFirst = [...S.list].sort((a, b) => (valueOf(b) ?? -1) - (valueOf(a) ?? -1));
   parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
-  parts.push(h("div.list", {}, ownedFirst.map((x, i) => itemRow(x, i, "value"))));
+  parts.push(movable(h("div.list", { id: "all" }, S.list.map((x, i) => itemRow(x, i, "value")))));
+  if (S.list.length > 1) parts.push(h("p.hint.center", { text: "Press and hold one to move it." }));
   if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
   if (T.gain != null) parts.push(h("p.foot", { class: "foot num", text: `${T.gain >= 0 ? "Up" : "Down"} ${money(Math.abs(T.gain), "GBP", 0)} (${pct(T.gainPct, 1)}) since you bought, on the ${plural(T.costed.length, "holding")} you've said what you paid for` }));
   return parts;
+}
+
+// A list put in your order: press and hold a row (or, with a mouse, hold and drag), it lifts, and follows your finger, the
+// others parting for it; let go and it settles there, and the order's kept with your account
+function movable(list) {
+  let wait = null, drag = null, y0 = 0, pid = null, quiet = 0;
+  // (the tap that ends a move doesn't open it)
+  list.addEventListener("click", (e) => { if (Date.now() < quiet) { e.stopPropagation(); e.preventDefault(); } }, true);
+  const end = async (keep) => {
+    clearTimeout(wait); wait = null;
+    if (!drag) return;
+    const { row, rows, from, to } = drag;
+    drag = null;
+    list.classList.remove("sorting");
+    rows.forEach((r) => { r.style.transform = ""; });
+    row.classList.remove("lifted");
+    quiet = Date.now() + 450;
+    if (!keep || from === to) return;
+    list.insertBefore(row, rows.filter((r) => r !== row)[to] || null);
+    const order = [...list.children].map((r) => r.dataset.sym).filter(Boolean);
+    try { const r = await A.order(order); S.list = r.holdings; } catch (e) { toast(e.message, true); render(false); }
+  };
+  list.addEventListener("pointerdown", (e) => {
+    const row = e.target.closest(".item[data-sym]");
+    if (!row || e.button > 0) return;
+    y0 = e.clientY; pid = e.pointerId;
+    wait = setTimeout(() => {
+      const rows = [...list.children].filter((r) => r.dataset.sym), from = rows.indexOf(row);
+      drag = { row, rows, from, to: from, step: row.offsetHeight };
+      row.classList.add("lifted"); list.classList.add("sorting");
+      try { row.setPointerCapture(pid); } catch (_) {}
+      navigator.vibrate?.(8);
+    }, 420);
+  });
+  list.addEventListener("pointermove", (e) => {
+    if (!drag) { if (wait && Math.abs(e.clientY - y0) > 8) { clearTimeout(wait); wait = null; } return; }
+    const dy = e.clientY - y0, { row, rows, from, step } = drag;
+    const to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / step)));
+    drag.to = to;
+    row.style.transform = `translateY(${dy}px) scale(1.02)`;
+    rows.forEach((r, i) => { if (r !== row) r.style.transform = i > from && i <= to ? `translateY(${-step}px)` : i < from && i >= to ? `translateY(${step}px)` : ""; });
+  });
+  list.addEventListener("pointerup", () => end(true));
+  list.addEventListener("pointercancel", () => end(false));
+  // (while one's lifted, the page doesn't scroll under the finger)
+  list.addEventListener("touchmove", (e) => { if (drag) e.preventDefault(); }, { passive: false });
+  list.addEventListener("contextmenu", (e) => { if (drag || wait) e.preventDefault(); });
+  return list;
 }
 
 // Your accounts: each one's worth and day; and the ISA's allowance, what's left of it this tax year
@@ -1310,6 +1358,11 @@ function paint(sym, up) {
   }
 }
 
+// opened: Markets's notifications are seen, and the icon's badge goes
+async function seen() {
+  try { navigator.clearAppBadge?.().catch(() => {}); const reg = await navigator.serviceWorker?.getRegistration(); (await reg?.getNotifications?.())?.forEach((n) => n.close()); } catch (_) {}
+}
+
 let toastT = null;
 function toast(msg, bad = false) { toastEl.textContent = msg; toastEl.classList.toggle("bad", !!bad); toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), bad ? 4200 : 2400); }
 
@@ -1348,6 +1401,7 @@ async function start() {
   if (deep) openStock(decodeURIComponent(deep));
   if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
   setInterval(refresh, 30000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  seen();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); seen(); } });
 }
 start();
