@@ -39,7 +39,7 @@ import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf, parseWall, dayStart } from "../weather/format.js";
-import { solarQuery, shapeSolar, sunSpell, FACES, PITCHES } from "../weather/solar.js";
+import { solarQuery, shapeSolar, zonesSpell, FACES, PITCHES, MAX_ZONES } from "../weather/solar.js";
 import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP, briefMail, warningMail } from "../weather/alerts.js";
 import { blend } from "../weather/rainmap.js";
 import { oneRain } from "../weather/agree.js";
@@ -175,10 +175,22 @@ export function wantOf(b) {
   if (b.brief && typeof b.brief === "object" && !brief) throw new HttpError(400, "Bad place.");
   return { places, brief, briefAt, email };
 }
-// The roof a device's panels are on (Settings › Solar), made safe: { lat, lon, name, faces, pitch, alert } or null
+// A device's solar zones (Settings › Solar: each a set of panels facing one way), made safe and put together by place:
+// { alert, places: [{ lat, lon, name, zones: [{ name, faces, pitch, kw }] }] } or null. (From an app from before zones,
+// { on, lat, lon, name, faces, pitch, alert }: one zone, Roof)
 export function solarWant(v) {
-  const p = v && typeof v === "object" && v.on ? spotOf(v) : null;
-  return p ? { ...p, faces: FACES.some((x) => x[0] === v.faces) ? v.faces : "S", pitch: PITCHES.includes(v.pitch) ? v.pitch : 35, alert: v.alert !== false } : null;
+  if (!v || typeof v !== "object") return null;
+  const list = Array.isArray(v.zones) ? v.zones : v.on ? [{ ...v, place: v.name, name: "Roof" }] : [];
+  const places = new Map();
+  for (const z of list.slice(0, MAX_ZONES)) {
+    const p = spotOf({ lat: z?.lat, lon: z?.lon, name: z?.place });
+    if (!p) continue;
+    const k = `${p.lat},${p.lon}`, at = places.get(k) || { ...p, zones: [] };
+    at.zones.push({ name: cleanName(z.name).slice(0, 24) || "Roof", faces: FACES.some((x) => x[0] === z.faces) ? z.faces : "S", pitch: PITCHES.includes(z.pitch) ? z.pitch : 35,
+      kw: typeof z.kw === "number" && z.kw > 0 && z.kw <= 50 ? z.kw : null });
+    places.set(k, at);
+  }
+  return places.size ? { alert: v.alert !== false, places: [...places.values()] } : null;
 }
 const wanted = (w) => w.places.length > 0 || !!w.brief || !!w.solar?.alert;
 function unitsOf(U) {
@@ -200,8 +212,8 @@ async function setRows(D, dv, w, t) {
   const rows = new Map();
   for (const p of w.places) rows.set(`${p.lat},${p.lon}`, { ...p, brief: 0 });
   if (w.brief) { const k = `${w.brief.lat},${w.brief.lon}`; rows.set(k, { rain: false, warn: false, ...w.brief, ...rows.get(k), brief: 1 }); }
-  // (the panels' place: its roof, for the sun coming out there, and the briefing's line on it)
-  if (w.solar) { const { faces, pitch, alert } = w.solar, k = `${w.solar.lat},${w.solar.lon}`; rows.set(k, { rain: false, warn: false, brief: 0, ...w.solar, ...rows.get(k), solar: JSON.stringify({ faces, pitch, alert }) }); }
+  // (each place with panels: its zones, for the sun coming out there, and the briefing's line on it)
+  for (const p of w.solar?.places || []) { const k = `${p.lat},${p.lon}`; rows.set(k, { rain: false, warn: false, brief: 0, lat: p.lat, lon: p.lon, name: p.name, ...rows.get(k), solar: JSON.stringify({ alert: w.solar.alert, zones: p.zones }) }); }
   const { results: have } = await D.prepare("SELECT id, lat, lon, warn FROM wx_subs WHERE dev = ?").bind(dv.dev).all();
   const steps = [], had = new Map(have.map((h) => [`${h.lat},${h.lon}`, h]));
   for (const [k, h] of had) if (!rows.has(k)) steps.push(D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(h.id));
@@ -216,21 +228,26 @@ async function setRows(D, dv, w, t) {
   }
   if (steps.length) await D.batch(steps);
 }
-// The sunlight on a sub's roof (solar.js), with its place's offset, or null
+// The sunlight on each of a place's zones (solar.js), with its offset: { o, off, zs: [{ zone, hours }] } or null
 async function roofSun(env, s) {
   let o = null; try { o = JSON.parse(s.solar); } catch (_) {}
   if (!o) return null;
-  const r = await fetch(`${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${solarQuery(s.lat, s.lon, o.faces, o.pitch)}`, { signal: AbortSignal.timeout(10000), headers: { Accept: "application/json" } });
-  if (!r.ok) return null;
-  const j = await r.json();
-  return { o, off: j.utc_offset_seconds ?? 0, hours: shapeSolar(j, parseWall) };
+  const zones = Array.isArray(o.zones) ? o.zones : [{ name: "Roof", faces: o.faces, pitch: o.pitch }];
+  const got = await Promise.all(zones.map(async (zone) => {
+    const r = await fetch(`${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${solarQuery(s.lat, s.lon, zone.faces, zone.pitch)}`, { signal: AbortSignal.timeout(10000), headers: { Accept: "application/json" } });
+    return r.ok ? r.json() : null;
+  }));
+  if (!got.length || got.some((j) => !j)) return null;
+  return { o, off: got[0].utc_offset_seconds ?? 0, zs: got.map((j, i) => ({ zone: zones[i], hours: shapeSolar(j, parseWall) })) };
 }
+// "East roof from about 07:00 and West roof from about 10:00" (the zones, in the order the sun reaches them)
+const zonesFrom = (sp, f) => { const a = sp.zones.map((x) => `${x.zone.name} from about ${f.time(x.sp.start)}`); return a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]; };
 // The sun coming out on a place's panels: told of up to an hour and a half before a sunny spell (or as one starts), once a
 // spell, twice a day at most, outside the quiet hours (last_sun claimed first, so two ticks never both tell it)
 async function sunNotify(env, D, s, t, out, origin) {
   const got = await roofSun(env, s);
   if (!got?.o.alert) return;
-  const now = nowWall(got.off, t), sp = sunSpell(got.hours, now);
+  const now = nowWall(got.off, t), sp = zonesSpell(got.zs, now);
   if (!sp || isQuiet(now) || (sp.on ? now - sp.start > 30 * 60e3 : sp.start - now > SUN_AHEAD)) return;
   let told = {}; try { told = JSON.parse(s.last_sun || "{}") || {}; } catch (_) {}
   const day = keyOf(now);
@@ -241,7 +258,7 @@ async function sunNotify(env, D, s, t, out, origin) {
   const f = makeFormat(units), at = s.name ? `${s.name}: ` : "";
   const r = await pushToSub(env, s, sp.on
     ? { title: "Sun’s out", body: `${at}sunny on your panels now, until about ${f.said(sp.end)}.`, tag: "sun", ttl: 1800, url: linkTo(s.lat, s.lon, s.name) }
-    : { title: "Sun’s coming out", body: `${at}sunny on your panels from about ${f.time(sp.start)}, until about ${f.said(sp.end)}.`, tag: "sun", ttl: 3600, url: linkTo(s.lat, s.lon, s.name) });
+    : { title: "Sun’s coming out", body: sp.zones.length > 1 ? `${at}sun on ${zonesFrom(sp, f)}, until about ${f.said(sp.end)}.` : `${at}sunny on your panels from about ${f.time(sp.start)}, until about ${f.said(sp.end)}.`, tag: "sun", ttl: 3600, url: linkTo(s.lat, s.lon, s.name) });
   if (r === "sent") out.sun = (out.sun || 0) + 1;
   else if (r === "gone") await forget(D, s);
   else await D.prepare("UPDATE wx_subs SET last_sun = ?1 WHERE id = ?2 AND last_sun = ?3").bind(s.last_sun ?? null, s.id, next).run();
@@ -589,8 +606,8 @@ async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
       const m = isMail(s) && briefMail(wx, now, f);
       if (m) m.strip = m.strip.map(([part, icon, temp, chance]) => [part, `wx-${icon}`, temp, chance]);
       // (where the panels are, and a sunny spell's to come today: when, in a line of its own; Settings › Solar)
-      const sun = s.solar ? await roofSun(env, s).catch(() => null) : null, sp = sun && sunSpell(sun.hours, now, Infinity);
-      const sunny = sp && `${f.time(Math.max(sp.start, now))}–${f.said(sp.end)}`;
+      const sun = s.solar ? await roofSun(env, s).catch(() => null) : null, sp = sun && zonesSpell(sun.zs, now, Infinity);
+      const sunny = sp && `${f.time(Math.max(sp.start, now))}–${f.said(sp.end)}${sp.zones.length > 1 ? ` (${sp.zones.map((x, k) => (k ? `${x.zone.name} from ${f.time(x.sp.start)}` : `${x.zone.name} first`)).join(", ")})` : ""}`;
       if (m && sunny) m.rows.splice(m.rows.findIndex((x) => x[0] === "Sun") + 1 || m.rows.length, 0, ["Solar", `Sunny about ${sunny}`, "sunrise"]);
       const b = !isMail(s) && briefing(wx, now, f);
       if (b && sunny) b.body = `${b.body} Sun on your panels about ${sunny}.`.slice(0, 280);
