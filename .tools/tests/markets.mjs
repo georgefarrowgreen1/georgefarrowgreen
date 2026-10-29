@@ -4,7 +4,8 @@
 // prices say (London's in pence, America's in dollars at the day's rate), its day drawn and said, and what's worth
 // knowing (an odd one, one near its high, how much is in one company, the dividends). A stock's page: its chart drawn,
 // reshaped to a year, read with the pointer; an alert, sent by the scheduler when it moves 3% (once that day); prices
-// kept fresh and flashed as they change. Holdings' ring; News' stories; one taken off the list. The API answers only
+// kept fresh and flashed as they change. Holdings' ring; News' stories; one taken off the list. Investment trusts found,
+// said as such and explained, and how your money splits between them and shares. The API answers only
 // signed in, and only at Markets's own address. Nothing scrolls sideways on a small phone. Signing out goes to the start.
 // (The markets' data is mocks/marketsmock.mjs, standing in for Yahoo Finance's.)
 import { chromium } from 'playwright';
@@ -141,6 +142,28 @@ await p.click('.tab[data-tab="holdings"]'); await settle(p, 900);
 await p.locator('.item:has-text("Arm")').first().click(); await p.waitForSelector('.links .danger'); await settle(p, 900);
 await p.click('.links .danger'); await settle(p, 1200);
 ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length && await p.locator('#main .list .item').count() === 5, 'Remove: off the list, and off the page');
+
+// ---- 9b. Investment trusts: found, said as such, explained, and how your money splits between them and shares ----
+await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForSelector('#mk-q'); await settle(p, 600);
+ok(/Investment trusts/i.test(await text(p, '.browse h3')) && await p.locator('.browse .chip:has-text("Scottish Mortgage")').count() === 1, 'Find and Add: a few well-known investment trusts to start from', await text(p, '.browse'));
+await p.fill('#mk-q', 'scottish'); await p.waitForSelector('.res', { timeout: 10000 }); await settle(p, 300);
+ok((await text(p, '.res b')) === 'Scottish Mortgage' && /SMT · London · Investment trust/.test(await text(p, '.res small')), 'search: Scottish Mortgage, an investment trust', await text(p, '.res'));
+const alw = await p.evaluate(() => fetch('/api/markets/search?q=alliance', { credentials: 'same-origin' }).then((r) => r.json()));
+ok(alw.results?.[0]?.symbol === 'ALW.L' && alw.results[0].kind === 'trust' && alw.results[0].name === 'Alliance Witan', "and one whose name doesn't say so, known all the same", JSON.stringify(alw.results?.[0]));
+await p.click('.res'); await p.waitForSelector('.sprice'); await p.waitForSelector('.chartbox path.line[d]'); await settle(p, 1400);
+ok(/SMT · London · Investment trust/.test(await text(p, '.shead small')) && /A company that invests in many others/.test(await text(p, '.facts')) && /premium, or a discount/.test(await text(p, '.facts')), 'its page: said to be an investment trust, and what one is', await text(p, '.shead small'));
+await p.screenshot({ path: `${out}/9b-trust.png` });
+await p.click('button:has-text("Add to Your List")'); await p.waitForSelector('#mk-qty');
+await p.fill('#mk-qty', '500'); await p.fill('#mk-cost', '8'); await p.click('#mk-save');
+await p.waitForSelector('.fact:has-text("Yours")', { timeout: 10000 }); await settle(p, 600);
+await p.keyboard.press('Escape'); await settle(p, 700);
+await p.click('.tab[data-tab="holdings"]'); await settle(p, 1500);
+const kinds = await text(p, '#kinds'), kp = [...kinds.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
+ok(/Shares\s*\d+%/.test(kinds) && /Investment trusts\s*\d+%/.test(kinds) && Math.abs(kp.reduce((a, v) => a + v, 0) - 100) <= 1, 'Holdings: how your money splits between shares and investment trusts', kinds.replace(/\s+/g, ' '));
+await p.screenshot({ path: `${out}/9b-kinds.png` });
+await p.locator('.item:has-text("Scottish Mortgage")').first().click(); await p.waitForSelector('.links .danger'); await settle(p, 800);
+await p.click('.links .danger'); await settle(p, 1200);
+ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'SMT.L'").length && !(await p.isVisible('#kinds')), 'taken off again: all shares, no split to show');
 
 // ---- 10. Only signed in, and only at Markets's own address ----
 const fromFit = await (await ctx.newPage()).goto(FIT + '/api/markets/me').then((r) => r.status());

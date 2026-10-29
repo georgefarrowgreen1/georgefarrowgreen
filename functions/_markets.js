@@ -86,9 +86,23 @@ export function plainName(n, symbol = "") {
   let s = String(n || "").replace(/\s+/g, " ").trim();
   if (!s) return symbol;
   if (s === s.toUpperCase() && /[A-Z]{4,}/.test(s)) s = s.toLowerCase().replace(/(^|[\s(&/-])([a-z])/g, (_, a, b) => a + b.toUpperCase());
-  const TAILS = /[,.]?\s+(american depositary shares?|american depositary receipts?|depositary receipts?|sponsored adr|adr|ads|common stock|ordinary shares?|ord sh|ord(inary)?( [0-9.p]+)?|class [a-z]( shares)?|plc|p\.l\.c\.|inc\.?|incorporated|corporation|corp\.?|company|co\.?|limited|ltd\.?|holdings?|group|n\.v\.|s\.a\.|se|ag|sa)$/i;
+  const TAILS = /[,.]?\s+(investment trust|investment company|american depositary shares?|american depositary receipts?|depositary receipts?|sponsored adr|adr|ads|common stock|ordinary shares?|ord sh|ord(inary)?( [0-9.p]+)?|class [a-z]( shares)?|plc|p\.l\.c\.|inc\.?|incorporated|corporation|corp\.?|company|co\.?|limited|ltd\.?|holdings?|group|n\.v\.|s\.a\.|se|ag|sa)$/i;
   for (let i = 0, was = ""; i < 6 && was !== s; i++) { was = s; s = s.replace(TAILS, "").trim(); }
   return s.replace(/^the\s+/i, "") || symbol;
+}
+// What kind of thing it is: "share", "trust" (an investment trust: a company listed in London that invests in others, its
+// shares bought and sold like any other's), "fund" (an ETF, or a fund bought at its day's price), "index", "crypto" or
+// "currency". Trusts are told by their names (Investment Trust, Trust plc, Income Fund), and by the symbols of the
+// well-known ones whose names don't say so
+const TRUSTS = new Set(["ALW.L", "JGGI.L", "HICL.L", "RCP.L", "LWDB.L", "PSH.L", "UKW.L", "3IN.L", "TRIG.L", "PIN.L", "HVPE.L", "CLDN.L", "FCSS.L", "INPP.L",
+  "BSIF.L", "SEQI.L", "HFEL.L", "TFIF.L", "ATST.L", "BRWM.L", "NESF.L", "GCP.L", "HGT.L", "ICGT.L", "SSON.L", "FGT.L", "PNL.L", "CGT.L", "JAM.L", "JEDT.L"]);
+export function kindOf(type, name = "", symbol = "") {
+  if (type === "INDEX") return "index";
+  if (type === "CRYPTOCURRENCY") return "crypto";
+  if (type === "CURRENCY") return "currency";
+  if (type === "ETF" || type === "MUTUALFUND") return "fund";
+  if (/\.L$/.test(symbol) && (TRUSTS.has(symbol) || /\binvestment (trust|company)\b|\btrust\b(?!\s+bank)|\b(income|investment|infrastructure) fund\b/i.test(name))) return "trust";
+  return "share";
 }
 const RANGES = {
   "1d": { range: "1d", interval: "5m", ttl: MIN },
@@ -110,7 +124,7 @@ export function readChart(j, symbol) {
   const divs = Object.values(r.events?.dividends || {}).filter((d) => num(d?.amount) != null && num(d?.date) != null).map((d) => ({ t: d.date, amount: s(d.amount) })).sort((a, b) => a.t - b.t);
   const reg = m.currentTradingPeriod?.regular;
   return {
-    symbol: m.symbol || symbol, name: m.instrumentType === "CRYPTOCURRENCY" ? String(m.longName || m.shortName || symbol).replace(/\s+(USD|GBP|EUR)$/, "") : plainName(m.longName || m.shortName, symbol), cur, type: m.instrumentType || "", ex: EXCHANGES[m.exchangeName] || m.fullExchangeName || m.exchangeName || "",
+    symbol: m.symbol || symbol, name: m.instrumentType === "CRYPTOCURRENCY" ? String(m.longName || m.shortName || symbol).replace(/\s+(USD|GBP|EUR)$/, "") : plainName(m.longName || m.shortName, symbol), cur, type: m.instrumentType || "", kind: kindOf(m.instrumentType, m.longName || m.shortName, m.symbol || symbol), ex: EXCHANGES[m.exchangeName] || m.fullExchangeName || m.exchangeName || "",
     tz: m.exchangeTimezoneName || "UTC", price, prev: s(m.previousClose ?? m.chartPreviousClose), base: s(m.chartPreviousClose ?? m.previousClose),
     dayHi: s(m.regularMarketDayHigh), dayLo: s(m.regularMarketDayLow), hi52: s(m.fiftyTwoWeekHigh), lo52: s(m.fiftyTwoWeekLow),
     time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, t, c, divs,
@@ -163,10 +177,10 @@ const KINDS = new Set(["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "MUTUALFUND",
 export async function search(env, q) {
   const words = String(q || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 40);
   if (words.length < 1) return [];
-  return cached(env, `s:${words.toLowerCase()}`, 24 * HOUR, async () => {
+  return cached(env, `s2:${words.toLowerCase()}`, 24 * HOUR, async () => {
     const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(words)}&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=false`);
     return (j?.quotes || []).filter((x) => x?.symbol && SYMBOL.test(String(x.symbol).toUpperCase()) && KINDS.has(x.quoteType))
-      .map((x) => ({ symbol: String(x.symbol).toUpperCase(), name: plainName(x.longname || x.shortname, x.symbol), ex: x.exchDisp || EXCHANGES[x.exchange] || x.exchange || "", kind: x.typeDisp || "" })).slice(0, 8);
+      .map((x) => ({ symbol: String(x.symbol).toUpperCase(), name: plainName(x.longname || x.shortname, x.symbol), ex: x.exchDisp || EXCHANGES[x.exchange] || x.exchange || "", kind: kindOf(x.quoteType, x.longname || x.shortname, String(x.symbol).toUpperCase()) })).slice(0, 8);
   });
 }
 // The news about each of a few symbols, together, newest first

@@ -15,6 +15,8 @@ const START = {
   AAPL: { name: 'Apple Inc.', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 239.74, price: 241.18, hi: 247.1, lo: 169.2, tz: 'America/New_York', divs: [[-30, 0.26], [-120, 0.25], [-210, 0.25], [-300, 0.25]] },
   NVDA: { name: 'NVIDIA Corporation', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 184.49, price: 188.92, hi: 189.4, lo: 98.1, tz: 'America/New_York', divs: [] },
   ARM: { name: 'Arm Holdings plc American Depositary Shares', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 163.71, price: 160.4, hi: 188.8, lo: 98.4, tz: 'America/New_York', divs: [] },
+  'SMT.L': { name: 'Scottish Mortgage Investment Trust PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1012, price: 1024.5, hi: 1100, lo: 780, tz: 'Europe/London', divs: [[-100, 4.4]] },
+  'ALW.L': { name: 'Alliance Witan PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1240, price: 1236, hi: 1290, lo: 1050, tz: 'Europe/London', divs: [[-60, 6.85], [-150, 6.85]] },
   '^FTSE': { name: 'FTSE 100', cur: 'GBP', ex: 'FGI', exd: 'FTSE Index', type: 'INDEX', prev: 8360.7, price: 8412.6, hi: 8550, lo: 7400, tz: 'Europe/London', divs: [] },
   '^GSPC': { name: 'S&P 500', cur: 'USD', ex: 'SNP', exd: 'SNP', type: 'INDEX', prev: 6188.9, price: 6214.3, hi: 6300, lo: 4980, tz: 'America/New_York', divs: [] },
   'BTC-USD': { name: 'Bitcoin USD', cur: 'USD', ex: 'CCC', exd: 'CCC', type: 'CRYPTOCURRENCY', prev: 94770, price: 97420, hi: 109000, lo: 52000, tz: 'UTC', divs: [] },

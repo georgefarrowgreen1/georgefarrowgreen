@@ -261,7 +261,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.50";
+const BUILD = "1.51";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -303,6 +303,12 @@ const signed = (v, cur = "GBP", d = 2) => (v >= 0 ? "+" : "−") + (SYM[cur] ?? 
 const pct = (v, d = 2) => (v == null ? "–" : (v >= 0 ? "+" : "−") + fmt(Math.abs(v), d) + "%");
 const tone = (v) => (v == null || Math.abs(v) < 0.005 ? "flat-t" : v >= 0 ? "up-t" : "down-t");
 const isIndex = (q) => q?.type === "INDEX";
+// what kind of thing it is (functions/_markets.js kindOf), and said
+const kindOf = (q) => q?.kind || (q?.type === "ETF" || q?.type === "MUTUALFUND" ? "fund" : q?.type === "INDEX" ? "index" : q?.type === "CRYPTOCURRENCY" ? "crypto" : "share");
+const KIND_SAID = { share: "Share", trust: "Investment trust", fund: "Fund", index: "Index", crypto: "Crypto", currency: "Currency" };
+const KINDS_SAID = { share: "Shares", trust: "Investment trusts", fund: "Funds", crypto: "Crypto" };
+// a few well-known investment trusts, to start from
+const TRUST_PICKS = [["SMT.L", "Scottish Mortgage"], ["FCIT.L", "F&C"], ["CTY.L", "City of London"], ["ALW.L", "Alliance Witan"], ["PCT.L", "Polar Capital Technology"], ["MNKS.L", "Monks"], ["RCP.L", "RIT Capital Partners"], ["MYI.L", "Murray International"]];
 const digits = (v) => (v >= 10000 ? 0 : v >= 1000 ? 1 : v < 1 ? 4 : 2);
 // (London's under a pound, in pence, as it's quoted there)
 const priceSaid = (q, v = q?.price) => (v == null ? "–" : isIndex(q) ? fmt(v, v >= 1000 ? 1 : 2) : q.cur === "GBP" && Math.abs(v) < 1 ? `${fmt(v * 100, 2)}p` : money(v, q.cur, q.type === "CRYPTOCURRENCY" && v >= 1000 ? 0 : digits(v) === 1 ? 2 : digits(v)));
@@ -376,11 +382,13 @@ function insights() {
   // a big week
   const wk = list.map((x) => ({ x, w: S.years[x.symbol]?.wk })).filter((a) => a.w != null && Math.abs(a.w) >= 6).sort((a, b) => Math.abs(b.w) - Math.abs(a.w))[0];
   if (wk) out.push({ rank: 3, kick: "This week", c: "var(--blue)", sym: wk.x.symbol, h: `${wk.x.name} is ${wk.w >= 0 ? "up" : "down"} ${fmt(Math.abs(wk.w), 0)}% this week`, p: `Over the last five trading days, against ${pct(S.q[wk.x.symbol].chgPct)} today.`, viz: () => sparkCard(wk.x.symbol) });
-  // how much is in one company
+  // how much is in one company (or one trust, which spreads it across many itself; a fund's spread is the point of it)
   if (o.length >= 2) {
-    const top = [...o].sort((a, b) => valueOf(b) - valueOf(a))[0], share = Math.round((valueOf(top) / T.value) * 100);
-    if (share >= 30) out.push({ rank: 2, kick: "Your mix", c: "var(--blue)", sym: top.symbol, h: `${share}% of your money is in one company`,
-      p: `${top.name} is ${share >= 50 ? "over half" : share >= 34 ? "over a third" : "almost a third"} of what you own, so its days move your total more than the market does.`, viz: () => mixBar(o) });
+    const top = [...o].sort((a, b) => valueOf(b) - valueOf(a))[0], share = Math.round((valueOf(top) / T.value) * 100), k = kindOf(S.q[top.symbol]);
+    const part = share >= 50 ? "over half" : share >= 34 ? "over a third" : "almost a third";
+    if (share >= 30 && (k === "share" || k === "trust")) out.push({ rank: 2, kick: "Your mix", c: "var(--blue)", sym: top.symbol, h: `${share}% of your money is in one ${k === "trust" ? "trust" : "company"}`,
+      p: k === "trust" ? `${top.name} is ${part} of what you own. It spreads that across many companies itself, but its days still move your total most.`
+        : `${top.name} is ${part} of what you own, so its days move your total more than the market does.`, viz: () => mixBar(o) });
   }
   // dividends, from what each paid over the last year
   const divs = o.map((x) => ({ x, v: (S.years[x.symbol]?.div12 || 0) * x.qty * rate(S.q[x.symbol].cur) })).filter((a) => a.v > 0.5).sort((a, b) => b.v - a.v);
@@ -507,9 +515,9 @@ function itemRow(x, i, mode) {
     sp, h("span.r", {}, ...right, h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
 }
 function emptyView() {
-  const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
+  const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
   return [h("div.empty", {}, h("h2.rise", { text: "Start with what you own" }),
-    h("p.rise", { vars: { i: "1" }, text: "Add your shares and funds, and Markets tells you each day what they're worth, what moved them and what's worth knowing. Or just follow a few." }),
+    h("p.rise", { vars: { i: "1" }, text: "Add your shares, funds and investment trusts, and Markets tells you each day what they're worth, what moved them and what's worth knowing. Or just follow a few." }),
     h("div.rise", { vars: { i: "2" } }, h("button.btn.go.press", { type: "button", onclick: () => openSheet(searchView), style: "margin-top:10px" }, "Find and Add")),
     h("div.chips.rise", { vars: { i: "3" } }, picks.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => openStock(s, { name: n }), text: n })))),
   h("h3.label", {}, "Markets"),
@@ -537,6 +545,12 @@ function holdingsView() {
     const t2 = C.el("text", { class: "sub", x: 66, y: 82, "text-anchor": "middle", "font-size": 11.5 }); t2.textContent = plural(T.o.length, "holding");
     svg.append(t1, t2);
     parts.push(h("div.ring", {}, svg, h("div.legend", {}, slices.map((sl) => h("div", {}, h("i", { style: `background:${sl.c}` }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` }))))));
+    // (and, where it's more than one kind, how it splits between them)
+    const kinds = {};
+    for (const x of T.o) { const k = kindOf(S.q[x.symbol]); kinds[k] = (kinds[k] || 0) + valueOf(x); }
+    const ks = Object.entries(kinds).filter(([k, v]) => KINDS_SAID[k] && v > 0).sort((a, b) => b[1] - a[1]), KC = { share: "#7db8ff", trust: "#5ed6cc", fund: "#9b8cff", crypto: "#ffc56e" };
+    if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
+      h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
   }
   const ownedFirst = [...S.list].sort((a, b) => (valueOf(b) ?? -1) - (valueOf(a) ?? -1));
   parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
@@ -629,7 +643,7 @@ function stockView(sym, o = {}) {
   const seg = h("div.seg", { role: "group", "aria-label": "Chart range" }, h("span.sl"), RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: label })));
   const why = h("p.why", { id: "why" }, h("span", { style: "opacity:.35", text: "Finding out why…" }));
   const parts = [
-    h("div.shead", {}, backBtn(), h("small", { text: `${plainSym(sym)}${q.ex ? ` · ${q.ex}` : ""}` }), closeBtn()),
+    h("div.shead", {}, backBtn(), h("small", { text: [plainSym(sym), q.ex, ["trust", "fund"].includes(kindOf(q)) ? KIND_SAID[kindOf(q)] : null].filter(Boolean).join(" · ") }), closeBtn()),
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
     h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
@@ -654,6 +668,8 @@ function facts(sym, held, q) {
   const hi = y?.hi52 ?? q.hi52, lo = y?.lo52 ?? q.lo52;
   if (hi && lo && hi > lo) { const at = (q.price - lo) / (hi - lo); rows.push(h("div.fact", {}, h("span", { text: "The last 52 weeks" }), h("b", { text: at >= 0.9 ? "Near its high" : at <= 0.1 ? "Near its low" : at >= 0.5 ? "In the upper half" : "In the lower half" }), h("i.num", { text: y?.yr != null ? `${pct(y.yr, 1)} on a year ago` : "" }), ...range52(q, lo, hi, at))); }
   if (y?.div12 > 0 && q.price) rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%${held?.qty > 0 ? ` · about ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} to you` : ""}` })));
+  if (kindOf(q) === "trust") rows.push(h("div.fact", {}, h("span", { text: "Investment trust" }), h("b", { text: "A company that invests in many others" }),
+    h("p", { text: "You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
   if (!y && !isIndex(q) && q.type !== "CURRENCY") A.years([sym]).then((r) => { if (r.years[sym]) { S.years[sym] = r.years[sym]; const f = $("#facts"); if (f && Sheet.stack.at(-1)?.[1]?.[0] === sym) f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); } }, () => {});
   return h("div.facts", { id: "facts" }, rows);
 }
@@ -741,20 +757,22 @@ async function stockChart(sym, box, seg) {
 
 // Find something to add
 function searchView() {
-  const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund or symbol" });
-  const results = h("div.results", { id: "results" }, h("p.hint", { text: "Try a name like Rolls-Royce or Vanguard, or a symbol like AAPL. London shares end in .L." }));
+  const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund, trust or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
+  const start = () => [h("p.hint", { text: "Try a name like Rolls-Royce, Vanguard or Scottish Mortgage, or a symbol like AAPL. London shares end in .L." }),
+    h("div.browse", {}, h("h3", { text: "Investment trusts" }), h("div.chips", {}, TRUST_PICKS.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => pushSheet(stockView, s, { name: n }), text: n }))))];
+  const results = h("div.results", { id: "results" }, ...start());
   let t = null, n = 0;
   input.addEventListener("input", () => {
     clearTimeout(t);
     const q = input.value.trim();
-    if (!q) { results.replaceChildren(h("p.hint", { text: "Try a name like Rolls-Royce or Vanguard, or a symbol like AAPL. London shares end in .L." })); return; }
+    if (!q) { results.replaceChildren(...start()); return; }
     t = setTimeout(async () => {
       const k = ++n;
       try {
         const r = await A.search(q);
         if (k !== n) return;
         results.replaceChildren(...(r.results.length ? r.results.map((x, i) => h("button.res.rise", { type: "button", vars: { i: String(i) }, onclick: () => pushSheet(stockView, x.symbol, { name: x.name }) },
-          h("b", { text: x.name }), h("small", { text: [plainSym(x.symbol), x.ex, x.kind].filter(Boolean).join(" · ") }),
+          h("b", { text: x.name }), h("small", { text: [plainSym(x.symbol), x.ex, KIND_SAID[x.kind]].filter(Boolean).join(" · ") }),
           h("span.r", { class: "r", style: "color:var(--text-3)" }, S.list.some((y) => y.symbol === x.symbol) ? "In your list" : icon("chev", 16, 2.4)))) : [h("p.hint", { text: `Nothing found for “${q}”.` })]));
       } catch (e) { if (k === n) results.replaceChildren(h("p.hint", { text: e.message })); }
     }, 250);

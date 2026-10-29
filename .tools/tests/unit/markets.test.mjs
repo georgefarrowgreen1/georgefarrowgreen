@@ -1,9 +1,9 @@
-// Markets (functions/_markets.js, markets/): names said as people say them, London's pence in pounds, a chart answer read
+// Markets (functions/_markets.js, markets/): names said as people say them, investment trusts told apart, London's pence in pounds, a chart answer read
 // whole (its points, its day, its year, its dividends), and the app's files all kept for offline
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { plainName, readChart, cleanSymbol } from "../../../functions/_markets.js";
+import { plainName, readChart, cleanSymbol, kindOf } from "../../../functions/_markets.js";
 
 test("company names, as people say them", () => {
   assert.equal(plainName("Rolls-Royce Holdings plc"), "Rolls-Royce");
@@ -14,6 +14,23 @@ test("company names, as people say them", () => {
   assert.equal(plainName("BP p.l.c."), "BP");
   assert.equal(plainName("Vanguard S&P 500 UCITS ETF"), "Vanguard S&P 500 UCITS ETF");
   assert.equal(plainName("", "AAPL"), "AAPL");
+});
+
+test("investment trusts, told from shares and funds", () => {
+  assert.equal(kindOf("EQUITY", "Scottish Mortgage Investment Trust PLC", "SMT.L"), "trust");
+  assert.equal(kindOf("EQUITY", "Polar Capital Technology Trust PLC", "PCT.L"), "trust");
+  assert.equal(kindOf("EQUITY", "Lowland Investment Company plc", "LWI.L"), "trust");
+  assert.equal(kindOf("EQUITY", "Bluefield Solar Income Fund Limited", "BSIF.L"), "trust");
+  assert.equal(kindOf("EQUITY", "Alliance Witan PLC", "ALW.L"), "trust", "a well-known one whose name doesn't say so");
+  assert.equal(kindOf("EQUITY", "Secure Trust Bank PLC", "STB.L"), "share", "a bank with Trust in its name");
+  assert.equal(kindOf("EQUITY", "Trustpilot Group plc", "TRST.L"), "share");
+  assert.equal(kindOf("EQUITY", "Northern Trust Corporation", "NTRS"), "share", "only London's");
+  assert.equal(kindOf("ETF", "Vanguard S&P 500 UCITS ETF", "VUSA.L"), "fund");
+  assert.equal(kindOf("MUTUALFUND", "Vanguard LifeStrategy 80% Equity", "0P0000TKZO.L"), "fund");
+  assert.equal(kindOf("INDEX", "FTSE 100", "^FTSE"), "index");
+  assert.equal(plainName("Scottish Mortgage Investment Trust PLC"), "Scottish Mortgage");
+  assert.equal(plainName("The City of London Investment Trust plc"), "City of London");
+  assert.equal(plainName("Polar Capital Technology Trust PLC"), "Polar Capital Technology Trust");
 });
 
 test("symbols: as markets write them, and nothing else", () => {
