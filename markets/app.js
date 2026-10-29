@@ -758,7 +758,7 @@ async function stockChart(sym, box, seg) {
 // Find something to add
 function searchView() {
   const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund, trust or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
-  const start = () => [h("p.hint", { text: "Try a name like Rolls-Royce, Vanguard or Scottish Mortgage, or a symbol like AAPL. London shares end in .L." }),
+  const start = () => [h("p.hint", { text: "Try a name like Rolls-Royce, Vanguard or Scottish Mortgage, or a symbol like AAPL or JAM." }),
     h("div.browse", {}, h("h3", { text: "Investment trusts" }), h("div.chips", {}, TRUST_PICKS.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => pushSheet(stockView, s, { name: n }), text: n }))))];
   const results = h("div.results", { id: "results" }, ...start());
   let t = null, n = 0;

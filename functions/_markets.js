@@ -172,15 +172,28 @@ export async function rates(env, curs) {
   }));
   return out;
 }
-// Finding something to add, by name or symbol
+// Finding something to add, by name or symbol: asked for the UK's first (so London's listings come before America's
+// namesakes); a London symbol typed as it's said (JAM, for JAM.L) put first, where there is one; and where the words find
+// nothing, asked again without the words people add (trust, plc, fund)
 const KINDS = new Set(["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "MUTUALFUND", "CURRENCY"]);
+const FILLER = /\b(investment trust|investment company|trust|plc|fund|shares?|investments?|ltd|limited|the)\b/gi;
 export async function search(env, q) {
-  const words = String(q || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 40);
+  const words = String(q || "").replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
   if (words.length < 1) return [];
-  return cached(env, `s2:${words.toLowerCase()}`, 24 * HOUR, async () => {
-    const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(words)}&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=false`);
-    return (j?.quotes || []).filter((x) => x?.symbol && SYMBOL.test(String(x.symbol).toUpperCase()) && KINDS.has(x.quoteType))
-      .map((x) => ({ symbol: String(x.symbol).toUpperCase(), name: plainName(x.longname || x.shortname, x.symbol), ex: x.exchDisp || EXCHANGES[x.exchange] || x.exchange || "", kind: kindOf(x.quoteType, x.longname || x.shortname, String(x.symbol).toUpperCase()) })).slice(0, 8);
+  return cached(env, `s3:${words.toLowerCase()}`, 24 * HOUR, async () => {
+    const ask = async (w) => {
+      const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(w)}&quotesCount=12&newsCount=0&listsCount=0&enableFuzzyQuery=false&region=GB&lang=en-GB`);
+      return (j?.quotes || []).filter((x) => x?.symbol && SYMBOL.test(String(x.symbol).toUpperCase()) && KINDS.has(x.quoteType))
+        .map((x) => ({ symbol: String(x.symbol).toUpperCase(), name: plainName(x.longname || x.shortname, x.symbol), ex: x.exchDisp || EXCHANGES[x.exchange] || x.exchange || "", kind: kindOf(x.quoteType, x.longname || x.shortname, String(x.symbol).toUpperCase()) }));
+    };
+    let out = await ask(words);
+    if (!out.length) { const plain = words.replace(FILLER, " ").replace(/\s+/g, " ").trim(); if (plain && plain.toLowerCase() !== words.toLowerCase()) out = await ask(plain); }
+    const said = [...new Set(words.toUpperCase().split(" ").filter((w) => /^(?=.*[A-Z])[A-Z0-9]{2,5}$/.test(w)))].slice(0, 2);
+    const london = (await Promise.all(said.filter((t) => !out.some((x) => x.symbol === `${t}.L`)).map((t) => chart(env, `${t}.L`, "1d").catch(() => null))))
+      .filter((c) => c?.price != null).map((c) => ({ symbol: c.symbol, name: c.name, ex: c.ex, kind: c.kind }));
+    // (what was typed as a symbol, first: London's, then elsewhere's)
+    const exact = said.flatMap((t) => [`${t}.L`, t]), rank = (x) => (exact.includes(x.symbol) ? exact.indexOf(x.symbol) : exact.length), seen = new Set();
+    return [...london, ...out].filter((x) => !seen.has(x.symbol) && seen.add(x.symbol)).map((x, i) => [rank(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((r) => r[2]).slice(0, 8);
   });
 }
 // The news about each of a few symbols, together, newest first

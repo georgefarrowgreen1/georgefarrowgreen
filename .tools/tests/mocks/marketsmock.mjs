@@ -17,6 +17,7 @@ const START = {
   ARM: { name: 'Arm Holdings plc American Depositary Shares', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 163.71, price: 160.4, hi: 188.8, lo: 98.4, tz: 'America/New_York', divs: [] },
   'SMT.L': { name: 'Scottish Mortgage Investment Trust PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1012, price: 1024.5, hi: 1100, lo: 780, tz: 'Europe/London', divs: [[-100, 4.4]] },
   'ALW.L': { name: 'Alliance Witan PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1240, price: 1236, hi: 1290, lo: 1050, tz: 'Europe/London', divs: [[-60, 6.85], [-150, 6.85]] },
+  'JAM.L': { name: 'JPMorgan American Investment Trust plc', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1094, price: 1101, hi: 1150, lo: 860, tz: 'Europe/London', divs: [[-120, 4.5]] },
   '^FTSE': { name: 'FTSE 100', cur: 'GBP', ex: 'FGI', exd: 'FTSE Index', type: 'INDEX', prev: 8360.7, price: 8412.6, hi: 8550, lo: 7400, tz: 'Europe/London', divs: [] },
   '^GSPC': { name: 'S&P 500', cur: 'USD', ex: 'SNP', exd: 'SNP', type: 'INDEX', prev: 6188.9, price: 6214.3, hi: 6300, lo: 4980, tz: 'America/New_York', divs: [] },
   'BTC-USD': { name: 'Bitcoin USD', cur: 'USD', ex: 'CCC', exd: 'CCC', type: 'CRYPTOCURRENCY', prev: 94770, price: 97420, hi: 109000, lo: 52000, tz: 'UTC', divs: [] },
