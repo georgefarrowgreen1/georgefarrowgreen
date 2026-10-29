@@ -898,7 +898,7 @@ const ROUTES = {
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);
-    res.headers.set("Content-Disposition", `attachment; filename="georgefarrowgreen-account-${u.handle}.json"`);
+    res.headers.set("Content-Disposition", `attachment; filename="inflite-account-${u.handle}.json"`);
     return res;
   },
 

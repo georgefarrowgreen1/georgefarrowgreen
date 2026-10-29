@@ -273,7 +273,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.11";
+const BUILD = "1.12";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -3365,7 +3365,7 @@ function exportView() {
         const { dataPdf } = await import("./datapdf.js");
         return dataPdf(data, { did: (x) => (DID[x.kind] || (() => x.kind))(x), units: (u) => unitsSaid({ ...unitsHere(), ...u }) });
       }));
-      const a = h("a", { href: URL.createObjectURL(file), download: `georgefarrowgreen-account-${S.me.handle}.pdf` });
+      const a = h("a", { href: URL.createObjectURL(file), download: `inflite-account-${S.me.handle}.pdf` });
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 30000);
       toast("Your data is downloading.");
