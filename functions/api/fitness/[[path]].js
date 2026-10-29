@@ -248,7 +248,9 @@ const ROUTES = {
   },
   "POST garmin-tick": async ({ request, env }) => {
     tickAuthOk(request, env);
-    const [garmin, morning, strava] = await Promise.all([garminTick(env), morningTick(env), stravaTick(env).catch(() => null)]);
+    // (the morning's notices first, quick and due now, so a slow Garmin or Strava can't hold them past the tick's time)
+    const morning = await morningTick(env).catch(() => null);
+    const [garmin, strava] = await Promise.all([garminTick(env), stravaTick(env).catch(() => null)]);
     return json({ ...garmin, morning, strava });
   },
   // Signed in on the account's page, for Fitness (functions/_handback.js): the code it was handed back with, and the

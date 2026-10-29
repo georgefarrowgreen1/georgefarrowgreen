@@ -15,7 +15,7 @@
 // it's just on to `to`.
 import { HttpError, db, sha256, hex, randomToken, issueSession } from "./_pigeon.js";
 import { cookieUser, withSession } from "./_account.js";
-import { siteOf, appOrigin, homeOrigin } from "./_sites.js";
+import { siteOf, appOrigin, homeOrigin, APP_NAMES, appsSite, homeSite, oldApp } from "./_sites.js";
 
 const NOTE = "hop", TTL = 2 * 60e3;
 // (made here when it's first wanted)
@@ -28,11 +28,16 @@ async function ready(env) {
   }
   return D;
 }
-// `to`, if it's somewhere on the given site ("apps" or "home"), over https (or the tests' own, over what they use)
+// `to`, if it's one of the given site's own addresses ("apps": an app's; "home": the home page, or an app's old
+// address there), over https (or the tests' own, over what they use): never any other host under either name, so it
+// can't be made a trusted-looking way off to somewhere else
+const ownHost = (h, site, env) => site === "apps"
+  ? APP_NAMES.some((n) => h === `${n}.${appsSite(env)}`)
+  : h === homeSite(env) || h === `www.${homeSite(env)}` || !!oldApp(h, env);
 function onSite(to, site, env) {
   try {
     const u = new URL(to);
-    if (siteOf(u.hostname, env) !== site) return null;
+    if (siteOf(u.hostname, env) !== site || !ownHost(u.hostname, site, env)) return null;
     if (u.protocol !== "https:" && !(env?.ACCOUNT_SITE && u.protocol === "http:")) return null;
     return u.href;
   } catch (_) { return null; }

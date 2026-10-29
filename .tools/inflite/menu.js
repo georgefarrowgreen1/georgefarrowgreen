@@ -76,6 +76,8 @@ const IFL = (() => {
     open = null;
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
     if (now) m.layer.remove();

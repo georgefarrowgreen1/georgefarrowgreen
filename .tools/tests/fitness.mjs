@@ -99,6 +99,7 @@ const SACTS = [{ id: 7001, name: 'Lunch ride', sport_type: 'VirtualRide', traine
   { id: 7005, name: 'Old ride', sport_type: 'Ride', start_date: sIso(SAT - 400 * 86400 - 13 * 60), secs: 1200, w: 170, ll: true, old: true }];
 const slog = [];
 let sTok = 'sa1';
+const SNAMES = {};
 createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), auth = req.headers.authorization || '';
   let body = ''; for await (const c of req) body += c;
@@ -112,6 +113,9 @@ createServer(async (req, res) => {
   if (u.pathname === '/oauth/deauthorize') return send(200, {});
   if (u.pathname === '/api/v3/push_subscriptions') return req.method === 'GET' ? send(200, []) : send(201, { id: 77 });
   if (auth !== `Bearer ${sTok}`) return send(401, {});
+  if (u.pathname === '/api/v3/athlete') return send(200, { id: 555 });
+  const one = /^\/api\/v3\/activities\/(\d+)$/.exec(u.pathname);
+  if (one) return send(200, { id: Number(one[1]), name: SNAMES[one[1]] ?? SACTS.find((x) => String(x.id) === one[1])?.name ?? 'Ride' });
   if (u.pathname === '/api/v3/athlete/activities') { const after = Number(u.searchParams.get('after')), before = Number(u.searchParams.get('before'));
     const t = (a) => Date.parse(a.start_date) / 1000;
     return send(200, SACTS.filter((a) => (after ? t(a) > after && !a.old : true) && (before ? t(a) < before : true)).map(({ secs, w, ll, old, ...a }) => a)); }
@@ -209,7 +213,7 @@ await L.p.mouse.click(20, 20); await L.p.waitForSelector('.ifm-layer', { state: 
 ok(true, 'and closed with a tap off it');
 await you(L);
 const card = await L.p.innerText('#sheet .acct');
-ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
+ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign Out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
 ok(!/Example rides/.test(await L.p.innerText('#sheet')), 'no example rides to turn on: only your own');
 await done(L);
 
@@ -605,7 +609,9 @@ const sVerify = createHash('sha256').update('fitness-strava-hook|test-strava-sec
 const sCheck = await api(L, `/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=${sVerify}&hub.challenge=abc123`), sCheckBad = await api(L, '/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=abc123');
 const hook = (e) => api(L, '/api/fitness/strava/hook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e) });
 await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 78, updates: { title: 'Not ours' } });
-await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { title: 'Lunch ride, renamed' } });
+// (the name taken from Strava itself, whatever the event says: Strava doesn't sign them)
+SNAMES['7001'] = 'Lunch ride, renamed';
+await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { title: 'Forged name' } });
 await hook({ object_type: 'activity', object_id: 7006, aspect_type: 'create', owner_id: 555, subscription_id: 77 });
 const sAfter = rows(`SELECT name FROM fx_acts WHERE user_id = '${sam}' AND id = 's7001'`)[0], sDue = rows(`SELECT due FROM fx_strava WHERE user_id = '${sam}'`)[0];
 ok(sCheck.status === 200 && JSON.parse(sCheck.body)['hub.challenge'] === 'abc123' && sCheckBad.status === 403 && sAfter?.name === 'Lunch ride, renamed' && sDue?.due === 1,
@@ -615,6 +621,10 @@ const sAll = await api(L, '/api/fitness/strava/all', { method: 'POST', headers: 
 const sWait = rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).map((r) => r.id);
 ok(sAll.status === 200 && sWait.join() === '7005', 'all your Strava history: the old ride found, waiting to be read (and only it)', `${sAll.status} ${JSON.stringify(sWait)}`);
 // disconnected on Strava: the tokens and what's waiting go here; what's in Fitness stays
+// (said by someone else, while Strava still takes the tokens: nothing's forgotten)
+await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
+ok(rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length === 1, 'a forged “disconnected” from Strava: checked with Strava, which still takes the tokens, so kept');
+sTok = 'revoked';
 await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
 ok(!rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length && !rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length && rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%'`).length === 2,
   'disconnected on Strava: its tokens and the files waiting gone; the activities already in Fitness stay');

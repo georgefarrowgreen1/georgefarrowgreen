@@ -17,7 +17,7 @@ await G.p.evaluate(() => localStorage.setItem('inflight-haptics', '0'));
 // the headers: the old address's handover page may be framed by the new address only
 let h = await fetch(OLD + '/pigeon/handover');
 ok(h.status === 200 && !h.headers.get('x-frame-options') && h.headers.get('content-security-policy').includes(`frame-ancestors ${NEW}`) && !h.headers.get('content-security-policy').includes("frame-ancestors 'none'"), 'handover page: framed by the new address only', h.headers.get('content-security-policy'));
-h = await fetch(NEW + '/'); ok(h.headers.get('content-security-policy').includes(`frame-src ${OLD}`), 'new address may frame the old one');
+h = await fetch(NEW + '/'); ok(!/frame-src/.test(h.headers.get('content-security-policy')), 'the handover done with, the new address frames nothing');
 h = await fetch(OLD + '/pigeon/'); ok(h.headers.get('x-frame-options') === 'DENY' && !/frame-src/.test(h.headers.get('content-security-policy')), 'old address app page unchanged');
 ok((await fetch(NEW + '/handover')).status === 404, 'no handover page at the new address');
 

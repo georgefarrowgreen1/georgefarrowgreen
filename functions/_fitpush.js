@@ -91,9 +91,11 @@ export async function morningTick(env, t = Date.now()) {
     let days = {}; try { days = JSON.parse(r.days || "{}"); } catch (_) {}
     const note = days[now.day];
     if (!note) continue;   // (its words run out: the app hasn't been opened for a week or more)
-    const out = await pushToSub(env, r, { title: note.title, body: note.body, tag: "fitness-morning", url: "./", ttl: 4 * 3600 });
+    const out = await pushToSub(env, r, { title: note.title, body: note.body, tag: "fitness-morning", url: "./", ttl: 4 * 3600 }).catch(() => "failed");
     if (out === "gone") await D.prepare("DELETE FROM fx_push WHERE endpoint = ?").bind(r.endpoint).run();
-    if (out === "sent") sent++;
+    else if (out === "sent") sent++;
+    // (not sent, the push service down a moment, say: the day given back, so the next tick, still in time, tries again)
+    else await D.prepare("UPDATE fx_push SET sent = ?2 WHERE endpoint = ?1 AND sent = ?3").bind(r.endpoint, r.sent ?? null, now.day).run();
   }
   return { phones: results.length, sent };
 }

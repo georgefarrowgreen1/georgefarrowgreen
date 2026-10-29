@@ -103,6 +103,8 @@ const IFL = (() => {
     open = null;
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
     if (now) m.layer.remove();
@@ -234,7 +236,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.07";
+const BUILD = "1.08";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1095,7 +1097,7 @@ function deleting(r) {
         try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); anew(() => { S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }); }
         catch (err) { toast(err.message, true); }
       } }, icon("undo", 20, 2.2), "Keep my account"),
-      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
+      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign Out")))),
   ];
 }
 // The email's link to keep it (#keep=): kept once that's tapped, not as the link's opened. (A link that won't work is

@@ -114,7 +114,7 @@ const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => /(^|;\s*)(__Secure-)?account=/.test(document.cookie))), 'the page itself can\'t read the sign-in');
 ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email or rows here)', lSays);
-ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
+ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign Out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);
 // InFlite's menu, from your photo at the top left, now you're signed in (Settings' gear gone: it's a row in the menu)
 await L.p.waitForSelector('#me-btn:not([hidden])', { timeout: 10000 }).catch(() => {});

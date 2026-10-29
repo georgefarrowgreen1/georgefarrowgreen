@@ -87,6 +87,8 @@ const IFL = (() => {
     open = null;
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
     if (now) m.layer.remove();
@@ -212,7 +214,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.2";            // shown in InFlite's menu
+const APP_VERSION = "1.4.3";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -7140,7 +7142,7 @@ function fcEvents(m, t) {
   }
   // it turned to follow someone who moved
   if (!m.via) for (const l of legs.filter((x) => !x[3])) {
-    const who = m.to === S.me.id ? "you" : first(friend(m.to)?.name || "them");
+    const who = m.to === S.me.id ? "you" : esc(first(friend(m.to)?.name || "them"));
     ev.push({ at: l[2], icon: I.loc, tone: "", title: "Changed course", sub: `To follow ${who}${who === "you" ? ": you moved" : ""}` });
   }
   // near misses, once each (a pair can be stored from both sides): "Passed Reuben's pigeon", "Overtook your pigeon to Nia"
@@ -7148,7 +7150,7 @@ function fcEvents(m, t) {
   for (const n of m.near || []) {
     if (met.has(n.other.id)) continue; met.add(n.other.id);
     const o = n.other, nm = (id) => first(personById(id)?.name || "a friend");
-    const whose = o.from === S.me.id ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
+    const whose = o.from === S.me.id ? `your pigeon to ${esc(nm(o.to))}` : `${esc(nm(o.from))}’s pigeon`;
     const over = n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air";
     if (n.kind === "flock") {                                       // (they part when the server says: n.until)
       const parts = n.until ?? n.at;

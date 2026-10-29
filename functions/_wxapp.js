@@ -51,6 +51,8 @@ export function serveWeather(res, path) {
   // Cloudflare passes them through rather than keeping them and telling browsers to keep them for hours
   if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "private, no-cache");
   if (res.status === 200 && /\.(png|svg)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=86400");
+  // (the map's libraries, a version that changes only with the app's own sw.js, LIBS: kept a week, as Fitness has them)
+  if (res.status === 200 && /^\/weather\/vendor\/.+\.(m?js|css)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=604800");
   return out;
 }
 

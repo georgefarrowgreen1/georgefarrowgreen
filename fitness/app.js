@@ -112,6 +112,8 @@ const IFL = (() => {
     open = null;
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
     if (now) m.layer.remove();
@@ -617,7 +619,7 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.07";
+const BUILD = "1.08";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -709,7 +711,7 @@ function settingsView() {
         row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }))),
-      section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign out"))),
+      section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign Out"))),
     ],
   };
 }

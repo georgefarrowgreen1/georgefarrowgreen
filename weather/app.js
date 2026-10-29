@@ -94,6 +94,8 @@ const IFL = (() => {
     open = null;
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
     if (now) m.layer.remove();
@@ -2659,7 +2661,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.08";
+const BUILD = "1.09";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3146,7 +3148,9 @@ function motion(key, ...els) {
 // fetched the first time it is (and kept by the service worker with the rest, so offline too): a tile or a day in full
 // (detail.js), and Settings (settings.js). DE() and SE(): the one that's come, if it has (what would only be drawn in
 // it, not yet open, needn't be)
-const later = (get) => { let p = null, m = null; return [() => (p ||= get().then((x) => (m = x), (e) => { p = null; throw e; })), () => m]; };
+// (a new version in since this page opened: its module would be the new version's, in the old page, so the page starts
+// again on the new one instead)
+const later = (get) => { let p = null, m = null; return [() => (p ||= newApp ? (location.reload(), new Promise(() => {})) : get().then((x) => (m = x), (e) => { p = null; throw e; })), () => m]; };
 const [detailJs, DE] = later(() => import("./detail.js")), [settingsJs, SE] = later(() => import("./settings.js"));
 const openDetail = (kind) => detailJs().then((m) => m.openDetail(kind)).catch(() => {});
 const openDay = (key) => detailJs().then((m) => m.openDay(key)).catch(() => {});

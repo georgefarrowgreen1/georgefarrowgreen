@@ -283,14 +283,23 @@ export async function hookEvent(env, e) {
   if (!stravaOn(env) || !e || typeof e !== "object") return;
   const D = await tables(env), sub = (await D.prepare("SELECT v FROM fx_meta WHERE k = 'strava_hook'").first())?.v;
   if (!sub || String(e.subscription_id) !== sub) return;
-  const g = await D.prepare("SELECT user_id FROM fx_strava WHERE athlete = ?").bind(Number(e.owner_id)).first();
+  const g = await D.prepare("SELECT * FROM fx_strava WHERE athlete = ?").bind(Number(e.owner_id)).first();
   if (!g) return;
-  if (e.object_type === "athlete" && String(e.updates?.authorized) === "false") return forget(env, g.user_id);
+  // (Strava doesn't sign its events, and the subscription's number and an athlete's are no secret: so what an event says
+  // is checked with Strava itself before it's acted on. Disconnected: only once Strava refuses the tokens; a new name:
+  // the activity's own, as Strava has it. A new activity only marks them to be asked, which the scheduler paces anyway)
+  if (e.object_type === "athlete" && String(e.updates?.authorized) === "false") {
+    const gone = await accessFor(env, D, g).then((t) => get(env, t, "/athlete").then(() => false), (err) => err.status === 401).catch((err) => err.status === 401);
+    return gone ? forget(env, g.user_id) : undefined;
+  }
   if (e.object_type !== "activity" || !/^\d{1,20}$/.test(String(e.object_id))) return;
   if (e.aspect_type === "create") await D.prepare("UPDATE fx_strava SET due = 1 WHERE user_id = ?").bind(g.user_id).run();
   // (renamed on Strava: renamed here, where it's in already and still has Strava's name)
   if (e.aspect_type === "update" && typeof e.updates?.title === "string") {
-    const name = e.updates.title.trim().slice(0, 80);
+    const known = await D.prepare("SELECT 1 FROM fx_acts WHERE user_id = ? AND id = ? UNION ALL SELECT 1 FROM fx_strava_new WHERE user_id = ? AND id = ?").bind(g.user_id, `s${e.object_id}`, g.user_id, String(e.object_id)).first();
+    if (!known) return;
+    const act = await accessFor(env, D, g).then((t) => get(env, t, `/activities/${e.object_id}`)).catch(() => null);
+    const name = String(act?.name || "").trim().slice(0, 80);
     if (name) { await D.prepare("UPDATE fx_acts SET name = ?, changed = ? WHERE user_id = ? AND id = ?").bind(name, Date.now(), g.user_id, `s${e.object_id}`).run(); await D.prepare("UPDATE fx_strava_new SET name = ? WHERE user_id = ? AND id = ?").bind(name, g.user_id, String(e.object_id)).run(); }
   }
 }

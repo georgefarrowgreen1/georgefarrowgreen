@@ -607,8 +607,11 @@ export async function tick(env, origin) {
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
   await lockOldSecrets(D, env).catch((e) => logError(env, "pigeon at rest", e));
   await vanishSweep(env).catch((e) => logError(env, "pigeon vanish", e));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
-  // old rate-limit windows and ended sessions (an account page opened from an app ends with the app's sign-in)
-  await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
+  // old rate-limit windows and ended sessions (an account page opened from an app ends with the app's sign-in): once an
+  // hour, not every tick (each a read of whole tables)
+  const swept = await D.prepare("SELECT v FROM pg_meta WHERE k = 'sweep_at'").first().catch(() => null);
+  if (!swept || t - Number(swept.v) >= HOUR) await D.batch([D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('sweep_at', ?)").bind(String(t)),
+    D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
     D.prepare("DELETE FROM pg_sessions WHERE parent IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = pg_sessions.parent)"),
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
