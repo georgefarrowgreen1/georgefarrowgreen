@@ -3,7 +3,8 @@
 // - Today: what you own, worth now and how it's done today, drawn through the day; one line on what moved it; what's
 //   worth knowing, one card at a time (an odd move, a holding near its high, a big week, how much is in one company,
 //   your dividends, how you've done since you bought); your biggest movers; and London, New York and Bitcoin.
-// - Holdings: everything you own and follow, and the ring of your mix.
+// - Holdings: everything you own and follow, the ring of your mix, and your accounts (ISA, pension, general) with what's
+//   left of your ISA's allowance for the tax year.
 // - News: the day in two sentences, then the stories about what you hold.
 //
 // Tap anything for its page: its price, a chart you can read with your finger, from a day to five years (reshaping as
@@ -261,16 +262,19 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.51";
+const BUILD = "1.52";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
 const MARKET_OF = { London: "^FTSE", Nasdaq: "^GSPC", NYSE: "^GSPC", "NYSE American": "^GSPC", "NYSE Arca": "^GSPC" };
+// the accounts a holding can be held in; and an ISA's allowance, for each tax year (6 April to 5 April)
+const ACCOUNTS = [["isa", "ISA"], ["sipp", "Pension"], ["gia", "General"]];
+const ACCOUNT_NAME = Object.fromEntries(ACCOUNTS);
 const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", "this month"], ["1y", "1Y", "this year"], ["5y", "5Y", "in 5 years"]];
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -328,6 +332,23 @@ function totals() {
   const costed = o.filter((x) => x.cost != null), paid = costed.reduce((a, x) => a + x.cost * x.qty * rate(S.q[x.symbol].cur), 0), now = costed.reduce((a, x) => a + valueOf(x), 0);
   return { o, value, day, dayPct: value - day ? (day / (value - day)) * 100 : 0, paid, gain: costed.length ? now - paid : null, gainPct: paid ? ((now - paid) / paid) * 100 : null, costed };
 }
+// your money in each account (and what's in none yet): [{ key, name, o, value, day }], largest first
+function byAccount(o = owned()) {
+  const out = [...ACCOUNTS, [null, "Not in an account"]].map(([key, name]) => { const xs = o.filter((x) => (x.account || null) === key);
+    return { key, name, o: xs, value: xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
+  return out.filter((a) => a.o.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
+}
+// the ISA's tax year: what's left of its allowance, and how long to use it (it ends on 5 April, London's)
+function isaYear() {
+  if (!S.isa) return null;
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).split("-").map(Number);
+  const endY = m > 4 || (m === 4 && d >= 6) ? y + 1 : y, days = Math.round((Date.UTC(endY, 3, 5) - Date.UTC(y, m - 1, d)) / 864e5) + 1;
+  const left = Math.max(0, S.isa.allowance - S.isa.paid);
+  return { ...S.isa, left, days, used: Math.min(1, S.isa.paid / S.isa.allowance) };
+}
+const tracksIsa = () => !!S.isa && (S.isa.paid > 0 || S.list.some((x) => x.account === "isa"));
+const allowBar = (used) => h("div.allow", {}, h("i", { style: `width:${Math.max(used > 0 ? 2 : 0, used * 100)}%` }));
+
 // your money through the day: each holding at its price at each moment (its last close before it opened)
 function daySeries() {
   const o = owned().filter((x) => S.q[x.symbol].sparkT?.length > 1);
@@ -397,6 +418,10 @@ function insights() {
     out.push({ rank: 1.5, kick: "Dividends", c: "var(--up)", h: `About ${money(sum, "GBP", 0)} a year in dividends`, p: `From ${and2(divs.slice(0, 3).map((d) => d.x.name))}${divs.length > 3 ? " and others" : ""}, at what they paid over the last year.`,
       viz: () => vbars(divs.slice(0, 3).map((d) => [d.x.name, d.v]), (v) => money(v, "GBP", 0), divs[0].v) });
   }
+  // what's left of the ISA's allowance, in the tax year's last eight weeks
+  const iy = isaYear();
+  if (iy && tracksIsa() && iy.left > 0 && iy.days <= 56) out.push({ rank: 2.6, kick: "Your ISA", c: "var(--up)", open: () => openSheet(isaView), h: `${money(iy.left, "GBP", 0)} of your ISA allowance left`,
+    p: `It goes on 5 April, ${plural(iy.days, "day")} from now, and what isn't used doesn't carry over to the next tax year.`, viz: () => allowBar(iy.used) });
   // since you bought
   if (T.gain != null && T.costed.length) out.push({ rank: 1, kick: "Since you bought", c: T.gain >= 0 ? "var(--up)" : "var(--down)", h: `${T.gain >= 0 ? "Up" : "Down"} ${money(Math.abs(T.gain), "GBP", 0)} on what you paid`,
     p: `${pct(T.gainPct, 1)} across ${plural(T.costed.length, "holding")} you've said what you paid for.` });
@@ -462,7 +487,7 @@ function todayView() {
   const cards = insights();
   if (cards.length) {
     parts.push(h("h3.label", {}, "Worth knowing", h("span", { id: "cardn", text: cards.length > 1 ? `1 of ${cards.length}` : "" })));
-    const box = h("div.cards", {}, cards.map((c, i) => h("button.card.glass.press.rise", { type: "button", vars: { c: c.c, i: String(i) }, onclick: () => c.sym && openStock(c.sym) },
+    const box = h("div.cards", {}, cards.map((c, i) => h("button.card.glass.press.rise", { type: "button", vars: { c: c.c, i: String(i) }, onclick: () => (c.open ? c.open() : c.sym && openStock(c.sym)) },
       h("span.kick", { text: c.kick }), h("h4", { text: c.h }), h("p", { text: c.p }), c.viz ? c.viz() : null)));
     const dots = h("div.dots", { "aria-hidden": "true" }, cards.map((_, i) => h("i", { class: i ? null : "on" })));
     box.addEventListener("scroll", () => { const w = box.firstElementChild.offsetWidth + 12, i = Math.round(box.scrollLeft / w); [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i)); const n = $("#cardn"); if (n) n.textContent = `${i + 1} of ${cards.length}`; }, { passive: true });
@@ -504,13 +529,13 @@ function portfolioChart() {
   portfolioChart.pts = pts;
   return svg;
 }
-function itemRow(x, i, mode) {
+function itemRow(x, i, mode, open = (s) => openStock(s)) {
   const q = S.q[x.symbol];
   if (!q) return h("div.item", {}, h("span", {}, h("b", { text: x.name }), h("small", { text: "Price not available just now" })));
   const own = x.qty > 0, sp = C.el("svg", { viewBox: "0 0 64 26", "aria-hidden": "true" });
   sp.append(C.el("path", { d: C.spark(q.spark, 64, 26, q.prev), fill: "none", stroke: (q.chgPct || 0) >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 1.6, "stroke-linecap": "round", "data-draw": String(0.15 + i * 0.05) }));
   const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
-  return h("button.item.rise", { type: "button", vars: { i: String(i) }, onclick: () => openStock(x.symbol) },
+  return h("button.item.rise", { type: "button", vars: { i: String(i) }, onclick: () => open(x.symbol) },
     h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "Following · ") : "", h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
     sp, h("span.r", {}, ...right, h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
 }
@@ -552,11 +577,61 @@ function holdingsView() {
     if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
       h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
   }
+  if (T.o.length) parts.push(...accountsPart(T));
   const ownedFirst = [...S.list].sort((a, b) => (valueOf(b) ?? -1) - (valueOf(a) ?? -1));
   parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
   parts.push(h("div.list", {}, ownedFirst.map((x, i) => itemRow(x, i, "value"))));
   if (T.gain != null) parts.push(h("p.foot", { class: "foot num", text: `${T.gain >= 0 ? "Up" : "Down"} ${money(Math.abs(T.gain), "GBP", 0)} (${pct(T.gainPct, 1)}) since you bought, on the ${plural(T.costed.length, "holding")} you've said what you paid for` }));
   return parts;
+}
+
+// Your accounts: each one's worth and day; and the ISA's allowance, what's left of it this tax year
+function accountsPart(T) {
+  const accts = byAccount(T.o), tagged = accts.some((a) => a.key), iy = isaYear();
+  if (!tagged && !tracksIsa()) return [h("p.foot", { class: "foot", style: "padding-top:22px" }, "Hold some in an ISA or a pension? Say which on each one's page (Edit Holding) to see each account's total. ",
+    h("button.inline", { type: "button", onclick: () => openSheet(isaView), text: "Track your ISA allowance" }))];
+  const rows = (tagged ? accts : []).map((a, i) => h("button.item.two.rise", { type: "button", vars: { i: String(i) }, onclick: () => openSheet(accountView, a.key) },
+    h("span", {}, h("b", { text: a.name }), h("small", { text: `${plural(a.o.length, "holding")} · ${Math.round((a.value / T.value) * 100)}% of your money` })),
+    h("span.r", {}, h("b.num", { text: money(a.value) }), h("small", { class: `num ${tone(a.day)}`, text: `${signed(a.day)} today` }))));
+  if (iy && tracksIsa()) rows.push(h("button.item.two.rise", { type: "button", vars: { i: String(rows.length) }, onclick: () => openSheet(isaView) },
+    h("span", {}, h("b", { text: "ISA allowance" }), h("small", { text: `${iy.year} · ${plural(iy.days, "day")} left to use it` })),
+    h("span.r", {}, h("b.num", { text: money(iy.left, "GBP", 0) }), h("small", { text: "left" })), allowBar(iy.used)));
+  return [h("h3.label", {}, "Accounts"), h("div.list", {}, rows)];
+}
+// One account: what's in it, worth what, and how it's done
+function accountView(key) {
+  const T = totals(), a = byAccount(T.o).find((x) => x.key === key) || { key, name: ACCOUNT_NAME[key] || "Not in an account", o: [], value: 0, day: 0 };
+  const costed = a.o.filter((x) => x.cost != null), paid = costed.reduce((s, x) => s + x.cost * x.qty * rate(S.q[x.symbol].cur), 0), gain = costed.reduce((s, x) => s + valueOf(x), 0) - paid, iy = isaYear();
+  return [h("div.shead", {}, h("small", { text: key === "isa" ? "Stocks & Shares ISA" : key === "sipp" ? "Pension (SIPP)" : key === "gia" ? "General account" : "Your holdings" }), closeBtn()),
+    h("div.sname", { text: a.name }),
+    h("div.sprice.num", { text: money(a.value) }),
+    h("div.sdelta.num", {}, h("span", { class: tone(a.day), text: `${signed(a.day)} (${pct(a.value - a.day ? (a.day / (a.value - a.day)) * 100 : 0)})` }), h("span", { style: "color:var(--text-3)", text: "today" })),
+    h("div.facts", {},
+      costed.length ? h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(gain)}`, text: signed(gain) }), h("i.num", { text: `${pct(paid ? (gain / paid) * 100 : 0, 1)} on ${money(paid, "GBP", 0)}` })) : null,
+      key === "isa" && iy ? h("button.fact.press", { type: "button", onclick: () => pushSheet(isaView) }, h("span", { text: `Allowance, ${iy.year}` }), h("b.num", { text: `${money(iy.left, "GBP", 0)} left` }), h("i.num", { text: `of ${money(iy.allowance, "GBP", 0)}` }), allowBar(iy.used)) : null),
+    h("h3.slabel", { text: plural(a.o.length, "holding") }),
+    h("div.list.flush", {}, [...a.o].sort((x, y) => valueOf(y) - valueOf(x)).map((x, i) => itemRow(x, i, "value", (s) => pushSheet(stockView, s))))];
+}
+// The ISA's allowance: what you've paid in this tax year, and what's left
+function isaView() {
+  const iy = isaYear() || { year: "", paid: 0, allowance: 20000, left: 20000, days: 0, used: 0 };
+  const paid = h("input", { type: "text", inputmode: "decimal", id: "mk-isa", placeholder: "0", value: iy.paid ? String(iy.paid) : "", "aria-label": "Paid in this tax year" });
+  const inIsa = owned().filter((x) => x.account === "isa"), worth = inIsa.reduce((a, x) => a + valueOf(x), 0);
+  const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-isa-save" }, "Save");
+  save.onclick = async () => {
+    const v = paid.value.trim() === "" ? 0 : Number(paid.value.replace(/[,£\s]/g, ""));
+    if (!Number.isFinite(v) || v < 0) return toast("What you've paid in should be a number.", true);
+    save.disabled = true;
+    try { S.isa = (await A.setIsa(v)).isa; toast("Saved"); if (Sheet.stack.length > 1) backSheet(); else closeSheet(); render(false); }
+    catch (e) { toast(e.message, true); save.disabled = false; }
+  };
+  return [h("div.shead", {}, backBtn(), h("small", { text: `ISA allowance · ${iy.year}` }), closeBtn()),
+    h("div.sname", { text: iy.left > 0 ? `${money(iy.left, "GBP", 0)} left` : "All used" }),
+    h("p.why", { style: "margin-top:6px" }, `Of your ${money(iy.allowance, "GBP", 0)} for this tax year, with ${plural(iy.days, "day")} to use it: it ends on 5 April, and what's left doesn't carry over.`),
+    allowBar(iy.used),
+    inIsa.length ? h("div.facts", {}, h("div.fact", {}, h("span", { text: "In your ISA now" }), h("b.num", { text: money(worth) }), h("i", { text: plural(inIsa.length, "holding") }))) : null,
+    h("div.form", {}, h("label", { for: "mk-isa", text: "Paid in so far this tax year" }), h("div.field", {}, h("span.unit", { text: "£" }), paid)),
+    h("p.hint", { text: "What you've put in, not what it's grown to. Money moved in from past years' ISAs doesn't count. It starts again on 6 April." }), save];
 }
 
 function newsView() {
@@ -661,7 +736,7 @@ function stockView(sym, o = {}) {
 function facts(sym, held, q) {
   const rows = [], y = S.years[sym];
   if (held?.qty > 0 && valueOf(held) != null) {
-    rows.push(h("div.fact", {}, h("span", { text: "Yours" }), h("b.num", { "data-val": sym, text: money(valueOf(held)) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-dg": sym, text: `${signed(dayOf(held))} today` })));
+    rows.push(h("div.fact", {}, h("span", { text: held.account ? `Yours · in your ${ACCOUNT_NAME[held.account]}` : "Yours" }), h("b.num", { "data-val": sym, text: money(valueOf(held)) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-dg": sym, text: `${signed(dayOf(held))} today` })));
     if (held.cost != null) { const g = (q.price - held.cost) * held.qty * rate(q.cur), gp = (q.price / held.cost - 1) * 100; rows.push(h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(g)}`, text: signed(g) }), h("i.num", { text: `${pct(gp, 1)} on ${priceSaid(q, held.cost)} a share` }))); }
   }
   if (q.dayLo != null && q.dayHi != null) rows.push(h("div.fact", {}, h("span", { text: "Today" }), h("b.num", { text: `${priceSaid(q, q.dayLo)} – ${priceSaid(q, q.dayHi)}` }), h("i.num", { text: q.prev ? `closed at ${priceSaid(q, q.prev)}` : "" })));
@@ -785,6 +860,9 @@ function editView(sym, o = {}) {
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym], name = held?.name || o.name || q?.name || sym, cs = SYM[q?.cur] ?? "";
   const qty = h("input", { type: "text", inputmode: "decimal", id: "mk-qty", placeholder: "0", value: held?.qty ? String(held.qty) : "", "aria-label": "Shares you own" });
   const cost = h("input", { type: "text", inputmode: "decimal", id: "mk-cost", placeholder: q?.price ? fmt(q.price, 2).replace(/,/g, "") : "", value: held?.cost != null ? String(held.cost) : "", "aria-label": "What you paid per share" });
+  let acct = held?.account ?? null;
+  const choice = h("div.choice", { role: "group", "aria-label": "Held in" }, ACCOUNTS.map(([k, n]) => h("button.press", { type: "button", "data-a": k, "aria-pressed": String(acct === k), text: n,
+    onclick: (e) => { acct = acct === k ? null : k; choice.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.a === acct))); } })));
   const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-save" }, held ? "Save" : "Add to Your List");
   save.onclick = async () => {
     const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
@@ -793,7 +871,7 @@ function editView(sym, o = {}) {
     if (c != null && (!Number.isFinite(c) || c < 0)) return toast("What you paid should be a number.", true);
     save.disabled = true;
     try {
-      const r = await A.putHolding({ symbol: sym, name, qty: n, cost: c });
+      const r = await A.putHolding({ symbol: sym, name, qty: n, cost: c, account: acct });
       S.list = r.holdings; S.news = null;
       toast(held ? "Saved" : `${name} added`);
       const back = Sheet.stack.length > 1 && Sheet.stack.at(-2)[0] === stockView;
@@ -806,8 +884,9 @@ function editView(sym, o = {}) {
   return [h("div.shead", {}, backBtn(), h("h2", { text: held ? name : `Add ${name}` }), closeBtn()),
     h("div.form", {},
       h("label", { for: "mk-qty", text: "Shares you own" }), h("div.field", {}, qty),
-      h("label", { for: "mk-cost", text: `What you paid for each${cs ? "" : ` (${q?.cur || ""})`}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost)),
-    h("p.hint", { text: "Leave shares at 0 to just follow it. What you paid is optional: with it, Markets shows how you've done since you bought." }), save];
+      h("label", { for: "mk-cost", text: `What you paid for each${cs ? "" : ` (${q?.cur || ""})`}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost),
+      h("label", { text: "Held in" }), choice),
+    h("p.hint", { text: "Leave shares at 0 to just follow it. What you paid and where you hold it are optional: with them, Markets shows how you've done since you bought, and each account's total." }), save];
 }
 async function removeHolding(sym) {
   const name = nameOf(sym);
@@ -940,12 +1019,12 @@ async function signOutHere() {
   try { await A.signOut(); } catch (_) {}
   signedOut();
 }
-function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
+function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.isa = null; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
 
 // ---- signed in: your list and its prices ----
 function take(m) {
   S.me = { id: m.id, name: m.name, handle: m.handle, photoAt: m.photoAt };
-  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff;
+  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa;
   if (m.appearance && m.appearance !== "auto") { document.documentElement.dataset.theme = m.appearance; store.set("appearance", m.appearance); try { localStorage.setItem("markets:appearance", m.appearance); } catch (_) {} }
   else { delete document.documentElement.dataset.theme; try { localStorage.removeItem("markets:appearance"); } catch (_) {} }
 }
@@ -962,7 +1041,7 @@ async function refresh(force = false) {
   try {
     const was = { ...S.q }, wasT = totals(), r = await A.quotes(syms);
     Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates);
-    store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, at: Date.now() });
+    store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
     if (force) return;
     for (const s of syms) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
     const T = totals(), pv = $("#pv");
@@ -1019,7 +1098,7 @@ async function start() {
   else {
     // (drawn at once from this phone's copy, while the account's is asked for)
     const last = store.get("last");
-    if (last?.me) { take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates }); S.years = store.get("years")?.years || {}; render(); }
+    if (last?.me) { take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.years = store.get("years")?.years || {}; render(); }
     try { m = await A.me(); }
     catch (e) { if (S.me) { toast(e.message, true); return; } return welcome(e.message); }
   }
@@ -1027,7 +1106,7 @@ async function start() {
   const same = S.me?.id === m.id;
   take(m);
   render(!same);
-  store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, at: Date.now() });
+  store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
   checkPush();
   loadYears();
   if (deep) openStock(decodeURIComponent(deep));

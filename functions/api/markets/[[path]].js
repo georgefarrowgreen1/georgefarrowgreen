@@ -6,10 +6,11 @@
 //   GET    /api/markets/years?s=A,B   each one's year: its week, its dividends, its high and low (for what's worth knowing)
 //   GET    /api/markets/news?s=A,B    the news about them, newest first
 //   GET    /api/markets/search?q=     things to add, by name or symbol
-//   PUT    /api/markets/holding       added or changed: { symbol, name?, qty?, cost? } → your list
+//   PUT    /api/markets/holding       added or changed: { symbol, name?, qty?, cost?, account? } → your list
 //   DELETE /api/markets/holding?s=A   taken off your list → your list
 //   PUT    /api/markets/order         your list in a new order: { symbols } → your list
 //   PUT    /api/markets/alert         an alert on or off: { symbol, on, pct? } → your list
+//   PUT    /api/markets/isa           what you've paid into your ISA this tax year: { paid } → { isa }
 //   GET    /api/markets/push-key      the key push subscriptions are made with
 //   POST   /api/markets/push          alerts on this phone: { sub }
 //   POST   /api/markets/push-move     the browser renewed its subscription: { was, sub } (markets/sw.js)
@@ -24,7 +25,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, alertsOf, mkdb } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, alertsOf, mkdb, isaOf, setIsa } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
@@ -32,7 +33,7 @@ async function view(env, u) {
   const q = await quotes(env, [...INDICES, ...list.map((h) => h.symbol)]);
   const fx = await rates(env, Object.values(q).map((x) => x.cur));
   const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first();
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, at: Date.now(),
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, isa: await isaOf(env, u.id), at: Date.now(),
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
 // a few symbols from the address (s=A,B,C)
@@ -94,6 +95,11 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     return json({ holdings: await orderHoldings(env, u.id, (await body(request)).symbols) });
+  },
+  "PUT isa": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    return json({ isa: await setIsa(env, u.id, (await body(request)).paid) });
   },
   "PUT alert": async ({ request, env }) => {
     sameOrigin(request);

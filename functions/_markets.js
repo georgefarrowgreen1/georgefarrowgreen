@@ -8,10 +8,12 @@
 // turned into them at the day's rate.
 //
 // mk_holdings: what you own (qty > 0) or just follow (qty 0), each with the name it was added as, what you paid for each
-//   share (cost, optional, in its own currency), and its place in your list.
+//   share (cost, optional, in its own currency), its place in your list, and the account it's held in (account: "isa",
+//   "sipp" or "gia", optional).
 // mk_alerts:   a holding you want to hear about when it moves (pct, 3% by default), and the last day it was said.
 // mk_push:     each phone Markets can tell you on (its push subscription).
 // mk_off:      the account's own choice, from its Notifications page: Markets's alerts off everywhere.
+// mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
 import { HttpError, db, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
@@ -27,13 +29,16 @@ export async function mkdb(env) {
   if (!ready) ready = (async () => {
     await D.batch([
       D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
-        ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, PRIMARY KEY (user_id, symbol))`),
+        ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, PRIMARY KEY (user_id, symbol))`),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL)"),
       D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_off (user_id TEXT PRIMARY KEY)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
+      D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
     ]);
+    // (the accounts, added to a list kept from before them)
+    await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
   await ready;
   return D;
@@ -220,17 +225,21 @@ export const INDEX_OF = { London: "^FTSE", Nasdaq: "^IXIC", NYSE: "^GSPC", "NYSE
 // ---------------- what you own and follow ----------------
 export async function holdings(env, userId) {
   const D = await mkdb(env);
-  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, a.pct AS alert FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
+  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, a.pct AS alert FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
     WHERE h.user_id = ? ORDER BY h.ord, h.added`).bind(userId).all();
-  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, alert: r.alert ?? null }));
+  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, alert: r.alert ?? null }));
 }
 const cleanText = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
-// Added, or changed (how many, what was paid): { symbol, name?, qty?, cost? }
+export const ACCOUNTS = ["isa", "sipp", "gia"];
+// Added, or changed (how many, what was paid, the account it's in): { symbol, name?, qty?, cost?, account? }
 export async function putHolding(env, userId, b) {
   const D = await mkdb(env), symbol = cleanSymbol(b.symbol);
   const qty = b.qty == null || b.qty === "" ? 0 : Number(b.qty), cost = b.cost == null || b.cost === "" ? null : Number(b.cost);
   if (!Number.isFinite(qty) || qty < 0 || qty > 1e9) throw new HttpError(400, "How many you own should be a number.");
   if (cost != null && (!Number.isFinite(cost) || cost < 0 || cost > 1e9)) throw new HttpError(400, "What you paid should be a number.");
+  // (the account: left as it was where none's said; null takes it out of one)
+  const account = b.account === undefined ? undefined : b.account == null || b.account === "" ? null : ACCOUNTS.includes(b.account) ? b.account : "bad";
+  if (account === "bad") throw new HttpError(400, "That isn’t an account.");
   const was = await D.prepare("SELECT name FROM mk_holdings WHERE user_id = ? AND symbol = ?").bind(userId, symbol).first();
   if (!was) {
     const n = await D.prepare("SELECT COUNT(*) AS n, MAX(ord) AS o FROM mk_holdings WHERE user_id = ?").bind(userId).first();
@@ -238,8 +247,9 @@ export async function putHolding(env, userId, b) {
     // (its name, as the market has it, where none was sent: and it must be a real one)
     let name = cleanText(b.name, 60);
     if (!name) { const q = await quote(env, symbol).catch(() => null); if (!q) throw new HttpError(404, "Couldn’t find that one."); name = q.name; }
-    await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now()).run();
-  } else await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, userId, symbol).run();
+    await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now(), account ?? null).run();
+  } else if (account === undefined) await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, userId, symbol).run();
+  else await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ?, account = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, account, userId, symbol).run();
   return holdings(env, userId);
 }
 export async function dropHolding(env, userId, symbol) {
@@ -252,6 +262,26 @@ export async function orderHoldings(env, userId, list) {
   const D = await mkdb(env), syms = (Array.isArray(list) ? list : []).slice(0, MAX_HOLDINGS).map(cleanSymbol);
   if (syms.length) await D.batch(syms.map((s, i) => D.prepare("UPDATE mk_holdings SET ord = ? WHERE user_id = ? AND symbol = ?").bind(i, userId, s)));
   return holdings(env, userId);
+}
+
+// ---------------- your ISA's allowance ----------------
+export const ISA_ALLOWANCE = 20000;
+// the UK's tax year a moment's in: "2026/27", from 6 April 2026 to 5 April 2027 (London's days)
+export function taxYear(t = Date.now()) {
+  const [y, m, d] = dayIn("Europe/London", t).split("-").map(Number), from = m > 4 || (m === 4 && d >= 6) ? y : y - 1;
+  return `${from}/${String((from + 1) % 100).padStart(2, "0")}`;
+}
+// what you've said you've paid in this tax year (nothing yet, in a new one)
+export async function isaOf(env, userId, t = Date.now()) {
+  const D = await mkdb(env), year = taxYear(t), r = await D.prepare("SELECT year, paid FROM mk_isa WHERE user_id = ?").bind(userId).first();
+  return { year, paid: r?.year === year ? r.paid : 0, allowance: ISA_ALLOWANCE };
+}
+export async function setIsa(env, userId, paid) {
+  const v = Number(paid);
+  if (!Number.isFinite(v) || v < 0 || v > 1e7) throw new HttpError(400, "What you've paid in should be a number.");
+  const D = await mkdb(env), year = taxYear();
+  await D.prepare("INSERT INTO mk_isa (user_id, year, paid) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET year = excluded.year, paid = excluded.paid").bind(userId, year, Math.round(v * 100) / 100).run();
+  return isaOf(env, userId);
 }
 
 // ---------------- price alerts ----------------
@@ -347,7 +377,7 @@ export async function alertTick(env, t = Date.now()) {
 export async function dropMarkets(env, userId) {
   const D = await mkdb(env).catch(() => null);
   if (!D) return;
-  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
+  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
 }
 // what's kept, for the account's page: how many you own and follow
 export async function marketsOf(env, userId) {

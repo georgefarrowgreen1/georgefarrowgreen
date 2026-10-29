@@ -147,6 +147,19 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item svg { width: 64px; height: 26px; overflow: visible; }
 .item .r { text-align: right; min-width: 0; }
 .item .r b, .item .r small { font-weight: 500; }
+/* (a row with no sparkline: an account, the ISA's allowance) */
+.item.two { grid-template-columns: minmax(0, 1fr) auto; }
+.list.flush { padding: 0; }
+.slabel { margin: 30px 0 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
+/* how much of the ISA's allowance is used */
+.allow { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--ctl); overflow: hidden; margin-top: 10px; }
+.allow i { display: block; height: 100%; border-radius: 3px; background: var(--up); transform-origin: left; animation: grow 1.1s var(--ease-out) 0.25s backwards; }
+button.fact { width: 100%; text-align: left; }
+button.inline { display: inline; color: var(--tint-text); font-weight: 600; font-size: inherit; }
+/* one of a few: the account a holding's held in */
+.choice { display: flex; gap: 8px; }
+.choice button { flex: 1; min-height: 46px; border-radius: 14px; background: var(--field); font-size: 15.5px; font-weight: 600; color: var(--text-2); transition: background-color 0.25s, color 0.25s, transform 0.2s; }
+.choice button[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
 .flash-up { animation: flash-up 1.2s ease-out; } .flash-down { animation: flash-down 1.2s ease-out; }
 @keyframes flash-up { 0%, 20% { color: var(--up); text-shadow: 0 0 14px var(--up-soft); } }
 @keyframes flash-down { 0%, 20% { color: var(--down); text-shadow: 0 0 14px var(--down-soft); } }
