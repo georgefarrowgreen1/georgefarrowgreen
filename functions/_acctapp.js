@@ -16,7 +16,7 @@ export const ACCOUNT_HOST = "account.inflite.ai";
 export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "account";
 
 export const ACCT_SECURITY = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://email.inflite.ai; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   "Referrer-Policy": "same-origin",
   "X-Frame-Options": "DENY",

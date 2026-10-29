@@ -112,14 +112,20 @@ const unitsChanged = (a, b) => ["temp", "wind", "precip", "clock"].some((k) => (
 // { warn, brief } (either), kept as Weather's own choices are, a new version (so Weather's pages take it up), and sent
 // on to its email. → the account's notifications now
 export async function setMail(env, userId, change) {
+  return (await changeNotify(env, userId, (d) => ({ notify: { ...d.notify, email: { ...d.notify?.email, ...change } } }))).notify;
+}
+// Weather's notifications changed from outside the app (the account's Notifications page): fn(what's kept) → the parts
+// that change ({ notify }, { settings }), kept as Weather's own choices are, a new version (so Weather's pages take it
+// up), and sent on to every one of the account's devices and its email. → what's kept now
+export async function changeNotify(env, userId, fn) {
   const D = await wxdb(env);
   for (let i = 0; i < 3; i++) {
     const was = await kept(env, userId), t = Date.now();
-    const data = cleanData({ ...was.data, notify: { ...was.data.notify, email: { ...was.data.notify?.email, ...change } } });
+    const data = cleanData({ ...was.data, ...fn(was.data) });
     const r = was.ver === 0
       ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(userId, JSON.stringify(data), t).run()
       : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(userId, JSON.stringify(data), t, was.ver).run();
-    if (r.meta?.changes) { await applyAccount(env, userId, data.notify, data.settings); return data.notify; }
+    if (r.meta?.changes) { await applyAccount(env, userId, data.notify, data.settings); return data; }
   }
   throw new HttpError(409, "That didn’t save. Try again.");
 }

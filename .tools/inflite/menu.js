@@ -62,6 +62,38 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
+  // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
+  // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
+  // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
+  let allowEl = null;
+  function allow(app, line, turnOn) {
+    allowEl?.remove();
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
+    go.type = later.type = "button";
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
+    const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
+    const key = (e) => { if (e.key === "Escape") shut(); };
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = "Turning On…";
+      const on = await Promise.resolve().then(turnOn).catch(() => false);
+      if (on) { shut(); note(app, "Notifications on", "On this device"); } else { go.disabled = false; go.textContent = "Allow Notifications"; }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    go.focus({ preventScroll: true });
+  }
+  // (opened to turn them on: #notify, taken out of the address, and whether it was there)
+  function wantsAllow() {
+    if (!/(^#|&)notify(&|$)/.test(location.hash)) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  }
   // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
@@ -200,5 +232,5 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
 })();

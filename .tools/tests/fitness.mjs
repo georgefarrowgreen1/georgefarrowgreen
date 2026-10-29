@@ -656,16 +656,23 @@ await L.ctx.addInitScript(({ endpoint, p256dh, auth }) => {
   PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make(null) : null; };
   PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(null); };
 }, { endpoint: 'https://fcm.googleapis.com/fcm/send/fitness-laptop', p256dh: pushPub, auth: pushAuth });
-await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
-await L.p.locator('#sheet .row', { hasText: 'Morning reminder' }).click(); await settle(L, 600);
-const preview = await L.p.locator('#sheet .note-preview').innerText().catch(() => '');
-await L.p.locator('#sheet .times .pill', { hasText: '07:30' }).click(); await settle(L, 300);
-await L.p.locator('#sheet .btn', { hasText: 'Turn on' }).click();
-const mrow = await waitFor(() => rows(`SELECT at, tz, days FROM fx_push WHERE user_id = '${sam}'`)[0], 15000);
+// (turned on in one tap, as the account's page links to it, #notify; its time chosen in the account's Fitness folder,
+// from Fitness's menu)
+await L.p.goto("about:blank"); await L.p.goto(`${FIT}/#notify`); await L.p.waitForSelector('.ifh-me'); await L.p.click('.ifa-go', { timeout: 20000 });
+const mfirst = await waitFor(() => rows(`SELECT at FROM fx_push WHERE user_id = '${sam}'`)[0], 15000);
+await L.p.waitForSelector('.ifa-layer', { state: 'detached', timeout: 10000 }).catch(() => {});
+await L.p.click('.ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 400);
+const mSaid = await L.p.textContent('.ifm-pop [data-k=notify] .ifm-val');
+await L.p.click('.ifm-pop [data-k=notify]');
+await L.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 }); await L.p.waitForSelector('#sheet[open] #nt-f-at', { timeout: 30000 }); await settle(L, 600);
+const fxFolder = (await L.p.locator('#sheet').innerText()).replace(/\s+/g, ' ');
+await L.p.selectOption('#nt-f-at', '450');
+const mrow = await waitFor(() => { const r = rows(`SELECT at, tz, days FROM fx_push WHERE user_id = '${sam}'`)[0]; return r?.at === 450 && r; }, 15000);
 const mdays = mrow ? JSON.parse(mrow.days) : {};
-ok(mrow?.at === 450 && Object.keys(mdays).length >= 7 && Object.values(mdays).every((d) => /^(Today: |Rest day)/.test(d.title)) && /^(Today: |Rest day)/.test(preview),
-  'the morning reminder on: at 07:30, and the week’s words with it', `${JSON.stringify(mrow && { at: mrow.at, tz: mrow.tz })} | ${preview.replace(/\s+/g, ' ')}`);
+ok(mfirst?.at === 420 && mSaid === 'On' && /On 1 device/.test(fxFolder) && /Morning Reminder/.test(fxFolder) && mrow?.at === 450 && Object.keys(mdays).length >= 7 && Object.values(mdays).every((d) => /^(Today: |Rest day)/.test(d.title)),
+  'the morning reminder: on in one tap (07:00), its time moved to 07:30 in the account, and the week’s words with it', `${JSON.stringify(mfirst)} ${mSaid} | ${JSON.stringify(mrow && { at: mrow.at, tz: mrow.tz })} | ${fxFolder.slice(0, 160)}`);
 await L.p.screenshot({ path: `${out}/morning.png` });
+await L.p.goto(`${FIT}/`); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 // (the browser renewing the laptop's subscription by itself, sw.js: the reminder moves to the new one, as it was; and
 // someone else's phone can't be moved by naming its address)
 const moveTo = (was, endpoint) => api(L, '/api/fitness/push-move', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ was, sub: { endpoint, keys: { p256dh: pushPub, auth: pushAuth } } }) });

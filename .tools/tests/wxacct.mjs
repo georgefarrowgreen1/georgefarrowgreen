@@ -123,7 +123,7 @@ ok(await L.p.isVisible('#me-btn') && await L.p.isHidden('#settings-btn'), "signe
 await L.p.click('#me-btn'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
 await L.p.screenshot({ path: `${out}/menu.png` });
 const wm = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
-ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Rain Alerts/.test(wm) && /Morning Briefing/.test(wm) && /Weather \d+\.\d\d\s*· Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
+ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Notifications/.test(wm) && !/Rain Alerts|Morning Briefing/.test(wm) && /Weather \d+\.\d\d\s*· Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 
 // ---- 1b. On a computer: your account from Weather's menu and Settings, a link opening the account's page in a new tab,
@@ -220,37 +220,55 @@ await L.p.reload(); await L.p.waitForSelector('.day-row');
 await waitFor(async () => (await places(L)).join() === 'London,Edinburgh');
 ok((await places(L)).join() === 'London,Edinburgh' && (await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)) === 'f', 'the laptop takes up the phone\'s Edinburgh, and °F', `${(await places(L)).join()} ${await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)}`);
 
-// ---- 3. Notifications for each place: chosen on the phone, sent to every device of the account ----
-await settings(P); await folder(P, 'notify');
-const chip = (x, key, k) => x.p.click(`#notify-places .np-row[data-key="${key}"] .np-chip[data-k="${k}"]`);
-await chip(P, '55.95,-3.19', 'rain');
-await P.p.waitForFunction(() => /^On: rain alerts for Edinburgh\./.test(document.getElementById('notify-status').textContent), null, { timeout: 15000 }).catch(() => {});
-ok(/^On: rain alerts for Edinburgh\./.test(await P.p.textContent('#notify-status')), 'rain alerts for Edinburgh, from its own row', await P.p.textContent('#notify-status'));
+// ---- 3. Notifications: turned on in Weather on each device, in one tap (#notify, as the account's page links to it);
+// what they tell you chosen in the account's Weather folder, and sent to every device of the account ----
 const devs = () => rows("SELECT d.dev, d.label, (SELECT handle FROM pg_users WHERE id = d.user_id) AS who FROM wx_devs d ORDER BY created");
 const subs = () => rows('SELECT dev, name, rain, warn, brief FROM wx_subs ORDER BY name');
-const whereTo = (x) => x.p.evaluate(() => document.getElementById('notify-acct')?.innerText.replace(/\s+/g, ' ').trim());
-// (what the phone says waited for before the database is read: while it's read, the pages' requests wait too (waitFor),
-// and the phone's asking for the account's devices, just after turning them on, is given up on after 20 seconds of that)
-await waitFor(async () => /Notifications go to this device/.test(await whereTo(P)), 15000);
+const allowHere = async (x) => {
+  await x.p.goto("about:blank"); await x.p.goto(`${WX}/?lat=55.9533&lon=-3.1883&name=Edinburgh#notify`); await x.p.waitForSelector('.day-row', { timeout: 30000 });
+  await x.p.click('.ifa-go', { timeout: 20000 }); await x.p.waitForSelector('.ifa-layer', { state: 'detached', timeout: 15000 }).catch(() => {});
+};
+// (the account's Weather folder, from Weather's menu: a new tab, on the account's page)
+const wxFolder = async (x) => {
+  await x.p.click('#me-btn'); await x.p.waitForSelector('.ifm-pop.open');
+  const [w] = await Promise.all([x.ctx.waitForEvent('page'), x.p.click('.ifm-pop [data-k=notify]')]);
+  await w.waitForSelector('#sheet[open] #nt-w-ewarn', { timeout: 20000 }); await w.waitForTimeout(600);
+  return w;
+};
+const placeIn = async (w, name, id) => {
+  await w.click(`#sheet .row[data-k="${name}"]`); await w.waitForSelector(`#sheet #${id}`); await w.waitForTimeout(400);
+  await w.click(`#${id}`); await w.waitForTimeout(1000);
+  await w.click('#sheet .sheet-head .back'); await w.waitForSelector('#sheet #nt-w-ewarn'); await w.waitForTimeout(500);
+};
+await allowHere(P);
+await waitFor(() => devs().length === 1, 15000);
+const menuSays = async (x) => { await x.p.click('#me-btn'); await x.p.waitForSelector('.ifm-pop.open'); await x.p.waitForTimeout(500); const t = await x.p.textContent('.ifm-pop [data-k=notify] .ifm-val'); await x.p.keyboard.press('Escape'); await x.p.waitForSelector('.ifm-layer', { state: 'detached' }); return t; };
+ok(/^On/.test(await menuSays(P)), 'turned on in one tap: Weather\'s menu says so', await menuSays(P));
+let W = await wxFolder(P);
+ok(/On 1 device/.test((await W.textContent('#sheet .app-head')) || ''), 'the account\'s Weather folder: on the phone', await W.textContent('#sheet .app-head'));
+await placeIn(W, 'Edinburgh', 'nt-p-rain');
+await waitFor(() => subs().some((x) => x.name === 'Edinburgh' && x.rain === 1), 15000);
 const pDevs = devs(), pSubs = subs();
-ok(pDevs.length === 1 && pDevs[0].who === 'sam' && /iPhone/.test(pDevs[0].label) && pSubs.length === 1 && pSubs[0].name === 'Edinburgh' && pSubs[0].rain === 1, 'the phone is one of the account\'s devices, with Edinburgh\'s rain alerts', JSON.stringify([pDevs, pSubs]));
-ok(/Notifications go to this device\./.test(await whereTo(P)), 'and Notifications says they go to this device', await whereTo(P));
-await closeSheet(P);
-// the laptop: Edinburgh's rain on there too (the account's), and "here too" puts the laptop among the devices
-await L.p.reload(); await L.p.waitForSelector('.day-row'); await L.p.waitForTimeout(1500);
-await settings(L); await folder(L, 'notify');
-const lChip = await L.p.getAttribute('#notify-places .np-row[data-key="55.95,-3.19"] .np-chip[data-k="rain"]', 'aria-pressed');
-ok(lChip === 'true', 'the laptop shows Edinburgh\'s rain alerts on (the account\'s choice)', lChip);
-await L.p.click('#acct-here');
-await waitFor(() => devs().length === 2);
-ok(devs().length === 2 && devs().every((d) => d.who === 'sam') && subs().filter((s) => s.name === 'Edinburgh' && s.rain === 1).length === 2, 'sent here too: both devices, each with Edinburgh\'s rain alerts', JSON.stringify(subs()));
-// warnings for London, chosen on the laptop: the phone gets them too
-await chip(L, '51.51,-0.13', 'warn');
+ok(pDevs.length === 1 && pDevs[0].who === 'sam' && /iPhone/.test(pDevs[0].label) && pSubs.length === 1 && pSubs[0].name === 'Edinburgh' && pSubs[0].rain === 1, 'the phone is one of the account\'s devices, with Edinburgh\'s rain alerts, chosen in the account', JSON.stringify([pDevs, pSubs]));
+ok(/Rain/.test(await W.textContent('#sheet .row[data-k="Edinburgh"] .val')) && kept('sam')?.notify.places.some((x) => x.name === 'Edinburgh' && x.rain), 'and kept with the account\'s Weather', await W.textContent('#sheet .row[data-k="Edinburgh"] .val'));
+await W.close();
+// the laptop: turned on there too, it's among the account's devices, with Edinburgh's rain alerts (the account's)
+await allowHere(L);
+await waitFor(() => devs().length === 2, 15000);
+ok(devs().length === 2 && devs().every((d) => d.who === 'sam') && subs().filter((s) => s.name === 'Edinburgh' && s.rain === 1).length === 2, 'turned on on the laptop too: both devices, each with Edinburgh\'s rain alerts', JSON.stringify(subs()));
+// warnings for London, chosen in the account from the laptop: the phone gets them too
+W = await wxFolder(L);
+ok(/On 2 devices/.test((await W.textContent('#sheet .app-head')) || ''), 'and the folder says both', await W.textContent('#sheet .app-head'));
+await placeIn(W, 'London', 'nt-p-warn');
 await waitFor(() => subs().filter((s) => s.name === 'London' && s.warn === 1).length === 2);
-ok(subs().filter((s) => s.name === 'London' && s.warn === 1).length === 2, 'official warnings for London, chosen on the laptop: on both devices', JSON.stringify(subs()));
+ok(subs().filter((s) => s.name === 'London' && s.warn === 1).length === 2, 'official warnings for London, chosen in the account: on both devices', JSON.stringify(subs()));
+await W.close();
 const hellos = readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((x) => /acct-/.test(x.headers['x-endpoint'] || ''));
 ok(hellos.length === 2, 'each device said hello once ("Notifications on")', String(hellos.length));
-await closeSheet(L);
+// Weather's own Settings: Notifications no longer kept there, signed in (a way to them in the account)
+await settings(P);
+ok(await P.p.isHidden('#alerts-go') && /In your account/.test(await P.p.textContent('[data-go="notify"]')), 'Weather\'s Settings: notifications in your account', await P.p.textContent('[data-go="notify"]'));
+await closeSheet(P);
 
 // ---- 3b. The profile is the account's: the card opens the account's page, signed in, where it's changed; Weather and
 // Chat show it ----
@@ -474,19 +492,18 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
 {
   const sam = rows("SELECT id FROM pg_users WHERE email = 'sam@example.com'")[0].id, mailDev = `mail:${sam}`;
   sql(`UPDATE pg_users SET email_ok = 1 WHERE id = '${sam}'`);
-  await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh'); await settings(P); await folder(P, 'notify');
-  const foot = await P.p.textContent('#notify-mail-foot');
-  ok(await P.p.isVisible('#notify-mail') && /^To sam@example\.com, for the places and time above\. Rain alerts aren’t emailed/.test(foot), 'signed in: an Email group, to the account\'s email', foot);
-  await P.p.check('#settings-form input[name=brief]'); await P.p.waitForTimeout(800);
-  await P.p.check('#settings-form input[name=mailWarn]'); await P.p.waitForTimeout(800);
-  await P.p.check('#settings-form input[name=mailBrief]');
+  await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
+  const W = await wxFolder(P);
+  await W.click('#sheet .row:has(b:text-is("Morning Briefing"))'); await W.waitForSelector('#sheet #nt-b-on'); await W.waitForTimeout(400);
+  await W.click('#nt-b-on'); await W.waitForTimeout(1000);
+  await W.selectOption('#nt-b-place', { label: 'Edinburgh' }); await W.waitForTimeout(1000);
+  await W.click('#sheet .sheet-head .back'); await W.waitForSelector('#sheet #nt-w-ewarn'); await W.waitForTimeout(500);
+  for (const id of ['nt-w-ewarn', 'nt-w-ebrief']) { await W.click('#' + id); await W.waitForTimeout(1000); }
   await waitFor(() => rows(`SELECT COUNT(*) AS n FROM wx_subs WHERE dev = '${mailDev}'`)[0]?.n === 2);
   const mailSubs = rows(`SELECT name, rain, warn, brief FROM wx_subs WHERE dev = '${mailDev}' ORDER BY name`);
   ok(JSON.stringify(mailSubs) === JSON.stringify([{ name: 'Edinburgh', rain: 0, warn: 0, brief: 1 }, { name: 'London', rain: 0, warn: 1, brief: 0 }]) && kept('sam')?.notify.email?.warn === true,
     'the account\'s email: London\'s warnings and the briefing (Edinburgh), kept with the account; never rain alerts', JSON.stringify(mailSubs));
-  ok(/by email too\./.test(await P.p.textContent('#notify-status')), 'and the line that says what\'s on says so', await P.p.textContent('#notify-status'));
-  ok(/Notifications go to/.test(await whereTo(P)) && !/Email/.test(await whereTo(P)), 'the email isn\'t among the devices notifications go to', await whereTo(P));
-  await closeSheet(P);
+  await W.close();
   // the briefing due now; London's warnings all new (as if none had been told of)
   const at = new Date(Date.now() - 10 * 60e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
   sql(`UPDATE wx_subs SET brief_at = '${hhmm}', last_brief = NULL WHERE dev = '${mailDev}' AND brief = 1`);
@@ -508,10 +525,9 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   const pst = await hit('POST');
   ok(pst.status === 200 && /Emails turned off/.test(pst.body) && kept('sam')?.notify.email?.warn === false && !rows(`SELECT dev FROM wx_devs WHERE dev = '${mailDev}'`).length, 'pressed: turned off, kept so, and the email no longer sent to', JSON.stringify(kept('sam')?.notify.email));
   ok(/Link expired/.test((await hit('POST', link.replace(/t=[^&]+$/, 't=wrong'))).body), 'a wrong link turns nothing off');
-  await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh'); await settings(P); await folder(P, 'notify');
-  await waitFor(async () => !(await P.p.isChecked('#settings-form input[name=mailWarn]')), 8000);
-  ok(!(await P.p.isChecked('#settings-form input[name=mailWarn]')) && !(await P.p.isChecked('#settings-form input[name=mailBrief]')), 'and Weather shows them off', '');
-  await closeSheet(P);
+  { const W = await wxFolder(P);
+    ok(!(await W.isChecked('#nt-w-ewarn')) && !(await W.isChecked('#nt-w-ebrief')), 'and the account\'s Weather folder shows them off', '');
+    await W.close(); }
 }
 
 // ---- 9. The account deleted (on the account's page, a week's grace, then gone): what Weather kept goes with it ----

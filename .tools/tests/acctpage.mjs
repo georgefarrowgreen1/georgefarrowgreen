@@ -328,26 +328,28 @@ await shot(L, '14-units');
 const wxs = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').settings || {};
 ok(wxs.temp === 'f' && wxs.wind === 'kmh', 'units: kept in Weather\'s record for the account, for every device it\'s on', JSON.stringify(wxs));
 await closeSheet(L);
-// ---- emails: what each app sends you; Chat's turned on here ----
-const emRow = () => L.p.locator('main .row:has(b:text-is("Emails"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(/Emails Security only/.test(await emRow()), 'emails: the account\'s, about signing in, always; Chat\'s off to start with', await emRow());
-await openRow(L, 'Emails');
-const em = await sheetText(L);
-ok(/Sign-ins and security/.test(em) && /Always on/.test(em) && /Notifications by email/.test(em) && /Warnings Official warnings, for the places you choose in Weather/.test(em)
-  && /Morning briefing For the place you choose in Weather/.test(em) && /Rain alerts stay on your phone/.test(em) && !(await L.p.$eval('#sheet input.switch', (e) => e.disabled)),
-  'its page: the account\'s always on, Chat\'s a switch, Weather\'s warnings and briefing a switch each', em);
-await L.p.click('#sheet input.switch'); await settle(L, 1000);
+// ---- notifications: every app's, in one place (the Emails page folded in): Quiet Hours, and a folder each; Chat's
+// emails turned on in its folder, Weather's warnings and briefing by email in its ----
+await openRow(L, 'Notifications');
+const nt = await sheetText(L);
+ok(/Quiet Hours/.test(nt) && /Chat/.test(nt) && /Weather/.test(nt) && /Fitness/.test(nt) && /Sign-in and security emails always come/.test(nt) && !(await L.p.$('#sheet .app-row[data-k="Mail"]')),
+  'Notifications: Quiet Hours, a folder for each app (Mail\'s the admin\'s alone), and security emails always', nt);
+const ntBack = async () => { await L.p.click('#sheet .sheet-head .back'); await L.p.waitForSelector('#sheet #nt-quiet'); await settle(L, 600); };
+await L.p.click('#sheet .app-row[data-k="Chat"]'); await L.p.waitForSelector('#sheet #nt-c-email'); await settle(L, 600);
+ok(/Not on any device yet/.test(await sheetText(L)) && !!(await L.p.$('#sheet a.open-in[href$="#notify"]')), 'Chat\'s folder: on no device yet, and the way to turn it on there');
+await L.p.click('#nt-c-email'); await settle(L, 1000);
 const ne = rows("SELECT notify_email FROM pg_users WHERE handle = 'rowan_h'")[0]?.notify_email;
 ok(ne === 1, 'Chat\'s emails turned on from here', String(ne));
-await closeSheet(L);
-ok(/Emails Chat/.test(await emRow()), 'and its row says which app emails', await emRow());
-await openRow(L, 'Emails');
-for (const k of ['Warnings', 'Morning briefing']) { await L.p.click(`#sheet label.row:has(b:text-is("${k}")) input.switch`); await settle(L, 1000); }
-await shot(L, '14b-emails');
+await ntBack();
+await L.p.click('#sheet .app-row[data-k="Weather"]'); await L.p.waitForSelector('#sheet #nt-w-ewarn'); await settle(L, 600);
+for (const id of ['nt-w-ewarn', 'nt-w-ebrief']) { await L.p.click('#' + id); await settle(L, 1000); }
+await shot(L, '14b-notifications');
 const wxm = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').notify?.email;
 ok(wxm?.warn === true && wxm?.brief === true, 'Weather\'s warnings and briefing by email: kept with Weather\'s own choices', JSON.stringify(wxm));
+await ntBack();
+ok(/Chat 10 of 11, and by email/.test((await sheetText(L)).replace(/\s+/g, ' ')), 'and Chat\'s folder says so on the page', await sheetText(L));
 await closeSheet(L);
-ok(/Emails All on/.test(await emRow()), 'and with all of them on, its row says so', await emRow());
+ok(!!(await L.p.$('main .row:has(b:text-is("Notifications"))')) && !(await L.p.$('main .row:has(b:text-is("Emails"))')), 'Preferences: Notifications, in place of Emails');
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);
 await openRow(L, 'Your Data');
 await shot(L, '15-data');

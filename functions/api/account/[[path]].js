@@ -36,9 +36,10 @@ import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
-import { setMail } from "../../_wxacct.js";
+import { setMail, changeNotify } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
-import { prefsOf, savePrefs } from "../../_notify.js";
+import { prefsOf, savePrefs, pushTo } from "../../_notify.js";
+import { morningOf, setMorningFor } from "../../_fitpush.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
@@ -174,6 +175,79 @@ async function view(env, u) {
 // Chat's settings that are the account's rather than a phone's, for its page here: which notifications, how they
 // read on the lock screen, quiet hours and email; who sees what; and who's blocked (pushes on or off, its lock and the
 // like are each phone's, in the app)
+// ---- Notifications, every app's, in one place (the account's Notifications page): Quiet Hours (the account's, which
+// every app keeps to: Chat's own rules, functions/_notify.js), and each app's, as each keeps them: Chat's kinds, how
+// they read on the lock screen and its emails; Weather's places and what each tells you, its briefing, its roof and its
+// emails (functions/_wxacct.js changeNotify); Fitness's morning reminder (functions/_fitpush.js); Mail's are Mail's own,
+// asked of it from the page (the admin's alone). Each app's devices are each its own: how many it's on, said ----
+const CHAT_KINDS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
+const near = (a, b) => a && b && Math.abs(a.lat - b.lat) < 0.006 && Math.abs(a.lon - b.lon) < 0.006;
+async function notifySettings(env, u) {
+  const D = await db(env), p = prefsOf(u), wx = (await weatherOf(env, u.id)).data || {}, n = wx.notify || {}, solar = wx.settings?.solar;
+  const none = (x, v) => x.catch(() => v);
+  const [chatOn, wxOn, fm, admin] = await Promise.all([
+    none(D.prepare("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ?").bind(u.id).first().then((r) => r?.n || 0), 0),
+    none(devicesOf(env, u.id).then((d) => d.length), 0),
+    none(morningOf(env, u.id), { on: true, at: null, phones: 0 }),
+    none(adminOf(env), null)]);
+  const places = (wx.places || []).map((x) => { const on = (n.places || []).find((q) => near(q, x)); return { name: x.name, lat: x.lat, lon: x.lon, rain: !!on?.rain, warn: !!on?.warn }; });
+  // (one with notifications on that's no longer saved: still said, so it can be turned off)
+  for (const q of n.places || []) if (!places.some((x) => near(q, x))) places.push({ name: q.name, lat: q.lat, lon: q.lon, rain: !!q.rain, warn: !!q.warn });
+  const zones = Array.isArray(solar?.zones) ? solar.zones.length : solar?.on ? 1 : 0;
+  return {
+    quiet: { on: !!p.quiet, from: p.quietFrom, to: p.quietTo, tz: p.tz },
+    emailOk: !!u.email_ok,
+    chat: { on: chatOn, kinds: Object.fromEntries(CHAT_KINDS.map((k) => [k, !!p[k]])), names: !!p.names, email: !!u.notify_email },
+    weather: { on: wxOn, places, brief: n.brief ? { name: n.brief.name, lat: n.brief.lat, lon: n.brief.lon } : null, briefAt: n.briefAt || "07:00",
+      email: { warn: !!n.email?.warn, brief: !!n.email?.brief }, solar: zones ? { alert: !!solar.alert, zones } : null },
+    fitness: { on: fm.phones, morning: fm.on, at: fm.at },
+    mail: admin?.id === u.id ? {} : null,
+  };
+}
+async function setNotify(env, u, b) {
+  const D = await db(env);
+  if (b.quiet !== undefined) {
+    const q = b.quiet && typeof b.quiet === "object" ? b.quiet : null;
+    if (!q) throw new HttpError(400, "Bad request.");
+    await savePrefs(D, u.id, { ...(q.on !== undefined ? { quiet: !!q.on } : {}), ...(q.from !== undefined ? { quietFrom: q.from } : {}), ...(q.to !== undefined ? { quietTo: q.to } : {}), ...(q.tz ? { tz: q.tz } : {}) });
+  }
+  if (b.chat !== undefined) {
+    const c = b.chat && typeof b.chat === "object" ? b.chat : {}, set = {};
+    for (const k of [...CHAT_KINDS, "names"]) if (c[k] !== undefined) { if (typeof c[k] !== "boolean") throw new HttpError(400, "Choose on or off."); set[k] = c[k]; }
+    if (Object.keys(set).length) await savePrefs(D, u.id, set);
+    if (c.email !== undefined) {
+      if (typeof c.email !== "boolean") throw new HttpError(400, "Choose on or off.");
+      await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(c.email ? 1 : 0, Date.now(), u.id).run();
+    }
+  }
+  if (b.weather !== undefined) {
+    const w = b.weather && typeof b.weather === "object" ? b.weather : {};
+    const spot = (x) => (x && typeof x === "object" && typeof x.lat === "number" && typeof x.lon === "number" ? { lat: x.lat, lon: x.lon, name: String(x.name || "").slice(0, 60) } : null);
+    if (w.place !== undefined && !spot(w.place)) throw new HttpError(400, "Bad place.");
+    if (w.brief && !spot(w.brief)) throw new HttpError(400, "Bad place.");
+    if (w.briefAt !== undefined && !HHMM.test(w.briefAt)) throw new HttpError(400, "Choose a time.");
+    await changeNotify(env, u.id, (d) => {
+      const n = { places: [], briefAt: "07:00", ...(d.notify || {}) }, out = {};
+      // (a place: what it tells you, each on or off; its other choice as it was)
+      if (w.place) {
+        const at = spot(w.place), was = (n.places || []).find((q) => near(q, at)) || { ...at, rain: false, warn: false };
+        const now = { ...was, ...at, rain: w.place.rain !== undefined ? !!w.place.rain : !!was.rain, warn: w.place.warn !== undefined ? !!w.place.warn : !!was.warn };
+        n.places = [...(n.places || []).filter((q) => !near(q, at)), now];
+      }
+      if (w.brief !== undefined) n.brief = w.brief ? spot(w.brief) : null;
+      if (w.briefAt !== undefined) n.briefAt = w.briefAt;
+      if (w.email && typeof w.email === "object") n.email = { ...(n.email || {}), ...Object.fromEntries(["warn", "brief"].filter((k) => typeof w.email[k] === "boolean").map((k) => [k, w.email[k]])) };
+      out.notify = n;
+      if (typeof w.solar === "boolean" && d.settings?.solar) out.settings = { ...d.settings, solar: { ...d.settings.solar, alert: w.solar } };
+      return out;
+    });
+  }
+  if (b.fitness !== undefined) {
+    const f = b.fitness && typeof b.fitness === "object" ? b.fitness : {};
+    await setMorningFor(env, u.id, { ...(f.morning !== undefined ? { on: !!f.morning } : {}), ...(f.at !== undefined ? { at: f.at } : {}) });
+  }
+}
+
 async function inflightSettings(env, u) {
   const { results } = await (await db(env)).prepare(`SELECT p.id, p.handle, p.name FROM pg_links l JOIN pg_users p ON p.id = l.b
     WHERE l.a = ? AND l.status = 'blocked' ORDER BY p.name COLLATE NOCASE`).bind(u.id).all();
@@ -619,6 +693,23 @@ const ROUTES = {
       await setWeather(env, u.id, set);
     }
     return json(await view(env, now));
+  },
+
+  // ---- Notifications, every app's (notifySettings) ----
+  "GET notify": async ({ request, env }) => json(await notifySettings(env, await signedIn(request, env))),
+  "PATCH notify": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 4096);
+    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await setNotify(env, u, b);
+    return json(await notifySettings(env, await (await db(env)).prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
+  },
+  // (a test, to every device Chat's on, from the Chat folder)
+  "POST notify/test": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await limit(env, "pushtest:" + u.id, 10, 60 * 60e3);
+    return json({ sent: await pushTo(env, u.id, { title: "Chat", body: "Notifications are on. You’ll hear when a pigeon lands.", tag: "test", url: "/pigeon/" }) });
   },
 
   // ---- Chat's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own

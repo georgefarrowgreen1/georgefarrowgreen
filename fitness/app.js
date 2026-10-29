@@ -98,6 +98,38 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
+  // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
+  // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
+  // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
+  let allowEl = null;
+  function allow(app, line, turnOn) {
+    allowEl?.remove();
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
+    go.type = later.type = "button";
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
+    const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
+    const key = (e) => { if (e.key === "Escape") shut(); };
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = "Turning On…";
+      const on = await Promise.resolve().then(turnOn).catch(() => false);
+      if (on) { shut(); note(app, "Notifications on", "On this device"); } else { go.disabled = false; go.textContent = "Allow Notifications"; }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    go.focus({ preventScroll: true });
+  }
+  // (opened to turn them on: #notify, taken out of the address, and whether it was there)
+  function wantsAllow() {
+    if (!/(^#|&)notify(&|$)/.test(location.hash)) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  }
   // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
@@ -236,9 +268,11 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
 })();
 // ==== end of InFlite's menu ====
+// (opened from the account's Notifications page to turn them on here: #notify, asked once you're in)
+let ASK_NOTIFY = IFL.wantsAllow();
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -624,13 +658,14 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.10";
+const BUILD = "1.11";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
     me: { name: S.me?.name || "You", line: S.me?.handle ? `@${S.me.handle}` : "", photo: h("span.round.me", {}, face()) },
     rows: [
-      rhythmOn() && { icon: "clock", color: "orange", label: "Morning Reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", open: () => { morningView.at = null; openSheet(morningView); } },
+      // (what Fitness tells you is set in your account, its Notifications page, every app's: here, whether this phone's on)
+      { key: "notify", icon: "bell", color: "red", label: "Notifications", value: morningOf() ? "On" : "Off here", warn: !morningOf(), open: () => openAccount("notify-fitness") },
       { icon: "ruler", color: "blue", label: "Distances", value: U.metric ? "km" : "miles", open: () => openAccount("fitness") },
       // (where your rides come from: the first that's on, and how many more; set up on the account's page)
       { icon: "watch", color: "teal", label: "Devices", value: devicesSaid(), open: () => openAccount("fitness") },
@@ -710,7 +745,6 @@ function settingsView() {
       section("Power zones", h("div.group", {}, ZONES.map((z, i) => h("div.row.plain", {}, h("span.zone-chip.bg-" + z.c, { text: `Z${z.n}` }), h("span.tx", {}, h("b", { text: z.name })),
         h("span.val", { text: `${i ? Math.round(ZONES[i - 1].top * p.ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * p.ftp) - 1}` : "+"} W` }))))),
       section("Preferences", h("div.group", {},
-        rhythmOn() && row({ icon: "today", tint: "amber", title: "Morning reminder", value: morningOf() ? clockOf(morningOf().at) : "Off", onclick: () => { morningView.at = null; pushSheet(morningView); } }),
         // (where your rides come from, the devices, maps, units, the morning check-in and exporting everything: your
         // account's, on its page, for every device; Fitness looks as that page does)
         row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }))),
@@ -1392,6 +1426,16 @@ async function morningSub(make) {
   return sub;
 }
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+// Notifications on this phone, in one tap (from the account's Notifications page, #notify): its morning reminder, at the
+// account's time (functions/_fitpush.js), with the week's words written here
+function askNotify() {
+  const why = pushWhy();
+  if (why) return toast(why, true, 6000);
+  if (morningOf()) return toast("Notifications are already on on this phone.");
+  IFL.allow("fitness", "Fitness tells you today’s session, or a rest day, each morning. What it tells you is set in your account.", async () => {
+    try { await morningOn(7 * 60); redraw(); return true; } catch (e) { toast(e.message, true, 6000); return false; }
+  });
+}
 async function morningOn(at) {
   if (Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") throw new Error("Notifications weren’t allowed. Turn them on for Fitness in this browser’s settings.");
   const sub = await morningSub(true);
@@ -1751,6 +1795,7 @@ function arrive(m, kept = false) {
 }
 function background(m) {
   background.done = true;
+  if (ASK_NOTIFY) { ASK_NOTIFY = false; setTimeout(askNotify, 600); }
   // (someone new: Garmin, your numbers and your week, in one go; else the day's check-in)
   // (someone new to Fitness, on any phone: the welcome; part way through it, on this one: where it got to. Anyone with
   // a plan already, or rides of their own, is set up)

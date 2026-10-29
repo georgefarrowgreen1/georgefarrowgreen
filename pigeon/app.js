@@ -73,6 +73,38 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
+  // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
+  // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
+  // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
+  let allowEl = null;
+  function allow(app, line, turnOn) {
+    allowEl?.remove();
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
+    go.type = later.type = "button";
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
+    const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
+    const key = (e) => { if (e.key === "Escape") shut(); };
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = "Turning On…";
+      const on = await Promise.resolve().then(turnOn).catch(() => false);
+      if (on) { shut(); note(app, "Notifications on", "On this device"); } else { go.disabled = false; go.textContent = "Allow Notifications"; }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    go.focus({ preventScroll: true });
+  }
+  // (opened to turn them on: #notify, taken out of the address, and whether it was there)
+  function wantsAllow() {
+    if (!/(^#|&)notify(&|$)/.test(location.hash)) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  }
   // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
@@ -211,15 +243,17 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
 })();
 // ==== end of InFlite's menu ====
+// (opened from the account's Notifications page to turn them on here: #notify, asked as soon as Chat's ready)
+const ASK_NOTIFY = IFL.wantsAllow();
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.6";            // shown in InFlite's menu
+const APP_VERSION = "1.4.7";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -4026,9 +4060,12 @@ function phoneRows() {
     unsupported: "This browser can’t show notifications." }[ps];
   const changed = S.friends.filter((f) => f.keyChanged).length, ver = S.friends.filter(isVerified).length;
   return [
-    pushFoot ? { key: "pushtoggle", icon: "bell", color: "red", label: "Push Notifications", value: "Off", open: () => toast(esc(pushFoot)) }
+    // (what Chat tells you is set in your account, its Notifications page, every app's: here, only whether this phone's on;
+    // where Chat has no account page, its own Notifications, as before)
+    accountPage() ? { key: "notify", icon: "bell", color: "red", label: "Notifications", value: ps === "on" ? "On" : "Off here", warn: ps !== "on", open: () => openAccount("notify-inflight") }
+      : pushFoot ? { key: "pushtoggle", icon: "bell", color: "red", label: "Push Notifications", value: "Off", open: () => toast(esc(pushFoot)) }
       : { key: "pushtoggle", icon: "bell", color: "red", label: "Push Notifications", on: ps === "on", disabled: S.pushBusy, toggle: async (next) => { await (next ? pushEnable() : pushDisable()); render(); again(); return !!S.pushOn; } },
-    ps === "on" && { key: "pushtest", icon: "send", color: "red", label: "Send a Test Notification", open: () => doAct("pushtest") },
+    !accountPage() && ps === "on" && { key: "pushtest", icon: "send", color: "red", label: "Send a Test Notification", open: () => doAct("pushtest") },
     passkeysSupported() && { key: "applock", icon: "faceid", color: "green", label: "Lock Chat", on: !!lock, toggle: async () => {
       // (no passkey yet: Passkeys opens, to add one, so the menu goes first)
       if (!lock && !S.passkeys?.length) { IFL.close(); doAct("applock"); return false; }
@@ -8755,6 +8792,7 @@ function finishOnboarding() {
 async function afterSignIn() {
   await sync();
   refreshPush(); autoLocate();
+  if (ASK_NOTIFY) setTimeout(askNotify, 600);
   if (S.me.lat == null && !S.me.moon) return go("locpick");
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
   go("messages");
@@ -9346,6 +9384,13 @@ async function pushEnable() {
   } catch (err) { console.warn("push", err); toast("Couldn’t turn on notifications on this phone."); }
   finally { S.pushBusy = false; render(); if (S.sheet?.type === "notifications") renderSheet(); }
 }
+// Notifications on this phone, in one tap (from the account's Notifications page, #notify): asked as Chat's ready
+function askNotify() {
+  const ps = pushState();
+  if (ps === "on") return toast("Notifications are already on on this phone.");
+  if (ps !== "off") return toast(esc({ homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings.", unsupported: "This browser can’t show notifications." }[ps] || "Notifications can’t be turned on here."));
+  IFL.allow("chat", "Chat tells you when a pigeon lands, and when friends ask. What it tells you is set in your account.", async () => { await pushEnable(); return !!S.pushOn; });
+}
 async function pushDisable(quiet) {
   if (!pushSupported()) return;
   try {
@@ -9569,6 +9614,7 @@ async function start() {
       else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
       else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
       refreshPush(); autoLocate(); movedNote();
+      if (ASK_NOTIFY) setTimeout(askNotify, 600);
     } catch (e) { console.error("start", e); }
     }
   } else { if (S.view !== "welcome") go("welcome"); movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); }

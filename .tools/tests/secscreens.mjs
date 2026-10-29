@@ -61,7 +61,7 @@ await p.click('[data-act=tab][data-id=account]'); await slow(900);
 await menuOpen(); await slow(1600);
 const mine = await p.$$eval('.ifm-pop [data-k]', (els) => els.map((e) => e.dataset.k).join());
 await menuShut();
-ok(!(await p.$('#screen > main.view [data-act=ifsettings]')) && /settings/.test(mine) && /pushtoggle/.test(mine) && /applock/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
+ok(!(await p.$('#screen > main.view [data-act=ifsettings]')) && /settings/.test(mine) && /notify/.test(mine) && /applock/.test(mine) && /haptics/.test(mine) && /encryptionsheet/.test(mine),
   'InFlite\'s menu: push, the lock, haptics and encryption, and Settings (no Chat Settings row in Account)', mine);
 ok(!(await p.$('#screen > main.view [data-act=securitysheet]')) && !(await p.$('#screen > main.view [data-act=notifysheet]')), 'no Privacy & Security or Notifications in the app: they’re on the account’s page');
 { const e = await encSays(); ok(/1 changed/.test(e), 'the Encryption row says a friend’s key changed', e); }

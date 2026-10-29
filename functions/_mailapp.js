@@ -16,6 +16,7 @@ import { takeHandback } from "./_handback.js";
 import { json, body } from "./_accountapi.js";
 import { appOrigin } from "./_sites.js";
 import { adminOf, ADMIN_LOOK } from "./api/pigeon/[[path]].js";
+import { prefsOf } from "./_notify.js";
 
 // (a change, only from Mail's own page: its server passes the browser's Origin on, which a page elsewhere can't make
 // Mail's)
@@ -32,6 +33,8 @@ async function mailView(env, u) {
     name: u.name, handle: u.handle, email: isAdmin ? u.email : null, photoAt: u.avatar_at || null,
     // (the account's look, for every app on the site: Automatic, Light or Dark)
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto",
+    // (the account's Quiet Hours, every app's, from its Notifications page: Mail keeps new mail's notices to them)
+    ...(isAdmin ? { quiet: ((p) => ({ on: !!p.quiet, from: p.quietFrom, to: p.quietTo, tz: p.tz }))(prefsOf(u)) } : {}),
   };
 }
 

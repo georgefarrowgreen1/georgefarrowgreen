@@ -80,6 +80,38 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
+  // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
+  // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
+  // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
+  let allowEl = null;
+  function allow(app, line, turnOn) {
+    allowEl?.remove();
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
+    go.type = later.type = "button";
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
+    const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
+    const key = (e) => { if (e.key === "Escape") shut(); };
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = "Turning On…";
+      const on = await Promise.resolve().then(turnOn).catch(() => false);
+      if (on) { shut(); note(app, "Notifications on", "On this device"); } else { go.disabled = false; go.textContent = "Allow Notifications"; }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    go.focus({ preventScroll: true });
+  }
+  // (opened to turn them on: #notify, taken out of the address, and whether it was there)
+  function wantsAllow() {
+    if (!/(^#|&)notify(&|$)/.test(location.hash)) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  }
   // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
@@ -218,9 +250,11 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
 })();
 // ==== end of InFlite's menu ====
+// (opened from the account's Notifications page to turn them on here: #notify, asked once the account's in step)
+let ASK_NOTIFY = IFL.wantsAllow();
 
 // (while a place's whole page is drawn for beside this one, in that: drawWhole)
 let R = null;
@@ -2495,13 +2529,13 @@ async function post(path, body) {
 // gets (functions/_wxacct.js), and it's one of the account's devices
 // (one at a time, each with the settings as they are when its turn comes: two quick changes can't race each other)
 let syncs = Promise.resolve();
-function syncNotify() {
-  const run = syncs.then(syncNow);
+function syncNotify(force = false) {
+  const run = syncs.then(() => syncNow(force));
   syncs = run.catch(() => {});
   return run;
 }
 const canShow = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && Notification.permission === "granted";
-async function syncNow() {
+async function syncNow(force = false) {
   const n = S.settings.notify;
   if (!S.acct && !notifying(n)) {
     const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
@@ -2510,7 +2544,8 @@ async function syncNow() {
     return;
   }
   // (signed in, nothing on yet and nothing here before: nothing to tell)
-  if (!canShow() || (S.acct && !notifying(n) && !n.endpoint)) return;
+  // (unless it's being turned on here: then it's one of the account's devices, whatever's on)
+  if (!canShow() || (S.acct && !notifying(n) && !n.endpoint && !force)) return;
   const sub = await pushSub(true), j = sub.toJSON();
   let r;
   try {
@@ -2667,6 +2702,7 @@ async function adopt(r, here = false) {
   try { await keepInStep(); } catch (_) {}
   // (this device, if it shows notifications, one of the account's)
   if (fresh && canShow() && (notifying(S.settings.notify) || S.settings.notify.endpoint)) { await syncNotify().catch(() => {}); refreshDevices(); }
+  if (ASK_NOTIFY) setTimeout(askNotify, 500);
 }
 async function refreshDevices() {
   try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); SE()?.drawAccount(); } } catch (_) {}
@@ -2679,7 +2715,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.13";
+const BUILD = "1.14";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -2691,14 +2727,14 @@ function drawMe() {
   b.replaceChildren(photoOf(a));
   settingsJs().catch(() => {});
 }
-// Weather's own rows in the menu: rain alerts (how many places), the morning briefing (when), units and how it looks;
-// Settings on its own (units are the account's, signed in: on its page)
+// Weather's own rows in the menu: Notifications (whether this device's on: what they tell you is set in your account,
+// its Notifications page, every app's), units and how it looks; Settings on its own (units are the account's, signed in:
+// on its page)
 const UNIT_SAID = { c: "°C", f: "°F", mph: "mph", kmh: "km/h", ms: "m/s", kn: "knots" }, GLASS_SAID = { clear: "Clear", standard: "Standard", tinted: "Tinted" };
 function menuRows() {
   const s = S.settings, n = s.notify, rain = n.places.filter((p) => p.rain).length;
   return [
-    { icon: "rain", color: "blue", label: "Rain Alerts", value: rain ? `${rain} place${rain === 1 ? "" : "s"}` : "Off", open: () => openSettings("notify") },
-    { icon: "sun", color: "orange", label: "Morning Briefing", value: n.brief ? n.briefAt || "07:00" : "Off", open: () => openSettings("notify") },
+    { key: "notify", icon: "bell", color: "red", label: "Notifications", value: notifyHere() ? `On${rain ? ` · ${rain} place${rain === 1 ? "" : "s"}` : ""}` : "Off here", warn: !notifyHere(), open: () => toAccount("notify-weather") },
     { icon: "ruler", color: "blue", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => toAccount("weather") },
     { icon: "moon", color: "grey", label: "Appearance", value: GLASS_SAID[s.glass] || "", open: () => openSettings("look") },
     "-",
@@ -3190,7 +3226,24 @@ const [detailJs, DE] = later(() => import("./detail.js")), [settingsJs, SE] = la
 const openDetail = (kind) => detailJs().then((m) => m.openDetail(kind)).catch(() => {});
 const openDay = (key) => detailJs().then((m) => m.openDay(key)).catch(() => {});
 // Settings, at its list (or at one of its folders)
+// (this device among the account's that Weather tells: allowed here, and one of them)
+const notifyHere = () => canShow() && hereToo();
+// Notifications on this device, in one tap (from the account's Notifications page, #notify; signed out, its own folder)
+function askNotify() {
+  ASK_NOTIFY = false;
+  if (!S.acct) return openSettings("notify");
+  const why = notifyWhy();
+  if (why) return toast(why);
+  if (notifyHere()) return toast("Notifications are already on on this device.");
+  IFL.allow("weather", "Weather tells you of rain on the way, official warnings, and your morning briefing. What it tells you is set in your account.", async () => {
+    const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (perm !== "granted") { toast("Notifications weren't allowed. Turn them on for Weather in your browser's settings."); return false; }
+    try { await syncNotify(true); await refreshDevices(); return true; } catch (e) { toast(e.message || "Couldn't turn them on just now. Try again."); return false; }
+  });
+}
 function openSettings(page) {
+  // (signed in, what Weather tells you is set in your account: its Notifications page, at Weather)
+  if (page === "notify" && S.acct && !S.noAcct) return toAccount("notify-weather");
   return settingsJs().then((m) => { if (page) m.openAt(page); else { m.drawSettings(); m.setHome(); openSheet($("settings")); } }).catch(() => {});
 }
 

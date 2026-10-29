@@ -89,6 +89,38 @@ const IFL = (() => {
     const n = noteEl;
     noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
   }
+  // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
+  // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
+  // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
+  let allowEl = null;
+  function allow(app, line, turnOn) {
+    allowEl?.remove();
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
+    go.type = later.type = "button";
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
+    const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
+    const key = (e) => { if (e.key === "Escape") shut(); };
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = "Turning On…";
+      const on = await Promise.resolve().then(turnOn).catch(() => false);
+      if (on) { shut(); note(app, "Notifications on", "On this device"); } else { go.disabled = false; go.textContent = "Allow Notifications"; }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    go.focus({ preventScroll: true });
+  }
+  // (opened to turn them on: #notify, taken out of the address, and whether it was there)
+  function wantsAllow() {
+    if (!/(^#|&)notify(&|$)/.test(location.hash)) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  }
   // this app's version, as it opens: said once if it's new since last time
   function built(app, build) {
     let was = null;
@@ -227,7 +259,7 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
 })();
 // ==== end of InFlite's menu ====
 
@@ -241,7 +273,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.10";
+const BUILD = "1.11";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -331,7 +363,9 @@ function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // (what an app's link opens straight away: Edit profile, or Chat's settings, from its own Settings)
-const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView };
+const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView,
+  // (an app's Notifications row: its folder, or the whole page)
+  notify: () => notifyView, "notify-inflight": () => chatNotifyView, "notify-weather": () => weatherNotifyView, "notify-fitness": () => fitnessNotifyView, "notify-mail": () => mailNotifyView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
@@ -809,7 +843,7 @@ function signedIn(r) {
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "moon", tint: "grey", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
-    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })))));
+    row({ icon: "bell", tint: "red", title: "Notifications", value: ntSaid(NT), onclick: () => openSheet(notifyView) })))));
   // (signing out is in InFlite's menu, at its foot, as in every app)
   const ending = [
     // (the site's admin, for the linked account only, at the foot: the top's about you and your apps;
@@ -2800,50 +2834,183 @@ function unitsView() {
   ] };
 }
 
-// ---- emails: what each app sends you (each from its own address). The account's, about signing in and its security,
-// always; Chat's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
-// briefing, a switch each (for which places and when, its Notifications say) ----
-// What the apps email besides the account's own: all of it, none, or which apps
-function emailsSaid(e = {}) {
-  const on = [e.inflight, e.weather?.warn, e.weather?.brief];
-  if (on.every(Boolean)) return "All on";
-  const apps = [e.inflight && "Chat", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
-  return apps.length ? apps.join(", ") : "Security only";
+// ---- Notifications, every app's, in one place (functions/api/account notify): Quiet Hours, every app keeps to; and a
+// folder for each app, with everything it can tell you, and how (a notification, an email). The apps keep none of it:
+// each one's menu has a Notifications row that opens its folder here. Turning notifications on on a device is the one
+// thing an app does itself (a phone asks each app for itself): a folder says how many devices it's on, and opens the
+// app to turn it on where it isn't ----
+let NT = null, ntFor = null, ntAt = 0, ntSeq = 0, ntPlace = null, MAILN = null;
+const ntViews = () => [notifyView, chatNotifyView, weatherNotifyView, wxPlaceView, wxBriefView, fitnessNotifyView, mailNotifyView];
+const onNt = () => ntViews().includes(Sheet.stack.at(-1));
+const tzHere = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+// (what was last fetched, at once, and fetched again behind it; another account's never shown)
+function ntFetch() {
+  if (ntFor !== S.me.id) { NT = null; ntAt = 0; ntFor = S.me.id; MAILN = null; }
+  if (!NT || Date.now() - ntAt > 5000) {
+    ntAt = Date.now();
+    const s = ++ntSeq, who = S.me.id;
+    call("notify").then((r) => { if (who === S.me?.id && s === ntSeq) { NT = r; if (onNt()) redraw(); } },
+      (e) => { if (who === S.me?.id && !NT) { NT = { error: e.message }; if (onNt()) redraw(); } });
+  }
+  return NT;
 }
-function emailsView() {
-  const m = S.me, said = h("p.said", { role: "alert" });
-  // a switch for one of the apps' emails (emails: what's sent to prefs, from on or off)
-  const toggle = (on, emails) => {
-    const sw = h("input.switch", { type: "checkbox", role: "switch", checked: on, disabled: !m.emailOk, onchange: async () => {
-      sw.disabled = true; say(said, "");
-      try { S.me = await call("prefs", { method: "PUT", body: { emails: emails(sw.checked) } }); patch(); }
-      catch (e) { sw.checked = !sw.checked; say(said, e.message); }
-      finally { sw.disabled = !S.me.emailOk; }
-    } });
-    return sw;
-  };
-  const sw = toggle(!!m.emails?.inflight, (on) => ({ inflight: on }));
-  // Weather's: its warnings and its briefing, for the places and time chosen in its Notifications
-  const W = m.emails?.weather || {}, and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
-  const wxRow = (k, title, sub) => h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), h("small", { text: m.emailOk ? sub : "Confirm your email first" })),
-    toggle(!!W[k], (on) => ({ weather: { [k]: on } })));
-  const head = (img, name) => h("h4.app-k", {}, h("img", { src: img, alt: "" }), name);
-  return { title: "Emails", body: [
-    h("p", { text: "What each app emails you, from its own address." }),
-    head("/icon.svg?v=2", "Account"),
-    h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Sign-ins and security" }), h("small", { text: "So you’d know if it wasn’t you" })),
-      h("span.val", { text: "Always on" }))),
-    head("/apps/inflight.png", "Chat"),
-    h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications by email" }),
-      h("small", { text: m.emailOk ? "Pigeons landing, friend requests and your week in flight, as its Notifications have them" : "Confirm your email first" })), sw)),
-    head("/apps/weather.png", "Weather"),
-    h("div.group", {},
-      wxRow("warn", "Warnings", W.warnFor?.length ? `Official warnings as they’re issued, for ${and(W.warnFor)}` : "Official warnings, for the places you choose in Weather"),
-      wxRow("brief", "Morning briefing", W.briefFor ? `${W.briefFor}, at ${W.briefAt}` : "For the place you choose in Weather")),
-    h("p.hint", { text: "Which places, and when, are in Weather’s Notifications. Rain alerts stay on your phone." }),
-    said] };
+const ntWait = (title, left) => {
+  const n = ntFetch();
+  if (!n) return { title, left, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (n.error) return { title, left, body: [h("div.group", {}, h("div.empty", { text: n.error }))] };
+  return null;
+};
+// a change, kept as it's made (put back, and why, if it can't be)
+async function ntChange(input, patch) {
+  if (input) input.disabled = true;
+  ntSeq++;
+  try { NT = await call("notify", { method: "PATCH", body: patch }); }
+  catch (e) { if (input?.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
+  finally { if (input) input.disabled = false; if (onNt()) redraw(); }
 }
+const ntSwitch = (id, on, patch, disabled = false) => {
+  const el = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on, disabled });
+  el.onchange = () => ntChange(el, patch(el.checked));
+  return el;
+};
+// a choice from a list, as a row (pick: a select; said: what it shows)
+const pickRow = (title, sel, said) => h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), h("span.val", { text: said }), icon("chev", 16, 2.4), sel);
+const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+const QUARTERS = Array.from({ length: 96 }, (_, i) => hhmm(i * 15));
+const appImg = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
+const appRow = (id, title, sub, onclick) => h("button.row.app-row", { type: "button", onclick, "data-k": title },
+  h("img.ic-img", { src: appImg(id), alt: "" }), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), h("span.chev", {}, icon("chev", 16, 2.4)));
+// (a folder's head: the app, and how many devices it can tell you on; none, the way to turn it on there)
+const devicesSaid = (n) => (n ? `On ${n === 1 ? "1 device" : `${n} devices`}` : "Not on any device yet");
+const ntHead = (id, name, on) => [h("div.app-head.set", {}, h("img", { src: appImg(id), alt: "", width: 64, height: 64 }), h("b", { text: name }), h("span", { text: devicesSaid(on) })),
+  !on && h("a.pill.open-in", { href: siteUrl(APPS[id].sub) + "#notify" }, `Turn On in ${name}`, icon("open", 15, 2.6))];
+// (opened from the app itself: the way back to it)
+const ntBack = (id) => (fromApp() === id && HANDOFF?.open === `notify-${id}` ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), APPS[id].name) : null);
+const and2 = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
+const CHAT_PIGEONS = ["landed", "takeoff", "rerouted", "lost", "delays"];
+function chatSaid(c) { const on = IF_NOTIFY.filter(([k]) => c.kinds[k]).length; return on ? `${on} of ${IF_NOTIFY.length}${c.email ? ", and by email" : ""}` : "None"; }
+function wxSaid(w) {
+  const what = [w.places.some((p) => p.warn) && "warnings", w.places.some((p) => p.rain) && "rain", w.brief && `briefing at ${w.briefAt}`, w.solar?.alert && "your panels"].filter(Boolean);
+  return what.length ? cap(and2(what)) : "None";
+}
+const fxNotifySaid = (f) => (f.morning ? `Morning reminder${f.at != null ? ` at ${hhmm(f.at)}` : ""}` : "None");
+const ntSaid = (n) => (n?.quiet?.on ? `Quiet ${hh(n.quiet.from)}–${hh(n.quiet.to)}` : null);
 
+function notifyView() {
+  const w = ntWait("Notifications"); if (w) return w;
+  const q = NT.quiet;
+  const hour = (k, title) => {
+    const sel = h("select", { "aria-label": title, id: `nt-${k}`, name: k }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: q[k] === i, text: hh(i) })));
+    sel.onchange = () => ntChange(sel, { quiet: { [k]: Number(sel.value), tz: tzHere() } });
+    return pickRow(title, sel, hh(q[k]));
+  };
+  return { title: "Notifications", body: [
+    h("div.group", {},
+      switchRow({ icon: "moon", tint: "indigo", title: "Quiet Hours", sub: q.on ? `${hh(q.from)} to ${hh(q.to)}, every app` : "Nothing buzzes overnight, or whenever suits",
+        input: ntSwitch("nt-quiet", q.on, (v) => ({ quiet: { on: v, tz: tzHere() } })) }),
+      q.on && hour("from", "From"), q.on && hour("to", "To")),
+    q.on && h("p.hint", { text: "Pigeons that land meanwhile come when they end; rain alerts, your panels and new mail stay quiet. Warnings still come." }),
+    h("h4.app-k", { text: "Apps" }),
+    h("div.group", {},
+      appRow("inflight", "Chat", chatSaid(NT.chat), () => pushSheet(chatNotifyView)),
+      appRow("weather", "Weather", wxSaid(NT.weather), () => pushSheet(weatherNotifyView)),
+      appRow("fitness", "Fitness", fxNotifySaid(NT.fitness), () => pushSheet(fitnessNotifyView)),
+      NT.mail && appRow("mail", "Mail", "New mail, for each of your addresses", () => pushSheet(mailNotifyView))),
+    h("p.hint", { text: "Sign-in and security emails always come." })] };
+}
+// Chat: which pigeons and friends' doings tell you, how they read on the lock screen, and its emails
+function chatNotifyView() {
+  const back = ntBack("inflight"), w = ntWait("Chat", back); if (w) return w;
+  const c = NT.chat, kind = ([k, t, sub]) => switchRow({ title: t, sub, input: ntSwitch(`nt-c-${k}`, c.kinds[k], (v) => ({ chat: { [k]: v } })) });
+  const test = h("button.row.plain.act", { type: "button", onclick: async (e) => {
+    try { const r = await busy(e.currentTarget, "Sending…", () => call("notify/test", { method: "POST", body: {} })); toast(r.sent ? `Sent to ${r.sent === 1 ? "1 device" : `${r.sent} devices`}.` : "No device took it. Turn notifications on in Chat."); }
+    catch (err) { toast(err.message, true); }
+  } }, h("span.tx", {}, h("b", { text: "Send a Test Notification" })));
+  return { title: "Chat", quiet: true, left: back, body: [
+    ...ntHead("inflight", "Chat", c.on),
+    h("h4.app-k", { text: "Pigeons" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => CHAT_PIGEONS.includes(k)).map(kind)),
+    h("h4.app-k", { text: "Friends" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => !CHAT_PIGEONS.includes(k)).map(kind)),
+    h("h4.app-k", { text: "How they look" }),
+    h("div.group", {}, switchRow({ title: "Names on the Lock Screen", sub: c.names ? "Who sent it, never what it says" : "Just “A pigeon has landed”", input: ntSwitch("nt-c-names", c.names, (v) => ({ chat: { names: v } })) })),
+    h("h4.app-k", { text: "Emails" }),
+    h("div.group", {}, switchRow({ title: "Email Me Too", sub: NT.emailOk ? "What’s still unread after 10 minutes" : "Confirm your email first", input: ntSwitch("nt-c-email", c.email, (v) => ({ chat: { email: v } }), !NT.emailOk) })),
+    c.on > 0 && h("div.group", {}, test)] };
+}
+// Weather: each place's warnings and rain, the morning briefing, the sun on your panels, and its emails
+function weatherNotifyView() {
+  const back = ntBack("weather"), w = ntWait("Weather", back); if (w) return w;
+  const W = NT.weather, said = (p) => [p.warn && "Warnings", p.rain && "Rain"].filter(Boolean).join(", ") || "Off";
+  return { title: "Weather", quiet: true, left: back, body: [
+    ...ntHead("weather", "Weather", W.on),
+    h("h4.app-k", { text: "Places" }),
+    W.places.length ? h("div.group", {}, W.places.map((p) => h("button.row.plain", { type: "button", "data-k": p.name, onclick: () => { ntPlace = p; pushSheet(wxPlaceView); } },
+      h("span.tx", {}, h("b", { text: p.name })), h("span.val", { text: said(p) }), h("span.chev", {}, icon("chev", 16, 2.4)))))
+      : h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "Save a place in Weather, and it’s here to choose what it tells you." })))),
+    h("p.hint", { text: "Warnings: official ones, as they’re issued. Rain: a heads-up before it starts." }),
+    h("h4.app-k", { text: "Every day" }),
+    h("div.group", {},
+      row({ icon: "sun", tint: "amber", title: "Morning Briefing", value: W.brief ? `${W.briefAt} · ${W.brief.name}` : "Off", onclick: () => pushSheet(wxBriefView) }),
+      W.solar && switchRow({ icon: "sun", tint: "amber", title: "Your Panels", sub: "When the sun comes out on them", input: ntSwitch("nt-w-solar", W.solar.alert, (v) => ({ weather: { solar: v } })) })),
+    h("h4.app-k", { text: "Emails" }),
+    h("div.group", {},
+      switchRow({ title: "Warnings by Email", sub: NT.emailOk ? "For the places with warnings on" : "Confirm your email first", input: ntSwitch("nt-w-ewarn", W.email.warn, (v) => ({ weather: { email: { warn: v } } }), !NT.emailOk) }),
+      switchRow({ title: "Briefing by Email", sub: NT.emailOk ? "At its time, for its place" : "Confirm your email first", input: ntSwitch("nt-w-ebrief", W.email.brief, (v) => ({ weather: { email: { brief: v } } }), !NT.emailOk) }))] };
+}
+// (one place: its warnings, its rain)
+function wxPlaceView() {
+  const w = ntWait(ntPlace?.name || "Place"); if (w) return w;
+  const p = NT.weather.places.find((x) => Math.abs(x.lat - ntPlace.lat) < 0.006 && Math.abs(x.lon - ntPlace.lon) < 0.006) || ntPlace;
+  const at = { name: p.name, lat: p.lat, lon: p.lon };
+  return { title: p.name, body: [h("div.group", {},
+    switchRow({ icon: "alert", tint: "red", title: "Warnings", sub: "Official ones, as they’re issued", input: ntSwitch("nt-p-warn", p.warn, (v) => ({ weather: { place: { ...at, warn: v } } })) }),
+    switchRow({ icon: "bell", tint: "blue", title: "Rain", sub: "A heads-up before it starts", input: ntSwitch("nt-p-rain", p.rain, (v) => ({ weather: { place: { ...at, rain: v } } })) }))] };
+}
+// (the morning briefing: on or off, for which place, and when)
+function wxBriefView() {
+  const w = ntWait("Morning Briefing"); if (w) return w;
+  const W = NT.weather, places = W.places, spot = (p) => ({ name: p.name, lat: p.lat, lon: p.lon });
+  const where = h("select", { "aria-label": "For", id: "nt-b-place", name: "place" }, places.map((p, i) => h("option", { value: String(i), selected: !!W.brief && Math.abs(p.lat - W.brief.lat) < 0.006 && Math.abs(p.lon - W.brief.lon) < 0.006, text: p.name })));
+  where.onchange = () => ntChange(where, { weather: { brief: spot(places[Number(where.value)]) } });
+  const when = h("select", { "aria-label": "At", id: "nt-b-at", name: "at" }, QUARTERS.map((t) => h("option", { value: t, selected: t === W.briefAt, text: t })));
+  when.onchange = () => ntChange(when, { weather: { briefAt: when.value } });
+  return { title: "Morning Briefing", body: [
+    h("div.group", {},
+      switchRow({ icon: "sun", tint: "amber", title: "Morning Briefing", sub: "The day ahead, each morning", input: ntSwitch("nt-b-on", !!W.brief, (v) => ({ weather: { brief: v ? spot(places[0]) : null } }), !places.length) }),
+      W.brief && places.length && pickRow("For", where, W.brief.name), W.brief && pickRow("At", when, W.briefAt)),
+    !places.length && h("p.hint", { text: "Save a place in Weather first." })] };
+}
+// Fitness: the morning reminder, on every phone it's on
+function fitnessNotifyView() {
+  const back = ntBack("fitness"), w = ntWait("Fitness", back); if (w) return w;
+  const F = NT.fitness, at = F.at ?? 7 * 60;
+  const when = h("select", { "aria-label": "At", id: "nt-f-at", name: "at" }, QUARTERS.map((t, i) => h("option", { value: String(i * 15), selected: i * 15 === at - (at % 15), text: t })));
+  when.onchange = () => ntChange(when, { fitness: { at: Number(when.value) } });
+  return { title: "Fitness", quiet: true, left: back, body: [
+    ...ntHead("fitness", "Fitness", F.on),
+    h("div.group", {},
+      switchRow({ icon: "sun", tint: "amber", title: "Morning Reminder", sub: "Today’s session, or a rest day", input: ntSwitch("nt-f-on", F.morning, (v) => ({ fitness: { morning: v } })) }),
+      F.morning && pickRow("At", when, hhmm(at))),
+    h("p.hint", { text: "Its words come from your plan in Fitness, so it needs Rhythm on there." })] };
+}
+// Mail (the admin's): each address's new mail on or off, as Mail keeps them (asked of Mail itself, with this sign-in)
+function mailNotifyView() {
+  const back = ntBack("mail"), base = siteUrl(APPS.mail.sub).replace(/\/$/, "");
+  const ask = (init) => fetch(`${base}/api/notify`, { credentials: "include", ...init, headers: { "X-Inflite": "1", ...(init?.body ? { "Content-Type": "application/json" } : {}) } })
+    .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Mail didn’t answer."); return j; });
+  if (!MAILN) { MAILN = { wait: true }; ask().then((r) => { MAILN = r; if (Sheet.stack.at(-1) === mailNotifyView) redraw(); }, (e) => { MAILN = { error: e.message }; if (Sheet.stack.at(-1) === mailNotifyView) redraw(); }); }
+  if (MAILN.wait) return { title: "Mail", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
+  if (MAILN.error) return { title: "Mail", left: back, body: [...ntHead("mail", "Mail", 0).slice(0, 1), h("div.group", {}, h("div.empty", { text: `${MAILN.error} Open Mail, then come back.` })), h("a.pill.open-in", { href: siteUrl(APPS.mail.sub) }, "Open Mail", icon("open", 15, 2.6))] };
+  const sw = (a) => {
+    const el = h("input.switch", { type: "checkbox", role: "switch", id: `nt-m-${a.email}`, name: a.email, checked: a.notify });
+    el.onchange = async () => { el.disabled = true; try { MAILN = await ask({ method: "PATCH", body: JSON.stringify({ email: a.email, notify: el.checked }) }); } catch (e) { el.checked = !el.checked; toast(e.message, true); } finally { el.disabled = false; redraw(); } };
+    return el;
+  };
+  return { title: "Mail", quiet: true, left: back, body: [
+    ...ntHead("mail", "Mail", MAILN.on),
+    h("h4.app-k", { text: "New mail to" }),
+    h("div.group", {}, MAILN.addresses.map((a) => switchRow({ title: a.email, sub: a.name || null, input: sw(a) }))),
+    h("p.hint", { text: "From people, not updates, unless an address is set to Updates in Mail." })] };
+}
 // ---- Chat's settings that are the account's (functions/api/account inflight): which notifications, how they read
 // on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
 // (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
@@ -2853,7 +3020,7 @@ let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0, ifStale = false;
 // (a fetch dropped for a change: the sheet drawn again once the last change is back, from what that gave back, so the
 // rows it didn't touch don't stay as they were cached; and, if one couldn't be kept, fetched again as it's drawn)
 // (on any of its pages: the sheet's own, its notifications, who sees what, and who's blocked)
-const onIf = () => [inflightView, ifNotifyView, ifPrivacyView, ifBlockedView].includes(Sheet.stack.at(-1));
+const onIf = () => [inflightView, ifPrivacyView, ifBlockedView].includes(Sheet.stack.at(-1));
 const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (onIf()) redraw(); };
 const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "Takes off", "When a friend sends you one"], ["rerouted", "Changes course", "When a friend moves while yours is flying"],
   ["lost", "Is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
@@ -2905,40 +3072,13 @@ function inflightView() {
   return { title: "Chat", quiet: true, left: P.back, body: [
     setHead("inflight", "Chat"),
     h("div.group", {},
-      row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(ifNotifyView) }),
-      switchRow({ icon: "mail", tint: "blue", title: "Email me", sub: IF.emailOk ? "After 10 minutes unread" : "Confirm your email first",
-        input: P.input("email", IF.email, (v) => ({ email: v }), { disabled: !IF.emailOk }) })),
+      row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(chatNotifyView) })),
     h("h4.app-k", { text: "Privacy" }),
     h("div.group", {},
       row({ icon: "eye", tint: "teal", title: "Who sees what", value: shared === IF_PRIVACY.length ? "All shared" : shared ? `${shared} of ${IF_PRIVACY.length}` : "Nothing", onclick: () => pushSheet(ifPrivacyView) }),
       row({ icon: "block", tint: "grey", title: "Blocked", value: IF.blocked.length ? String(IF.blocked.length) : "No one", onclick: () => pushSheet(ifBlockedView) })),
     P.said,
-    ...openIn("inflight", "Chat", "For push, Lock Chat and haptics, on each phone")] };
-}
-// which notifications, how they read on the lock screen, and quiet hours
-function ifNotifyView() {
-  const P = ifParts("Notifications");
-  if (P.wait) return P.wait;
-  const n = IF.notify, notify = (k) => (v) => ({ notify: { [k]: v } });
-  const hour = (k, title) => {
-    const sel = h("select", { "aria-label": title, id: `if-${k}`, name: k }, Array.from({ length: 24 }, (_, i) => h("option", { value: String(i), selected: n[k] === i, text: hh(i) })));
-    const val = h("span.val", { text: hh(n[k]) });
-    sel.onchange = () => { val.textContent = hh(Number(sel.value)); P.change(sel, { notify: { [k]: Number(sel.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }, redraw); };
-    return h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), val, icon("chev", 16, 2.4), sel);
-  };
-  const list = (ks) => IF_NOTIFY.filter(([k]) => ks.includes(k)).map(([k, t, sub]) => P.sw(k, t, sub, n[k], notify(k)));
-  return { title: "Notifications", body: [
-    h("h4.app-k", { text: "Pigeons" }),
-    h("div.group", {}, list(["landed", "takeoff", "rerouted", "lost", "delays"])),
-    h("h4.app-k", { text: "Friends" }),
-    h("div.group", {}, list(IF_NOTIFY.map(([k]) => k).filter((k) => !["landed", "takeoff", "rerouted", "lost", "delays"].includes(k)))),
-    h("h4.app-k", { text: "On the lock screen" }),
-    h("div.group", {}, P.sw("names", "Show names", n.names ? "Who sent it, never what it says" : "Just “A pigeon has landed”", n.names, notify("names"), { after: redraw })),
-    h("h4.app-k", { text: "Quiet hours" }),
-    h("div.group", {}, P.sw("quiet", "Quiet hours", n.quiet ? `In ${n.tz} time: those that land meanwhile, when they end` : "Hold them overnight, or whenever suits", n.quiet,
-      (v) => ({ notify: { quiet: v, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }), { after: redraw }),
-      n.quiet && hour("quietFrom", "From"), n.quiet && hour("quietTo", "To")),
-    P.said] };
+    ...openIn("inflight", "Chat", "For Lock Chat and haptics, on each phone")] };
 }
 // who sees what (each works both ways)
 function ifPrivacyView() {
@@ -3024,7 +3164,8 @@ function weatherSetView() {
       switchRow({ icon: "chart", tint: "indigo", title: "Tune the forecast", sub: "For how it’s been here lately", input: sw("wx-tune", WXS.tune, (v) => ({ tune: v })) }),
       switchRow({ icon: "car", tint: "amber", title: "Commute", sub: "Weekdays, in Highlights", input: sw("wx-commute", c.on, (v) => ({ commute: { on: v } })) }),
       c.on && at("am", "Leave"), c.on && at("pm", "Return")),
-    ...openIn("weather", "Weather", "For notifications, best times, its look and your page")] };
+    h("div.group", {}, row({ icon: "bell", tint: "red", title: "Notifications", onclick: () => pushSheet(weatherNotifyView) })),
+    ...openIn("weather", "Weather", "For best times, its look and your page")] };
 }
 
 // ---- Fitness's settings that are the account's (functions/api/account fitness): kilometres or miles, and whether it
@@ -3072,8 +3213,9 @@ function fitnessSetView() {
     h("div.group", {}, h("button.row", { type: "button", onclick: (e) => exportFitness(e.currentTarget, said) },
       h("span.ic.green", {}, icon("download", 19)), h("span.tx", {}, h("b", { text: "Export everything" }), h("small", { text: "Every file and workout, in one zip" })),
       h("span.get", {}, icon("download", 20, 2.2)))),
+    h("div.group", {}, row({ icon: "bell", tint: "red", title: "Notifications", onclick: () => pushSheet(fitnessNotifyView) })),
     said,
-    ...openIn("fitness", "Fitness", "For its morning reminder and uploading files, on each phone")] };
+    ...openIn("fitness", "Fitness", "For uploading files, on each phone")] };
 }
 // (a connection, said: whose, and when it last looked)
 function fxSaid(c, off) {

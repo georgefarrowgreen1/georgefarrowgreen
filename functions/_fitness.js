@@ -302,6 +302,7 @@ export async function dropFitness(env, userId) {
   await D.batch([D.prepare("DELETE FROM fx_garmin WHERE user_id = ?").bind(userId), D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").bind(userId)]).catch(() => {});
   // (and the morning notification's phones: functions/_fitpush.js)
   await D.prepare("DELETE FROM fx_push WHERE user_id = ?").bind(userId).run().catch(() => {});
+  await D.prepare("DELETE FROM fx_morning WHERE user_id = ?").bind(userId).run().catch(() => {});
   // (and the nights: Garmin's (functions/_garmin.js), and Apple Health's with its Shortcut's key, so it can't send more
   // for an account that's gone (functions/_health.js); each where its table's been made)
   // (and Strava's tokens and files waiting: functions/_strava.js; the files went with the rest above)

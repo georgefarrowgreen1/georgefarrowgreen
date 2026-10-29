@@ -35,6 +35,9 @@ function drawFolders() {
   const s = S.settings, form = $("settings-form"), said = (k) => form.querySelector(`input[name="${k}"]:checked`)?.closest("label").textContent.trim() || "";
   const acts = s.activities.filter((a) => a.on !== false).map((a) => a.name);
   $("fv-notify").textContent = notifying(s.notify) ? "On" : "Off";
+  // (signed in, the folder opens the account's Notifications page, and the panels' own switch is there too)
+  if (!!S.acct && !S.noAcct) { $("fv-notify").textContent = "In your account"; $("alerts-go").closest("li").hidden = true; }
+  $("settings-form").solarAlert.closest("li").hidden = !!S.acct && !S.noAcct;
   $("fv-commute").textContent = s.commute?.on ? `${atText(s.commute.am)}, ${atText(s.commute.pm)}` : "Off";
   const sol = s.solar;
   $("fv-solar").textContent = !sol?.on ? "Off" : sol.zones.length > 1 ? `${sol.zones.length} zones` : `${facesName(sol.zones[0].faces)}, ${sol.zones[0].pitch}°`;
@@ -526,7 +529,9 @@ function addAct() {
 
 // what's in it, answering from now on (wired once, as this comes)
 const form = $("settings-form");
-$("settings").addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (go) setGo(go.dataset.go); });
+// (signed in, Notifications is the account's: its Notifications page, at Weather)
+const notifyInAcct = () => !!S.acct && !S.noAcct;
+$("settings").addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (!go) return; if (go.dataset.go === "notify" && notifyInAcct()) return openAccount("notify-weather"); setGo(go.dataset.go); });
 $("acct-set-go").addEventListener("click", () => openAccount("weather"));
 $("set-back").addEventListener("click", setBack);
 // (closed while changing an activity: what's been changed kept)
@@ -537,5 +542,5 @@ for (const k of ["mailWarn", "mailBrief"]) form[k].addEventListener("change", on
 $("sign-out").addEventListener("click", signOutHere);
 $("act-add").addEventListener("change", addAct);
 $("zone-add").addEventListener("click", () => newZone());
-$("alerts-go").addEventListener("click", () => setGo("notify"));
+$("alerts-go").addEventListener("click", () => (notifyInAcct() ? openAccount("notify-weather") : setGo("notify")));
 $("arrange-reset").addEventListener("click", () => { S.settings.layout = { order: CARDS.map((c) => c[0]), off: [] }; arranged(); $("arrange-said").textContent = "Put back as it was."; });

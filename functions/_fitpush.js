@@ -18,6 +18,8 @@ async function tables(env) {
     await D.prepare(`CREATE TABLE IF NOT EXISTS fx_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL,
       tz TEXT NOT NULL, days TEXT NOT NULL DEFAULT '{}', sent TEXT, added INTEGER NOT NULL)`).run();
     await D.prepare("CREATE INDEX IF NOT EXISTS fx_push_user ON fx_push (user_id)").run();
+    // (the account's own choice, from its Notifications page: on or off, and the time, for every phone it's on)
+    await D.prepare("CREATE TABLE IF NOT EXISTS fx_morning (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, at INTEGER)").run();
     tables.done = true;
   }
   return D;
@@ -52,7 +54,9 @@ function cleanDays(d) {
 export async function setMorning(env, userId, b) {
   const sub = b?.sub, keys = await keysOk(sub);
   if (!sub || !pushEndpointOk(sub.endpoint) || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
-  const at = Number(b.at);
+  // (the time's the account's, where it's chosen one on its Notifications page; else the phone's, as it was)
+  const mine = await morningOf(env, userId);
+  const at = mine.at ?? Number(b.at);
   if (!Number.isInteger(at) || at < 0 || at >= 24 * 60) throw new HttpError(400, "Bad request.");
   if (!tzOk(b.tz)) throw new HttpError(400, "Bad request.");
   const D = await tables(env);
@@ -63,6 +67,24 @@ export async function setMorning(env, userId, b) {
   // (ten phones an account at most: the oldest goes as an eleventh comes)
   await D.prepare("DELETE FROM fx_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM fx_push WHERE user_id = ?1 ORDER BY added DESC LIMIT ?2)").bind(userId, PHONES).run();
   return { on: true, at };
+}
+// The account's morning reminder, as its Notifications page has it: { on, at (minutes after midnight, or null: each
+// phone's own, as it was set there), phones (how many it's on) }
+export async function morningOf(env, userId) {
+  const D = await tables(env);
+  const [m, n] = await Promise.all([D.prepare("SELECT off, at FROM fx_morning WHERE user_id = ?").bind(userId).first(),
+    D.prepare("SELECT COUNT(*) AS n, MIN(at) AS at FROM fx_push WHERE user_id = ?").bind(userId).first()]);
+  return { on: !m?.off, at: m?.at ?? n?.at ?? null, phones: n?.n || 0 };
+}
+// …changed there: { on, at }, for every phone it's on, now and to come
+export async function setMorningFor(env, userId, b) {
+  const was = await morningOf(env, userId), on = b.on === undefined ? was.on : !!b.on;
+  let at = b.at === undefined ? was.at : Number(b.at);
+  if (at != null && (!Number.isInteger(at) || at < 0 || at >= 24 * 60)) throw new HttpError(400, "Choose a time.");
+  const D = await tables(env);
+  await D.batch([D.prepare("INSERT INTO fx_morning (user_id, off, at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET off = ?2, at = ?3").bind(userId, on ? 0 : 1, at),
+    ...(at != null ? [D.prepare("UPDATE fx_push SET at = ?2 WHERE user_id = ?1").bind(userId, at)] : [])]);
+  return morningOf(env, userId);
 }
 // Turned off on this phone (or the phone's gone)
 // The browser renewed a phone's subscription by itself (sw.js, pushsubscriptionchange): its morning notification moves
@@ -89,7 +111,8 @@ function localNow(tz, t) {
 const PHONES = 10, PER_TICK = 200;
 export async function morningTick(env, t = Date.now()) {
   const D = await tables(env);
-  const { results } = await D.prepare("SELECT endpoint, p256dh, auth, at, tz, days, sent FROM fx_push").all();
+  // (not those whose account has turned it off on its Notifications page)
+  const { results } = await D.prepare("SELECT p.endpoint, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
   let sent = 0;
   for (const r of results) {
     const now = localNow(r.tz, t);

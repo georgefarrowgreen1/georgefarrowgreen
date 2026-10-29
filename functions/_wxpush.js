@@ -33,7 +33,7 @@
 //
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 
-import { pushEndpointOk, pushToSub, vapid, unsubToken } from "./_notify.js";
+import { pushEndpointOk, pushToSub, vapid, unsubToken, prefsOf, isQuiet as quietNow } from "./_notify.js";
 import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
 import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
@@ -442,6 +442,11 @@ async function tick(env, D, t, origin) {
     D.prepare("DELETE FROM wx_devs WHERE (user_id IS NULL OR coalesce(updated, 0) < ?) AND NOT EXISTS (SELECT 1 FROM wx_subs s WHERE s.dev = wx_devs.dev)").bind(t - KEEP_IDLE),
   ]);
   const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1 OR solar IS NOT NULL").all();
+  // (an account's Quiet Hours, from its Notifications page, every app's: its devices' rain and sun wait them out, as Weather's
+  // own night does; warnings, and the briefing at the time it was set for, still come)
+  const { results: quiets } = await D.prepare("SELECT d.dev, u.notify_prefs FROM wx_devs d JOIN pg_users u ON u.id = d.user_id WHERE d.user_id IS NOT NULL").all().catch(() => ({ results: [] }));
+  const held = new Set(quiets.filter((q) => { const p = prefsOf(q); return p.quiet && quietNow(p, t); }).map((q) => q.dev));
+  for (const s of subs) s.held = held.has(s.dev);
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
   const need = toLook(subs, t);
   // places a few kilometres apart share a forecast (0.05°); the whole of it only where a briefing's due (or the clock's not known yet)
@@ -471,7 +476,7 @@ async function tick(env, D, t, origin) {
   // in its quiet hours, nor within three hours of the last) or whose briefing's due, and whose forecast came: read all
   // at once, while the phones are gone through
   const radar = radarForTick(env, t), rains = new Map(), spot = (s) => `${s.lat},${s.lon}`;
-  const could = (s) => s.rain && (s.tz_off == null || !isQuiet(local(s))) && !(s.last_rain && t - s.last_rain < RAIN_GAP);
+  const could = (s) => s.rain && !s.held && (s.tz_off == null || !isQuiet(local(s))) && !(s.last_rain && t - s.last_rain < RAIN_GAP);
   for (const s of need) if (rains.size < RADAR_PLACES && forecasts.has(cellOf(s)) && !rains.has(spot(s)) && (could(s) || due(s))) rains.set(spot(s), radar.at(s.lat, s.lon));
   const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, warn: 0, gone: 0 };
   for (const s of need) {
@@ -487,7 +492,7 @@ async function tick(env, D, t, origin) {
   }
   // the sun coming out on panels: each roof looked at once a half hour (the first tick in it), outside the quiet hours
   if (new Date(t).getUTCMinutes() % 30 < 5) {
-    const roofs = subs.filter((s) => s.solar && !isMail(s) && (s.tz_off == null || !isQuiet(local(s)))).slice(0, SUN_PLACES);
+    const roofs = subs.filter((s) => s.solar && !s.held && !isMail(s) && (s.tz_off == null || !isQuiet(local(s)))).slice(0, SUN_PLACES);
     for (const s of roofs) { try { await sunNotify(env, D, s, t, out, origin); } catch (e) { console.error("weather tick: sun", e && e.message); } }
   }
   return out;
@@ -593,7 +598,7 @@ async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
   let units = {}; try { units = JSON.parse(s.units || "{}"); } catch (_) {}
   const f = makeFormat(units), url = linkTo(s.lat, s.lon, s.name), got = [];
   if (s.tz_off !== wx.place.offset) await D.prepare("UPDATE wx_subs SET tz_off = ?2 WHERE id = ?1").bind(s.id, wx.place.offset).run();
-  if (s.rain) {
+  if (s.rain && !s.held) {
     const a = rainAlert(wx, now, f, s.last_rain ? t - s.last_rain : null);
     if (a && await claim(D, s, "last_rain", t)) {
       const r = await pushToSub(env, s, { ...a, url, ttl: 1800, urgency: "high" });

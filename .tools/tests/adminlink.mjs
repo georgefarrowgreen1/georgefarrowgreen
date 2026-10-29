@@ -69,7 +69,7 @@ ok(r.status === 403, 'nor its API', String(r.status));
 sql(`UPDATE pg_users SET email_ok = ${Date.now()} WHERE id = '${gail}'`);
 await account(G);
 ok(await G.p.evaluate(() => { const rows = [...document.querySelectorAll('main .row, main section h3')].map((x) => x.querySelector('b')?.textContent || x.textContent);
-  return rows.indexOf('Emails') > -1 && rows.indexOf('Admin') > rows.indexOf('Emails') && rows.indexOf('Admin') === rows.length - 1; }), 'Admin: a row at the foot, after your preferences');
+  return rows.indexOf('Notifications') > -1 && rows.indexOf('Admin') > rows.indexOf('Notifications') && rows.indexOf('Admin') === rows.length - 1; }), 'Admin: a row at the foot, after your preferences');
 for (let i = 0; i < 20 && !/Accounts 2 new this week 2/.test(await adminText(G)); i++) await settle(G, 500);
 const sec = await adminText(G);
 ok(/Admin 2 accounts \d+ active today 0 messages/.test(sec) && /Accounts 2 new this week 2/.test(sec) && /Invites None waiting/.test(sec) && /Messages None yet/.test(sec) && /Email Working/.test(sec)

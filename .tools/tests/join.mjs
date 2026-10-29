@@ -105,21 +105,39 @@ export async function joinChat(page, inflight, { name, handle, email, password =
 }
 
 // Chat's settings on the account's page, as Settings in InFlite's menu opens them (a window of its own, signed
-// in there by the code Chat hands over, with the sheet open): → that window. Its first page has Email me (#if-email);
-// sub (its row's title: Notifications, Who sees what, Blocked) opens one of its own pages, with its switches
-// #if-<setting> (landed, names, quiet… on Notifications, receipts, approxLocation… on Who sees what) and hours
-// (#if-quietFrom, #if-quietTo). Each change is saved as it's made; Chat takes it up as it next syncs.
+// in there by the code Chat hands over, with the sheet open): → that window. sub (its row's title: Who sees what,
+// Blocked) opens one of its own pages, with its switches #if-<setting> (receipts, approxLocation… on Who sees what).
+// (Its notifications are the account's Notifications page's: notifyFolder.) Each change is saved as it's made; Chat
+// takes it up as it next syncs.
 export async function inflightSettings(page, sub = null) {
   await page.click('[data-act=tab][data-id=account]'); await page.waitForTimeout(500);
   // (Chat's settings: Settings, in InFlite's menu from your photo)
   await page.click('.chead .ifh-me'); await page.waitForSelector('.ifm-pop.open');
   const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('.ifm-pop [data-k=settings]')]);
   await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
-  const go = await w.waitForSelector('#sheet[open] #if-email, main .welcome .btn', { timeout: 20000 });
-  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); }
+  const go = await w.waitForSelector('#sheet[open] .row[data-k="Who sees what"], main .welcome .btn', { timeout: 20000 });
+  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] .row[data-k="Who sees what"]', { timeout: 20000 }); }
   await w.waitForTimeout(400);
   if (sub) await ifPage(w, sub);
   return w;
+}
+// Chat's notifications, as its menu's Notifications row opens them: the account's Notifications page, at Chat's folder
+// (a window of its own, signed in there by the code Chat hands over): its switches #nt-c-<kind> (landed, takeoff,
+// names…), #nt-c-email. → that window
+export async function notifyFolder(page) {
+  await page.click('.chead .ifh-me'); await page.waitForSelector('.ifm-pop.open');
+  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('.ifm-pop [data-k=notify]')]);
+  await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
+  const go = await w.waitForSelector('#sheet[open] #nt-c-landed, main .welcome .btn', { timeout: 20000 });
+  if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #nt-c-landed', { timeout: 20000 }); }
+  await w.waitForTimeout(400);
+  return w;
+}
+// the account's page, opened again at one of its parts (open: notify, the Notifications page, with Quiet Hours #nt-quiet,
+// #nt-from, #nt-to; notify-inflight, Chat's folder), as an app's link opens it
+export async function acctOpen(w, open) {
+  await w.evaluate((o) => history.replaceState(null, '', location.pathname + '#from=inflight&open=' + o), open); await w.reload();
+  await w.waitForSelector('#sheet[open] .sheet-body', { timeout: 20000 }); await w.waitForTimeout(700);
 }
 // one of Chat's settings' own pages, from its first (by its row's title), drawn once what's kept is in
 export async function ifPage(w, sub) {

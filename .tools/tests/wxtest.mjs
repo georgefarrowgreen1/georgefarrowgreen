@@ -110,7 +110,10 @@ const send = async (ph, kind, text) => {
 };
 async function pushOn(ph) {
   await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
-  await ph.p.click('.chead .ifh-me'); await ph.p.click('.ifm-pop [data-k=pushtoggle]'); await ph.p.waitForSelector('.ifm-pop [data-k=pushtoggle][aria-checked=true]', { timeout: 10000 }); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
+  // (turned on as from the account's Notifications page: Chat opened with #notify, its one-tap sheet's Allow)
+  await ph.p.evaluate(() => history.replaceState(null, '', location.pathname + location.search + '#notify')); await ph.p.reload();
+  await ph.p.waitForSelector('.ifa-go', { timeout: 30000 }); await ph.p.click('.ifa-go'); await ph.p.waitForSelector('.ifa-layer', { state: 'detached', timeout: 15000 });
+  await ph.p.click('.chead .ifh-me'); await ph.p.waitForSelector('.ifm-pop [data-k=notify] .ifm-val:text-is("On")', { timeout: 10000 }); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
   // (whether Mid-air Moments is on: the account's, as Chat has it from its sync)
   return ph.p.evaluate(() => new Promise((res) => {
     const r = indexedDB.open('inflight'); r.onerror = () => res(null);
