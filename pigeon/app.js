@@ -39,6 +39,8 @@ const IFL = (() => {
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
     data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
+    signout: '<path d="M9.5 19.5h-3a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2h3M15.5 16.5 20 12l-4.5-4.5M20 12H9.5"/>',
+    install: '<path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
@@ -131,11 +133,14 @@ const IFL = (() => {
     };
     const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
     const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
+    // (its foot: the app and its version, quietly, a green dot while it's up to date; a new version waiting, an Update
+    // button in the dot's place; and Sign Out, the one round button at the end, named for screen readers)
+    const said = (t) => el("span", "ifm-sr", t);
     let status;
-    if (o.update) { status = el("button", "ifm-upd", "Update ready"); status.type = "button"; status.onclick = act(o.update); }
-    else status = el("span", "", "Up to date");
-    const out = el("button", "ifm-out", "Sign Out"); out.type = "button"; out.onclick = act(o.signOut);
-    const foot = el("div", "ifm-foot", mark, el("span", "ifm-ver", `${NAME[o.app]} V${o.build}`, el("i", "", " · "), status), o.signOut ? out : null);
+    if (o.update) { status = el("button", "ifm-upd"); status.innerHTML = svg("install"); status.append("Update"); status.type = "button"; status.onclick = act(o.update); }
+    else { status = el("span", "ifm-dot", said(" · Up to date")); }
+    const out = el("button", "ifm-out", said("Sign Out")); out.insertAdjacentHTML("afterbegin", svg("signout")); out.type = "button"; out.onclick = act(o.signOut);
+    const foot = el("div", "ifm-foot", el("span", "ifm-ver", mark, `${NAME[o.app]} ${o.build}`, o.update ? null : status), o.update ? status : null, o.signOut ? out : null);
     const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
     pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
@@ -214,7 +219,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.3";            // shown in InFlite's menu
+const APP_VERSION = "1.4.4";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

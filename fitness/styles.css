@@ -1922,6 +1922,8 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
   --ifm-text-3: rgba(60, 60, 67, 0.36);
   --ifm-press: rgba(120, 120, 128, 0.14);
   --ifm-red: #e5342a;
+  --ifm-red-bg: rgba(229, 52, 42, 0.1);
+  --ifm-green: #1f9d55;
   --ifm-dim: rgba(14, 18, 40, 0.14);
   --ifm-tint: #2f6be6;
   --ifm-warn: #c86a00;
@@ -1932,15 +1934,15 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
   :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note) {
     --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
     --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
   }
 }
 :root[data-theme="dark"] :is(.ifm-layer, .ifm-note) {
   --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
   --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
 }
-/* each app's own colour: its focus rings, and Update ready */
+/* each app's own colour: its focus rings, and Update */
 .ifm-in-chat { --ifm-tint: #2b6fe6; }
 .ifm-in-weather { --ifm-tint: #3a86f0; }
 .ifm-in-fitness { --ifm-tint: #f0542e; }
@@ -2001,13 +2003,20 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
 
 /* its version, and Sign Out */
-.ifm-foot { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 14px 4px 16px; font-size: 13.5px; color: var(--ifm-text-2); }
-.ifm-foot-ic { width: 18px; height: 18px; border-radius: 5px; flex: none; }
-.ifm-ver { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ifm-ver i { font-style: normal; }
-.ifm-upd { color: var(--ifm-tint) !important; font-weight: 600; }
-.ifm-out { flex: none; min-height: 44px; padding: 0 6px !important; margin-right: -6px; color: var(--ifm-red) !important; font-size: 16px; font-weight: 600; }
-.ifm-out:active { opacity: 0.5; }
+.ifm-foot { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 4px 0 14px; font-size: 13px; color: var(--ifm-text-2); }
+.ifm-foot-ic { width: 16px; height: 16px; border-radius: 4.5px; flex: none; }
+.ifm-ver { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
+.ifm-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ifm-green); }
+.ifm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ifm-foot .ifm-upd { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px !important; border-radius: 16px !important;
+  background: rgba(47, 107, 230, 0.14) !important; background: color-mix(in srgb, var(--ifm-tint) 15%, transparent) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
+.ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
+.ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
+.ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
+  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform 0.2s; }
+.ifm-foot .ifm-out svg { width: 19px; height: 19px; stroke-width: 2; }
+.ifm-foot .ifm-out::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
+.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(0.92); }
 
 /* the note after an update */
 .ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;

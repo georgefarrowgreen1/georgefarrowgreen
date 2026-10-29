@@ -122,7 +122,7 @@ ok(await L.p.isVisible('#me-btn') && await L.p.isHidden('#settings-btn'), "signe
 await L.p.click('#me-btn'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
 await L.p.screenshot({ path: `${out}/menu.png` });
 const wm = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
-ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Rain Alerts/.test(wm) && /Morning Briefing/.test(wm) && /Weather V\d+\.\d\d · Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
+ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Rain Alerts/.test(wm) && /Morning Briefing/.test(wm) && /Weather \d+\.\d\d\s*· Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 
 // ---- 2. A phone with places of its own: signed in to Weather, on the account's page, with email and password; the two

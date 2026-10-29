@@ -196,7 +196,7 @@ await L.p.waitForSelector('.chead .ifh-me', { timeout: 20000 }).catch(() => {});
 if (await L.p.$('.chead .ifh-me')) {
   await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
   await L.p.screenshot({ path: `${out}/menu-chat.png` });
-  ok(!(await L.p.$('.ifm-pop .ifm-apps')) && /Notifications/.test(await L.p.innerText('.ifm-pop')) && /Chat V[\d.]+ · Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
+  ok(!(await L.p.$('.ifm-pop .ifm-apps')) && /Notifications/.test(await L.p.innerText('.ifm-pop')) && /Chat [\d.]+\s*· Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
   await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 } else ok(false, "Chat: your photo at the top left, for InFlite's menu");
 await L.p.goto(`${FIT}/`);
@@ -208,7 +208,7 @@ ok(await L.p.$eval('.ifh', (x) => x.firstElementChild.classList.contains('ifh-me
 await L.p.click('.ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 700);
 await L.p.screenshot({ path: `${out}/menu.png` });
 const menuSays = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
-ok(/Sam Taylor @sam/.test(menuSays) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Distances/.test(menuSays) && /Fitness V\d+\.\d\d · Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
+ok(/Sam Taylor @sam/.test(menuSays) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Distances/.test(menuSays) && /Fitness \d+\.\d\d\s*· Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
 await L.p.mouse.click(20, 20); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 ok(true, 'and closed with a tap off it');
 await you(L);
