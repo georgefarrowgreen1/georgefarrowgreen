@@ -1,4 +1,4 @@
-/* ---------- what the admin sees of how InFlight is used ----------
+/* ---------- what the admin sees of how Chat is used ----------
    Counts only: how many people use it and come back, how many pigeons fly, which kinds and features, and whether
    pigeons are landing on time. Never who sent what to whom, never a word, a place or a route: every figure is
    a total over everyone (and the admin panel is the site owner's alone).

@@ -1,4 +1,4 @@
-/* InFlight: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
+/* Chat: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
    (dawn in light, night in dark: the account page's own), and Liquid Glass over it: groups, the Messages list, cards,
    friends' bubbles and sheets are panes of glass with a bright rim and a soft lift; the nav buttons, the tab bar, the
    composer and menus float over everything in a stronger glass. Light by default. */
@@ -103,7 +103,7 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 /* Liquid Glass, as the account page has it: blur + saturation, a sheen, a bright rim, a soft lift. This is the stronger
    glass, for what floats over everything (the bars and their buttons, menus, toasts); what lies on the sky is a clearer
    pane of it (the end of this file). */
-.glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
+.glass,.nbtn,.nb-right,.tabs,.tabacc,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
   background:var(--sheen),var(--glass);
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
   box-shadow:var(--edge),var(--lift);
@@ -130,7 +130,7 @@ html.night .sky{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.aura{animation:none}}
 /* Reduce Transparency: solid glass, as the account page's is */
 @media (prefers-reduced-transparency:reduce){
-  .glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
+  .glass,.nbtn,.nb-right,.tabs,.tabacc,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
 
 /* ---------- shell ---------- */
@@ -202,6 +202,15 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .navbar.root + .large{margin-top:-48.5px;margin-right:20px;font-size:17px;font-weight:600;letter-spacing:0}
 .navbar.root.b1 + .large{margin-right:72px}
 .navbar.root.b2 + .large{margin-right:112px}
+/* your photo at the left of a tab's top screen: InFlite's menu (app.js youMenu); the title along from it */
+.navbar.root.me + .large{margin-left:66px}
+/* InFlite's header on a tab's top screen (its copy at the foot): Chat's colours, under the status bar */
+.ifh.chead{--ifh-ink:var(--label);--ifh-ink-2:var(--label-2);--ifh-tint:var(--tint);--ifh-band:var(--sky-top);--ifh-glass:var(--glass);--ifh-pt:8px;--ifh-mb:6px}
+.ifh.chead .ifh-act svg{font-size:22px;width:22px;height:22px}
+.ifh.chead .ifh-acts{-webkit-backdrop-filter:none;backdrop-filter:none}          /* (its glass near solid already: no blur to work out behind a sheet) */
+.ifh.chead .ifh-me .av{font-size:15px}
+.nbtn.mebtn{width:44px;height:44px;margin-left:2px;background:none;box-shadow:none}
+.nbtn.mebtn .av{width:38px;height:38px;font-size:15px;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 4px 10px -4px rgba(20,30,60,.4)}
 
 /* ---------- search ---------- */
 .search{display:flex;align-items:center;gap:7px;margin:0 16px 12px;padding:0 14px;height:42px;border-radius:999px;background:var(--fill);color:var(--label-2)}
@@ -226,7 +235,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .cell .val{flex:none;max-width:55%;color:var(--label-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell .val .mono,.cell .val.mono{font-family:var(--mono);font-size:15px}
 .cell .chev{font-size:14px;color:var(--label-3);stroke-width:2.8}
-.cell .chev.away{font-size:13px;stroke-width:2.6}   /* (opens the account's page: InFlight Settings) */
+.cell .chev.away{font-size:13px;stroke-width:2.6}   /* (opens the account's page: Chat Settings) */
 .cell.action{color:var(--tint)}
 .cell.center{justify-content:center;text-align:center}
 .cell.destructive{color:var(--red)}
@@ -367,20 +376,24 @@ html.kbup .compose{padding-bottom:6px}
 .attach button svg{font-size:13px;stroke-width:2.6}
 
 /* ---------- glass tab bar ---------- */
-.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;padding:0 20px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none}
-.tabs{pointer-events:auto;display:flex;width:100%;max-width:320px;padding:5px;border-radius:999px}
-.tab{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 6px;border:0;border-radius:999px;background:none;color:var(--label);font-size:10px;font-weight:600;letter-spacing:.1px;transition:background .2s,color .2s}
-.tab svg{font-size:24px}
-.tab[aria-current="true"]{color:var(--tint)}
+.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;gap:var(--ift-gap);padding:0 16px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none;--ift-tint:var(--tint)}
+.tabs{pointer-events:auto;display:flex;box-sizing:border-box;flex:1 1 auto;max-width:var(--ift-max);height:var(--ift-h);padding:var(--ift-pad);border-radius:999px}
+/* (Search, beside it: InFlite's tab bar's one round button) */
+.tabacc{pointer-events:auto;flex:none;width:var(--ift-h);height:var(--ift-h);border:0;border-radius:50%;display:grid;place-items:center;color:var(--label);padding:0}
+.tabacc svg{font-size:var(--ift-icon)}
+.tabacc:active{transform:scale(.92)}
+.tab{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;border:0;border-radius:999px;background:none;color:var(--label-2);font-size:var(--ift-label);font-weight:600;letter-spacing:.1px;transition:background .2s,color .2s}
+.tab svg{font-size:var(--ift-icon)}
+.tab[aria-current="true"]{color:var(--ift-tint)}
 .tab:active{transform:scale(.95)}
-.tab .badge{position:absolute;top:2px;left:calc(50% + 7px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:12px;line-height:18px;font-weight:600}
+.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ift-tint);color:#fff;font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
 
 /* ---------- forms ---------- */
 .fcell{position:relative;display:flex;align-items:center;gap:6px;min-height:52px;padding:0 8px 0 18px;background:var(--cell)}
 .fcell + .fcell::before{content:"";position:absolute;top:0;right:0;left:18px;height:.5px;background:var(--sep)}
 .fcell .pre{flex:none;color:var(--label-2)}
 .fcell input,.fcell select{flex:1;min-width:0;border:0;background:none;outline:none;padding:14px 10px 14px 0;font-size:17px;color:var(--label)}
-.fcell input::placeholder{color:var(--label-3)}
+.fcell input::placeholder{color:var(--label-2);opacity:.8}
 .fcell input:disabled{color:var(--label-2)}
 .fcell.bad input::placeholder,.fcell.bad .pre{color:var(--red)}
 .fcell.bad{box-shadow:inset 3px 0 0 var(--red)}
@@ -550,7 +563,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* ---- tab bar: the highlight slides and stretches like a drop of glass ---- */
 .tabs{position:relative;transition:transform .5s var(--snappy)}
 .tabs:has(.tab:active){transform:scale(1.04)}
-.tabs::before{content:"";position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px) / 3);border-radius:999px;background:var(--fill);
+.tabs::before{content:"";position:absolute;top:var(--ift-pad);bottom:var(--ift-pad);left:var(--ift-pad);width:calc((100% - 2 * var(--ift-pad)) / 3);border-radius:999px;background:color-mix(in srgb,var(--ift-tint) var(--ift-pill),transparent);
   translate:calc(var(--tab, 0) * 100%) 0;transition:translate .55s var(--snappy);pointer-events:none}
 .tabs.moving::before{animation:squish .55s var(--smooth)}
 @keyframes squish{35%{scale:1.22 .9}}
@@ -761,7 +774,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .cell .csub .mono{font-family:var(--mono);font-size:13px;letter-spacing:.3px}
 @media (max-width:360px){
   .cell .val .mono,.cell .val.mono{font-size:13px;letter-spacing:-.3px}
-  .me-cell .name{font-size:17px}
 }
 /* short phones: the welcome screen fits without scrolling */
 @media (max-height:640px){
@@ -1539,7 +1551,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .mapcard .frow.flying b{color:var(--label)}
 .mapcard .skyrow b{color:var(--label)}
 
-/* Messages wears the app's name where its title was: the icon and InFlight */
+/* Messages wears the app's name where its title was: the icon and Chat */
 .brand{display:inline-flex;align-items:center;gap:.3em;min-width:0;vertical-align:middle}
 .brand .bicon{flex:none;display:grid;place-items:center;width:1.05em;height:1.05em;border-radius:.27em;color:#fff;
   background:linear-gradient(160deg,#5fb0ff,#0a5fe0);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 8px -2px rgba(10,95,224,.45)}
@@ -1792,7 +1804,7 @@ html.night .nav-ghost .night{background:none}
 
 /* ---------- signing in and out, in motion (app.js: handOff, arriving, dusk) ----------
    The account's page, where you sign in, has a sky of its own: pale lavender, or deep blue when the phone is dark (the
-   phone's, not InFlight's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
+   phone's, not Chat's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
 /* (the account page's sky exactly: its gradient, and its dawn, warm along the foot with a cool light at the top) */
 :root{--acct-sky:#f3f0fb;--acct-sky-a:#e9eefc;--acct-sky-c:#f7f8fc;
   --acct-heaven:radial-gradient(120% 80% at 50% -10%,var(--acct-sky-a),var(--acct-sky) 52%,var(--acct-sky-c));
@@ -1856,11 +1868,6 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .lcol .lnext{max-width:100%;font-size:12px;line-height:16px;color:var(--tint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .lcol .lnext.full{color:var(--label-2)}
 /* Account: your flying so far, under your card (opens the Flight Log) */
-.mestats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:12px 10px 13px;min-height:0}
-.mestats>span{display:flex;flex-direction:column;align-items:center;min-width:0}
-.mestats>span+span{border-left:.5px solid var(--sep)}
-.mestats b{font-size:19px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums}
-.mestats small{font-size:12px;line-height:16px;color:var(--label-2)}
 .aver{margin:22px 0 0;text-align:center;font-size:13px;color:var(--label-2)}
 /* small fixes from the UI audit */
 .compose .kind{max-width:44%}
@@ -1868,7 +1875,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 @media (max-width:360px){.mapcard.fc.fold .big{font-size:19px;letter-spacing:-.4px}.mapcard.fc.fold .big small{font-size:13px}.mapcard.fc.fold .fcpeek{gap:10px}}   /* a small phone: the folded card still says when it lands */
 /* a message held for its menu sinks a little first, as a chat in the list does */
 .msgs .b.pressing{transform:scale(.96);transition:transform .34s var(--smooth)}
-/* if InFlight can't start: what happened, and a way out */
+/* if Chat can't start: what happened, and a way out */
 .bootfail{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 28px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
 .bootfail h1{margin:8px 0 0;font-size:22px}
 .bootfail p{margin:0 0 12px;color:var(--label-2);font-size:16px;line-height:21px;max-width:34ch}
@@ -2235,8 +2242,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .sheet .ferr:not([hidden]){animation:fc-in .3s var(--snappy)}
 .sheet > header .nbtn.popin{animation:pop .35s var(--bouncy)}
 /* the version: tap it for what's new */
-.aver .averbtn{display:inline-flex;align-items:center;gap:2px;padding:4px 8px;border:0;border-radius:8px;background:none;font:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.aver .averbtn:active{background:var(--fill)}
 
 /* ---------- the passport, as a passport ---------- */
 .ppcard{display:flex;align-items:center;gap:16px;width:calc(100% - 32px);margin:0 16px;padding:16px;border:0;border-radius:22px;background:var(--cell);color:var(--label);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .35s var(--snappy)}
@@ -2443,11 +2448,6 @@ details.learn[open] p{animation:fc-in .3s var(--snappy)}
 .vbar b{display:block;height:100%;border-radius:2px;background:var(--green)}
 
 /* Account's card, as Weather's: your photo, your name, "@handle · georgefarrowgreen.com", and on to your account's page */
-.me-cell{min-height:80px;gap:14px;padding-top:14px;padding-bottom:14px}
-.me-cell .av.l{width:52px;height:52px;font-size:21px}
-.me-cell .ctext{gap:3px}
-.me-cell .name{font-size:17px;line-height:22px;font-weight:650}
-.me-cell .csub{font-size:14px}
 .locsheet{height:6px}
 
 /* the way in: "New here?" to the account's own page, and "or with your email" between a passkey and the form */
@@ -2496,3 +2496,296 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   .b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)),.b:not(.me)::before{background:var(--cell)}
   .sheet,.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
+
+/* Powered by InFlite, over Sign in (where it sits: InFlite's way in, at the end), in Chat's night */
+.welcome.night{--ifl-pill:rgba(255,255,255,.08);--ifl-pill-ink:rgba(214,224,255,.8);--ifl-pill-edge:inset 0 0 0 .5px rgba(255,255,255,.14)}
+
+/* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */
+/* InFlite's way in, the same in every app (Chat, Fitness, Mail): where everything on it sits, so no app's drifts.
+   Markup, in each app's own words:
+     .ifl-in                      the screen
+       .ifl-top                   at its head, held from the top of the screen:
+         .ifl-logo > the mark     the app's icon, 96px, in a 150px box for its glow
+         .ifl-title, .ifl-tagline its name and its line (either may be left out)
+       .ifl-cta                   at its foot, held 55px over the screen's safe area:
+         .ifl-brand               Powered by InFlite: <img src="inflite.svg"> and the words
+         the app's Sign in button, .ifl-go
+         .ifl-new                 New here? (if the app has it), just under the button
+   (--ifl-short, set by an app that finds its Home Screen page laid out short of the screen, holds the foot lower by as
+   much.) Each app keeps its own colours, glow, scene and motion; the pill takes its colours from --ifl-pill, --ifl-pill-ink
+   and --ifl-pill-edge, set on .ifl-in. Both blocks are measured from the screen itself (position: fixed), not from a
+   viewport unit, which a phone's Home Screen can make a toolbar's height short. */
+.ifl-in .ifl-top {
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: calc(env(safe-area-inset-top, 0px) + max(16vh, 80px));
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.ifl-in .ifl-logo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  margin: 0 0 -18px;
+}
+
+.ifl-in .ifl-title {
+  margin: 0;
+  padding: 0;
+  font-size: 40px;
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -0.4px;
+}
+
+.ifl-in .ifl-tagline {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-style: normal;
+  letter-spacing: normal;
+}
+
+.ifl-in .ifl-cta {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: calc(55px + env(safe-area-inset-bottom, 0px) - var(--ifl-short, 0px));
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 max(20px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.ifl-in .ifl-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 24px;
+  padding: 5px 13px 5px 5px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--ifl-pill-ink, rgba(20, 24, 50, 0.62));
+  background: var(--ifl-pill, rgba(255, 255, 255, 0.6));
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: var(--ifl-pill-edge, 0 0 0 0.5px rgba(20, 24, 60, 0.1), 0 6px 18px -10px rgba(0, 0, 0, 0.3));
+}
+
+.ifl-in .ifl-brand img {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.ifl-in .ifl-go {
+  width: 100%;
+  max-width: 420px;
+}
+
+.ifl-in .ifl-new {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 15px;
+}
+/* ==== end of InFlite's way in ==== */
+
+/* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
+/* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
+   app's, light or dark as the app is (data-theme, else the device) */
+.ifm-layer, .ifm-note {
+  --ifm-sheet: rgba(250, 250, 253, 0.86);
+  --ifm-panel: rgba(255, 255, 255, 0.9);
+  --ifm-line: rgba(60, 60, 67, 0.14);
+  --ifm-text: #11131c;
+  --ifm-text-2: rgba(60, 60, 67, 0.62);
+  --ifm-text-3: rgba(60, 60, 67, 0.36);
+  --ifm-press: rgba(120, 120, 128, 0.14);
+  --ifm-red: #e5342a;
+  --ifm-dim: rgba(14, 18, 40, 0.14);
+  --ifm-tint: #2f6be6;
+  --ifm-warn: #c86a00;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note) {
+    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  }
+}
+:root[data-theme="dark"] :is(.ifm-layer, .ifm-note) {
+  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+}
+/* each app's own colour: its focus rings, and Update ready */
+.ifm-in-chat { --ifm-tint: #2b6fe6; }
+.ifm-in-weather { --ifm-tint: #3a86f0; }
+.ifm-in-fitness { --ifm-tint: #f0542e; }
+.ifm-in-mail { --ifm-tint: #1aa58f; }
+.ifm-in-account { --ifm-tint: #5b4fe0; }
+
+.ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
+.ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
+.ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
+  text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
+.ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
+.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+
+.ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
+.ifm-pop.open { transform: none; opacity: 1; }
+.ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
+.ifm-pop *, .ifm-pop *::before, .ifm-pop *::after { box-sizing: border-box; }
+
+/* you */
+.ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
+.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
+  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+.ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
+.ifm-photo img { object-fit: cover; display: block; }
+.ifm-who { min-width: 0; }
+.ifm-who b { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-who small { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.2; color: var(--ifm-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-chev { width: 17px; height: 17px; stroke-width: 2.6; color: var(--ifm-text-3); flex: none; }
+
+/* the app's own rows */
+.ifm-rows { display: grid; gap: 6px; }
+.ifm-row.off { opacity: 0.5; }
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
+.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
+.ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
+.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
+.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
+.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
+.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
+.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
+.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+.ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
+.ifm-val.warn { color: var(--ifm-warn, #c86a00); font-weight: 600; }
+.ifm-row .ifm-chev { width: 15px; height: 15px; }
+.ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
+.ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
+.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+/* its version, and Sign Out */
+.ifm-foot { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 14px 4px 16px; font-size: 13.5px; color: var(--ifm-text-2); }
+.ifm-foot-ic { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.ifm-ver { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ifm-ver i { font-style: normal; }
+.ifm-upd { color: var(--ifm-tint) !important; font-weight: 600; }
+.ifm-out { flex: none; min-height: 44px; padding: 0 6px !important; margin-right: -6px; color: var(--ifm-red) !important; font-size: 16px; font-weight: 600; }
+.ifm-out:active { opacity: 0.5; }
+
+/* the note after an update */
+.ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
+.ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
+.ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
+.ifm-note-tx { display: grid; line-height: 1.2; }
+.ifm-note-tx b { font-size: 16px; font-weight: 600; }
+.ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+
+/* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
+   under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the
+   band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
+   as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
+   shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+.ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
+  padding: calc(var(--ifh-pt0) - 4px * var(--p)) max(16px, env(safe-area-inset-right, 0px)) calc(14px - 6px * var(--p)) max(16px, env(safe-area-inset-left, 0px));
+  color: var(--ifh-ink, inherit); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.ifh::before { content: ""; position: absolute; inset: 0 0 -18px; z-index: -1; pointer-events: none; opacity: var(--p);
+  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) 40%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+/* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
+.ifh:not(.ifh-up)::before { display: none; }
+.ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
+.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
+.ifh-me img { object-fit: cover; display: block; }
+.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
+.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-t { min-width: 0; display: grid; }
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
+.ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }
+.ifh-pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ifh-down { flex: none; width: calc(20px - 6px * var(--p)); height: calc(20px - 6px * var(--p)); stroke-width: 2.6; margin-top: 3px; color: var(--ifh-ink-2, currentColor); }
+.ifh-line { display: block; height: calc(20px * (1 - var(--p))); margin-top: calc(2px * (1 - var(--p))); overflow: hidden; opacity: calc(1 - var(--p) * 1.6);
+  font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
+.ifh-line:empty { height: 0; margin: 0; }
+.ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts:empty { display: none; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
+.ifh-act[disabled] { opacity: 0.4; }
+/* (a 44px target round each, over the capsule's padding) */
+.ifh-act::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) {
+  .ifh-me, .ifh-act { transition: none; }
+  .ifm-pop, .ifm-pop.closing { transform: none !important; transition: opacity 0.2s !important; }
+  .ifm-note { transition: opacity 0.2s !important; }
+}
+
+/* InFlite's tab bar, the same in every app with tabs (Chat, Mail, Fitness): each app's bar (its capsule, the pill that
+   slides to the tab you're on, its tabs and their counts, and at most one round button beside it, Search) takes its
+   sizes from these, and its colour from --ift-tint, set by the app: the tab you're on in a soft pill of it, and its counts */
+:root { --ift-h: 64px; --ift-pad: 5px; --ift-gap: 10px; --ift-max: 440px; --ift-label: 11px; --ift-icon: 24px; --ift-pill: 15%; }
+
+/* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
+   (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
+.ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.ifs-hero span { font-size: 14px; opacity: 0.62; }
+/* ==== end of InFlite's menu ==== */

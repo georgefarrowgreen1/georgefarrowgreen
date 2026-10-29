@@ -1,9 +1,9 @@
-// One account for the whole site, and Weather's part of it: signed in to InFlight in a browser, Weather is too (and the
-// other way about); Weather's Sign in, on the account's page (email and password, or a passkey made in InFlight), handed
+// One account for the whole site, and Weather's part of it: signed in to Chat in a browser, Weather is too (and the
+// other way about); Weather's Sign in, on the account's page (email and password, or a passkey made in Chat), handed
 // back to it; your places, settings and
 // notifications kept with the account and put together across devices; notifications for each saved place, sent to
 // every device signed in; signing out anywhere signing out everywhere; and an account's going taking what Weather kept.
-// The site's addresses are stood in for by gfg.test (chat. and weather.), mapped to this machine, so the browser shares
+// The apps' addresses are stood in for by ifl.test (the home page's by gfg.test) (chat. and weather.), mapped to this machine, so the browser shares
 // the sign-in between them as it would between georgefarrowgreen.com's.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
@@ -11,9 +11,9 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import * as F from './mocks/wxappdata.mjs';
 import * as OW from './mocks/wxwarnings.mjs';
-import { joinInFlight, onAccountPage } from './join.mjs';
+import { joinChat, onAccountPage } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', PW = 'a long test password';
+const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
@@ -33,7 +33,7 @@ http.createServer((req, res) => {
 }).listen(8794, '127.0.0.1');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${CHAT.replace('//chat.', '//account.')}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${CHAT.replace('//chat.', '//account.')}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 // a browser: its own cookies and storage (a phone, a laptop); push stood in for with an endpoint of its own
 async function browser(name, { push = false } = {}) {
@@ -69,7 +69,9 @@ const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await 
 const settings = async (x) => {
   for (let i = 0; i < 3; i++) {
     if (await x.p.$('#settings[open]')) { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(600); }
-    if (await x.p.click('#settings-btn', { timeout: 5000 }).then(() => true, () => false)) break;
+    // (signed in, Settings is a row in InFlite's menu, from your photo; signed out, its gear)
+    const viaMe = await x.p.isHidden('#settings-btn');
+    if (await (viaMe ? x.p.click('#me-btn', { timeout: 5000 }).then(() => x.p.click('.ifm-pop .ifm-row.go:has-text("Settings")', { timeout: 5000 })) : x.p.click('#settings-btn', { timeout: 5000 })).then(() => true, () => false)) break;
   }
   await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400);
 };
@@ -86,17 +88,17 @@ const kept = (handle) => { const r = rows(`SELECT a.data, a.ver FROM wx_accts a 
 // request the pages make waits for it meanwhile, as each is put to the stand-ins in browser() first)
 const waitFor = async (fn, ms = 10000) => { for (let free = 0; ; free += 300) { const v = await fn(); if (v || free > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
 
-// ---- 1. Signed up to InFlight on a laptop: Weather in the same browser is signed in too, and its places go up ----
+// ---- 1. Signed up to Chat on a laptop: Weather in the same browser is signed in too, and its places go up ----
 const L = await browser('laptop', { push: true });
 const lcdp = await L.ctx.newCDPSession(L.p); await lcdp.send('WebAuthn.enable');
 const { authenticatorId: lauth } = await lcdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
-// (the account made on the account's page, then InFlight, and a passkey as InFlight offers: it belongs to the site, so
+// (the account made on the account's page, then Chat, and a passkey as Chat offers: it belongs to the site, so
 // Weather can use it)
-await joinInFlight(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London', passkey: true });
+await joinChat(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London', passkey: true });
 const cookie = (await L.ctx.cookies(CHAT)).find((c) => c.name === 'account');
-ok(cookie && cookie.httpOnly && cookie.domain === '.gfg.test' && cookie.sameSite === 'Lax', 'signing up gives the browser the site\'s sign-in: for every address on the site, out of any page\'s reach', JSON.stringify(cookie && { d: cookie.domain, h: cookie.httpOnly, s: cookie.sameSite }));
+ok(cookie && cookie.httpOnly && cookie.domain === '.ifl.test' && cookie.sameSite === 'Lax', 'signing up gives the browser the site\'s sign-in: for every address on the site, out of any page\'s reach', JSON.stringify(cookie && { d: cookie.domain, h: cookie.httpOnly, s: cookie.sameSite }));
 const pk = (await lcdp.send('WebAuthn.getCredentials', { authenticatorId: lauth })).credentials;
-ok(pk.length === 1 && pk[0].rpId === 'gfg.test', 'the passkey belongs to the site, not one address', JSON.stringify(pk.map((c) => c.rpId)));
+ok(pk.length === 1 && pk[0].rpId === 'ifl.test', 'the passkey belongs to the site, not one address', JSON.stringify(pk.map((c) => c.rpId)));
 await weather(L);
 await settings(L);
 // (this device's own place first: asked before it goes to an account signed in elsewhere on the site)
@@ -107,13 +109,21 @@ ok(/Sam Taylor/.test(asks) && /@sam · signed in on this browser/.test(asks) && 
 await L.p.click('#acct-keep');
 await L.p.waitForFunction(() => /@sam\b/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const lSays = await acctSays(L);
-ok(/Sam Taylor/.test(lSays) && /@sam\b/.test(lSays) && !/georgefarrowgreen/.test(lSays) && !/InFlight/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
+ok(/Sam Taylor/.test(lSays) && /@sam\b/.test(lSays) && !/georgefarrowgreen/.test(lSays) && !/Chat/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
-ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
+ok(!(await L.p.evaluate(() => /(^|;\s*)(__Secure-)?account=/.test(document.cookie))), 'the page itself can\'t read the sign-in');
 ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email or rows here)', lSays);
-ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
+ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign Out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);
+// InFlite's menu, from your photo at the top left, now you're signed in (Settings' gear gone: it's a row in the menu)
+await L.p.waitForSelector('#me-btn:not([hidden])', { timeout: 10000 }).catch(() => {});
+ok(await L.p.isVisible('#me-btn') && await L.p.isHidden('#settings-btn'), "signed in: your photo at the top left, for InFlite's menu");
+await L.p.click('#me-btn'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
+await L.p.screenshot({ path: `${out}/menu.png` });
+const wm = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
+ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Rain Alerts/.test(wm) && /Morning Briefing/.test(wm) && /Weather V\d+\.\d\d · Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
+await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 
 // ---- 2. A phone with places of its own: signed in to Weather, on the account's page, with email and password; the two
 // lots put together ----
@@ -121,7 +131,7 @@ const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
 const signedOutRow = await acctSays(P);
-ok(/^Sign in Your places on every device/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
+ok(/^Sign in Powered by InFlite/.test(signedOutRow) && !(await P.p.$('#settings input[type=password], #settings [data-page=signin]')), 'signed out: a row for signing in, and no sign-in of Weather\'s own', signedOutRow);
 await signInPage(P);
 // (whether an account can be made here is asked as the page is drawn, and said under the card once it's known)
 await P.p.waitForFunction(() => document.getElementById('joinline')?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});
@@ -212,17 +222,17 @@ ok(hellos.length === 2, 'each device said hello once ("Notifications on")', Stri
 await closeSheet(L);
 
 // ---- 3b. The profile is the account's: the card opens the account's page, signed in, where it's changed; Weather and
-// InFlight show it ----
+// Chat show it ----
 {
   await settings(P);
   const [W] = await Promise.all([P.ctx.waitForEvent('page'), P.p.click('#acct-open')]);
-  await W.waitForURL(/account\.gfg\.test:8788\/$/, { timeout: 20000 }).catch(() => {});
+  await W.waitForURL(/account\.ifl\.test:8788\/$/, { timeout: 20000 }).catch(() => {});
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
-  // (deleting the account is under Your data now, with the rest of what's yours)
-  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
-  ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
+  // (deleting the account is under Your Data now, with the rest of what's yours)
+  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your Data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
+  ok(/^http:\/\/account\.ifl\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   await W.waitForSelector('#sheet[open] .pv-frame img', { timeout: 15000 }); await W.waitForTimeout(500);
@@ -238,7 +248,7 @@ await closeSheet(L);
   await P.p.waitForFunction(() => document.getElementById('acct-title')?.textContent === 'Sam T', null, { timeout: 10000 }).catch(() => {});
   const shown = await P.p.evaluate(() => ({ name: document.getElementById('acct-title')?.textContent, img: document.querySelector('#acct .acct-card img')?.naturalWidth || 0 }));
   ok(row?.name === 'Sam T' && row.avatar_at && shown.name === 'Sam T' && shown.img === 512, 'changed there: the account\'s, and Weather shows it (the photo a 512-pixel square)', JSON.stringify({ row, shown }));
-  // InFlight has them too, on its own sign-in (the laptop's), and a change there is Weather's
+  // Chat has them too, on its own sign-in (the laptop's), and a change there is Weather's
   const C = await L.ctx.newPage(); await C.goto(`${CHAT}/`); await C.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
   const inflight = await C.evaluate(async () => {
     const tk = await new Promise((ok2) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => ok2(g.result?.token); }; });
@@ -248,19 +258,19 @@ await closeSheet(L);
     await fetch('/api/pigeon/me', { method: 'PATCH', headers: h, body: JSON.stringify({ name: 'Sam Taylor' }) });
     return { name: me.name, avatarAt: me.avatarAt, pic: pic.status, type: pic.headers.get('content-type') };
   });
-  ok(inflight.name === 'Sam T' && inflight.avatarAt === row.avatar_at && inflight.pic === 200 && inflight.type === 'image/jpeg', 'InFlight has the same name and photo', JSON.stringify(inflight));
+  ok(inflight.name === 'Sam T' && inflight.avatarAt === row.avatar_at && inflight.pic === 200 && inflight.type === 'image/jpeg', 'Chat has the same name and photo', JSON.stringify(inflight));
   await C.close();
   await P.p.reload(); await P.p.waitForSelector('.day-row'); await P.p.waitForTimeout(1500);
   await settings(P);
-  ok(await P.p.textContent('#acct-title') === 'Sam Taylor', 'and the name changed back in InFlight is Weather\'s', await P.p.textContent('#acct-title'));
+  ok(await P.p.textContent('#acct-title') === 'Sam Taylor', 'and the name changed back in Chat is Weather\'s', await P.p.textContent('#acct-title'));
   await closeSheet(P);
-  const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', agent: false, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+  const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', agent: false, headers: { Host: 'weather.ifl.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
   ok(noPic === 401, 'the photo only for whoever\'s signed in', String(noPic));
-  const xl = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/account-link', method: 'POST', agent: false, headers: { Host: 'weather.gfg.test:8788', Origin: 'http://chat.gfg.test:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end('{}'); });
+  const xl = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/account-link', method: 'POST', agent: false, headers: { Host: 'weather.ifl.test:8788', Origin: 'http://chat.ifl.test:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end('{}'); });
   ok(xl === 403, 'a code only for Weather\'s own pages', String(xl));
 }
 
-// ---- 4. A passkey made in InFlight signs in to Weather (on the account's page), on another browser ----
+// ---- 4. A passkey made in Chat signs in to Weather (on the account's page), on another browser ----
 const K = await browser('keyring');
 const kcdp = await K.ctx.newCDPSession(K.p); await kcdp.send('WebAuthn.enable');
 const { authenticatorId: kauth } = await kcdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
@@ -271,25 +281,25 @@ await K.p.click('main .btn:has-text("Sign in with a passkey")');
 await backInWeather(K); await settings(K);
 await K.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 20000 }).catch(() => {});
 ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed in with the passkey: the account\'s places', `${await acctSays(K)} | ${(await places(K)).join()}`);
-// ---- 5. Signed in to Weather only: InFlight in the same browser offers to carry on (on the account's page, showing it's
-// you, as that's what opens the key in InFlight) ----
+// ---- 5. Signed in to Weather only: Chat in the same browser offers to carry on (on the account's page, showing it's
+// you, as that's what opens the key in Chat) ----
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome [data-act=acctsignin]:has-text("Continue as")', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
-ok(/Continue as Sam/.test(offer || '') && !/Signed in as/i.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: just "Continue as Sam" (no other app named)', offer);
+ok(/Continue as Sam/.test(offer || '') && !/Signed in as/i.test(offer || '') && !/Weather/.test(offer || ''), 'Chat, signed in elsewhere on the site: just "Continue as Sam" (no other app named)', offer);
 await K.p.click('.welcome [data-act=acctsignin]'); await K.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
 await K.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 });
-ok(/Continue to InFlight as this account\?/.test(await K.p.textContent('main')) && !(await K.p.$('main input[name=email]')), 'on the account\'s page: carrying on as Sam, showing it\'s you (no email asked) to unlock the key here');
+ok(/Continue to Chat as this account\?/.test(await K.p.textContent('main')) && !(await K.p.$('main input[name=email]')), 'on the account\'s page: carrying on as Sam, showing it\'s you (no email asked) to unlock the key here');
 await K.p.fill('main input[name=password]', PW); await K.p.click('main .signin form .btn');
 await K.p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).catch(() => {}); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
-ok(!!(await K.p.$('.tabs')), 'and back in InFlight, open, on the same sign-in');
-// ---- 6. Signing out (on the account's page) signs out of Weather and InFlight there too ----
-await K.p.goto('http://account.gfg.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
-await K.p.click('.row.action:text-is("Sign out")'); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(!!(await K.p.$('.tabs')), 'and back in Chat, open, on the same sign-in');
+// ---- 6. Signing out (on the account's page) signs out of Weather and Chat there too ----
+await K.p.goto('http://account.ifl.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
+await K.p.click('main .ifh-me').then(() => K.p.click('.ifm-out')); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 await weather(K); await settings(K);
-await K.p.waitForFunction(() => /Your places on every device/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
-ok(/Your places on every device/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
+await K.p.waitForFunction(() => /Powered by InFlite/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(/Powered by InFlite/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome', { timeout: 20000 }).catch(async () => { await K.p.screenshot({ path: `${out}/signedout-inflight.png` }); console.log('DEBUG inflight after weather signout:', (await K.p.evaluate(() => document.body.innerText.slice(0, 300))).replace(/\s+/g, ' ')); });
-ok(!!(await K.p.$('.welcome')) && !/Continue as/.test(await K.p.textContent('.welcome')), 'and InFlight in that browser is signed out too');
+ok(!!(await K.p.$('.welcome')) && !/Continue as/.test(await K.p.textContent('.welcome')), 'and Chat in that browser is signed out too');
 
 // ---- 6b. A device with the account's notifications, signed out on the account's page: Weather notices, and they
 // stay, as its own ----
@@ -303,8 +313,8 @@ const tDev = () => rows(`SELECT d.dev, d.user_id, (SELECT COUNT(*) FROM wx_subs 
 await waitFor(() => tDev()?.user_id && tDev()?.n > 0);
 const t1 = tDev();
 ok(t1?.user_id && t1.n > 0, 'the tablet: one of the account\'s devices, with its notifications', JSON.stringify(t1));
-await T.p.goto('http://account.gfg.test:8788/'); await T.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
-await T.p.click('.row.action:text-is("Sign out")'); await T.p.waitForTimeout(1500);
+await T.p.goto('http://account.ifl.test:8788/'); await T.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
+await T.p.click('main .ifh-me').then(() => T.p.click('.ifm-out')); await T.p.waitForTimeout(1500);
 await weather(T);
 await waitFor(() => tDev() && !tDev().user_id, 15000);
 const t2 = rows(`SELECT user_id, (SELECT COUNT(*) FROM wx_subs s WHERE s.dev = d.dev) AS n FROM wx_devs d WHERE dev = '${t1.dev}'`)[0];
@@ -370,7 +380,7 @@ await closeSheet(T);
 // ---- 7. The account's own rules ----
 const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new Promise((done, fail) => {
   const data = body == null ? null : JSON.stringify(body);
-  const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.gfg.test:8788', Origin: origin, 'Content-Type': 'application/json', ...(c ? { Cookie: c } : {}), ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
+  const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.ifl.test:8788', Origin: origin, 'Content-Type': 'application/json', ...(c ? { Cookie: c } : {}), ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
     let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, headers: res.headers }));
   });
   r.on('error', fail); if (data) r.write(data); r.end();
@@ -381,16 +391,16 @@ ok(JSON.parse((await call('GET', '/api/weather/me', null)).body).signedIn === fa
 ok((await call('PUT', '/api/weather/me', { base: 1, data: {} }, { cookie: `account=${lc.value}`, origin: CHAT })).status === 403, 'a change from another address on the site is turned away, sign-in or not');
 const stale = await call('PUT', '/api/weather/me', { base: 1, data: { places: [{ name: 'Leeds', lat: 53.8, lon: -1.55 }] } }, { cookie: `account=${lc.value}` });
 ok(stale.status === 409 && JSON.parse(stale.body).ver > 1, 'a change from an old version is told the account\'s moved on (not taken)', `${stale.status}`);
-const resumeElsewhere = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/resume', method: 'POST', agent: false, headers: { Host: 'chat.gfg.test:8788', Origin: WX, Cookie: `account=${lc.value}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
-ok(resumeElsewhere.status === 403 && !/token/.test(resumeElsewhere.body), 'InFlight hands its sign-in only to its own pages', `${resumeElsewhere.status}`);
-// the cookie is the site's sign-in for the browser, not a key to InFlight: as InFlight's bearer token it opens nothing
-const asBearer = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/sync', agent: false, headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${lc.value}` } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
-ok(asBearer === 401, 'the cookie isn\'t a key to InFlight\'s API', String(asBearer));
+const resumeElsewhere = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/resume', method: 'POST', agent: false, headers: { Host: 'chat.ifl.test:8788', Origin: WX, Cookie: `account=${lc.value}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
+ok(resumeElsewhere.status === 403 && !/token/.test(resumeElsewhere.body), 'Chat hands its sign-in only to its own pages', `${resumeElsewhere.status}`);
+// the cookie is the site's sign-in for the browser, not a key to Chat: as Chat's bearer token it opens nothing
+const asBearer = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/sync', agent: false, headers: { Host: 'chat.ifl.test:8788', Authorization: `Bearer ${lc.value}` } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+ok(asBearer === 401, 'the cookie isn\'t a key to Chat\'s API', String(asBearer));
 // a sign-in sent from another site (with a good password: its own account's, say) doesn't sign the browser in
 {
   const proof = await K.p.evaluate(async () => { const { E2E } = await import('/crypto.js'); const { salt } = await (await fetch('/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'sam@example.com' }) })).json(); return (await E2E.fromPassword('a long test password', salt)).proof; }).catch((e) => String(e));
-  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/signin/password', method: 'POST', agent: false, headers: { Host: 'account.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
-  const evil = await login('https://evil.example'), own = await login('http://account.gfg.test:8788');
+  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/signin/password', method: 'POST', agent: false, headers: { Host: 'account.ifl.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
+  const evil = await login('https://evil.example'), own = await login('http://account.ifl.test:8788');
   ok(evil.status === 403 && !evil.cookie && own.status === 200 && /account=/.test(String(own.cookie)), 'a sign-in sent from another site is turned away (one from the account\'s own page signs the browser in)', `${evil.status} ${evil.cookie} | ${own.status}`);
 }
 // the account's API only at Weather's own address (not the site's, nor a preview's)
@@ -461,7 +471,7 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   ok(link && warn.headers?.['List-Unsubscribe']?.includes(link) && warn.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'each with a link to turn them off, and the mail app\'s own Unsubscribe', link);
   // the link: GET shows a button and changes nothing; POST turns them off (as a mail app's one-click does)
   // (each on a connection of its own: one kept open since may have been closed by the server meanwhile)
-  const hit = (method, path = link) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
+  const hit = (method, path = link) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.ifl.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
   const g = await hit('GET');
   ok(g.status === 200 && /Turn off Weather’s emails\?/.test(g.body) && /<form method="post"/.test(g.body) && kept('sam')?.notify.email?.warn === true, 'the link: a button first, nothing turned off yet', String(g.status));
   const pst = await hit('POST');
@@ -482,11 +492,11 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   // (each on a connection of its own, as every request here is: one kept open since may have been let go by the server
   // while the database was being changed, and the next sent on it dies with "socket hang up")
   const post = (path, host, headers, data) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', agent: false, headers: { Host: host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); if (data) r.write(data); r.end(); });
-  const del = await post('/api/account/delete', 'account.gfg.test:8788', { 'Content-Type': 'application/json', Origin: 'http://account.gfg.test:8788', Cookie: `account=${ck?.value}` }, JSON.stringify({ confirm: handle }));
+  const del = await post('/api/account/delete', 'account.ifl.test:8788', { 'Content-Type': 'application/json', Origin: 'http://account.ifl.test:8788', Cookie: `account=${ck?.value}` }, JSON.stringify({ confirm: handle }));
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
   // (the week's grace over: the next tick deletes it, and what Weather kept with it)
   sql(`UPDATE pg_users SET delete_at = ${Date.now() - 1000} WHERE email = 'sam@example.com'`); sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'");
-  await post('/api/pigeon/notify-tick', 'chat.gfg.test:8788', { Authorization: 'Bearer tick-test-secret' });
+  await post('/api/pigeon/notify-tick', 'chat.ifl.test:8788', { Authorization: 'Bearer tick-test-secret' });
   const left = rows("SELECT (SELECT COUNT(*) FROM wx_accts) AS a, (SELECT COUNT(*) FROM wx_devs WHERE user_id IS NOT NULL) AS d, (SELECT COUNT(*) FROM wx_subs WHERE dev LIKE '%') AS s")[0];
   ok(left.a === 0 && left.d === 0 && left.s === 1 + tSubs, 'and what Weather kept with it goes (only the devices not with it keep their own)', JSON.stringify(left));
 }

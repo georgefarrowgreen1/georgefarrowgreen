@@ -1,18 +1,18 @@
-// InFlight at georgefarrowgreen.com/pigeon/: its files as a phone gets them (functions/_app.js).
+// Chat's first address, georgefarrowgreen.com/pigeon/: it lives at chat.inflite.ai now, so every page here goes on
+// to the same place there, signed in still if the browser was here (functions/_hop.js); its service worker, a stand-in
+// that shows the notifications still sent to a phone that hasn't moved yet, and opens them there (functions/_middleware.js).
 import { serveApp } from "../_app.js";
+import { forwardWorker } from "../_middleware.js";
+import { hopTo } from "../_hop.js";
+import { cookieToken } from "../_account.js";
+import { appOrigin, siteOf } from "../_sites.js";
 
-// Cloudflare's preview addresses (*.pages.dev) would be another origin, with its own
-// sign-ins and keys: send them home. (chat.georgefarrowgreen.com is InFlight's new
-// address, served at its root: functions/_middleware.js.)
-const HOME = "https://georgefarrowgreen.com";
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
-  if (url.hostname.endsWith(".pages.dev")) return Response.redirect(HOME + url.pathname + url.search, 301);
-  const res = await serveApp(ctx, await ctx.next(), url.pathname, false);
-  if (!/^\/pigeon\/handover(\.html)?$/.test(url.pathname)) return res;
-  // the handover (pigeon/handover.js): opened, hidden, by the new address and nothing else
-  const out = new Response(res.body, res);
-  out.headers.delete("X-Frame-Options");
-  out.headers.set("Content-Security-Policy", out.headers.get("Content-Security-Policy").replace("frame-ancestors 'none'", `frame-ancestors ${url.protocol}//chat.${url.host}`));
-  return out;
+  // (anywhere else, a preview's address or a local one, it's Chat as it always was here)
+  if (siteOf(url.hostname, ctx.env) !== "home") return serveApp(ctx, await ctx.next(), url.pathname, false);
+  const app = appOrigin("chat", ctx.env, ctx.request);
+  if (url.pathname === "/pigeon/sw.js") return forwardWorker("chat", app, "/pigeon/");
+  const to = app + (url.pathname.slice(7) || "/") + url.search;
+  return Response.redirect(cookieToken(ctx.request, ctx.env) ? hopTo(to, ctx.request, ctx.env) : to, 302);
 }

@@ -9,6 +9,6 @@ Thumbs.db
 .wrangler/
 node_modules/
 
-# InFlight tests (.tools/tests)
+# Chat tests (.tools/tests)
 .tools/tests/.state/
 .tools/tests/node_modules

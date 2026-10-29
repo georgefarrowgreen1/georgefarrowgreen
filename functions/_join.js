@@ -1,6 +1,6 @@
 // Joining the site, and getting back in: a new georgefarrowgreen.com account, and a forgotten password reset. Both are
-// the account's own page's (account.georgefarrowgreen.com, functions/api/account/[[path]].js): no app makes accounts or
-// resets passwords itself any more. They were InFlight's, and keep its rules:
+// the account's own page's (account.inflite.ai, functions/api/account/[[path]].js): no app makes accounts or
+// resets passwords itself any more. They were Chat's, and keep its rules:
 //
 // - An account needs a one-time invite link from the site owner (pg_invites; a server with PIGEON_OPEN_SIGNUP=1, for
 //   testing, lets anyone in). Its key pair is made on the device and its private half locked there with the password,

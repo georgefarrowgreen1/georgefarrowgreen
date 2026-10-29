@@ -1,18 +1,18 @@
 // The account page's newer touches (acctpage.mjs has the rest): the photo changed by tapping it; your code (a QR code of
-// the link that adds you in InFlight, and the link copied); what each app keeps of yours, in its sheet (InFlight's
+// the link that adds you in Chat, and the link copied); what each app keeps of yours, in its sheet (Chat's
 // counts, pigeons sent counted as its log does; Weather's places, notifications and units); a word about a passkey after
 // a password sign-in, only where the device can make one, and one made from it; the check-up folded to a line when all's
 // done, and opened; "Not you?" on a password sign-in from another device (not a passkey one, nor this browser's), which
 // signs everywhere else out then asks for a new password; device and passkey rows slid to sign out and remove; and two
 // columns on a wide screen; and your data as a PDF (read back by poppler: its pages, text, pictures, and a place name
 // Helvetica can't show, drawn as a picture of itself), and the export it's written from. The site's addresses are
-// stood in for by gfg.test, as in acctpage.mjs.
+// stood in for by ifl.test (the home page's by gfg.test), as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { writeFileSync } from 'fs';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => { writeFileSync(`${S}/acctmore.sql`, q); return execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --file ${S}/acctmore.sql --json`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString(); };
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => JSON.parse(sql(q))[0].results;
@@ -20,7 +20,7 @@ let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const WINDOWS = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 // a phone (with Face ID, as it were: a passkey can be made on it), or a laptop that can't make one
@@ -45,7 +45,7 @@ const sheetText = (x) => text(x, '#sheet');
 const openRow = async (x, title) => { await x.p.click(`main .row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
 const closeSheet = async (x) => { await x.p.click('#sheet .sheet-head .x'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
 // (what's kept in Sign-in and security: its row on the page, then one of its own rows, opened over it)
-const openSecure = async (x, title) => { await openRow(x, 'Sign-in and security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
+const openSecure = async (x, title) => { await openRow(x, 'Sign-in and Security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
 const account = async (x) => { await x.p.goto('about:blank'); await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
 const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
@@ -57,7 +57,7 @@ const signIn = async (x) => {
   await x.p.fill('main .signin input[name=password]', PW); await x.p.click('main .signin form .btn');
   await waitText(x, /Rowan Hale/);
 };
-const signOut = async (x) => { await x.p.click('main .row.action:text-is("Sign out")'); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
+const signOut = async (x) => { await x.p.click('main .ifh-me').then(() => x.p.click('.ifm-out')); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
 // a finger dragged sideways (or up) across what's at sel
 async function drag(x, sel, dx, dy = 0) {
   const r = await x.p.$eval(sel, (el) => { const b = el.getBoundingClientRect(); return { x: b.right - 40, y: b.top + b.height / 2 }; });
@@ -68,9 +68,9 @@ async function drag(x, sel, dx, dy = 0) {
   await settle(x, 700);
 }
 
-// ---- 1. A new account, in InFlight without a passkey; what it's done there and in Weather, as if over months ----
+// ---- 1. A new account, in Chat without a passkey; what it's done there and in Weather, as if over months ----
 const P = await browser('phone');
-await joinInFlight(P.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
+await joinChat(P.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const uid = rows("SELECT id FROM pg_users WHERE handle = 'rowan'")[0].id, t = Date.now(), DAY = 86400e3;
 // 4 friends (and one asked, not yet a friend), 2 groups; 3 pigeons now, a group pigeon to 2 people, and 4 whose messages
 // went after a month (9 sent, as its log counts them; and 1 had); 6 places stamped; 4 of Weather's places (one Helvetica
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS wx_accts (user_id TEXT PRIMARY KEY, data TEXT NOT NUL
 INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('${uid}', '${JSON.stringify(wx)}', 1, ${t});
 `);
 await account(P);
-ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from InFlight');
+ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from Chat');
 
 // ---- 2. Your photo: none yet (your colours and initial, and Add a photo); one picked, what shows of it chosen, saved ----
 ok(await P.p.$('main .poster-card.none .pc-initial') && await P.p.$('main .poster-card .pc-add'), 'no photo yet: the card in your colours, your initial, and Add a photo');
@@ -146,7 +146,7 @@ const refused = await nudge(), again = await nudge(), after = rows(`SELECT poste
 ok(/changed elsewhere/.test(refused) && /Saved/.test(again) && after.poster_at === saved.poster_at + 1 && after.poster_focus !== moved.poster_focus,
   'changed elsewhere: refused and said, then the photo there now moved', JSON.stringify({ refused, again, after }));
 
-// ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
+// ---- 3. Your code: the link that adds you in Chat, as a QR code, and copied ----
 await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
 const link = `${CHAT}/#add=rowan`;
 const drawn = await P.p.evaluate(async (l) => {
@@ -155,7 +155,7 @@ const drawn = await P.p.evaluate(async (l) => {
   const want = new DOMParser().parseFromString(qrSvg(l), 'image/svg+xml').querySelector('path').getAttribute('d');
   return { same: svg.querySelector('path')?.getAttribute('d') === want, label: svg.getAttribute('aria-label') };
 }, link);
-ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in InFlight', JSON.stringify(drawn));
+ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in Chat', JSON.stringify(drawn));
 ok(/Rowan Hale/.test(await sheetText(P)) && /@rowan/.test(await sheetText(P)), 'with who it adds');
 await P.p.click('#sheet .btn:has-text("Copy link")'); await settle(P, 400);
 const copied = await P.p.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
@@ -165,13 +165,13 @@ await closeSheet(P);
 
 // ---- 4. Each app's sheet: what it keeps of yours, and the way into it ----
 const cards = await P.p.$$eval('main .app', (as) => as.map((a) => a.innerText.replace(/\s+/g, ' ').trim()));
-ok(/^InFlight 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
-await P.p.click('main .app:has(b:text-is("InFlight")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
+ok(/^Chat 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
+await P.p.click('main .app:has(b:text-is("Chat")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
 const inf = await sheetText(P);
-ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'InFlight: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
+ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'Chat: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
 const counted = await P.p.$$eval('#sheet .stats .stat span', (ss) => ss.map((x) => x.textContent));
 ok(counted.length === 4 && !counted.some((c) => /letter|message/i.test(c)) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', JSON.stringify(counted));
-ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'InFlight', 'the sheet named, for a screen reader');
+ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'Chat', 'the sheet named, for a screen reader');
 await shot(P, '03-app-inflight');
 await closeSheet(P);
 await P.p.click('main .app:has(b:text-is("Weather")) .about'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
@@ -182,19 +182,19 @@ await shot(P, '04-app-weather');
 await closeSheet(P);
 
 // ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
-const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(!(await P.p.$('main .checkup')) && /Sign-in and security \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and security)', ck0);
+const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and Security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(!(await P.p.$('main .checkup')) && /Sign-in and Security \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and Security)', ck0);
 await signOut(P); await signIn(P);
 await P.p.waitForSelector('#sheet .nudge', { timeout: 8000 }).catch(() => {}); await settle(P, 600);
 ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-in: a word about a passkey', await sheetText(P));
 ok(Number(await P.p.evaluate(() => localStorage.getItem('acct:nudged'))) > t, 'noted, so it\'s not said again for a month');
 await shot(P, '05-nudge');
 await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P, PW);
-// (then a word on InFlight's messages, which a passkey can open too: not now, here)
+// (then a word on Chat's messages, which a passkey can open too: not now, here)
 await P.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
 const made = await text(P, '#toast');
-await openRow(P, 'Sign-in and security');
+await openRow(P, 'Sign-in and Security');
 ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await sheetText(P)), 'a passkey made from it', made);
 await closeSheet(P);
 // (a laptop that can't make one isn't asked)
@@ -202,25 +202,25 @@ const L = await browser('laptop', { laptop: true });
 await account(L); await signIn(L); await settle(L, 2200);
 ok(!(await L.p.$('#sheet[open]')), 'a laptop with no way to make a passkey isn\'t asked');
 
-// ---- 6. The check-up: how it stands said by Sign-in and security's row, and at the head of its sheet; a fix opens
+// ---- 6. The check-up: how it stands said by Sign-in and Security's row, and at the head of its sheet; a fix opens
 // over it, Back returns ----
-const ckRow = () => P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-const openCheckup = async () => { await P.p.click('main .row:has(b:text-is("Sign-in and security"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
+const ckRow = () => P.p.locator('main .row:has(b:text-is("Sign-in and Security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+const openCheckup = async () => { await P.p.click('main .row:has(b:text-is("Sign-in and Security"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
 const shut = async () => { await P.p.keyboard.press('Escape'); await P.p.waitForSelector('#sheet', { state: 'hidden' }).catch(() => {}); await settle(P, 300); };
 // (the email confirmed; the password not yet checked, as for an account from before)
 sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = NULL, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Sign-in and security 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
+ok(/Sign-in and Security 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
 await openCheckup();
 ok(/1 thing to do/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 3 && /Check your password for data breaches/.test(await text(P, '#sheet .checkup')), 'opened: what\'s left to do, and what\'s done', await text(P, '#sheet .checkup'));
 await P.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await P.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(P, 400);
-await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Sign-in and security")'); await settle(P, 400);
+await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Sign-in and Security")'); await settle(P, 400);
 ok(!!(await P.p.$('#sheet .checkup')), 'its fix opens over it, and Back returns to it');
 await shut();
 // all done
 sql(`UPDATE pg_users SET pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Sign-in and security Secure/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
+ok(/Sign-in and Security Secure/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
 await openCheckup();
 ok(/Well protected/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row')).length === 0, 'opened: well protected, folded to just that (not the four checks)', await text(P, '#sheet .checkup'));
 await shot(P, '06-checkup-sheet');
@@ -228,7 +228,7 @@ await shut();
 // a password found in a data breach: the one check that's said up top too, with the way to change it
 sql(`UPDATE pg_users SET pw_leaked = 1 WHERE id = '${uid}'`);
 await account(P);
-ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Sign-in and security 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
+ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Sign-in and Security 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
 await shot(P, '06b-leaked');
 await P.p.click('main .banner .mini'); await P.p.waitForSelector('#sheet[open] .sheet-body'); await settle(P, 400);
 ok(/password/i.test(await text(P, '#sheet h2')), 'its Change opens a new password', await text(P, '#sheet h2'));
@@ -292,23 +292,28 @@ await account(L); await signIn(L); await settle(L, 900);
 const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
 ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
 const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
-ok(halves[0].join() === 'Your apps' && halves[1].join() === 'Account,Preferences', 'two even columns: who you are and your apps; and the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
+ok(halves[0].join() === '' && halves[1].join() === 'Your apps,Account,Preferences', 'two columns: who you are; and your apps (three across), the account (sign-in and security, your data) and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
 // (a short window, so the profile can scroll away: side by side, with the account two rows, the page is short)
 await L.p.setViewportSize({ width: 1280, height: 320 }); await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
-ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on: whose account, in a bar at the top');
+ok(await L.p.evaluate(() => { const hd = document.querySelector('main .ifh'); return hd.getBoundingClientRect().top === 0 && /Account/.test(hd.textContent) && /@rowan/.test(hd.textContent); }), "scrolled on, in a short window: InFlite's header stays at the top");
+// (a tall one: who you are stays in sight beside the rest, so there's no bar for it)
+await L.p.setViewportSize({ width: 1280, height: 900 }); await L.p.evaluate(() => scrollTo(0, 400)); await settle(L, 500);
+ok(await L.p.evaluate(() => { const c = document.querySelector('.col-a').getBoundingClientRect(); return c.top >= 0 && getComputedStyle(document.querySelector('.col-a')).position === 'sticky'; }),
+  'scrolled on, in a tall one: who you are stays in sight beside the rest (no bar for it)', await L.p.evaluate(() => JSON.stringify({ top: document.querySelector('.col-a').getBoundingClientRect().top, y: scrollY, h: document.documentElement.scrollHeight, pos: getComputedStyle(document.querySelector('.col-a')).position })));
+await L.p.setViewportSize({ width: 1280, height: 320 });
 await L.p.setViewportSize({ width: 1280, height: 860 }); await L.p.evaluate(() => scrollTo(0, 0));
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
 ok(one >= 0, 'a phone: one column', String(one));
-const bar = async () => P.p.evaluate(() => document.querySelector('.whobar').classList.contains('on'));
+const bar = async () => P.p.evaluate(() => Number(document.querySelector('main .ifh').style.getPropertyValue('--p')));
 await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
 const top = await bar(); await P.p.evaluate(() => scrollTo(0, 900)); await settle(P, 500); const down = await bar();
 await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
-ok(!top && down && !(await bar()), 'a phone: the bar comes once the profile\'s scrolled away, and goes at the top', JSON.stringify({ top, down }));
+ok(top === 0 && down === 1 && (await bar()) === 0, "a phone: InFlite's header compact once scrolled, large again at the top", JSON.stringify({ top, down }));
 
 // ---- 10. Your data: as a PDF to read and keep, written from the export (the server's JSON) ----
 await account(P);
-await openRow(P, 'Your data');
+await openRow(P, 'Your Data');
 ok(/Download as PDF/.test(await sheetText(P)) && !/Download as JSON/.test(await sheetText(P)), 'your data: as a PDF (the JSON it\'s written from stays the server\'s)');
 await shot(P, '11-data');
 const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 }), (async () => { await P.p.click('#sheet .row:has-text("Download as PDF")'); await confirmIfAsked(P, PW); })()]);
@@ -320,8 +325,8 @@ const strict = sh(`python3 -c "import pypdf,sys; r=pypdf.PdfReader(sys.argv[1], 
 ok(strict === String(pages), 'well formed (read strictly)', strict.slice(0, 200));
 const words = sh(`pdftotext -layout "${pdfPath}" -`).replace(/[ \t]+/g, ' ');
 for (const [re, what] of [[/Your data/, 'its title'], [/Rowan Hale/, 'your name'], [/@rowan/, 'handle'], [/rowan@example\.com Confirmed/, 'email, confirmed'], [/Sign-in and security/, 'sign-in'],
-  [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'InFlight\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
-  [/Place 1/, 'the passport'], [/A pigeon lands On/, 'InFlight\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
+  [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'Chat\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
+  [/Place 1/, 'the passport'], [/A pigeon lands On/, 'Chat\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
   [/°C · km\/h · mm/, 'units'], [new RegExp(`Page 1 of ${pages}`), 'page numbers']]) ok(re.test(words), `the PDF: ${what}`, re.test(words) ? '' : words.slice(0, 600));
 ok(!/Łódź/.test(words) && !/\?\?d\?/.test(words), 'a name Helvetica can\'t show: not as broken text...');
 const imgs = sh(`pdfimages -list "${pdfPath}"`).trim().split('\n').slice(2);
@@ -330,7 +335,7 @@ ok(imgs.length >= 4 && imgs.some((l) => /\bjpeg\b/.test(l) && /\b64\b|\b512\b|\b
 sh(`pdftoppm -r 70 -png "${pdfPath}" "${out}/pdf-page"`);
 const json = await P.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
-  'and the export it\'s written from: pigeons sent and had counted as InFlight\'s log counts them', JSON.stringify(json.inflight?.pigeons));
+  'and the export it\'s written from: pigeons sent and had counted as Chat\'s log counts them', JSON.stringify(json.inflight?.pigeons));
 await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');

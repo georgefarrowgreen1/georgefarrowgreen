@@ -32,11 +32,15 @@ const at = (f) => new URL(f, self.registration.scope).href;
 const isFile = (u, scope) => u.pathname.startsWith(scope.pathname) && !u.pathname.slice(scope.pathname.length).includes("/") && /\.(js|css|webmanifest|svg|png)$/.test(u.pathname);
 const tagOf = (res) => res.headers.get("etag") || "";
 
+// (all of them, or none: each fetched first, and kept only once every one has come, whole; one that couldn't be fetched
+// (a poor connection, a release half out) leaves the set kept as it was, to be tried again the next time)
 async function fill() {
+  const got = await Promise.all(FILES.map((f) => fetch(at(f), { cache: "no-cache" }).then((res) => (res.ok ? res.arrayBuffer().then((b) => [f, b, res]) : null), () => null)));
+  if (got.some((g) => !g)) throw new Error("Fitness: not every file came");
   const c = await caches.open(SHELL);
-  await Promise.all(FILES.map((f) => fetch(at(f), { cache: "no-cache" }).then((res) => (res.ok ? c.put(at(f), res) : null), () => null)));
+  await Promise.all(got.map(([f, b, res]) => c.put(at(f), new Response(b, { status: res.status, headers: res.headers }))));
 }
-self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(fill()); });
+self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(fill().catch(() => {})); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k.startsWith("fitness-app-") && k !== SHELL) await caches.delete(k);
   await self.clients.claim();
@@ -47,7 +51,7 @@ let renewing = null;
 function renew() {
   return (renewing ||= fill().then(async () => {
     for (const c of await self.clients.matchAll({ type: "window" })) c.postMessage({ type: "fitness:new" });
-  }).finally(() => { renewing = null; }));
+  }, () => {}).finally(() => { renewing = null; }));
 }
 async function served(e, key) {
   const c = await caches.open(SHELL), hit = await c.match(key);

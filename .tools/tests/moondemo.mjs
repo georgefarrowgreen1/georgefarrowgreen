@@ -87,9 +87,6 @@ await G.p.click('.sheet [data-act=passport]'); await G.p.waitForSelector('.ppboo
 for (let i = 0; i < 3; i++) { await G.p.evaluate(() => { const b = document.querySelector('.ppbook'); b.scrollLeft += b.clientWidth; }); await G.p.waitForTimeout(500); }
 await shot(G, '12c-passport-moon-stamp');
 await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300); await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300);
-await G.p.click('[data-act=whatsnew]'); await G.p.waitForSelector('.sheet'); await G.p.waitForTimeout(600);
-await shot(G, '12d-whats-new');
-await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300);
 await M.p.click('.compose .kind'); await M.p.waitForSelector('.sheet [data-act=pigeon][data-id=lunarx]');
 await M.p.click('.sheet [data-act=pigeon][data-id=lunarx]'); await M.p.waitForTimeout(400); await M.p.click('.sheet header [data-act=close]'); await M.p.waitForTimeout(400);
 await M.p.fill('#msg', 'The view of Earth is unreal'); await M.p.click('.send'); await M.p.waitForTimeout(2000);
@@ -139,7 +136,7 @@ const tr = await fetch(K.BASE + '/api/pigeon/tracker').then((r) => r.json());
 ok(Array.isArray(tr.pigeons) && tr.moon >= 2, 'the live tracker counts the pigeons out in space (a number only)', JSON.stringify(tr).slice(0, 200));
 const dctx = await K.b.newContext({ viewport: { width: 1440, height: 900 } }), dpage = await dctx.newPage(); 
 await dpage.goto(K.BASE + '/pigeon/tracker'); await dpage.waitForTimeout(2500);
-ok(!(await dpage.locator('.tk-moon').isHidden()), 'InFlight Live shows it', await dpage.locator('.tk-moon').innerText().catch(() => ''));
+ok(!(await dpage.locator('.tk-moon').isHidden()), 'Chat Live shows it', await dpage.locator('.tk-moon').innerText().catch(() => ''));
 await dpage.screenshot({ path: `${out}/17-inflight-live.png` });
 
 // ---- Mira comes home ----

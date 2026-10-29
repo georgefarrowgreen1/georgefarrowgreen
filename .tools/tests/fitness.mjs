@@ -1,12 +1,12 @@
 // Fitness (fitness/), at its own address (fitness.<site>), signed in only, with the site's one account: signed out,
-// just what it is and Sign in (on the account's page, handed back); signed up to InFlight in a browser, Fitness there is
+// just what it is and Sign in (on the account's page, handed back); signed up to Chat in a browser, Fitness there is
 // signed in already. Files come in (a Wahoo's FIT ride, a GPX, a ZWO workout, a zip as Garmin Connect's "Export
 // original" makes it, and one it can't read), and each ride's kept with the account, its file as it came; another device
 // signed in has them, each opened from its file, and out again as FIT with every sample. A plan chosen on one device and
 // a workout built on the other, each from the same version, are put together. A ride renamed or deleted on one is so on
 // the other. The account's page has Fitness among your apps. Signing out goes back to the start, and the API answers
 // only signed in, and only at Fitness's own address. Nothing scrolls sideways on a small phone.
-// The site's addresses are stood in for by gfg.test (chat., fitness. and account.), mapped to this machine, so the
+// The apps' addresses are stood in for by ifl.test (the home page's by gfg.test) (chat., fitness. and account.), mapped to this machine, so the
 // browser shares the sign-in between them as it would between georgefarrowgreen.com's.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
@@ -18,10 +18,10 @@ import { readFit, writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
 import { demo, samples, PROFILE } from '../../fitness/sample.js';
-import { joinInFlight, onAccountPage } from './join.mjs';
+import { joinChat, onAccountPage } from './join.mjs';
 
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', FIT = 'http://fitness.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
@@ -99,6 +99,7 @@ const SACTS = [{ id: 7001, name: 'Lunch ride', sport_type: 'VirtualRide', traine
   { id: 7005, name: 'Old ride', sport_type: 'Ride', start_date: sIso(SAT - 400 * 86400 - 13 * 60), secs: 1200, w: 170, ll: true, old: true }];
 const slog = [];
 let sTok = 'sa1';
+const SNAMES = {};
 createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), auth = req.headers.authorization || '';
   let body = ''; for await (const c of req) body += c;
@@ -112,6 +113,9 @@ createServer(async (req, res) => {
   if (u.pathname === '/oauth/deauthorize') return send(200, {});
   if (u.pathname === '/api/v3/push_subscriptions') return req.method === 'GET' ? send(200, []) : send(201, { id: 77 });
   if (auth !== `Bearer ${sTok}`) return send(401, {});
+  if (u.pathname === '/api/v3/athlete') return send(200, { id: 555 });
+  const one = /^\/api\/v3\/activities\/(\d+)$/.exec(u.pathname);
+  if (one) return send(200, { id: Number(one[1]), name: SNAMES[one[1]] ?? SACTS.find((x) => String(x.id) === one[1])?.name ?? 'Ride' });
   if (u.pathname === '/api/v3/athlete/activities') { const after = Number(u.searchParams.get('after')), before = Number(u.searchParams.get('before'));
     const t = (a) => Date.parse(a.start_date) / 1000;
     return send(200, SACTS.filter((a) => (after ? t(a) > after && !a.old : true) && (before ? t(a) < before : true)).map(({ secs, w, ll, old, ...a }) => a)); }
@@ -133,8 +137,8 @@ createServer((req, res) => {
 }).listen(8794, '127.0.0.1');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
-// a browser: its own cookies and storage (a laptop, a phone: both, to InFlight, a phone, as it opens only on one)
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
+// a browser: its own cookies and storage (a laptop, a phone: both, to Chat, a phone, as it opens only on one)
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const pages = [];
 async function browser(name) {
@@ -148,8 +152,9 @@ async function browser(name) {
   return { ctx, p, name };
 }
 const settle = (x, ms = 600) => x.p.waitForTimeout(ms);
-const tab = async (x, n) => { await x.p.click(`.tab:nth-child(${n})`); await settle(x); };
-const you = async (x) => { await x.p.click('.head .round.me'); await x.p.waitForSelector('#sheet[open] .acct'); await settle(x, 500); };
+// (the nth tab of the tab bar: counted among the tabs alone, as the bar also holds the sidebar's own parts on a computer)
+const tab = async (x, n) => { await x.p.locator('#tabs .tab').nth(n - 1).click(); await settle(x); };
+const you = async (x) => { await x.p.click('.ifh-me'); await x.p.click('.ifm-pop .ifm-row.go:has-text("Settings")'); await x.p.waitForSelector('#sheet[open] .acct'); await settle(x, 500); };
 const done = async (x) => { await x.p.keyboard.press('Escape'); await settle(x, 700); };
 const toastSays = (x) => x.p.waitForFunction(() => document.querySelector('#toast.on')?.textContent || null, null, { timeout: 15000 }).then((v) => v.jsonValue(), () => '');
 const download = async (x, click) => { const [d] = await Promise.all([x.p.waitForEvent('download'), click()]); return { name: d.suggestedFilename(), bytes: readFileSync(await d.path()) }; };
@@ -167,7 +172,7 @@ const P = await browser('phone');
 await P.p.goto(`${FIT}/`);
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 const welcome = await P.p.evaluate(() => ({ text: document.querySelector('main').innerText.replace(/\s+/g, ' '), tabs: getComputedStyle(document.querySelector('.tabbar')).display, btns: [...document.querySelectorAll('main button')].map((x) => x.textContent) }));
-ok(/^Fitness Training that fits your week Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
+ok(/^Fitness Training that fits your week Powered by InFlite Sign in New here\? Create your account$/.test(welcome.text.trim()) && welcome.btns.join() === 'Sign in,Create your account' && welcome.tabs === 'none',
   'signed out: its mark and a line, Sign in, and a way in for someone new (no tabs, no rides)', `${welcome.text.slice(0, 90)} | ${welcome.btns.join()} | tabs ${welcome.tabs}`);
 await P.p.setInputFiles('#files', FILES.slice(0, 1)); await settle(P, 800);
 ok(!(await P.p.$('#sheet[open]')) && await P.p.$('.welcome #sign-in'), 'a file given it signed out: nothing read, nothing kept');
@@ -179,19 +184,36 @@ await settle(P, 3600); await P.p.screenshot({ path: `${out}/welcome.png` });
 const L = await browser('laptop');
 await L.p.goto('http://localhost:8788/fitness/');
 await L.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
-ok(await L.p.$eval('#sign-in', (x) => x.disabled) && /Signing in is at fitness\.georgefarrowgreen\.com/.test(await L.p.innerText('main')), 'away from its own address: Sign in off, and where it is');
+ok(await L.p.$eval('#sign-in', (x) => x.disabled) && /Signing in is at fitness\.inflite\.ai/.test(await L.p.innerText('main')), 'away from its own address: Sign in off, and where it is');
 const elsewhere = await api(L, '/api/fitness/me');
 ok(elsewhere.status === 404, 'and its API answers only at its own address', String(elsewhere.status));
 
-// ---- 2. Signed up to InFlight on a laptop: Fitness in the same browser is signed in already ----
-await joinInFlight(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
+// ---- 2. Signed up to Chat on a laptop: Fitness in the same browser is signed in already ----
+await joinChat(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London' });
 const sam = userId('sam');
+// (Chat's InFlite menu, from the photo at the top left: you, Chat's own rows, its version; no row of apps)
+await L.p.waitForSelector('.chead .ifh-me', { timeout: 20000 }).catch(() => {});
+if (await L.p.$('.chead .ifh-me')) {
+  await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await L.p.waitForTimeout(700);
+  await L.p.screenshot({ path: `${out}/menu-chat.png` });
+  ok(!(await L.p.$('.ifm-pop .ifm-apps')) && /Notifications/.test(await L.p.innerText('.ifm-pop')) && /Chat V[\d.]+ · Up to date/.test(await L.p.innerText('.ifm-foot')), "Chat: InFlite's menu, from your photo", await L.p.innerText('.ifm-pop'));
+  await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+} else ok(false, "Chat: your photo at the top left, for InFlite's menu");
 await L.p.goto(`${FIT}/`);
-await L.p.waitForSelector('.head .round.me', { timeout: 20000 });
-ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.head .round.me')).trim() === 'S' && await L.p.isVisible('.tabbar'), 'Fitness in the same browser: signed in already, as Sam (no sign-in of its own)');
+await L.p.waitForSelector('.ifh-me', { timeout: 20000 });
+ok(!(await L.p.$('.welcome')) && (await L.p.textContent('.ifh-me')).trim() === 'S' && await L.p.isVisible('.tabbar'), 'Fitness in the same browser: signed in already, as Sam (no sign-in of its own)');
+// InFlite's menu, from the photo, now at the top left: you, Fitness's own rows, its version and Sign Out (no row of
+// apps); and tapped again, closed
+ok(await L.p.$eval('.ifh', (x) => x.firstElementChild.classList.contains('ifh-me')) && /^Today|^Tomorrow|^Yesterday|day$/.test(await L.p.textContent('.ifh .ifh-name')), "InFlite's header: your photo at the top left, then the screen's name");
+await L.p.click('.ifh-me'); await L.p.waitForSelector('.ifm-pop.open'); await settle(L, 700);
+await L.p.screenshot({ path: `${out}/menu.png` });
+const menuSays = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
+ok(/Sam Taylor @sam/.test(menuSays) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Distances/.test(menuSays) && /Fitness V\d+\.\d\d · Up to date/.test(menuSays) && /Sign Out/.test(menuSays), "Fitness: InFlite's menu, the same as every app's", menuSays);
+await L.p.mouse.click(20, 20); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+ok(true, 'and closed with a tap off it');
 await you(L);
 const card = await L.p.innerText('#sheet .acct');
-ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
+ok(/Sam Taylor/.test(card) && /@sam/.test(card) && !/georgefarrowgreen\.com/.test(card) && (await L.p.textContent('#sheet .row.action.danger')) === 'Sign Out', 'You: the account\'s card, and Sign out', card.replace(/\s+/g, ' '));
 ok(!/Example rides/.test(await L.p.innerText('#sheet')), 'no example rides to turn on: only your own');
 await done(L);
 
@@ -239,10 +261,10 @@ await P.p.waitForURL((u) => u.hostname.startsWith('fitness.'), { timeout: 30000 
 await P.p.screenshot({ path: `${out}/arrive-1.png` }).catch(() => {});
 await P.p.waitForTimeout(450); await P.p.screenshot({ path: `${out}/arrive-2.png` }).catch(() => {});
 const said = await toastSays(P);
-await P.p.waitForSelector('.head .round.me', { timeout: 20000 });
+await P.p.waitForSelector('.ifh-me', { timeout: 20000 });
 ok(/Signed in as Sam/.test(said) && !/signin=/.test(P.p.url()), 'Sign in, on the account\'s page, and back in Fitness signed in (the code out of the address)', `${said} ${P.p.url()}`);
 await tab(P, 2);
-const listed = await P.p.locator('.head .sub').innerText();
+const listed = await P.p.locator('.ifh .ifh-line').innerText();
 ok(/^3 activities/i.test(listed) && await P.p.getByText('Wahoo ELEMNT BOLT', { exact: false }).count() >= 1, 'the phone has the laptop\'s three rides', listed);
 await P.p.locator('.row', { hasText: 'Wahoo ELEMNT BOLT' }).first().click();
 await P.p.waitForSelector('#sheet[open] .stat', { timeout: 30000 }); await settle(P, 1200);
@@ -253,7 +275,8 @@ await done(P);
 
 // ---- 5. Rhythm set up on the phone (your week), and a new FTP on the laptop from the version before it: put together ----
 await tab(P, 1);
-ok(await P.p.locator('.tab').count() === 3 && !(await P.p.getByText('Or train for an event').count()), 'three tabs, Plan gone into Today: Rhythm alone, no event plans');
+// (the phone's tabs: not the sidebar's Upload files, a computer's alone)
+ok(await P.p.locator('#tabs .tab:not(.side-only)').count() === 3 && !(await P.p.getByText('Or train for an event').count()), 'three tabs, Plan gone into Today: Rhythm alone, no event plans');
 ok(await P.p.locator('main .rhythm-intro').count() === 1 && await P.p.locator('.rh-ex-bars > div').count() === 7, 'before it starts, on Today: an example week, and Set up Rhythm');
 await P.p.locator('main .btn', { hasText: 'Set up Rhythm' }).click(); await settle(P, 800);
 // (1. your days: Monday, a rest day, tapped to a ride day; 2. a run a week; 3. build; 4. the first week, then Start)
@@ -288,7 +311,7 @@ const firstWeek = await P.p.locator('#sheet .group .row').count();
 ok(firstWeek === 7 && /Your first week/.test(await P.p.locator('#sheet .sheet-top h1').innerText()), 'step 4: the first week, before anything is kept', String(firstWeek));
 await P.p.screenshot({ path: `${out}/rhythm-first-week.png` });
 await P.p.locator('#sheet .rh-next', { hasText: 'Start Rhythm' }).click(); await settle(P, 900);
-const planSub = await P.p.locator('.head .sub').innerText();
+const planSub = await P.p.locator('.ifh .ifh-line').innerText();
 const st2 = await waitFor(() => { const s = state(sam); return s?.rhythm ? s : null; });
 ok(/^Aerobic block · week 1 of 4/i.test(planSub) && st2?.rhythm?.days?.[0] === 60 && st2.rhythm.run === true && st2.rhythm.level === 'regular', 'Rhythm set up on the phone: your week kept with the account', `${planSub} | ${JSON.stringify(st2?.rhythm)}`);
 await you(L);
@@ -300,13 +323,13 @@ const st3 = await waitFor(() => { const s = state(sam); return s?.profile?.ftp =
 ok(st3?.rhythm?.run === true && st3.profile.ftp === ftpWas + 10 && st3.profile.set?.includes('ftp'), 'a new FTP on the laptop, which hadn\'t heard of Rhythm: both kept', JSON.stringify(st3 && { rhythm: !!st3.rhythm, ftp: st3.profile.ftp }));
 await done(L); await done(L);
 await tab(L, 1);
-ok(/ block · /i.test(await L.p.locator('.head .sub').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.head .sub').innerText());
+ok(/ block · /i.test(await L.p.locator('.ifh .ifh-line').innerText()), 'and the laptop has the phone\'s Rhythm now', await L.p.locator('.ifh .ifh-line').innerText());
 // (units: kilometres at first, from the browsers' region (en-GB); miles, chosen on the account's page, from Fitness
 // Settings on the phone, and back: the laptop's in miles too, next it's opened)
 await you(P);
 const unitsFirst = await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
 await P.p.locator('#sheet .row', { hasText: 'Fitness settings' }).click();
-await P.p.waitForURL(/account\.gfg\.test/, { timeout: 20000 });
+await P.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 });
 await P.p.waitForSelector('#sheet[open] .seg', { timeout: 30000 }); await settle(P, 600);
 const fxSheet = await P.p.locator('#sheet').innerText();
 ok(/Fitness/.test(await P.p.locator('#sheet .toapp').innerText().catch(() => '')) && /From your phone’s region/.test(fxSheet) && /Ask how I am/.test(fxSheet) && /Export everything/.test(fxSheet) && !(await P.p.locator('#sheet .row', { hasText: 'Appearance' }).count())
@@ -316,8 +339,8 @@ await P.p.screenshot({ path: `${out}/account-fitness.png` });
 await P.p.locator('#sheet .seg button', { hasText: /^mi$/ }).click();
 await waitFor(() => state(sam)?.prefs?.units === 'imperial');
 await P.p.locator('#sheet .toapp').click();
-await P.p.waitForURL(/fitness\.gfg\.test/, { timeout: 20000 }); await P.p.waitForSelector('.head .round.me');
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
+await P.p.waitForURL(/fitness\.ifl\.test/, { timeout: 20000 }); await P.p.waitForSelector('.ifh-me');
+await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
 const unitsThen = await L.p.locator('#sheet .row', { hasText: 'Fitness settings' }).innerText();
 ok(/Kilometres/.test(unitsFirst) && /Miles/.test(unitsThen) && state(sam)?.rhythm?.run === true, 'kilometres at first; miles, chosen on the account\'s page: the laptop\'s in miles too, the rest of the record as it was', `${unitsFirst} | ${unitsThen}`.replace(/\s+/g, ' '));
 await done(L);
@@ -332,7 +355,7 @@ await P.p.locator('#sheet .act-links button', { hasText: 'Share' }).click();
 const shared = await P.p.waitForSelector('#sheet .share-img.in', { timeout: 15000 }).then(() => P.p.evaluate(() => { const i = document.querySelector('#sheet .share-img'); return [i.naturalWidth, i.naturalHeight]; })).catch(() => null);
 ok(shared && shared[0] === 1080 && shared[1] === 1350 && !(await P.p.locator('#sheet .btn[disabled]').count()), 'a ride shared: its picture drawn, 1080 by 1350, ready to share', JSON.stringify(shared));
 await P.p.screenshot({ path: `${out}/share-ride.png` });
-await P.p.locator('#sheet .back, #sheet button', { hasText: 'Back' }).first().click(); await settle(P, 600);
+await P.p.locator('#sheet .sheet-head').getByRole('button', { name: 'Back' }).click(); await settle(P, 600);
 await P.p.locator('#sheet').getByRole('button', { name: 'Rename' }).click(); await settle(P);
 await P.p.fill('#sheet input.field', 'Saturday loop');
 await P.p.getByRole('button', { name: 'Save' }).click(); await settle(P, 800);
@@ -344,8 +367,8 @@ await P.p.locator('#sheet .row', { hasText: 'Delete' }).click(); await settle(P,
 const left = acts(sam);
 ok(left.length === 2 && left.some((a) => a.name === 'Saturday loop') && !left.some((a) => a.file === '123_ACTIVITY.fit'), 'renamed and deleted with the account', JSON.stringify(left.map((a) => a.name)));
 await tab(L, 2);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
-ok(/^2 activities/i.test(await L.p.locator('.head .sub').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.head .sub').innerText());
+await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
+ok(/^2 activities/i.test(await L.p.locator('.ifh .ifh-line').innerText()) && await L.p.getByText('Saturday loop').count() >= 1, 'and on the laptop: two rides, one renamed', await L.p.locator('.ifh .ifh-line').innerText());
 
 // ---- 7. The account's page: Fitness among your apps ----
 await L.p.goto(`${ACCT}/`);
@@ -364,7 +387,7 @@ ok(dl.suggestedFilename() === 'Fitness export.zip' && names.filter((n) => n.star
 await L.p.keyboard.press('Escape'); await settle(L, 600);
 
 // ---- 8. Signing out on the phone: back to the start, its copies gone; the laptop still signed in ----
-await P.p.goto(`${FIT}/`); await P.p.waitForSelector('.head .round.me');
+await P.p.goto(`${FIT}/`); await P.p.waitForSelector('.ifh-me');
 await you(P);
 await P.p.click('#sheet .row.action.danger');
 await P.p.waitForTimeout(700); await P.p.screenshot({ path: `${out}/dusk.png` }).catch(() => {});
@@ -374,8 +397,8 @@ const cached = await P.p.evaluate(() => new Promise((res) => { const r = indexed
 ok(/Signed out\./.test(await P.p.innerText('main')) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
-await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.head .round.me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
-ok(/^2 activities/i.test(await L.p.locator('.head .sub').innerText()), 'the laptop, another browser: still signed in');
+await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.ifh-me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
+ok(/^2 activities/i.test(await L.p.locator('.ifh .ifh-line').innerText()), 'the laptop, another browser: still signed in');
 
 // ---- 8b. Rhythm on the laptop: the days, then a session or rest each day, with its reason ----
 await tab(L, 1);
@@ -386,7 +409,7 @@ ok(strip === 7 && await L.p.locator('main .session').count() === 1 && agRows ===
 // (tomorrow, looked at: and a day that isn't the day for it, rest instead, Rhythm taking it in)
 await L.p.locator('.agenda .ag-row.today + .ag-row, .agenda .ag-row.today ~ .ag-row').first().click(); await settle(L, 600);
 const tmText = await L.p.locator('main .session').first().innerText();
-ok(/^Tomorrow$/.test(await L.p.locator('.head h1').innerText()) && !(await L.p.locator('.agenda').count()), 'tomorrow, tapped: its day on the page', tmText.replace(/\s+/g, ' ').slice(0, 100));
+ok(/^Tomorrow$/.test(await L.p.locator('.ifh .ifh-name').innerText()) && !(await L.p.locator('.agenda').count()), 'tomorrow, tapped: its day on the page', tmText.replace(/\s+/g, ' ').slice(0, 100));
 if (await L.p.locator('.day-change .chip-btn', { hasText: /^Rest$/ }).count()) {
   await L.p.locator('.day-change .chip-btn', { hasText: /^Rest$/ }).click(); await settle(L, 900);
   const st5 = await waitFor(() => { const s = state(sam); return s && Object.values(s.swaps || {}).includes(null) ? s : null; });
@@ -394,7 +417,7 @@ if (await L.p.locator('.day-change .chip-btn', { hasText: /^Rest$/ }).count()) {
 } else ok(/Rest/.test(tmText), 'a rest day: why', tmText.slice(0, 80));
 await L.p.screenshot({ path: `${out}/rhythm-plan.png`, fullPage: true });
 await tab(L, 1);
-ok(/^Today$/.test(await L.p.locator('.head h1').innerText()), 'Today, tapped again: back to today');
+ok(/^Today$/.test(await L.p.locator('.ifh .ifh-name').innerText()), 'Today, tapped again: back to today');
 const todayCard = await L.p.locator('.session').first().innerText();
 ok(/Why today:|Rest, and let it sink in/.test(todayCard), 'Today: the session Rhythm chose, and why (or rest, and why)', todayCard.replace(/\s+/g, ' ').slice(0, 160));
 // (a ride today: the best time for it, from the weather where you ride, while there's daylight left)
@@ -433,7 +456,7 @@ await L.p.fill('#garmin-key', GKEY);
 await L.p.locator('#sheet .btn', { hasText: 'Connect' }).click();
 const joined = await waitFor(async () => (await toastSays(L)).match(/Connected.*/)?.[0], 20000);
 await settle(L, 600);
-ok(!(await L.p.$('#sheet[open]')) && /Activities/.test(await L.p.locator('.head h1').innerText()) && !(await L.p.$('.card.bringing')), 'connected: back on Activities, the six months in', joined);
+ok(!(await L.p.$('#sheet[open]')) && /Activities/.test(await L.p.locator('.ifh .ifh-name').innerText()) && !(await L.p.$('.card.bringing')), 'connected: back on Activities, the six months in', joined);
 await openIn(L, 'garminView'); await L.p.waitForSelector('#sheet .sheet-top'); await settle(L, 500);
 const gKept = acts(sam), gRow = rows(`SELECT apikey, ok FROM fx_garmin WHERE user_id = '${sam}'`)[0];
 ok(gKept.some((a) => a.id === 'g9001' && a.name === 'Morning gravel' && a.type === 'fit') && !gKept.some((a) => a.id === 'g9002') && gKept.length === 3,
@@ -454,7 +477,7 @@ const tickNo = await api(L, '/api/fitness/garmin-tick', { method: 'POST' });
 const tickYes = await api(L, '/api/fitness/garmin-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });
 ok(tickNo.status === 401 && JSON.parse(tickYes.body).asked === 1 && rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).map((r) => r.id).join() === '9003',
   'the scheduler’s turn (with its secret only): the evening’s run fetched, waiting', `${tickNo.status} ${tickYes.body}`);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
+await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const gRun = await waitFor(() => acts(sam).find((a) => a.id === 'g9003'), 15000);
 ok(gRun?.sport === 'run' && gRun.name === 'Evening run' && !rows(`SELECT id FROM fx_garmin_new WHERE user_id = '${sam}'`).length, 'opened: the run read and kept, nothing waiting', JSON.stringify(gRun));
 // ---- all your history: a ride from over a year ago, not in the six months; brought in when asked for ----
@@ -524,7 +547,7 @@ ok(/Today|Activities|Progress/.test(offTxt) && !/needs JavaScript|You’re offli
 // (a phone as the others, but never welcomed: the welcome's for it)
 const O = await browser('new'), OC = O.ctx;
 await OC.addInitScript(() => { try { localStorage.removeItem('fitness:welcomed'); } catch (_) {} });
-await joinInFlight(O.p, `${CHAT}/`, { name: 'Jo Bloggs', handle: 'jobloggs', email: 'jo@example.com', password: PW, city: 'York' }).catch(async (e) => { await O.p.screenshot({ path: `${out}/onb-join-fail.png` }); console.log('JOINFAIL', O.p.url(), e.message.split('\n')[0]); throw e; });
+await joinChat(O.p, `${CHAT}/`, { name: 'Jo Bloggs', handle: 'jobloggs', email: 'jo@example.com', password: PW, city: 'York' }).catch(async (e) => { await O.p.screenshot({ path: `${out}/onb-join-fail.png` }); console.log('JOINFAIL', O.p.url(), e.message.split('\n')[0]); throw e; });
 await O.p.goto(`${FIT}/`);
 const oOpen = await O.p.waitForSelector('dialog.sheet.full[open] .onb-title', { timeout: 30000 }).then(() => true, () => false);
 const oHi = oOpen ? await O.p.locator('.onb-title').innerText() : '';
@@ -570,8 +593,8 @@ ok(slog.some((x) => x.startsWith('GET /oauth/authorize') && x.includes('approval
   'Strava always shows its own page (so you see whose Strava it is), and Fitness says whose it is');
 // ---- one person's Strava and Garmin, one Fitness account: another account can't take them, nor their rides ----
 const X = await browser('second');
-await joinInFlight(X.p, `${CHAT}/`, { name: 'Alex Reed', handle: 'alex', email: 'alex@example.com', password: PW, city: 'Leeds' });
-await X.p.goto(`${FIT}/`); await X.p.waitForSelector('.head .round.me', { timeout: 30000 }); await settle(X, 1500);
+await joinChat(X.p, `${CHAT}/`, { name: 'Alex Reed', handle: 'alex', email: 'alex@example.com', password: PW, city: 'Leeds' });
+await X.p.goto(`${FIT}/`); await X.p.waitForSelector('.ifh-me', { timeout: 30000 }); await settle(X, 1500);
 const alex = rows("SELECT id FROM pg_users WHERE handle = 'alex'")[0]?.id;
 const xGo = JSON.parse((await api(X, '/api/fitness/strava/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).body).url;
 await X.p.goto(xGo); await X.p.waitForSelector('.tabs .tab', { timeout: 30000 }); await settle(X, 1500);
@@ -586,7 +609,9 @@ const sVerify = createHash('sha256').update('fitness-strava-hook|test-strava-sec
 const sCheck = await api(L, `/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=${sVerify}&hub.challenge=abc123`), sCheckBad = await api(L, '/api/fitness/strava/hook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=abc123');
 const hook = (e) => api(L, '/api/fitness/strava/hook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e) });
 await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 78, updates: { title: 'Not ours' } });
-await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { title: 'Lunch ride, renamed' } });
+// (the name taken from Strava itself, whatever the event says: Strava doesn't sign them)
+SNAMES['7001'] = 'Lunch ride, renamed';
+await hook({ object_type: 'activity', object_id: 7001, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { title: 'Forged name' } });
 await hook({ object_type: 'activity', object_id: 7006, aspect_type: 'create', owner_id: 555, subscription_id: 77 });
 const sAfter = rows(`SELECT name FROM fx_acts WHERE user_id = '${sam}' AND id = 's7001'`)[0], sDue = rows(`SELECT due FROM fx_strava WHERE user_id = '${sam}'`)[0];
 ok(sCheck.status === 200 && JSON.parse(sCheck.body)['hub.challenge'] === 'abc123' && sCheckBad.status === 403 && sAfter?.name === 'Lunch ride, renamed' && sDue?.due === 1,
@@ -596,6 +621,10 @@ const sAll = await api(L, '/api/fitness/strava/all', { method: 'POST', headers: 
 const sWait = rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).map((r) => r.id);
 ok(sAll.status === 200 && sWait.join() === '7005', 'all your Strava history: the old ride found, waiting to be read (and only it)', `${sAll.status} ${JSON.stringify(sWait)}`);
 // disconnected on Strava: the tokens and what's waiting go here; what's in Fitness stays
+// (said by someone else, while Strava still takes the tokens: nothing's forgotten)
+await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
+ok(rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length === 1, 'a forged “disconnected” from Strava: checked with Strava, which still takes the tokens, so kept');
+sTok = 'revoked';
 await hook({ object_type: 'athlete', object_id: 555, aspect_type: 'update', owner_id: 555, subscription_id: 77, updates: { authorized: 'false' } });
 ok(!rows(`SELECT user_id FROM fx_strava WHERE user_id = '${sam}'`).length && !rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length && rows(`SELECT id FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%'`).length === 2,
   'disconnected on Strava: its tokens and the files waiting gone; the activities already in Fitness stay');
@@ -609,7 +638,7 @@ await L.p.reload(); await L.p.waitForSelector('.tabs .tab'); await settle(L, 600
 const oldAt = (t0 - 86400 * 9) * 1000, oldGpx = gpxFromActivity({ ...ride, start: oldAt, name: 'Old ride' });
 const oldUp = await L.p.evaluate(async ([gpx, at]) => { const f = new FormData(); f.append('meta', JSON.stringify({ id: `i${at}`, start: at, sport: 'ride', name: 'Old ride', file: 'old.gpx', type: 'gpx', sum: { secs: 5400, tss: 70 } }));
   f.append('file', new Blob([gpx]), 'old.gpx'); const r = await fetch('/api/fitness/acts', { method: 'POST', body: f }); return r.status; }, [oldGpx, oldAt]);
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
+await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
 const squashed = await waitFor(() => rows(`SELECT type, file, size, gz, sum FROM fx_acts WHERE user_id = '${sam}' AND id = 'i${oldAt}'`).find((r) => r.gz === 1), 20000);
 ok(oldUp === 200 && squashed?.type === 'fit' && squashed.file === 'old.fit' && squashed.size < Buffer.byteLength(oldGpx) / 4 && JSON.parse(squashed.sum).tss === 70,
   'one kept before: written as FIT and gzipped as the app opens, its figures as they were', `${oldUp} ${JSON.stringify(squashed)} (GPX ${Buffer.byteLength(oldGpx)})`);
@@ -627,7 +656,7 @@ await L.ctx.addInitScript(({ endpoint, p256dh, auth }) => {
   PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make(null) : null; };
   PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(null); };
 }, { endpoint: 'https://fcm.googleapis.com/fcm/send/fitness-laptop', p256dh: pushPub, auth: pushAuth });
-await L.p.reload(); await L.p.waitForSelector('.head .round.me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
+await L.p.reload(); await L.p.waitForSelector('.ifh-me'); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' }); await you(L);
 await L.p.locator('#sheet .row', { hasText: 'Morning reminder' }).click(); await settle(L, 600);
 const preview = await L.p.locator('#sheet .note-preview').innerText().catch(() => '');
 await L.p.locator('#sheet .times .pill', { hasText: '07:30' }).click(); await settle(L, 300);

@@ -1,7 +1,7 @@
 // Fitness's morning notification: today's session (or a rest day), at the time you chose, on each phone you turned it
 // on on. The app writes the next days' words itself, from Rhythm as it has it (Rhythm is worked out on the phone, never
 // here), and sends them again whenever it opens; the site's scheduler (workers/ticker) sends the day's, once, when your
-// time comes where you are. Sent as InFlight's and Weather's are (functions/_notify.js: the site's one VAPID key).
+// time comes where you are. Sent as Chat's and Weather's are (functions/_notify.js: the site's one VAPID key).
 //
 // fx_push: one row a phone (its subscription's endpoint), the account it's for, the time (minutes after midnight, in its
 // time zone), the days' words ({ "2026-10-26": { title, body } }, a week or so ahead), and the last day it was sent.
@@ -91,9 +91,11 @@ export async function morningTick(env, t = Date.now()) {
     let days = {}; try { days = JSON.parse(r.days || "{}"); } catch (_) {}
     const note = days[now.day];
     if (!note) continue;   // (its words run out: the app hasn't been opened for a week or more)
-    const out = await pushToSub(env, r, { title: note.title, body: note.body, tag: "fitness-morning", url: "./", ttl: 4 * 3600 });
+    const out = await pushToSub(env, r, { title: note.title, body: note.body, tag: "fitness-morning", url: "./", ttl: 4 * 3600 }).catch(() => "failed");
     if (out === "gone") await D.prepare("DELETE FROM fx_push WHERE endpoint = ?").bind(r.endpoint).run();
-    if (out === "sent") sent++;
+    else if (out === "sent") sent++;
+    // (not sent, the push service down a moment, say: the day given back, so the next tick, still in time, tries again)
+    else await D.prepare("UPDATE fx_push SET sent = ?2 WHERE endpoint = ?1 AND sent = ?3").bind(r.endpoint, r.sent ?? null, now.day).run();
   }
   return { phones: results.length, sent };
 }

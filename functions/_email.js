@@ -1,6 +1,6 @@
 /* ---------------- the site's email: every app's ----------------
-   One way to send, and one look, for every app on georgefarrowgreen.com. An app is a brand below: its name, which
-   is also the sender's (each app from its own address on the site's domain: account@, inflight@, weather@,
+   One way to send, and one look, for every app (inflite.ai's, and the home page's). An app is a brand below: its name, which
+   is also the sender's (each app from its own address on the site's domain: account@, chat@, weather@,
    website@, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
    pictures, and what's said at the foot of each of its emails. To send:
 
@@ -14,8 +14,9 @@
    mail to the Resend account's own address, and only from that one address, so every app sends from it as it is. */
 import { HttpError } from "./_http.js";
 
+// (the home page's address: the emails' pictures are kept there, and it stands for "this is production" below)
 export const SITE = "https://georgefarrowgreen.com";
-export const ACCOUNT_APP = "https://account.georgefarrowgreen.com";
+export const ACCOUNT_APP = "https://account.inflite.ai";
 // the account's page, for links in emails (this site's, or a local test server's copy)
 export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
 // Where links in emails point: this site, or a local test server. Never a
@@ -41,10 +42,11 @@ export const BRANDS = {
     sky: ["#e9eefc", "#f3f0fb", "#f7f8fc"], night: ["#1a2350", "#0a0f26", "#05060e"], card: "#16182b", box: "#20233a", sep: "#2d3150",
     art: { badge: "account/icon-512.png", ink: "#6a64f2",
       tiles: { shield: ["#8a93ff", "#5a4fe0"], key: ["#8a93ff", "#5a4fe0"], mail: ["#8a93ff", "#5a4fe0"], passkey: ["#8a93ff", "#5a4fe0"], trash: ["#ff8a7a", "#e5372c"] } },
-    foot: (origin) => ({ line: "About your georgefarrowgreen.com account", label: "Manage your account", url: `${accountLink(origin)}/` }),
+    foot: (origin) => ({ line: "About your inflite.ai account", label: "Manage your account", url: `${accountLink(origin)}/` }),
   },
+  // (Chat's brand is still "inflight", its old name, as its pictures in mail/ are; it sends from chat@)
   inflight: {
-    name: "InFlight", tile: "bird",
+    name: "Chat", from: "chat", tile: "bird",
     ink: "#0a6ef0", inkDark: "#7cb8ff", btn: ["#3d9afe", "#0c6ff0"], glow: "rgba(12,111,240,.7)", pill: "#e8f2ff", pillDark: "#1a2c4f",
     sky: ["#e4eefc", "#eef3fb", "#f7f8fc"], night: ["#132a52", "#081226", "#05060e"], card: "#141b2c", box: "#1e2639", sep: "#2b3552",
     art: { badge: "pigeon/icon-512.png", ink: "#2b84ff",
@@ -73,7 +75,7 @@ export const emailReady = (env) => !!env.RESEND_API_KEY;
 const senderAddress = (env, brand) => {
   const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
   const domain = a.split("@")[1];
-  return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${brand}@${domain}`;
+  return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${brandOf(brand).from || brand}@${domain}`;
 };
 export const emailFrom = (env, brand) => `${brandOf(brand).name} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)

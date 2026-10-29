@@ -1,4 +1,4 @@
-name: InFlight checks
+name: Chat checks
 
 # On every push: every server and app file parses, and the unit tests pass (the space
 # maths, eclipses, pigeons following people between worlds, key checks, the weather app's insights). Quick: no

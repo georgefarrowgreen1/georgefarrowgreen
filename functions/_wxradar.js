@@ -9,7 +9,7 @@
 import { decode, radarAt } from "../weather/rainmap.js";
 import { readPng } from "./_png.js";
 
-const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.georgefarrowgreen.com)" };
+const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.inflite.ai)" };
 const API = "https://api.rainviewer.com", TILES = "https://tilecache.rainviewer.com", COVER_KEEP = 6 * 3600e3;
 const covers = new Map();       // coverage tiles' codes by address, kept between ticks: { at, codes }
 

@@ -1,4 +1,4 @@
-// InFlight (/pigeon) — the server half.
+// Chat (/pigeon) — the server half.
 //
 // What this side knows: accounts (email, handle, a hash of a password-derived
 // proof), public keys, who is friends with whom, and when each pigeon lands.
@@ -10,6 +10,7 @@
 
 import { HttpError } from "./_http.js";
 import { SITE, ACCOUNT_APP } from "./_email.js";
+import { siteOf, homeSite, appOrigin } from "./_sites.js";
 export { HttpError };
 
 export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -358,9 +359,9 @@ const MIGRATIONS = [
   // an account unused for almost a year: when it was told it would be deleted (functions/_retention.js)
   "ALTER TABLE pg_users ADD COLUMN warned_at INTEGER",
   // the session's token for the browser's cookie for the whole site (functions/_account.js): its own, so the cookie
-  // isn't a key to InFlight's API
+  // isn't a key to Chat's API
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
-  // a sign-in handed from InFlight to the account's page (functions/api/pigeon account-link, functions/api/account
+  // a sign-in handed from Chat to the account's page (functions/api/pigeon account-link, functions/api/account
   // handoff): a code good once, for a minute
   // what went wrong on the server, for the admin (Admin's alerts): when, where and what, kept 14 days (functions/_notify.js tick)
   "CREATE TABLE IF NOT EXISTS pg_errors (at INTEGER NOT NULL, src TEXT NOT NULL, msg TEXT NOT NULL)",
@@ -400,7 +401,7 @@ const MIGRATIONS = [
   // stays in view ("x y", in percent)
   "ALTER TABLE pg_users ADD COLUMN poster_at INTEGER", "ALTER TABLE pg_users ADD COLUMN poster_focus TEXT",
   // a sign-in made on the account's page for an app that sent you there, handed back to it (functions/_handback.js): a
-  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for InFlight, what
+  // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for Chat, what
   // unlocks the key there, sealed to that tab (box), and the passkey whose own copy of the key it opens (pk)
   "CREATE TABLE IF NOT EXISTS pg_handback (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, app TEXT NOT NULL, ask TEXT NOT NULL, box TEXT, pk TEXT, expires INTEGER NOT NULL)",
 ];
@@ -410,7 +411,7 @@ const MIGRATIONS = [
 const SCHEMA_FP = (() => { let h = 2166136261; for (const c of [...SCHEMA, ...MIGRATIONS].join("\n")) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "s" + h.toString(36); })();
 let schemaReady = null;
 export async function db(env) {
-  if (!env.DB) throw new HttpError(503, "InFlight isn’t set up on this server yet (no database).");
+  if (!env.DB) throw new HttpError(503, "Chat isn’t set up on this server yet (no database).");
   // one setup per copy of the server, shared by every request that arrives while it runs
   await (schemaReady ||= setUp(env).catch((e) => { schemaReady = null; throw e; }));
   return env.PIGEON_COUNT_DB ? counted(env.DB) : env.DB;
@@ -552,7 +553,8 @@ export function placeOf(request) {
 // Which app a request's for, by its API: "inflight", "weather" or "account" (the account's own page)
 export function appKey(request) {
   const p = request ? new URL(request.url).pathname : "";
-  return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness" : p.startsWith("/api/account/") ? "account" : null;
+  return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness"
+    : p.startsWith("/api/account/mail/") ? "mail" : p.startsWith("/api/account/") ? "account" : null;
 }
 // The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null
 const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? appKey(request) : null);
@@ -589,11 +591,11 @@ export async function requireUser(request, env) {
   if (!m) throw new HttpError(401, "Please sign in.", "session");
   const u = await sessionUser(env, m[1], true, false, request);
   // (an account being deleted is signed in only on its own page, to keep it: functions/api/account)
-  if (u.delete_at) throw new HttpError(401, "This account is being deleted. To keep it, sign in at account.georgefarrowgreen.com.", "session");
+  if (u.delete_at) throw new HttpError(401, "This account is being deleted. To keep it, sign in at account.inflite.ai.", "session");
   return u;
 }
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
-// browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
+// browser's cookie for the site (functions/_account.js), which is a different one. (inflight: Chat itself is being
 // used, a day of it noted for its Insights; request: the app it's used in noted, as it's first used there)
 // Something gone wrong, noted for the admin (pg_errors): never throws, and no more than 20 a minute from one copy of the
 // server, so a loop of failures can't fill the database. (Also to the console, as before.)
@@ -799,21 +801,20 @@ function derToRawEcdsa(der) {
   const out = new Uint8Array(64); out.set(pad(readInt()), 0); out.set(pad(readInt()), 32);
   return out;
 }
-// Passkeys belong to the site, georgefarrowgreen.com, whichever of its apps' addresses you're at (the site's own,
-// chat., weather. or account.): one passkey works at all of them (functions/_account.js). A passkey's answer is only taken at the
-// address it was given at, though, but for InFlight's two (georgefarrowgreen.com/pigeon and chat.), which are one app.
-// (ACCOUNT_SITE in the environment: tests, which stand in a site of their own, over plain http)
-const RP_SITE = "georgefarrowgreen.com", ADDRESSES = new Set([RP_SITE, "chat." + RP_SITE]);
+// Passkeys belong to georgefarrowgreen.com, at every app's address (inflite.ai's, which georgefarrowgreen.com says may
+// use them: /.well-known/webauthn, functions/_middleware.js) and the home page's: one passkey works at all of them. A
+// passkey's answer is only taken at the address it was given at. (functions/_sites.js)
 export function rpIdFor(request, env) {
-  const h = new URL(request.url).hostname, site = env?.ACCOUNT_SITE || RP_SITE;
-  return [site, `chat.${site}`, `weather.${site}`, `account.${site}`].includes(h) ? site : h;
+  const h = new URL(request.url).hostname;
+  // (PASSKEY_SITE: tests, over plain http, which can't be told about related sites, so their passkeys are the apps' site's)
+  return siteOf(h, env) ? env?.PASSKEY_SITE || homeSite(env) : h;
 }
 function originOk(origin, request, env) {
   try {
     const o = new URL(origin), here = new URL(request.url);
     if (/(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1") return here.hostname === o.hostname;   // local testing
     if (env?.ACCOUNT_SITE && o.host === here.host) return true;                                                    // (and the tests' site)
-    return o.protocol === "https:" && (o.host === here.host || (ADDRESSES.has(o.host) && ADDRESSES.has(here.host)));
+    return o.protocol === "https:" && o.host === here.host;
   } catch (_) { return false; }
 }
 export async function newChallenge(env, mode, userId) {
@@ -944,10 +945,9 @@ export function cleanPlace(b, approx = false) {
   return { ...snapTo(lat, lon, approx ? APPROX_KM : MILE_KM), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
 }
 
-// Where links into the app point: InFlight's address (chat.georgefarrowgreen.com, since the
-// move), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
+// Where links into the app point: Chat's address (chat.inflite.ai), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
 // (The site's email, every app's, is functions/_email.js.)
-export const APP = "https://chat.georgefarrowgreen.com";
+export const APP = "https://chat.inflite.ai";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
 
 /* ---------------- password resets ----------------
@@ -1004,10 +1004,10 @@ export async function keyProofOk(reset, pubJson, proof) {
   } catch (_) { return false; }
 }
 // Links to the account's own page (accounts are made, and passwords reset, only there: functions/_join.js): its address,
-// or under a test server, the account's address there (account.<the stood-in site>, or account.localhost)
+// or under a test server, the account's address there (account.<the apps' stood-in site>, or account.localhost)
 export function accountPage(request, env) {
-  const u = new URL(typeof request === "string" ? request : request.url), port = u.port ? ":" + u.port : "", site = env?.ACCOUNT_SITE;
-  if (site && (u.hostname === site || u.hostname.endsWith("." + site))) return `${u.protocol}//account.${site}${port}`;
+  const u = new URL(typeof request === "string" ? request : request.url), port = u.port ? ":" + u.port : "";
+  if (env?.ACCOUNT_SITE && siteOf(u.hostname, env)) return appOrigin("account", env, request);
   if (u.hostname === "localhost" || u.hostname.endsWith(".localhost")) return `${u.protocol}//account.localhost${port}`;
   return ACCOUNT_APP;
 }

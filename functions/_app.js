@@ -1,6 +1,6 @@
-// InFlight's files, as a phone gets them, at either of its addresses:
+// Chat's files, as a phone gets them, at either of its addresses:
 // georgefarrowgreen.com/pigeon/ (where it has always been) and
-// chat.georgefarrowgreen.com/ (where it's moving), the same files at both.
+// chat.inflite.ai/ (where it's moving), the same files at both.
 //
 // Pages are never cached. Each script and stylesheet a page loads, and each
 // module app.js imports, gets ?v=<fingerprint of that file>, so a refresh
@@ -9,7 +9,7 @@
 // the whole app (inflight-version), which open copies poll to notice a new
 // deploy and reload themselves.
 //
-// At chat.georgefarrowgreen.com the app is the whole site: /x is the file
+// At chat.inflite.ai the app is the whole site: /x is the file
 // /pigeon/x, and every "/pigeon/" the files say is "/" there (so its offline
 // copy, Home Screen app and links cover the site; the API keeps its address).
 
@@ -24,9 +24,12 @@ export const SECURITY = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 };
 const FOREVER = "public, max-age=31536000, immutable";
-export const CHAT_HOST = "chat.georgefarrowgreen.com";
+import { oldApp } from "./_sites.js";
+export const CHAT_HOST = "chat.inflite.ai";
 // (CHAT_HOST in the environment: tests, which run the new address on local names, a comma between them)
-export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "chat";
 // the app's own paths, as they are at the new address ("/api/pigeon/…" is the API's, and stays)
 const atRoot = (text) => text.replace(/(?<![\w.-])\/pigeon\//g, "/");
 
@@ -67,13 +70,13 @@ async function stampImports(ctx, path, js, chat) {
 // The response for one of the app's files: `res` is the file as stored (at `path`, under /pigeon/)
 export async function serveApp(ctx, res, path, chat) {
   const url = new URL(ctx.request.url);
-  // (one that isn't anything: the site's own page for that is the site's, not InFlight's)
+  // (one that isn't anything: the site's own page for that is the site's, not Chat's)
   if (res.status === 404) return notFound();
   if (res.status !== 200 || !["GET", "HEAD"].includes(ctx.request.method)) return withSecurity(res);
   const type = res.headers.get("content-type") || "", head = ctx.request.method === "HEAD";
 
   if (type.includes("text/html")) {
-    // only InFlight's own pages: anything else here would be the site's home page, served as a fallback
+    // only Chat's own pages: anything else here would be the site's home page, served as a fallback
     if (!APP_PAGES.test(path)) return notFound();
     let html = await res.text();
     const refs = [...new Set([...html.matchAll(/(?:src|href)="(\/pigeon\/[\w./-]+\.(?:js|css))"/g)].map((m) => m[1]))];
@@ -87,8 +90,6 @@ export async function serveApp(ctx, res, path, chat) {
     // (Pages' own preload hints name the files unstamped, and at the old address: each would be fetched again, uncached)
     out.headers.delete("Link");
     out.headers.set("Cache-Control", "no-store");
-    // the new address may open the old one's handover page, hidden (pigeon/handover.js)
-    if (chat) out.headers.set("Content-Security-Policy", `${SECURITY["Content-Security-Policy"]}; frame-src ${url.protocol}//${url.host.replace(/^chat\./, "")}`);
     return out;
   }
 
@@ -114,7 +115,7 @@ export async function serveApp(ctx, res, path, chat) {
   return withSecurity(res);
 }
 
-// the pages InFlight has (under /pigeon/, as stored)
+// the pages Chat has (under /pigeon/, as stored)
 const APP_PAGES = /^\/pigeon\/(index(\.html)?|tracker(\.html)?|handover(\.html)?)?$/;
 export const notFound = () => withSecurity(new Response("Not found.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }));
 

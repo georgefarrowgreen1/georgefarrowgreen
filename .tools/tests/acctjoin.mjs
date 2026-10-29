@@ -1,7 +1,7 @@
 // Joining, and getting back in, on the account's own page only: accounts are made there (by invite, as on the real
 // site), a forgotten password is reset there, and every app signs in there, handed the sign-in back (and the
-// hand-back's own guarantees, at the end). InFlight's older links (an invite, a reset) still work: they're passed on
-// to the account's page. The site's addresses are stood in for by gfg.test, as in acctpage.mjs.
+// hand-back's own guarantees, at the end). Chat's older links (an invite, a reset) still work: they're passed on
+// to the account's page. The apps' addresses are stood in for by ifl.test (the home page's by gfg.test), as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -9,7 +9,7 @@ import { createHash, randomBytes } from 'crypto';
 import { onAccountPage, fillJoin as joinSteps } from './join.mjs';
 import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 const PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry', PW3 = 'Copper kettle 19 harbour';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -21,9 +21,9 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${ex
 execSync(`${S}/restartkeep.sh`, { env: { ...process.env, OPEN_SIGNUP: '0' }, stdio: 'ignore' });
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
-// (each with a passkey maker of its own, as a phone has: one that can hold a copy of InFlight's key, PRF)
+// (each with a passkey maker of its own, as a phone has: one that can hold a copy of Chat's key, PRF)
 async function browser(name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, colorScheme: 'dark' });
   const p = await ctx.newPage();
@@ -55,22 +55,22 @@ async function fillJoin(x, { name, handle, email, password = PW }) {
 // ---- 1. Without an invite: no way to make one, on the page or past it ----
 const V = await browser('visitor');
 await open(V, `${ACCT}/`);
-await waitText(V, /Accounts are by invitation/);
+await waitText(V, /Forgot password\?/); await V.p.waitForTimeout(2500);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && /New here\? Accounts are by invitation: open the link you were sent to make yours\./.test(signin) && /One sign-in for InFlight, Weather and Fitness/.test(signin) && !/Create your account/.test(signin),
-  'the account\'s page, signed out: a passkey, then email and password; and, with no invite, accounts said to be by invitation', signin.slice(-160));
+ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && !/New here|by invitation/.test(signin) && /One sign-in for Chat, Weather and Fitness/.test(signin) && !/Create your account/.test(signin),
+  'the account\'s page, signed out: a passkey, then email and password; and, with no invite, no way to make one, nor anything said of it', signin.slice(-160));
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
 ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${ACCT}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
 const noInvite = await V.p.evaluate(async () => { const r = await fetch('/api/account/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X', handle: 'xxx', email: 'x@example.com' }) }); return [r.status, (await r.json()).field]; });
 ok(noInvite[0] === 403 && noInvite[1] === 'invite', 'and the server makes none without one', noInvite.join());
 await shot(V, '01-invite-only');
 
-// ---- 2. An invite, from an InFlight link of before: passed on to the account's page, which makes the account ----
+// ---- 2. An invite, from a Chat link of before: passed on to the account's page, which makes the account ----
 const T1 = invite();
 await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/#invite=${T1}`);
 await V.p.waitForURL(`${ACCT}/`, { timeout: 20000 }).catch(() => {});
 await V.p.waitForSelector('main .signin input[name=name]', { timeout: 20000 }).catch(() => {});
-ok(V.p.url() === `${ACCT}/` && /You’ve been invited\./.test(await text(V)) && /Create your account/.test(await text(V)), 'InFlight\'s invite link: on to the account\'s page (the invite out of the address), the form there', V.p.url());
+ok(V.p.url() === `${ACCT}/` && /You’ve been invited\./.test(await text(V)) && /Create your account/.test(await text(V)), 'Chat\'s invite link: on to the account\'s page (the invite out of the address), the form there', V.p.url());
 await V.p.fill('main input[name=name]', 'Ivy Lane'); await V.p.click('main .signin form .btn'); await settle(V, 900);
 ok(await V.p.inputValue('main input[name=handle]') === 'ivy_l' && /@ivy_l is yours/.test(await text(V)) && /2 of 4/.test(await text(V, 'main .signin')),
   'joining a step at a time: a handle suggested from the name, and checked as it\'s typed', await V.p.inputValue('main input[name=handle]'));
@@ -83,7 +83,7 @@ ok(/Ivy Lane/.test(await text(V)) && /Welcome, Ivy\. Your account is ready\./.te
 const ivy = user('ivy');
 ok(!!ivy && ivy.salt.startsWith('a2:') && count(`SELECT COUNT(*) AS n FROM pg_invites WHERE used_by = '${ivy.id}'`) === 1, 'the account, its password in Argon2id\'s form, and the invite used up by it');
 const confirmMail = await waitMail('ivy@example.com', /Confirm/);
-ok(!!tokenIn(confirmMail, 'confirm') && new RegExp(`${ACCT}/#confirm=`).test(confirmMail.text) && !/InFlight/.test(confirmMail.subject), 'an email to confirm the address, from the account\'s page', confirmMail?.subject);
+ok(!!tokenIn(confirmMail, 'confirm') && new RegExp(`${ACCT}/#confirm=`).test(confirmMail.text) && !/Chat/.test(confirmMail.subject), 'an email to confirm the address, from the account\'s page', confirmMail?.subject);
 await shot(V, '03-joined');
 // the same invite again, or a wrong one
 const W = await browser('second');
@@ -96,26 +96,26 @@ ok(/That invite link isn’t right/.test(await text(W)), 'a made-up one: said no
 const N = await browser('newcomer');
 await N.p.goto(`${CHAT}/`); await N.p.waitForSelector('.welcome [data-act=acctsignin]', { timeout: 20000 });
 const welcomeJoin = await N.p.$eval('.welcome .wnew a', (a) => a.href).catch(() => '');
-ok(welcomeJoin === `${ACCT}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'InFlight\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
+ok(welcomeJoin === `${ACCT}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'Chat\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
 await N.p.click('.welcome [data-act=acctsignin]'); await N.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
 await N.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); await settle(N);
 const order = await N.p.evaluate(() => [...document.querySelectorAll('main .backapp, main .lead, main .signin > .btn, main .signin .or, main .signin form, main .signin .forgot')]
   .map((e) => e.matches('.backapp') ? `back to ${e.textContent.trim()}` : e.matches('.signin > .btn') ? 'passkey' : e.matches('form') ? 'form' : e.textContent.trim()));
-ok(order.join(' | ') === 'back to InFlight | Sign in to continue to InFlight | passkey | or with your email | form | Forgot password?', 'InFlight\'s Sign in: the account\'s page, saying so; a passkey, then email and password; a forgotten password', order.join(' | '));
+ok(order.join(' | ') === 'back to Chat | Sign in to continue to Chat | passkey | or with your email | form | Forgot password?', 'Chat\'s Sign in: the account\'s page, saying so; a passkey, then email and password; a forgotten password', order.join(' | '));
 await N.p.click('main .signin form .btn');
 ok(await text(N, 'main .said') === 'Enter your email.', 'nothing typed: said, as everywhere on the site', await text(N, 'main .said'));
 await shot(N, '04-inflight-signin');
-// (and back, without signing in: InFlight's welcome again)
+// (and back, without signing in: Chat's welcome again)
 await N.p.click('main .backapp'); await N.p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 20000 });
-ok(await N.p.waitForSelector('.welcome [data-act=acctsignin]', { timeout: 20000 }).then(() => true, () => false), 'the way back from it: InFlight\'s welcome, still signed out');
+ok(await N.p.waitForSelector('.welcome [data-act=acctsignin]', { timeout: 20000 }).then(() => true, () => false), 'the way back from it: Chat\'s welcome, still signed out');
 const forgotSays = await N.p.evaluate(() => fetch('/api/pigeon/reset-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status));
-ok(forgotSays === 410, 'InFlight\'s own reset is gone too (the account\'s page does it)', String(forgotSays));
+ok(forgotSays === 410, 'Chat\'s own reset is gone too (the account\'s page does it)', String(forgotSays));
 
-// ---- 4. Ivy in InFlight, with a passkey (which keeps a copy of her key) ----
+// ---- 4. Ivy in Chat, with a passkey (which keeps a copy of her key) ----
 await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/`);
 await V.p.waitForSelector('.welcome [data-act=acctsignin]:has-text("Continue as")', { timeout: 20000 }).catch(() => {});
-ok(/Continue as Ivy/.test(await text(V, '.welcome')), 'InFlight in the same browser: Continue as Ivy (signed in on the site already)', await text(V, '.welcome'));
-// (on the account's page: her password, as that's what opens her key in InFlight)
+ok(/Continue as Ivy/.test(await text(V, '.welcome')), 'Chat in the same browser: Continue as Ivy (signed in on the site already)', await text(V, '.welcome'));
+// (on the account's page: her password, as that's what opens her key in Chat)
 await V.p.click('.welcome [data-act=acctsignin]'); await onAccountPage(V.p, { email: 'ivy@example.com', password: PW });
 await V.p.waitForSelector('#city', { state: 'attached', timeout: 40000 }); await V.p.selectOption('#city', 'London');
 await V.p.waitForSelector('[data-act=pkadd]', { timeout: 20000 }); await V.p.click('[data-act=pkadd]'); await V.p.waitForSelector('.tabs', { timeout: 30000 });
@@ -135,7 +135,7 @@ await shot(R, '05-forgot-sent');
 const rm = await waitMail('ivy@example.com', /Reset your password/);
 const RT = tokenIn(rm, 'reset');
 ok(!!RT && new RegExp(`${ACCT}/#reset=`).test(rm.text) && !mailsTo('nobody@example.com', /./).length, 'an email with a link to the account\'s page (and none to an address with no account)', rm?.subject);
-// opened from InFlight's older address for it, on the phone with the passkey
+// opened from Chat's older address for it, on the phone with the passkey
 await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/#reset=${RT}`);
 await V.p.waitForURL(`${ACCT}/`, { timeout: 20000 }).catch(() => {}); await waitText(V, /Choose a new password/);
 const resetSays = await text(V);
@@ -192,7 +192,7 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
 // ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----
 {
-  const AC = 'account.gfg.test', ip = '10.8.0.3';
+  const AC = 'account.ifl.test', ip = '10.8.0.3';
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
     proof: randomBytes(32).toString('base64url'), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip });
@@ -209,7 +209,7 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
 
 // ---- 9. The hand-back itself, straight against the API (functions/_handback.js) ----
 {
-  const AC = 'account.gfg.test', IN = 'chat.gfg.test', WE = 'weather.gfg.test', ip = '10.8.0.2';
+  const AC = 'account.ifl.test', IN = 'chat.ifl.test', WE = 'weather.ifl.test', ip = '10.8.0.2';
   const word = () => { const w = randomBytes(32).toString('base64url'); return { w, ask: createHash('sha256').update(w).digest('base64url') }; };
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Hal Back', handle: 'halback', email: 'hal@example.com', salt: randomBytes(16).toString('base64url'),
@@ -221,15 +221,15 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
   const k1 = word(), c1 = await code('weather', k1);
   ok(!!c1 && (await take(WE, c1, word().w)).s === 400 && (await take(WE, c1, k1.w)).s === 400, 'a code with the wrong word: refused, and used up');
   const k2 = word(), c2 = await code('weather', k2);
-  ok(!!c2 && (await take(IN, c2, k2.w)).s === 400, 'Weather\'s code isn\'t InFlight\'s');
+  ok(!!c2 && (await take(IN, c2, k2.w)).s === 400, 'Weather\'s code isn\'t Chat\'s');
   const k3 = word(), c3 = await code('weather', k3), once = await take(WE, c3, k3.w), again = await take(WE, c3, k3.w);
   ok(!!c3 && once.s === 200 && again.s === 400, 'a code is good once', `${once.s} ${again.s}`);
-  // (two from one sign-in, InFlight's used first: the sign-in moves to InFlight, and Weather's still good)
+  // (two from one sign-in, Chat's used first: the sign-in moves to Chat, and Weather's still good)
   const ki = word(), ci = await code('inflight', ki), kw = word(), cw = await code('weather', kw);
   const inF = await take(IN, ci, ki.w), inW = await take(WE, cw, kw.w);
-  ok(!!ci && !!cw && inF.s === 200 && inW.s === 200 && inW.j.signedIn === true, 'InFlight\'s code and Weather\'s from one sign-in: both good, though InFlight\'s takes the sign-in over',
+  ok(!!ci && !!cw && inF.s === 200 && inW.s === 200 && inW.j.signedIn === true, 'Chat\'s code and Weather\'s from one sign-in: both good, though Chat\'s takes the sign-in over',
     `${inF.s} ${inW.s} ${inW.j.error || ''}`);
-  // (the sign-in here as if made long ago: no code for InFlight without showing it's you, and Weather's, handed back
+  // (the sign-in here as if made long ago: no code for Chat without showing it's you, and Weather's, handed back
   // where the browser doesn't share it, no fresher)
   sql(`UPDATE pg_sessions SET auth_at = 0 WHERE site_hash = '${createHash('sha256').update((made.cookie || '=').split('=')[1]).digest('hex')}'`);
   const ko = word(), stale = await ask('inflight', ko), kx = word(), apart = await take(WE, await code('weather', kx), kx.w, null);

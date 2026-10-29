@@ -396,7 +396,7 @@ export async function unlinkEnded(D, userId = null) {
 }
 
 // Ticks are asked for every 5 minutes by schedulers, which can run late (GitHub's by hours): so the site's traffic
-// asks too, as InFlight's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
+// asks too, as Chat's does (functions/_notify.js maybeTick), when the last one was over 5 minutes ago. (At most a look
 // every 20 seconds from one copy of the server.)
 let wxLook = 0;
 export async function maybeWxTick(env, origin) {
@@ -429,9 +429,12 @@ export async function wxTick(env, t = Date.now(), origin = SITE) {
 async function tick(env, D, t, origin) {
   await unlinkEnded(D);
   // once a day, at the first tick after 03:00 UTC: airport reports older than six weeks, phones gone quiet for months
-  // (an account's email isn't a phone: it's there while the account wants it), and the count of emails from days gone
-  const at = new Date(t);
-  if (at.getUTCHours() === 3 && at.getUTCMinutes() < 10) await D.batch([
+  // (an account's email isn't a phone: it's there while the account wants it), and the count of emails from days gone.
+  // (the day it last ran kept, so a tick missed round 03:00 doesn't skip a day: the next one after does it)
+  const at = new Date(t), today = at.toISOString().slice(0, 10);
+  const cleanDay = at.getUTCHours() >= 3 ? today : null;
+  if (cleanDay && (await D.prepare("SELECT v FROM wx_meta WHERE k = 'clean_day'").first().catch(() => null))?.v !== cleanDay) await D.batch([
+    D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('clean_day', ?)").bind(cleanDay),
     D.prepare("DELETE FROM wx_obs WHERE day < ?").bind(new Date(t - OBS_DAYS * 864e5).toISOString().slice(0, 10)),
     D.prepare(`DELETE FROM wx_subs WHERE max(coalesce(updated, 0), coalesce(last_ok, 0)) < ? AND dev NOT LIKE '${MAIL}%'`).bind(t - KEEP_IDLE),
     D.prepare("DELETE FROM wx_meta WHERE k LIKE 'mails:%' AND k < ?").bind(dayCount(t - 2 * 864e5)),

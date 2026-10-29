@@ -1,7 +1,7 @@
 // The wind map: a grid of the wind now (10 m above the ground), and how hard
 // it's raining (mm an hour, for the radar), over whatever
 // part of the world the map is showing, for the app to animate. Asked of
-// Open-Meteo through InFlight, so it never learns who is looking or where
+// Open-Meteo through Chat, so it never learns who is looking or where
 // they are; only a box of the world, snapped to a grid and shared by
 // everyone looking at the same place in the same hour (cached).
 //

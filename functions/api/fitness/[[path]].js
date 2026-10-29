@@ -1,4 +1,4 @@
-// Fitness's own API, at fitness.georgefarrowgreen.com only, and only signed in with the site's account (the site's
+// Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
 //                                    (?since=<ms>: only those changed since, and every one's id)
@@ -248,7 +248,9 @@ const ROUTES = {
   },
   "POST garmin-tick": async ({ request, env }) => {
     tickAuthOk(request, env);
-    const [garmin, morning, strava] = await Promise.all([garminTick(env), morningTick(env), stravaTick(env).catch(() => null)]);
+    // (the morning's notices first, quick and due now, so a slow Garmin or Strava can't hold them past the tick's time)
+    const morning = await morningTick(env).catch(() => null);
+    const [garmin, strava] = await Promise.all([garminTick(env), stravaTick(env).catch(() => null)]);
     return json({ ...garmin, morning, strava });
   },
   // Signed in on the account's page, for Fitness (functions/_handback.js): the code it was handed back with, and the
@@ -284,7 +286,7 @@ export async function onRequest(ctx) {
     : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
     : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
-  // (only at Fitness's own address; the scheduler's turn at the site's own, as InFlight's and Weather's are)
+  // (only at Fitness's own address; the scheduler's turn at the site's own, as Chat's and Weather's are)
   const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";
   if (!route || !(isFitness(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
   try { return await route({ ...ctx, id }); }

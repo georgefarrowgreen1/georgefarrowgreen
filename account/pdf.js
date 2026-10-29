@@ -105,7 +105,7 @@ export class PDF {
     const FONT = (name) => `<< /Type /Font /Subtype /Type1 /BaseFont /${name} /Encoding /WinAnsiEncoding >>`;
     const d = now.toISOString().replace(/[-:T]/g, "").slice(0, 14);
     objs.push([3, FONT("Helvetica")], [4, FONT("Helvetica-Bold")],
-      [5, `<< /Title ${utf16(this.meta.title)} /Author ${utf16(this.meta.author)} /Creator (georgefarrowgreen.com) /Producer (georgefarrowgreen.com) /CreationDate (D:${d}Z) >>`]);
+      [5, `<< /Title ${utf16(this.meta.title)} /Author ${utf16(this.meta.author)} /Creator (inflite.ai) /Producer (inflite.ai) /CreationDate (D:${d}Z) >>`]);
     const base = 6;
     for (const im of this.images) {
       const z = im.kind === "rgb" ? await deflate(im.bytes) : null, data = z || im.bytes;

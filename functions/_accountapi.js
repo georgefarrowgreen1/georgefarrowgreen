@@ -1,5 +1,5 @@
 // The account's own routes, answered the same way by every page on the site that keeps no session of its own (Weather,
-// and the account's page at account.georgefarrowgreen.com): signing in (salt and password, or options and passkey: on
+// and the account's page at account.inflite.ai): signing in (salt and password, or options and passkey: on
 // the account's page only, where every app on the site signs in) and out, and the profile (your photo, name and handle:
 // functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
 // address (sameOrigin). view(env, u): the account as that page shows it.

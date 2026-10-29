@@ -1,5 +1,5 @@
 // Weather's files, as a browser gets them. The app lives in weather/ and is
-// served at the root of weather.georgefarrowgreen.com (functions/_middleware.js);
+// served at the root of weather.inflite.ai (functions/_middleware.js);
 // on preview and local addresses it's at /weather/ (functions/weather/_middleware.js).
 // Its files only use relative addresses, so they work the same at either.
 //
@@ -11,9 +11,12 @@
 
 import { notFound } from "./_app.js";
 
-export const WEATHER_HOST = "weather.georgefarrowgreen.com";
+import { oldApp } from "./_sites.js";
+export const WEATHER_HOST = "weather.inflite.ai";
 // (WEATHER_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
-export const isWeather = (url, env) => (env.WEATHER_HOST || WEATHER_HOST).split(",").includes(url.hostname);
+// (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
+// set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
+export const isWeather = (url, env) => (env.WEATHER_HOST || WEATHER_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "weather";
 
 const CONNECT = [
   "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com", "https://marine-api.open-meteo.com",
@@ -48,10 +51,12 @@ export function serveWeather(res, path) {
   // Cloudflare passes them through rather than keeping them and telling browsers to keep them for hours
   if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "private, no-cache");
   if (res.status === 200 && /\.(png|svg)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=86400");
+  // (the map's libraries, a version that changes only with the app's own sw.js, LIBS: kept a week, as Fitness has them)
+  if (res.status === 200 && /^\/weather\/vendor\/.+\.(m?js|css)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=604800");
   return out;
 }
 
-// weather.georgefarrowgreen.com: /x is the file /weather/x; the API is only Weather's own
+// weather.inflite.ai: /x is the file /weather/x; the API is only Weather's own
 export async function weatherHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/weather/") ? ctx.next() : notFound();
   // an address from the site's own copy, on the new host: the same place, at the root

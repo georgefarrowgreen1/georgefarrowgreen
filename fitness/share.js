@@ -50,7 +50,7 @@ function round(g, x, y, w, h, r) {
 function foot(g) {
   g.font = font(600, 28); g.fillStyle = "rgba(235, 238, 250, 0.55)";
   g.fillText("Fitness", PAD, H - 64);
-  g.textAlign = "right"; g.fillText("fitness.georgefarrowgreen.com", W - PAD, H - 64); g.textAlign = "left";
+  g.textAlign = "right"; g.fillText("fitness.inflite.ai", W - PAD, H - 64); g.textAlign = "left";
 }
 const blob = (c) => new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("The picture couldn’t be made"))), "image/png"));
 

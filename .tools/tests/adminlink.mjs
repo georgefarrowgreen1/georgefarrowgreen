@@ -1,4 +1,4 @@
-// The site's admin is an account: Admin is a section of its own page (the old InFlight dashboard, and the owner's
+// The site's admin is an account: Admin is a section of its own page (the old Chat dashboard, and the owner's
 // sign-in for it, are gone: their addresses come here). It's the account linked to it (pg_meta admin_user), or, with
 // none (or that one gone), the account with the site owner's email once that's confirmed. On its page: the figures,
 // Accounts (one account: pigeons given, a reset link, signing out, deleting), Invites, Insights, Storage, Email and the
@@ -8,16 +8,16 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import http from 'http';
 import { writeFileSync } from 'fs';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
-const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${SITE},${CHAT},${ACCT}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${SITE},${CHAT},${ACCT}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 async function browser(name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, colorScheme: 'dark' });
@@ -56,8 +56,8 @@ const waitSheet = (x, re, ms = 15000) => x.p.waitForFunction((r) => new RegExp(r
 
 // ---- 1. The owner's email (PIGEON_ADMIN_EMAIL, here owner@example.com) on an account with a passkey; another account ----
 const G = await browser('admin'), P = await browser('pat');
-await joinInFlight(G.p, `${CHAT}/`, { name: 'Gail Admin', handle: 'gail', email: 'owner@example.com', password: PW, city: 'London', passkey: true });
-await joinInFlight(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
+await joinChat(G.p, `${CHAT}/`, { name: 'Gail Admin', handle: 'gail', email: 'owner@example.com', password: PW, city: 'London', passkey: true });
+await joinChat(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
 const idOf = (h) => sql(`SELECT id FROM pg_users WHERE handle = '${h}'`).match(/"id": "([^"]+)"/)[1];
 const gail = idOf('gail'), pat = idOf('pat');
 await account(G);
@@ -69,7 +69,7 @@ ok(r.status === 403, 'nor its API', String(r.status));
 sql(`UPDATE pg_users SET email_ok = ${Date.now()} WHERE id = '${gail}'`);
 await account(G);
 ok(await G.p.evaluate(() => { const rows = [...document.querySelectorAll('main .row, main section h3')].map((x) => x.querySelector('b')?.textContent || x.textContent);
-  return rows.indexOf('Admin') > rows.indexOf('Emails') && rows.indexOf('Admin') < rows.indexOf('Sign out'); }), 'Admin: a row at the foot, after your preferences, over Sign out');
+  return rows.indexOf('Emails') > -1 && rows.indexOf('Admin') > rows.indexOf('Emails') && rows.indexOf('Admin') === rows.length - 1; }), 'Admin: a row at the foot, after your preferences');
 for (let i = 0; i < 20 && !/Accounts 2 new this week 2/.test(await adminText(G)); i++) await settle(G, 500);
 const sec = await adminText(G);
 ok(/Admin 2 accounts \d+ active today 0 messages/.test(sec) && /Accounts 2 new this week 2/.test(sec) && /Invites None waiting/.test(sec) && /Messages None yet/.test(sec) && /Email Working/.test(sec)
@@ -85,14 +85,14 @@ ok(r.status === 200, 'the linked account being deleted: back to the owner’s em
 sql(`UPDATE pg_users SET delete_at = NULL WHERE id = '${pat}'`); sql("DELETE FROM pg_meta WHERE k = 'admin_user'");
 
 // ---- 3. The old dashboard's addresses come here; its API is gone ----
-await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
+await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.ifl\.test/, { timeout: 15000 }).catch(() => {});
 ok(G.p.url().startsWith(`${ACCT}/#admin`) || G.p.url().startsWith(ACCT), 'the old dashboard’s address: on to Admin on the account’s page', G.p.url());
 ok(await G.p.waitForSelector('#sheet[open] #sheet-title:text-is("Admin")', { timeout: 15000 }).then(() => true, () => false), 'with its folder open');
-await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
-ok(G.p.url().startsWith(ACCT), 'and InFlight’s /admin', G.p.url());
+await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.ifl\.test/, { timeout: 15000 }).catch(() => {});
+ok(G.p.url().startsWith(ACCT), 'and Chat’s /admin', G.p.url());
 r = await req(G, `${CHAT}/api/pigeon/admin-users`);
 const r2 = await req(G, `${CHAT}/api/pigeon/admin-status`);
-ok(r.status === 404 && r2.status === 404, 'InFlight’s old admin API: gone', `${r.status} ${r2.status}`);
+ok(r.status === 404 && r2.status === 404, 'Chat’s old admin API: gone', `${r.status} ${r2.status}`);
 
 // ---- 4. Accounts: the list, one account, pigeons given, a reset link, signing out ----
 await account(G);
@@ -196,7 +196,7 @@ ok(/Gave pigeons/.test(ev) && /Deleted an account/.test(ev) && /Signed an accoun
 
 // ---- 8. Another account gets none of it; a change from elsewhere is refused ----
 const O = await browser('other');
-await joinInFlight(O.p, `${CHAT}/`, { name: 'Olly Other', handle: 'olly', email: 'olly@example.com', password: PW, city: 'York', passkey: true });
+await joinChat(O.p, `${CHAT}/`, { name: 'Olly Other', handle: 'olly', email: 'olly@example.com', password: PW, city: 'York', passkey: true });
 await account(O);
 ok(!(await O.p.$(ADMIN)), 'another account: no Admin');
 r = await req(O, `${ACCT}/api/account/admin/users`);

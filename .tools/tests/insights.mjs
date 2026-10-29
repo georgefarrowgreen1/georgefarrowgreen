@@ -1,4 +1,4 @@
-// Admin → Insights (functions/_insights.js): how many people use InFlight and come back, pigeons and people each
+// Admin → Insights (functions/_insights.js): how many people use Chat and come back, pigeons and people each
 // day, which kinds and features, which settings, and whether landings are told on time. Totals only.
 import { kit } from './lib.mjs';
 const [,, S, out] = process.argv;
@@ -91,9 +91,9 @@ one(`INSERT INTO pg_errors (at, src, msg) VALUES (${Date.now()}, 'pigeon api', '
 const sum = (await AD.ask('summary')).json;
 ok(sum.ticks?.inflight?.at > Date.now() - 120e3 && sum.ticks?.weather?.at > Date.now() - 120e3 && sum.errors?.[0]?.msg === 'D1_ERROR: something broke',
   'Admin’s summary: when each notifications job last ran, and the server’s errors today', JSON.stringify({ ticks: sum.ticks, errors: sum.errors }));
-// the admin's only; InFlight's old admin API is gone
+// the admin's only; Chat's old admin API is gone
 const r = await fetch(K.BASE + '/api/pigeon/admin-insights', { headers: { Authorization: 'Bearer ' + as.token } });
-ok(r.status === 404, 'InFlight’s old admin API: gone', String(r.status));
+ok(r.status === 404, 'Chat’s old admin API: gone', String(r.status));
 const r2 = await fetch('http://127.0.0.1:8788/api/account/admin/insights', { headers: { Authorization: 'Bearer ' + bs.token } }).catch(() => ({ status: 0 }));
 ok(r2.status === 403 || r2.status === 404, 'and Admin’s not for anyone else', String(r2.status));
 console.log('errs', K.errs);

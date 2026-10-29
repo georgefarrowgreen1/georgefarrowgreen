@@ -2,7 +2,7 @@
 // before, guessing from everywhere at once), two standard pigeons at once can't both take the turn,
 // and unfriending puts booked pigeons back in their lofts.
 import { kit } from './lib.mjs';
-import { signInInFlight, accountUrl, PASSWORD } from './join.mjs';
+import { signInChat, accountUrl, PASSWORD } from './join.mjs';
 import { acctCall } from './handback.mjs';
 import { randomUUID } from 'crypto';
 const [,, S, out] = process.argv;
@@ -19,7 +19,7 @@ const post = (path, body, headers = {}) => fetch(K.BASE + '/api/pigeon/' + path,
 const codes = [];
 for (let ip = 1; ip <= 4; ip++) for (let i = 0; i < 10; i++) codes.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'x'.repeat(43) }, { ip: `203.0.113.${ip}` })).s);
 ok(codes.every((c) => c === 401), 'forty wrong tries from elsewhere: each just refused', JSON.stringify([...new Set(codes)]));
-const A2 = await K.phone('ann2'); await signInInFlight(A2.p, K.URL, { email: 'ann@example.com' });
+const A2 = await K.phone('ann2'); await signInChat(A2.p, K.URL, { email: 'ann@example.com' });
 ok(await A2.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'Ann still signs in with her password, from her own phone');
 // one address that keeps guessing is held back (its own 10 per 15 minutes, before the account's 30)
 const more = []; for (let i = 0; i < 3; i++) more.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'y'.repeat(43) }, { ip: '203.0.113.1' })).s);
@@ -54,7 +54,7 @@ const onPage = async (ph, out = false) => {
   await q.fill('main .signin input[name=password]', PASSWORD); await q.click('main .signin form .btn');
   const r = await Promise.race([q.waitForSelector('main .hero', { timeout: 30000 }).then(() => 'signed in'),
     q.waitForSelector('main .said.bad', { timeout: 30000 }).then((e) => e.innerText())]).catch(() => 'nothing');
-  if (r === 'signed in' && out) { await q.click('main .row.action:text-is("Sign out")'); await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 15000 }); }
+  if (r === 'signed in' && out) { await q.click('main .ifh-me').then(() => q.click('.ifm-out')); await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 15000 }); }
   await q.close(); return r;
 };
 const before4 = await onPage(A2, true);

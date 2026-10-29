@@ -1,22 +1,22 @@
-// The account's own API, for its page at account.georgefarrowgreen.com (functions/_acctapp.js), and only there:
+// The account's own API, for its page at account.inflite.ai (functions/_acctapp.js), and only there:
 //   GET  /api/account/me              who's signed in: the profile, email, passkeys, signed-in devices, preferences, the apps
 //   (signing in and out, and the profile: functions/_accountapi.js)
 //   POST /api/account/reauth          showing it's you again (password or passkey), for the few things that need it
 //   POST /api/account/password/vault  the password-locked key, for the password's proof (to lock it anew with a new one)
 //   POST /api/account/password        a new password: its proof, and the key locked with it
 //   POST /api/account/password/checked  the password's been checked against data breaches (with its proof), and how it went
-//   GET  /api/account/pwned           Pwned Passwords, by the first 5 characters of a hash (as InFlight asks)
+//   GET  /api/account/pwned           Pwned Passwords, by the first 5 characters of a hash (as Chat asks)
 //   POST /api/account/passkeys/options, passkeys, passkeys/vault, passkeys/remove, passkeys/rename
 //   POST /api/account/devices/end     signing out a device, all the others, or those unused for 90 days
 //   GET  /api/account/activity        what's happened to the account in the last 30 days (functions/_activity.js)
 //   POST /api/account/email/confirm-send, email/confirm      confirming the email (a link to it)
 //   POST /api/account/email/change, email/change-confirm, email/cancel   a new email (a link to it, a word to the old)
-//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them; and InFlight's and
+//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them; and Chat's and
 //                                     Weather's emails
 //   POST /api/account/export          everything kept with the account that can be read, as a file
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
-//   POST /api/account/handoff         signed in by a code from InFlight (good once, for a minute): to edit your profile
+//   POST /api/account/handoff         signed in by a code from Chat (good once, for a minute): to edit your profile
 //   POST /api/account/handback        a sign-in made here for an app that sent you here, handed back to it: a code (good
 //                                     once, for two minutes, and only in the tab that asked: functions/_handback.js)
 //   POST /api/account/password/upgrade  an account from before Argon2id, signed in to with its password: stretched anew
@@ -28,7 +28,7 @@
 // functions/_handback.js): no app does any of them itself.
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
-// needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
+// needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
@@ -41,6 +41,7 @@ import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf, savePrefs } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
+import { MAIL_ROUTES } from "../../_mailapp.js";
 import { avatarKey } from "../../_profile.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
@@ -87,7 +88,7 @@ function weatherMail(n) {
   return { warn: !!e.warn, brief: !!e.brief, warnFor: (n?.places || []).filter((p) => p.warn).map((p) => String(p.name || "")).slice(0, 12),
     briefFor: n?.brief ? String(n.brief.name || "") : null, briefAt: n?.briefAt || "07:00" };
 }
-// What InFlight keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
+// What Chat keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
 // groups, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have gone
 // after a month), and places in your passport
 const SENT = `(SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1)
@@ -104,7 +105,7 @@ async function inflightOf(D, id) {
       (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places`).bind(id).first().catch(() => null);
   return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
 }
-// What each app keeps of yours, in a line, for the site's home page (functions/api/me): InFlight's friends and pigeons
+// What each app keeps of yours, in a line, for the site's home page (functions/api/me): Chat's friends and pigeons
 // sent, Weather's places and whether it sends you anything, Fitness's activities and whether you're on a plan (null for
 // an app the account hasn't used)
 export async function appFigures(env, id) {
@@ -143,7 +144,7 @@ async function view(env, u) {
     handed: !!u.handed,
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
-    // (messages: it has its own locked copy of the key to InFlight's messages, so it opens them on a new phone by itself)
+    // (messages: it has its own locked copy of the key to Chat's messages, so it opens them on a new phone by itself)
     passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null, messages: !!p.messages })),
     // (each named by the one app it's used in, where that's so: a Home Screen app on an iPhone is a sign-in of its own;
     // otherwise by its browser (the account's page too, unless it's on the Home Screen); this one being the app's
@@ -155,13 +156,13 @@ async function view(env, u) {
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
-    // (the emails each app sends: the account's, about signing in and its security, always; InFlight's, as it has them;
+    // (the emails each app sends: the account's, about signing in and its security, always; Chat's, as it has them;
     // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
     emails: { inflight: !!u.notify_email, weather: weatherMail(wx.data?.notify) },
     lastActivity: last?.at || null,
     // (the site's admin, on this page: only the linked account, and only with a passkey on it: functions/api/pigeon)
     admin: admin?.id === u.id ? { ready: pks.length > 0 } : null,
-    // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
+    // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; Chat's counts)
     apps: {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
         notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
@@ -170,7 +171,7 @@ async function view(env, u) {
     },
   };
 }
-// InFlight's settings that are the account's rather than a phone's, for its page here: which notifications, how they
+// Chat's settings that are the account's rather than a phone's, for its page here: which notifications, how they
 // read on the lock screen, quiet hours and email; who sees what; and who's blocked (pushes on or off, its lock and the
 // like are each phone's, in the app)
 async function inflightSettings(env, u) {
@@ -215,7 +216,7 @@ const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) 
 const cleanLabel = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ").slice(0, 40);
 const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
 
-// A confirm link to the account's email (the same one InFlight sends, said as the account's): when it went. One that
+// A confirm link to the account's email (the same one Chat sends, said as the account's): when it went. One that
 // couldn't be sent is said, so the page doesn't say it's on its way, and the link before it (if any) is still the one
 // that works.
 async function sendConfirm(env, u, request) {
@@ -232,7 +233,9 @@ async function sendConfirm(env, u, request) {
 }
 
 const ROUTES = {
-  // a sign-in handed over from InFlight: the code used up (good once, for a minute, and only while the sign-in it came from
+  // Mail's, asked by its server (functions/_mailapp.js)
+  ...MAIL_ROUTES,
+  // a sign-in handed over from Chat: the code used up (good once, for a minute, and only while the sign-in it came from
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
   // (a code a page elsewhere sent this browser here with can't sign it in unasked: who it's for is shown first, and it's
@@ -305,7 +308,7 @@ const ROUTES = {
     sameOrigin(request);
     return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
       icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
-      line: "someone asked to reset the password for your georgefarrowgreen.com account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
+      line: "someone asked to reset the password for your inflite.ai account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
       pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
   "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
@@ -350,7 +353,7 @@ const ROUTES = {
     return json({ vault: await openVault(env, u.id, u.vault), salt: u.salt });
   },
   // An account from before Argon2id, signed in to here with its password: stretched again the new way (the same
-  // password and key, a new salt, and the key locked anew with what it gives), as InFlight did when it signed in itself.
+  // password and key, a new salt, and the key locked anew with what it gives), as Chat did when it signed in itself.
   // Nothing else changes; but as the server can't tell it's the same password, it's noted in Recent activity and
   // emailed, so it's never a quiet way to change one (at most once an account).
   "POST password/upgrade": async ({ request, env, waitUntil }) => {
@@ -368,7 +371,7 @@ const ROUTES = {
       waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
         line: "your account’s password is now kept with a stronger kind of protection.",
         // (not "change your password": that needs the password as it is now, which, if it wasn't them, someone else chose)
-        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.georgefarrowgreen.com. A reset signs out every other device." }, linkOrigin(request)));
+        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.inflite.ai. A reset signs out every other device." }, linkOrigin(request)));
     }
     return json({ ok: true, salt: b.salt });
   },
@@ -414,7 +417,7 @@ const ROUTES = {
     await limit(env, "pwned:" + clientIp(request), 40, 15 * 60e3);
     const p = new URL(request.url).searchParams.get("p") || "";
     if (!/^[0-9A-F]{5}$/.test(p)) throw new HttpError(400, "Send the first 5 characters of the hash.");
-    const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "georgefarrowgreen.com account" } }).catch(() => null);
+    const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "inflite.ai account" } }).catch(() => null);
     return new Response(r?.ok ? await r.text() : "", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin" } });
   },
   // passkeys: a new one (for signing in everywhere on the site, with where it's saved), its name, and taking one away
@@ -441,9 +444,9 @@ const ROUTES = {
     waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
   },
-  // a passkey's own copy of the key to InFlight's messages, locked with what only that passkey can work out (its PRF
+  // a passkey's own copy of the key to Chat's messages, locked with what only that passkey can work out (its PRF
   // secret), made on this page from the password-locked key: so on a new phone it opens them by itself, as one added in
-  // InFlight does. (The page sends it locked: the key itself never leaves the device.)
+  // Chat does. (The page sends it locked: the key itself never leaves the device.)
   "POST passkeys/vault": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
@@ -587,7 +590,7 @@ const ROUTES = {
     return json(await view(env, { ...u, email_new: null }));
   },
 
-  // ---- preferences, for every app on the site that has them: appearance (InFlight's own, and this page's), and units
+  // ---- preferences, for every app on the site that has them: appearance (Chat's own, and this page's), and units
   // (Weather's, in its record for the account, which every device it's signed in on takes up) ----
   "PUT prefs": async ({ request, env }) => {
     sameOrigin(request);
@@ -598,7 +601,7 @@ const ROUTES = {
       await (await db(env)).prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
       now.appearance = b.appearance;
     }
-    // InFlight's emails, on or off (as its own Notifications have them: which ones, it says)
+    // Chat's emails, on or off (as its own Notifications have them: which ones, it says)
     if (b.emails?.inflight !== undefined) {
       if (typeof b.emails.inflight !== "boolean") throw new HttpError(400, "Choose on or off.");
       await (await db(env)).prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.emails.inflight ? 1 : 0, Date.now(), u.id).run();
@@ -618,7 +621,7 @@ const ROUTES = {
     return json(await view(env, now));
   },
 
-  // ---- InFlight's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own
+  // ---- Chat's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own
   // rules (functions/_notify.js cleanPrefs, functions/api/pigeon setPrivacy), and the app takes it up as it next syncs ----
   "GET inflight": async ({ request, env }) => json(await inflightSettings(env, await signedIn(request, env))),
   "PATCH inflight": async ({ request, env }) => {
@@ -743,7 +746,7 @@ const ROUTES = {
     return new Response(f.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
   },
-  // someone blocked in InFlight, unblocked (only lifted: they aren't told, as they weren't told of the block)
+  // someone blocked in Chat, unblocked (only lifted: they aren't told, as they weren't told of the block)
   "DELETE inflight/block": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), id = String((await body(request)).id || ""), D = await db(env);
@@ -751,7 +754,7 @@ const ROUTES = {
     return json(await inflightSettings(env, u));
   },
 
-  // ---- your data: everything kept with the account that can be read (InFlight's letters can't: they're encrypted on
+  // ---- your data: everything kept with the account that can be read (Chat's letters can't: they're encrypted on
   // the phones, with keys the server never has) ----
   "POST export": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
@@ -779,7 +782,7 @@ const ROUTES = {
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
     const iso = (t) => (t ? new Date(t).toISOString() : null);
     const out = {
-      about: "Everything kept with your georgefarrowgreen.com account that can be read. InFlight's letters aren't here: they're end-to-end encrypted, with keys only your phones have.",
+      about: "Everything kept with your inflite.ai account that can be read. Chat's letters aren't here: they're end-to-end encrypted, with keys only your phones have.",
       exportedAt: iso(Date.now()),
       account: { id: u.id, name: u.name, handle: u.handle, email: u.email, emailConfirmed: !!u.email_ok, createdAt: iso(u.created_at), photo,
         appearance: u.appearance || "auto" },
@@ -824,7 +827,7 @@ const ROUTES = {
     // (only to an address that's been shown to be theirs: its Keep button stops the deletion. Unconfirmed, signing in keeps it)
     waitUntil(tell(env, u, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
       line: `your account and everything kept with it, in every app on the site, will be deleted on ${onDay(at)}.`,
-      after: "Changed your mind? Keep it with the button, or sign in at account.georgefarrowgreen.com before then.",
+      after: "Changed your mind? Keep it with the button, or sign in at account.inflite.ai before then.",
       pill: ["clock", `On ${onDay(at)}`], when: false, button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
     return withoutSession(json({ ok: true, deleteAt: at }), request, env);
   },

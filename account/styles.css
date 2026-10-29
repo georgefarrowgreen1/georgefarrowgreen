@@ -247,14 +247,14 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); transition-duration: var(--dur-press); }
 @media (hover: hover) { .app .open-app:hover { background: color-mix(in srgb, var(--tint) 22%, transparent); } }
-/* (InFlight's: its settings, a round button beside Open) */
+/* (Chat's: its settings, a round button beside Open) */
 .app .app-acts { margin-top: auto; display: flex; gap: 8px; }
 .app .app-acts .open-app { flex: 1; margin-top: 0; }
 .app .app-set { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--tint-text); cursor: pointer;
   background: color-mix(in srgb, var(--tint) 16%, transparent); transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .app .app-set:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .app .app-set:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
-/* InFlight's settings (app.js inflightView): an hour picked over its row; someone blocked, by their initial; the way back to the app */
+/* Chat's settings (app.js inflightView): an hour picked over its row; someone blocked, by their initial; the way back to the app */
 .row.pick { position: relative; }
 .row.pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; cursor: pointer; }
 .row.pick .val { margin-left: auto; }
@@ -576,12 +576,9 @@ dialog.sheet.dragging { transition: none; }
   .toast, .toast.on { transform: translate(-50%, 0); transition: opacity var(--dur-fast) linear; }
 }
 
-/* back to InFlight, when it sent you here to edit your profile */
+/* back to Chat, when it sent you here to edit your profile */
 .backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; justify-self: start; align-self: flex-start; width: max-content; }
 /* (the title in the middle of a bar; opened from an app, the way back on the same line) */
-.titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 40px; margin: 0 0 16px; }
-.titlebar .backapp { margin: 0; align-self: center; }
-.titlebar h1 { margin: 0; font: 600 17px/1.2 var(--font); letter-spacing: 0; }
 
 /* ---- your photo, tapped to change it (the camera badge says so) ---- */
 .avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform var(--dur-release) var(--spring); }
@@ -668,29 +665,31 @@ a.btn { text-decoration: none; }
 @media (min-width: 1000px) {
   main:has(.cols) { max-width: 1060px; }
   .cols { display: grid; grid-template-columns: 380px 1fr; gap: 32px; align-items: start; }
-  /* (who you are, kept in view beside the rest as it's scrolled) */
-  .col-a { position: sticky; top: 24px; }
+
   .col-a .large { margin-bottom: 18px; }
   .col-b > .section:first-child { margin-top: 0; }
   /* (your apps, at the top of the right-hand column: all three side by side, nothing to swipe) */
   .col-b .apps { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0;
     -webkit-mask-image: none; mask-image: none; }
+  /* (four, with the admin's Mail: two by two, rather than one left on a row of its own) */
+  .col-b .apps:has(> .app:nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* (who you are, kept in view beside the rest as it's scrolled, where the window's tall enough for all of it) */
+@media (min-width: 1000px) and (min-height: 760px) { .col-a { position: sticky; top: calc(var(--top) + 96px); } }
 
 /* ---- rows that say how things are: amber where it needs you; a button's look where there's one thing to do ---- */
 .row .val.warn { color: var(--warn); }
 .row .val .mini { display: inline-flex; align-items: center; min-height: 30px; margin: 0; }
 
-/* ---- whose account, kept in sight at the top once the profile's scrolled away (app.js whoBar) ---- */
-.whobar { position: fixed; z-index: 21; top: 0; left: 0; right: 0; height: calc(var(--top) + 52px); padding-top: var(--top); display: flex; align-items: center; justify-content: center; gap: 9px;
-  background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 0.5px 0 var(--line);
-  opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 0.25s var(--ease), transform var(--dur-base) var(--ease); cursor: pointer; }
-.whobar.on { opacity: 1; transform: none; pointer-events: auto; }
-.whobar.on:active { opacity: 0.7; transition-duration: var(--dur-press); }
-.whobar .avatar.small { width: 28px; height: 28px; font-size: 13px; margin: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 18%, transparent); }
-.whobar b { font: 600 16px/1 var(--font-d); letter-spacing: 0.1px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body.sheet-up .whobar { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .whobar { transition: opacity var(--dur-fast) linear; transform: none; } }
+/* ---- InFlite's header, the same in every app (its copy at the foot): the account page's colours, from the very top,
+   under the status bar, across the page ---- */
+.ifh.ahead { --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: var(--tint-text); --ifh-band: var(--glass-strong); --ifh-glass: var(--glass-ctl);
+  --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 14px; margin-top: calc(-1 * (var(--top) + 28px)); margin-left: -16px; margin-right: -16px; }
+.ifh.ahead .ifh-me .avatar { display: grid; place-items: center; }
+.ifh.ahead .ifh-acts .backapp { height: 38px; padding: 0 12px 0 8px; gap: 4px; display: inline-flex; align-items: center; color: var(--tint-text); font-weight: 600; font-size: 15px; }
+body:has(.ifh) .status { display: none; }
+@media (min-width: 760px) { .ifh.ahead { margin-top: calc(-1 * (var(--top) + 72px)); --ifh-pt: calc(var(--top) + 40px); } }
 
 /* ---- emails: each app's, headed by its icon; a switch where there's a choice ---- */
 .app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
@@ -953,3 +952,182 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .st-bar { display: block; height: 4px; margin-top: 7px; border-radius: 2px; overflow: hidden; background: var(--field); }
 .st-bar i { display: block; height: 100%; border-radius: inherit; }
 .app-head .ic.big { display: grid; place-items: center; color: #fff; width: 64px; height: 64px; border-radius: 15px; margin-bottom: 8px; }
+
+/* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
+/* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
+   app's, light or dark as the app is (data-theme, else the device) */
+.ifm-layer, .ifm-note {
+  --ifm-sheet: rgba(250, 250, 253, 0.86);
+  --ifm-panel: rgba(255, 255, 255, 0.9);
+  --ifm-line: rgba(60, 60, 67, 0.14);
+  --ifm-text: #11131c;
+  --ifm-text-2: rgba(60, 60, 67, 0.62);
+  --ifm-text-3: rgba(60, 60, 67, 0.36);
+  --ifm-press: rgba(120, 120, 128, 0.14);
+  --ifm-red: #e5342a;
+  --ifm-dim: rgba(14, 18, 40, 0.14);
+  --ifm-tint: #2f6be6;
+  --ifm-warn: #c86a00;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note) {
+    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  }
+}
+:root[data-theme="dark"] :is(.ifm-layer, .ifm-note) {
+  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
+  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
+  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+}
+/* each app's own colour: its focus rings, and Update ready */
+.ifm-in-chat { --ifm-tint: #2b6fe6; }
+.ifm-in-weather { --ifm-tint: #3a86f0; }
+.ifm-in-fitness { --ifm-tint: #f0542e; }
+.ifm-in-mail { --ifm-tint: #1aa58f; }
+.ifm-in-account { --ifm-tint: #5b4fe0; }
+
+.ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
+.ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
+.ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
+  text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
+.ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
+.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+
+.ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
+.ifm-pop.open { transform: none; opacity: 1; }
+.ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
+.ifm-pop *, .ifm-pop *::before, .ifm-pop *::after { box-sizing: border-box; }
+
+/* you */
+.ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
+.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
+  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+.ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
+.ifm-photo img { object-fit: cover; display: block; }
+.ifm-who { min-width: 0; }
+.ifm-who b { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-who small { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.2; color: var(--ifm-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-chev { width: 17px; height: 17px; stroke-width: 2.6; color: var(--ifm-text-3); flex: none; }
+
+/* the app's own rows */
+.ifm-rows { display: grid; gap: 6px; }
+.ifm-row.off { opacity: 0.5; }
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
+.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
+.ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
+.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
+.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
+.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
+.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
+.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
+.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+.ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
+.ifm-val.warn { color: var(--ifm-warn, #c86a00); font-weight: 600; }
+.ifm-row .ifm-chev { width: 15px; height: 15px; }
+.ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
+.ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
+.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+/* its version, and Sign Out */
+.ifm-foot { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 14px 4px 16px; font-size: 13.5px; color: var(--ifm-text-2); }
+.ifm-foot-ic { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.ifm-ver { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ifm-ver i { font-style: normal; }
+.ifm-upd { color: var(--ifm-tint) !important; font-weight: 600; }
+.ifm-out { flex: none; min-height: 44px; padding: 0 6px !important; margin-right: -6px; color: var(--ifm-red) !important; font-size: 16px; font-weight: 600; }
+.ifm-out:active { opacity: 0.5; }
+
+/* the note after an update */
+.ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
+.ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
+.ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
+.ifm-note-tx { display: grid; line-height: 1.2; }
+.ifm-note-tx b { font-size: 16px; font-weight: 600; }
+.ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+
+/* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
+   under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the
+   band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
+   as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
+   shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+.ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
+  padding: calc(var(--ifh-pt0) - 4px * var(--p)) max(16px, env(safe-area-inset-right, 0px)) calc(14px - 6px * var(--p)) max(16px, env(safe-area-inset-left, 0px));
+  color: var(--ifh-ink, inherit); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.ifh::before { content: ""; position: absolute; inset: 0 0 -18px; z-index: -1; pointer-events: none; opacity: var(--p);
+  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) 40%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+/* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
+.ifh:not(.ifh-up)::before { display: none; }
+.ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
+.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
+.ifh-me img { object-fit: cover; display: block; }
+.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
+.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-t { min-width: 0; display: grid; }
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
+.ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }
+.ifh-pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ifh-down { flex: none; width: calc(20px - 6px * var(--p)); height: calc(20px - 6px * var(--p)); stroke-width: 2.6; margin-top: 3px; color: var(--ifh-ink-2, currentColor); }
+.ifh-line { display: block; height: calc(20px * (1 - var(--p))); margin-top: calc(2px * (1 - var(--p))); overflow: hidden; opacity: calc(1 - var(--p) * 1.6);
+  font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
+.ifh-line:empty { height: 0; margin: 0; }
+.ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts:empty { display: none; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
+.ifh-act[disabled] { opacity: 0.4; }
+/* (a 44px target round each, over the capsule's padding) */
+.ifh-act::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) {
+  .ifh-me, .ifh-act { transition: none; }
+  .ifm-pop, .ifm-pop.closing { transform: none !important; transition: opacity 0.2s !important; }
+  .ifm-note { transition: opacity 0.2s !important; }
+}
+
+/* InFlite's tab bar, the same in every app with tabs (Chat, Mail, Fitness): each app's bar (its capsule, the pill that
+   slides to the tab you're on, its tabs and their counts, and at most one round button beside it, Search) takes its
+   sizes from these, and its colour from --ift-tint, set by the app: the tab you're on in a soft pill of it, and its counts */
+:root { --ift-h: 64px; --ift-pad: 5px; --ift-gap: 10px; --ift-max: 440px; --ift-label: 11px; --ift-icon: 24px; --ift-pill: 15%; }
+
+/* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
+   (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
+.ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
+.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.ifs-hero span { font-size: 14px; opacity: 0.62; }
+/* ==== end of InFlite's menu ==== */

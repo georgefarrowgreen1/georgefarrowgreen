@@ -10,7 +10,7 @@ const r = await fetch(`${SITE}/api/contact`, { method: 'POST', headers: { 'Conte
 ok(r.ok, 'the contact form takes a message', `${r.status} ${await r.text()}`);
 const m = mails().at(-1) || {};
 ok(m.from === 'Website <website@georgefarrowgreen.com>' && m.reply_to === 'rowan@example.com', 'it\'s emailed from the site, a reply going to whoever wrote', `${m.from} · ${m.reply_to}`);
-ok(m.html?.includes(`<img src="${SITE}/mail/website-mail.png" width="112" height="112" alt="Website"`), 'in the site\'s look, with its own picture');
+ok(new RegExp(`<img src="${SITE.replace(/[.]/g, '\\.')}/mail/[\\w-]+\\.png"`).test(m.html || ''), 'in the site\'s look, with its own pictures');
 ok(/white-space:pre-wrap[^>]*>Hello George,\n\nA question about &lt;your&gt; site\.<\/div>/.test(m.html || ''), 'their words as they wrote them');
 ok(m.html?.includes('href="mailto:rowan@example.com?subject=Re%3A%20your%20message"') && /Reply to Rowan/.test(m.html), 'a button to reply');
 ok(/^A message from Rowan Hale\n\nrowan@example\.com\n\nHello George,/.test(m.text || ''), 'and a plain-text version', (m.text || '').slice(0, 80));

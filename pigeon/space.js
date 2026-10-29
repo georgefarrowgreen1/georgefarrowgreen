@@ -1,4 +1,4 @@
-// InFlight — space: the Moon, Mars and low Earth orbit, worked out the same way on the
+// Chat — space: the Moon, Mars and low Earth orbit, worked out the same way on the
 // phone (pigeon/moon.js draws them) and on the server (functions/_moon.js), so both
 // agree on every time. Pure numbers: nothing here touches the page.
 //

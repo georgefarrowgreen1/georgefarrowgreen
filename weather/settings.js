@@ -3,7 +3,7 @@
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
 import { FACES, PITCHES, MAX_ZONES, zoneSaid, facesName } from "./solar.js";
-import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, PERSON, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
+import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
 import { glyph } from "./icons.js";
@@ -421,8 +421,8 @@ export function drawAccount() {
     // (in Settings, a row: signing in, or making an account, on the account's own page, which brings you back here; none
     // where Weather's served at an address with no account's page beside it)
     if (!accountPage()) { box.hidden = true; return; }
-    if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", onclick: toAccountSignIn }, h("span", { class: "acct-ic", svg: PERSON }),
-      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
+    if (box._who !== "") { box._who = ""; fill(h("button", { class: "acct-card go", type: "button", id: "acct-signin", onclick: toAccountSignIn }, h("img", { class: "acct-ic inflite", src: "inflite.svg", alt: "" }),
+      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Powered by InFlite")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))); }
     return;
   }
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
@@ -452,7 +452,7 @@ function drawNotifyAcct() {
 }
 
 
-async function openAccount(open) {
+export async function openAccount(open) {
   const w = window.open("", "_blank");
   // (and in step with it again as soon as it's back here: what's changed there taken up)
   S.pullNext = true;

@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
-import { makeAccount, signInInFlight, accountUrl } from './join.mjs';
+import { makeAccount, signInChat, accountUrl } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -17,9 +17,9 @@ const G = await ctx.newPage();
 G.on('pageerror', (e) => errs.push(`${e}`)); G.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
 const cdp = await ctx.newCDPSession(G); await cdp.send('WebAuthn.enable');
 const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
-// (the account made on the account's own page, then InFlight signed in to: join.mjs)
+// (the account made on the account's own page, then Chat signed in to: join.mjs)
 await makeAccount(G, accountUrl(BASE + '/pigeon/'), { name: 'George Farrow-Green', handle: 'george', email: 'george@example.com' });
-await signInInFlight(G, BASE + '/pigeon/', { email: 'george@example.com' }); await G.waitForSelector('#city', { state: 'attached', timeout: 20000 });
+await signInChat(G, BASE + '/pigeon/', { email: 'george@example.com' }); await G.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await G.selectOption('#city', 'London'); await G.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
 await G.click('[data-act=onbdone]'); await G.waitForSelector('.tabs');
 const sess = await G.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }));
@@ -42,7 +42,7 @@ const [s2, j2] = await api('passkey-options', 'POST', { mode: 'login' }); ok(s2 
 
 // adding a passkey: the sheet asks for the password first
 await G.click('[data-act=tab][data-id=account]'); await G.waitForTimeout(300);
-await G.waitForSelector('#screen > main.view [data-act=applock]'); await G.click('#screen > main.view [data-act=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock InFlight, in This Phone, needs a passkey: it opens Passkeys)
+await G.click('.chead .ifh-me'); await G.click('.ifm-pop [data-k=applock]'); await G.waitForSelector('.sheet [data-act=pkadd]');   // (Lock Chat, in InFlite's menu, needs a passkey: it opens Passkeys)
 await G.click('.sheet [data-act=pkadd]'); await G.waitForSelector('#reauth-form', { timeout: 8000 });
 ok(/Confirm It’s You/.test(await txt('.sheet')), 'Add a Passkey opens “Confirm It’s You”');
 ok(!(await G.locator('[data-act=reauthpk]').count()), 'with no passkey saved there’s no passkey option');
@@ -50,7 +50,7 @@ await G.screenshot({ path: `${out}/reauth.png` });
 await G.fill('#f-password', 'not my password'); await G.click('.sheet .nbtn.r'); await G.waitForTimeout(1500);
 ok(/isn’t right/.test(await txt('.sheet')), 'a wrong password says so', await txt('.sheet .ferr, .sheet .err').catch(() => ''));
 await G.fill('#f-password', 'a long test password'); await G.click('.sheet .nbtn.r');
-// (the toast that's said it: the one from Lock InFlight can still be up)
+// (the toast that's said it: the one from Lock Chat can still be up)
 await G.waitForFunction(() => /Passkey saved/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
 ok(/Passkey saved/.test(await txt('.toast')), 'the right one carries on and saves the passkey', await txt('.toast'));
 [st] = await api('vault'); ok(st === 200, 'and counts for the next 10 minutes');
@@ -80,7 +80,7 @@ const r = await G.evaluate(async (token) => {
   const e = (u) => btoa(String.fromCharCode(...new Uint8Array(u))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   try {
     const o = await (await fetch('/api/pigeon/passkey-options', { method: 'POST', headers: H, body: '{"mode":"register"}' })).json();
-    const c = await navigator.credentials.create({ publicKey: { challenge: d(o.challenge), rp: { id: o.rpId, name: 'InFlight' }, user: { id: d(o.user.id), name: o.user.name, displayName: o.user.displayName },
+    const c = await navigator.credentials.create({ publicKey: { challenge: d(o.challenge), rp: { id: o.rpId, name: 'Chat' }, user: { id: d(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorSelection: { residentKey: 'discouraged', userVerification: 'discouraged' } } }).catch((x) => { throw new Error('create ' + x); });
     const reg = await fetch('/api/pigeon/passkey-register', { method: 'POST', headers: H, body: JSON.stringify({ challenge: o.challenge, id: c.id, publicKey: e(c.response.getPublicKey()), alg: c.response.getPublicKeyAlgorithm(), clientDataJSON: e(c.response.clientDataJSON), label: 'Key' }) });
     const o2 = await (await fetch('/api/pigeon/passkey-options', { method: 'POST', headers: H, body: '{"mode":"login"}' })).json();
@@ -90,17 +90,17 @@ const r = await G.evaluate(async (token) => {
     return { reg: reg.status, flags, status: res.status };
   } catch (err) { return { err: String(err) }; }
 }, sess.token);
-// (and InFlight signs in on the account's page now, so its own passkey sign-in is gone: one not taken can't sign in there either)
-ok(r.reg === 400 && r.status === 410 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person: not taken, and InFlight has no sign-in of its own to try it on', JSON.stringify(r));
+// (and Chat signs in on the account's page now, so its own passkey sign-in is gone: one not taken can't sign in there either)
+ok(r.reg === 400 && r.status === 410 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person: not taken, and Chat has no sign-in of its own to try it on', JSON.stringify(r));
 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: bare });
 
-// changing the password is on the account's page too (which locks the messages' key with the new one), not in InFlight
+// changing the password is on the account's page too (which locks the messages' key with the new one), not in Chat
 await G.click('.sheet header [data-act=close]'); await G.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 });
 ok(!(await G.$('#screen > main.view [data-act=changepw]')) && !(await G.$('#screen > main.view [data-act=passkeys]')) && !(await G.$('#screen > main.view [data-act=securitysheet]')),
-  'no Change Password, Passkeys or Privacy & Security in InFlight: they’re on the account’s page');
+  'no Change Password, Passkeys or Privacy & Security in Chat: they’re on the account’s page');
 
-// deleting the account is on its own page, not in InFlight
+// deleting the account is on its own page, not in Chat
 if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }
 await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=signout]');
-ok(!(await G.$('#screen > main.view [data-act=delask]')), 'no Delete Account in InFlight');
+ok(!(await G.$('#screen > main.view [data-act=delask]')), 'no Delete Account in Chat');
 console.log('errors', errs); console.log('FAILS', fails); await b.close();

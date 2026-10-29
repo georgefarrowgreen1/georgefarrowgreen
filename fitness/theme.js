@@ -9,7 +9,7 @@ try {
   }
 } catch (_) {}
 // Back from signing in on the account's page (#signin=…): the page's last picture, its sky and you, from the very first
-// frame (styles.css html.arriving), until app.js puts up its own copy of it (arriving), as InFlight's does. You: the
+// frame (styles.css html.arriving), until app.js puts up its own copy of it (arriving), as Chat's does. You: the
 // initial and the small copy of your photo the page sent in the # (f, p), the photo made a blob: here
 try {
   if (/^#signin=/.test(location.hash)) {
@@ -30,7 +30,9 @@ try {
 try {
   if (!/^#signin=/.test(location.hash)) {
     const k = JSON.parse(localStorage.getItem("fitness:meAt") || "null"), since = k && Number.isFinite(k.at) ? Math.round(k.at) : null;
-    window.fxEarly = { since, got: fetch(`/api/fitness/${since ? `me?since=${since}` : "me"}`, { credentials: "same-origin" }) };
+    // (given up on after 20 seconds: one that hangs mustn't hold up every later sync this session)
+    const stop = new AbortController(); setTimeout(() => stop.abort(), 20000);
+    window.fxEarly = { since, got: fetch(`/api/fitness/${since ? `me?since=${since}` : "me"}`, { credentials: "same-origin", signal: stop.signal }) };
     window.fxEarly.got.catch(() => {});   // (offline, or not taken up: no matter, it's asked again)
   }
 } catch (_) {}

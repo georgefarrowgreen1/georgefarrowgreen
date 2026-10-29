@@ -1,13 +1,13 @@
-// A new account, as one's made now: from InFlight's welcome (Create your account), on the account's own page (accounts
-// are made there, and signed in to there, and only there), and straight back to InFlight, signed in (its place chosen,
+// A new account, as one's made now: from Chat's welcome (Create your account), on the account's own page (accounts
+// are made there, and signed in to there, and only there), and straight back to Chat, signed in (its place chosen,
 // and its passkey offer answered). For the tests that start with someone new.
-//   joinInFlight(page, inflightUrl, { name, handle, email, password, city, passkey })
-//   makeAccount(page, accountUrl, { name, handle, email, password }), signInInFlight(page, inflightUrl, { email, password })
+//   joinChat(page, inflightUrl, { name, handle, email, password, city, passkey })
+//   makeAccount(page, accountUrl, { name, handle, email, password }), signInChat(page, inflightUrl, { email, password })
 //   onAccountPage(page, { email, password }): on the account's page, sent there by an app to sign in; then back in it
 //   fillJoin(page, { name, handle, email, password }, { send }): the account's page's join card, a step at a time
 import http from 'http';
 export const PASSWORD = 'a long test password';
-// the account's page beside InFlight: account.<site> beside chat.<site>; account.localhost beside InFlight run locally
+// the account's page beside Chat: account.<site> beside chat.<site>; account.localhost beside Chat run locally
 export function accountUrl(inflight) {
   const u = new URL(inflight), port = u.port ? ':' + u.port : '';
   return u.hostname.startsWith('chat.') ? `${u.protocol}//account.${u.hostname.slice(5)}${port}/` : `${u.protocol}//account.localhost${port}/`;
@@ -63,12 +63,12 @@ export async function pastOffer(page) {
   return offer;
 }
 // Where the account's page and the app don't share the site's sign-in (as locally, apart from the tests' gfg.test), the
-// page's own, made just to hand InFlight its sign-in, signed out again once InFlight has it: so the account has just
-// InFlight's, as on the site, where the page's sign-in is moved to the app it's handed to
+// page's own, made just to hand Chat its sign-in, signed out again once Chat has it: so the account has just
+// Chat's, as on the site, where the page's sign-in is moved to the app it's handed to
 // (straight to this machine, with the page's cookie: only the browser knows account.localhost by name; and only the
-// page's own, as the browser would send it: InFlight's on localhost isn't, though Playwright lists it for the address)
+// page's own, as the browser would send it: Chat's on localhost isn't, though Playwright lists it for the address)
 async function pageOut(page, inflight, acct) {
-  if (!acct || new URL(inflight).hostname.endsWith('.gfg.test')) return;
+  if (!acct || new URL(inflight).hostname.endsWith('.ifl.test')) return;
   await page.waitForSelector('.tabs, #city', { state: 'attached', timeout: 60000 });
   const u = new URL(acct), cookie = (await page.context().cookies(acct)).filter((c) => c.domain.replace(/^\./, '') === u.hostname)
     .map((c) => `${c.name}=${c.value}`).join('; ');
@@ -80,15 +80,15 @@ async function pageOut(page, inflight, acct) {
   });
   await page.context().clearCookies({ domain: u.hostname }).catch(() => {});
 }
-// InFlight signed in to: its Sign in (Continue as, signed in on the site already where its sign-in is shared), on the
+// Chat signed in to: its Sign in (Continue as, signed in on the site already where its sign-in is shared), on the
 // account's page, and back
-export async function signInInFlight(page, inflight, { email, password = PASSWORD }) {
+export async function signInChat(page, inflight, { email, password = PASSWORD }) {
   await open(page, inflight);
   await page.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 });
   await page.click('.welcome [data-act=acctsignin]');
   await pageOut(page, inflight, await onAccountPage(page, { email, password }));
 }
-export async function joinInFlight(page, inflight, { name, handle, email, password = PASSWORD, city, passkey = false }) {
+export async function joinChat(page, inflight, { name, handle, email, password = PASSWORD, city, passkey = false }) {
   await open(page, inflight);
   await page.waitForSelector('.welcome [data-act=acctjoin]', { state: 'visible', timeout: 30000 });
   await page.click('.welcome [data-act=acctjoin]');
@@ -104,14 +104,16 @@ export async function joinInFlight(page, inflight, { name, handle, email, passwo
   await page.waitForSelector('.tabs', { timeout: 30000 });
 }
 
-// InFlight's settings on the account's page, as its Settings opens them (InFlight Settings: a window of its own, signed
-// in there by the code InFlight hands over, with the sheet open): → that window. Its first page has Email me (#if-email);
+// Chat's settings on the account's page, as Settings in InFlite's menu opens them (a window of its own, signed
+// in there by the code Chat hands over, with the sheet open): → that window. Its first page has Email me (#if-email);
 // sub (its row's title: Notifications, Who sees what, Blocked) opens one of its own pages, with its switches
 // #if-<setting> (landed, names, quiet… on Notifications, receipts, approxLocation… on Who sees what) and hours
-// (#if-quietFrom, #if-quietTo). Each change is saved as it's made; InFlight takes it up as it next syncs.
+// (#if-quietFrom, #if-quietTo). Each change is saved as it's made; Chat takes it up as it next syncs.
 export async function inflightSettings(page, sub = null) {
   await page.click('[data-act=tab][data-id=account]'); await page.waitForTimeout(500);
-  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('#screen > main.view [data-act=ifsettings]')]);
+  // (Chat's settings: Settings, in InFlite's menu from your photo)
+  await page.click('.chead .ifh-me'); await page.waitForSelector('.ifm-pop.open');
+  const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('.ifm-pop [data-k=settings]')]);
   await w.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000, waitUntil: 'commit' });
   const go = await w.waitForSelector('#sheet[open] #if-email, main .welcome .btn', { timeout: 20000 });
   if (await go.evaluate((e) => e.matches('.btn'))) { await go.click(); await w.waitForSelector('#sheet[open] #if-email', { timeout: 20000 }); }
@@ -119,7 +121,7 @@ export async function inflightSettings(page, sub = null) {
   if (sub) await ifPage(w, sub);
   return w;
 }
-// one of InFlight's settings' own pages, from its first (by its row's title), drawn once what's kept is in
+// one of Chat's settings' own pages, from its first (by its row's title), drawn once what's kept is in
 export async function ifPage(w, sub) {
   await w.locator('#sheet .row', { hasText: sub }).first().click();
   await w.waitForSelector(`#sheet .sheet-head h2:text-is("${sub}")`, { timeout: 10000 });

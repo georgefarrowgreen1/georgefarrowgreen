@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-115" />
+  <meta name="app-version" content="wx-124" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -29,7 +29,7 @@
   <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
   <!-- (the account's page, where Sign in goes: ready to open the moment it's tapped) -->
-  <link rel="preconnect" href="https://account.georgefarrowgreen.com" />
+  <link rel="preconnect" href="https://account.inflite.ai" />
 </head>
 <body data-sky="cloudy-day">
   <!-- (the sky the page opens on, set before it's first drawn: early.js) -->
@@ -37,12 +37,13 @@
   <div class="sky" aria-hidden="true"><div class="sky-clouds"></div><div class="sky-stars"></div><div class="sky-rain"></div><div class="sky-snow"></div><div class="sky-flash"></div><div class="sky-alt sky-prev"><div class="sky-clouds"></div><div class="sky-stars"></div><div class="sky-rain"></div><div class="sky-snow"></div></div><div class="sky-alt sky-next"><div class="sky-clouds"></div><div class="sky-stars"></div><div class="sky-rain"></div><div class="sky-snow"></div></div></div>
 
   <div class="page">
-  <header class="top">
+  <header class="top wx-ifh">
+    <button class="me-btn ifh-me out" id="me-btn" type="button" aria-label="Sign in" hidden></button>
     <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
       <span class="place-name"><span id="place-name">Weather</span><span class="pg-name pg-name-prev" aria-hidden="true"></span><span class="pg-name pg-name-next" aria-hidden="true"></span><span class="place-temp" id="place-temp" aria-hidden="true"></span></span>
       <span class="place-line"><span class="place-sub" id="place-sub"></span><span class="place-now" id="place-now" aria-hidden="true"></span><span class="pg-sub pg-sub-prev" aria-hidden="true"></span><span class="pg-sub pg-sub-next" aria-hidden="true"></span></span>
     </button>
-    <div class="top-actions">
+    <div class="top-actions ifh-acts">
       <!-- (their icons here, so they're drawn with the page: icons.js's own) -->
       <button class="icon-btn" id="locate-btn" type="button" aria-label="Use my location" title="Use my location"><svg class="g" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
       <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings"><svg class="g" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -234,6 +235,8 @@
     </div>
     <div class="sheet-body">
       <div class="set-page" data-page="root">
+        <!-- (opening on the app, as every app's Settings does: InFlite's Settings sheet) -->
+        <div class="ifs-hero"><img src="./icon.svg" alt="" width="64" height="64" /><b>Weather</b><span>Forecasts, radar and alerts</span></div>
         <section class="acct" id="acct" aria-labelledby="acct-title"></section>
         <!-- (the word about the alerts, once it's been put away on the page: settings.js drawSettings) -->
         <ul class="grp folders" id="alerts-row" hidden>
@@ -254,7 +257,7 @@
           <li><button class="folder" type="button" data-go="forecast"><span class="f-ic" data-g="chart" data-c="purple"></span><span class="f-k">Forecast</span><span class="f-v" id="fv-forecast"></span></button></li>
         </ul>
         <p class="grp-foot" id="about-app">Settings and places stay on this device.</p>
-        <ul class="grp" id="out-grp" hidden><li><button class="grp-out" type="button" id="sign-out">Sign out</button></li></ul>
+        <ul class="grp" id="out-grp" hidden><li><button class="grp-out" type="button" id="sign-out">Sign Out</button></li></ul>
       </div>
       <form id="settings-form">
         <div class="set-page" data-page="notify" data-title="Notifications" hidden><div id="notify-set">

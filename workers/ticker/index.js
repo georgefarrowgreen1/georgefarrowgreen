@@ -1,4 +1,4 @@
-// The site's scheduler: Cloudflare runs this every 5 minutes (wrangler.toml's crons) and it asks for InFlight's and
+// The site's scheduler: Cloudflare runs this every 5 minutes (wrangler.toml's crons) and it asks for Chat's and
 // Weather's notification jobs (as GitHub's schedule, .github/workflows, does but can't be relied on to: it runs hours
 // late), and for Fitness's look at Garmin Connect. Each job keeps itself to one run at a time, so the two schedulers,
 // and the apps' own traffic, never double up.

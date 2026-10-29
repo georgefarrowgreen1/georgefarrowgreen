@@ -1,7 +1,7 @@
-// InFlight end-to-end checks against the local stack (wrangler pages dev on 8788).
+// Chat end-to-end checks against the local stack (wrangler pages dev on 8788).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { makeAccount, signInInFlight, accountUrl, pastOffer } from './join.mjs';
+import { makeAccount, signInChat, accountUrl, pastOffer } from './join.mjs';
 const [,, S] = process.argv;
 const URL = process.env.APPURL || 'http://localhost:8788/pigeon/';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -27,12 +27,12 @@ const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace
 const ferr = (ph) => ph.p.waitForSelector('.ferr:not([hidden])', { timeout: 20000 }).then(() => txt(ph, '.ferr:not([hidden])'));
 const tab = (ph, id) => ph.p.click(`[data-act=tab][data-id=${id}]`);
 
-// ---- George: an account (made on the account's page), signed in to InFlight: real location, passkey ----
+// ---- George: an account (made on the account's page), signed in to Chat: real location, passkey ----
 const A = await phone('george', 390, 844, { latitude: 51.5072, longitude: -0.1276 });
 await A.p.waitForSelector('.welcome');
-ok(!(await A.p.$('[data-id=signup], [data-form=signup]')) && /Create your account/.test(await A.p.innerText('.welcome')), 'InFlight makes no accounts itself: new ones are made on the account’s page');
+ok(!(await A.p.$('[data-id=signup], [data-form=signup]')) && /Create your account/.test(await A.p.innerText('.welcome')), 'Chat makes no accounts itself: new ones are made on the account’s page');
 await makeAccount(A.p, accountUrl(URL), { name: 'George Farrow-Green', handle: 'george', email: 'george@example.com', password: 'feathers and ink 42' });
-await signInInFlight(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' });
+await signInChat(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' });
 await A.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await A.p.click('[data-act=locate]');
 ok(await A.p.waitForFunction(() => /London/.test(document.querySelector('.auth')?.innerText || ''), null, { timeout: 10000 }).then(() => true, () => false), 'phone location resolves to London');
@@ -40,7 +40,7 @@ await A.p.waitForSelector('[data-act=pkadd]', { timeout: 10000 });   // (on to t
 await A.p.click('[data-act=pkadd]'); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 ok(true, 'George signs in to his new account and saves a passkey');
 
-// ---- Mira: the account's page checks what's typed (a short password, a taken handle), then InFlight and a city ----
+// ---- Mira: the account's page checks what's typed (a short password, a taken handle), then Chat and a city ----
 const B = await phone('mira', 375, 667);
 const ACCT = accountUrl(URL), aerr = async () => (await B.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => ''));
 await B.p.goto(`${ACCT}#join`); await B.p.waitForSelector('main input[name=name]', { timeout: 20000 });
@@ -54,14 +54,14 @@ await B.p.waitForSelector('main input[name=password]', { state: 'visible' }); aw
 ok(/10/.test(await aerr()), 'short password refused', await B.p.innerText('main .said'));
 await B.p.fill('main input[name=password]', 'new york pigeons 7'); await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main .hero', { timeout: 40000 });
-await signInInFlight(B.p, URL, { email: 'mira@example.com', password: 'new york pigeons 7' });
+await signInChat(B.p, URL, { email: 'mira@example.com', password: 'new york pigeons 7' });
 await B.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await B.p.selectOption('#city', 'New York'); await B.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
 await B.p.waitForTimeout(400); if (await B.p.$('[data-act=pkadd]')) await B.p.click('[data-act=onbdone]');
 await B.p.waitForSelector('.tabs');
 
 // ---- friends ----
-await tab(A, 'friends'); await A.p.click('.nb-right [data-act=addfriend]'); await A.p.fill('#add-h', 'mira');
+await tab(A, 'friends'); await A.p.click('.ifh-acts [data-act=addfriend]'); await A.p.fill('#add-h', 'mira');
 await A.p.click('[data-act=submit][data-id=add-form]'); await A.p.waitForSelector('.addrow .btn.sent, .toast', { timeout: 10000 });
 ok(/Request sent|joined/i.test(await A.p.locator('.sheet, .toast').first().innerText()), 'friend request sent');
 await B.p.reload(); await B.p.waitForSelector('.tabs'); await tab(B, 'friends'); await B.p.click('[data-act=requests]');
@@ -92,7 +92,8 @@ ok(!(await txt(B, '.msgs')).includes('view from my window'), 'Mira can’t read 
 await B.p.click('.fly'); await B.p.waitForSelector('canvas.map'); await B.p.waitForTimeout(500);
 await B.p.screenshot({ path: process.argv[3] + '/prezoom.png' }); await B.p.evaluate(() => localStorage.setItem('inflight-mapcard', 'peek')); await B.p.click('.sheet [data-act=close].nbtn'); await B.p.waitForTimeout(500); await B.p.click('.fly'); await B.p.waitForSelector('canvas.map'); await B.p.waitForTimeout(600);   // (the card folded, so the zoom buttons show)
 await B.p.click('[data-act=mapzoom][data-id=in]'); await B.p.waitForTimeout(300); await B.p.screenshot({ path: process.argv[3] + '/postzoom.png' });
-ok(await B.p.isVisible('.mapctl .fitbtn'), 'map zooms (route button appears)');
+// (the button comes once the zoomed map's drawn in full: waited for, not guessed at)
+ok(await B.p.waitForSelector('.mapctl.moved .fitbtn', { state: 'visible', timeout: 3000 }).then(() => true, () => false), 'map zooms (route button appears)');
 await B.p.click('[data-act=mapzoom][data-id=fit]'); await B.p.waitForTimeout(800);   // (it glides back)
 ok(!(await B.p.isVisible('.mapctl .fitbtn')), 'map returns to the whole route');
 await B.p.click('.sheet [data-act=close].nbtn');
@@ -122,11 +123,11 @@ ok((await txt(B, '.b.once')).includes('Photo expired'), 'a photo not opened in t
 await fetch(new globalThis.URL(URL).origin + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } });   // (the minute tick deletes it)
 ok(/"photo": 2/.test(sql("SELECT photo FROM pg_msgs WHERE photo > 0")), 'server marks the photo deleted');
 
-// ---- George: sign out, and back in on the account's page (where InFlight signs in; a passkey there opening the
+// ---- George: sign out, and back in on the account's page (where Chat signs in; a passkey there opening the
 // messages by itself is acctpkmsg.mjs's, as here the account's page has an address of its own for passkeys) ----
 await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await A.p.click('#screen > main.view [data-act=signout]'); await A.p.click('.asheet [data-act=signoutgo]');
 await A.p.waitForSelector('.welcome');
-await signInInFlight(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' }); await A.p.waitForSelector('.tabs', { timeout: 20000 });
+await signInChat(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' }); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 await A.p.click('.mrow'); await A.p.waitForTimeout(1500);
 ok((await txt(A, '.msgs')).includes('Fancy trying'), 'signing back in restores the history');
 

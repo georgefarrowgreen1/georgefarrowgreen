@@ -12,7 +12,6 @@ contactmail
 vanish
 verify
 trackertest
-whatsnew
 adminlink
 home
 argontest
@@ -44,3 +43,4 @@ acctinflight
 sitepaths
 acctpkmsg
 fitness
+move

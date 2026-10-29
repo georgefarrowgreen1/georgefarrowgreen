@@ -8,10 +8,10 @@ import { readdirSync, writeFileSync } from 'node:fs';
 import { demo, samples, PROFILE } from '../../fitness/sample.js';
 import { summarise } from '../../fitness/load.js';
 import { routeShape } from '../../fitness/formats.js';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const N = Number(process.env.PERF_N) || 2000;
-const CHAT = 'http://chat.gfg.test:8788', FIT = 'http://fitness.gfg.test:8788', ACCT = 'http://account.gfg.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 
 // (rides as the phone would have summed them: a few made up, worked out, then varied)
 const D = demo(Date.now()), tpl = D.history.filter((h) => h.sport === 'ride').slice(0, 6).map((h) => { const x = samples(h); return { s: summarise(x, PROFILE), route: routeShape(x.s), indoor: !!h.indoor }; });
@@ -22,13 +22,13 @@ const rows = Array.from({ length: N }, (_, i) => {
   return { id: `p${i}`, start, sport: 'ride', indoor: t.indoor ? 1 : 0, name: `Ride ${i}`, device: 'Garmin Edge 840', file: `p${i}.fit`, type: 'fit', size: 200000, sum: JSON.stringify(sum) };
 });
 
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${FIT},${ACCT}`] });
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const c = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: UA, reducedMotion: 'reduce' });
 await c.addInitScript(() => { try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {} });
 const p = await c.newPage(), errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.text().startsWith('TIME ') && process.env.PERF_TRACE) console.log(m.text()); });
-await joinInFlight(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
-await p.goto(`${FIT}/`); await p.waitForSelector('.head .round.me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
+await joinChat(p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: 'a long test password', city: 'London' });
+await p.goto(`${FIT}/`); await p.waitForSelector('.ifh-me', { timeout: 20000 }).catch(async (e) => { await p.screenshot({ path: `${out}/nohead.png` }); console.log('nohead errors: ' + errs.join(' | ')); throw e; });
 // (Rhythm on, so Today is as full as it gets: kept, and the page reloaded with it, till it's there)
 let me;
 for (let k = 0; k < 4; k++) {
@@ -38,7 +38,7 @@ for (let k = 0; k < 4; k++) {
     data.rhythm = { days: [0, 60, 75, 60, 0, 150, 90], lean: 'balanced', mode: 'build', at: d.getTime() - 28 * 864e5, level: 'regular' };
     return (await fetch('/api/fitness/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base: ver, data }) })).status; }, me);
   console.log('rhythm put', st);
-  await p.reload(); await p.waitForSelector('.head .round.me'); await p.waitForTimeout(1500);
+  await p.reload(); await p.waitForSelector('.ifh-me'); await p.waitForTimeout(1500);
 }
 console.log('rhythm on:', !!me.data?.rhythm);
 // (the rides, into the database the server's running on)

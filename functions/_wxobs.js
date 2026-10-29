@@ -18,7 +18,7 @@
 import { obsDays } from "../weather/skill.js";
 import { wxdb } from "./_wxpush.js";
 
-const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.georgefarrowgreen.com)", Accept: "application/json" };
+const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.inflite.ai)", Accept: "application/json" };
 const KEEP_DAYS = 46, NEAR_KM = 40;
 const rad = Math.PI / 180;
 const km = (a, b, c, d) => 12742 * Math.asin(Math.sqrt(Math.sin((c - a) * rad / 2) ** 2 + Math.cos(a * rad) * Math.cos(c * rad) * Math.sin((d - b) * rad / 2) ** 2));

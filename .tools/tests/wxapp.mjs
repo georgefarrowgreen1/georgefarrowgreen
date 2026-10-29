@@ -121,7 +121,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: push || sw ? 'allow' : 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
   if (push) {
     await ctx.grantPermissions(['notifications'], { origin: HOST });
-    // headless Chromium has no push service: a subscription with keys this test holds (as InFlight's tests do)
+    // headless Chromium has no push service: a subscription with keys this test holds (as Chat's tests do)
     await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
       const make = () => ({ endpoint, toJSON: () => ({ endpoint, keys: { p256dh, auth } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
       PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make() : null; };
@@ -932,7 +932,7 @@ await p.waitForSelector('#settings[open]'); await p.waitForTimeout(300);
 {
   const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].filter((b) => !b.closest('li')?.hidden).map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
     hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
-  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
+  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Solar: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
     'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
   ok(await p.isVisible('#alerts-row'), 'the word about the alerts, put away on the page, a row at the top of Settings instead');
 }
@@ -1307,7 +1307,7 @@ const get = (host, path) => new Promise((done, fail) => http.get({ host: '127.0.
   let body = ''; r.on('data', (c) => (body += c)); r.on('end', () => done({ status: r.statusCode, body }));
 }).on('error', fail));
 const W = 'weather.localhost', L = 'localhost';
-ok((await get(W, '/api/content')).status === 404 && (await get(W, '/pigeon/')).status === 404 && (await get(W, '/nothing-here')).status === 404, 'nothing of the site or InFlight at the weather address');
+ok((await get(W, '/api/content')).status === 404 && (await get(W, '/pigeon/')).status === 404 && (await get(W, '/nothing-here')).status === 404, 'nothing of the site or Chat at the weather address');
 ok((await get(W, '/weather/app.js')).status === 301 && (await get(L, '/weather')).status === 301 && (await get(L, '/weather/')).status === 200, 'the app\'s old and preview addresses');
 const where = JSON.parse((await get(W, '/api/weather/where')).body || '{}');
 ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you are, from the connection', JSON.stringify(where));

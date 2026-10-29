@@ -5,7 +5,7 @@
 // someone had only your sign-in asks you to show it's you first (functions/api/account/[[path]].js). The page never
 // holds the sign-in itself: the browser keeps it, out of any page's reach, and the page asks with it.
 //
-// The password is stretched here as everywhere on the site (crypto.js, InFlight's own, served here too): it never leaves
+// The password is stretched here as everywhere on the site (crypto.js, Chat's own, served here too): it never leaves
 // this device, only a proof of it. A new one locks your key anew with it, here, so nothing that's locked changes hands.
 //
 // Also: a security check-up (email confirmed, a passkey, the password against data breaches, devices long unused), your
@@ -14,7 +14,7 @@
 // up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
 // #keep=).
 //
-// And: your photo changed by tapping it; your code (a QR code of the link that adds you in InFlight); each app's card, a
+// And: your photo changed by tapping it; your code (a QR code of the link that adds you in Chat); each app's card, a
 // way into it and what you have there (what it keeps of yours in its own sheet, behind ⓘ); the check-up kept in Sign-in
 // and security, opened as a sheet; rows that say how things are (and, where there's something to do, a button); your
 // name and photo kept at the top once the profile's scrolled away; what each app emails you; recent activity with a
@@ -23,6 +23,208 @@
 // screen); and two even columns on a wide one.
 
 import { E2E, b64url, fromB64url } from "./crypto.js";
+
+// ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
+// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
+// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself.
+// (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
+// as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
+const IFL = (() => {
+  const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["mail", "Mail"], ["account", "Account"]];
+  const NAME = Object.fromEntries(APPS);
+  const ICONS = {"chat":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\"><defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\".6\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4aa3ff\"/><stop offset=\"1\" stop-color=\"#0055d4\"/></linearGradient><radialGradient id=\"glow\" cx=\"220\" cy=\"120\" r=\"760\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#fff\" stop-opacity=\".3\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></radialGradient><linearGradient id=\"low\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\".6\" stop-color=\"#002a80\" stop-opacity=\"0\"/><stop offset=\"1\" stop-color=\"#002a80\" stop-opacity=\".25\"/></linearGradient><linearGradient id=\"rim\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\" stop-opacity=\".7\"/><stop offset=\".4\" stop-color=\"#fff\" stop-opacity=\".1\"/><stop offset=\".8\" stop-color=\"#fff\" stop-opacity=\"0\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\".25\"/></linearGradient><linearGradient id=\"face\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"1\" stop-color=\"#e6efff\"/></linearGradient><linearGradient id=\"side\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#b9d4fb\"/><stop offset=\"1\" stop-color=\"#7fa9ec\"/></linearGradient><filter id=\"cast\" x=\"-80%\" y=\"-80%\" width=\"260%\" height=\"260%\"><feGaussianBlur stdDeviation=\"22\"/></filter><filter id=\"bevel\" x=\"-5%\" y=\"-5%\" width=\"110%\" height=\"110%\"><feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"5\"/><feOffset dy=\"-9\" result=\"up\"/><feComposite in=\"SourceAlpha\" in2=\"up\" operator=\"out\" result=\"lo\"/><feFlood flood-color=\"#9fbff0\" flood-opacity=\".75\"/><feComposite in2=\"lo\" operator=\"in\" result=\"loS\"/><feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"3\"/><feOffset dy=\"6\" result=\"dn\"/><feComposite in=\"SourceAlpha\" in2=\"dn\" operator=\"out\" result=\"hi\"/><feFlood flood-color=\"#fff\"/><feComposite in2=\"hi\" operator=\"in\" result=\"hiL\"/><feMerge><feMergeNode in=\"SourceGraphic\"/><feMergeNode in=\"loS\"/><feMergeNode in=\"hiL\"/></feMerge></filter><clipPath id=\"sq\"><rect width=\"1024\" height=\"1024\" rx=\"224\"/></clipPath></defs><g clip-path=\"url(#sq)\"><rect width=\"1024\" height=\"1024\" fill=\"url(#g)\"/><rect width=\"1024\" height=\"1024\" fill=\"url(#glow)\"/><rect width=\"1024\" height=\"1024\" fill=\"url(#low)\"/><g filter=\"url(#cast)\" opacity=\".58\"><path transform=\"translate(10 50) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\" fill=\"#001c5c\"/></g><g fill=\"url(#side)\"><path transform=\"translate(0 16) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 14) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 12) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 10) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 8) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 6) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 4) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/><path transform=\"translate(0 2) translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\"/></g><g filter=\"url(#bevel)\"><path transform=\"translate(128 140) scale(32)\" d=\"M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z\" fill=\"url(#face)\"/></g></g><rect x=\"4\" y=\"4\" width=\"1016\" height=\"1016\" rx=\"220\" fill=\"none\" stroke=\"url(#rim)\" stroke-width=\"8\"/></svg>","weather":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\"><defs><linearGradient id=\"sky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4f97f8\"/><stop offset=\"1\" stop-color=\"#2b69de\"/></linearGradient><linearGradient id=\"sun\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffd44f\"/><stop offset=\"1\" stop-color=\"#f9b929\"/></linearGradient><linearGradient id=\"glass\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.84\"/><stop offset=\"1\" stop-color=\"#f2f7ff\" stop-opacity=\"0.72\"/></linearGradient><linearGradient id=\"rimFade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"0.7\" stop-color=\"#fff\" stop-opacity=\"0.3\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0.15\"/></linearGradient><mask id=\"rimMask\"><rect width=\"1024\" height=\"1024\" fill=\"url(#rimFade)\"/></mask><clipPath id=\"cloudClip\"><path d=\"M 747.0 782 H 376.0 A 150 150 0 0 1 343.4 485.6 A 46 46 0 0 0 376.8 455.8 A 196 196 0 0 1 752.5 473.7 A 46 46 0 0 0 784.8 507.2 A 140 140 0 0 1 747.0 782 Z\"/></clipPath><filter id=\"frost\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\"><feGaussianBlur stdDeviation=\"9\"/></filter><filter id=\"shade\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\"><feGaussianBlur stdDeviation=\"18\"/></filter></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"320\" cy=\"392\" r=\"192\" fill=\"url(#sun)\"/><path d=\"M 747.0 782 H 376.0 A 150 150 0 0 1 343.4 485.6 A 46 46 0 0 0 376.8 455.8 A 196 196 0 0 1 752.5 473.7 A 46 46 0 0 0 784.8 507.2 A 140 140 0 0 1 747.0 782 Z\" fill=\"#0b3a9e\" fill-opacity=\"0.16\" filter=\"url(#shade)\" transform=\"translate(0 16)\"/><g clip-path=\"url(#cloudClip)\"><g filter=\"url(#frost)\"><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"320\" cy=\"392\" r=\"192\" fill=\"url(#sun)\"/></g><path d=\"M 747.0 782 H 376.0 A 150 150 0 0 1 343.4 485.6 A 46 46 0 0 0 376.8 455.8 A 196 196 0 0 1 752.5 473.7 A 46 46 0 0 0 784.8 507.2 A 140 140 0 0 1 747.0 782 Z\" fill=\"url(#glass)\"/></g><path d=\"M 747.0 782 H 376.0 A 150 150 0 0 1 343.4 485.6 A 46 46 0 0 0 376.8 455.8 A 196 196 0 0 1 752.5 473.7 A 46 46 0 0 0 784.8 507.2 A 140 140 0 0 1 747.0 782 Z\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.85\" stroke-width=\"5\" mask=\"url(#rimMask)\"/></svg>","fitness":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\"><defs><linearGradient id=\"sky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ff8457\"/><stop offset=\"1\" stop-color=\"#ee4b2f\"/></linearGradient><linearGradient id=\"sun\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffd85a\"/><stop offset=\"1\" stop-color=\"#ffb52e\"/></linearGradient><linearGradient id=\"glass\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.84\"/><stop offset=\"1\" stop-color=\"#fff4f0\" stop-opacity=\"0.72\"/></linearGradient><linearGradient id=\"rimFade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"0.7\" stop-color=\"#fff\" stop-opacity=\"0.3\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0.15\"/></linearGradient><mask id=\"rimMask\"><rect width=\"1024\" height=\"1024\" fill=\"url(#rimFade)\"/></mask><clipPath id=\"wheelClip\"><path clip-rule=\"evenodd\" d=\"M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z\"/></clipPath><filter id=\"frost\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\"><feGaussianBlur stdDeviation=\"9\"/></filter><filter id=\"shade\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\"><feGaussianBlur stdDeviation=\"18\"/></filter></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"700\" cy=\"330\" r=\"150\" fill=\"url(#sun)\"/><path fill-rule=\"evenodd\" d=\"M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z\" fill=\"#8f1d0b\" fill-opacity=\"0.18\" filter=\"url(#shade)\" transform=\"translate(0 16)\"/><g clip-path=\"url(#wheelClip)\"><g filter=\"url(#frost)\"><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"700\" cy=\"330\" r=\"150\" fill=\"url(#sun)\"/></g><rect width=\"1024\" height=\"1024\" fill=\"url(#glass)\"/></g><path fill-rule=\"evenodd\" d=\"M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.85\" stroke-width=\"5\" mask=\"url(#rimMask)\"/></svg>","mail":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\"><defs><linearGradient id=\"sky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#3fd0c6\"/><stop offset=\"1\" stop-color=\"#119a95\"/></linearGradient><linearGradient id=\"sun\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffd85a\"/><stop offset=\"1\" stop-color=\"#ffb52e\"/></linearGradient><linearGradient id=\"glass\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.84\"/><stop offset=\"1\" stop-color=\"#effffd\" stop-opacity=\"0.72\"/></linearGradient><linearGradient id=\"rimFade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"0.7\" stop-color=\"#fff\" stop-opacity=\"0.3\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0.15\"/></linearGradient><mask id=\"rimMask\"><rect width=\"1024\" height=\"1024\" fill=\"url(#rimFade)\"/></mask><clipPath id=\"envClip\"><path d=\"M 286 372 H 738 A 78 78 0 0 1 816 450 V 728 A 78 78 0 0 1 738 806 H 286 A 78 78 0 0 1 208 728 V 450 A 78 78 0 0 1 286 372 Z\"/></clipPath><filter id=\"frost\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\"><feGaussianBlur stdDeviation=\"9\"/></filter><filter id=\"shade\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\"><feGaussianBlur stdDeviation=\"18\"/></filter></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"712\" cy=\"330\" r=\"168\" fill=\"url(#sun)\"/><path d=\"M 286 372 H 738 A 78 78 0 0 1 816 450 V 728 A 78 78 0 0 1 738 806 H 286 A 78 78 0 0 1 208 728 V 450 A 78 78 0 0 1 286 372 Z\" fill=\"#05534f\" fill-opacity=\"0.2\" filter=\"url(#shade)\" transform=\"translate(0 16)\"/><g clip-path=\"url(#envClip)\"><g filter=\"url(#frost)\"><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"712\" cy=\"330\" r=\"168\" fill=\"url(#sun)\"/></g><rect width=\"1024\" height=\"1024\" fill=\"url(#glass)\"/><path d=\"M 240 404 L 512 610 L 784 404\" fill=\"none\" stroke=\"#05534f\" stroke-opacity=\"0.16\" stroke-width=\"22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" filter=\"url(#frost)\" transform=\"translate(0 6)\"/><path d=\"M 240 404 L 512 610 L 784 404\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.95\" stroke-width=\"14\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g><path d=\"M 286 372 H 738 A 78 78 0 0 1 816 450 V 728 A 78 78 0 0 1 738 806 H 286 A 78 78 0 0 1 208 728 V 450 A 78 78 0 0 1 286 372 Z\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.85\" stroke-width=\"5\" mask=\"url(#rimMask)\"/></svg>","account":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\"><defs><linearGradient id=\"sky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#7186ff\"/><stop offset=\"1\" stop-color=\"#4a45dc\"/></linearGradient><linearGradient id=\"head\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffc38f\"/><stop offset=\"1\" stop-color=\"#ff8d5c\"/></linearGradient><linearGradient id=\"glass\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.84\"/><stop offset=\"1\" stop-color=\"#f3f4ff\" stop-opacity=\"0.72\"/></linearGradient><linearGradient id=\"rimFade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"0.7\" stop-color=\"#fff\" stop-opacity=\"0.3\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0.15\"/></linearGradient><mask id=\"rimMask\"><rect width=\"1024\" height=\"1024\" fill=\"url(#rimFade)\"/></mask><clipPath id=\"bodyClip\"><path d=\"M 328 827 A 104 104 0 0 1 224 723 V 703 C 224 627 342 507 512 507 C 682 507 800 627 800 703 V 723 A 104 104 0 0 1 696 827 Z\"/></clipPath><filter id=\"frost\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\"><feGaussianBlur stdDeviation=\"9\"/></filter><filter id=\"shade\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\"><feGaussianBlur stdDeviation=\"18\"/></filter></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"512\" cy=\"367\" r=\"170\" fill=\"url(#head)\"/><path d=\"M 328 827 A 104 104 0 0 1 224 723 V 703 C 224 627 342 507 512 507 C 682 507 800 627 800 703 V 723 A 104 104 0 0 1 696 827 Z\" fill=\"#1c1a8f\" fill-opacity=\"0.18\" filter=\"url(#shade)\" transform=\"translate(0 16)\"/><g clip-path=\"url(#bodyClip)\"><g filter=\"url(#frost)\"><rect width=\"1024\" height=\"1024\" fill=\"url(#sky)\"/><circle cx=\"512\" cy=\"367\" r=\"170\" fill=\"url(#head)\"/></g><path d=\"M 328 827 A 104 104 0 0 1 224 723 V 703 C 224 627 342 507 512 507 C 682 507 800 627 800 703 V 723 A 104 104 0 0 1 696 827 Z\" fill=\"url(#glass)\"/></g><path d=\"M 328 827 A 104 104 0 0 1 224 723 V 703 C 224 627 342 507 512 507 C 682 507 800 627 800 703 V 723 A 104 104 0 0 1 696 827 Z\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.85\" stroke-width=\"5\" mask=\"url(#rimMask)\"/></svg>"};
+  const GLYPHS = {
+    bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+    ruler: '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2"/>',
+    sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    haptics: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M3 9v6M21 9v6"/>',
+    faceid: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9v1.5M15 9v1.5M12 9v4h-1M9 16c1.7 1.3 4.3 1.3 6 0"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    chev: '<path d="m9 6 6 6-6 6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+    at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    rain: '<path d="M7 18a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 7.9"/><path d="M9 20l-1 2M13 20l-1 2M17 20l-1 2"/>',
+    watch: '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+    shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
+    data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    locate: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
+    share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    addp: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  };
+  const svg = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name] || ""}</svg>`;
+  const urls = {};
+  const iconUrl = (a) => urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" })));
+  const el = (tag, cls, ...kids) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    for (const k of kids) if (k != null && k !== false) n.append(k);
+    return n;
+  };
+
+  // the same short note in every app
+  let noteEl = null, noteT = 0;
+  function note(app, title, sub) {
+    noteEl?.remove();
+    clearTimeout(noteT);
+    const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
+    noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
+    noteEl.setAttribute("role", "status");
+    document.body.append(noteEl);
+    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    const n = noteEl;
+    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+  }
+  // this app's version, as it opens: said once if it's new since last time
+  function built(app, build) {
+    let was = null;
+    try { was = localStorage.getItem(`ifl-build:${app}`); localStorage.setItem(`ifl-build:${app}`, build); } catch (_) {}
+    if (was && was !== build) setTimeout(() => note(app, `${NAME[app]} updated`, `Now V${build}`), 600);
+  }
+
+  // the menu, from your photo: o = { app, build, me: { name, line, photo: an element }, rows: [{ icon, color, label,
+  // on, toggle(next) → on, value, warn (the value in amber: it needs you), open }], account(), signOut(), update: a function when a newer version's ready }
+  let open = null;
+  function close(now) {
+    const m = open;
+    if (!m) return;
+    open = null;
+    m.anchor.classList.remove("ifm-lit");
+    document.removeEventListener("keydown", m.key, true);
+    // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
+    if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
+    m.layer.classList.remove("open");
+    m.pop.classList.remove("open");
+    if (now) m.layer.remove();
+    else { m.pop.classList.add("closing"); setTimeout(() => m.layer.remove(), 260); }
+    m.onClose?.();
+  }
+  function menu(anchor, o) {
+    if (open) { const same = open.anchor === anchor; close(); if (same) return; }
+    const act = (fn) => () => { close(); fn?.(); };
+    const photo = el("span", "ifm-photo", o.me.photo || null);
+    const card = el("button", "ifm-card", photo, el("span", "ifm-who", el("b", "", o.me.name || "Your account"), o.me.line ? el("small", "", o.me.line) : null));
+    card.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
+    card.type = "button";
+    card.setAttribute("aria-label", `${o.me.name || "You"}: your InFlite account`);
+    card.onclick = act(o.account);
+    // (the app's rows: "-" between two starts another group; each row's key, data-k, is its handle)
+    const drawRows = (list) => {
+      const groups = [el("div", "ifm-grp")];
+      for (const r of (list || []).filter(Boolean)) {
+        if (r === "-") { groups.push(el("div", "ifm-grp")); continue; }
+        const rows = groups[groups.length - 1];
+        const ic = el("span", `ifm-ic ${r.color || "grey"}`); ic.innerHTML = svg(r.icon);
+        if (r.on !== undefined) {
+          const sw = el("button", "ifm-switch"); sw.type = "button"; sw.setAttribute("role", "switch");
+          sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
+          if (r.key) sw.dataset.k = r.key;
+          sw.disabled = !!r.disabled;
+          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
+        } else {
+          // (a value or none, its chevron in the same column: lined up with every other row's)
+          const b = el("button", "ifm-row go", ic, el("span", "ifm-l", r.label), el("span", "ifm-val" + (r.warn ? " warn" : ""), r.value || ""));
+          b.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
+          b.type = "button"; b.onclick = r.stay ? () => r.open?.(b) : act(r.open);
+          if (r.key) b.dataset.k = r.key;
+          rows.append(b);
+        }
+      }
+      return groups.filter((g) => g.childNodes.length);
+    };
+    const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
+    const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
+    let status;
+    if (o.update) { status = el("button", "ifm-upd", "Update ready"); status.type = "button"; status.onclick = act(o.update); }
+    else status = el("span", "", "Up to date");
+    const out = el("button", "ifm-out", "Sign Out"); out.type = "button"; out.onclick = act(o.signOut);
+    const foot = el("div", "ifm-foot", mark, el("span", "ifm-ver", `${NAME[o.app]} V${o.build}`, el("i", "", " · "), status), o.signOut ? out : null);
+    const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
+    pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
+    const layer = el("div", "ifm-layer", pop);
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
+    const key = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
+      else if (e.key === "Tab") {
+        const f = [...pop.querySelectorAll("button, a")];
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    // (under your photo, from where it grows; over it, if your photo's low on the screen)
+    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
+    const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
+    const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    pop.style.top = `${top}px`;
+    pop.style.left = `${left}px`;
+    pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
+    anchor.classList.add("ifm-lit");
+    open = { anchor, layer, pop, key, onClose: o.onClose, redraw: (list) => {
+      // (the focus kept on the row it was on, by its key)
+      const k = document.activeElement?.dataset?.k;
+      rowsBox.replaceChildren(...drawRows(list));
+      if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
+    } };
+    requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
+    card.focus({ preventScroll: true });
+  }
+  // InFlite's header, the same in every app: your photo (InFlite's menu; signed out, an outline that signs in) · the
+  // screen's name, large, with its one line under it (a ▾ after the name when tapping it switches) · the app's actions in
+  // one capsule. Scrolled, the same row, compact, on a soft glass band: --p, from 0 to 1 over the first 64px, set on each
+  // .ifh in what's scrolled (watch), and again whenever the page is drawn anew (settle)
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // o: { me: your photo's html (none: signed out), meAttrs, title, pickAttrs (set: the name's a button, with ▾), line: html,
+  //      acts: [{ icon: a glyph's name or svg html, label, attrs }] } (attrs: the app's own, as html: data-act="…", id="…")
+  function headerHtml(o) {
+    const me = `<button type="button" class="ifh-me${o.me ? "" : " out"}" aria-label="${o.me ? "You and your apps" : "Sign in"}" aria-haspopup="${o.me ? "dialog" : "false"}" ${o.meAttrs || ""}>${o.me || svg("person")}</button>`;
+    const name = o.pickAttrs != null ? `<button type="button" class="ifh-pick" ${o.pickAttrs}><span>${esc(o.title)}</span>${svg("down", "ifh-down")}</button>` : esc(o.title);
+    const acts = (o.acts || []).filter(Boolean).map((a) => `<button type="button" class="ifh-act" aria-label="${esc(a.label)}" title="${esc(a.label)}" ${a.attrs || ""}>${GLYPHS[a.icon] ? svg(a.icon) : a.icon}</button>`).join("");
+    return `<header class="ifh${o.cls ? " " + o.cls : ""}">${me}<div class="ifh-t"><h1 class="ifh-name">${name}</h1><span class="ifh-line">${o.line || ""}</span></div><div class="ifh-acts">${acts}</div></header>`;
+  }
+  // as an element, with what's tapped wired: o.onMe(button), o.onPick(button), each act's onclick(button)
+  function header(o) {
+    const t = document.createElement("template");
+    t.innerHTML = headerHtml({ ...o, pickAttrs: o.onPick ? o.pickAttrs || "" : o.pickAttrs });
+    const hd = t.content.firstElementChild;
+    if (o.me instanceof Node) { const b = hd.querySelector(".ifh-me"); b.replaceChildren(o.me); b.classList.remove("out"); b.setAttribute("aria-label", "You and your apps"); }
+    if (o.onMe) hd.querySelector(".ifh-me").onclick = (e) => o.onMe(e.currentTarget);
+    if (o.onPick) hd.querySelector(".ifh-pick").onclick = (e) => o.onPick(e.currentTarget);
+    if (o.lineNode) hd.querySelector(".ifh-line").replaceChildren(o.lineNode);
+    hd.querySelectorAll(".ifh-act").forEach((b, i) => { const a = (o.acts || []).filter(Boolean)[i]; if (a?.onclick) b.onclick = (e) => a.onclick(e.currentTarget); });
+    return hd;
+  }
+  const watched = new Set();
+  function settle(t = window) {
+    const y = t === window ? scrollY : t.scrollTop, p = Math.max(0, Math.min(1, y / 64)).toFixed(3);
+    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { hd.style.setProperty("--p", p); hd.classList.toggle("ifh-up", p > 0); }
+  }
+  function watch(t = window) {
+    if (!watched.has(t)) { watched.add(t); t.addEventListener("scroll", () => settle(t), { passive: true }); }
+    settle(t);
+  }
+  const glyph = (name) => svg(name);
+
+  // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
+  const redraw = (rows) => open?.redraw(rows);
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl };
+})();
+// ==== end of InFlite's menu ====
 
 const API = "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
@@ -33,11 +235,18 @@ const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia(
 const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
+// (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
+const BUILD = "1.08";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
-// Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
+// Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
-const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, home: { name: "Home", sub: "" } };
+// (the home page's site, for the apps' one: siteUrl)
+const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
+// (Mail's icon, asked for by its version, so a copy kept from before its new look isn't shown)
+const MAIL_ICON = "/apps/mail.png?v=2";
+const appIcon = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
+const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -52,15 +261,15 @@ if (/^#from=home$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
   try { sessionStorage.setItem("acct-from", "home"); } catch (_) {}
 }
-// Sent here by an app to sign in: InFlight's welcome, Weather's Settings, the home page's Sign in (#signin=<app>, or
+// Sent here by an app to sign in: Chat's welcome, Weather's Settings, the home page's Sign in (#signin=<app>, or
 // #join=<app> to make an account first). With it, the app's word for this sign-in (ask: the hash of what that tab
-// keeps: functions/_handback.js), InFlight's key for what unlocks its own key there (seal), and where the app is (back).
+// keeps: functions/_handback.js), Chat's key for what unlocks its own key there (seal), and where the app is (back).
 // Signed in, or carrying on as yourself, you're sent straight back, the sign-in handed back with a code good once, for
 // two minutes, in that tab alone. Taken out of the address at once, and kept for the visit (half an hour), so a reload,
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
 const SIGN_FOR = (() => {
-  const m = /^#(signin|join)=(inflight|weather|fitness|home)(&|$)/.exec(ARRIVED);
+  const m = /^#(signin|join)=(inflight|weather|fitness|mail|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
       const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
@@ -73,7 +282,7 @@ const SIGN_FOR = (() => {
   history.replaceState(null, "", location.pathname + location.search);
   const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
   const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now() };
-  // (an app asks with its word, and InFlight with its key as well: without them, it didn't come from the app; and one
+  // (an app asks with its word, and Chat with its key as well: without them, it didn't come from the app; and one
   // kept from before is dropped, as arriving any other way drops it)
   if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) {
     try { sessionStorage.removeItem("acct-for"); } catch (_) {}
@@ -95,7 +304,7 @@ function homeEdit() { try { return sessionStorage.getItem("acct-confirm") === "e
 function confirmForHome() {
   let want = null; try { want = sessionStorage.getItem("acct-confirm"); sessionStorage.removeItem("acct-confirm"); } catch (_) {}
   if (want !== "edit" || !S.me?.signedIn) return;
-  const edit = () => location.replace(siteUrl("") + "#edit");
+  const edit = () => location.replace(homeVia(siteUrl("") + "#edit", true));
   if (S.me.fresh) return edit();
   openSheet(() => ({ title: "Change the home page", body: [
     h("p.hint", { text: "Show it’s you first, then you’re back on the home page to change it." }),
@@ -103,27 +312,25 @@ function confirmForHome() {
 }
 // a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
-// (which app sent you here: InFlight's profile, or Weather's account card)
+// (which app sent you here: Chat's profile, or Weather's account card)
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
-// (what an app's link opens straight away: Edit profile, or InFlight's settings, from its own Settings)
+// (what an app's link opens straight away: Edit profile, or Chat's settings, from its own Settings)
 const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
-// back to the app: this window closed where InFlight opened it, else the app opened here (the home page in this
+// back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again)
 function backToApp() {
-  if (S.signFor) return leaveFor(S.signFor.back);
+  if (S.signFor) return leaveFor(S.signFor.app === "home" ? homeVia(S.signFor.back) : S.signFor.back);
   const from = fromApp(), app = APPS[from] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
-  if (from === "home") return location.replace(siteUrl(app.sub));
+  if (from === "home") return location.replace(homeVia(siteUrl(app.sub)));
   try { window.close(); } catch (_) {}
   setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
 }
 const backPill = () => h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name);
 const backButton = (r) => fromApp() && r(backPill());
-// the page's title, in the middle of a bar at its top, with the way back to the app it was opened from (if it was)
-const titled = (r, text) => r(h("div.titlebar", {}, fromApp() ? backPill() : h("span"), h("h1", { text })));
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -191,6 +398,7 @@ const ICONS = {
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/>',
+  data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   block: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
   car: '<path d="M5 16v-5l2-4.5h10l2 4.5v5"/><path d="M3.5 16h17v2.5h-17z"/><path d="M5 11h14"/>',
@@ -250,21 +458,26 @@ async function startAutofill(field, picked) {
   } catch (_) { if (autofill === ac) autofill = null; }
 }
 
-// the rest of the site, from here (account.<site> → chat.<site>, weather.<site>, <site>)
+// the apps, from here (account.inflite.ai → chat.inflite.ai, weather.inflite.ai), and the home page, on a site of its
+// own (georgefarrowgreen.com; the tests' ifl.test → gfg.test; localhost's own)
 function siteUrl(sub) {
-  const { protocol, hostname, port } = location;
-  if (!hostname.startsWith("account.")) return `https://${sub ? sub + "." : ""}georgefarrowgreen.com/`;
-  return `${protocol}//${sub ? sub + "." : ""}${hostname.slice(8)}${port ? ":" + port : ""}/`;
+  const { protocol, hostname, port } = location, p = port ? ":" + port : "", apps = hostname.slice(8);
+  if (!hostname.startsWith("account.")) return sub ? `https://${sub}.inflite.ai/` : "https://georgefarrowgreen.com/";
+  return sub ? `${protocol}//${sub}.${apps}${p}/` : `${protocol}//${HOME_SITES[apps] || apps}${p}/`;
 }
+// (to the home page, signed in there too: its sign-in carried over, functions/_hop.js. fresh: one just made here, so
+// carried over even if the home page was signed in to before, perhaps as someone else)
+const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/start?to=${encodeURIComponent(to)}${fresh ? "&fresh=1" : ""}`;
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
-// chat.<site>/ or InFlight's old <site>/pigeon/, weather.<site>/, fitness.<site>/, or <site>/ (beside this page's account.<site>, on the
+// chat.<site>/, weather.<site>/, fitness.<site>/, or the home page (beside this page's account.<site>, on the
 // same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
-    const u = new URL(back), site = location.hostname.replace(/^account\./, "");
-    const ok = { inflight: [`chat.${site}/`, `${site}/pigeon/`], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], home: [`${site}/`] }[app];
+    const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
+    // (and Chat at /pigeon/, where the home page and the apps are one: locally)
+    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -288,7 +501,7 @@ function when(t) {
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
+// ---- appearance: the account's (Automatic, Light or Dark, as Chat has it), remembered here for next time ----
 // (fade: changed while you're looking, the page and any sheet on it cross-fade from one to the other, where the
 // browser can and motion's welcome; else, and as the page opens, at once). (What's put is the last asked for, so a fade
 // still on its way doesn't undo one asked for since: a choice put back, as it couldn't be kept.)
@@ -420,8 +633,8 @@ function render() {
   main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
-  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
-  whoBar();
+  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
+  IFL.watch(window);
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
 }
@@ -540,25 +753,31 @@ function signedIn(r) {
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
   // (an app's settings that are the account's, a tap from its card: inflightView, weatherSetView, fitnessSetView)
   const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView };
+  // (and those kept in the app itself: Mail's addresses are its own, so its settings button opens Mail at them)
+  const SET_LINKS = { mail: "#settings" };
   const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
       h("button.about", { type: "button", "aria-label": `About ${name}`, "data-k": `about-${id}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
     h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
     SETS[id] ? h("div.app-acts", {}, h("button.app-set", { type: "button", "aria-label": `${name} settings`, "data-k": `${id}-settings`, onclick: () => openSheet(SETS[id]) },
-      icon("sliders", 18, 2.1)), open(id, name)) : open(id, name));
+      icon("sliders", 18, 2.1)), open(id, name))
+      : SET_LINKS[id] ? h("div.app-acts", {}, h("a.app-set", { href: siteUrl(APPS[id].sub) + SET_LINKS[id], "aria-label": `${name} settings`, "data-k": `${id}-settings` },
+        icon("sliders", 18, 2.1)), open(id, name))
+      : open(id, name));
   const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
-    app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
+    app("inflight", "Chat", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
       f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
     app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
-      fx.plan ? "On a plan" : "Training, using AI")))));
+      fx.plan ? "On a plan" : "Training, using AI"),
+    // (Mail, the site's inbox, is the admin's alone: functions/_mailapp.js)
+    m.admin && app("mail", "Mail", MAIL_ICON, "The site’s inbox", "Yours alone, as admin")))));
   const top = [
-    sec("title", titled(r, "Account")),
     r(sec("card", posterCard(m))),
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
     pw.leaked && r(sec("leak", leakBanner())),
@@ -571,21 +790,39 @@ function signedIn(r) {
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
   const account = r(sec("account", section("Account", h("div.group.glass", {},
-    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
-    row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) })))));
+    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
+    row({ icon: "data", tint: "grey", title: "Your Data", onclick: () => openSheet(exportView) })))));
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
-    row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
+    row({ icon: "moon", tint: "grey", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })))));
-  // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
-  // of its own, so from there it's here)
+  // (signing out is in InFlite's menu, at its foot, as in every app)
   const ending = [
-    // (the site's admin, for the linked account only, at the foot, over Sign out: the top's about you and your apps;
+    // (the site's admin, for the linked account only, at the foot: the top's about you and your apps;
     // #admin, from the old dashboard or its email, opens it, once the page has settled)
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
-    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
-  return [h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
+  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
+}
+// InFlite's header, the same in every app: your photo (InFlite's menu), Account large with its line under it (your
+// handle, and how safe it is), and, opened from an app, the way back to it in the capsule; compact as it's scrolled
+function acctHead(m, todo) {
+  const hd = IFL.header({ title: "Account", me: avatar(m), onMe: (b) => youMenu(b, m), cls: "ahead",
+    line: `@${String(m.handle).replace(/[&<>"]/g, "")} · ${todo ? `<i>${todo} to do</i>` : "secure"}` });
+  if (fromApp()) hd.querySelector(".ifh-acts").append(backPill());
+  return hd;
+}
+function youMenu(at, m) {
+  IFL.menu(at, {
+    app: "account", build: BUILD,
+    me: { name: m.name, line: `@${m.handle}`, photo: avatar(m) },
+    // (the page is the account's settings, so just what isn't on it: your passkeys, the way into every app)
+    rows: [
+      { icon: "key", color: "indigo", label: "Passkeys", value: String(m.passkeys?.length || "Add one"), open: () => openSheet(passkeysView) },
+    ],
+    account: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }),
+    signOut: (!fromApp() || fromApp() === "home") ? () => signOut(at) : null,
+  });
 }
 // Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
 // it, your name and handle on it (your email's in Edit profile, and Sign-in and security); no photo, your colours and initial, and Add a photo. The camera opens Your photo.
@@ -708,11 +945,11 @@ async function savePhoto(btn, said) {
     say(said, e.message);
   }
 }
-// Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
+// Your code: a QR code of the link that adds you in Chat, to show a friend (or share the link itself)
 function codeView() {
   const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
   import("./qr.js").then(({ qrSvg }) => {
-    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in InFlight` });   // (on its card, whichever its colour: styles.css --qr-card)
+    qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: `Add @${m.handle} in Chat` });   // (on its card, whichever its colour: styles.css --qr-card)
     // (drawn in on its card, not just there)
     qr.firstElementChild?.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: tok("--ease-out") });
   })
@@ -722,7 +959,7 @@ function codeView() {
     h("div.code-who", {}, avatar(m, true), h("div", {}, h("b", { text: m.name }), h("span", { text: `@${m.handle}` }))),
     h("div.code-big", {}, qr),
     h("div.code-acts" + (navigator.share ? ".two" : ""), {},
-      navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on InFlight`, text: `Add me on InFlight: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
+      navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on Chat`, text: `Add me on Chat: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
       h("button.btn" + (navigator.share ? ".quiet" : ""), { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied."); } catch (_) { toast(link); } } }, "Copy link")),
   ] };
 }
@@ -730,14 +967,15 @@ const notifySaid = (n) => [n?.places && `${n.places} ${n.places === 1 ? "place" 
 // An app: what it keeps of yours, in a word or two, and the way into it
 function appView(id) {
   if (id === "fitness") return fitnessView();
+  if (id === "mail") return mailView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
-    h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
+    h("b", { text: inflight ? "Chat" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
   const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
-  const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "InFlight" : "Weather"}`, icon("open", 18, 2.4));
+  const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "Chat" : "Weather"}`, icon("open", 18, 2.4));
   if (inflight) {
     const f = ap.inflight || {};
-    return { title: "InFlight", quiet: true, body: [head,
+    return { title: "Chat", quiet: true, body: [head,
       h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
         stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
       open] };
@@ -753,6 +991,13 @@ function appView(id) {
 }
 
 // What Fitness keeps of yours: your activities (each with its file), the space they take, your plan and your own workouts
+// (Mail: what it is, and where; its mail is kept by Mail itself, not here)
+function mailView() {
+  return { title: "Mail", quiet: true, body: [
+    h("div.app-head", {}, h("img", { src: MAIL_ICON, alt: "", width: 64, height: 64 }), h("b", { text: "Mail" }), h("span", { text: "The site’s inbox" })),
+    h("p.hint", { text: "Mail sent to any address at inflite.ai arrives here, and you can send from any of them. Only the site’s admin can open it, with a passkey, confirming it’s you every 12 hours." }),
+    h("a.btn", { href: siteUrl("email") }, "Open Mail", icon("open", 18, 2.4))] };
+}
 function fitnessView() {
   const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
@@ -808,7 +1053,7 @@ function checks(m) {
 // sign in, and where and when; each row says how things are, and opens its own sheet
 function securityView() {
   const m = S.me, pw = m.password || {}, here = m.devices.find((d) => d.current);
-  return { title: "Sign-in and security", body: [
+  return { title: "Sign-in and Security", body: [
     ...checkupView(true).body,
     h("h4.app-k", { text: "Signing in" }),
     h("div.group", {},
@@ -852,7 +1097,7 @@ function deleting(r) {
         try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); anew(() => { S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }); }
         catch (err) { toast(err.message, true); }
       } }, icon("undo", 20, 2.2), "Keep my account"),
-      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
+      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign Out")))),
   ];
 }
 // The email's link to keep it (#keep=): kept once that's tapped, not as the link's opened. (A link that won't work is
@@ -879,8 +1124,9 @@ function keepPage(r) {
 // (#join, #forgot and #invite= open the last two, as the apps link here) ----
 const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // the way between them: the form below changed in place, the rest of the page staying put
-// the account's own icon (icon.svg: a warm head, frosted glass shoulders, as Weather's sun and cloud)
-const logo = () => h("div.mark.logo", {}, h("img", { src: "/icon.svg?v=2", alt: "", width: 92, height: 92 }));
+// InFlite's own mark (inflite.svg: a petal in each app's colour round the sun), where you sign in to them all; the
+// account's icon (icon.svg: a warm head, frosted glass shoulders) is kept for the account among the apps
+const logo = () => h("div.mark.logo", {}, h("img", { src: "/inflite.svg?v=1", alt: "", width: 92, height: 92 }));
 // (where the browser can, and motion's welcome, the card goes to its new size as the title and what's in it cross-fade:
 // the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
 let gating = 0;
@@ -906,7 +1152,7 @@ function signedOut(r) {
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   const head = { signin: [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
-      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on georgefarrowgreen.com. Once it’s made, you’re straight back in ${to}.` : "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on InFlite. Once it’s made, you’re straight back in ${to}.` : "One account for every app on InFlite, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [backButton(r), h("div.welcome", {},
@@ -915,19 +1161,19 @@ function signedOut(r) {
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
     // (sent here by an app: which, as that's where you'll be once you're in)
-    mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: `/apps/${S.signFor.app}.png`, alt: "" }), h("b", { text: to }))
+    mode === "signin" && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: appIcon(S.signFor.app), alt: "" }), h("b", { text: to }))
       : last ? h("p.lead", { text: `@${last.handle}` })
-      : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
+      : h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "Chat" }),
         ", ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }), " and ", h("img", { src: "/apps/fitness.png", alt: "" }), h("b", { text: "Fitness" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard()),
     r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
 }
-// (how a new account's made: here, where anyone can, or with the invite this page was opened with; else by invitation,
-// said plainly rather than a link to a page that says so)
+// (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
+// nothing said: the line kept, empty)
 function joinLine() {
   return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
-    : h("p.foot.new.invite", { id: "joinline" }, ...(S.join && !S.join.pending ? [h("b", { text: "New here?" }), " Accounts are by invitation: open the link you were sent to make yours."] : []));
+    : h("p.foot.new.invite", { id: "joinline" });
 }
 // Opened from an app, signed in there: carry on as that account here, said yes to
 function handoffPage(r) {
@@ -945,8 +1191,8 @@ function handoffPage(r) {
     r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];
 }
 // ---- sent here by an app to sign in (S.signFor): back to it once you're in, the sign-in handed back (functions/
-// _handback.js), and for InFlight what unlocks its key there, sealed to its tab ----
-// Signed in here already: carrying on as yourself. For InFlight, once you've shown it's you, as what opens its key goes
+// _handback.js), and for Chat what unlocks its key there, sealed to its tab ----
+// Signed in here already: carrying on as yourself. For Chat, once you've shown it's you, as what opens its key goes
 // back with you: a passkey with its own copy of the key, or your password (just the password, after signing in with a
 // passkey that hasn't one, or can't give its secret in this browser: S.need).
 function continuePage(r) {
@@ -960,7 +1206,7 @@ function continuePage(r) {
     r(go ? h("div.signin.glass", {}, go, said) : unlockCard(m, said)),
     r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => { S.need = null; signOut(e.currentTarget); } }, "Sign out"))))];
 }
-// (InFlight's key, opened there with what you show here)
+// (Chat's key, opened there with what you show here)
 function unlockCard(m, said) {
   const pks = S.need ? [] : (m.passkeys || []).filter((p) => p.messages), byKey = passkeysWork() && pks.length > 0;
   const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
@@ -1000,21 +1246,23 @@ function unlockCard(m, said) {
   } }, icon("face", 21, 1.9), "Continue with a passkey");
   const or = key && h("div.or", { text: "or with your password" });
   return h("div.signin.glass", {},
-    h("p.hint.center", { text: S.need ? "Your InFlight messages are locked with a key only your devices hold, and that passkey can’t open it here. Enter your password, and they open in InFlight."
-      : "Your InFlight messages are locked with a key only your devices hold. Show it’s you, and they open in InFlight." }),
+    h("p.hint.center", { text: S.need ? "Your Chat messages are locked with a key only your devices hold, and that passkey can’t open it here. Enter your password, and they open in Chat."
+      : "Your Chat messages are locked with a key only your devices hold. Show it’s you, and they open in Chat." }),
     key, or, form, said);
 }
-// Back to the app, signed in (way: what opens InFlight's key, for InFlight: { lock } or { prf, id }): its code made, and
-// off there with it; for the home page, which shares this page's sign-in, just back. With nothing to open InFlight's key
+// Back to the app, signed in (way: what opens Chat's key, for Chat: { lock } or { prf, id }): its code made, and
+// off there with it; for the home page, which shares this page's sign-in, just back. With nothing to open Chat's key
 // with (a passkey that can't), the password's asked for first; with anything else wrong, it's said, to try again.
 async function handBack(m, way, btn) {
   const a = S.signFor;
   S.me = m; S.pulled = Date.now(); stopAutofill();
   // (a sign-in an app handed over to this browser, signed in to nothing, is this page's alone: it goes on to an app once
-  // you've shown it's you here, as InFlight's way on always asks anyway)
-  if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; }
+  // you've shown it's you here, as Chat's way on always asks anyway)
+  if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; m.fresh = true; }
+  // (Mail, the site's inbox, is the admin's alone, and opens only once you've shown it's you: as Admin's lists do)
+  if (a.app === "mail" && !m.fresh) { if (!(await shownHere())) return; m.fresh = true; }
   // (the home page: back, saying it's from signing in, so it greets you)
-  if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(`${a.back}#signedin${faceHint(m, face)}`); }
+  if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(homeVia(`${a.back}#signedin${faceHint(m, face)}`, true)); }
   const go = async () => {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
@@ -1034,7 +1282,7 @@ const shownHere = () => new Promise((ok) => {
   Sheet.cancel = () => ok(false);
   openSheet(() => confirmView(() => { Sheet.cancel = null; closeSheet(); ok(true); }, closeSheet));
 });
-// what opens InFlight's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
+// what opens Chat's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
 // used, if it has its own copy of the key; else nothing (the password's needed)
 async function keyFor(m, way) {
   if (way.lock) return { box: await E2E.sealFor(S.signFor.seal, { lock: way.lock }) };
@@ -1048,7 +1296,7 @@ function leaveFor(url) {
   location.replace(url);
 }
 // An account from before Argon2id, signed in to with its password: stretched again the new way (a new salt, and the
-// key locked anew with what that gives; the same password and key), as InFlight did when it signed in itself. → what
+// key locked anew with what that gives; the same password and key), as Chat did when it signed in itself. → what
 // the new one gives, and its salt; or nothing, if that didn't happen (the old one still works)
 async function restretch(pw, k) {
   try {
@@ -1163,7 +1411,7 @@ function joinCard() {
     h("div.jstep", { hidden: true }, field("Choose a handle", h("div.at", {}, "@", handle)), hstat),
     h("div.jstep", { hidden: true }, field("Email", email), h("p.hint", { text: "For sign-in alerts and a forgotten password. Never shown to anyone." })),
     h("div.jstep", { hidden: true }, pwField("Choose a password", pw), meter, hint,
-      h("p.hint", { text: "It also locks your InFlight encryption key, here on this device: the key is never sent anywhere unlocked." })),
+      h("p.hint", { text: "It also locks your Chat encryption key, here on this device: the key is never sent anywhere unlocked." })),
   ];
   let at = 0;
   const back = h("button.link.back", { type: "button", disabled: true, onclick: () => { say(said, ""); toStep(at - 1); } }, icon("back", 16, 2.4), "Back");
@@ -1238,7 +1486,7 @@ function inviteCard() {
     h("ol.invite-steps", { "aria-label": "How it works" },
       step(icon("mail", 22, 1.9), "Open your invite"),
       step(icon("person", 22, 1.9), "Make your account"),
-      step(to ? h("img", { src: `/apps/${to}.png`, alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
+      step(to ? h("img", { src: appIcon(to), alt: "" }) : icon("check", 22, 2.4), to ? `Back in ${APPS[to].name}` : "Use it everywhere")),
     h("form.form", { onsubmit: (e) => {
       e.preventDefault(); say(said, "");
       const m = /(?:#invite=|^)([A-Za-z0-9_-]{40,50})(?=[&\s]|$)/.exec(link.value.trim());
@@ -1261,11 +1509,11 @@ function forgotCard() {
       morph(box, () => box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message }))));
     } catch (err) { say(said, err.message, email); }
   } }, field("Email", email), go),
-  h("p.hint.center", { text: "With a passkey, a reset keeps your InFlight messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
+  h("p.hint.center", { text: "With a passkey, a reset keeps your Chat messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
   return box;
 }
 // A reset link's own page: who it's for, and a new password. With a passkey that holds a copy of the key (one made in
-// InFlight, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
+// Chat, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
 // new key pair, and older messages stay sealed.
 // (again: asked again from Try again, the page drawn anew only if the answer's changed)
 async function resetCheck(again) {
@@ -1328,14 +1576,14 @@ function resetPage(r) {
       h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
         h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
         pwField("New password", pw), meter, hint),
-      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
+      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your Chat messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
       S.me?.signedIn && h("button.link", { type: "button", onclick: () => anew(() => { S.reset = null; S.settled = false; render(); }) }, "Cancel"),
       said))),
   ];
 }
-// → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for InFlight (where it sent you here: what
+// → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for Chat (where it sent you here: what
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
 async function signInWithPasskey(only) {
   const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
@@ -1394,7 +1642,7 @@ function remember(m, way, id) {
 }
 function forget() { try { localStorage.removeItem(LAST); } catch (_) {} }
 // Signed in with a password, for an app, on a device that can make a passkey, with none yet: one offered before going
-// back, once a month at most (with a nudge here, the same month); for InFlight with its own copy of the key, made now
+// back, once a month at most (with a nudge here, the same month); for Chat with its own copy of the key, made now
 // the password's here to open it
 async function offerFits(m) {
   if (!passkeysWork() || m.passkeys?.length || m.deleting) return false;
@@ -1422,7 +1670,7 @@ function offerThen(m, k, card) {
   cardTo(card, h("div.signin.glass.offer", {},
     h("div.offer-art", { "aria-hidden": "true" }, icon("face", 40, 1.6)),
     h("h2", { text: "Next time, just a glance" }),
-    h("p", { text: `A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site${inflight ? ", and opens your InFlight messages too" : ""}.` }),
+    h("p", { text: `A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site${inflight ? ", and opens your Chat messages too" : ""}.` }),
     yes, no, said));
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
@@ -1639,7 +1887,7 @@ function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong
   // (a new word over one still showing fades in, rather than taking its place in a frame)
   if (showing) for (const k of toastEl.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: tok("--ease-out") });
   // (clear of the way back to the app at the top of the page, where there's one in sight)
-  const back = $("main .titlebar .backapp")?.getBoundingClientRect();
+  const back = $("main .ifh .backapp")?.getBoundingClientRect();
   if (back && back.bottom > 0 && back.top < 120) toastEl.style.setProperty("--below", `${Math.round(back.bottom + 8)}px`); else toastEl.style.removeProperty("--below");
   // (above an open sheet too: the top layer)
   if (top && !toastEl.matches(":popover-open")) { toastEl.showPopover(); void toastEl.offsetWidth; }
@@ -2023,7 +2271,7 @@ function profileView() {
     try {
       S.me = await busy(done, "Saving…", () => call("me/profile", { method: "PATCH", body: changes }));
       closeSheet(); render(); toast(changes.handle ? `You’re @${S.me.handle} now.` : "Profile saved.");
-      if (justEditing()) setTimeout(backToApp, 1100);         // (back to InFlight, where it shows already)
+      if (justEditing()) setTimeout(backToApp, 1100);         // (back to Chat, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
   for (const i of [name, handle]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
@@ -2194,7 +2442,7 @@ function passkeyView(id) {
   return { title: p.label, right: save, body: [
     h("div.form", {}, field("Name", name)),
     h("div.group", {}, info("Saved in", p.provider || "Not known"), info("Added", day(p.createdAt)), info("Last used", p.usedAt ? ago(p.usedAt) : "Not yet"),
-      info("InFlight messages", p.messages ? "Opens them" : "Needs your password")),
+      info("Chat messages", p.messages ? "Opens them" : "Needs your password")),
     !p.messages && passkeysWork() && h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
       try {
@@ -2202,7 +2450,7 @@ function passkeyView(id) {
         if (secret) pushSheet(() => keyCopyView(id, secret));
         else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
       } catch (err) { say(said, err.message); }
-    } }, "Use it for InFlight messages")),
+    } }, "Use it for Chat messages")),
     h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
       try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
       catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
@@ -2214,7 +2462,7 @@ async function addPasskey() {
   let cred;
   try {
     cred = await passkeyMake({ publicKey: {
-      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "georgefarrowgreen.com" },
+      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlite" },
       user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
       authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
@@ -2233,8 +2481,8 @@ async function addPasskey() {
   return { id: cred.id, secret };
 }
 
-// ---- a passkey that opens InFlight's messages too: what only it can work out (its PRF secret, for the site's one salt)
-// locks its own copy of the key to them, made here from the password-locked one, as InFlight does with one added there.
+// ---- a passkey that opens Chat's messages too: what only it can work out (its PRF secret, for the site's one salt)
+// locks its own copy of the key to them, made here from the password-locked one, as Chat does with one added there.
 // So on a new phone, signing in with it opens the messages with no password. ----
 const prfOf = (cred) => { const r = cred?.getClientExtensionResults?.().prf; return r?.results?.first ? new Uint8Array(r.results.first) : null; };
 async function prfByUse(id, rpId) {
@@ -2258,11 +2506,11 @@ function keyCopyView(id, secret, added = "") {
         const inner = await E2E.unlock(lockKey, vault);
         S.me = await post("passkeys/vault", { id, vault: await E2E.lock(await E2E.fromSecret(secret), inner) });
       });
-      patch(); popSheet(); toast("This passkey opens your InFlight messages too.");
+      patch(); popSheet(); toast("This passkey opens your Chat messages too.");
     } catch (err) { say(said, err.message, pw); }
   } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
-  return { title: added ? "Passkey added" : "InFlight messages", body: [
-    h("p.hint", { text: "Your InFlight messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
+  return { title: added ? "Passkey added" : "Chat messages", body: [
+    h("p.hint", { text: "Your Chat messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
     form,
     h("button.link", { type: "button", onclick: () => { popSheet(); if (added) toast(added); } }, "Not now"),
     said] };
@@ -2285,7 +2533,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? { inflight: "InFlight", weather: "Weather", fitness: "Fitness", account: "Account" }[d.app] : d.browser || d.label;
+    const name = d.app ? { inflight: "Chat", weather: "Weather", fitness: "Fitness", mail: "Mail", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
@@ -2343,7 +2591,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Mail: MAIL_ICON, Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -2536,13 +2784,13 @@ function unitsView() {
 }
 
 // ---- emails: what each app sends you (each from its own address). The account's, about signing in and its security,
-// always; InFlight's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
+// always; Chat's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
 // briefing, a switch each (for which places and when, its Notifications say) ----
 // What the apps email besides the account's own: all of it, none, or which apps
 function emailsSaid(e = {}) {
   const on = [e.inflight, e.weather?.warn, e.weather?.brief];
   if (on.every(Boolean)) return "All on";
-  const apps = [e.inflight && "InFlight", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
+  const apps = [e.inflight && "Chat", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
   return apps.length ? apps.join(", ") : "Security only";
 }
 function emailsView() {
@@ -2568,7 +2816,7 @@ function emailsView() {
     head("/icon.svg?v=2", "Account"),
     h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Sign-ins and security" }), h("small", { text: "So you’d know if it wasn’t you" })),
       h("span.val", { text: "Always on" }))),
-    head("/apps/inflight.png", "InFlight"),
+    head("/apps/inflight.png", "Chat"),
     h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications by email" }),
       h("small", { text: m.emailOk ? "Pigeons landing, friend requests and your week in flight, as its Notifications have them" : "Confirm your email first" })), sw)),
     head("/apps/weather.png", "Weather"),
@@ -2579,7 +2827,7 @@ function emailsView() {
     said] };
 }
 
-// ---- InFlight's settings that are the account's (functions/api/account inflight): which notifications, how they read
+// ---- Chat's settings that are the account's (functions/api/account inflight): which notifications, how they read
 // on the lock screen, quiet hours and email; who sees what; and who's blocked. Its own Settings opens them here
 // (open=inflight), with the way back to it; a push on or off, its lock and haptics are each phone's, and stay in the app ----
 // (ifFor: whose they are; ifSeq, ifBusy: what's been asked for, and the changes on their way; ifStale: a fetch dropped
@@ -2597,7 +2845,7 @@ const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "Takes off", "When 
 const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
   ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
-// InFlight's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
+// Chat's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
 // comes. Another account's, signed in here since, never shown; and what comes dropped if a change was made since it was
 // asked for, or is still being made, as what that change gave back is newer) → the parts its pages are drawn with, or
 // what to show while there are none
@@ -2611,8 +2859,8 @@ function ifParts(title) {
       if (s === ifSeq && !ifBusy) { IF = r; if (onIf()) redraw(); } else { ifStale = true; ifCaughtUp(); }
     }, (e) => { if (who === S.me?.id && !IF) { IF = { error: e.message }; redraw(); } });
   }
-  const back = title === "InFlight" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
-    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "InFlight") : null;
+  const back = title === "Chat" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
+    ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Chat") : null;
   if (!IF) return { wait: { title, left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] } };
   if (IF.error) return { wait: { title, left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] } };
   const said = h("p.said", { role: "alert" });
@@ -2634,11 +2882,11 @@ function ifParts(title) {
 }
 const hhRange = (n) => `${hh(n.quietFrom)}–${hh(n.quietTo)}`;
 function inflightView() {
-  const P = ifParts("InFlight");
+  const P = ifParts("Chat");
   if (P.wait) return P.wait;
   const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => k === "approxLocation" ? !IF.privacy[k] : IF.privacy[k]).length;
-  return { title: "InFlight", quiet: true, left: P.back, body: [
-    setHead("inflight", "InFlight"),
+  return { title: "Chat", quiet: true, left: P.back, body: [
+    setHead("inflight", "Chat"),
     h("div.group", {},
       row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(ifNotifyView) }),
       switchRow({ icon: "mail", tint: "blue", title: "Email me", sub: IF.emailOk ? "After 10 minutes unread" : "Confirm your email first",
@@ -2648,7 +2896,7 @@ function inflightView() {
       row({ icon: "eye", tint: "teal", title: "Who sees what", value: shared === IF_PRIVACY.length ? "All shared" : shared ? `${shared} of ${IF_PRIVACY.length}` : "Nothing", onclick: () => pushSheet(ifPrivacyView) }),
       row({ icon: "block", tint: "grey", title: "Blocked", value: IF.blocked.length ? String(IF.blocked.length) : "No one", onclick: () => pushSheet(ifBlockedView) })),
     P.said,
-    ...openIn("inflight", "InFlight", "For push, Lock InFlight and haptics, on each phone")] };
+    ...openIn("inflight", "Chat", "For push, Lock Chat and haptics, on each phone")] };
 }
 // which notifications, how they read on the lock screen, and quiet hours
 function ifNotifyView() {
@@ -2695,7 +2943,7 @@ function ifBlockedView() {
       ifSeq++;
       try { IF = await busy(btn, "", () => call("inflight/block", { method: "DELETE", body: { id: b.id } })); redraw(); toast(`${b.name} is unblocked.`); }
       catch (e) { say(P.said, e.message); }
-    }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in InFlight." })))];
+    }))) : [h("div.row.plain.info", {}, h("span.tx", {}, h("small", { text: "No one. Block someone from their chat in Chat." })))];
   return { title: "Blocked", body: [h("div.group", {}, rows), P.said] };
 }
 
@@ -2965,7 +3213,7 @@ function exportView() {
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
   // (a list, as Settings has it: the download, then deleting the account apart, asked again in its own sheet)
-  return { title: "Your data", body: [
+  return { title: "Your Data", body: [
     h("div.group", {}, h("button.row", { type: "button", onclick: get },
       h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" })), h("span.get", {}, icon("download", 20, 2.2)))),
     said,
@@ -2980,7 +3228,7 @@ function deleteView() {
   sure.addEventListener("input", () => { go.disabled = sure.value.trim().replace(/^@/, "").toLowerCase() !== m.handle; });
   return { title: "Delete account", body: [
     h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
-    h("ul.gone", {}, h("li", { text: "InFlight: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
+    h("ul.gone", {}, h("li", { text: "Chat: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
       h("li", { text: "Fitness: your activities and their files, your plan and your workouts" }),
       h("li", { text: "Your profile, password and passkeys" })),
     h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),
@@ -3020,19 +3268,6 @@ document.addEventListener("visibilitychange", refresh);
 addEventListener("focus", refresh);
 setInterval(refresh, 5 * 60000);      // (and on coming back to the page: a look every minute redid the account's figures for nothing)
 
-// ---- whose account, kept in sight: once the profile's scrolled away, your photo and name in a bar of glass at the top
-// (a tap on it goes back to the top) ----
-const bar = h("div.whobar", { "aria-hidden": "true", onclick: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }) });
-document.body.append(bar);
-const heroSeen = new IntersectionObserver(([e]) => bar.classList.toggle("on", !e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: "-64px 0px 0px 0px" });
-function whoBar() {
-  heroSeen.disconnect();
-  const m = S.me, hero = $("main .hero");
-  if (!m?.signedIn || !hero) { bar.classList.remove("on"); return; }
-  bar.replaceChildren(avatar(m, true), h("b", { text: m.name }));
-  heroSeen.observe(hero);
-}
-
 // ---- glass behind the status bar, once the page has scrolled under it ----
 // (how far, on the bar itself: on the page's root, every part of the page was styled anew at each frame of a scroll)
 const statusEl = $(".status");
@@ -3055,4 +3290,5 @@ function scrolled() {
 }
 addEventListener("scroll", scrolled, { passive: true });
 
+IFL.built("account", BUILD);
 load();

@@ -1,4 +1,4 @@
-// InFlight Live: the desktop tracker, and everything it must never show.
+// Chat Live: the desktop tracker, and everything it must never show.
 import { kit } from './lib.mjs';
 import { inflightSettings } from './join.mjs';
 import { chromium } from 'playwright';
@@ -113,11 +113,11 @@ await ph.screenshot({ path: `${out}/tracker-phone.png` });
 const W = await inflightSettings(G.p, 'Who sees what');
 await W.locator('#if-shareTracker').scrollIntoViewIfNeeded(); await W.waitForTimeout(400);
 await W.screenshot({ path: `${out}/tracker-switch.png` });
-ok(await W.isChecked('#if-shareTracker'), 'InFlight Settings has the Live Tracker switch, on');
+ok(await W.isChecked('#if-shareTracker'), 'Chat Settings has the Live Tracker switch, on');
 await W.close();
 // the computer page links to it
 const cctx = await b.newContext({ viewport: { width: 1280, height: 800 } }); const cp = await cctx.newPage(); await cp.goto('http://chat.localhost:8788/');
-ok(await cp.isVisible('.na-live') && (await cp.getAttribute('.na-live', 'href')) === '/tracker', 'the "not on a computer" page links to InFlight Live');
+ok(await cp.isVisible('.na-live') && (await cp.getAttribute('.na-live', 'href')) === '/tracker', 'the "not on a computer" page links to Chat Live');
 await cp.screenshot({ path: `${out}/tracker-na.png` });
 console.log(`FAILS ${K.fails()}`);
 process.exit(0);

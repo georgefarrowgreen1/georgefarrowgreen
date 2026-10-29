@@ -21,8 +21,7 @@ function todayView() {
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
   const title = isToday ? "Today" : sel === addDays(TODAY, 1) ? "Tomorrow" : sel === addDays(TODAY, -1) ? "Yesterday" : new Date(sel).toLocaleDateString("en-GB", { weekday: "long" });
   // (the date over the title, as Apple's own apps have Today; with Rhythm, where you are in its block)
-  const out = [h("div.head.dated", {}, h("div.t", {}, h("div.sub", { text: rhythmOn() ? rhythmSaid() : dayLong(sel) }), h("h1", { text: title })),
-    h("button.round.me", { type: "button", "aria-label": "You and settings", onclick: () => openSheet(settingsView) }, face()))];
+  const out = [head(title, rhythmOn() ? rhythmSaid() : dayLong(sel))];
   if (S.examples) {
     out.push(h("div.note.glass", {}, h("span.ic", {}, icon("sparkle", 16, 2.2)), h("div", {},
       h("b", { text: "Example rides are on. " }), "They’re made up, for a rider five weeks into a sportive plan, so there’s something to see. Import your own from a Garmin or a Wahoo, then turn the examples off to see only yours.",

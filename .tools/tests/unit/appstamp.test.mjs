@@ -1,4 +1,4 @@
-// InFlight's files as a phone gets them (functions/_app.js): the page names each script and stylesheet by what's in
+// Chat's files as a phone gets them (functions/_app.js): the page names each script and stylesheet by what's in
 // it, each module brings in its own stamped the same way, and a page asks the store for each file once, however many
 // of its files bring in the same module.
 import { test } from 'node:test';

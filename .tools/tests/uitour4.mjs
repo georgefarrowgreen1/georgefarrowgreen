@@ -1,10 +1,10 @@
-// Every screen and sheet of InFlight, with real (encrypted) data: screenshots,
+// Every screen and sheet of Chat, with real (encrypted) data: screenshots,
 // overlap/clipping audit and axe, in light and dark, at 390 and 320 wide.
 import { madeIn } from './handback.mjs';
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
-import { joinInFlight } from './join.mjs';
+import { joinChat } from './join.mjs';
 const [,, S, out, only] = process.argv;
 const BASE = 'http://localhost:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -20,7 +20,7 @@ async function phone(name, handle, city, pk) {
   p.on('pageerror', (e) => errs.push(`${name}: ${e}`)); p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|Content Security/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
   if (pk) { const cdp = await ctx.newCDPSession(p); await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } }); }
-  await joinInFlight(p, BASE + '/pigeon/', { name, handle, email: handle + '@example.com', city, passkey: !!pk });
+  await joinChat(p, BASE + '/pigeon/', { name, handle, email: handle + '@example.com', city, passkey: !!pk });
   return p;
 }
 const sess = (p) => p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }));
@@ -28,8 +28,8 @@ const api = (t, path, body, method) => fetch(BASE + '/api/pigeon/' + path, { met
 const rnd = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 // (a real key: the app seals to it, so a made-up point won't do)
 const realPub = async () => { const k = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']); const j = await crypto.subtle.exportKey('jwk', k.publicKey); return { kty: j.kty, crv: j.crv, x: j.x, y: j.y }; };
-// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; and signed in to
-// InFlight from there, as a phone is: handback.mjs)
+// (made where accounts are made, the account's page: account.localhost beside Chat run locally; and signed in to
+// Chat from there, as a phone is: handback.mjs)
 const apiUser = async (h, name) => { const proof = rnd(), email = h + '@example.com';
   return (await madeIn({ name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() })).j; };
 const act = (p, a, id) => p.evaluate(([a, id]) => { const x = document.createElement('button'); x.hidden = true; x.dataset.act = a; if (id) x.dataset.id = id; document.querySelector('#screen').append(x); x.click(); x.remove(); }, [a, id]);
@@ -133,7 +133,6 @@ const screens = [
   ['newsall', async () => { await act(G, 'tab', 'friends'); await act(G, 'newsall'); await G.waitForSelector('.sheet'); await G.waitForTimeout(800); }],
   ['stampsall', async () => { await act(G, 'tab', 'account'); await act(G, 'flightlog'); await G.waitForSelector('.sheet'); await G.waitForTimeout(800); await act(G, 'stampsall'); await G.waitForTimeout(600); }],
 
-  ['whatsnew', async () => { await act(G, 'tab', 'account'); await act(G, 'whatsnew'); await G.waitForSelector('.sheet'); }],
   ['credits', async () => { await act(G, 'tab', 'account'); await act(G, 'creditsheet'); await G.waitForSelector('.sheet'); }],
   ['profile', async () => { await act(G, 'tab', 'account'); await act(G, 'profile'); await G.waitForSelector('.sheet'); }],
   ['passkeys', async () => { await act(G, 'passkeys'); await G.waitForSelector('.sheet'); }],
@@ -171,7 +170,7 @@ for (const [w, h, th] of [[390, 844, 'light'], [390, 844, 'dark'], [320, 568, 'l
 const W = await (await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true })).newPage();
 size = '390'; theme = 'light';
 await W.goto(BASE + '/pigeon/'); await W.waitForSelector('.welcome'); await W.waitForTimeout(3500); await snap(W, 'welcome');
-// (Sign in: the account's page, for InFlight)
+// (Sign in: the account's page, for Chat)
 const toSignIn = async () => { await W.click('.welcome [data-act=acctsignin]'); await W.waitForURL((u) => u.hostname.startsWith('account.')); await W.waitForSelector('main .signin input[name=email]'); await W.waitForTimeout(1500); };
 await toSignIn(); await snap(W, 'signin');
 await W.setViewportSize({ width: 320, height: 568 }); size = '320';

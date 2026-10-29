@@ -109,14 +109,17 @@ ok(tabbed.every((x) => x === 'sheet' || x === 'body') && under.every(Boolean), '
 await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(900);
 const freed = await A.p.evaluate(() => [document.querySelector('#screen > .view').inert, document.querySelector('.compose').inert]);
 ok(freed.every((x) => !x), 'and once it closes, the screen can be reached again', JSON.stringify(freed));
-// 6. a switch flipped by keyboard on Account (the whole screen is drawn again): focus stays on it, so a second press flips it back
-await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=account]')?.click()); await A.p.waitForSelector('.view [data-act=haptics]'); await A.p.waitForTimeout(900);
-const sw = () => A.p.evaluate(() => { const a = document.activeElement; return { act: a?.dataset?.act || a?.tagName, on: a?.getAttribute?.('aria-checked') }; });
-await A.p.evaluate(() => document.querySelector('.view [data-act=haptics]').focus());
+// 6. a switch flipped by keyboard in InFlite's menu (its rows drawn again as they change): focus stays on it, so a second
+// press flips it back
+await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=account]')?.click()); await A.p.waitForTimeout(900);
+await A.p.click('.view .ifh-me'); await A.p.waitForSelector('.ifm-pop.open [role=switch][data-k=haptics]'); await A.p.waitForTimeout(700);
+const sw = () => A.p.evaluate(() => { const a = document.activeElement; return { act: a?.closest('[data-k]')?.dataset?.k || a?.tagName, on: a?.getAttribute?.('aria-checked') }; });
+await A.p.evaluate(() => document.querySelector('.ifm-pop [role=switch][data-k=haptics]').focus());
 const s0 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(400);
 const s1 = await sw(); await A.p.keyboard.press(' '); await A.p.waitForTimeout(400);
 const s2 = await sw();
 ok(s1.act === 'haptics' && s1.on !== s0.on && s2.act === 'haptics' && s2.on === s0.on, 'a switch flipped by keyboard keeps its focus through the redraw', JSON.stringify([s0, s1, s2]));
+await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(600);
 // 7. a menu opened by a tap that focused its button (as Android's do): the button's inert under the menu, which lets
 // its focus go, and a tap outside the menu gives it back
 await openChat(A, bs.me.id);

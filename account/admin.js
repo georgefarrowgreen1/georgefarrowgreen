@@ -74,7 +74,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     else if (s.mailFail) out.push({ title: "Email isn’t sending", text: `The last ${s.mailFail.n} failed · since ${seenAt(s.mailFail.since).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}`, open: admEmailView });
     if (s.late) out.push({ title: `${nOf(s.late, "landing")} not told yet`, text: "Notifications are running late.", open: admInsightsView });
     // (the scheduled jobs that send notifications: one that's run before but not in the last 20 minutes, said; and the server's errors today)
-    const stale = [["InFlight", s.ticks?.inflight], ["Weather", s.ticks?.weather]].filter(([, k]) => k && Date.now() - k.at > 20 * 60e3);
+    const stale = [["Chat", s.ticks?.inflight], ["Weather", s.ticks?.weather]].filter(([, k]) => k && Date.now() - k.at > 20 * 60e3);
     if (s.ticks && stale.length) out.push({ title: `${stale.map(([n]) => n).join(" and ")} notifications aren’t running`,
       text: stale.map(([n, k]) => (k ? `${n}: last ran ${seenAt(k.at)}` : `${n}: hasn’t run yet`)).join(" · "), open: admServerView });
     if (s.errors?.length) out.push({ title: `${nOf(s.errors.length, "server error")} today`, text: `Latest: ${s.errors[0].src} · ${seenAt(s.errors[0].at)}`, open: admServerView });
@@ -86,7 +86,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const info = (t, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val", { text: v }));
     const ran = (x) => (x ? `${seenAt(x.at)} · ${(x.ms / 1000).toFixed(1)} s` : "Not yet");
     return { title: "Server", body: [
-      h("div.group", {}, info("InFlight’s notifications", ran(k.inflight)), info("Weather’s notifications", ran(k.weather))),
+      h("div.group", {}, info("Chat’s notifications", ran(k.inflight)), info("Weather’s notifications", ran(k.weather))),
       h("p.hint", { text: "Each runs every few minutes (on a schedule, and whenever the apps are used). Over 20 minutes since the last run means notifications are late." }),
       errs.length ? h("div.group", {}, errs.map((e) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: e.src }), h("small", { text: `${e.msg} · ${seenAt(e.at)}` })))))
         : h("div.group", {}, h("div.empty", { text: "No errors today." }))] };
@@ -285,7 +285,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       !x ? admWait("invites") : ((list) => list.length > 0 && h("div.group", {}, list.map(item)))([...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 20)])] };
   }
 
-  // Insights: how InFlight is used, in totals over everyone (functions/_insights.js), never who sent what to whom
+  // Insights: how Chat is used, in totals over everyone (functions/_insights.js), never who sent what to whom
   const KINDS = { standard: "Standard", swift: "Swift", turbo: "Turbo", rocket: "Rocket", dumb: "Dumb (the secret one)", lunar: "Lunar", laser: "Laser", orbital: "Orbital" };
   // (grow: the first time its figures are shown, each column grows up into place, one after the next: styles.css)
   function admBars(title, vals, grow) {
@@ -330,7 +330,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
 
   // Storage: what's kept across the site, and how much, by app; each app's own page one tap on (functions/_retention.js)
   const bytes = (n) => (n == null ? "–" : n < 1024 ? `${Math.round(n)} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
-  const ST_APPS = [["fitness", "Fitness", "#f2552c"], ["inflight", "InFlight", "#2f7bf6"], ["home", "Home page", "#a855f7"], ["weather", "Weather", "#3ab0f0"], ["account", "Accounts", "#8e8e93"]];
+  const ST_APPS = [["fitness", "Fitness", "#f2552c"], ["inflight", "Chat", "#2f7bf6"], ["home", "Home page", "#a855f7"], ["weather", "Weather", "#3ab0f0"], ["account", "Accounts", "#8e8e93"]];
   const ST_KINDS = { photos: "Photos and voice", group: "Group photos", avatars: "Profile pictures", posters: "Card photos", bg: "Site backgrounds",
     rides: ["Ride and run files", "FIT, GPX and TCX"], garmin: "From Garmin, not yet read", strava: "From Strava, not yet read" };
   const ROWS = { fx_acts: "Activities", fx_well: "Nights and check-ins", fx_health: "From Apple Health", fx_health_key: "Apple Health links", fx_state: "Plans and settings",
