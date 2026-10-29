@@ -54,7 +54,7 @@ const onPage = async (ph, out = false) => {
   await q.fill('main .signin input[name=password]', PASSWORD); await q.click('main .signin form .btn');
   const r = await Promise.race([q.waitForSelector('main .hero', { timeout: 30000 }).then(() => 'signed in'),
     q.waitForSelector('main .said.bad', { timeout: 30000 }).then((e) => e.innerText())]).catch(() => 'nothing');
-  if (r === 'signed in' && out) { await q.click('main .row.action:text-is("Sign out")'); await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 15000 }); }
+  if (r === 'signed in' && out) { await q.click('main .ifh-me').then(() => q.click('.ifm-out')); await q.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 15000 }); }
   await q.close(); return r;
 };
 const before4 = await onPage(A2, true);

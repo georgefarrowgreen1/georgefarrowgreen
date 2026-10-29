@@ -123,7 +123,7 @@ ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisibl
 await shot('passkeys');
 await p.click('.sheet [data-act=close]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 8000 }); await slow(700);
 
-// (5. Signed-In Phones: on the account's page now, Sign-in and security → Signed-in devices: acctpage.mjs)
+// (5. Signed-In Phones: on the account's page now, Sign-in and Security → Signed-in devices: acctpage.mjs)
 
 // 6. everything done: the lock on
 sql(`UPDATE pg_users SET email_ok = 1 WHERE handle = 'geo'`);

@@ -45,7 +45,7 @@ const sheetText = (x) => text(x, '#sheet');
 const openRow = async (x, title) => { await x.p.click(`main .row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
 const closeSheet = async (x) => { await x.p.click('#sheet .sheet-head .x'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
 // (what's kept in Sign-in and security: its row on the page, then one of its own rows, opened over it)
-const openSecure = async (x, title) => { await openRow(x, 'Sign-in and security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
+const openSecure = async (x, title) => { await openRow(x, 'Sign-in and Security'); await x.p.click(`#sheet .sheet-body:not(.going) .row:has(b:text-is("${title}"))`); await settle(x, 700); };
 const account = async (x) => { await x.p.goto('about:blank'); await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
 const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
@@ -57,7 +57,7 @@ const signIn = async (x) => {
   await x.p.fill('main .signin input[name=password]', PW); await x.p.click('main .signin form .btn');
   await waitText(x, /Rowan Hale/);
 };
-const signOut = async (x) => { await x.p.click('main .row.action:text-is("Sign out")'); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
+const signOut = async (x) => { await x.p.click('main .ifh-me').then(() => x.p.click('.ifm-out')); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
 // a finger dragged sideways (or up) across what's at sel
 async function drag(x, sel, dx, dy = 0) {
   const r = await x.p.$eval(sel, (el) => { const b = el.getBoundingClientRect(); return { x: b.right - 40, y: b.top + b.height / 2 }; });
@@ -182,8 +182,8 @@ await shot(P, '04-app-weather');
 await closeSheet(P);
 
 // ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
-const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-ok(!(await P.p.$('main .checkup')) && /Sign-in and security \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and security)', ck0);
+const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and Security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(!(await P.p.$('main .checkup')) && /Sign-in and Security \d to do/.test(ck0), 'with things to do: its row says how many (the check-up kept in Sign-in and Security)', ck0);
 await signOut(P); await signIn(P);
 await P.p.waitForSelector('#sheet .nudge', { timeout: 8000 }).catch(() => {}); await settle(P, 600);
 ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-in: a word about a passkey', await sheetText(P));
@@ -194,7 +194,7 @@ await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P
 await P.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
 const made = await text(P, '#toast');
-await openRow(P, 'Sign-in and security');
+await openRow(P, 'Sign-in and Security');
 ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await sheetText(P)), 'a passkey made from it', made);
 await closeSheet(P);
 // (a laptop that can't make one isn't asked)
@@ -202,25 +202,25 @@ const L = await browser('laptop', { laptop: true });
 await account(L); await signIn(L); await settle(L, 2200);
 ok(!(await L.p.$('#sheet[open]')), 'a laptop with no way to make a passkey isn\'t asked');
 
-// ---- 6. The check-up: how it stands said by Sign-in and security's row, and at the head of its sheet; a fix opens
+// ---- 6. The check-up: how it stands said by Sign-in and Security's row, and at the head of its sheet; a fix opens
 // over it, Back returns ----
-const ckRow = () => P.p.locator('main .row:has(b:text-is("Sign-in and security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
-const openCheckup = async () => { await P.p.click('main .row:has(b:text-is("Sign-in and security"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
+const ckRow = () => P.p.locator('main .row:has(b:text-is("Sign-in and Security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+const openCheckup = async () => { await P.p.click('main .row:has(b:text-is("Sign-in and Security"))'); await P.p.waitForSelector('#sheet[open] .checkup'); await settle(P, 500); };
 const shut = async () => { await P.p.keyboard.press('Escape'); await P.p.waitForSelector('#sheet', { state: 'hidden' }).catch(() => {}); await settle(P, 300); };
 // (the email confirmed; the password not yet checked, as for an account from before)
 sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = NULL, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Sign-in and security 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
+ok(/Sign-in and Security 1 to do/.test(await ckRow()) && !(await P.p.$('main .checkup')), 'one thing to do: its row says so (nothing on the page itself)', await ckRow());
 await openCheckup();
 ok(/1 thing to do/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row.ok')).length === 3 && /Check your password for data breaches/.test(await text(P, '#sheet .checkup')), 'opened: what\'s left to do, and what\'s done', await text(P, '#sheet .checkup'));
 await P.p.click('#sheet .ck-row:has-text("Check your password") .mini'); await P.p.waitForSelector('#sheet h2:text-is("Check your password")'); await settle(P, 400);
-await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Sign-in and security")'); await settle(P, 400);
+await P.p.click('#sheet .sheet-head .back'); await P.p.waitForSelector('#sheet h2:text-is("Sign-in and Security")'); await settle(P, 400);
 ok(!!(await P.p.$('#sheet .checkup')), 'its fix opens over it, and Back returns to it');
 await shut();
 // all done
 sql(`UPDATE pg_users SET pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
 await account(P);
-ok(/Sign-in and security Secure/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
+ok(/Sign-in and Security Secure/.test(await ckRow()) && !(await P.p.$('main .banner')), 'all done: its row says so', await ckRow());
 await openCheckup();
 ok(/Well protected/.test(await text(P, '#sheet .checkup')) && (await P.p.$$('#sheet .ck-row')).length === 0, 'opened: well protected, folded to just that (not the four checks)', await text(P, '#sheet .checkup'));
 await shot(P, '06-checkup-sheet');
@@ -228,7 +228,7 @@ await shut();
 // a password found in a data breach: the one check that's said up top too, with the way to change it
 sql(`UPDATE pg_users SET pw_leaked = 1 WHERE id = '${uid}'`);
 await account(P);
-ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Sign-in and security 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
+ok(/Your password is in a data breach/.test(await text(P, 'main .banner')) && /Sign-in and Security 1 to do/.test(await ckRow()), 'a leaked password: said up top, as well as in the check-up', await text(P, 'main .banner'));
 await shot(P, '06b-leaked');
 await P.p.click('main .banner .mini'); await P.p.waitForSelector('#sheet[open] .sheet-body'); await settle(P, 400);
 ok(/password/i.test(await text(P, '#sheet h2')), 'its Change opens a new password', await text(P, '#sheet h2'));
@@ -313,7 +313,7 @@ ok(top === 0 && down === 1 && (await bar()) === 0, "a phone: InFlite's header co
 
 // ---- 10. Your data: as a PDF to read and keep, written from the export (the server's JSON) ----
 await account(P);
-await openRow(P, 'Your data');
+await openRow(P, 'Your Data');
 ok(/Download as PDF/.test(await sheetText(P)) && !/Download as JSON/.test(await sheetText(P)), 'your data: as a PDF (the JSON it\'s written from stays the server\'s)');
 await shot(P, '11-data');
 const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 }), (async () => { await P.p.click('#sheet .row:has-text("Download as PDF")'); await confirmIfAsked(P, PW); })()]);

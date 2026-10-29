@@ -230,8 +230,8 @@ await closeSheet(L);
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
-  // (deleting the account is under Your data now, with the rest of what's yours)
-  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
+  // (deleting the account is under Your Data now, with the rest of what's yours)
+  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row:has(b:text-is("Your Data"))')), 'opened from Weather, the account\'s page leaves signing out to Weather', page.text.slice(0, 160));
   ok(/^http:\/\/account\.ifl\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
@@ -294,7 +294,7 @@ await K.p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).
 ok(!!(await K.p.$('.tabs')), 'and back in Chat, open, on the same sign-in');
 // ---- 6. Signing out (on the account's page) signs out of Weather and Chat there too ----
 await K.p.goto('http://account.ifl.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
-await K.p.click('.row.action:text-is("Sign out")'); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+await K.p.click('main .ifh-me').then(() => K.p.click('.ifm-out')); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 await weather(K); await settings(K);
 await K.p.waitForFunction(() => /Powered by InFlite/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 ok(/Powered by InFlite/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
@@ -314,7 +314,7 @@ await waitFor(() => tDev()?.user_id && tDev()?.n > 0);
 const t1 = tDev();
 ok(t1?.user_id && t1.n > 0, 'the tablet: one of the account\'s devices, with its notifications', JSON.stringify(t1));
 await T.p.goto('http://account.ifl.test:8788/'); await T.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
-await T.p.click('.row.action:text-is("Sign out")'); await T.p.waitForTimeout(1500);
+await T.p.click('main .ifh-me').then(() => T.p.click('.ifm-out')); await T.p.waitForTimeout(1500);
 await weather(T);
 await waitFor(() => tDev() && !tDev().user_id, 15000);
 const t2 = rows(`SELECT user_id, (SELECT COUNT(*) FROM wx_subs s WHERE s.dev = d.dev) AS n FROM wx_devs d WHERE dev = '${t1.dev}'`)[0];

@@ -234,7 +234,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.06";
+const BUILD = "1.07";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -396,6 +396,7 @@ const ICONS = {
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/>',
+  data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   block: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
   car: '<path d="M5 16v-5l2-4.5h10l2 4.5v5"/><path d="M3.5 16h17v2.5h-17z"/><path d="M5 11h14"/>',
@@ -787,19 +788,17 @@ function signedIn(r) {
   // foot), a row each; the rest in their sheets
   const todo = checks(m).filter((x) => !x.ok).length;
   const account = r(sec("account", section("Account", h("div.group.glass", {},
-    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
-    row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) })))));
+    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
+    row({ icon: "data", tint: "grey", title: "Your Data", onclick: () => openSheet(exportView) })))));
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
-    row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
+    row({ icon: "moon", tint: "grey", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })))));
-  // (opened from an app, in its own window: signing out is the app's to do, not this window's; the home page has none
-  // of its own, so from there it's here)
+  // (signing out is in InFlite's menu, at its foot, as in every app)
   const ending = [
-    // (the site's admin, for the linked account only, at the foot, over Sign out: the top's about you and your apps;
+    // (the site's admin, for the linked account only, at the foot: the top's about you and your apps;
     // #admin, from the old dashboard or its email, opens it, once the page has settled)
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
-    (!fromApp() || fromApp() === "home") && r(sec("end", section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))),
   ];
   return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
 }
@@ -815,15 +814,9 @@ function youMenu(at, m) {
   IFL.menu(at, {
     app: "account", build: BUILD,
     me: { name: m.name, line: `@${m.handle}`, photo: avatar(m) },
-    // (what needs you first, in amber, till it's done; your passkeys, the way into every app; how every app looks and
-    // measures; your data on its own)
+    // (the page is the account's settings, so just what isn't on it: your passkeys, the way into every app)
     rows: [
-      ((todo) => ({ icon: "shield", color: "green", label: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, open: () => openSheet(securityView) }))(checks(m).filter((x) => !x.ok).length),
       { icon: "key", color: "indigo", label: "Passkeys", value: String(m.passkeys?.length || "Add one"), open: () => openSheet(passkeysView) },
-      { icon: "moon", color: "grey", label: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], open: () => openSheet(appearanceView) },
-      { icon: "ruler", color: "blue", label: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }).split(" · ").slice(0, 2).join(" · "), open: () => openSheet(unitsView) },
-      "-",
-      { icon: "data", color: "grey", label: "Your Data", open: () => openSheet(exportView) },
     ],
     account: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }),
     signOut: (!fromApp() || fromApp() === "home") ? () => signOut(at) : null,
@@ -1058,7 +1051,7 @@ function checks(m) {
 // sign in, and where and when; each row says how things are, and opens its own sheet
 function securityView() {
   const m = S.me, pw = m.password || {}, here = m.devices.find((d) => d.current);
-  return { title: "Sign-in and security", body: [
+  return { title: "Sign-in and Security", body: [
     ...checkupView(true).body,
     h("h4.app-k", { text: "Signing in" }),
     h("div.group", {},
@@ -3218,7 +3211,7 @@ function exportView() {
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
   // (a list, as Settings has it: the download, then deleting the account apart, asked again in its own sheet)
-  return { title: "Your data", body: [
+  return { title: "Your Data", body: [
     h("div.group", {}, h("button.row", { type: "button", onclick: get },
       h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" })), h("span.get", {}, icon("download", 20, 2.2)))),
     said,

@@ -43,7 +43,7 @@ async function signOut(x) {
   if (await x.p.waitForSelector('#sheet[open]', { timeout: 3000 }).catch(() => null)) { await x.p.keyboard.press('Escape'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); }
   await settle(x, 500);
   await x.p.evaluate(() => { window.__dusk = false; new MutationObserver(() => { if (document.querySelector('.sky.dim')) window.__dusk = true; }).observe(document.querySelector('.sky'), { attributes: true }); });
-  await x.p.click('.row.action:text-is("Sign out")');
+  await x.p.click('main .ifh-me').then(() => x.p.click('.ifm-out'));
   await x.p.waitForSelector('main .signin', { timeout: 20000 }); await settle(x, 1200);
   return x.p.evaluate(() => window.__dusk);
 }

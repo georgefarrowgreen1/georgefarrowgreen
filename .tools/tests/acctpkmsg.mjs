@@ -31,7 +31,7 @@ const uid = rows(`SELECT id FROM pg_users WHERE handle = 'ivy'`)[0].id;
 // 1. on the account's page: a passkey added, then (the password once) its own copy of the key
 await p.goto(`${ACCT}/`); await p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await p.waitForTimeout(2200);
 if (await p.$('#sheet[open] .nudge')) { await p.click('#sheet .x').catch(() => {}); await p.waitForTimeout(600); }
-await p.click('main .row:has(b:text-is("Sign-in and security"))'); await p.waitForSelector('#sheet[open]'); await p.waitForTimeout(500);
+await p.click('main .row:has(b:text-is("Sign-in and Security"))'); await p.waitForSelector('#sheet[open]'); await p.waitForTimeout(500);
 await p.click('#sheet .row:has(b:text-is("Passkeys"))'); await p.waitForSelector('#sheet .btn:has-text("Add a passkey")'); await p.waitForTimeout(400);
 await p.click('#sheet .btn:has-text("Add a passkey")');
 if (await p.waitForSelector('#sheet .confirm-card input[type=password]', { timeout: 4000 }).catch(() => null)) {
@@ -70,7 +70,7 @@ await shot('03-inflight');
 sql(`UPDATE pg_passkeys SET vault = NULL WHERE user_id = '${uid}'`);
 await p.goto(`${ACCT}/`); await p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await p.waitForTimeout(1500);
 if (await p.$('#sheet[open]')) { await p.keyboard.press('Escape'); await p.waitForTimeout(500); }
-await p.click('main .row:has(b:text-is("Sign-in and security"))'); await p.waitForSelector('#sheet[open]'); await p.waitForTimeout(500);
+await p.click('main .row:has(b:text-is("Sign-in and Security"))'); await p.waitForSelector('#sheet[open]'); await p.waitForTimeout(500);
 await p.click('#sheet .row:has(b:text-is("Passkeys"))'); await p.waitForTimeout(600);
 await p.click('#sheet .group .row >> nth=0'); await p.waitForTimeout(700);
 ok(/Chat messages\s*Needs your password/.test(await sheetText()), 'one with no copy says so', (await sheetText()).slice(0, 200));

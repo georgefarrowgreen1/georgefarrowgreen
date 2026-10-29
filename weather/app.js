@@ -2659,7 +2659,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.07";
+const BUILD = "1.08";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -2679,7 +2679,7 @@ function menuRows() {
   return [
     { icon: "rain", color: "blue", label: "Rain Alerts", value: rain ? `${rain} place${rain === 1 ? "" : "s"}` : "Off", open: () => openSettings("notify") },
     { icon: "sun", color: "orange", label: "Morning Briefing", value: n.brief ? n.briefAt || "07:00" : "Off", open: () => openSettings("notify") },
-    { icon: "ruler", color: "indigo", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => (SE() ? SE().openAccount("weather") : openSettings()) },
+    { icon: "ruler", color: "blue", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => (SE() ? SE().openAccount("weather") : openSettings()) },
     { icon: "moon", color: "grey", label: "Appearance", value: GLASS_SAID[s.glass] || "", open: () => openSettings("look") },
     "-",
     { icon: "sliders", color: "grey", label: "Settings", open: () => openSettings() },
