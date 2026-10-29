@@ -1,4 +1,4 @@
-// Markets at georgefarrowgreen.com/markets/: it lives at markets.inflite.ai, its own address, so the site's own address
+// Markets at georgefarrowgreen.com/markets/: it lives at finance.inflite.ai, its own address, so the site's own address
 // sends you there. Preview (*.pages.dev) and local addresses serve it right here, so a branch can be looked at before
 // it's live (signed out: signing in is only at the app's own address).
 import { serveMarkets, MARKETS_HOST } from "../_mktapp.js";

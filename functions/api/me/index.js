@@ -11,7 +11,7 @@ import { appOrigin } from "../../_sites.js";
 export async function onRequestGet({ request, env }) {
   const headers = { "Cache-Control": "private, no-store" }, account = accountPage(request, env);
   // (and the apps' addresses, on their own site: inflite.ai, or the tests')
-  const links = Object.fromEntries([["inflight", "chat"], ["weather", "weather"], ["fitness", "fitness"], ["markets", "markets"]].map(([k, a]) => [k, appOrigin(a, env, request) + "/"]));
+  const links = Object.fromEntries([["inflight", "chat"], ["weather", "weather"], ["fitness", "fitness"], ["markets", "finance"]].map(([k, a]) => [k, appOrigin(a, env, request) + "/"]));
   try {
     const { u, owner } = await visitor(request, env);
     if (!u) return json({ signedIn: false, account, links }, 200, headers);

@@ -41,7 +41,7 @@ export async function mkdb(env) {
 
 // ---------------- the markets' data ----------------
 const base = (env) => String(env.MARKETS_DATA || "https://query1.finance.yahoo.com").replace(/\/$/, "");
-const UA = "Mozilla/5.0 (compatible; InFliteMarkets/1.0; +https://markets.inflite.ai)";
+const UA = "Mozilla/5.0 (compatible; InFliteMarkets/1.0; +https://finance.inflite.ai)";
 async function fetchJson(env, path) {
   let r;
   try { r = await fetch(base(env) + path, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(9000) }); }

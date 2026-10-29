@@ -1,4 +1,4 @@
-// Markets (markets/), at its own address (markets.<site>), signed in only, with the site's one account: signed out, what it
+// Markets (markets/), at its own address (finance.<site>), signed in only, with the site's one account: signed out, what it
 // is and Sign in; signed up to Chat in a browser, Markets there is signed in already, with nothing yet to show but the
 // markets. Something found by name and added, with what you own and paid; then a portfolio of six: worth what their
 // prices say (London's in pence, America's in dollars at the day's rate), its day drawn and said, and what's worth
@@ -16,7 +16,7 @@ import http from 'node:http';
 const ask = (url, { method = 'GET', headers = {} } = {}) => new Promise((done) => { const u = new URL(url); const r = http.request({ host: '127.0.0.1', port: 8788, path: u.pathname + u.search, method, agent: false, headers: { Host: u.host, ...headers } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
 
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.ifl.test:8788', MKT = 'http://markets.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', MKT = 'http://finance.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const rows = (q) => { const o = sql0(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
 let fails = 0; const errs = [], pages = [];
@@ -33,7 +33,7 @@ const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceSc
 await ctx.grantPermissions(['notifications'], { origin: MKT });
 // (headless Chromium has no push service: one stood in for, as the other apps' tests do)
 await ctx.addInitScript(() => {
-  if (!location.hostname.startsWith('markets.')) return;
+  if (!location.hostname.startsWith('finance.')) return;
   const endpoint = 'https://fcm.googleapis.com/fcm/send/markets-phone';
   const make = () => ({ endpoint, toJSON: () => ({ endpoint, keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }), unsubscribe: async () => true });
   PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make() : null; };

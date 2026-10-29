@@ -1,4 +1,4 @@
-// Markets's files, as a browser gets them. The app lives in markets/ and is served at the root of markets.inflite.ai
+// Markets's files, as a browser gets them. The app lives in markets/ and is served at the root of finance.inflite.ai
 // (functions/_middleware.js); on preview and local addresses it's at /markets/ (functions/markets/_middleware.js), where
 // it opens but can't sign in (the account's API answers only at its own address). Its files only use relative
 // addresses, so they work the same at either.
@@ -8,7 +8,7 @@
 
 import { notFound } from "./_app.js";
 import { assets } from "./_min.js";
-export const MARKETS_HOST = "markets.inflite.ai";
+export const MARKETS_HOST = "finance.inflite.ai";
 // (MARKETS_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
 export const isMarkets = (url, env) => (env.MARKETS_HOST || MARKETS_HOST).split(",").includes(url.hostname);
 
@@ -39,7 +39,7 @@ export function serveMarkets(res, path) {
   return out;
 }
 
-// markets.inflite.ai: /x is the file /markets/x; the API is only Markets's own
+// finance.inflite.ai: /x is the file /markets/x; the API is only Markets's own
 export async function marketsHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/markets/") ? ctx.next() : notFound();
   if (url.pathname === "/markets" || url.pathname.startsWith("/markets/")) {

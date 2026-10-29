@@ -277,7 +277,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.12";
+const BUILD = "1.51";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -287,7 +287,7 @@ const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.tes
 // (Mail's icon, asked for by its version, so a copy kept from before its new look isn't shown)
 const MAIL_ICON = "/apps/mail.png?v=2";
 const appIcon = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
-const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, markets: { name: "Markets", sub: "markets" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
+const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, markets: { name: "Markets", sub: "finance" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
@@ -522,14 +522,14 @@ function siteUrl(sub) {
 const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/start?to=${encodeURIComponent(to)}${fresh ? "&fresh=1" : ""}`;
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
-// chat.<site>/, weather.<site>/, fitness.<site>/, markets.<site>/, or the home page (beside this page's account.<site>, on the
+// chat.<site>/, weather.<site>/, fitness.<site>/, finance.<site>/ (Markets), or the home page (beside this page's account.<site>, on the
 // same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
     // (and Chat at /pigeon/, where the home page and the apps are one: locally)
-    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`markets.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }
@@ -1057,7 +1057,7 @@ function marketsView() {
     h("div.app-head", {}, h("img", { src: "/apps/markets.png", alt: "", width: 64, height: 64 }), h("b", { text: "Markets" }), h("span", { text: "Your money, said simply" })),
     h("div.group", {}, row("In your list", String(x.holdings || 0)), row("That you own", String(x.owned || 0))),
     h("p.hint", { text: "Markets keeps what you add with your account: each one, how many you own and what you paid, if you said. Prices and news are the markets’, fetched for everyone, not about you." }),
-    h("a.btn", { href: siteUrl("markets") }, "Open Markets", icon("open", 18, 2.4))] };
+    h("a.btn", { href: siteUrl(APPS.markets.sub) }, "Open Markets", icon("open", 18, 2.4))] };
 }
 // (Mail: what it is, and where; its mail is kept by Mail itself, not here)
 function mailView() {

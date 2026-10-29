@@ -1,7 +1,7 @@
 // chat.inflite.ai: Chat, the app at the address's root.
 // weather.inflite.ai: Weather, the same way (functions/_wxapp.js).
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
-// markets.inflite.ai: Markets, the same way (functions/_mktapp.js).
+// finance.inflite.ai: Markets, the same way (functions/_mktapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
 // (inflite.ai itself is kept for something else: not this project's.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
@@ -41,8 +41,16 @@ export async function onRequest(ctx) {
   }
   // the passkeys are georgefarrowgreen.com's: the apps on inflite.ai may use them (WebAuthn's related origins)
   if (url.pathname === "/.well-known/webauthn" && url.hostname === homeSite(ctx.env))
-    return new Response(JSON.stringify({ origins: ["chat", "account", "weather", "fitness", "markets"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
+    return new Response(JSON.stringify({ origins: ["chat", "account", "weather", "fitness", "finance"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
       { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*" } });
+  // the emails' pictures, the apps' (functions/_email.js APPS_PICS): at the account's address too, so an app's email is
+  // inflite.ai's throughout
+  if (url.pathname.startsWith("/mail/") && isAccount(url, ctx.env) && !oldApp(url.hostname, ctx.env)) {
+    const r = await ctx.env.ASSETS.fetch(new Request(new URL(url.pathname, url), ctx.request)), out = new Response(r.body, r);
+    if (r.ok || r.status === 304) out.headers.set("Cache-Control", "public, max-age=604800");
+    out.headers.set("Access-Control-Allow-Origin", "*"); out.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    return out;
+  }
   // an app's old address: on to its new one
   const was = oldApp(url.hostname, ctx.env);
   if (was) return movedOn(ctx, url, was);

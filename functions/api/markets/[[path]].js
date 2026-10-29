@@ -1,4 +1,4 @@
-// Markets's own API, at markets.inflite.ai only, and only signed in with the site's account (the site's cookie, from
+// Markets's own API, at finance.inflite.ai only, and only signed in with the site's account (the site's cookie, from
 // Markets's own pages: functions/_markets.js has what's kept and where the prices come from).
 //   GET    /api/markets/me            who's signed in, what you own and follow, their prices, the markets', and the day's rates
 //   GET    /api/markets/quotes?s=A,B  prices again (as the app keeps them fresh, each a minute old at most)

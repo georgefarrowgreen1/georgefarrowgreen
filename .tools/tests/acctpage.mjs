@@ -145,7 +145,7 @@ ok(xo.status() === 403 && xp.status() === 403 && user('rowan').name === 'Rowan H
 const n0 = mails().length;
 await L.p.click('.banner .mini');
 const cm = await waitMail('rowan@example.com', /Confirm your email for your account/, 15000, n0);   // (the one just sent: it replaces the one sent when the account was made)
-ok(cm && tokenIn(cm, 'confirm') && /georgefarrowgreen\.com/.test(cm.html) && !/>Chat</.test(cm.html), 'a confirm link, as the account\'s (no app named)', cm?.subject);
+ok(cm && tokenIn(cm, 'confirm') && /account\.inflite\.ai\/mail\//.test(cm.html) && !/georgefarrowgreen\.com/.test(cm.html) && !/>Chat</.test(cm.html), 'a confirm link, as the account\'s (no app named)', cm?.subject);
 await L.p.goto('about:blank'); await L.p.goto(`${ACCT}/#confirm=${tokenIn(cm, 'confirm')}`); await L.p.waitForSelector('main:not([aria-busy])'); await settle(L);
 ok(user('rowan').email_ok > 0 && /Your email is confirmed/.test(await text(L, '#toast')) && !(await L.p.$('.banner')) && (await L.p.url()) === `${ACCT}/`,
   'opened: confirmed, said, the banner gone, the link out of the address bar', await text(L, '#toast'));
@@ -357,7 +357,7 @@ await shot(L, '15-data');
 const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 60000 }), (async () => { await L.p.click('#sheet .row:has-text("Download as PDF")'); await confirmIfAsked(L, PW2); })()]);
 const data = await L.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(data.account?.handle === 'rowan_h' && data.account.email === 'rowan.hale@example.com' && /^data:image\/jpeg;base64,/.test(data.account.photo || '') && Array.isArray(data.inflight?.friends)
-  && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'georgefarrowgreen-account-rowan_h.pdf',
+  && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'inflite-account-rowan_h.pdf',
   'your data: the profile and photo, sign-in, Chat\'s and Weather\'s, as a file (and why the letters aren\'t in it)', dl.suggestedFilename());
 await closeSheet(L);
 

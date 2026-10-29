@@ -261,7 +261,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.00";
+const BUILD = "1.50";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -894,7 +894,7 @@ function welcome(note = null) {
     h("div.ifl-cta", {}, note && h("p.said", { role: "status", text: note }),
       page && h("p.ifl-brand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
       h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
-      !page && h("p.said", { style: "margin-top:12px", text: "Signing in is at markets.inflite.ai." }),
+      !page && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
       page && h("p.ifl-new", {}, "New here? ", h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Markets";

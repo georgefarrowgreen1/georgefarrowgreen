@@ -198,7 +198,7 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true, 
   const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your Chat account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   const host = new URL(request.url).hostname;
-  const app = inflight ? "Chat" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : forApp === "markets" || host.startsWith("markets.") ? "Markets" : "Account page";
+  const app = inflight ? "Chat" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : forApp === "markets" || host.startsWith("finance.") ? "Markets" : "Account page";
   // (where it was, once, in the pill: the words and the details don't say it again)
   await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account", pill: ["phone", [device, where.replace(/^the /, "")].filter(Boolean).join(" · ")],
     line: "someone just signed in to your account. If it was you, there’s nothing to do.",

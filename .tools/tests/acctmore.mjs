@@ -320,7 +320,7 @@ const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 })
 const pdfPath = `${out}/data.pdf`; await dl.saveAs(pdfPath);
 const sh = (c) => { try { return execSync(c, { stdio: 'pipe' }).toString(); } catch (e) { return 'ERROR ' + e.stderr; } };
 const info = sh(`pdfinfo "${pdfPath}"`), pages = Number(/Pages:\s+(\d+)/.exec(info)?.[1] || 0);
-ok(dl.suggestedFilename() === 'georgefarrowgreen-account-rowan.pdf' && pages >= 2 && /Title:\s+Your data · Rowan Hale/.test(info), 'a PDF, named for you, of a few pages', `${dl.suggestedFilename()} ${pages} pages`);
+ok(dl.suggestedFilename() === 'inflite-account-rowan.pdf' && pages >= 2 && /Title:\s+Your data · Rowan Hale/.test(info), 'a PDF, named for you, of a few pages', `${dl.suggestedFilename()} ${pages} pages`);
 const strict = sh(`python3 -c "import pypdf,sys; r=pypdf.PdfReader(sys.argv[1], strict=True); print(len(r.pages))" "${pdfPath}"`).trim();
 ok(strict === String(pages), 'well formed (read strictly)', strict.slice(0, 200));
 const words = sh(`pdftotext -layout "${pdfPath}" -`).replace(/[ \t]+/g, ' ');

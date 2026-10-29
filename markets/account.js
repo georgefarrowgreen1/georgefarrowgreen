@@ -39,10 +39,10 @@ export const pushOn = (sub) => call("push", { method: "POST", body: { sub } });
 export const pushOff = (endpoint) => call("push", { method: "DELETE", body: { endpoint } });
 
 // ---- the account's own page ----
-// (beside this app's own address: markets.<site> → account.<site>; nowhere else is there one to sign in on)
-export const accountPage = () => (location.hostname.startsWith("markets.") ? `${location.origin.replace("//markets.", "//account.")}/` : null);
+// (beside this app's own address: finance.<site> → account.<site>; nowhere else is there one to sign in on)
+export const accountPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//account.")}/` : null);
 // and Chat, beside it, for sending a stock to a friend
-export const chatPage = () => (location.hostname.startsWith("markets.") ? `${location.origin.replace("//markets.", "//chat.")}/` : null);
+export const chatPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//chat.")}/` : null);
 export const accountLink = () => call("account-link", { method: "POST", body: {} });
 export const signOut = () => call("signout", { method: "POST", body: {} });
 export const photoUrl = (at) => `${API}/me/photo?v=${at}`;

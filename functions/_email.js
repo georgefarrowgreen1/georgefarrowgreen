@@ -18,6 +18,8 @@ import { HttpError } from "./_http.js";
 // (the home page's address: the emails' pictures are kept there, and it stands for "this is production" below)
 export const SITE = "https://georgefarrowgreen.com";
 export const ACCOUNT_APP = "https://account.inflite.ai";
+// (where the apps' emails' pictures come from: inflite.ai, as they do; the home page's from its own site)
+export const APPS_PICS = ACCOUNT_APP;
 // the account's page, for links in emails (this site's, or a local test server's copy)
 export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
 // Where links in emails point: this site, or a local test server. Never a
@@ -158,7 +160,7 @@ function barRow(bar, cols) {
 export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip = [], bar, button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader, compact = false, fallback = true }) {
   const B = brandOf(brand), foot = B.foot?.(origin), e = escHtml;
   const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
-  const pic = (f) => e(`${origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
+  const pic = (f) => e(`${origin === SITE && brand !== "website" ? APPS_PICS : origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
   const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
   const web = fallback && button && /^https?:/i.test(button.url);
   const N = notice && (NOTICE[notice.tone] || NOTICE.yellow);
