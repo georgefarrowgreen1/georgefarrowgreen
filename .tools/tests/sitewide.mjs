@@ -68,9 +68,15 @@ async function context(kind, scheme) {
 }
 // someone with something in each app: signed up (in Chat, as everyone is), with holdings in Markets in two accounts,
 // buys of one, and an ISA paid into
+// (signed up on a phone, as Chat's made for: on a tablet or a computer it's the desktop tracker; the sign-in's then the
+// browser's, carried to this one)
 async function person(ctx, n) {
+  const ph = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: IPHONE, locale: 'en-GB', serviceWorkers: 'allow' });
+  const j = await ph.newPage();
+  await joinChat(j, `${CHAT}/`, { name: `Alex Morgan`, handle: `alex${n}`, email: `alex${n}@example.com`, city: 'London' });
+  await ctx.addCookies(await ph.cookies());
+  await ph.close();
   const p = await ctx.newPage();
-  await joinChat(p, `${CHAT}/`, { name: `Alex Morgan`, handle: `alex${n}`, email: `alex${n}@example.com`, city: 'London' });
   await p.goto(MKT + '/'); await p.waitForSelector('.empty h2, #pv', { timeout: 20000 });
   await p.evaluate(async () => {
     const put = (h) => fetch('/api/markets/holding', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(h), credentials: 'same-origin' });
