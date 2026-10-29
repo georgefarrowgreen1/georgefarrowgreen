@@ -3,7 +3,7 @@
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
-  const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["mail", "Mail"], ["account", "Account"]];
+  const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
   const ICONS = /*ICONS*/{};
   const GLYPHS = {
@@ -28,6 +28,10 @@ const IFL = (() => {
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
     data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    back: '<path d="m15 5-7 7 7 7"/>',
     signout: '<path d="M9.5 19.5h-3a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2h3M15.5 16.5 20 12l-4.5-4.5M20 12H9.5"/>',
     install: '<path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',

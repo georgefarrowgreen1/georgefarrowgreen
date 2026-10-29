@@ -9,9 +9,9 @@ export const JS_START = "// ==== InFlite's menu, shared: from .tools/inflite/men
 export const JS_END = "// ==== end of InFlite's menu ====";
 export const CSS_START = "/* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */";
 export const CSS_END = "/* ==== end of InFlite's menu ==== */";
-export const SCRIPTS = ["pigeon/app.js", "weather/app.js", "fitness/app.js", "account/app.js"];
-export const STYLES = ["pigeon/styles.css", "weather/styles.css", "fitness/styles.css", "account/styles.css"];
-const APPS = ["chat", "weather", "fitness", "mail", "account"];
+export const SCRIPTS = ["pigeon/app.js", "weather/app.js", "fitness/app.js", "markets/app.js", "account/app.js"];
+export const STYLES = ["pigeon/styles.css", "weather/styles.css", "fitness/styles.css", "markets/styles.css", "account/styles.css"];
+const APPS = ["chat", "weather", "fitness", "markets", "mail", "account"];
 
 // an app's icon, small: no notes, no spaces between its parts
 const mini = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<\?xml[^>]*>/, "").replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();

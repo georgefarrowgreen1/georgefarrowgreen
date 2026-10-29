@@ -256,6 +256,7 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app.inflight { --glow: #2f7bff; }
 .app.weather { --glow: #ffb43a; }
 .app.fitness { --glow: #ff6a3d; }
+.app.markets { --glow: #2fd384; }
 /* (on a phone or a tablet, on one line, swiped across, as the account's page has them: each a little narrower than half
    the width, so the next peeks in from the edge, and it's seen there's more; each comes to rest in line with the page.
    The line runs out to the screen's edges, past the page's margins. On a wide screen, all three side by side: below) */

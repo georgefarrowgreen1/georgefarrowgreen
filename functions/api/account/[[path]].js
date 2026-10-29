@@ -40,6 +40,7 @@ import { setMail, changeNotify } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf, savePrefs, pushTo } from "../../_notify.js";
 import { morningOf, setMorningFor } from "../../_fitpush.js";
+import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf } from "../../_markets.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
@@ -110,19 +111,20 @@ async function inflightOf(D, id) {
 // sent, Weather's places and whether it sends you anything, Fitness's activities and whether you're on a plan (null for
 // an app the account hasn't used)
 export async function appFigures(env, id) {
-  const [inflight, wx, fx] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id), fitnessOf(env, id)]);
+  const [inflight, wx, fx, mk] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id), fitnessOf(env, id), marketsOf(env, id).catch(() => ({ holdings: 0 }))]);
   const places = Array.isArray(wx.data?.places) ? wx.data.places.length : 0, n = wx.data?.notify;
   return {
     inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent } : null,
     weather: places ? { places, alerts: !!((n?.places || []).length || n?.brief) } : null,
     fitness: fx.activities || fx.plan ? { activities: fx.activities, plan: !!fx.plan } : null,
+    markets: mk.holdings ? { holdings: mk.holdings, owned: mk.owned || 0 } : null,
   };
 }
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness, markets] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
@@ -131,6 +133,7 @@ async function view(env, u) {
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
     adminOf(env).catch(() => null),
     fitnessOf(env, u.id),
+    marketsOf(env, u.id).catch(() => ({ holdings: 0 })),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -152,7 +155,7 @@ async function view(env, u) {
     // sign-in an account page opened from an app came from)
     devices: ss.map((x) => {
       const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
-      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness", "markets"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
@@ -169,6 +172,7 @@ async function view(env, u) {
         notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
       inflight,
       fitness,
+      markets,
     },
   };
 }
@@ -185,11 +189,12 @@ const near = (a, b) => a && b && Math.abs(a.lat - b.lat) < 0.006 && Math.abs(a.l
 async function notifySettings(env, u) {
   const D = await db(env), p = prefsOf(u), wx = (await weatherOf(env, u.id)).data || {}, n = wx.notify || {}, solar = wx.settings?.solar;
   const none = (x, v) => x.catch(() => v);
-  const [chatOn, wxOn, fm, admin] = await Promise.all([
+  const [chatOn, wxOn, fm, admin, mk] = await Promise.all([
     none(D.prepare("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ?").bind(u.id).first().then((r) => r?.n || 0), 0),
     none(devicesOf(env, u.id).then((d) => d.length), 0),
     none(morningOf(env, u.id), { on: true, at: null, phones: 0 }),
-    none(adminOf(env), null)]);
+    none(adminOf(env), null),
+    none(alertsOf(env, u.id), { on: 0, off: false, alerts: [] })]);
   const places = (wx.places || []).map((x) => { const on = (n.places || []).find((q) => near(q, x)); return { name: x.name, lat: x.lat, lon: x.lon, rain: !!on?.rain, warn: !!on?.warn }; });
   // (one with notifications on that's no longer saved: still said, so it can be turned off)
   for (const q of n.places || []) if (!places.some((x) => near(q, x))) places.push({ name: q.name, lat: q.lat, lon: q.lon, rain: !!q.rain, warn: !!q.warn });
@@ -201,6 +206,8 @@ async function notifySettings(env, u) {
     weather: { on: wxOn, places, brief: n.brief ? { name: n.brief.name, lat: n.brief.lat, lon: n.brief.lon } : null, briefAt: n.briefAt || "07:00",
       email: { warn: !!n.email?.warn, brief: !!n.email?.brief }, solar: zones ? { alert: !!solar.alert, zones } : null },
     fitness: { on: fm.phones, morning: fm.on, at: fm.at },
+    // (Markets's price alerts: on for each holding chosen on its page there; all off here)
+    markets: mk,
     mail: admin?.id === u.id ? {} : null,
   };
 }
@@ -245,6 +252,12 @@ async function setNotify(env, u, b) {
   if (b.fitness !== undefined) {
     const f = b.fitness && typeof b.fitness === "object" ? b.fitness : {};
     await setMorningFor(env, u.id, { ...(f.morning !== undefined ? { on: !!f.morning } : {}), ...(f.at !== undefined ? { at: f.at } : {}) });
+  }
+  if (b.markets !== undefined) {
+    const m = b.markets && typeof b.markets === "object" ? b.markets : {};
+    if (m.alerts !== undefined) { if (typeof m.alerts !== "boolean") throw new HttpError(400, "Choose on or off."); await setAlertsOff(env, u.id, !m.alerts); }
+    // (one holding's alert off: it's turned on again from its page in Markets)
+    if (m.off !== undefined) await setMarketAlert(env, u.id, m.off, false);
   }
 }
 

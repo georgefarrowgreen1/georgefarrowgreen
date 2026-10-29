@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Markets</title>
+  <meta name="description" content="Your money and the markets, said simply: what moved, why, and what's coming." />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0f2133" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef4f2" media="(prefers-color-scheme: light)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Markets" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <!-- (as the page is read, before it's first drawn: Light or Dark, where chosen) -->
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="app.js"></script>
+  <link rel="modulepreload" href="account.js" />
+  <link rel="modulepreload" href="charts.js" />
+</head>
+<body>
+  <!-- the sky behind it all: the account page's night, with slow light drifting over it -->
+  <div class="sky" aria-hidden="true"><i class="aura a1"></i><i class="aura a2"></i></div>
+  <div class="page" id="page">
+    <main id="main" aria-busy="true"></main>
+  </div>
+  <nav class="tabbar" aria-label="Markets">
+    <div class="tabs" id="tabs"></div>
+  </nav>
+  <div class="dim" id="dim" aria-hidden="true"></div>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Details" hidden>
+    <div class="grab" id="grab"><i></i></div>
+    <div class="sbody" id="sbody"></div>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">Markets needs JavaScript turned on.</p></noscript>
+</body>
+</html>

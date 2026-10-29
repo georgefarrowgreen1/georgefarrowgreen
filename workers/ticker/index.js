@@ -18,6 +18,7 @@ export default {
       ask("/api/pigeon/notify-tick", env.INFLIGHT_TICK_SECRET),
       ask("/api/weather/tick", env.WEATHER_TICK_SECRET || env.INFLIGHT_TICK_SECRET),
       ask("/api/fitness/garmin-tick", env.INFLIGHT_TICK_SECRET),   // (Fitness's Garmin Connect accounts: what's new)
+      ask("/api/markets/tick", env.INFLIGHT_TICK_SECRET),   // (Markets's price alerts)
     ]));
   },
 };

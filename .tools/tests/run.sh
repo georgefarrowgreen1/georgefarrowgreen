@@ -30,6 +30,7 @@ node "$HERE/mocks/mailmock2.mjs" "$S/mailbox.jsonl" "$S/mockmode" >/dev/null 2>&
 node "$HERE/mocks/giphymock.mjs" "$HERE/mocks/giphy" "$S/giphylog.jsonl" >/dev/null 2>&1 & PIDS+=($!)
 node "$HERE/mocks/weathermock.mjs" "$S/weatherlog.jsonl" >/dev/null 2>&1 & PIDS+=($!)
 node "$HERE/mocks/pwnedmock.mjs" "$S/pwnedlog.jsonl" >/dev/null 2>&1 & PIDS+=($!)
+node "$HERE/mocks/marketsmock.mjs" "$S/marketslog.jsonl" >/dev/null 2>&1 & PIDS+=($!)
 : > "$S/results.log"; bad=0
 for t in $TESTS; do
   "$HERE/server.sh" fresh; mkdir -p "$S/out/$t"

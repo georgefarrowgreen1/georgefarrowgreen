@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 const ROOT = new URL("../", import.meta.url).pathname;
 // (every app's own scripts and styles, and the home page's: not the service workers, nor the libraries kept as they came)
 export function sources() {
-  return execSync("git ls-files -co --exclude-standard 'pigeon/*.js' 'pigeon/*.css' 'weather/*.js' 'weather/*.css' 'fitness/*.js' 'fitness/*.css' 'account/*.js' 'account/*.css' app.js styles.css", { cwd: ROOT })
+  return execSync("git ls-files -co --exclude-standard 'pigeon/*.js' 'pigeon/*.css' 'weather/*.js' 'weather/*.css' 'fitness/*.js' 'fitness/*.css' 'markets/*.js' 'markets/*.css' 'account/*.js' 'account/*.css' app.js styles.css", { cwd: ROOT })
     .toString().split("\n").filter((f) => f && !/\/sw\.js$|\/vendor\/|\.min\./.test(f) && existsSync(ROOT + f));
 }
 export const sha = (buf) => createHash("sha256").update(buf).digest("hex");

@@ -27,12 +27,12 @@ export async function signedIn(request, env, { deleting = false } = {}) {
 // that doesn't sign in itself, as every app on the site now signs in on the account's page: functions/_handback.js)
 export function accountRoutes(view, { onSignOut = null, deleting = false, signIn = true } = {}) {
   // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's,
-  // or as the app's it's for, where an app sent you here to sign in (app: "inflight", "weather" or "fitness")
+  // or as the app's it's for, where an app sent you here to sign in (app: "inflight", "weather", "fitness" or "markets")
   // (the session's own token's never given out here: only the cookie's; and the browser's word that it's signed in to
   // this account before, so guessing elsewhere can't hold its password sign-in back: functions/_account.js withKnown)
   async function started(request, env, waitUntil, u, how, app) {
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
-    waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", app === "weather" || app === "fitness" ? app : null).catch(() => {}));
+    waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", ["weather", "fitness", "markets"].includes(app) ? app : null).catch(() => {}));
     return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), request, env, hash), request, env, u);
   }
   const ins = {

@@ -3,7 +3,7 @@
 // original's fingerprint (min/manifest.json). A minified copy is sent only while it's still of the file as it is: one
 // that's changed since (the script not run again) is sent as it is, never an old copy in a new page.
 // Every app's files are read through this (assets(env).fetch, in place of env.ASSETS.fetch).
-export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|account)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
+export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
 const SKIP = /\/sw\.js$/;
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");

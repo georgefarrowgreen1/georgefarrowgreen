@@ -7,8 +7,8 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync } from "fs";
 const ROOT = new URL("../", import.meta.url).pathname;
 export const START = "/* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */";
 export const END = "/* ==== end of InFlite's way in ==== */";
-export const STYLES = ["pigeon/styles.css", "fitness/styles.css"];
-export const MARKS = ["pigeon", "fitness", "weather", "account"];
+export const STYLES = ["pigeon/styles.css", "fitness/styles.css", "markets/styles.css"];
+export const MARKS = ["pigeon", "fitness", "weather", "markets", "account"];
 export const block = () => `${START}\n${readFileSync(`${ROOT}.tools/inflite/signin.css`, "utf8").trim()}\n${END}`;
 
 function into(file) {

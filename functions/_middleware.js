@@ -1,6 +1,7 @@
 // chat.inflite.ai: Chat, the app at the address's root.
 // weather.inflite.ai: Weather, the same way (functions/_wxapp.js).
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
+// markets.inflite.ai: Markets, the same way (functions/_mktapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
 // (inflite.ai itself is kept for something else: not this project's.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
@@ -12,6 +13,7 @@ import { cookieToken } from "./_account.js";
 import { HttpError } from "./_http.js";
 import { isWeather, weatherHost } from "./_wxapp.js";
 import { isFitness, fitnessHost } from "./_fitapp.js";
+import { isMarkets, marketsHost } from "./_mktapp.js";
 import { isAccount, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
@@ -39,13 +41,14 @@ export async function onRequest(ctx) {
   }
   // the passkeys are georgefarrowgreen.com's: the apps on inflite.ai may use them (WebAuthn's related origins)
   if (url.pathname === "/.well-known/webauthn" && url.hostname === homeSite(ctx.env))
-    return new Response(JSON.stringify({ origins: ["chat", "account", "weather", "fitness"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
+    return new Response(JSON.stringify({ origins: ["chat", "account", "weather", "fitness", "markets"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
       { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*" } });
   // an app's old address: on to its new one
   const was = oldApp(url.hostname, ctx.env);
   if (was) return movedOn(ctx, url, was);
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isFitness(url, ctx.env)) return fitnessHost(ctx, url);
+  if (isMarkets(url, ctx.env)) return marketsHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
@@ -124,7 +127,7 @@ self.addEventListener("notificationclick", (e) => {
   return new Response(js, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" } });
 }
 
-const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png" };
+const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png" };
 const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|min(\/|$)|readme\.md$|wrangler\.toml$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }
