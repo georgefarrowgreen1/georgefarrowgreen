@@ -56,7 +56,7 @@ ok(/Passkey saved/.test(await txt('.toast')), 'the right one carries on and save
 [st] = await api('vault'); ok(st === 200, 'and counts for the next 10 minutes');
 await G.waitForTimeout(800);
 const pkMail = mails().find((m) => /passkey was added/i.test(m.subject || ''));
-ok((pkMail && pkMail.to?.includes?.('george@example.com') || pkMail?.to === 'george@example.com') && pkMail.from === 'Account <account@georgefarrowgreen.com>', 'an email, from the account, says a passkey was added', `${pkMail?.from} · ${pkMail?.subject}`);
+ok((pkMail && pkMail.to?.includes?.('george@example.com') || pkMail?.to === 'george@example.com') && pkMail.from === 'Account <account@inflite.ai>', 'an email, from the account, says a passkey was added', `${pkMail?.from} · ${pkMail?.subject}`);
 
 // removing it: Cancel leaves it be, a passkey also confirms
 stale();

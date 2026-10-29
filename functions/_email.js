@@ -1,7 +1,7 @@
 /* ---------------- the site's email: every app's ----------------
    One way to send, and one look, for every app (inflite.ai's, and the home page's). An app is a brand below: its name, which
-   is also the sender's (each app from its own address on the site's domain: account@, chat@, weather@,
-   website@, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
+   is also the sender's (each app from its own address: account@, chat@ and weather@ at inflite.ai, the home page's
+   website@ at georgefarrowgreen.com, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
    pictures, and what's said at the foot of each of its emails. To send:
 
      const { text, html } = emailBody({ brand: "weather", title, pill, lines, rows, button, origin });
@@ -9,8 +9,8 @@
 
    A new app is a new brand here, its pictures drawn by .tools/tests/mailicons.mjs (into mail/, served from the
    site's own address so they show in any app's email).
-   Needs RESEND_API_KEY and a sender on a domain verified in Resend: the domain of PIGEON_FROM, else of CONTACT_FROM
-   (noreply@georgefarrowgreen.com). Until one is, Resend's test sender onboarding@resend.dev works, but only for
+   Needs RESEND_API_KEY, both domains verified in Resend (inflite.ai, and georgefarrowgreen.com), and a sender set:
+   PIGEON_FROM or CONTACT_FROM (noreply@georgefarrowgreen.com, whose domain is the home page's). Until one is, Resend's test sender onboarding@resend.dev works, but only for
    mail to the Resend account's own address, and only from that one address, so every app sends from it as it is. */
 import { HttpError } from "./_http.js";
 
@@ -72,10 +72,15 @@ export const BRANDS = {
 const brandOf = (brand) => { const B = Object.hasOwn(BRANDS, brand) && BRANDS[brand]; if (!B) throw new Error(`No email brand "${brand}"`); return B; };
 
 export const emailReady = (env) => !!env.RESEND_API_KEY;
+// Who each email's from: the apps' (Chat, Weather, the account) at inflite.ai, where they are (APPS_MAIL_DOMAIN to say
+// otherwise); the home page's (the contact form's) at the domain of CONTACT_FROM, else PIGEON_FROM (georgefarrowgreen.com).
+// Each from its own address there: chat@, account@, weather@, website@. With no sender set, Resend's test sender for all.
+const APPS_MAIL = "inflite.ai";
 const senderAddress = (env, brand) => {
-  const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
+  const f = String((brand === "website" ? env.CONTACT_FROM || env.PIGEON_FROM : env.PIGEON_FROM || env.CONTACT_FROM) || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
   const domain = a.split("@")[1];
-  return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${brandOf(brand).from || brand}@${domain}`;
+  if (!domain || /(^|\.)resend\.dev$/i.test(domain)) return a;
+  return `${brandOf(brand).from || brand}@${brand === "website" ? domain : env.APPS_MAIL_DOMAIN || APPS_MAIL}`;
 };
 export const emailFrom = (env, brand) => `${brandOf(brand).name} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)
