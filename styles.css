@@ -259,7 +259,7 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app.markets { --glow: #2fd384; }
 /* (on a phone or a tablet, on one line, swiped across, as the account's page has them: each a little narrower than half
    the width, so the next peeks in from the edge, and it's seen there's more; each comes to rest in line with the page.
-   The line runs out to the screen's edges, past the page's margins. On a wide screen, all three side by side: below) */
+   The line runs out to the screen's edges, past the page's margins. On a wide screen, all four side by side: below) */
 @media (max-width: 899px) {
   .apps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 12px) / 2.15);
     overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
@@ -569,10 +569,13 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .hero h1 { font-size: 80px; }
   .lede { font-size: 21px; }
   .head { margin-top: 18px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 28px; align-items: start; }
   .grid > section { min-width: 0; }
-  /* (the apps side by side, so the page still fits on one screen) */
-  .apps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* (the apps side by side, all four, so the page still fits on one screen) */
+  .apps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .app { padding: 14px; border-radius: 24px; }
+  .app img { width: 50px; height: 50px; border-radius: 12px; }
+  .app b { font-size: 18px; }
 }
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
