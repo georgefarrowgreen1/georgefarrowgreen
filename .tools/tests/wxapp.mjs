@@ -932,7 +932,7 @@ await p.waitForSelector('#settings[open]'); await p.waitForTimeout(300);
 {
   const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].filter((b) => !b.closest('li')?.hidden).map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
     hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
-  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
+  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Get rain alertsA heads-up here before rain starts: Turn on,Notifications: Off,Commute: Off,Solar: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Arrange your page: As usual,Forecast: Tuned',
     'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
   ok(await p.isVisible('#alerts-row'), 'the word about the alerts, put away on the page, a row at the top of Settings instead');
 }

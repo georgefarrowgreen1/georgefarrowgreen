@@ -104,7 +104,7 @@ ok(notSigned.status === 302 && notSigned.location === `${CHAT}/`, 'not signed in
 
 // ---- 7. signing out on the account's page signs the home page out too ----
 await A.p.goto(`${ACCT}/`); await A.p.waitForSelector('main .hero', { timeout: 20000 });
-await A.p.click('main .row.action.danger'); await A.p.waitForTimeout(1500);
+await A.p.click('main .ifh-me').then(() => A.p.click('.ifm-out')); await A.p.waitForTimeout(1500);
 const me = await get(`${HOME}/api/me`, { cookie: `account=${homeCookie.value}` });
 ok(/"signedIn":false/.test(me.body), 'signed out on inflite.ai: the home page’s sign-in ends with it', me.body.slice(0, 80));
 
