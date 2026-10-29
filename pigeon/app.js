@@ -219,7 +219,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.4.5";            // shown in InFlite's menu
+const APP_VERSION = "1.4.6";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -7612,6 +7612,7 @@ function openLook(id) {
 function lookSensor(e) {
   let h = typeof e.webkitCompassHeading === "number" ? e.webkitCompassHeading : e.absolute && e.alpha != null ? 360 - e.alpha : null;
   if (h == null) return;
+  look.denied = false;   // (a heading's come after all: asked again in Settings, say, or never really refused)
   h = (h + (screen.orientation?.angle || 0) + 360) % 360;
   // smoothed, the shortest way round (a compass jitters)
   look.heading = look.heading == null ? h : (look.heading + turnBy(look.heading, h) * 0.2 + 360) % 360;

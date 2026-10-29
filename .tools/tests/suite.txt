@@ -21,7 +21,7 @@ security
 stormtest
 wxtest
 feathertest
-movein
+
 followtest
 lowsev
 wxsay

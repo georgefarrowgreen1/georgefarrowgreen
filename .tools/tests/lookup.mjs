@@ -31,6 +31,7 @@ await A.p.click('.looksheet header [data-act=close]'); await A.p.waitForTimeout(
 await A.p.evaluate(() => localStorage.setItem('inflight-mapcard', 'open')); await openMap(A, m.id);
 
 // 1. no compass: a dial, and which way to face in words
+await A.ctx.grantPermissions(['accelerometer', 'gyroscope', 'magnetometer'], { origin: K.BASE }).catch(() => {});   // (the compass, as an iPhone asks for it)
 await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud'); await A.p.waitForTimeout(700);
 const h1 = await hud();
 const az = Number((h1.match(/\((\d+)°\)/) || [])[1]);
