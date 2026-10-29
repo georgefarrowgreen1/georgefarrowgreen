@@ -65,7 +65,7 @@ ok(dev === 2, 'a sign-in of its own (seen in Signed-in devices)', String(dev));
 ok(!(await pop.evaluate(async () => (await (await fetch('/api/account/me')).json()).fresh)), 'which doesn\'t count as showing it\'s you (a password change still asks)');
 await shot(pop, '02-account-page');
 // Edit profile, there
-await pop.click('.hero .pill'); await pop.waitForSelector('#sheet[open] .sheet-body'); await pop.waitForTimeout(600);
+await pop.click('.pc-acts .pill'); await pop.waitForSelector('#sheet[open] .sheet-body'); await pop.waitForTimeout(600);
 await pop.fill('#sheet input[autocomplete=name]', 'Rowan Ash Hale'); await pop.click('#sheet .done'); await pop.waitForTimeout(1200);
 ok(rows(`SELECT name FROM pg_users WHERE handle = 'rowan'`)[0].name === 'Rowan Ash Hale', 'the new name is the account\'s');
 // back to Chat

@@ -848,14 +848,15 @@ function posterCard(m) {
       h("div.pc-shade", { "aria-hidden": "true" }),
       pic ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", "data-k": "photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
         : h("button.pc-add", { type: "button", "data-k": "photo", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
-      h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }), h("div.who", { text: `@${m.handle}` }))),
-    h("div.pc-body", {},
-      h("div.hero-acts", {},
-        h("button.pill.primary", { type: "button", "data-k": "edit-profile", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
-        h("button.pill", { type: "button", "data-k": "your-code", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),
+      h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }))),
     file);
-  card = { key, el };
-  return el;
+  // (Edit profile and Your code under it, on the page)
+  const wrap = h("div.pc-wrap", {}, el,
+    h("div.hero-acts.pc-acts", {},
+      h("button.pill.primary", { type: "button", "data-k": "edit-profile", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
+      h("button.pill", { type: "button", "data-k": "your-code", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")));
+  card = { key, el: wrap };
+  return wrap;
 }
 // (a photo picked: into Your photo, to choose what shows before it's saved)
 function photoInput() {

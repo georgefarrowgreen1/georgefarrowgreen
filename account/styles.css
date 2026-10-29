@@ -822,7 +822,7 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 .pc-blur { position: absolute; inset: -60px; z-index: -1; pointer-events: none; overflow: hidden; }
 .pc-blur img { width: 100%; height: 100%; object-fit: cover; filter: var(--pc-blur); transform: scale(1.15); }
 .poster-card.none .pc-blur { background: radial-gradient(circle at 40% 30%, #3157d8, #2a1f6e 70%); filter: var(--pc-blur); }
-.pc-top { position: relative; height: 290px; }
+.pc-top { position: relative; height: 200px; }
 .pc-photo { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
 /* (drifting down, it grows from its foot just enough that its top stays covered: at rest it's exactly as Your photo
    placed it) */
@@ -838,15 +838,15 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 .pc-add { padding: 0 15px 0 12px; font-size: 15px; font-weight: 600; }
 .pc-cam:active, .pc-add:active { transform: scale(0.92); transition-duration: var(--dur-press); }
 .pc-id { position: absolute; left: 20px; right: 20px; bottom: 14px; }
-.pc-id h2 { margin: 0; font: 800 40px/1.04 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
-.pc-id h2.long { font-size: 32px; }
-.pc-id .who { margin-top: 4px; color: rgba(255, 255, 255, 0.86); font-size: 16px; font-weight: 500; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.3); }
-.pc-body { position: relative; display: grid; gap: 14px; padding: 14px 20px 20px; }
-.poster-card .hero-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
-.poster-card .hero-acts .pill { width: 100%; margin: 0; color: var(--pc-pill-text); background: var(--pc-pill); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+.pc-id h2 { margin: 0; font: 800 32px/1.06 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
+.pc-id h2.long { font-size: 27px; }
+.pc-wrap { margin-bottom: 26px; }
+.pc-wrap > .poster-card { margin-bottom: 0; }
+.pc-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 0; }
+.pc-acts .pill { width: 100%; margin: 0; color: var(--pc-pill-text); background: var(--pc-pill); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.1); }
-.poster-card .hero-acts .pill.primary { color: var(--pc-go-text); background: var(--pc-go); }
-@media (min-width: 1000px) { .pc-top { height: 320px; } }
+.pc-acts .pill.primary { color: var(--pc-go-text); background: var(--pc-go); }
+@media (min-width: 1000px) { .pc-top { height: 240px; } }
 @media (prefers-reduced-motion: reduce) { .pc-photo img { transform: none; } }
 /* Your photo: what shows of it, dragged into place; the circle every app shows, beside */
 .pv-frame { position: relative; aspect-ratio: 358 / 290; border-radius: 22px; overflow: hidden; touch-action: none; cursor: grab; background: #000; box-shadow: inset 0 0 0 0.5px var(--line); }
@@ -894,8 +894,8 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 /* ---- under a pointer that can hover (a mouse, a trackpad): what can be tapped lifts a little ---- */
 @media (hover: hover) {
   .pill:hover, .x:hover, .app .about:hover, .appear:hover { background-color: color-mix(in srgb, var(--glass-ctl), var(--text) 6%); }
-  .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--pc-pill), white 12%); }
-  .poster-card .hero-acts .pill.primary:hover, .btn:not(:disabled):hover, button.adm-alert:hover { filter: brightness(1.06); }
+  .pc-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--pc-pill), white 12%); }
+  .pc-acts .pill.primary:hover, .btn:not(:disabled):hover, button.adm-alert:hover { filter: brightness(1.06); }
   button.mini:not(.sure):hover, .row-plus .plus:hover { background-color: color-mix(in srgb, currentColor 22%, transparent); }
   .pc-cam:hover, .pc-add:hover { background-color: rgba(20, 22, 40, 0.45); }
   .link:not(:active):hover { opacity: 0.75; }
@@ -904,14 +904,14 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 
 /* ---- Reduce Transparency: every pane of glass solid (last in the file, so nothing after puts its blur back) ---- */
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .status, .whobar, .toast, dialog.sheet, .pc-cam, .pc-add, .poster-card .hero-acts .pill, .pv-tip { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass, .status, .whobar, .toast, dialog.sheet, .pc-cam, .pc-add, .pc-acts .pill, .pv-tip { -webkit-backdrop-filter: none; backdrop-filter: none; }
   .glass, .status, .whobar, .toast, dialog.sheet { background: var(--glass-strong); }
-  .poster-card .hero-acts .pill:not(.primary) { background: var(--glass-strong); color: var(--text); }
+  .pc-acts .pill:not(.primary) { background: var(--glass-strong); color: var(--text); }
   .pc-cam, .pc-add { background: rgba(20, 22, 40, 0.78); }
   .pv-tip { background: rgba(0, 0, 0, 0.75); }
   /* (and as solid under a pointer, lifting as the others do) */
   @media (hover: hover) {
-    .poster-card .hero-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--glass-strong), var(--text) 6%); }
+    .pc-acts .pill:not(.primary):hover { background: color-mix(in srgb, var(--glass-strong), var(--text) 6%); }
     .pc-cam:hover, .pc-add:hover { background: rgba(20, 22, 40, 0.88); }
   }
 }

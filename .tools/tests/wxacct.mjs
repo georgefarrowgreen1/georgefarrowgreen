@@ -238,7 +238,7 @@ await closeSheet(L);
   await W.waitForSelector('#sheet[open] .pv-frame img', { timeout: 15000 }); await W.waitForTimeout(500);
   await W.click('#sheet .link.done'); await W.waitForSelector('.hero .pc-photo img', { timeout: 15000 }).catch(() => {});
   await W.waitForSelector('#sheet', { state: 'hidden' }).catch(() => {}); await W.waitForTimeout(400);
-  await W.click('.hero .pill'); await W.waitForSelector('#sheet[open] .sheet-body'); await W.waitForTimeout(600);
+  await W.click('.pc-acts .pill'); await W.waitForSelector('#sheet[open] .sheet-body'); await W.waitForTimeout(600);
   await W.fill('#sheet .field:has-text("Name") input', 'Sam T'); await W.click('#sheet .link.done');
   await W.waitForFunction(() => /Sam T\b/.test(document.querySelector('.hero')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
   await W.close();
