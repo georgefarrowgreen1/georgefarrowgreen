@@ -1111,7 +1111,40 @@ await ctx.close();
 {
   const { ctx, p } = await open({ axe: true });
   await p.addScriptTag({ content: readFileSync(new URL('./node_modules/axe-core/axe.min.js', import.meta.url), 'utf8') });
-  const v = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations.map((x) => `${x.id}: ${x.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(' | ')}`));
+  // (axe can't see the sky, a gradient drawn behind everything with its glow and clouds over it, and measures what's
+  // written straight on it against the page's own colour, what shows past its foot. So whatever it finds over the page
+  // itself is measured again from the screen: the sky behind its box, the words hidden, its lightest tenth, against the
+  // words' colour; 4.5:1, or 3:1 for large words)
+  const found = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations.map((x) => ({ id: x.id,
+    nodes: x.nodes.map((n) => ({ t: n.target.join(' '), behind: (n.any?.[0]?.relatedNodes || []).map((r) => r.target.join(' ')).join(','), d: n.any?.[0]?.data || {} })) })));
+  const lumOf = (rgb) => rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const v = [];
+  for (const x of found) {
+    const keep = x.id === 'color-contrast' ? x.nodes.filter((n) => n.behind !== 'html') : x.nodes;
+    if (keep.length) v.push(`${x.id}: ${keep.map((n) => n.t + (n.d.contrastRatio ? ` (${n.d.fgColor} on ${n.d.bgColor}: ${n.d.contrastRatio}, behind: ${n.behind})` : '')).slice(0, 3).join(' | ')}`);
+    if (x.id !== 'color-contrast') continue;
+    for (const n of x.nodes.filter((m) => m.behind === 'html')) {
+      const el = p.locator(n.t).first();
+      await el.scrollIntoViewIfNeeded().catch(() => {}); await p.waitForTimeout(300);
+      const vp = p.viewportSize(), b0 = await el.boundingBox();
+      const box = b0 && { x: Math.max(0, b0.x), y: Math.max(0, b0.y) }; if (box) { box.width = Math.min(vp.width, b0.x + b0.width) - box.x; box.height = Math.min(vp.height, b0.y + b0.height) - box.y; }
+      if (!box || box.width < 2 || box.height < 2) continue;
+      const big = await el.evaluate((e) => { const cs = getComputedStyle(e), px = parseFloat(cs.fontSize); e.dataset.was = e.style.visibility; e.style.visibility = 'hidden'; return px >= 24 || (px >= 18.66 && Number(cs.fontWeight) >= 700); });
+      const shot = await p.screenshot({ clip: box });
+      await el.evaluate((e) => { e.style.visibility = e.dataset.was || ''; delete e.dataset.was; });
+      const bg = await p.evaluate(async (b64) => {
+        const bm = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+        const c = new OffscreenCanvas(bm.width, bm.height), g = c.getContext('2d'); g.drawImage(bm, 0, 0);
+        const d = g.getImageData(0, 0, bm.width, bm.height).data, px = [];
+        for (let i = 0; i < d.length; i += 16) px.push([d[i], d[i + 1], d[i + 2]]);
+        return px;
+      }, shot.toString('base64'));
+      const ls = bg.map(lumOf).sort((a, b) => a - b), light = ls[Math.floor(ls.length * 0.9)];
+      const fg = lumOf((n.d.fgColor || '#ffffff').replace('#', '').match(/../g).map((h) => parseInt(h, 16)));
+      const ratio = (Math.max(fg, light) + 0.05) / (Math.min(fg, light) + 0.05);
+      if (ratio < (big ? 3 : 4.5)) v.push(`color-contrast (on the sky, as seen): ${n.t} ${ratio.toFixed(2)}`);
+    }
+  }
   ok(!v.length, 'no accessibility violations', v.join('; '));
   ok(!(await p.isVisible('#nowcast')), 'no rain on the way: no nowcast card');
   await p.locator('.foot-note [data-credits="map"]').evaluate((e) => e.click());

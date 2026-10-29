@@ -450,6 +450,12 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* ---------- now ---------- */
 /* (positioned: words on their way out are laid over where they were, app.js fadeOff) */
 .hero, .pg-page, .pv-hero { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
+/* (on the palest day skies, where the sun's glow and the clouds lighten the top: a soft shade behind the forecast's words,
+   so the small ones read; none at night, or where the sky's deep enough already) */
+:is(.hero, .pg-page) { isolation: isolate; }
+body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) :is(.hero, .pg-page)::before {
+  content: ""; position: absolute; z-index: -1; inset: -6% 0 -10%; pointer-events: none;
+  background: radial-gradient(ellipse 70% 62% at 32% 50%, rgba(6, 18, 44, 0.26), rgba(6, 18, 44, 0.12) 55%, transparent 78%); }
 /* (positioned: a temperature on its way out is laid over the new one, at its start: app.js roll) */
 .hero-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
@@ -483,7 +489,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .hero:is(.away, .still) .hero-icon .wi * { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
-.hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
+/* (the day's high and low: small, so solid white, to read clearly on the palest day skies) */
+.hero-hl { font-size: 16px; color: #fff; margin-top: 2px; font-weight: 500; }
 .hero-hl, .brief, .status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 0 12px rgba(0, 0, 0, 0.22); }
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
 .brief b { font-weight: 650; color: #fff; }
@@ -624,6 +631,12 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 /* (no glass of its own: a heading over the tiles, as each card's is inside it) */
 .section-title { background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .section-title::before { display: none; }
+/* (on the palest day skies, low on the page where the sky's lightest: a soft shade round the headings between the cards,
+   and the foot's words on a band that darkens towards the page's end, so they read) */
+body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) .section-title {
+  padding: 2px 10px; border-radius: 999px; color: #fff; background: rgba(6, 18, 44, 0.32) !important; box-shadow: 0 0 14px 6px rgba(6, 18, 44, 0.3) !important; }
+body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) .foot {
+  padding-top: 18px; background: linear-gradient(rgba(6, 18, 44, 0), rgba(6, 18, 44, 0.34) 18px); }
 .ct-icon { display: inline-flex; color: var(--text-3); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack:empty { display: none; }
