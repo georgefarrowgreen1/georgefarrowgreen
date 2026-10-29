@@ -147,7 +147,7 @@ ok(/changed elsewhere/.test(refused) && /Saved/.test(again) && after.poster_at =
   'changed elsewhere: refused and said, then the photo there now moved', JSON.stringify({ refused, again, after }));
 
 // ---- 3. Your code: the link that adds you in Chat, as a QR code, and copied ----
-await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
+await P.p.click('main .pc-acts .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
 const link = `${CHAT}/#add=rowan`;
 const drawn = await P.p.evaluate(async (l) => {
   const svg = document.querySelector('#sheet .qr svg'); if (!svg) return null;
