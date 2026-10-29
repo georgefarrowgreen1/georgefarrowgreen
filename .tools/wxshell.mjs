@@ -1,15 +1,23 @@
 // The weather app's offline copy (weather/sw.js): each file it keeps fingerprinted (SUMS, SHA-256 in base64), and the
 // page marked with the version (index.html app-version, the service worker's CACHE), so a phone only ever keeps a whole
-// version. Run after changing any of the files it keeps, and after bumping CACHE:  node .tools/wxshell.mjs
+// version. Run after changing any of the files it keeps (after node .tools/minify.mjs: it fingerprints what's sent), and
+// after bumping CACHE:  node .tools/wxshell.mjs
 // (.tools/tests/unit/wxshell.test.mjs fails until it has been)
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 const dir = new URL("../weather/", import.meta.url);
 export function shell() {
   const sw = readFileSync(new URL("sw.js", dir), "utf8");
   const cache = /const CACHE = "([^"]+)"/.exec(sw)[1], list = JSON.parse(/const SHELL = (\[[^\]]*\]);/.exec(sw)[1]);
-  const sums = Object.fromEntries(list.filter((u) => u !== "./").map((u) => [u, createHash("sha256").update(readFileSync(new URL(u, dir))).digest("base64")]));
+  // (each as it's sent: its minified copy, where there's one still of the file as it is: functions/_min.js)
+  let made = {}; try { made = JSON.parse(readFileSync(new URL("../min/manifest.json", dir), "utf8")); } catch (_) {}
+  const sent = (u) => {
+    const f = "weather/" + u.slice(2), src = readFileSync(new URL(u, dir));
+    const min = new URL("../min/" + f, dir);
+    return made[f] && made[f] === createHash("sha256").update(src).digest("hex") && existsSync(min) ? readFileSync(min) : src;
+  };
+  const sums = Object.fromEntries(list.filter((u) => u !== "./").map((u) => [u, createHash("sha256").update(sent(u)).digest("base64")]));
   return { sw, cache, list, sums };
 }
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {

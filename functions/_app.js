@@ -25,6 +25,7 @@ export const SECURITY = {
 };
 const FOREVER = "public, max-age=31536000, immutable";
 import { oldApp } from "./_sites.js";
+import { assets } from "./_min.js";
 export const CHAT_HOST = "chat.inflite.ai";
 // (CHAT_HOST in the environment: tests, which run the new address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -50,7 +51,7 @@ async function fingerprint(ctx, path, chat) {
   if (hit && Date.now() - hit.at < 60_000) return hit.v;
   let doing = working.get(ctx); if (!doing) working.set(ctx, (doing = new Map()));
   if (!doing.has(k)) doing.set(k, (async () => {
-    const r = await ctx.env.ASSETS.fetch(new URL(path, ctx.request.url));
+    const r = await assets(ctx.env).fetch(new URL(path, ctx.request.url));
     if (!r.ok) return "";
     const body = await asSent(ctx, path, await r.text(), chat);
     const v = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))).slice(0, 12);
@@ -60,7 +61,7 @@ async function fingerprint(ctx, path, chat) {
   return doing.get(k);
 }
 // import … from "./x.js"  →  "./x.js?v=…" (and import("./x.js"), loaded only when it's needed)
-const IMPORT_RE = /\b(from\s+|import\()"(\.\/[\w./-]+\.js)"/g;
+const IMPORT_RE = /\b(from\s*|import\()"(\.\/[\w./-]+\.js)"/g;
 async function stampImports(ctx, path, js, chat) {
   const dir = path.slice(0, path.lastIndexOf("/") + 1), seen = new Map();
   for (const [, , rel] of js.matchAll(IMPORT_RE)) if (!seen.has(rel)) seen.set(rel, await fingerprint(ctx, dir + rel.slice(2), chat));

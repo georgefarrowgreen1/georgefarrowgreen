@@ -15,6 +15,7 @@ import { isFitness, fitnessHost } from "./_fitapp.js";
 import { isAccount, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
+import { assets } from "./_min.js";
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
@@ -58,7 +59,8 @@ export async function onRequest(ctx) {
       if (r.ok || r.status === 304) out.headers.set("Cache-Control", "public, max-age=86400");
       return out;
     }
-    const res = await ctx.next();
+    // (the home page's own script and styles minified, as every app's: functions/_min.js)
+    const res = /^\/(app\.js|styles\.css)$/.test(url.pathname) && ["GET", "HEAD"].includes(ctx.request.method) ? await assets(ctx.env).fetch(ctx.request) : await ctx.next();
     // (the home page, with its words in it: functions/_home.js)
     if (!url.pathname.startsWith("/api/")) return homePage(ctx, url, res);
     // (the site's own API answers: never taken for anything but what they say they are)
@@ -77,7 +79,7 @@ export async function onRequest(ctx) {
   // everything else is the app: /x is /pigeon/x
   if (/^\/handover(\.html)?$/.test(url.pathname)) return notFound();   // (the old address's, not this one's)
   const path = "/pigeon" + (url.pathname === "/index.html" ? "/" : url.pathname);
-  const res = await ctx.env.ASSETS.fetch(new Request(new URL(path + url.search, url), ctx.request));
+  const res = await assets(ctx.env).fetch(new Request(new URL(path + url.search, url), ctx.request));
   return serveApp(ctx, res, path, true);
 }
 
@@ -123,7 +125,7 @@ self.addEventListener("notificationclick", (e) => {
 }
 
 const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png" };
-const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|readme\.md$|wrangler\.toml$)/i;
+const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|min(\/|$)|readme\.md$|wrangler\.toml$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }
   p = p.replace(/\\/g, "/").replace(/\/{2,}/g, "/");

@@ -4,6 +4,7 @@
 // couldn't be read here: the page is marked data-words only when they're in it), and its owner edits them there. Its
 // scripts and styles are stamped with what's in them (?v=), so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
+import { assets } from "./_min.js";
 
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
 const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js"];
@@ -14,7 +15,7 @@ async function stamps(ctx, url) {
   if (memo.v && Date.now() - memo.at < 60e3) return memo.v;
   const out = {};
   await Promise.all(STAMPED.map(async (f) => {
-    const r = await ctx.env.ASSETS.fetch(new Request(new URL(`/${f}`, url))).catch(() => null);
+    const r = await assets(ctx.env).fetch(new Request(new URL(`/${f}`, url))).catch(() => null);
     if (r?.ok) out[f] = await stampOf(await r.arrayBuffer());
   }));
   if (Object.keys(out).length === STAMPED.length) memo = { at: Date.now(), v: out };

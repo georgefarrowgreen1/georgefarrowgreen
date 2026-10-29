@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { assets as minAssets } from '../../../functions/_min.js';
 
 const ROOT = new URL('../../../', import.meta.url);
 const TYPES = { js: 'text/javascript', css: 'text/css', html: 'text/html; charset=utf-8' };
@@ -23,7 +24,8 @@ async function host() {
   const env = { ASSETS: assets() };
   const get = async (path) => {
     const request = new Request('https://georgefarrowgreen.com' + path), url = new URL(request.url);
-    const res = await serveApp({ request, env }, await env.ASSETS.fetch(request), url.pathname, false);
+    // (read as the server reads it: functions/_middleware.js, its minified copy where it has one, functions/_min.js)
+    const res = await serveApp({ request, env }, await minAssets(env).fetch(request), url.pathname, false);
     return { res, text: await res.text(), cache: res.headers.get('cache-control') };
   };
   return { get, asked: env.ASSETS.asked };

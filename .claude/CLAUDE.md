@@ -7,3 +7,6 @@
   (`BUILD` in `weather/app.js`, `fitness/app.js` or `account/app.js`, shown in InFlite's menu as V1.01, V1.02, ...), in the same commit. Chat keeps its
   own release numbers (`APP_VERSION` in `pigeon/app.js`). InFlite's menu and header are shared: change
   `.tools/inflite/menu.js` / `menu.css`, then run `node .tools/iflmenu.mjs ../inflite/email/public` (and `node .tools/wxshell.mjs`).
+- Minified copies: the apps' scripts and styles are sent minified from `min/` (functions/_min.js). After changing any of
+  them, run `node .tools/minify.mjs` (before `node .tools/wxshell.mjs`), in the same commit. A copy that's out of date
+  is never sent (the file goes unminified instead), and the unit test `min.test.mjs` names any that are.

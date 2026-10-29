@@ -8,6 +8,7 @@
 import { notFound } from "./_app.js";
 
 import { oldApp } from "./_sites.js";
+import { assets } from "./_min.js";
 export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -33,7 +34,7 @@ const PAGE = /^\/account\/(index\.html)?$/;
 // never kept, and opened afresh if the browser brings back one it kept: account/app.js; a script asked for unstamped
 // isn't kept at all.)
 const FOREVER = "public, max-age=31536000, immutable";
-const IMPORT_RE = /\b(from\s+|import\()"\.\/([\w.-]+\.js)"/g;
+const IMPORT_RE = /\b(from\s*|import\()"\.\/([\w.-]+\.js)"/g;
 const where = (name) => SHARED["/" + name] || "/account/" + name;
 const stampOf = async (text) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 // (worked out again each minute: just after a deploy the files can briefly be last version's. Kept from when it's begun,
@@ -44,7 +45,7 @@ function fingerprint(ctx, url, name) {
   const hit = memo.get(name);
   if (hit && Date.now() - hit.at < 60_000) return hit.p;
   const e = { at: Date.now(), p: (async () => {
-    const r = await ctx.env.ASSETS.fetch(new Request(new URL(where(name), url)));
+    const r = await assets(ctx.env).fetch(new Request(new URL(where(name), url)));
     if (!r.ok) return "";
     return stampOf(await asSent(ctx, url, name, await r.text()));
   })() };
@@ -72,7 +73,7 @@ export async function accountHost(ctx, url) {
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/account" || url.pathname.startsWith("/account/")) { const to = new URL(url); to.pathname = url.pathname.slice(8) || "/"; return Response.redirect(to.href, 301); }
   const path = SHARED[url.pathname] || "/account" + (url.pathname === "/index.html" ? "/" : url.pathname);
-  const res = await ctx.env.ASSETS.fetch(new Request(new URL(path, url), ctx.request));
+  const res = await assets(ctx.env).fetch(new Request(new URL(path, url), ctx.request));
   const type = res.headers.get("content-type") || "";
   // (anything else that comes back as a page is the site's home page, served as a fallback)
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();

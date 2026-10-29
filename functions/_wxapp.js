@@ -12,6 +12,7 @@
 import { notFound } from "./_app.js";
 
 import { oldApp } from "./_sites.js";
+import { assets } from "./_min.js";
 export const WEATHER_HOST = "weather.inflite.ai";
 // (WEATHER_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -65,6 +66,6 @@ export async function weatherHost(ctx, url) {
     return Response.redirect(to.href, 301);
   }
   const path = "/weather" + (url.pathname === "/index.html" ? "/" : url.pathname);
-  const res = await ctx.env.ASSETS.fetch(new Request(new URL(path + url.search, url), ctx.request));
+  const res = await assets(ctx.env).fetch(new Request(new URL(path + url.search, url), ctx.request));
   return serveWeather(res, path);
 }
