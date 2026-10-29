@@ -4,7 +4,8 @@
 //   worth knowing, one card at a time (an odd move, a holding near its high, a big week, how much is in one company,
 //   your dividends, how you've done since you bought); your biggest movers; and London, New York and Bitcoin.
 // - Holdings: everything you own and follow, the ring of your mix, and your accounts (ISA, pension, general) with what's
-//   left of your ISA's allowance for the tax year; and your income: the dividends you can expect, month by month.
+//   left of your ISA's allowance for the tax year; your income: the dividends you can expect, month by month; and your
+//   year against the market (the FTSE 100, the world's shares, the S&P 500), drawn line against line.
 // - News: the day in two sentences, then the stories about what you hold.
 //
 // Tap anything for its page: its price, a chart you can read with your finger, from a day to five years (reshaping as
@@ -263,11 +264,13 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.54";
+const BUILD = "1.55";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
 const MARKET_OF = { London: "^FTSE", Nasdaq: "^GSPC", NYSE: "^GSPC", "NYSE American": "^GSPC", "NYSE Arca": "^GSPC" };
+// what your year's set against: London's market, the world's shares (an all-world tracker's price) and America's
+const BENCHES = [["^FTSE", "FTSE 100"], ["VWRL.L", "the world"], ["^GSPC", "S&P 500"]];
 // the accounts a holding can be held in; and an ISA's allowance, for each tax year (6 April to 5 April)
 const ACCOUNTS = [["isa", "ISA"], ["sipp", "Pension"], ["gia", "General"]];
 const ACCOUNT_NAME = Object.fromEntries(ACCOUNTS);
@@ -275,7 +278,7 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true, vs: null };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -610,10 +613,10 @@ function holdingsView() {
     if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
       h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
   }
-  if (T.o.length) parts.push(...accountsPart(T), ...incomePart());
   const ownedFirst = [...S.list].sort((a, b) => (valueOf(b) ?? -1) - (valueOf(a) ?? -1));
   parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
   parts.push(h("div.list", {}, ownedFirst.map((x, i) => itemRow(x, i, "value"))));
+  if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
   if (T.gain != null) parts.push(h("p.foot", { class: "foot num", text: `${T.gain >= 0 ? "Up" : "Down"} ${money(Math.abs(T.gain), "GBP", 0)} (${pct(T.gainPct, 1)}) since you bought, on the ${plural(T.costed.length, "holding")} you've said what you paid for` }));
   return parts;
 }
@@ -667,6 +670,86 @@ function incomeView() {
         h("span", {}, h("b", { text: p.x.name }), h("small", { text: p.yld != null ? `Yield ${fmt(p.yld, 1)}% · ${plural(S.years[p.x.symbol].divs.length, "payment")} a year` : "" })),
         h("span.r", {}, h("b.num", { text: money(p.year, "GBP", 0) }), h("small", { text: `${Math.round((p.year / I.total) * 100)}%` }))))),
       h("p.hint", { text: "Expected from last year's dividends, in the month each went ex-dividend (it's paid a few weeks after). Amounts and dates can change, and ones paid in dollars are shown in pounds at today's rate." })] : [])];
+}
+
+// Your year against the market, in a row (said once it's been worked out)
+function vsPart() {
+  const v = S.vs?.at && Date.now() - S.vs.at < 3600e3 ? S.vs : null, gap = v ? v.you - v.bench : 0;
+  return [h("h3.label", {}, "Against the market"), h("div.list", {}, h("button.item.two.rise", { type: "button", onclick: () => openSheet(vsView) },
+    h("span", {}, h("b", { text: "Your year" }), h("small", { text: v ? `${fmt(Math.abs(gap), 1)} points ${gap >= 0 ? "ahead of" : "behind"} ${v.name}` : "Against the FTSE 100, the world and the S&P 500" })),
+    h("span.r", {}, v ? h("b", { class: `num ${tone(v.you)}`, text: pct(v.you, 1) }) : icon("chev", 16, 2.4))))];
+}
+// a day's key, for lining up days across markets
+const dayKey = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+// Your year against the market: what you own now, as if held all year (at today's exchange rates), its value through
+// the year beside a market's, both from where they started; the market changed with a tap, the lines reshaping to it
+function vsView() {
+  const box = h("div.chartbox.vsbox.loading", { id: "vsbox" }), say = h("p.why", { id: "vssay" }, h("span", { style: "opacity:.35", text: "Working out your year…" }));
+  const big = h("div.sprice.num", { style: "margin-top:14px", text: "–" });
+  const seg = h("div.seg.thirds", { role: "group", "aria-label": "Against" }, h("span.sl"), BENCHES.map(([sym, name], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-b": sym, text: name === "the world" ? "World" : name })));
+  const legend = h("div.vslegend", {}, h("span.you", {}, h("i"), "You"), h("span.mk", {}, h("i"), h("b", { id: "vsname", text: BENCHES[0][1] })));
+  requestAnimationFrame(() => vsDraw(box, seg, big, say));
+  return [h("div.shead", {}, h("small", { text: "Against the market · this year" }), closeBtn()), big,
+    h("div.sdelta", {}, h("span", { style: "color:var(--text-3)", text: "your year, on what you own now" })), box, legend, seg, say,
+    h("p.hint", { text: "As if you'd held what you own now all year, at today's exchange rates, beside the market's price. Dividends aren't counted on either side." })];
+}
+async function vsDraw(box, seg, big, say) {
+  const o = owned(), W = () => box.clientWidth || 390, H = 210, N = 120;
+  const get = async (sym) => { const k = `${sym}:1y`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, "1y"); S.charts.set(k, { at: Date.now(), c }); return c; };
+  const charts = {};
+  try {
+    const syms = [...o.map((x) => x.symbol), ...BENCHES.map((b) => b[0])];
+    for (let i = 0; i < syms.length; i += 6) await Promise.all(syms.slice(i, i + 6).map((s) => get(s).then((c) => { charts[s] = c; }, () => {})));
+  } catch (_) {}
+  if (!box.isConnected) return;
+  box.classList.remove("loading");
+  const held = o.filter((x) => charts[x.symbol]?.c?.length > 1);
+  if (!held.length) { say.replaceChildren("Couldn't work out your year just now. Try again in a minute."); return; }
+  // (the days, across every market; each price carried over the days its market was shut)
+  const days = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(dayKey)))].sort();
+  const along = (c) => { const m = new Map(c.t.map((t, i) => [dayKey(t), c.c[i]])); let last = c.c[0]; return days.map((d) => (m.has(d) ? (last = m.get(d)) : last)); };
+  const value = days.map(() => 0);
+  for (const x of held) { const r = rate(S.q[x.symbol].cur), p = along(charts[x.symbol]); p.forEach((v, i) => { value[i] += v * x.qty * r; }); }
+  const you = value.map((v) => (v / value[0] - 1) * 100);
+  const svg = C.el("svg", { viewBox: `0 0 ${W()} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": "Your year against the market" });
+  const base = C.el("line", { class: "base", x1: 0, x2: W(), "vector-effect": "non-scaling-stroke" });
+  const mk = C.el("path", { class: "line mkline", "vector-effect": "non-scaling-stroke" }), yl = C.el("path", { class: "line", "vector-effect": "non-scaling-stroke" });
+  svg.append(base, mk, yl); box.append(svg);
+  let shown = null, cur = null;
+  const show = async (bsym, first) => {
+    const c = charts[bsym], name = BENCHES.find((b) => b[0] === bsym)[1];
+    const bench = c?.c?.length > 1 ? along(c).map((v, i, a) => (v / a[0] - 1) * 100) : days.map(() => 0);
+    const w = W(), all = [...you, ...bench, 0], lo = Math.min(...all), hi = Math.max(...all), span = hi - lo || 1, pad = 26;
+    const y = (v) => pad + (H - 2 * pad) * (1 - (v - lo) / span), at = (vals) => C.resample(vals, N).map((v, i) => [(i / (N - 1)) * w, y(v)]);
+    const target = { you: at(you), mk: at(bench) };
+    svg.setAttribute("viewBox", `0 0 ${w} ${H}`); base.setAttribute("x2", w); base.setAttribute("y1", y(0)); base.setAttribute("y2", y(0));
+    yl.style.stroke = you.at(-1) >= 0 ? "var(--up)" : "var(--down)";
+    const draw = (p, q) => { yl.setAttribute("d", C.smooth(p)); mk.setAttribute("d", C.smooth(q)); };
+    if (!shown || first) { draw(target.you, target.mk); C.drawIn(yl, 0.15, 1.3); mk.style.opacity = "0"; requestAnimationFrame(() => { mk.style.transition = "opacity 0.9s ease 0.6s"; mk.style.opacity = "1"; }); }
+    else { const from = shown; await C.tween([...from.you, ...from.mk], [...target.you, ...target.mk], 700, (p) => draw(p.slice(0, N), p.slice(N))); }
+    shown = target; cur = { bench, name };
+    const yv = you.at(-1), bv = bench.at(-1), gap = yv - bv;
+    big.className = `sprice num ${tone(yv)}`; big.textContent = pct(yv, 1);
+    const nm = $("#vsname"); if (nm) nm.textContent = name === "the world" ? "World" : name;
+    say.replaceChildren(`You're ${yv >= 0 ? "up" : "down"} ${fmt(Math.abs(yv), 1)}% over the year, and ${name} is ${bv >= 0 ? "up" : "down"} ${fmt(Math.abs(bv), 1)}%: ${Math.abs(gap) < 0.05 ? "level with it" : `${fmt(Math.abs(gap), 1)} points ${gap >= 0 ? "ahead" : "behind"}`}.`,
+      h("small", { text: held.length < o.length ? `From ${plural(held.length, "holding")} of your ${o.length} with a year's prices` : `From all ${plural(held.length, "holding")}` }));
+    S.vs = { at: Date.now(), you: yv, bench: bv, name };
+  };
+  C.scrubber(box, (x, w) => {
+    if (!cur) return null;
+    const i = Math.max(0, Math.min(days.length - 1, Math.round((x / w) * (days.length - 1)))), k = Math.round((i / Math.max(1, days.length - 1)) * (N - 1));
+    const when = new Date(days[i] + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return { x: shown.you[k][0], y: shown.you[k][1], label: `You ${pct(you[i], 1)} · ${cur.name === "the world" ? "World" : cur.name} ${pct(cur.bench[i], 1)} · ${when}` };
+  });
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-b]");
+    if (!b || b.getAttribute("aria-pressed") === "true") return;
+    const i = [...seg.querySelectorAll("button")].indexOf(b);
+    seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`;
+    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    show(b.dataset.b);
+  });
+  await show(BENCHES[0][0], true);
 }
 
 // One account: what's in it, worth what, and how it's done
