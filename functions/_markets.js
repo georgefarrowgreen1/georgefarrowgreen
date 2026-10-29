@@ -13,6 +13,9 @@
 // mk_alerts:   a holding you want to hear about when it moves (pct, 3% by default), and the last day it was said.
 // mk_push:     each phone Markets can tell you on (its push subscription).
 // mk_off:      the account's own choice, from its Notifications page: Markets's alerts off everywhere.
+// mk_buys:     each buy (qty > 0) and sale (qty < 0) of a holding, with the price each and the day: where a holding has
+//   them, how many you own and what each cost on average are worked out from them (pooled: a sale takes shares out at
+//   the average, and what it made over that is kept as made).
 // mk_wrap:     the evening wrap (how your day went, once your markets have closed): off, and the last day it was sent.
 // mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
@@ -38,6 +41,8 @@ export async function mkdb(env) {
       D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_wrap (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, sent TEXT)"),
+      D.prepare("CREATE TABLE IF NOT EXISTS mk_buys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, symbol TEXT NOT NULL, qty REAL NOT NULL, price REAL, at INTEGER NOT NULL, added INTEGER NOT NULL)"),
+      D.prepare("CREATE INDEX IF NOT EXISTS mk_buys_of ON mk_buys (user_id, symbol)"),
     ]);
     // (the accounts, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
@@ -228,9 +233,10 @@ export const INDEX_OF = { London: "^FTSE", Nasdaq: "^IXIC", NYSE: "^GSPC", "NYSE
 // ---------------- what you own and follow ----------------
 export async function holdings(env, userId) {
   const D = await mkdb(env);
-  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, a.pct AS alert FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
+  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, a.pct AS alert,
+    (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = h.user_id AND b.symbol = h.symbol) AS buys FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
     WHERE h.user_id = ? ORDER BY h.ord, h.added`).bind(userId).all();
-  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, alert: r.alert ?? null }));
+  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
 }
 const cleanText = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 export const ACCOUNTS = ["isa", "sipp", "gia"];
@@ -243,7 +249,7 @@ export async function putHolding(env, userId, b) {
   // (the account: left as it was where none's said; null takes it out of one)
   const account = b.account === undefined ? undefined : b.account == null || b.account === "" ? null : ACCOUNTS.includes(b.account) ? b.account : "bad";
   if (account === "bad") throw new HttpError(400, "That isn’t an account.");
-  const was = await D.prepare("SELECT name FROM mk_holdings WHERE user_id = ? AND symbol = ?").bind(userId, symbol).first();
+  const was = await D.prepare("SELECT name, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
   if (!was) {
     const n = await D.prepare("SELECT COUNT(*) AS n, MAX(ord) AS o FROM mk_holdings WHERE user_id = ?").bind(userId).first();
     if ((n?.n || 0) >= MAX_HOLDINGS) throw new HttpError(400, `You can follow up to ${MAX_HOLDINGS}.`);
@@ -251,13 +257,16 @@ export async function putHolding(env, userId, b) {
     let name = cleanText(b.name, 60);
     if (!name) { const q = await quote(env, symbol).catch(() => null); if (!q) throw new HttpError(404, "Couldn’t find that one."); name = q.name; }
     await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now(), account ?? null).run();
-  } else if (account === undefined) await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, userId, symbol).run();
+  // (one with buys has its shares and cost from them: only its account's changed here)
+  } else if (was.buys) { if (account !== undefined) await D.prepare("UPDATE mk_holdings SET account = ? WHERE user_id = ? AND symbol = ?").bind(account, userId, symbol).run(); }
+  else if (account === undefined) await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, userId, symbol).run();
   else await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ?, account = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, account, userId, symbol).run();
   return holdings(env, userId);
 }
 export async function dropHolding(env, userId, symbol) {
   const D = await mkdb(env), s = cleanSymbol(symbol);
-  await D.batch([D.prepare("DELETE FROM mk_holdings WHERE user_id = ? AND symbol = ?").bind(userId, s), D.prepare("DELETE FROM mk_alerts WHERE user_id = ? AND symbol = ?").bind(userId, s)]);
+  await D.batch([D.prepare("DELETE FROM mk_holdings WHERE user_id = ? AND symbol = ?").bind(userId, s), D.prepare("DELETE FROM mk_alerts WHERE user_id = ? AND symbol = ?").bind(userId, s),
+    D.prepare("DELETE FROM mk_buys WHERE user_id = ? AND symbol = ?").bind(userId, s)]);
   return holdings(env, userId);
 }
 // your list in a new order (the symbols, as you have them)
@@ -265,6 +274,59 @@ export async function orderHoldings(env, userId, list) {
   const D = await mkdb(env), syms = (Array.isArray(list) ? list : []).slice(0, MAX_HOLDINGS).map(cleanSymbol);
   if (syms.length) await D.batch(syms.map((s, i) => D.prepare("UPDATE mk_holdings SET ord = ? WHERE user_id = ? AND symbol = ?").bind(i, userId, s)));
   return holdings(env, userId);
+}
+
+// ---------------- buys and sales ----------------
+// A holding's buys and sales, oldest first, and what they come to: { buys: [{ id, qty, price, at }], qty, cost (the
+// average, where every buy's price is known), made (what sales made over the average, where known) }
+export function pooled(buys) {
+  let qty = 0, total = 0, known = true, made = 0, sold = false;
+  for (const b of buys) {
+    if (b.qty > 0) { qty += b.qty; if (b.price == null) known = false; else total += b.qty * b.price; continue; }
+    const out = Math.min(qty, -b.qty), avg = qty ? total / qty : 0;
+    sold = true;
+    if (known && b.price != null) made += out * (b.price - avg); else known = false;
+    total -= out * avg; qty -= out;
+    if (qty <= 1e-9) { qty = 0; total = 0; }
+  }
+  return { qty: +qty.toFixed(6), cost: known && qty > 0 ? +(total / qty).toPrecision(10) : null, made: sold && known ? +made.toFixed(2) : null };
+}
+export async function buysOf(env, userId, symbol) {
+  const D = await mkdb(env), s = cleanSymbol(symbol);
+  const { results } = await D.prepare("SELECT id, qty, price, at FROM mk_buys WHERE user_id = ? AND symbol = ? ORDER BY at, id").bind(userId, s).all();
+  return { symbol: s, buys: results, ...pooled(results) };
+}
+// what the buys come to, kept as the holding's own (so everything else reads it as before)
+async function repool(env, userId, symbol) {
+  const D = await mkdb(env), b = await buysOf(env, userId, symbol);
+  await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(b.qty, b.cost, userId, symbol).run();
+  return b;
+}
+// A buy or a sale: { symbol, qty (how many), price (each, in its own currency), at (the day, ms), sold? }. The first,
+// for a holding that already says how many you own, keeps those as where it started (on the day it was added)
+export async function addBuy(env, userId, b) {
+  const D = await mkdb(env), symbol = cleanSymbol(b.symbol), n = Number(b.qty), price = b.price == null || b.price === "" ? null : Number(b.price), at = Number(b.at) || Date.now();
+  if (!Number.isFinite(n) || n <= 0 || n > 1e9) throw new HttpError(400, "How many should be a number.");
+  if (price != null && (!Number.isFinite(price) || price < 0 || price > 1e9)) throw new HttpError(400, "The price should be a number.");
+  if (at > Date.now() + 864e5 || at < Date.UTC(1970, 0, 2)) throw new HttpError(400, "Choose a day that's been.");
+  const held = await D.prepare("SELECT qty, cost, added, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
+  if (!held) throw new HttpError(404, "Add it to your list first.");
+  if ((held.buys || 0) >= 500) throw new HttpError(400, "That's as many as one holding can keep.");
+  const t = Date.now(), add = [];
+  if (!held.buys && held.qty > 0) add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, held.qty, held.cost, Math.min(held.added, at), t));
+  if (b.sold) {
+    const now = pooled([...(await buysOf(env, userId, symbol)).buys, ...(!held.buys && held.qty > 0 ? [{ qty: held.qty, price: held.cost }] : [])]);
+    if (n > now.qty + 1e-9) throw new HttpError(400, `You own ${now.qty} of these, so can't have sold ${n}.`);
+  }
+  add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, b.sold ? -n : n, price, at, t));
+  await D.batch(add);
+  return repool(env, userId, symbol);
+}
+export async function dropBuy(env, userId, id) {
+  const D = await mkdb(env), r = await D.prepare("SELECT symbol FROM mk_buys WHERE id = ? AND user_id = ?").bind(Number(id) || 0, userId).first();
+  if (!r) throw new HttpError(404, "That one's gone already.");
+  await D.prepare("DELETE FROM mk_buys WHERE id = ? AND user_id = ?").bind(Number(id), userId).run();
+  return repool(env, userId, r.symbol);
 }
 
 // ---------------- your ISA's allowance ----------------
@@ -431,7 +493,7 @@ export async function wrapTick(env, t = Date.now()) {
 export async function dropMarkets(env, userId) {
   const D = await mkdb(env).catch(() => null);
   if (!D) return;
-  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa", "mk_wrap"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
+  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa", "mk_wrap", "mk_buys"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
 }
 // what's kept, for the account's page: how many you own and follow
 export async function marketsOf(env, userId) {

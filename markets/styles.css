@@ -150,6 +150,12 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 /* (a row with no sparkline: an account, the ISA's allowance) */
 .item.two { grid-template-columns: minmax(0, 1fr) auto; }
 .list.flush { padding: 0; }
+/* a buy or a sale: its line, and a way to take it off (tapped twice) */
+.item.buy { grid-template-columns: minmax(0, 1fr) auto auto; }
+.item.buy:active { opacity: 1; }
+.del { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--ctl); color: var(--text-3); font-size: 13px; font-weight: 600; transition: background-color 0.2s, color 0.2s; }
+.del.sure { background: var(--down); color: #fff; }
+.field input[type="date"] { color-scheme: inherit; font-family: inherit; }
 .slabel { margin: 30px 0 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
 /* how much of the ISA's allowance is used */
 .allow { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--ctl); overflow: hidden; margin-top: 10px; }

@@ -12,6 +12,9 @@
 //   PUT    /api/markets/alert         an alert on or off: { symbol, on, pct? } → your list
 //   PUT    /api/markets/isa           what you've paid into your ISA this tax year: { paid } → { isa }
 //   PUT    /api/markets/wrap          the evening wrap on or off: { on } → { wrap }
+//   GET    /api/markets/buys?s=A      a holding's buys and sales, and what they come to (how many, the average cost)
+//   POST   /api/markets/buy           one more: { symbol, qty, price?, at, sold? } → them, and your list
+//   DELETE /api/markets/buy?id=       one taken off → them, and your list
 //   GET    /api/markets/push-key      the key push subscriptions are made with
 //   POST   /api/markets/push          alerts on this phone: { sub }
 //   POST   /api/markets/push-move     the browser renewed its subscription: { was, sub } (markets/sw.js)
@@ -27,7 +30,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
@@ -97,6 +100,22 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     return json({ holdings: await orderHoldings(env, u.id, (await body(request)).symbols) });
+  },
+  "GET buys": async ({ request, env }) => {
+    const u = await signedIn(request, env), [s] = symbolsOf(request, 1);
+    return json(await buysOf(env, u.id, s));
+  },
+  "POST buy": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await limit(env, `mkbuy:${u.id}`, 300, 3600e3);
+    const b = await addBuy(env, u.id, await body(request));
+    return json({ ...b, holdings: await holdings(env, u.id) });
+  },
+  "DELETE buy": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await dropBuy(env, u.id, new URL(request.url).searchParams.get("id"));
+    return json({ ...b, holdings: await holdings(env, u.id) });
   },
   "PUT wrap": async ({ request, env }) => {
     sameOrigin(request);

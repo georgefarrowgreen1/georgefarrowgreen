@@ -10,7 +10,8 @@
 //
 // Tap anything for its page: its price, a chart you can read with your finger, from a day to five years (reshaping as
 // you switch); why it's moving (the day's news about it, or the market it's moving with); what yours is worth; its day,
-// its year and its dividends; and an alert for when it moves 3%, or it sent to a friend in Chat. And once a weekday, after
+// its year and its dividends; your buys and sales of it (how many you own, and what each cost on average, worked out from
+// them); and an alert for when it moves 3%, or it sent to a friend in Chat. And once a weekday, after
 // your markets close, the evening wrap: how your day went, on your phone.
 //
 // Signed in only: with your InFlite account, the one every app on the site uses, signed in on the account's own page
@@ -264,7 +265,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.55";
+const BUILD = "1.56";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -877,6 +878,7 @@ function stockView(sym, o = {}) {
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
     h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
     box, seg, why, facts(sym, held, q),
+    held ? h("div", { id: "buys" }) : null,
   ];
   // what can be done with it
   if (held) parts.push(h("div.btns", {},
@@ -884,14 +886,14 @@ function stockView(sym, o = {}) {
     h("button.btn.press", { type: "button", onclick: () => sendInChat(sym) }, "Send in Chat")),
   h("div.links", {}, h("button", { type: "button", onclick: () => pushSheet(editView, sym), text: held.qty > 0 ? "Edit Holding" : "Add What You Own" }), h("button.danger", { type: "button", onclick: () => removeHolding(sym), text: "Remove" })));
   else parts.push(h("div.btns", {}, h("button.btn.go.press.wide", { type: "button", onclick: () => pushSheet(editView, sym, { name }) }, "Add to Your List"), h("button.btn.press.wide", { type: "button", onclick: () => sendInChat(sym, name) }, "Send in Chat")));
-  requestAnimationFrame(() => { stockChart(sym, box, seg); whyMoving(sym, why); });
+  requestAnimationFrame(() => { stockChart(sym, box, seg); whyMoving(sym, why); if (held) drawBuys(sym); });
   return parts;
 }
 function facts(sym, held, q) {
   const rows = [], y = S.years[sym];
   if (held?.qty > 0 && valueOf(held) != null) {
     rows.push(h("div.fact", {}, h("span", { text: held.account ? `Yours · in your ${ACCOUNT_NAME[held.account]}` : "Yours" }), h("b.num", { "data-val": sym, text: money(valueOf(held)) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-dg": sym, text: `${signed(dayOf(held))} today` })));
-    if (held.cost != null) { const g = (q.price - held.cost) * held.qty * rate(q.cur), gp = (q.price / held.cost - 1) * 100; rows.push(h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(g)}`, text: signed(g) }), h("i.num", { text: `${pct(gp, 1)} on ${priceSaid(q, held.cost)} a share` }))); }
+    if (held.cost != null) { const g = (q.price - held.cost) * held.qty * rate(q.cur), gp = (q.price / held.cost - 1) * 100; rows.push(h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(g)}`, text: signed(g) }), h("i.num", { text: `${pct(gp, 1)} on ${held.buys > 1 ? "an average of " : ""}${priceSaid(q, held.cost)} a share` }))); }
   }
   if (q.dayLo != null && q.dayHi != null) rows.push(h("div.fact", {}, h("span", { text: "Today" }), h("b.num", { text: `${priceSaid(q, q.dayLo)} – ${priceSaid(q, q.dayHi)}` }), h("i.num", { text: q.prev ? `closed at ${priceSaid(q, q.prev)}` : "" })));
   const hi = y?.hi52 ?? q.hi52, lo = y?.lo52 ?? q.lo52;
@@ -902,6 +904,68 @@ function facts(sym, held, q) {
   if (!y && !isIndex(q) && q.type !== "CURRENCY") A.years([sym]).then((r) => { if (r.years[sym]) { S.years[sym] = r.years[sym]; const f = $("#facts"); if (f && Sheet.stack.at(-1)?.[1]?.[0] === sym) f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); } }, () => {});
   return h("div.facts", { id: "facts" }, rows);
 }
+// Your buys and sales of one: each, newest first, and what sales have made; one more, or one taken off
+async function drawBuys(sym) {
+  const el = $("#buys");
+  if (!el) return;
+  const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
+  let b = null;
+  if (held?.buys) { try { b = await A.buys(sym); } catch (_) { return; } }
+  if (!el.isConnected) return;
+  const add = h("button", { type: "button", onclick: () => pushSheet(buyView, sym), text: held?.buys ? "Add a Buy or Sale" : held?.qty > 0 ? "Record Your Buys" : "Record a Buy" });
+  if (!b?.buys?.length) { el.replaceChildren(h("div.links", { style: "margin-top:20px" }, add)); return; }
+  const when = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const row = (x, i) => {
+    const del = h("button.del.press", { type: "button", "aria-label": "Delete" }, icon("x", 14, 2.6));
+    del.onclick = async (e) => {
+      e.stopPropagation();
+      if (!del.classList.contains("sure")) { del.classList.add("sure"); del.replaceChildren("Delete"); setTimeout(() => { if (del.isConnected) { del.classList.remove("sure"); del.replaceChildren(icon("x", 14, 2.6)); } }, 3000); return; }
+      del.disabled = true;
+      try { const r = await A.dropBuy(x.id); S.list = r.holdings; toast(x.qty > 0 ? "Buy taken off" : "Sale taken off"); await refresh(true); drawSheet(); render(false); }
+      catch (err) { toast(err.message, true); del.disabled = false; }
+    };
+    return h("div.item.buy.rise", { vars: { i: String(i) } },
+      h("span", {}, h("b", { text: `${x.qty > 0 ? "Bought" : "Sold"} ${fmt(Math.abs(x.qty), Math.abs(x.qty) % 1 ? 2 : 0)}` }), h("small", { text: when(x.at) })),
+      h("span.r", {}, h("b.num", { text: x.price != null ? priceSaid(q, x.price) : "–" }), h("small", { text: x.price != null ? money(Math.abs(x.qty) * x.price * (rate(q.cur) ?? 1)) : "price not said" })), del);
+  };
+  el.replaceChildren(h("h3.slabel", {}, "Buys and sales"),
+    h("div.list.flush", {}, [...b.buys].reverse().map(row)),
+    b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: signed(b.made * (rate(q.cur) ?? 1)) }), h("i", { text: "over what it cost you on average" }))) : null,
+    h("div.links", { style: "margin-top:14px" }, add));
+}
+// A buy or a sale: which, the day, how many and the price each (today's to start with)
+function buyView(sym) {
+  const held = S.list.find((x) => x.symbol === sym), q = S.q[sym], cs = SYM[q?.cur] ?? "", name = held?.name || q?.name || sym;
+  let sold = false;
+  const kind = h("div.choice", { role: "group", "aria-label": "Bought or sold" }, [["buy", "Bought"], ["sell", "Sold"]].map(([k, n]) => h("button.press", { type: "button", "data-k": k, "aria-pressed": String(k === "buy"), text: n,
+    onclick: () => { sold = k === "sell"; kind.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); save.textContent = sold ? "Save Sale" : "Save Buy"; } })));
+  const today = new Date().toLocaleDateString("en-CA");
+  const day = h("input", { type: "date", id: "mk-day", value: today, max: today, "aria-label": "The day" });
+  const qty = h("input", { type: "text", inputmode: "decimal", id: "mk-bqty", placeholder: "0", "aria-label": "How many" });
+  const price = h("input", { type: "text", inputmode: "decimal", id: "mk-bprice", value: q?.price != null ? String(+q.price.toFixed(q.price < 1 ? 4 : 2)) : "", "aria-label": "Price each" });
+  const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-bsave" }, "Save Buy");
+  save.onclick = async () => {
+    const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
+    const n = num(qty.value), p = num(price.value), at = day.value ? Date.parse(day.value + "T12:00:00Z") : Date.now();
+    if (!n || !Number.isFinite(n) || n <= 0) return toast("How many should be a number.", true);
+    if (p != null && (!Number.isFinite(p) || p < 0)) return toast("The price should be a number.", true);
+    save.disabled = true;
+    try {
+      const r = await A.addBuy({ symbol: sym, qty: n, price: p, at, sold });
+      S.list = r.holdings;
+      toast(sold ? "Sale saved" : "Buy saved");
+      await refresh(true);
+      backSheet(); render(false);
+    } catch (e) { toast(e.message, true); save.disabled = false; }
+  };
+  return [h("div.shead", {}, backBtn(), h("h2", { text: name }), closeBtn()),
+    h("div.form", {}, kind,
+      h("label", { for: "mk-day", text: "On" }), h("div.field", {}, day),
+      h("label", { for: "mk-bqty", text: "How many shares" }), h("div.field", {}, qty),
+      h("label", { for: "mk-bprice", text: `Price each${cs ? "" : ` (${q?.cur || ""})`}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, price)),
+    h("p.hint", { text: held?.qty > 0 && !held?.buys ? `Your ${fmt(held.qty, held.qty % 1 ? 2 : 0)} shares${held.cost != null ? ` at ${priceSaid(q, held.cost)}` : ""} are kept as your first buy, and this one's added to them. How many you own and what they cost on average are worked out from them all from now on.` : "How many you own and what they cost on average are worked out from all your buys and sales: a sale takes shares out at the average." }), save];
+}
+
 // Why it's moving: the day's story about it, where it's moved enough for one to matter; else how it's done against its market
 async function whyMoving(sym, el) {
   const q = S.q[sym], m = S.q[MARKET_OF[q.ex]], said = (text, small, link) => el.replaceChildren(link ? h("a", { href: link, target: "_blank", rel: "noopener", text }) : text, small ? h("small", { text: small }) : null);
@@ -1035,6 +1099,9 @@ function editView(sym, o = {}) {
       loadYears();
     } catch (e) { toast(e.message, true); save.disabled = false; }
   };
+  if (held?.buys) return [h("div.shead", {}, backBtn(), h("h2", { text: name }), closeBtn()),
+    h("div.form", {}, h("label", { text: "Held in" }), choice),
+    h("p.hint", { text: `How many you own (${fmt(held.qty, held.qty % 1 ? 2 : 0)}) and what each cost${held.cost != null ? ` (${priceSaid(q, held.cost)} on average)` : ""} come from your buys and sales, on its page.` }), save];
   return [h("div.shead", {}, backBtn(), h("h2", { text: held ? name : `Add ${name}` }), closeBtn()),
     h("div.form", {},
       h("label", { for: "mk-qty", text: "Shares you own" }), h("div.field", {}, qty),
