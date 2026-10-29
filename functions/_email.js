@@ -1,7 +1,7 @@
 /* ---------------- the site's email: every app's ----------------
    One way to send, and one look, for every app (inflite.ai's, and the home page's). An app is a brand below: its name, which
-   is also the sender's (each app from its own address on the site's domain: account@, chat@, weather@,
-   website@, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
+   is also the sender's (each app from its own address: account@, chat@ and weather@ at inflite.ai, the home page's
+   website@ at georgefarrowgreen.com, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
    pictures, and what's said at the foot of each of its emails. To send:
 
      const { text, html } = emailBody({ brand: "weather", title, pill, lines, rows, button, origin });
@@ -9,9 +9,10 @@
 
    A new app is a new brand here, its pictures drawn by .tools/tests/mailicons.mjs (into mail/, served from the
    site's own address so they show in any app's email).
-   Needs RESEND_API_KEY and a sender on a domain verified in Resend: the domain of PIGEON_FROM, else of CONTACT_FROM
-   (noreply@georgefarrowgreen.com). Until one is, Resend's test sender onboarding@resend.dev works, but only for
-   mail to the Resend account's own address, and only from that one address, so every app sends from it as it is. */
+   The apps' are sent by Cloudflare's Email Service, from inflite.ai (CF_EMAIL_TOKEN and CF_ACCOUNT_ID); the home
+   page's by Resend, from georgefarrowgreen.com (RESEND_API_KEY, and CONTACT_FROM or PIGEON_FROM on a domain verified
+   there). Without Cloudflare's set up, the apps' go by Resend too. With no Resend sender set, its test sender
+   onboarding@resend.dev works, but only for mail to the Resend account's own address. */
 import { HttpError } from "./_http.js";
 
 // (the home page's address: the emails' pictures are kept there, and it stands for "this is production" below)
@@ -71,30 +72,45 @@ export const BRANDS = {
 };
 const brandOf = (brand) => { const B = Object.hasOwn(BRANDS, brand) && BRANDS[brand]; if (!B) throw new Error(`No email brand "${brand}"`); return B; };
 
-export const emailReady = (env) => !!env.RESEND_API_KEY;
+// How each email's sent, and who it's from. The apps' (Chat, Weather, the account) through Cloudflare's Email Service,
+// from inflite.ai, where it's set up (CF_EMAIL_TOKEN, an API token that can send email, and CF_ACCOUNT_ID); the home
+// page's (the contact form's), and the apps' until then, through Resend (RESEND_API_KEY), from the domain of
+// CONTACT_FROM / PIGEON_FROM (georgefarrowgreen.com). Each from its own address: chat@, account@, weather@, website@.
+// With no sender set for Resend, its test sender for all.
+const APPS_MAIL = "inflite.ai";
+const viaCloudflare = (env, brand) => brand !== "website" && !!(env.CF_EMAIL_TOKEN && env.CF_ACCOUNT_ID);
+export const emailReady = (env) => !!env.RESEND_API_KEY || !!(env.CF_EMAIL_TOKEN && env.CF_ACCOUNT_ID);
 const senderAddress = (env, brand) => {
-  const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
+  if (viaCloudflare(env, brand)) return `${brandOf(brand).from || brand}@${env.APPS_MAIL_DOMAIN || APPS_MAIL}`;
+  const f = String((brand === "website" ? env.CONTACT_FROM || env.PIGEON_FROM : env.PIGEON_FROM || env.CONTACT_FROM) || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
   const domain = a.split("@")[1];
   return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${brandOf(brand).from || brand}@${domain}`;
 };
 export const emailFrom = (env, brand) => `${brandOf(brand).name} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)
 export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false } = {}) {
-  if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
-  const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
+  const cf = viaCloudflare(env, brand), service = cf ? "Cloudflare" : "Resend";
+  if (!(cf || env.RESEND_API_KEY)) throw new HttpError(503, "Email isn’t set up on this server yet.");
+  const body = cf
+    ? { from: { address: senderAddress(env, brand), name: brandOf(brand).name }, to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }
+    : { from: emailFrom(env, brand), to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) };
+  const r = await fetch(cf ? `${env.CF_EMAIL_API || "https://api.cloudflare.com/client/v4"}/accounts/${env.CF_ACCOUNT_ID}/email/sending/send` : env.RESEND_API_URL || "https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: emailFrom(env, brand), to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }),
-    // (given up on after 10 seconds, as one Resend doesn't answer is one that couldn't be sent: so nothing that waits on
-    // it, a new account's reply among them, is held past the account page's own 30)
+    headers: { Authorization: `Bearer ${cf ? env.CF_EMAIL_TOKEN : env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    // (given up on after 10 seconds, as one the service doesn't answer is one that couldn't be sent: so nothing that
+    // waits on it, a new account's reply among them, is held past the account page's own 30)
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  if (!r?.ok) {
-    const why = r ? await r.json().then((d) => d.message || d.error || "", () => "") : "";
-    console.error("email", brand, r?.status, why);
-    await noteSend(env, why || (r ? `Refused (${r.status})` : "Couldn’t reach Resend"));
-    // Resend's own reason is shown to the admin only; it can mention the sending setup.
-    throw new HttpError(502, explain && why ? `Resend refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
+  // (Cloudflare says how it went in its answer too: a recipient that bounced for good is one it couldn't send to)
+  const d = r ? await r.json().catch(() => ({})) : {};
+  const bounced = cf && r?.ok && d.result?.permanent_bounces?.length;
+  if (!r?.ok || (cf && d.success === false) || bounced) {
+    const why = bounced ? "The address bounced" : cf ? (d.errors || []).map((e) => e.message).filter(Boolean).join(", ") : d.message || d.error || "";
+    console.error("email", service, brand, r?.status, why);
+    await noteSend(env, why || (r ? `${service} refused it (${r.status})` : `Couldn’t reach ${service}`));
+    // The service's own reason is shown to the admin only; it can mention the sending setup.
+    throw new HttpError(502, explain && why ? `${service} refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
   }
   await noteSend(env);
 }

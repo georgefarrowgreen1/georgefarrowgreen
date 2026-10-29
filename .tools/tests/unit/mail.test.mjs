@@ -8,17 +8,41 @@ import { accountMail } from '../../../functions/_account.js';
 
 const ROOT = new URL('../../../', import.meta.url).pathname;
 
-test('each app from its own address on the site\'s domain, under its own name', () => {
+test('each app from its own address: at inflite.ai by Cloudflare where that\'s set up, the home page\'s at georgefarrowgreen.com', () => {
+  const CF = { CF_EMAIL_TOKEN: 't', CF_ACCOUNT_ID: 'a' };
   for (const from of ['Chat <noreply@georgefarrowgreen.com>', 'noreply@georgefarrowgreen.com', ' noreply@georgefarrowgreen.com ']) {
-    assert.equal(emailFrom({ PIGEON_FROM: from }, 'inflight'), 'Chat <chat@georgefarrowgreen.com>', from);
-    assert.equal(emailFrom({ PIGEON_FROM: from }, 'account'), 'Account <account@georgefarrowgreen.com>', from);
+    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'inflight'), 'Chat <chat@inflite.ai>', from);
+    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'account'), 'Account <account@inflite.ai>', from);
+    assert.equal(emailFrom({ PIGEON_FROM: from }, 'account'), 'Account <account@georgefarrowgreen.com>', 'without Cloudflare: by Resend, from its domain, as before');
   }
-  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com' }, 'weather'), 'Weather <weather@georgefarrowgreen.com>');
-  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com' }, 'website'), 'Website <website@georgefarrowgreen.com>');
-  assert.equal(emailFrom({ CONTACT_FROM: 'Website <noreply@georgefarrowgreen.com>' }, 'account'), 'Account <account@georgefarrowgreen.com>', 'the contact form\'s domain, if that\'s the one set');
+  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', ...CF }, 'weather'), 'Weather <weather@inflite.ai>');
+  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', ...CF }, 'website'), 'Website <website@georgefarrowgreen.com>', 'the bio site\'s own, from its own domain');
+  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', CONTACT_FROM: 'Website <noreply@gfg.example>' }, 'website'), 'Website <website@gfg.example>', 'the contact form\'s domain, where it has one of its own');
+  assert.equal(emailFrom({ CONTACT_FROM: 'Website <noreply@georgefarrowgreen.com>' }, 'account'), 'Account <account@georgefarrowgreen.com>');
+  assert.equal(emailFrom({ ...CF, APPS_MAIL_DOMAIN: 'mail.example.com' }, 'account'), 'Account <account@mail.example.com>', 'APPS_MAIL_DOMAIN, to say otherwise');
   assert.equal(emailFrom({}, 'account'), 'Account <onboarding@resend.dev>', 'Resend\'s test sender until a domain\'s set up (the one address it allows)');
   assert.equal(emailFrom({ PIGEON_FROM: 'Chat <onboarding@resend.dev>' }, 'inflight'), 'Chat <onboarding@resend.dev>');
   assert.throws(() => emailFrom({}, 'nobody'), /No email brand "nobody"/, 'an app that isn\'t a brand doesn\'t send');
+});
+test('by Cloudflare: its API, the sender named, a reply-to and the unsubscribe headers; a refusal or a bounce is a failure', async () => {
+  const sent = [], was = globalThis.fetch;
+  let answer = { success: true, errors: [], result: { delivered: ['rowan@example.com'], permanent_bounces: [], queued: [] } };
+  globalThis.fetch = async (url, init) => { sent.push({ url, auth: init.headers.Authorization, body: JSON.parse(init.body) }); return new Response(JSON.stringify(answer), { status: answer.success ? 200 : 403 }); };
+  try {
+    const env = { RESEND_API_KEY: 'k', PIGEON_FROM: 'noreply@georgefarrowgreen.com', CF_EMAIL_TOKEN: 'cft', CF_ACCOUNT_ID: 'acc' };
+    await sendEmail(env, { brand: 'account', to: 'rowan@example.com', replyTo: 'help@example.com', subject: 'S', text: 't', html: 'h', headers: { 'List-Unsubscribe': '<https://x/>' } });
+    assert.equal(sent[0].url, 'https://api.cloudflare.com/client/v4/accounts/acc/email/sending/send');
+    assert.equal(sent[0].auth, 'Bearer cft');
+    assert.deepEqual(sent[0].body.from, { address: 'account@inflite.ai', name: 'Account' });
+    assert.equal(sent[0].body.reply_to, 'help@example.com'); assert.equal(sent[0].body.headers['List-Unsubscribe'], '<https://x/>');
+    await sendEmail(env, { brand: 'website', to: 'me@example.com', subject: 'S', text: 't', html: 'h' });
+    assert.equal(sent[1].url, 'https://api.resend.com/emails', 'the home page\'s still by Resend');
+    assert.equal(sent[1].body.from, 'Website <website@georgefarrowgreen.com>');
+    answer = { success: true, errors: [], result: { delivered: [], permanent_bounces: ['x@example.com'], queued: [] } };
+    await assert.rejects(sendEmail(env, { brand: 'inflight', to: 'x@example.com', subject: 'S', text: 't', html: 'h' }, { explain: true }), /Cloudflare refused the email: The address bounced/);
+    answer = { success: false, errors: [{ code: 10102, message: 'email.sending.error.forbidden' }], result: null };
+    await assert.rejects(sendEmail(env, { brand: 'inflight', to: 'x@example.com', subject: 'S', text: 't', html: 'h' }, { explain: true }), /Cloudflare refused the email: email\.sending\.error\.forbidden/);
+  } finally { globalThis.fetch = was; }
 });
 
 test('every app\'s pictures are drawn: its tiles and every symbol, in mail/', () => {
