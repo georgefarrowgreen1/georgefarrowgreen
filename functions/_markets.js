@@ -13,6 +13,7 @@
 // mk_alerts:   a holding you want to hear about when it moves (pct, 3% by default), and the last day it was said.
 // mk_push:     each phone Markets can tell you on (its push subscription).
 // mk_off:      the account's own choice, from its Notifications page: Markets's alerts off everywhere.
+// mk_wrap:     the evening wrap (how your day went, once your markets have closed): off, and the last day it was sent.
 // mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
 import { HttpError, db, fromB64url } from "./_pigeon.js";
@@ -36,6 +37,7 @@ export async function mkdb(env) {
       D.prepare("CREATE TABLE IF NOT EXISTS mk_off (user_id TEXT PRIMARY KEY)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
+      D.prepare("CREATE TABLE IF NOT EXISTS mk_wrap (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, sent TEXT)"),
     ]);
     // (the accounts, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
@@ -295,15 +297,23 @@ export async function setAlert(env, userId, symbol, on, pct = 3) {
   else await D.prepare("DELETE FROM mk_alerts WHERE user_id = ? AND symbol = ?").bind(userId, s).run();
   return holdings(env, userId);
 }
-// the account's alerts, for its Notifications page: { on (phones), off (turned off there), alerts: [{ symbol, name, pct }] }
+// the account's alerts, for its Notifications page: { on (phones), off (turned off there), wrap (the evening wrap on),
+// alerts: [{ symbol, name, pct }] }
 export async function alertsOf(env, userId) {
   const D = await mkdb(env);
-  const [{ results }, phones, off] = await Promise.all([
+  const [{ results }, phones, off, wrap] = await Promise.all([
     D.prepare("SELECT a.symbol, a.pct, h.name FROM mk_alerts a JOIN mk_holdings h ON h.user_id = a.user_id AND h.symbol = a.symbol WHERE a.user_id = ? ORDER BY h.ord").bind(userId).all(),
     D.prepare("SELECT COUNT(*) AS n FROM mk_push WHERE user_id = ?").bind(userId).first(),
     D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(userId).first(),
+    D.prepare("SELECT off FROM mk_wrap WHERE user_id = ?").bind(userId).first(),
   ]);
-  return { on: phones?.n || 0, off: !!off, alerts: results.map((r) => ({ symbol: r.symbol, name: r.name, pct: r.pct })) };
+  return { on: phones?.n || 0, off: !!off, wrap: !wrap?.off, alerts: results.map((r) => ({ symbol: r.symbol, name: r.name, pct: r.pct })) };
+}
+// the evening wrap on or off (on, unless it's been turned off)
+export async function setWrap(env, userId, on) {
+  const D = await mkdb(env);
+  await D.prepare("INSERT INTO mk_wrap (user_id, off) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET off = excluded.off").bind(userId, on ? 0 : 1).run();
+  return { wrap: !!on };
 }
 export async function setAlertsOff(env, userId, off) {
   const D = await mkdb(env);
@@ -373,11 +383,54 @@ export async function alertTick(env, t = Date.now()) {
   return { alerts: results.length, sent };
 }
 
+// The evening wrap: once a weekday, when every market you hold that traded today has closed, how your day went: up or
+// down, by how much, and what did most of it. Once a day, on every phone of the account's; held through its Quiet Hours
+// (and not sent at all if they last till the day's over)
+const LONDON = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+export async function wrapTick(env, t = Date.now()) {
+  const parts = Object.fromEntries(LONDON.formatToParts(new Date(t)).map((p) => [p.type, p.value]));
+  // (London's weekdays, from when its market's closed)
+  if (["Sat", "Sun"].includes(parts.weekday) || Number(parts.hour) * 60 + Number(parts.minute) < 16 * 60 + 35) return { wraps: 0 };
+  const D = await mkdb(env), today = dayIn("Europe/London", t);
+  const { results } = await D.prepare(`SELECT h.user_id, h.symbol, h.name, h.qty, u.notify_prefs FROM mk_holdings h LEFT JOIN mk_wrap w ON w.user_id = h.user_id LEFT JOIN pg_users u ON u.id = h.user_id
+    WHERE h.qty > 0 AND COALESCE(w.off, 0) = 0 AND (w.sent IS NULL OR w.sent != ?) AND h.user_id IN (SELECT user_id FROM mk_push)`).bind(today).all();
+  if (!results.length) return { wraps: 0 };
+  const q = await quotes(env, results.map((r) => r.symbol)), fx = await rates(env, Object.values(q).map((x) => x.cur));
+  const users = new Map();
+  for (const r of results) { if (!users.has(r.user_id)) users.set(r.user_id, { prefs: r.notify_prefs, list: [] }); users.get(r.user_id).list.push(r); }
+  let wraps = 0;
+  for (const [userId, u] of users) {
+    const held = u.list.map((r) => ({ ...r, x: q[r.symbol] })).filter((r) => r.x?.price != null && r.x.prev && fx[r.x.cur] != null);
+    // (what traded today, by its own market's day; crypto never closes, so isn't waited for)
+    const traded = held.filter((r) => r.x.kind !== "crypto" && r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t));
+    if (!traded.length || traded.some((r) => r.x.open && r.x.open.end > t / 1000) || isQuiet(prefsOf({ notify_prefs: u.prefs }), t)) continue;
+    const day = (r) => (r.x.price - r.x.prev) * r.qty * fx[r.x.cur], value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = held.reduce((a, r) => a + day(r), 0);
+    const by = [...held].sort((a, b) => day(b) - day(a)), top = by[0], low = by.at(-1), pctDay = value - total ? (total / (value - total)) * 100 : 0;
+    const claim = await D.prepare("INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2 WHERE mk_wrap.sent IS NULL OR mk_wrap.sent != ?2").bind(userId, today).run();
+    if (!claim.meta?.changes) continue;
+    const pounds = (v) => money(Math.abs(v), "GBP"), flat = Math.abs(total) < 1;
+    const note = {
+      title: flat ? "A flat day" : `${total >= 0 ? "Up" : "Down"} ${pounds(total)} today`,
+      body: flat ? `Your portfolio closed at ${pounds(value)}, little changed.`
+        : `Your portfolio is ${total >= 0 ? "up" : "down"} ${Math.abs(pctDay).toFixed(1)}% at ${pounds(value)}. ` + (total >= 0
+          ? `${top.name} did most of the work, adding ${pounds(day(top))}.` : `${low.name} took away most, ${pounds(day(low))}.`),
+      tag: "mk-wrap", url: "./", ttl: 6 * 3600,
+    };
+    const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth FROM mk_push WHERE user_id = ?").bind(userId).all();
+    for (const p of phones) {
+      const out = await pushToSub(env, p, note).catch(() => "error");
+      if (out === "gone") await D.prepare("DELETE FROM mk_push WHERE endpoint = ?").bind(p.endpoint).run();
+    }
+    wraps++;
+  }
+  return { wraps };
+}
+
 // ---------------- the account going ----------------
 export async function dropMarkets(env, userId) {
   const D = await mkdb(env).catch(() => null);
   if (!D) return;
-  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
+  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa", "mk_wrap"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
 }
 // what's kept, for the account's page: how many you own and follow
 export async function marketsOf(env, userId) {

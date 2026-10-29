@@ -9,7 +9,8 @@
 //
 // Tap anything for its page: its price, a chart you can read with your finger, from a day to five years (reshaping as
 // you switch); why it's moving (the day's news about it, or the market it's moving with); what yours is worth; its day,
-// its year and its dividends; and an alert for when it moves 3%, or it sent to a friend in Chat.
+// its year and its dividends; and an alert for when it moves 3%, or it sent to a friend in Chat. And once a weekday, after
+// your markets close, the evening wrap: how your day went, on your phone.
 //
 // Signed in only: with your InFlite account, the one every app on the site uses, signed in on the account's own page
 // (account.js). Your list is kept with the account; the prices come through Markets's own API, fetched once a minute
@@ -262,7 +263,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.52";
+const BUILD = "1.53";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -274,7 +275,7 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -961,10 +962,25 @@ function settingsView() {
       h("span.me", {}, meFace()), h("span", {}, h("b", { text: S.me?.name || "You" }), h("small", { text: S.me?.handle ? `@${S.me.handle}` : "" })), h("span.chev", {}, icon("chev", 17, 2.4))),
     h("div.rows", {},
       h("button.srow", { type: "button", onclick: () => openAccount("notify-markets") }, h("span", { text: "Notifications" }), h("i", { text: S.pushOn ? "On here" : "Off here" })),
+      h("div.srow", {}, h("span", {}, "Evening Wrap", h("small", { text: "How your day went, once your markets close" })), wrapSwitch()),
       h("div.srow", {}, h("span", { text: "Values in" }), h("i", { text: "Pounds" })),
       h("div.srow", {}, h("span", { text: "Prices" }), h("i", { text: "Yahoo Finance, up to 20 min behind" })),
       h("button.srow.danger", { type: "button", onclick: signOutHere }, "Sign Out")),
     h("p.hint", { style: "text-align:center", text: "Markets shows prices and news to help you follow your money. It isn't financial advice." })];
+}
+// the evening wrap, on or off (on it asks this phone to allow notifications, where it hasn't)
+function wrapSwitch() {
+  const sw = h("button.sw", { type: "button", role: "switch", id: "mk-wrap", "aria-checked": String(!!S.wrap), "aria-label": "Evening Wrap" });
+  sw.onclick = async () => {
+    const on = sw.getAttribute("aria-checked") !== "true";
+    sw.setAttribute("aria-checked", String(on)); sw.disabled = true;
+    try {
+      S.wrap = (await A.setWrap(on)).wrap;
+      if (on && !S.pushOn) await turnOnHere();
+      toast(on ? "You'll get the evening wrap once your markets close" : "Evening wrap off");
+    } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
+  };
+  return sw;
 }
 async function openAccount(open) {
   const page = A.accountPage();
@@ -1024,7 +1040,7 @@ function signedOut() { store.del("last"); store.del("years"); S.list = []; S.yea
 // ---- signed in: your list and its prices ----
 function take(m) {
   S.me = { id: m.id, name: m.name, handle: m.handle, photoAt: m.photoAt };
-  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa;
+  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
   if (m.appearance && m.appearance !== "auto") { document.documentElement.dataset.theme = m.appearance; store.set("appearance", m.appearance); try { localStorage.setItem("markets:appearance", m.appearance); } catch (_) {} }
   else { delete document.documentElement.dataset.theme; try { localStorage.removeItem("markets:appearance"); } catch (_) {} }
 }
@@ -1110,7 +1126,7 @@ async function start() {
   checkPush();
   loadYears();
   if (deep) openStock(decodeURIComponent(deep));
-  if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day. You choose which, on each one's page.", turnOnHere);
+  if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
   setInterval(refresh, 30000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 }

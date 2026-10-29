@@ -35,6 +35,7 @@ export const dropHolding = (sym) => call(`holding?s=${encodeURIComponent(sym)}`,
 export const order = (symbols) => call("order", { method: "PUT", body: { symbols } });
 export const setAlert = (symbol, on, pct = 3) => call("alert", { method: "PUT", body: { symbol, on, pct } });
 export const setIsa = (paid) => call("isa", { method: "PUT", body: { paid } });
+export const setWrap = (on) => call("wrap", { method: "PUT", body: { on } });
 export const pushKey = () => call("push-key");
 export const pushOn = (sub) => call("push", { method: "POST", body: { sub } });
 export const pushOff = (endpoint) => call("push", { method: "DELETE", body: { endpoint } });

@@ -11,11 +11,13 @@
 //   PUT    /api/markets/order         your list in a new order: { symbols } → your list
 //   PUT    /api/markets/alert         an alert on or off: { symbol, on, pct? } → your list
 //   PUT    /api/markets/isa           what you've paid into your ISA this tax year: { paid } → { isa }
+//   PUT    /api/markets/wrap          the evening wrap on or off: { on } → { wrap }
 //   GET    /api/markets/push-key      the key push subscriptions are made with
 //   POST   /api/markets/push          alerts on this phone: { sub }
 //   POST   /api/markets/push-move     the browser renewed its subscription: { was, sub } (markets/sw.js)
 //   DELETE /api/markets/push          and off again: { endpoint }
-//   POST   /api/markets/tick          the site's scheduler's turn (workers/ticker), with its secret: the alerts that are due
+//   POST   /api/markets/tick          the site's scheduler's turn (workers/ticker), with its secret: the alerts that are due,
+//                                     and the evening wraps
 //   POST   /api/markets/handback      signed in on the account's page, for Markets: its code swapped for the sign-in
 //   POST   /api/markets/account-link  the account's page, opened signed in as you
 //   POST   /api/markets/signout       and the profile (your photo, name and handle), as on every page of the site
@@ -25,15 +27,15 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, alertsOf, mkdb, isaOf, setIsa } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
   const list = await holdings(env, u.id);
   const q = await quotes(env, [...INDICES, ...list.map((h) => h.symbol)]);
   const fx = await rates(env, Object.values(q).map((x) => x.cur));
-  const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first();
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, isa: await isaOf(env, u.id), at: Date.now(),
+  const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first(), wrap = await D.prepare("SELECT off FROM mk_wrap WHERE user_id = ?").bind(u.id).first();
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, wrap: !wrap?.off, isa: await isaOf(env, u.id), at: Date.now(),
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
 // a few symbols from the address (s=A,B,C)
@@ -96,6 +98,11 @@ const ROUTES = {
     const u = await signedIn(request, env);
     return json({ holdings: await orderHoldings(env, u.id, (await body(request)).symbols) });
   },
+  "PUT wrap": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    return json(await setWrap(env, u.id, !!(await body(request)).on));
+  },
   "PUT isa": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
@@ -126,7 +133,8 @@ const ROUTES = {
   "GET alerts": async ({ request, env }) => json(await alertsOf(env, (await signedIn(request, env)).id)),
   "POST tick": async ({ request, env }) => {
     tickAuthOk(request, env);
-    return json(await alertTick(env));
+    const a = await alertTick(env), w = await wrapTick(env).catch((e) => ({ wraps: 0, error: String(e?.message || e) }));
+    return json({ ...a, ...w });
   },
   // Signed in on the account's page, for Markets (functions/_handback.js): as Fitness's
   "POST handback": async ({ request, env }) => {

@@ -277,7 +277,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.51";
+const BUILD = "1.52";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2911,7 +2911,7 @@ function wxSaid(w) {
   return what.length ? cap(and2(what)) : "None";
 }
 const fxNotifySaid = (f) => (f.morning ? `Morning reminder${f.at != null ? ` at ${hhmm(f.at)}` : ""}` : "None");
-const mkNotifySaid = (m) => (m?.off ? "Off" : m?.alerts?.length ? `${m.alerts.length} price ${m.alerts.length === 1 ? "alert" : "alerts"}` : "None");
+const mkNotifySaid = (m) => [!m?.off && m?.alerts?.length ? `${m.alerts.length} price ${m.alerts.length === 1 ? "alert" : "alerts"}` : null, m?.wrap ? "Evening wrap" : null].filter(Boolean).join(" · ") || (m?.off ? "Off" : "None");
 const ntSaid = (n) => (n?.quiet?.on ? `Quiet ${hh(n.quiet.from)}–${hh(n.quiet.to)}` : null);
 
 function notifyView() {
@@ -3018,7 +3018,8 @@ function marketsNotifyView() {
   return { title: "Markets", quiet: true, left: back, body: [
     ...ntHead("markets", "Markets", M.on),
     h("div.group", {},
-      switchRow({ icon: "bell", tint: "green", title: "Price Alerts", sub: "When something you hold moves a lot in a day", input: ntSwitch("nt-m-on", !M.off, (v) => ({ markets: { alerts: v } })) })),
+      switchRow({ icon: "bell", tint: "green", title: "Price Alerts", sub: "When something you hold moves a lot in a day", input: ntSwitch("nt-m-on", !M.off, (v) => ({ markets: { alerts: v } })) }),
+      switchRow({ icon: "sun", tint: "amber", title: "Evening Wrap", sub: "How your day went, once your markets close", input: ntSwitch("nt-m-wrap", M.wrap !== false, (v) => ({ markets: { wrap: v } })) })),
     !M.off && M.alerts.length > 0 && h("h4.app-k", { text: "Alerts" }),
     !M.off && M.alerts.length > 0 && h("div.group", {}, M.alerts.map((a) => switchRow({ title: a.name, sub: `A move of ${a.pct}% or more in a day`, input: ntSwitch(`nt-m-${a.symbol.replace(/[^A-Za-z0-9]/g, "")}`, true, () => ({ markets: { off: a.symbol } })) }))),
     h("p.hint", { text: M.alerts.length ? "Turn an alert on from its page in Markets: Alert Me." : "Turn an alert on from a holding’s page in Markets: Alert Me." })] };

@@ -40,7 +40,7 @@ import { setMail, changeNotify } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf, savePrefs, pushTo } from "../../_notify.js";
 import { morningOf, setMorningFor } from "../../_fitpush.js";
-import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf } from "../../_markets.js";
+import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap } from "../../_markets.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
@@ -258,6 +258,7 @@ async function setNotify(env, u, b) {
     if (m.alerts !== undefined) { if (typeof m.alerts !== "boolean") throw new HttpError(400, "Choose on or off."); await setAlertsOff(env, u.id, !m.alerts); }
     // (one holding's alert off: it's turned on again from its page in Markets)
     if (m.off !== undefined) await setMarketAlert(env, u.id, m.off, false);
+    if (m.wrap !== undefined) { if (typeof m.wrap !== "boolean") throw new HttpError(400, "Choose on or off."); await setWrap(env, u.id, m.wrap); }
   }
 }
 
