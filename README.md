@@ -461,8 +461,12 @@ Motion, solid with Reduce Transparency.
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
   `argon2.js`) and the apps' icons.
-- Weather's account card and Chat's Edit Profile and Your Account open it, signed in (a code handed over, and said
-  yes to), with the way back to the app.
+- Weather's account card and Chat's Edit Profile and Your Account open it, signed in, with the way back to the app.
+  From Weather in a browser, a plain link in a new tab (`#from=weather`, and `open=weather` for its settings): the
+  browser's sign-in is the account page's too, so there's no code, nothing a pop-up blocker could stop, and no blank
+  tab (Weather's pages cut the link to tabs they open elsewhere). Weather on an iPhone's Home Screen, which keeps a
+  sign-in of its own, hands it over with a code (said yes to), as Chat does; a hand-off that fails is said at the top
+  of Weather.
 - Tests: `.tools/tests/acctpage.mjs` (79 checks: an account made here, then signed in to Chat, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that Chat then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the

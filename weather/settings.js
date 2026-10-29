@@ -3,7 +3,7 @@
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
 import { FACES, PITCHES, MAX_ZONES, zoneSaid, facesName } from "./solar.js";
-import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
+import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, standalone, STATES, swap, syncNotify, toAccount, toAccountSignIn, toast, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
 import { glyph } from "./icons.js";
@@ -452,7 +452,9 @@ function drawNotifyAcct() {
 }
 
 
+// (in a browser, a link: app.js toAccount; here, Weather from an iPhone's Home Screen, its sign-in handed over with a code)
 export async function openAccount(open) {
+  if (!standalone()) return toAccount(open);
   const w = window.open("", "_blank");
   // (and in step with it again as soon as it's back here: what's changed there taken up)
   S.pullNext = true;
@@ -460,7 +462,7 @@ export async function openAccount(open) {
     const { code } = await A.accountLink();
     const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather", ...(typeof open === "string" ? { open } : {}) })}`;
     if (w && !w.closed) w.location.href = url; else location.href = url;
-  } catch (e) { w?.close(); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
+  } catch (e) { w?.close(); toast("Couldn’t open your account just now. Try again."); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
 }
 
 // Your photo (the account's: the same in every app on the site), or your initial

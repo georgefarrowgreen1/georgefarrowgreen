@@ -36,8 +36,9 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefi
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${CHAT.replace('//chat.', '//account.')}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 // a browser: its own cookies and storage (a phone, a laptop); push stood in for with an endpoint of its own
-async function browser(name, { push = false } = {}) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, serviceWorkers: 'allow' });
+async function browser(name, { push = false, desktop = false } = {}) {
+  const ctx = desktop ? await b.newContext({ viewport: { width: 1440, height: 900 }, locale: 'en-GB', serviceWorkers: 'allow' })
+    : await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, serviceWorkers: 'allow' });
   if (push) {
     await ctx.grantPermissions(['notifications'], { origin: WX });
     await ctx.addInitScript((endpoint) => {
@@ -124,6 +125,36 @@ await L.p.screenshot({ path: `${out}/menu.png` });
 const wm = (await L.p.innerText('.ifm-pop')).replace(/\s+/g, ' ');
 ok(/Sam Taylor @sam/.test(wm) && !(await L.p.$('.ifm-pop .ifm-apps')) && /Rain Alerts/.test(wm) && /Morning Briefing/.test(wm) && /Weather \d+\.\d\d\s*· Up to date/.test(wm) && /Sign Out/.test(wm), "Weather: InFlite's menu, the same as every app's", wm);
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
+
+// ---- 1b. On a computer: your account from Weather's menu and Settings, a link opening the account's page in a new tab,
+// signed in (the browser's sign-in is the account page's too: no code), with its way back to Weather ----
+{
+  const D = await browser('desktop', { desktop: true });
+  await D.ctx.addCookies(await L.ctx.cookies());
+  await weather(D);
+  // (signed in already, on the site: this browser's own places asked about first, as on the laptop)
+  await settings(D);
+  await D.p.waitForSelector('#acct-keep', { timeout: 15000 }).catch(() => {});
+  if (await D.p.$('#acct-keep')) await D.p.click('#acct-keep');
+  await D.p.waitForFunction(() => /@sam\b/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+  await closeSheet(D);
+  await D.p.waitForSelector('#me-btn:not([hidden])', { timeout: 15000 }).catch(() => {});
+  const opened = async (click) => {
+    const tab = D.ctx.waitForEvent('page', { timeout: 15000 }).catch(() => null);
+    await click();
+    const t = await tab;
+    if (!t) return { url: '' };
+    await t.waitForSelector('.backapp', { timeout: 20000 }).catch(() => {});
+    const r = { url: t.url(), said: (await t.innerText('body').catch(() => '')).replace(/\s+/g, ' '), back: await t.textContent('.backapp').catch(() => '') };
+    await t.close(); return r;
+  };
+  const viaMenu = await opened(async () => { await D.p.click('#me-btn'); await D.p.waitForSelector('.ifm-pop.open'); await D.p.click('.ifm-pop .ifm-card'); });
+  ok(/^http:\/\/account\.ifl\.test:8788\/$/.test(viaMenu.url) && /@sam/.test(viaMenu.said) && /Weather/.test(viaMenu.back), "on a computer: your name in Weather's menu opens your account in a new tab, signed in, with its way back to Weather", JSON.stringify({ url: viaMenu.url, back: viaMenu.back, said: viaMenu.said?.slice(0, 80) }));
+  await settings(D);
+  const viaSettings = await opened(() => D.p.click('#acct-open'));
+  ok(/account\.ifl\.test/.test(viaSettings.url) && /@sam/.test(viaSettings.said), "and Settings' card the same", JSON.stringify({ url: viaSettings.url, said: viaSettings.said?.slice(0, 80) }));
+  await D.ctx.close();
+}
 
 // ---- 2. A phone with places of its own: signed in to Weather, on the account's page, with email and password; the two
 // lots put together ----

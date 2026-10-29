@@ -2679,7 +2679,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.10";
+const BUILD = "1.11";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -2699,7 +2699,7 @@ function menuRows() {
   return [
     { icon: "rain", color: "blue", label: "Rain Alerts", value: rain ? `${rain} place${rain === 1 ? "" : "s"}` : "Off", open: () => openSettings("notify") },
     { icon: "sun", color: "orange", label: "Morning Briefing", value: n.brief ? n.briefAt || "07:00" : "Off", open: () => openSettings("notify") },
-    { icon: "ruler", color: "blue", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => (SE() ? SE().openAccount("weather") : openSettings()) },
+    { icon: "ruler", color: "blue", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => toAccount("weather") },
     { icon: "moon", color: "grey", label: "Appearance", value: GLASS_SAID[s.glass] || "", open: () => openSettings("look") },
     "-",
     { icon: "sliders", color: "grey", label: "Settings", open: () => openSettings() },
@@ -2712,10 +2712,27 @@ function youMenu(e) {
     app: "weather", build: BUILD,
     me: { name: a.name, line: a.handle ? `@${a.handle}` : "", photo: h("span", { class: "acct-av" }, photoOf(a)) },
     rows: menuRows(),
-    account: () => (SE() ? SE().openAccount() : openSettings()),
+    account: () => toAccount(),
     signOut: signOutHere,
     update: newApp ? () => location.reload() : null,
   });
+}
+// Your account's page (open: a part of it to open, "weather" for Weather's settings). In a browser it's a link, opened
+// in a new tab there and then, as the click's own: the browser's signed in there already (the sign-in is every
+// inflite.ai address's), so no code and nothing to wait for, which a pop-up blocker could stop, or a browser leave
+// blank (Weather's pages cut the link to tabs they open elsewhere: Cross-Origin-Opener-Policy). Weather on an iPhone's
+// Home Screen keeps a sign-in of its own, apart from Safari's: there, the sign-in's handed over with a code
+// (settings.js openAccount)
+const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function toAccount(open) {
+  const page = accountPage();
+  if (!page) return openSettings();
+  open = typeof open === "string" ? open : null;
+  if (standalone()) return (SE() ? Promise.resolve(SE()) : settingsJs()).then((m) => m.openAccount(open), () => toast("Couldn’t open your account just now. Try again."));
+  // (and in step with it again as soon as you're back here: what's changed there taken up)
+  S.pullNext = true;
+  const a = h("a", { href: `${page}#${new URLSearchParams({ from: "weather", ...(open ? { open } : {}) })}`, target: "_blank", rel: "noopener" });
+  document.body.append(a); a.click(); a.remove();
 }
 // Signing out here (the foot of Settings): of the site's account in this browser; this device keeps its places and
 // settings, and its notifications go on as its own
@@ -3425,4 +3442,4 @@ start();
 export { $, accountPage, adopt, afterFrame, airName, balance, calm, canShow, CARDS, COLOR, drawHourChart, EASE_IN,
   EASE_OUT, easeHeight, ghost, GLIDE, go, h, hereToo, mine, nightsOf, nkey, notifying, notifySaved, notifyWhy,
   openSheet, PERSON, place, redraw, refreshDevices, retitle, S, saveSettings, sheetDays, signedOut, signOutHere,
-  slideIn, STATES, swap, syncNotify, T, TILES, toAccountSignIn, uvName, windows };
+  slideIn, standalone, STATES, swap, syncNotify, T, TILES, toAccount, toAccountSignIn, toast, uvName, windows };

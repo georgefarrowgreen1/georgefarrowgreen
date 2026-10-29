@@ -241,7 +241,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.09";
+const BUILD = "1.10";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -255,7 +255,16 @@ const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weathe
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
-  if (!code) return null;
+  // (opened from an app in a browser, which needs no hand-over, as the browser's signed in here too: #from=<app>, for the
+  // way back, and open=, the part to open; a code only from an app with a sign-in of its own, as on an iPhone's Home
+  // Screen)
+  if (!code) {
+    const from = p.get("from");
+    if (!APPS[from] || from === "home") return null;
+    history.replaceState(null, "", location.pathname + location.search);
+    try { sessionStorage.setItem("acct-from", from); } catch (_) {}
+    return { code: null, open: p.get("open") };
+  }
   history.replaceState(null, "", location.pathname + location.search);
   if (APPS[p.get("from")]) try { sessionStorage.setItem("acct-from", p.get("from")); } catch (_) {}
   return { code, open: p.get("open") };
@@ -548,7 +557,7 @@ async function load() {
   // (a sign-in handed over by an app: who it's for asked first, alongside who's signed in here, and only taken once
   // that's said yes to, as a page elsewhere could send this browser here with a code of its own; never over a different
   // account's sign-in here)
-  if (HANDOFF) {
+  if (HANDOFF?.code) {
     try {
       const [now, who] = await Promise.all([mine, post("handoff/who", { code: HANDOFF.code })]);
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
