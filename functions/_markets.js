@@ -162,13 +162,14 @@ export async function quotes(env, symbols) {
   }
   return out;
 }
-// A year of a holding, for what's worth knowing: its week, its dividends over the year, and its year's high and low
+// A year of a holding, for what's worth knowing: its week, its dividends over the year (each, and all together), and its
+// year's high and low
 export async function yearOf(env, symbol) {
   const y = await chart(env, symbol, "1y").catch(() => null);
   if (!y || !y.c.length) return null;
   const c = y.c, wk = c.length > 5 ? (c.at(-1) / c[c.length - 6] - 1) * 100 : null, yearAgo = Date.now() / 1000 - 365 * 86400;
   const divs = y.divs.filter((d) => d.t >= yearAgo);
-  return { wk, div12: divs.reduce((a, d) => a + d.amount, 0), lastDiv: divs.at(-1) || null, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100 };
+  return { wk, div12: divs.reduce((a, d) => a + d.amount, 0), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100 };
 }
 // What a currency's worth in pounds, today (GBP: 1)
 export async function rates(env, curs) {
