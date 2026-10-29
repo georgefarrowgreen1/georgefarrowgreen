@@ -809,11 +809,13 @@ function signedIn(r) {
   ];
   return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
 }
+// (all done: a small green padlock after the handle, said as "secure")
+const SECURE = `<span class="ifh-secure" role="img" aria-label="secure"><svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M3.4 5.6V4a2.6 2.6 0 0 1 5.2 0v1.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="1.3" y="5.4" width="9.4" height="7" rx="2" fill="currentColor"/></svg></span>`;
 // InFlite's header, the same in every app: your photo (InFlite's menu), Account large with its line under it (your
 // handle, and how safe it is), and, opened from an app, the way back to it in the capsule; compact as it's scrolled
 function acctHead(m, todo) {
   const hd = IFL.header({ title: "Account", me: avatar(m), onMe: (b) => youMenu(b, m), cls: "ahead",
-    line: `@${String(m.handle).replace(/[&<>"]/g, "")} · ${todo ? `<i>${todo} to do</i>` : "secure"}` });
+    line: `@${String(m.handle).replace(/[&<>"]/g, "")}${todo ? ` · <i>${todo} to do</i>` : SECURE}` });
   if (fromApp()) hd.querySelector(".ifh-acts").append(backPill());
   return hd;
 }

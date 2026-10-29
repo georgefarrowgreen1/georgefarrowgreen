@@ -11,7 +11,7 @@ import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS 
 import { radar, rainAt } from "./radar.js";
 import { blend } from "./rainmap.js";
 import { oneRain } from "./agree.js";
-import { sunSpell, solarSay, FACES, PITCHES } from "./solar.js";
+import { zonesSpell, zonesSay, zoneSaid, FACES, PITCHES, MAX_ZONES, ZONE_COLOURS } from "./solar.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 import * as A from "./account.js";
 
@@ -269,16 +269,20 @@ function layoutOf(v) {
   for (const [i, k] of ids.entries()) if (!order.includes(k)) order.splice(Math.min(i, order.length), 0, k);
   return { order, off: [...new Set((Array.isArray(o.off) ? o.off : []).filter((k) => ids.includes(k)))] };
 }
-// Settings › Solar: { on, faces, pitch, alert (a notification as the sun's coming out), and the place the panels are:
-// lat, lon, name }
+// Settings › Solar: { on, alert (a notification as the sun's coming out), zones: [{ id, name, lat, lon, place (its
+// name), faces, pitch, kw (or null: not known) }] }. From before zones, one roof: a zone named Roof
 function solarOf(v) {
-  const o = v && typeof v === "object" && !Array.isArray(v) ? v : {}, spot = Number.isFinite(o.lat) && Number.isFinite(o.lon);
-  return { on: !!o.on && spot, alert: o.alert !== false, faces: FACES.some((x) => x[0] === o.faces) ? o.faces : "S", pitch: PITCHES.includes(o.pitch) ? o.pitch : 35,
-    ...(spot ? { lat: o.lat, lon: o.lon, name: String(o.name || "").slice(0, 60) } : {}) };
+  const o = v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const zoneOf = (z, i) => (z && Number.isFinite(z.lat) && Number.isFinite(z.lon) ? {
+    id: String(z.id || `z${i + 1}`).slice(0, 24), name: String(z.name || "Roof").trim().slice(0, 24) || "Roof", lat: z.lat, lon: z.lon, place: String(z.place || "").slice(0, 60),
+    faces: FACES.some((x) => x[0] === z.faces) ? z.faces : "S", pitch: PITCHES.includes(z.pitch) ? z.pitch : 35, kw: Number.isFinite(z.kw) && z.kw > 0 && z.kw <= 50 ? z.kw : null } : null);
+  const zones = (Array.isArray(o.zones) ? o.zones : Number.isFinite(o.lat) ? [{ name: "Roof", lat: o.lat, lon: o.lon, place: o.name, faces: o.faces, pitch: o.pitch }] : [])
+    .map(zoneOf).filter(Boolean).slice(0, MAX_ZONES);
+  return { on: !!o.on && zones.length > 0, alert: o.alert !== false, zones };
 }
 function loadSettings() {
   const d = {
-    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true, solar: { on: false, alert: true, faces: "S", pitch: 35 },
+    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true, solar: { on: false, alert: true, zones: [] },
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
   };
   // (only values the app knows: a damaged or out-of-date one falls back to the default)
@@ -1516,43 +1520,52 @@ function nowcast(wx, now, { fresh = false, tick = false } = {}) {
 }
 
 /* ---------- solar ---------- */
-// The Solar card (Settings › Solar), for the place your panels are: shown from two hours before the sun comes out on
-// them until it goes in (solar.js), with when and how long; folded away otherwise. The sunlight on the roof asked for
-// at most every half hour, kept for when the app's offline
-const sunKept = new Map();
-let sunAsking = null;
-function sunHours(s) {
-  const k = `solar:${cell(s.lat, s.lon)}|${s.faces}|${s.pitch}`;
+// The Solar card (Settings › Solar), for the zones at the place shown: from two hours before the sun comes out on any of
+// them until it's gone in on the last (solar.js zonesSpell), when, and each zone's own hours where there's more than
+// one; folded away otherwise. Each zone's sunlight asked for at most every half hour, kept for when the app's offline
+const sunKept = new Map(), sunAsking = new Set();
+function sunHours(z) {
+  const k = `solar:${cell(z.lat, z.lon)}|${z.faces}|${z.pitch}`;
   if (!sunKept.has(k)) { const v = store.get(k); if (v?.hours) sunKept.set(k, v); }
   const kept = sunKept.get(k);
-  if ((!kept || Date.now() - kept.at > 30 * 60e3) && sunAsking !== k) {
-    sunAsking = k;
-    fetchSolar(s.lat, s.lon, s.faces, s.pitch).then((hours) => {
+  if ((!kept || Date.now() - kept.at > 30 * 60e3) && !sunAsking.has(k)) {
+    sunAsking.add(k);
+    fetchSolar(z.lat, z.lon, z.faces, z.pitch).then((hours) => {
       const v = { at: Date.now(), hours }; sunKept.set(k, v); store.set(k, v);
       if (S.wx) solar(S.wx, nowWall(S.wx.place.offset));
-    }, () => {}).finally(() => { if (sunAsking === k) sunAsking = null; });
+    }, () => {}).finally(() => sunAsking.delete(k));
   }
   return kept?.hours || null;
 }
 function solar(wx, now, { fresh = false } = {}) {
-  const box = $("solar"), s = S.settings.solar, here = s?.on && s.lat != null && cell(s.lat, s.lon) === cell(wx.place.lat, wx.place.lon);
-  const sp = here && !R ? (() => { const hs = sunHours(s); return hs && sunSpell(hs, now); })() : null;
+  const box = $("solar"), s = S.settings.solar, here = s?.on && !R ? s.zones.filter((z) => cell(z.lat, z.lon) === cell(wx.place.lat, wx.place.lon)) : [];
+  const zs = here.map((zone) => ({ zone, hours: sunHours(zone) })), sp = zs.length && zs.every((z) => z.hours) ? zonesSpell(zs, now) : null;
   if (!sp) { if (fresh || R) box.hidden = true; else fold(box); return; }
   const was = !box.hidden && !box._fold;
   if (fresh) box.hidden = false; else unfold(box);
-  const say = solarSay(sp, now, S.f);
+  const say = zonesSay(sp, now, S.f), f = S.f;
   swap($("solar-say"), say.title, was); swap($("solar-text"), say.text, was);
   $("solar-chart").innerHTML = sunChart(sp, now);
+  // (each zone's own hours, where there's more than one)
+  const by = new Map(sp.zones.map((x) => [x.zone.id, x]));
+  $("solar-zones").replaceChildren(...(zs.length > 1 ? zs.map((z, i) => { const x = by.get(z.zone.id);
+    return h("div", { class: "solar-zone" }, h("i", { style: `background:${ZONE_COLOURS[i % ZONE_COLOURS.length]}` }),
+      h("span", {}, z.zone.name, h("small", {}, zoneSaid(z.zone))), h("b", {}, x ? `${f.time(x.sp.start)}–${f.said(x.sp.end)}` : "Little sun")); }) : []));
 }
-// today's sun on the roof, each hour against the day's best, the spell in gold, and now
+// today's sun on the panels, each hour against the day's best (the zones stacked, each its own colour), the spell
+// shaded, and now
 function sunChart(sp, now) {
   const hs = sp.hours, f = S.f;
   if (hs.length < 2) return "";
-  const a = hs[0].t - HOUR, b = hs[hs.length - 1].t, W = 320, top = 4, base = 56, x = (t) => 6 + ((t - a) / (b - a)) * (W - 12), bw = Math.max(3, (W - 12) / hs.length - 4);
-  let s = `<svg viewBox="0 0 ${W} 74" width="100%" role="img" aria-label="Sun on your panels today: strongest from ${f.time(sp.start)} to ${f.said(sp.end)}">`;
+  const a = hs[0].t - HOUR, b = hs[hs.length - 1].t, W = 320, top = 4, base = 56, x = (t) => 6 + ((t - a) / (b - a)) * (W - 12), bw = Math.max(3, (W - 12) / hs.length - 4), k = base - top - 4;
+  const one = hs[0].parts.length === 1;
+  let s = `<svg viewBox="0 0 ${W} 74" width="100%" role="img" aria-label="Sun on your panels today: from about ${f.time(sp.start)} to ${f.said(sp.end)}">`;
   s += `<rect x="${x(sp.start)}" y="${top}" width="${x(sp.end) - x(sp.start)}" height="${base - top}" rx="6" fill="rgba(255,196,61,.16)"/>`;
-  for (const h of hs) { const bh = Math.max(1.5, h.v * (base - top - 4));
-    s += `<rect x="${x(h.t - HOUR) + 2}" y="${base - bh}" width="${bw}" height="${bh}" rx="2.5" fill="${h.in ? "#ffc23d" : "currentColor"}"${h.in ? "" : ' opacity=".4"'}/>`; }
+  for (const h of hs) {
+    let y = base;
+    h.parts.forEach((v, i) => { const bh = v * k; if (bh < 0.5) return; y -= bh;
+      s += `<rect x="${x(h.t - HOUR) + 2}" y="${y}" width="${bw}" height="${bh}" rx="2" fill="${one ? (h.in ? ZONE_COLOURS[0] : "currentColor") : ZONE_COLOURS[i % ZONE_COLOURS.length]}"${one && !h.in ? ' opacity=".4"' : ""}/>`; });
+  }
   if (now > a && now < b) s += `<line x1="${x(now)}" x2="${x(now)}" y1="${top}" y2="${base}" stroke="currentColor" stroke-width="1.5"/>`;
   s += `<line x1="6" x2="${W - 6}" y1="${base}" y2="${base}" stroke="currentColor" opacity=".35"/>`;
   for (let t = Math.ceil(a / (3 * HOUR)) * 3 * HOUR; t <= b; t += 3 * HOUR) s += `<text x="${Math.min(W - 18, Math.max(18, x(t)))}" y="${base + 14}" fill="currentColor" opacity=".8" font-size="10.5" text-anchor="middle">${f.time(t)}</text>`;
@@ -2504,7 +2517,7 @@ async function syncNow() {
     r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
       // (signed out here, though the browser may have the site's sign-in: this device's own choices, not the account's;
       // signed in, which account, so if the browser's signed in to another since, not yet heard of here, it's the same)
-      account: S.acct ? S.acct.id || true : false, solar: S.settings.solar?.on ? S.settings.solar : null, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+      account: S.acct ? S.acct.id || true : false, solar: S.settings.solar?.on ? { alert: S.settings.solar.alert, zones: S.settings.solar.zones } : null, units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
   } catch (e) {
     // (not told, offline, say, or the server busy: out of step, so it's told again the next time the app's opened or
     // back online, keepNotify, not a week on)

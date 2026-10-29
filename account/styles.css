@@ -1140,3 +1140,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .ifs-hero span { font-size: 14px; opacity: 0.62; }
 /* ==== end of InFlite's menu ==== */
+
+/* ---- the header's line: all done, a small green padlock after your handle (app.js acctHead) ---- */
+.ifh-secure { display: inline-block; margin-left: 6px; color: var(--good, #34c759); vertical-align: -1px; }
+.ifh-secure svg { display: block; }

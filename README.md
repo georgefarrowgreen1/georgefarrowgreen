@@ -499,18 +499,25 @@ so there's nothing to set up beyond the address.
 
 **What it tells you**
 
-- **Solar** (Settings › Solar: where your panels are, the way the roof faces and
-  its pitch): a card only when the sun's coming out on them, from two hours
+- **Solar** (Settings › Solar: your **zones**, each a set of panels facing one way,
+  with its own place, direction, pitch and size if known, up to 6; one roof from
+  before becomes a zone named Roof): a card only when the sun's coming out on them, from two hours
   before until it goes in ("Sun coming out from about 11:00", "Your panels should
   work well until about 15:00, at their best around 12:30"), with today's sun on
   the roof by the hour, the spell in gold. A spell is an hour or more with at least
   half the day's best on the roof and over 200 W/m² (Open-Meteo's global tilted
   irradiance, asked for every half hour: `weather/solar.js`); nothing on grey days.
+  With more than one zone at a place: each zone's own spell, the card from two
+  hours before the first until the last ends ("Sun on your panels from about 07:00
+  until about 15:00"; "East roof first, West roof from 10:00"), the chart stacked
+  by zone, a row each with its hours, and the best time to use power where the
+  zones together (by size) give at least 85% of their best ("10:00 to 13:00, when
+  they're all working"; solar.js zonesSpell, zonesSay).
   With **Tell me when the sun's coming out** on (and notifications on), a
   notification up to an hour and a half before a spell, or as one starts ("Sun's
   coming out: sunny on your panels from about 11:00, until about 15:00"), twice
   a day at most and never in the quiet hours: the device sends its roof with its
-  notifications (`functions/_wxpush.js` solarWant: wx_subs `solar`, `last_sun`),
+  notifications (`functions/_wxpush.js` solarWant: its zones by place, wx_subs `solar`, `last_sun`),
   and the tick looks at each roof once a half hour. A briefing for the same place
   says it too ("Sun on your panels about 11:00–15:00"; the email, a Solar row).
 - **A briefing** for the next day or so, in words ("Cloudy until about 16:00,

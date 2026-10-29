@@ -2,7 +2,7 @@
 // signing in), opened from the page (app.js openSettings) and fetched the first time it is: seldom wanted, it needn't
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
-import { FACES, PITCHES } from "./solar.js";
+import { FACES, PITCHES, MAX_ZONES, zoneSaid, facesName } from "./solar.js";
 import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, STATES, swap, syncNotify, toAccountSignIn, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
@@ -37,7 +37,7 @@ function drawFolders() {
   $("fv-notify").textContent = notifying(s.notify) ? "On" : "Off";
   $("fv-commute").textContent = s.commute?.on ? `${atText(s.commute.am)}, ${atText(s.commute.pm)}` : "Off";
   const sol = s.solar;
-  $("fv-solar").textContent = sol?.on ? `${FACES.find((x) => x[0] === sol.faces)[1]}, ${sol.pitch}°` : "Off";
+  $("fv-solar").textContent = !sol?.on ? "Off" : sol.zones.length > 1 ? `${sol.zones.length} zones` : `${facesName(sol.zones[0].faces)}, ${sol.zones[0].pitch}°`;
   $("fv-acts").textContent = acts.length ? acts.join(", ") : "Off";
   $("fv-units").textContent = ["temp", "wind", "precip"].map(said).join(", ");
   $("fv-look").textContent = said("glass");
@@ -53,26 +53,63 @@ function drawFolders() {
 }
 
 /* ---------- solar ---------- */
-// Settings › Solar: on or off, where the panels are (one of your places; the one shown, when it's first turned on),
-// and the way the roof faces and its pitch
+// Settings › Solar: on or off, its zones (each a set of panels facing one way: a row each, opening its own page, as an
+// activity's does), and the notification as the sun's coming out
+const ZSIZES = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10, 12, 15, 20];
+const zoneWhere = (z) => z.place || S.places.find((p) => !p.gps && nkey(p) === nkey(z))?.name || "Your place";
 function drawSolar() {
-  const form = $("settings-form"), s = S.settings.solar, here = place();
-  const spots = [...S.places.filter((p) => !p.gps)];
-  if (s.lat != null && !spots.some((p) => nkey(p) === nkey(s))) spots.unshift({ name: s.name, lat: s.lat, lon: s.lon });
+  const form = $("settings-form"), s = S.settings.solar;
   form.solar.checked = !!s.on; form.solarAlert.checked = s.alert !== false; form.solarAlert.disabled = !s.on;
-  form.solarAt.replaceChildren(...spots.map((p) => h("option", { value: nkey(p) }, p.name || "Your place")));
-  form.solarAt.value = s.lat != null ? nkey(s) : here && !here.gps ? nkey(here) : spots[0] ? nkey(spots[0]) : "";
-  form.solarFaces.replaceChildren(...FACES.map(([k, name]) => h("option", { value: k }, name)));
-  form.solarFaces.value = s.faces;
-  form.solarPitch.replaceChildren(...PITCHES.map((p) => h("option", { value: String(p) }, p ? `${p}°` : "Flat")));
-  form.solarPitch.value = String(s.pitch);
-  for (const k of ["solarAt", "solarFaces", "solarPitch"]) form[k].disabled = !spots.length;
+  $("zones-list").replaceChildren(...s.zones.map((z, i) => h("li", { class: "act" },
+    h("button", { class: "act-open", type: "button", "aria-label": `${z.name}, ${zoneSaid(z)}: change`, onclick: () => editZone(i) },
+      h("span", { class: "act-icon", svg: glyph("sun", 18) }),
+      h("span", { class: "act-txt" }, h("b", {}, z.name), h("span", { class: "act-lim" }, `${zoneSaid(z)} · ${zoneWhere(z)}`)),
+      h("span", { class: "act-chev", svg: glyph("chevron", 14) })))));
+  $("zone-add").hidden = s.zones.length >= MAX_ZONES || !S.places.some((p) => !p.gps);
 }
 function solarRead() {
-  const form = $("settings-form"), key = form.solarAt.value, was = S.settings.solar;
-  // (off: where it was, not whichever place the list shows)
-  const p = !form.solar.checked && was.lat != null ? was : S.places.find((x) => !x.gps && nkey(x) === key) || (was.lat != null && nkey(was) === key ? was : null);
-  return { on: form.solar.checked && !!p, alert: form.solarAlert.checked, faces: form.solarFaces.value || "S", pitch: Number(form.solarPitch.value) || 0, ...(p ? { lat: p.lat, lon: p.lon, name: p.name || "" } : {}) };
+  const form = $("settings-form"), was = S.settings.solar;
+  // (turned on with no zones yet: one, at the place shown, facing south)
+  if (form.solar.checked && !was.zones.length) newZone(false);
+  return { ...S.settings.solar, on: form.solar.checked && S.settings.solar.zones.length > 0, alert: form.solarAlert.checked };
+}
+// (what the notifications need to know of: a zone's place, way and pitch, the switch)
+const sunSig = (x) => (x?.on ? JSON.stringify([x.alert, x.zones.map((z) => [z.name, z.lat, z.lon, z.faces, z.pitch, z.kw])]) : "");
+function solarSaved(was) {
+  saveSettings(); afterFrame(redraw); drawSolar(); drawFolders();
+  const n = S.settings.notify, sun = S.settings.solar;
+  if (sunSig(sun) === was) return;
+  (sun.on && sun.alert && !n.endpoint && !canShow() ? allowed() : Promise.resolve([true])).then(([go]) => { if (go && (notifying(n) || n.endpoint)) syncNotify().catch(() => {}); });
+}
+function newZone(open = true) {
+  const s = S.settings.solar, p = (place() && !place().gps ? place() : null) || S.places.find((x) => !x.gps), was = sunSig(s);
+  if (!p || s.zones.length >= MAX_ZONES) return;
+  const names = new Set(s.zones.map((z) => z.name)), name = ["Roof", "Second roof", "Third roof", "Garage", "Shed", "Zone 6"].find((x) => !names.has(x)) || "Zone";
+  s.zones.push({ id: `z${Date.now().toString(36)}`, name, lat: p.lat, lon: p.lon, place: p.name || "", faces: "S", pitch: 35, kw: null });
+  if (open) { s.on = true; solarSaved(was); editZone(s.zones.length - 1); }
+}
+function editZone(i) {
+  const s = S.settings.solar, z = s.zones[i], spots = S.places.filter((p) => !p.gps);
+  if (!spots.some((p) => nkey(p) === nkey(z))) spots.unshift({ name: z.place || "Your place", lat: z.lat, lon: z.lon });
+  const sel = (name, text, opts, v) => h("label", { class: "fld" }, h("span", {}, text), h("select", { name }, ...opts.map(([k, t]) => h("option", { value: String(k), selected: String(k) === String(v) ? true : null }, t))));
+  const ed = h("div", { class: "act-edit" },
+    h("label", { class: "fld wide" }, h("span", {}, "Name"), h("input", { type: "text", name: "zname", value: z.name, maxlength: "24" })),
+    sel("zwhere", "Where", spots.map((p) => [nkey(p), p.name || "Your place"]), nkey(z)),
+    sel("zfaces", "Faces", FACES.map(([k, t]) => [k, t]), z.faces),
+    sel("zpitch", "Pitch", PITCHES.map((p) => [p, p ? `${p}°` : "Flat"]), z.pitch),
+    sel("zkw", "Size", [["", "Not known"], ...ZSIZES.map((k) => [k, `${k} kW`])], z.kw ?? ""),
+    h("p", { class: "grp-foot wide" }, "Size is optional: from your installer’s paperwork. With it, a bigger zone counts for more when they’re put together."),
+    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: setBack }, "Done"),
+      h("button", { class: "link danger", type: "button", onclick: () => { if (!confirm(`Remove “${z.name}”?`)) return; actEdit = null; const was = sunSig(s); s.zones.splice(i, 1); if (!s.zones.length) s.on = false; setBack(); solarSaved(was); } }, "Remove this zone")));
+  const val = (k) => ed.querySelector(`[name="${k}"]`).value;
+  function done() {
+    const was = sunSig(s), p = spots.find((x) => nkey(x) === val("zwhere")) || z;
+    Object.assign(z, { name: val("zname").trim().slice(0, 24) || z.name, lat: p.lat, lon: p.lon, place: p.name || z.place, faces: val("zfaces"), pitch: Number(val("zpitch")), kw: val("zkw") ? Number(val("zkw")) : null });
+    solarSaved(was);
+  }
+  $("act-page").replaceChildren(ed);
+  actEdit = done;
+  setGo("act", z.name);
 }
 
 /* ---------- arranging the page ---------- */
@@ -199,15 +236,15 @@ function setBack() {
 export const setHome = () => { setStack = []; setShow("root", true, true, 0); };
 
 function readSettings(e) {
-  if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
+  if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add, #act-page")) return;     // (their own handlers)
   const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
   const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join(), drawn = JSON.stringify({ ...S.settings, glass: null });
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
-  const sunSig = (x) => (x?.on ? JSON.stringify([x.alert, x.faces, x.pitch, x.lat, x.lon]) : ""), sunWas = sunSig(S.settings.solar);
+  const sunWas = sunSig(S.settings.solar);
   S.settings.solar = solarRead();
-  form.solarAlert.disabled = !S.settings.solar.on;
+  drawSolar();
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
   // (the glass alone is only how the cards look, eased from one to the other by styles.css: nothing to draw again)
   saveSettings(); if (JSON.stringify({ ...S.settings, glass: null }) !== drawn) afterFrame(redraw); drawFolders();
@@ -497,5 +534,6 @@ for (const k of ["brief", "briefFor", "briefAt"]) form[k].addEventListener("chan
 for (const k of ["mailWarn", "mailBrief"]) form[k].addEventListener("change", onMail);
 $("sign-out").addEventListener("click", signOutHere);
 $("act-add").addEventListener("change", addAct);
+$("zone-add").addEventListener("click", () => newZone());
 $("alerts-go").addEventListener("click", () => setGo("notify"));
 $("arrange-reset").addEventListener("click", () => { S.settings.layout = { order: CARDS.map((c) => c[0]), off: [] }; arranged(); $("arrange-said").textContent = "Put back as it was."; });
