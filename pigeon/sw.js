@@ -90,6 +90,29 @@ self.addEventListener("push", (e) => {
   }));
 });
 
+// The browser renewed this phone's push subscription by itself: the new one sent in the old one's place (with the
+// sign-in the app keeps on this phone, the same one it sends), so notifications carry on without Chat being opened first
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil((async () => {
+    const token = await new Promise((res) => {
+      const r = indexedDB.open("inflight", 1);
+      r.onupgradeneeded = () => { r.transaction.abort(); res(null); };   // (nothing kept here yet: not signed in)
+      r.onerror = () => res(null);
+      r.onsuccess = () => { try { const q = r.result.transaction("kv").objectStore("kv").get("session"); q.onsuccess = () => res(q.result?.token || null); q.onerror = () => res(null); } catch (_) { res(null); } };
+    });
+    if (!token) return;
+    const call = (path, init = {}) => fetch("/api/pigeon/" + path, { ...init, headers: { Authorization: "Bearer " + token, ...(init.body ? { "Content-Type": "application/json" } : {}) } });
+    let sub = e.newSubscription;
+    if (!sub) {
+      const { key } = await (await call("push-key")).json();
+      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((key.length + 3) % 4));
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (c) => c.charCodeAt(0)) });
+    }
+    // (the server keeps one address per sign-in: the old one goes as the new one comes)
+    await call("push-sub", { method: "POST", body: JSON.stringify(sub.toJSON()) });
+  })().catch(() => {}));
+});
+
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = new URL(e.notification.data?.url || "/pigeon/", self.location.origin);

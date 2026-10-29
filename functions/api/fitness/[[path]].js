@@ -26,6 +26,7 @@
 //   GET    /api/fitness/weather      the week's weather where you ride, hour by hour (functions/_fitwx.js)
 //   GET    /api/fitness/push-key     the key push subscriptions are made with
 //   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
+//   POST   /api/fitness/push-move    the browser renewed its subscription: { was, sub } (fitness/sw.js)
 //   DELETE /api/fitness/push         and off again: { endpoint }
 //   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret: Garmin's look for
 //                                    what's new, and the morning notifications that are due
@@ -39,7 +40,7 @@ import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isFitness } from "../../_fitapp.js";
 import { tickAuthOk } from "../../_notify.js";
 import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick, allHistory, bringingBack } from "../../_garmin.js";
-import { pushKey, setMorning, stopMorning, morningTick } from "../../_fitpush.js";
+import { pushKey, setMorning, moveMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick } from "../../_strava.js";
@@ -239,6 +240,11 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     return json(await setMorning(env, u.id, await body(request, 16 * 1024)));
+  },
+  "POST push-move": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    return json(await moveMorning(env, u.id, await body(request, 8 * 1024)));
   },
   "DELETE push": async ({ request, env }) => {
     sameOrigin(request);

@@ -5,6 +5,21 @@ self.addEventListener("push", (e) => {
   try { n = e.data ? e.data.json() : {}; } catch (_) { n = { body: e.data && e.data.text() }; }
   e.waitUntil(self.registration.showNotification(n.title || "Fitness", { body: n.body || "", tag: n.tag || undefined, icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }));
 });
+// the browser renewed this phone's subscription by itself: the morning notification moves to the new one, so it carries
+// on without Fitness being opened first (signed in: the page's cookie goes with it)
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil((async () => {
+    const was = e.oldSubscription?.endpoint;
+    if (!was) return;
+    let sub = e.newSubscription;
+    if (!sub) {
+      const { key } = await (await fetch("/api/fitness/push-key", { credentials: "same-origin" })).json();
+      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((key.length + 3) % 4));
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (c) => c.charCodeAt(0)) });
+    }
+    await fetch("/api/fitness/push-move", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ was, sub: sub.toJSON() }) });
+  })().catch(() => {}));
+});
 // a tap opens the app on Today (or brings an open copy forward)
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

@@ -666,6 +666,15 @@ const mdays = mrow ? JSON.parse(mrow.days) : {};
 ok(mrow?.at === 450 && Object.keys(mdays).length >= 7 && Object.values(mdays).every((d) => /^(Today: |Rest day)/.test(d.title)) && /^(Today: |Rest day)/.test(preview),
   'the morning reminder on: at 07:30, and the week’s words with it', `${JSON.stringify(mrow && { at: mrow.at, tz: mrow.tz })} | ${preview.replace(/\s+/g, ' ')}`);
 await L.p.screenshot({ path: `${out}/morning.png` });
+// (the browser renewing the laptop's subscription by itself, sw.js: the reminder moves to the new one, as it was; and
+// someone else's phone can't be moved by naming its address)
+const moveTo = (was, endpoint) => api(L, '/api/fitness/push-move', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ was, sub: { endpoint, keys: { p256dh: pushPub, auth: pushAuth } } }) });
+const mv = await moveTo('https://fcm.googleapis.com/fcm/send/fitness-laptop', 'https://fcm.googleapis.com/fcm/send/fitness-laptop-2');
+const moved = rows(`SELECT endpoint, at FROM fx_push WHERE user_id = '${sam}'`);
+const mvBack = await moveTo('https://fcm.googleapis.com/fcm/send/fitness-laptop-2', 'https://fcm.googleapis.com/fcm/send/fitness-laptop');
+const mvNone = await moveTo('https://fcm.googleapis.com/fcm/send/someone-elses', 'https://fcm.googleapis.com/fcm/send/mine-now');
+ok(mv.status === 200 && JSON.parse(mv.body).moved && moved.length === 1 && moved[0].endpoint.endsWith('fitness-laptop-2') && moved[0].at === 450 && JSON.parse(mvBack.body).moved && !JSON.parse(mvNone.body).moved,
+  'a subscription the browser renewed: the reminder moves to it, as it was; one not yours, not moved', `${mv.body} ${JSON.stringify(moved)} ${mvNone.body}`);
 await done(L); await done(L);
 // (its time come: sent by the scheduler's turn; a second turn the same day sends nothing)
 const nowMins = (() => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: mrow.tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value])); return Number(p.hour) * 60 + Number(p.minute); })();

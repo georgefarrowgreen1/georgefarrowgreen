@@ -65,6 +65,16 @@ export async function setMorning(env, userId, b) {
   return { on: true, at };
 }
 // Turned off on this phone (or the phone's gone)
+// The browser renewed a phone's subscription by itself (sw.js, pushsubscriptionchange): its morning notification moves
+// to the new one, time, place and words as they were. Only a phone of the signed-in account's.
+export async function moveMorning(env, userId, b) {
+  const sub = b?.sub, keys = await keysOk(sub), was = String(b?.was || "");
+  if (!sub || !pushEndpointOk(sub.endpoint) || !keys || !was || was.length > 1000) throw new HttpError(400, "Bad request.");
+  const D = await tables(env);
+  const r = await D.prepare("UPDATE fx_push SET endpoint = ?1, p256dh = ?2, auth = ?3 WHERE endpoint = ?4 AND user_id = ?5 AND NOT EXISTS (SELECT 1 FROM fx_push WHERE endpoint = ?1)")
+    .bind(sub.endpoint, keys.p256dh, keys.auth, was, userId).run();
+  return { moved: !!r.meta?.changes };
+}
 export async function stopMorning(env, userId, endpoint) {
   const D = await tables(env);
   await D.prepare("DELETE FROM fx_push WHERE endpoint = ? AND user_id = ?").bind(String(endpoint || ""), userId).run();
