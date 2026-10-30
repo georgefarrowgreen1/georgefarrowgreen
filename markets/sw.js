@@ -41,7 +41,10 @@ self.addEventListener("notificationclick", (e) => {
 
 // ---- the app's own files, kept here: so it opens at once, and with no network at all ----
 // Each is served from here, and asked after as it is (by its ETag); where any has changed, the whole set's fetched
-// again together (never a mix of two versions), and the app's told. Only the app's files: never the API.
+// again together (never a mix of two versions), and the app's told. Only the app's files: never the API. The page itself
+// is the one exception: it comes from the network while there is one (what's kept, offline or after three seconds), as
+// an iPhone takes what it says of the status bar from the page that's open as it's added to the Home Screen, and a
+// page kept from before said otherwise.
 const SHELL = "markets-app-2";
 const FILES = ["./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "desk.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
 const at = (f) => new URL(f, self.registration.scope).href;
@@ -75,9 +78,20 @@ async function served(e, key) {
   e.waitUntil(now.then((res) => { if (res.ok && tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) return renew(); }, () => {}));
   return hit;
 }
+// (the page: fresh where it can be, a change in it renewing the rest, as above)
+async function page(e, key) {
+  const c = await caches.open(SHELL), hit = await c.match(key);
+  try {
+    const res = await Promise.race([fetch(key, { cache: "no-cache" }), new Promise((_, no) => setTimeout(() => no(new Error("slow")), hit ? 3000 : 20000))]);
+    if (!res.ok) return hit || res;
+    if (!hit) { if (res.type === "basic") e.waitUntil(c.put(key, res.clone())); }
+    else if (tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) e.waitUntil(renew());
+    return res;
+  } catch (err) { if (hit) return hit; throw err; }
+}
 self.addEventListener("fetch", (e) => {
   const r = e.request, u = new URL(r.url), scope = new URL(self.registration.scope);
   if (r.method !== "GET" || u.origin !== scope.origin || u.pathname.includes("/api/")) return;
-  if (r.mode === "navigate") { if (u.pathname === scope.pathname || u.pathname === scope.pathname + "index.html") e.respondWith(served(e, at("./"))); return; }
+  if (r.mode === "navigate") { if (u.pathname === scope.pathname || u.pathname === scope.pathname + "index.html") e.respondWith(page(e, at("./"))); return; }
   if (isFile(u, scope)) e.respondWith(served(e, u.origin + u.pathname));
 });
