@@ -44,7 +44,7 @@ ok(pubAfter === id.pub.x, 'the same key as before (nothing was lost)');
 const O3 = await K.phone('olive3'); await O3.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 }); await O3.p.click('.welcome [data-act=acctsignin]');
 await O3.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
 await O3.p.fill('main input[name=email]', 'olive@example.com'); await O3.p.fill('main input[name=password]', 'not the password at all'); await O3.p.click('main .signin form .btn');
-ok(await O3.p.waitForSelector('main .said.bad', { timeout: 20000 }).then(() => true, () => false) && /account\./.test(O3.p.url()), 'a wrong password is refused');
+ok(await O3.p.waitForSelector('main .said.bad', { timeout: 20000 }).then(() => true, () => false) && /(account|auth)\./.test(O3.p.url()), 'a wrong password is refused');
 // ---- a new account is Argon2id from the start ----
 const N = await K.phone('nell'); await K.signup(N, 'Nell New', 'nell', 'nell@example.com', 'London');
 ok(one("SELECT salt FROM pg_users WHERE handle = 'nell'")[0].salt.startsWith('a2:'), 'a new account uses Argon2id');

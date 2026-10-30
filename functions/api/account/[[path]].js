@@ -30,11 +30,12 @@
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
-import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
+import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
-import { isAccount } from "../../_acctapp.js";
+import { isAccount, isAuth } from "../../_acctapp.js";
+import { siteOf } from "../../_sites.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail, changeNotify } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
@@ -297,7 +298,9 @@ async function allActs(env, id) {
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
-const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : ACCOUNT_APP);
+const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin.replace("//auth.", "//account.") : ACCOUNT_APP);
+// (a reset link's: the sign-in page's, where it's asked for)
+const authOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : AUTH_APP);
 const saltOk = (s) => { const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || "")); return !!m && fromB64url(m[2]).length === 16; };
 const tokenOk = (s) => /^[A-Za-z0-9_-]{40,50}$/.test(String(s || ""));
 const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) => a + "•".repeat(Math.min(6, b.length)) + c);
@@ -397,7 +400,7 @@ const ROUTES = {
     return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
       icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
       line: "someone asked to reset the password for your inflite.ai account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
-      pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
+      pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${authOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
   "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
   "POST reset/complete": async ({ request, env, waitUntil }) => {
@@ -982,10 +985,24 @@ for (const [k, fn] of Object.entries(ADMIN_ROUTES)) {
   } : fn;
 }
 
+// The sign-in page's half (auth.<site>: functions/_acctapp.js): signing in, a computer signed in by phone, making an
+// account, a new password, handing a sign-in back to an app, and signing out; who's signed in, and what a sign-in
+// needs on the way (a passkey made, Chat's key, the password checked against breaches). Nothing else is answered there.
+// The first of them (AUTH_ONLY) are answered only there, wherever the site has it: so the account's page never takes
+// a password to sign in with, or makes a sign-in. (Locally, with no such address, the account's page does both.)
+const AUTH_ONLY = new Set(["POST signin/salt", "POST signin/password", "POST signin/passkey", "POST signin/qr", "POST signin/qr/wait", "POST signin/qr/refuse",
+  "POST signin/qr/take", "POST handback", "POST join", "POST signup", "POST reset/request", "POST reset/check", "POST reset/complete"]);
+// (a computer's code, said yes or no to by a phone: at either, as the phone's camera opens the sign-in page, and the
+// account's page has a scanner of its own)
+const AUTH_ROUTES = new Set([...AUTH_ONLY, "POST qr/look", "POST qr/answer", "POST signin/options", "POST signout", "GET me", "GET me/photo", "GET handle", "POST reauth", "POST password/vault",
+  "POST password/upgrade", "POST password/checked", "GET pwned", "POST passkeys/options", "POST passkeys", "POST passkeys/vault"]);
+
 export async function onRequest(ctx) {
-  const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []), route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
-  // (only at the account's own address)
-  if (!route || !isAccount(url, ctx.env)) return json({ error: "Not found." }, 404);
+  const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []), key = `${ctx.request.method} ${parts.join("/")}`, route = ROUTES[key];
+  // (only at the account's own address, or the sign-in page's, each its own half)
+  const auth = isAuth(url, ctx.env);
+  if (!route || !(auth || isAccount(url, ctx.env))) return json({ error: "Not found." }, 404);
+  if (auth ? !AUTH_ROUTES.has(key) : AUTH_ONLY.has(key) && siteOf(url.hostname, ctx.env)) return json({ error: "Not found." }, 404);
   try { return await route(ctx); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);

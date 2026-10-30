@@ -76,7 +76,7 @@ export async function cookieUser(request, env, inflight = false, { deleting = fa
 // (said only to someone who's shown it's their account)
 function refuseDeleting(u) {
   const on = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(u.delete_at);
-  throw new HttpError(403, `This account is being deleted on ${on}. To keep it, sign in at account.inflite.ai.`, "deleting");
+  throw new HttpError(403, `This account is being deleted on ${on}. To keep it, sign in at auth.inflite.ai.`, "deleting");
 }
 // A request that acts on the cookie's account must come from the app's own pages (the browser says where from): a
 // page elsewhere on the site would send the cookie too

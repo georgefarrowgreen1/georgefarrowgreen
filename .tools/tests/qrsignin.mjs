@@ -27,10 +27,12 @@ const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 
 const HOSTS = '--host-resolver-rules=MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1';
 const mails = () => { try { return readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m); } catch (_) { return []; } };
 // (the account's routes asked as anyone could: from this machine, with whatever origin and cookie)
-const api = (path, { body, cookie, origin = ACCT, ua = MAC } = {}) => new Promise((done) => {
+// (signing in, by phone too, at the sign-in page's address: functions/api/account AUTH_ONLY)
+const AUTH = 'http://auth.ifl.test:8788', authy = (path) => /^(signin\/(salt|password|passkey|qr)|qr\/|handback|join|signup|reset\/)/.test(path);
+const api = (path, { body, cookie, origin = authy(path) ? AUTH : ACCT, ua = MAC } = {}) => new Promise((done) => {
   const data = body === undefined ? null : JSON.stringify(body);
   const r = http.request({ host: '127.0.0.1', port: 8788, path: `/api/account/${path}`, method: data ? 'POST' : 'GET', agent: false,
-    headers: { Host: 'account.ifl.test:8788', 'User-Agent': ua, ...(origin ? { Origin: origin } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(data ? { 'Content-Type': 'application/json' } : {}) } },
+    headers: { Host: authy(path) ? 'auth.ifl.test:8788' : 'account.ifl.test:8788', 'User-Agent': ua, ...(origin ? { Origin: origin } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(data ? { 'Content-Type': 'application/json' } : {}) } },
   (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => { let j = null; try { j = JSON.parse(t); } catch (_) {} done({ status: res.statusCode, j, set: res.headers['set-cookie'] || [] }); }); });
   if (data) r.write(data); r.end();
 });
@@ -119,14 +121,14 @@ await m.goto(`${ACCT}/`); await m.waitForSelector('#qrc .qrbox svg', { timeout: 
 const link = await m.getAttribute('#qrc .qrbox', 'data-link');
 const read = async (pg, png) => pg.evaluate(async (b64) => { const jsQR = (await import('/jsqr.js')).default; const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0); return jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height)?.data || null; }, png.toString('base64'));
-ok(/^http:\/\/account\.ifl\.test:8788\/#qr=[A-Za-z0-9_-]{32}$/.test(link) && (await read(ph, await m.locator('#qrc .qrbox').screenshot())) === link, 'on a Mac: a QR code beside the usual sign-in, that reads (InFlite’s mark and all)', link);
+ok(/^http:\/\/auth\.ifl\.test:8788\/#qr=[A-Za-z0-9_-]{32}$/.test(link) && (await read(ph, await m.locator('#qrc .qrbox').screenshot())) === link, 'on a Mac: a QR code beside the usual sign-in, that reads (InFlite’s mark and all)', link);
 await m.screenshot({ path: `${out}/1-mac.png` });
 await ph.goto(link); await ph.waitForSelector('.sheet-body .qrask h2:has-text("Signing in on a computer?")', { timeout: 20000 }); await settle(ph, 2500);
 ok(/someone sent you this link/.test(await ph.locator('.sheet-body').innerText()) && !(await m.$('.qrnum')) && await m.isVisible('#qrc .qrbox svg'), 'the phone, opening it: asked first whether it opened it itself, and the Mac shown nothing yet');
 await ph.screenshot({ path: `${out}/2-phone-first.png` });
 await ph.locator('.sheet-body button:has-text("Continue")').click();
 await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await settle(ph, 600);
-ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()) && /address bar shows account\.ifl\.test:8788/.test(await ph.locator('.sheet-body').innerText()),
+ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()) && /address bar shows auth\.ifl\.test:8788/.test(await ph.locator('.sheet-body').innerText()),
   'Continue: which computer is asking, and to go on only if its address bar shows the account’s own address');
 await ph.screenshot({ path: `${out}/3-phone.png` });
 await m.waitForSelector('.qrnum b', { timeout: 10000 });

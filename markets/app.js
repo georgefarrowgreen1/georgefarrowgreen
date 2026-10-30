@@ -1678,7 +1678,7 @@ function welcome(note = null) {
   document.title = "Markets";
 }
 async function toAccountSignIn(e, mode = "signin") {
-  const page = A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
+  const page = A.authPage() || A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
   if (b) { b.disabled = true; b.textContent = "Signing in…"; }
   try {
@@ -1699,6 +1699,7 @@ async function signOutHere() {
   try { const reg = await navigator.serviceWorker?.getRegistration(), sub = await reg?.pushManager.getSubscription(); if (sub) await A.pushOff(sub.endpoint).catch(() => {}); } catch (_) {}
   try { await A.signOut(); } catch (_) {}
   signedOut();
+  A.outVia("markets");
 }
 function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.isa = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
 

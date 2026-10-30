@@ -137,7 +137,7 @@ await C.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', 
 await C.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
 await C.p.fill('main input[name=email]', 'mira@example.com'); await C.p.fill('main input[name=password]', 'wrong password!!'); await C.p.click('main .signin form .btn');
 const wrong = await C.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => '');
-ok(wrong.length > 0 && /account\./.test(C.p.url()), 'wrong password refused, on the account’s page', wrong);
+ok(wrong.length > 0 && /(account|auth)\./.test(C.p.url()), 'wrong password refused, on the account’s page', wrong);
 await C.p.fill('main input[name=password]', 'new york pigeons 7'); await C.p.click('main .signin form .btn');
 ok(await pastOffer(C.p), 'signed in with a password on a phone that can make a passkey: one offered on the way back (Not now)');
 await C.p.waitForSelector('.tabs', { timeout: 20000 });

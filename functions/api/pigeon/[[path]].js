@@ -3,7 +3,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
@@ -1298,7 +1298,7 @@ async function adminInvite({ request, env }) {
   const token = randomToken(32), D = await db(env), t = Date.now(), hash = hex(await sha256(token));
   await D.prepare("INSERT INTO pg_invites (hash, id, note, created_at) VALUES (?, ?, ?, ?)").bind(hash, hash.slice(0, 16), note, t).run();
   await adminLog(env, "invite-made", null, note || "");
-  return json({ url: `${accountPage(request, env)}/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
+  return json({ url: `${authPage(request, env)}/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
 }
 async function adminInvites({ request, env }) {
   await requireAdmin(request, env, false, { look: true });     // (notes and who used them: the folder's own count)

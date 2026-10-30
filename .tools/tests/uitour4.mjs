@@ -171,7 +171,7 @@ const W = await (await b.newContext({ viewport: { width: 390, height: 844 }, dev
 size = '390'; theme = 'light';
 await W.goto(BASE + '/pigeon/'); await W.waitForSelector('.welcome'); await W.waitForTimeout(3500); await snap(W, 'welcome');
 // (Sign in: the account's page, for Chat)
-const toSignIn = async () => { await W.click('.welcome [data-act=acctsignin]'); await W.waitForURL((u) => u.hostname.startsWith('account.')); await W.waitForSelector('main .signin input[name=email]'); await W.waitForTimeout(1500); };
+const toSignIn = async () => { await W.click('.welcome [data-act=acctsignin]'); await W.waitForURL((u) => /^(account|auth)\./.test(u.hostname)); await W.waitForSelector('main .signin input[name=email]'); await W.waitForTimeout(1500); };
 await toSignIn(); await snap(W, 'signin');
 await W.setViewportSize({ width: 320, height: 568 }); size = '320';
 await W.goto(BASE + '/pigeon/'); await W.waitForTimeout(3500); await snap(W, 'welcome'); await toSignIn(); await snap(W, 'signin');

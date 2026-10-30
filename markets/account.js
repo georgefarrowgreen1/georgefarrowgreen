@@ -48,6 +48,10 @@ export const pushOff = (endpoint) => call("push", { method: "DELETE", body: { en
 // ---- the account's own page ----
 // (beside this app's own address: finance.<site> → account.<site>; nowhere else is there one to sign in on)
 export const accountPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//account.")}/` : null);
+// (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
+export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
+// signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)
+export const outVia = (app) => { const p = authPage(); if (p) location.assign(`${p}#${new URLSearchParams({ signout: app, back: `${location.origin}/` })}`); };
 // and Chat, beside it, for sending a stock to a friend
 export const chatPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//chat.")}/` : null);
 export const accountLink = () => call("account-link", { method: "POST", body: {} });

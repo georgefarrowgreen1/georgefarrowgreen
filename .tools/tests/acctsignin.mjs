@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { makeAccount } from './join.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', AUTH = 'http://auth.ifl.test:8788';
 const PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -23,6 +23,8 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebK
 async function browser(name, autofill) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE });
   if (autofill) await ctx.addInitScript(() => { window.__autofill = true; });
+  // (whether dusk comes over a page's sky: watched on every page, as signing out goes on to the sign-in page)
+  await ctx.addInitScript(() => addEventListener('DOMContentLoaded', () => { const s = document.querySelector('.sky'); if (s) new MutationObserver(() => { if (s.classList.contains('dim')) window.__dusk = true; if (s.classList.contains('lit')) window.__dawn = true; }).observe(s, { attributes: true }); }));
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`${name}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 4\d\d|Cross-Origin-Opener-Policy header has been ignored/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
@@ -36,14 +38,15 @@ const shot = (x, n) => x.p.screenshot({ path: `${out}/${n}.png` });
 const settle = (x, ms = 900) => x.p.waitForTimeout(ms);
 const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 const open = async (x, url) => { await x.p.goto('about:blank'); await x.p.goto(url); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
-const last = (x) => x.p.evaluate(() => JSON.parse(localStorage.getItem('acct:last') || 'null'));
+// (who the sign-in page remembers: kept there, at its own address)
+const last = async (x) => { const q = await x.ctx.newPage(); await q.goto(`${AUTH}/crypto.js`); const l = await q.evaluate(() => JSON.parse(localStorage.getItem('acct:last') || 'null')); await q.close(); return l; };
 // (signed out on the account's page, with Sign out at its foot; whether dusk came over the sky as it did)
 async function signOut(x) {
   // (a passkey suggested once the page has settled, after joining: put away)
   if (await x.p.waitForSelector('#sheet[open]', { timeout: 3000 }).catch(() => null)) { await x.p.keyboard.press('Escape'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); }
   await settle(x, 500);
-  await x.p.evaluate(() => { window.__dusk = false; new MutationObserver(() => { if (document.querySelector('.sky.dim')) window.__dusk = true; }).observe(document.querySelector('.sky'), { attributes: true }); });
   await x.p.click('main .ifh-me').then(() => x.p.click('.ifm-out'));
+  await x.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 }).catch(() => {});
   await x.p.waitForSelector('main .signin', { timeout: 20000 }); await settle(x, 1200);
   return x.p.evaluate(() => window.__dusk);
 }
@@ -78,7 +81,6 @@ await A.p.click('main .signin form .btn');
 const wrong = await A.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => '');
 ok(/don’t match/.test(wrong) && await A.p.$('main .signin.remembered'), 'a wrong password: said, still remembered', wrong);
 await A.p.fill('main .signin input[name=password]', PW);
-await A.p.evaluate(() => { window.__dawn = false; new MutationObserver(() => { if (document.querySelector('.sky.lit')) window.__dawn = true; }).observe(document.querySelector('.sky'), { attributes: true }); });
 await A.p.click('main .signin form .btn');
 await A.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await A.p.$('main .hero')) && await A.p.evaluate(() => window.__dawn), 'the password alone signs you back in, as dawn breaks over the sky');
@@ -95,7 +97,7 @@ ok(await A.p.getAttribute('main .signin input[name=email]', 'autocomplete') === 
 const B = await browser('rowan-phone');
 await B.p.goto(`${CHAT}/`);
 await B.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 }); await B.p.click('.welcome [data-act=acctsignin]');
-await B.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await B.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await B.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
 await B.p.fill('main .signin input[name=email]', 'rowan@example.com'); await B.p.fill('main .signin input[name=password]', PW);
 await B.p.click('main .signin form .btn');
@@ -104,10 +106,10 @@ const offer = await text(B, 'main .signin');
 ok(/Next time, just a glance/.test(offer) && /Add a passkey/.test(offer) && /Not now/.test(offer) && /Chat messages/.test(offer), 'a passkey offered before going back to Chat', offer);
 await settle(B); await shot(B, '02-offer');
 await B.p.click('main .signin.offer .btn');
-await B.p.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 40000 }).catch(() => {});
+await B.p.waitForURL((u) => !/^(account|auth)\./.test(u.hostname), { timeout: 40000 }).catch(() => {});
 await B.p.waitForSelector('.tabs, #city', { state: 'attached', timeout: 40000 }).catch(() => {});
 const pk = rows("SELECT COUNT(*) AS n, SUM(p.vault IS NOT NULL) AS v FROM pg_passkeys p JOIN pg_users u ON u.id = p.user_id WHERE u.handle = 'rowan'")[0];
-ok(!B.p.url().includes('account.') && pk?.n === 1 && pk.v === 1, 'Add a passkey: made, with its own copy of Chat\'s key, and back in Chat', JSON.stringify(pk));
+ok(!/(account|auth)\./.test(B.p.url()) && pk?.n === 1 && pk.v === 1, 'Add a passkey: made, with its own copy of Chat\'s key, and back in Chat', JSON.stringify(pk));
 
 // ---- 4. Last time with a passkey: that one first, the password a tap away ----
 await open(B, `${ACCT}/`);

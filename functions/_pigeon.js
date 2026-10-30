@@ -9,7 +9,7 @@
 // encrypted photo blobs under pigeon/. Tables are created on first use.
 
 import { HttpError } from "./_http.js";
-import { SITE, ACCOUNT_APP } from "./_email.js";
+import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
 import { siteOf, homeSite, appOrigin } from "./_sites.js";
 export { HttpError };
 
@@ -1019,7 +1019,13 @@ export function accountPage(request, env) {
   if (u.hostname === "localhost" || u.hostname.endsWith(".localhost")) return `${u.protocol}//account.localhost${port}`;
   return ACCOUNT_APP;
 }
-export const resetUrl = (request, env, token) => `${accountPage(request, env)}/#reset=${token}`;
+// (and to the sign-in page, where accounts are made and passwords reset: functions/_acctapp.js AUTH_HOST; locally, the
+// account's page, which does both there)
+export function authPage(request, env) {
+  const page = accountPage(request, env);
+  return page === ACCOUNT_APP ? AUTH_APP : /\/\/account\.localhost(:|$)/.test(page) ? page : page.replace("//account.", "//auth.");
+}
+export const resetUrl = (request, env, token) => `${authPage(request, env)}/#reset=${token}`;
 export function maskEmail(e) {
   const [a, b] = String(e).split("@");
   return `${a.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, a.length - 2)))}@${b}`;

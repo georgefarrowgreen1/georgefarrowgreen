@@ -46,7 +46,7 @@ const settle = (x, ms = 700) => x.p.waitForTimeout(ms);
 // account's page, the sign-in carried over: functions/_hop.js)
 const signInHome = async (x) => {
   await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 });
-  await x.p.click('#sign-in'); await x.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 });
+  await x.p.click('#sign-in'); await x.p.waitForURL(/(account|auth)\.ifl\.test/, { timeout: 20000 });
   await x.p.waitForSelector('main .signin .btn, main .hero', { timeout: 20000 }); await x.p.waitForTimeout(500);
   if (await x.p.$('main .signin .btn')) await x.p.click('main .signin .btn');
   await x.p.waitForURL(/^http:\/\/gfg\.test:8788\//, { timeout: 30000 }); await x.p.waitForSelector('body.signed', { timeout: 30000 });

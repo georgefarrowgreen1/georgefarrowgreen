@@ -9,7 +9,7 @@ import { createHash, randomBytes } from 'crypto';
 import { onAccountPage, fillJoin as joinSteps } from './join.mjs';
 import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
+const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', AUTH = 'http://auth.ifl.test:8788';
 const PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry', PW3 = 'Copper kettle 19 harbour';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
@@ -60,7 +60,7 @@ const signin = await text(V);
 ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && !/New here|by invitation/.test(signin) && /One sign-in for every app\s*Chat\s*Weather\s*Fitness\s*Markets/.test(signin) && !/Create your account/.test(signin),
   'the account\'s page, signed out: a passkey, then email and password; and, with no invite, no way to make one, nor anything said of it', signin.slice(-160));
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
-ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${ACCT}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
+ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${AUTH}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
 const noInvite = await V.p.evaluate(async () => { const r = await fetch('/api/account/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X', handle: 'xxx', email: 'x@example.com' }) }); return [r.status, (await r.json()).field]; });
 ok(noInvite[0] === 403 && noInvite[1] === 'invite', 'and the server makes none without one', noInvite.join());
 await shot(V, '01-invite-only');
@@ -68,9 +68,9 @@ await shot(V, '01-invite-only');
 // ---- 2. An invite, from a Chat link of before: passed on to the account's page, which makes the account ----
 const T1 = invite();
 await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/#invite=${T1}`);
-await V.p.waitForURL(`${ACCT}/`, { timeout: 20000 }).catch(() => {});
+await V.p.waitForURL(`${AUTH}/`, { timeout: 20000 }).catch(() => {});
 await V.p.waitForSelector('main .signin input[name=name]', { timeout: 20000 }).catch(() => {});
-ok(V.p.url() === `${ACCT}/` && /You’ve been invited\./.test(await text(V)) && /Create your account/.test(await text(V)), 'Chat\'s invite link: on to the account\'s page (the invite out of the address), the form there', V.p.url());
+ok(V.p.url() === `${AUTH}/` && /You’ve been invited\./.test(await text(V)) && /Create your account/.test(await text(V)), 'Chat\'s invite link: on to the account\'s page (the invite out of the address), the form there', V.p.url());
 await V.p.fill('main input[name=name]', 'Ivy Lane'); await V.p.click('main .signin form .btn'); await settle(V, 900);
 ok(await V.p.inputValue('main input[name=handle]') === 'ivy_l' && /@ivy_l is yours/.test(await text(V)) && /2 of 4/.test(await text(V, 'main .signin')),
   'joining a step at a time: a handle suggested from the name, and checked as it\'s typed', await V.p.inputValue('main input[name=handle]'));
@@ -96,8 +96,8 @@ ok(/That invite link isn’t right/.test(await text(W)), 'a made-up one: said no
 const N = await browser('newcomer');
 await N.p.goto(`${CHAT}/`); await N.p.waitForSelector('.welcome [data-act=acctsignin]', { timeout: 20000 });
 const welcomeJoin = await N.p.$eval('.welcome .wnew a', (a) => a.href).catch(() => '');
-ok(welcomeJoin === `${ACCT}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'Chat\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
-await N.p.click('.welcome [data-act=acctsignin]'); await N.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+ok(welcomeJoin === `${AUTH}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'Chat\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
+await N.p.click('.welcome [data-act=acctsignin]'); await N.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await N.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); await settle(N);
 const order = await N.p.evaluate(() => [...document.querySelectorAll('main .backapp, main .lead, main .signin > .btn, main .signin .or, main .signin form, main .signin .forgot')]
   .map((e) => e.matches('.backapp') ? `back to ${e.textContent.trim()}` : e.matches('.signin > .btn') ? 'passkey' : e.matches('form') ? 'form' : e.textContent.trim()));
@@ -134,12 +134,12 @@ ok(saysIvy === saysNobody && /If there’s an account for that email, a reset li
 await shot(R, '05-forgot-sent');
 const rm = await waitMail('ivy@example.com', /Reset your password/);
 const RT = tokenIn(rm, 'reset');
-ok(!!RT && new RegExp(`${ACCT}/#reset=`).test(rm.text) && !mailsTo('nobody@example.com', /./).length, 'an email with a link to the account\'s page (and none to an address with no account)', rm?.subject);
+ok(!!RT && new RegExp(`${AUTH}/#reset=`).test(rm.text) && !mailsTo('nobody@example.com', /./).length, 'an email with a link to the account\'s page (and none to an address with no account)', rm?.subject);
 // opened from Chat's older address for it, on the phone with the passkey
 await V.p.goto('about:blank'); await V.p.goto(`${CHAT}/#reset=${RT}`);
-await V.p.waitForURL(`${ACCT}/`, { timeout: 20000 }).catch(() => {}); await waitText(V, /Choose a new password/);
+await V.p.waitForURL(`${AUTH}/`, { timeout: 20000 }).catch(() => {}); await waitText(V, /Choose a new password/);
 const resetSays = await text(V);
-ok(V.p.url() === `${ACCT}/` && /For Ivy Lane \(@ivy, i\S*@example\.com\)/.test(resetSays) && /Keep messages with passkey/.test(resetSays) && /Start fresh instead/.test(resetSays),
+ok(V.p.url() === `${AUTH}/` && /For Ivy Lane \(@ivy, i\S*@example\.com\)/.test(resetSays) && /Keep messages with passkey/.test(resetSays) && /Start fresh instead/.test(resetSays),
   'the link: who it\'s for (the email half hidden), and, with a passkey that has her key, a way to keep it', resetSays.slice(0, 220));
 await shot(V, '06-reset');
 // (the link opened again in another tab before the first is used, as a second tap on it would: the first still works)
@@ -169,7 +169,8 @@ await R.p.fill('main input[name=password]', PW3); await R.p.click('main .btn:has
 await waitText(R, /Password changed/, '#toast');
 ok(/starting fresh with a new key/.test(await text(R, '#toast')) && user('ivy').pub !== ivy.pub && /Ivy Lane/.test(await text(R, 'main .hero')), 'a new key, and signed in', await text(R, '#toast'));
 // (the old password no longer signs in; the new one does)
-const tries = await R.p.evaluate(async ([a, b2]) => {
+const RA = await R.ctx.newPage(); await RA.goto(`${AUTH}/crypto.js`);
+const tries = await RA.evaluate(async ([a, b2]) => {
   const { E2E } = await import('/crypto.js').catch(() => import('/pigeon/crypto.js'));
   const say = async (pw) => { const { salt } = await (await fetch('/api/account/signin/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'ivy@example.com' }) })).json();
     const { proof } = await E2E.fromPassword(pw, salt);
@@ -185,16 +186,16 @@ await X.ctx.route(/open-meteo\.com|bigdatacloud|rainviewer\.com|openstreetmap\.o
 await X.p.goto(`${WX}/`); await X.p.waitForSelector('#settings-btn', { timeout: 30000 });
 await X.p.click('#settings-btn'); await X.p.waitForSelector('#settings[open] #acct .acct-card', { timeout: 15000 });
 ok(!(await X.p.$('#settings input[type=password], #settings [data-page=signin]')), 'Weather has no sign-in of its own');
-await X.p.click('#acct-signin'); await X.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await X.p.click('#acct-signin'); await X.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await X.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
 ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather\'s Sign in: the account\'s page, saying so, with the way back to Weather', await text(X, 'main .lead'));
 
 // ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----
 {
-  const AC = 'account.ifl.test', ip = '10.8.0.3';
+  const AC = 'account.ifl.test', AU = 'auth.ifl.test', ip = '10.8.0.3';
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
-  const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
+  const made = await hostCall(AU, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
     proof: randomBytes(32).toString('base64url'), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip });
   const asked = await hostCall(AC, '/api/account/email/change', { email: 'eve.new@example.com' }, { cookie: made.cookie, ip });
   const warn = await waitMail('eve@example.com', /new email was asked for/), link = await waitMail('eve.new@example.com', /Confirm your new email/);
@@ -209,7 +210,7 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
 
 // ---- 9. The hand-back itself, straight against the API (functions/_handback.js) ----
 {
-  const AC = 'account.ifl.test', IN = 'chat.ifl.test', WE = 'weather.ifl.test', ip = '10.8.0.2';
+  const AC = 'auth.ifl.test', IN = 'chat.ifl.test', WE = 'weather.ifl.test', ip = '10.8.0.2';
   const word = () => { const w = randomBytes(32).toString('base64url'); return { w, ask: createHash('sha256').update(w).digest('base64url') }; };
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AC, '/api/account/signup', { invite: invite(), name: 'Hal Back', handle: 'halback', email: 'hal@example.com', salt: randomBytes(16).toString('base64url'),

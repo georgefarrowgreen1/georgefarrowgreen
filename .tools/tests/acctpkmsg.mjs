@@ -59,7 +59,7 @@ await p.evaluate(() => fetch('/api/pigeon/signout', { method: 'POST' }).catch(()
 await ctx.clearCookies();
 await p.goto(`${CHAT}/`); await p.waitForSelector('.welcome', { timeout: 30000 });
 // (signing in is on the account's page: its passkey, which hands Chat what opens the passkey's copy of the key)
-await p.click('.welcome [data-act=acctsignin]'); await p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await p.click('.welcome [data-act=acctsignin]'); await p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await p.waitForSelector('main .btn:has-text("Sign in with a passkey")', { timeout: 20000 }); await p.click('main .btn:has-text("Sign in with a passkey")');
 const where = await Promise.race([p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 30000 }).then(() => p.waitForSelector('.tabs', { timeout: 30000 })).then(() => 'app'),
   p.waitForFunction(() => /One more step/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 30000 }).then(() => 'password')]).catch(() => 'nothing');

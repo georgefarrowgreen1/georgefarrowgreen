@@ -18,6 +18,8 @@ import { HttpError } from "./_http.js";
 // (the home page's address: the emails' pictures are kept there, and it stands for "this is production" below)
 export const SITE = "https://georgefarrowgreen.com";
 export const ACCOUNT_APP = "https://account.inflite.ai";
+// (where every sign-in on the site happens: functions/_acctapp.js AUTH_HOST)
+export const AUTH_APP = "https://auth.inflite.ai";
 // (where the apps' emails' pictures come from: inflite.ai, as they do; the home page's from its own site)
 export const APPS_PICS = ACCOUNT_APP;
 // the account's page, for links in emails (this site's, or a local test server's copy)

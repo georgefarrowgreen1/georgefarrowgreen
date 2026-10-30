@@ -64,6 +64,10 @@ export const remove = (id) => call(`acts/${encodeURIComponent(id)}`, { method: "
 // ---- the account's own page ----
 // (beside this app's own address: fitness.<site> → account.<site>; nowhere else is there one to sign in on)
 export const accountPage = () => (location.hostname.startsWith("fitness.") ? `${location.origin.replace("//fitness.", "//account.")}/` : null);
+// (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
+export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
+// signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)
+export const outVia = (app) => { const p = authPage(); if (p) location.assign(`${p}#${new URLSearchParams({ signout: app, back: `${location.origin}/` })}`); };
 // opened signed in as you: a code good once, for a minute (functions/api/fitness account-link)
 export const accountLink = () => call("account-link", { method: "POST", body: {} });
 export const signOut = () => call("signout", { method: "POST", body: {} });

@@ -296,6 +296,33 @@ const MAIL_ICON = "/apps/mail.png?v=2";
 const appIcon = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
 const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, markets: { name: "Markets", sub: "finance" }, mail: { name: "Mail", sub: "email" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
+// The sign-in page (auth.<site>: functions/_acctapp.js) and the account's page (account.<site>) are these same files,
+// each knowing which it is by its address. Every way in (signing in, making an account, a new password, a computer
+// signed in by phone, Continue as for an app) and out (signing out) is the sign-in page's; the account, once you're in,
+// is the account page's. Locally (account.localhost), with no sign-in page of its own, the account's page is both.
+// (here: this is the sign-in page; auth, account: their addresses)
+const AUTH = (() => {
+  const { hostname: hn, origin } = location;
+  if (hn.startsWith("auth.")) return { here: true, auth: origin, account: origin.replace("//auth.", "//account.") };
+  if (hn.startsWith("account.") && !/(^|\.)localhost$/.test(hn)) return { here: false, auth: origin.replace("//account.", "//auth."), account: origin };
+  return null;
+})();
+const WAY_IN = /^#(signin|join)(=|$)|^#(forgot|invite=|reset=|qr=)/;
+// (a way in, arriving at the account's page: an app's Sign in from before this, a link in an email: on to the sign-in
+// page, as it came, before anything here takes it out of the address)
+const AWAY = !!AUTH && !AUTH.here && WAY_IN.test(ARRIVED);
+if (AWAY) location.replace(`${AUTH.auth}/${ARRIVED}`);
+// (back at the account's page from signing in: the word to greet you with, by name, never words of the address's own,
+// as any page could link here)
+const WELCOMES = { back: (m) => `Welcome back, ${firstName(m)}.`, new: (m) => `Welcome, ${firstName(m)}. Your account is ready.`, passkey: () => "Passkey saved. Next time, just a glance.",
+  kept: () => "Password changed. Your messages are safe.", fresh: () => "Password changed. You’re starting fresh with a new key.", phone: () => "Signed in with your phone." };
+const firstName = (m) => String(m.name).trim().split(/\s+/)[0];
+const WELCOME_IN = (() => {
+  const m = AUTH && !AUTH.here && /^#welcome=(\w+)$/.exec(ARRIVED);
+  if (!m) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  return WELCOMES[m[1]] ? m[1] : null;
+})();
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   // (opened from an app in a browser, which needs no hand-over, as the browser's signed in here too: #from=<app>, for the
@@ -349,6 +376,14 @@ const SIGN_FOR = (() => {
   return a;
 })();
 S.signFor = SIGN_FOR;
+// Signing out, on the sign-in page: from an app, once it's signed out there (#signout=<app>, and back: where to), or the
+// account's page (#signout=account). The site's sign-in ended here too, should it still be on; then where to next.
+const OUT = (() => {
+  const m = AUTH?.here && /^#signout=(account|inflight|weather|fitness|markets|mail|home)(&|$)/.exec(ARRIVED);
+  if (!m) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  return { app: m[1], back: m[1] === "account" ? `${AUTH.account}/` : backFor(m[1], new URLSearchParams(ARRIVED.slice(1)).get("back")) };
+})();
 // A computer's QR code, scanned with this phone's camera (#qr=<code>: functions/_qrsign.js): taken out of the address at
 // once, and kept two minutes, so signing in here first doesn't lose it. Signed in, a sheet asks whether to sign the
 // computer in (qrView)
@@ -551,8 +586,8 @@ async function startAutofill(field, picked) {
 // the apps, from here (account.inflite.ai → chat.inflite.ai, weather.inflite.ai), and the home page, on a site of its
 // own (georgefarrowgreen.com; the tests' ifl.test → gfg.test; localhost's own)
 function siteUrl(sub) {
-  const { protocol, hostname, port } = location, p = port ? ":" + port : "", apps = hostname.slice(8);
-  if (!hostname.startsWith("account.")) return sub ? `https://${sub}.inflite.ai/` : "https://georgefarrowgreen.com/";
+  const { protocol, hostname, port } = location, p = port ? ":" + port : "", apps = hostname.replace(/^(account|auth)\./, "");
+  if (!/^(account|auth)\./.test(hostname)) return sub ? `https://${sub}.inflite.ai/` : "https://georgefarrowgreen.com/";
   return sub ? `${protocol}//${sub}.${apps}${p}/` : `${protocol}//${HOME_SITES[apps] || apps}${p}/`;
 }
 // (to the home page, signed in there too: its sign-in carried over, functions/_hop.js. fresh: one just made here, so
@@ -565,7 +600,7 @@ const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/s
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
-    const u = new URL(back), site = location.hostname.replace(/^account\./, ""), home = new URL(siteUrl("")).hostname;
+    const u = new URL(back), site = location.hostname.replace(/^(account|auth)\./, ""), home = new URL(siteUrl("")).hostname;
     // (and Chat at /pigeon/, where the home page and the apps are one: locally)
     const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`], mail: [`email.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
@@ -624,6 +659,7 @@ const firstMe = async () => {
   return r || call("me");
 };
 async function load() {
+  if (AWAY) return;
   fromGate();
   if (S.signFor?.join && !S.gate) S.gate = "join";
   await fromLink();
@@ -652,6 +688,17 @@ async function load() {
       h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
   }
   if (S.me.prefs) theme(S.me.prefs.appearance);
+  // (the way out: the site's sign-in ended, if it's still on, and where next said)
+  // (from the account's page: straight to signing in again, as it was there; from an app, where next)
+  if (OUT) {
+    if (S.me.signedIn) { try { await post("signout"); } catch (_) {} duskFall(); }
+    S.me = { signedIn: false };
+    if (OUT.app === "account") S.said = { text: "Signed out." }; else S.out = OUT;
+  }
+  // (each page its own: signed in, the sign-in page has nothing more to ask, unless a computer's code or an app's waiting,
+  // and it's on to your account; signed out, the account's page is on to the sign-in page)
+  if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && S.gate !== "join") return location.replace(`${AUTH.account}/`);
+  if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said) return location.replace(`${AUTH.auth}/`);
   // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
   if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
   if (S.me?.signedIn) S.gate = null;
@@ -662,6 +709,8 @@ async function load() {
   if (opens() && S.me?.signedIn) openSheet(opens());
   else if (qrNext()) openSheet(qrView);
   confirmForHome();
+  // (back from signing in: greeted, the browser's passkeys put in step, and a passkey offered if there's none)
+  if (WELCOME_IN && S.me?.signedIn && !S.me.deleting) { dawnBreak(true); toast(WELCOMES[WELCOME_IN](S.me), false, 3200); signalPasskeys(S.me); if (WELCOME_IN === "back") maybeNudge(S.me); }
 }
 // The page drawn anew, signed in or out, or being deleted (or as it opens, from its skeleton): the old one fading as
 // the new one settles in, where the browser can and motion's welcome. Any sheet closes first, so it isn't caught in the
@@ -707,6 +756,7 @@ async function fromLink() {
 }
 // (and one opened in a tab where the page is already open)
 addEventListener("hashchange", async () => {
+  if (AUTH && !AUTH.here && WAY_IN.test(location.hash)) return location.replace(`${AUTH.auth}/${location.hash}`);
   Sheet.hist = 0;          // (a link arrived over an open sheet: its steps are behind this one now, and stay there)
   if (takeQr(location.hash)) { if (qrNext()) return openSheet(qrView); return anew(() => { S.settled = false; render(); }); }
   if (fromGate()) return anew(() => { S.settled = false; render(); });
@@ -722,10 +772,11 @@ function render() {
   const rise = !S.settled; S.settled = true;
   const was = rise ? null : where(), risers = [];
   const r = (el) => { if (rise && el) risers.push(el); return el; };
-  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : signedIn(r)) : signedOut(r)).filter(Boolean));
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : AUTH?.here ? authHome(r) : signedIn(r))
+    : S.out ? outPage(r) : AUTH && !AUTH.here && !S.handoff ? awayPage(r) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
-  document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
+  document.title = AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
   IFL.watch(window);
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
@@ -1111,7 +1162,7 @@ function qrView() {
   const what = dev[1] ? `${dev[1]} on ${kind}` : kind.replace(/^a/, "A");
   return { title: "Sign-in request", body: [
     h("div.qrask", {}, h("div.qrhero", {}, icon(dev[0] === "iPad" ? "phone" : "laptop", 36, 2)), h("h2", { text: `Sign in on ${kind}?` }),
-      h("p", {}, "Only if you’re using it now, and its address bar shows ", h("b", { text: location.host }), ". Whoever’s at it will be signed in as you, on every app.")),
+      h("p", {}, "Only if you’re using it now, and its address bar shows ", h("b", { text: AUTH ? new URL(AUTH.auth).host : location.host }), ". Whoever’s at it will be signed in as you, on every app.")),
     QRV.look.far && h("div.qrwarn", { role: "alert" }, icon("alert", 19, 2.2), h("span", { text: `${QRV.look.far === "elsewhere" ? "This computer looks to be in a different country from this phone." : "We can’t tell where this computer is."} If you’re not at it, don’t sign in.` })),
     h("div.group", {},
       h("div.row.static", {}, h("span.ic.blue", {}, icon("laptop", 19)), h("span.tx", {}, h("b", { text: what }), h("small", { text: [QRV.look.place && `Near ${QRV.look.place}`, "just now"].filter(Boolean).join(" · ") })))),
@@ -1137,7 +1188,7 @@ function scanView() {
   return { title: "Sign in on a computer", body: [
     h("div.scanbox", {}, video, h("i.scanframe", { "aria-hidden": "true" }), h("i.scanline", { "aria-hidden": "true" })), said,
     h("ol.scan-how", {},
-      h("li", {}, "On the computer, open ", h("b", { text: location.host }), ", or Sign in from any app"),
+      h("li", {}, "On the computer, open ", h("b", { text: AUTH ? new URL(AUTH.auth).host : location.host }), ", or Sign in from any app"),
       h("li", {}, "Point this at the QR code there"),
       h("li", {}, "Tap the number the computer shows")),
   ] };
@@ -1165,7 +1216,8 @@ async function startScan(video, said) {
       } catch (_) {}
     }
     const m = text && /^(.+)\/#qr=([A-Za-z0-9_-]{32})$/.exec(text);
-    if (m && m[1] === location.origin) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; QR_IN.scanned = true; return pushSheet(qrView); }
+    // (a code from the sign-in page, where computers sign in: said yes or no to here, as you scanned it yourself)
+    if (m && m[1] === (AUTH ? AUTH.auth : location.origin)) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; QR_IN.scanned = true; return pushSheet(qrView); }
     if (text && text !== SCAN.last) { SCAN.last = text; said.textContent = "That isn’t an InFlite sign-in code. Point it at the one on the computer’s sign-in page."; said.classList.add("bad"); }
     setTimeout(look, det ? 150 : 250);
   };
@@ -1352,6 +1404,8 @@ const logo = () => h("div.mark.logo", {}, h("img", { src: "/inflite.svg?v=1", al
 // the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
 let gating = 0;
 function gate(to) {
+  // (the account's page: on the sign-in page, where every way in is)
+  if (AUTH && !AUTH.here) return location.assign(`${AUTH.auth}/${to === "signin" ? "" : "#" + to}`);
   const go = () => { S.gate = to; S.settled = true; render(); }, ready = () => $("main .signin input")?.focus();
   if (!document.startViewTransition || still.matches || document.hidden) {
     go();
@@ -1399,6 +1453,37 @@ function signedOut(r) {
 function joinLine() {
   return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
     : h("p.foot.new.invite", { id: "joinline" });
+}
+// The sign-in page, signed in: who, while a computer's code is asked about (a sheet over this), with the way to the account
+function authHome(r) {
+  const m = S.me;
+  return [h("div.welcome", {},
+    r(h("div", {}, avatar(m))),
+    r(h("h1", { text: m.name })),
+    r(h("p", { text: `@${m.handle}. You’re signed in on this device.` })),
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.account}/`) }, "Go to your account"))),
+    r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))];
+}
+// Signed out of an app (S.out): of every app on the site in this browser, as they share the one sign-in; back to that
+// app (where Sign in brings you back here), and this browser's memory of you let go, if you'd like
+function outPage(r) {
+  const o = S.out, name = APPS[o.app]?.name, last = lastHere(), said = h("p.said", { role: "status" });
+  const back = h("button.btn", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, `Back to ${name}`);
+  const drop = last && h("button.link", { type: "button", onclick: (e) => { forget(); e.currentTarget.remove(); say(said, `This browser has forgotten ${last.email}.`); } }, `Forget ${last.email} on this device`);
+  return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark", {}, icon("signout", 44, 1.8)))),
+    r(h("h1", { text: "You’re signed out" })),
+    r(h("p", { text: "Of every app on InFlite, in this browser." })),
+    r(h("div.signin.glass", {}, back, drop, said)))];
+}
+// The account's page, signed out, with a word to say first (an email confirmed by its link): signing in's on the
+// sign-in page
+function awayPage(r) {
+  return [h("div.welcome", {},
+    r(h("div", {}, logo())),
+    r(h("h1", { text: "Your account" })),
+    r(h("p", { text: "One account for every app on InFlite." })),
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.auth}/`) }, icon("signin", 20, 1.9), "Sign in"))))];
 }
 // Opened from an app, signed in there: carry on as that account here, said yes to
 function handoffPage(r) {
@@ -1690,7 +1775,7 @@ async function qrSignedIn(m) {
   remember(m, "phone");
   await new Promise((ok) => setTimeout(ok, 700));                                 // (Signed in, seen a moment)
   if (S.signFor && !m.deleting) return handBack(m, {}, null);
-  welcome(m, `Signed in with your ${String(QRS.phone || "phone").split(" · ")[0]}.`);
+  welcome(m, `Signed in with your ${String(QRS.phone || "phone").split(" · ")[0]}.`, null, "phone");
 }
 
 // (the password's stretching needs its WebAssembly: fetched as soon as a password field's used, not when it's sent)
@@ -1801,7 +1886,7 @@ function joinCard() {
       // (made for an app: straight back to it, the password already checked against data breaches, above, if it could be)
       if (S.signFor) { if (checked) post("password/checked", { proof, leaked: false }).catch(() => {}); return handBack(m, { lock }, go); }
       dawnBreak(true); await ticked(go);
-      welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
+      welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`, null, "new");
       checkQuietly(v.password, proof); maybeNudge(m);
     } catch (err) {
       if (err.field === "invite") { S.join = { open: false, ok: false, error: err.message }; return cardTo(form.closest(".signin"), joinCard()); }
@@ -1902,7 +1987,7 @@ function resetPage(r) {
         return post("reset/complete", { token: R.token, salt, proof, vault: await E2E.lock(k.lockKey, { ecdh }), ...(pub ? { pub } : { keyProof }) });
       });
       S.reset = null; S.gate = null;
-      welcome(m, m.kept ? "Password changed. Your messages are safe." : "Password changed. You’re starting fresh with a new key.");
+      welcome(m, m.kept ? "Password changed. Your messages are safe." : "Password changed. You’re starting fresh with a new key.", null, m.kept ? "kept" : "fresh");
       checkQuietly(pw.value, proof);
     } catch (err) { say(said, err.message, pw); }
   };
@@ -1975,6 +2060,12 @@ async function withPassword(email, emailIn, pw, go, said) {
       return offerThen(m, k, go.closest(".signin"));
     }
     if (!m.deleting) { dawnBreak(true); await ticked(go); }
+    // (on the sign-in page, which goes on to the account's: the password checked and a passkey made first, a moment and a
+    // half at most, then greeted there for whichever)
+    if (AUTH?.here && !m.deleting && !QR_IN.code) {
+      const made = await Promise.race([Promise.all([checkQuietly(pw.value, k.proof), quietPasskey(m, k)]).then(([, x]) => x), pause(1600).then(() => null)]);
+      return welcome(S.me?.signedIn ? S.me : m, null, null, made ? "passkey" : "back");
+    }
     welcome(m);
     if (!m.deleting) {
       checkQuietly(pw.value, k.proof);
@@ -2023,9 +2114,13 @@ function offerThen(m, k, card) {
     yes, no, said));
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
-async function welcome(m, word, next) {
-  S.me = m; S.pulled = Date.now(); stopAutofill(); signalPasskeys(m);
+async function welcome(m, word, next, code = "back") {
+  S.me = m;
   next ||= qrNext();
+  // (signed in on the sign-in page, for nothing else: on to the account's page, which greets you, or, for an account
+  // being deleted, asks whether to keep it)
+  if (AUTH?.here && !next) { stopAutofill(); return location.replace(`${AUTH.account}/#welcome=${code}`); }
+  S.pulled = Date.now(); stopAutofill(); signalPasskeys(m);
   await anew(() => {
     S.settled = !!next;
     if (m.prefs) theme(m.prefs.appearance);
@@ -2070,6 +2165,7 @@ async function checkQuietly(pw, proof) {
   try { const n = await leakedCount(pw); if (n === null) return; S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
 }
 async function signOut(btn) {
+  if (AUTH && !AUTH.here) { duskFall(); return location.assign(`${AUTH.auth}/#signout=account`); }
   try { await busy(btn, "Signing out…", () => post("signout")); }
   catch (e) { if (!e.offline) return toast(e.message, true); }
   S.me = { signedIn: false };

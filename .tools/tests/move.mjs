@@ -47,7 +47,7 @@ ok(appsCookie?.domain === '.ifl.test', 'signed in for every app on inflite.ai', 
 await A.p.goto(`${HOME}/`); await A.p.waitForSelector('#sign-in', { timeout: 20000 });
 ok((await A.p.getAttribute('#app-inflight', 'href')) === `${CHAT}/` && (await A.p.getAttribute('#app-weather', 'href')) === `${WX}/`, 'the home page’s apps open on inflite.ai',
   await A.p.getAttribute('#app-inflight', 'href'));
-await A.p.click('#sign-in'); await A.p.waitForURL(/account\.ifl\.test/, { timeout: 20000 });
+await A.p.click('#sign-in'); await A.p.waitForURL(/(account|auth)\.ifl\.test/, { timeout: 20000 });
 await A.p.waitForSelector('main .signin .btn, main .hero', { timeout: 20000 }); await A.p.waitForTimeout(600);
 if (await A.p.$('main .signin .btn')) await A.p.click('main .signin .btn');
 await A.p.waitForURL(/^http:\/\/gfg\.test:8788\//, { timeout: 30000 }); await A.p.waitForSelector('body.signed', { timeout: 20000 });

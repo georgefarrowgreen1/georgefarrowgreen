@@ -2140,9 +2140,11 @@ function keptAdd() {
   return null;
 }
 const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/") + hash;
+// (signing in, making an account and signing out: on the sign-in page beside it, auth.<site>; locally, the account's)
+const toAuth = (hash = "") => { const p = accountPage() || "https://account.inflite.ai/"; return (/\.localhost[:/]/.test(p) ? p : p.replace("//account.", "//auth.")) + hash; };
 // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
 const brandLine = `<p class="wbrand ifl-brand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
-const newHere = () => `<p class="wnew ifl-new">New here? <a href="${esc(toAccount("#join"))}" data-act="acctjoin">Create your account</a></p>`;
+const newHere = () => `<p class="wnew ifl-new">New here? <a href="${esc(toAuth("#join"))}" data-act="acctjoin">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 // Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as (on the
@@ -2174,7 +2176,7 @@ async function toAccountSignIn(e, mode) {
     const back = location.origin + (location.pathname.startsWith("/pigeon/") ? "/pigeon/" : "/");
     await covered;
     const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
-    location.assign(toAccount(`#${q}`));
+    location.assign(toAuth(`#${q}`));
   } catch (_) { handBack(); toast("This browser can’t sign in to Chat. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
@@ -8610,6 +8612,8 @@ async function onClick1(e, t) {
         await night.dark;                                                  // (dark now: what's under it can go)
         await forget(); S.navQuiet = true; go("welcome");                  // (under the night: no change of screen of its own)
       } finally { night.done(); }
+      // (and on to the sign-in page, which says so and offers the way back; none locally)
+      if (accountPage() && !/\.localhost[:/]/.test(accountPage())) location.assign(toAuth(`#${new URLSearchParams({ signout: "inflight", back: location.origin + "/" })}`));
       return;
     }
     case "profile": S.sheet = { type: "profile" }; return renderSheet();

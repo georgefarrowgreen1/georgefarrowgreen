@@ -1647,7 +1647,7 @@ function courseScene() {
 // (a sign-in started here and never finished: its word not kept past a couple of hours)
 try { const k = JSON.parse(localStorage.getItem("fitness:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("fitness:signin"); } catch (_) {}
 async function toAccountSignIn(e, mode = "signin") {
-  const page = A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
+  const page = A.authPage() || A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
   if (b) { b.disabled = true; b.textContent = "Signing in…"; }
   try {
@@ -1903,6 +1903,7 @@ async function signOutHere(already = false) {
   store.set("meAt", null); idb.clear().catch(() => {});
   welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
   d?.done();
+  if (already !== true) A.outVia("fitness");
 }
 
 // (the sign-in gone, found out mid-way: signed out here too, and said so)

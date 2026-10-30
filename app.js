@@ -348,7 +348,7 @@ function showMe() {
   const pill = welcome && !motion.matches ? $("#sign-in").getBoundingClientRect() : null;
   if (welcome) { for (const el of [$("#me"), $("#edit")]) el.classList.add("held"); back.lines = true; }
   // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
-  if (me.account) for (const a of $$("[data-account]")) a.href = me.account + (a.id === "sign-in" ? "/#signin=home" : "/#from=home");
+  if (me.account) for (const a of $$("[data-account]")) a.href = a.id === "sign-in" ? `${me.auth || me.account}/#signin=home` : `${me.account}/#from=home`;
   // (the apps' own addresses, as the server has them: inflite.ai's, or a test's)
   for (const [k, v] of Object.entries(me.links || {})) { const a = $(`#app-${k}`); if (a) a.href = v; }
   body.classList.toggle("signed", !!me.signedIn);

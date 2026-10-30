@@ -2788,6 +2788,8 @@ async function signOutHere() {
   try { await A.signOut(S.settings.notify.endpoint || undefined); } catch (_) {}
   finally { b.disabled = false; }
   signedOut();
+  // (and on to the sign-in page, which says so and offers the way back)
+  const p = authPage(); if (p) location.assign(`${p}#${new URLSearchParams({ signout: "weather", back: `${location.origin}/` })}`);
 }
 // Signed out somewhere else (the account's page, or another app on the site): this device's notifications stay, as its
 // own, as when it's signed out here
@@ -2802,7 +2804,7 @@ function signedOutElsewhere() {
 // (a sign-in started here and never finished: its word not kept past a couple of hours)
 try { const k = JSON.parse(localStorage.getItem("wx:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("wx:signin"); } catch (_) {}
 async function toAccountSignIn(e) {
-  const page = accountPage(); if (!page || leaving) return;
+  const page = authPage() || accountPage(); if (!page || leaving) return;
   const away = handOff();
   try {
     const { word, ask } = await A.signInWord();
@@ -3017,6 +3019,8 @@ const STATES = { saving: ["Syncing…", "Syncing…"], waiting: ["Offline. Your 
 // a Home Screen app's included, and takes it out of the address). The window's opened at once, from the tap (a phone
 // won't open one later), and sent on when the code's back.
 const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
+// (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
+const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {
   const note = $("sync-note"), said = S.acct && STATES[S.acct.shown ?? S.acct.state]?.[0];

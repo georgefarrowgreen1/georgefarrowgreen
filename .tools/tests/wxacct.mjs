@@ -79,7 +79,7 @@ const settings = async (x) => {
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
 // (signed out, Settings has a row for signing in, which takes you to the account's page: the passkey, email and password)
-const signInPage = async (x) => { await x.p.click('#acct-signin'); await x.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 }); await x.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 }); };
+const signInPage = async (x) => { await x.p.click('#acct-signin'); await x.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 }); await x.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 }); };
 // (and back in Weather, signed in)
 const backInWeather = async (x) => { await x.p.waitForURL((u) => u.hostname.startsWith('weather.'), { timeout: 30000 }); await x.p.waitForSelector('.day-row', { timeout: 30000 }); };
 const folder = async (x, f) => { await x.p.click(`[data-go="${f}"]`); await x.p.waitForTimeout(300); };
@@ -174,7 +174,7 @@ ok(await P.p.textContent('main .said') === 'Enter your email.', 'nothing typed i
 await P.p.fill('main input[name=email]', 'sam@example.com'); await P.p.fill('main input[name=password]', 'not the password');
 await P.p.click('main .signin form .btn');
 await P.p.waitForFunction(() => /don’t match/.test(document.querySelector('main .said')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
-ok(/don’t match an account/.test(await P.p.textContent('main .said')) && /account\./.test(P.p.url()), 'a wrong password: said, and still signed out', await P.p.textContent('main .said'));
+ok(/don’t match an account/.test(await P.p.textContent('main .said')) && /(account|auth)\./.test(P.p.url()), 'a wrong password: said, and still signed out', await P.p.textContent('main .said'));
 await P.p.fill('main input[name=password]', PW); await P.p.click('main .signin form .btn');
 await backInWeather(P);
 const back = await P.p.waitForFunction(() => document.getElementById('toast')?.textContent || null, null, { timeout: 15000 }).then((x) => x.jsonValue(), () => '');
@@ -335,7 +335,7 @@ ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome [data-act=acctsignin]:has-text("Continue as")', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
 ok(/Continue as Sam/.test(offer || '') && !/Signed in as/i.test(offer || '') && !/Weather/.test(offer || ''), 'Chat, signed in elsewhere on the site: just "Continue as Sam" (no other app named)', offer);
-await K.p.click('.welcome [data-act=acctsignin]'); await K.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 20000 });
+await K.p.click('.welcome [data-act=acctsignin]'); await K.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await K.p.waitForSelector('main .signin input[name=password]', { timeout: 20000 });
 ok(/Continue to Chat as this account\?/.test(await K.p.textContent('main')) && !(await K.p.$('main input[name=email]')), 'on the account\'s page: carrying on as Sam, showing it\'s you (no email asked) to unlock the key here');
 await K.p.fill('main input[name=password]', PW); await K.p.click('main .signin form .btn');

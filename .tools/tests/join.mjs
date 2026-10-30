@@ -38,7 +38,7 @@ export async function fillJoin(page, { name, handle, email, password = PASSWORD 
 // already, the password to carry on as yourself; then back in the app. → the page's address, if it signed in just now
 // (rather than carrying on as who it had signed in already)
 export async function onAccountPage(page, { email, password = PASSWORD }) {
-  await page.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 30000 });
+  await page.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 30000 });
   await page.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 30000 });
   const acct = new URL(page.url()).origin + '/';
   // (signed in there before as someone else, who it remembers: Not you?)
@@ -55,7 +55,7 @@ export async function onAccountPage(page, { email, password = PASSWORD }) {
 }
 // Back in the app: past a passkey offered on the way, if there's one (Not now). → whether there was
 export async function pastOffer(page) {
-  const gone = (u) => !u.hostname.startsWith('account.');
+  const gone = (u) => !/^(account|auth)\./.test(u.hostname);
   const offer = await Promise.race([page.waitForURL(gone, { timeout: 60000 }).then(() => false),
     page.waitForSelector('main .signin.offer .link', { timeout: 60000 }).then(() => true)]).catch(() => false);
   if (offer && !gone(new URL(page.url()))) await page.click('main .signin.offer .link');
@@ -95,7 +95,7 @@ export async function joinChat(page, inflight, { name, handle, email, password =
   await page.waitForSelector('main .signin input[name=name]', { timeout: 30000 });
   const acct = new URL(page.url()).origin + '/';
   await fillJoin(page, { name, handle, email, password });
-  await page.waitForURL((u) => !u.hostname.startsWith('account.'), { timeout: 60000 });
+  await page.waitForURL((u) => !/^(account|auth)\./.test(u.hostname), { timeout: 60000 });
   await page.waitForSelector('#city', { state: 'attached', timeout: 40000 });
   await pageOut(page, inflight, acct);
   if (city) await page.selectOption('#city', city);

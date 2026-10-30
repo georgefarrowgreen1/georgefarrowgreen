@@ -14,6 +14,17 @@ export const ACCOUNT_HOST = "account.inflite.ai";
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
 // set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
 export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "account";
+// The sign-in page, at auth.inflite.ai: every way into the account (signing in, with a passkey, a password or your
+// phone; making one; a new password; Continue as, for an app) and out of it (signing out) happens there, and only
+// there, for every app on the site; account.inflite.ai is the account once you're in. One address that ever asks for a
+// password, so it's the one to look for; a page that asks for nothing else, with nothing on it from anyone else (no
+// photos but your own, no other site's API, no camera); and the passwords' word that this device has signed in before
+// is its own (functions/_account.js withKnown). The same files as the account's page, which knows which it is by its
+// address (account/app.js AUTH), and the sign-in half of its API (functions/api/account AUTH_ROUTES). The site's
+// sign-in cookie is the whole site's (inflite.ai), so signed in here is signed in there. (AUTH_HOST in the
+// environment: tests.)
+export const AUTH_HOST = "auth.inflite.ai";
+export const isAuth = (url, env) => (env.AUTH_HOST || AUTH_HOST).split(",").includes(url.hostname);
 
 export const ACCT_SECURITY = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://email.inflite.ai; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
@@ -25,6 +36,11 @@ export const ACCT_SECURITY = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",
+};
+// (the sign-in page's: its own API alone, and no camera)
+export const AUTH_SECURITY = { ...ACCT_SECURITY,
+  "Content-Security-Policy": ACCT_SECURITY["Content-Security-Policy"].replace(" https://email.inflite.ai", ""),
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
 };
 // what it shares with the rest of the site: its address here → where it's kept
 const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/jsqr.js": "/pigeon/jsqr.js", "/formats.js": "/fitness/formats.js", "/fit.js": "/fitness/fit.js", "/workouts.js": "/fitness/workouts.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png", "/apps/mail.png": "/account/mail-icon.png" };
@@ -84,7 +100,7 @@ export async function accountHost(ctx, url) {
   const page = res.status === 200 && PAGE.test(path), script = res.status === 200 && /^[\w.-]+\.(js|css)$/.test(name);
   const body = head ? null : page ? await stamped(ctx, url, await res.text()) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
   const out = new Response(body, res);
-  for (const [k, v] of Object.entries(ACCT_SECURITY)) out.headers.set(k, v);
+  for (const [k, v] of Object.entries(isAuth(url, ctx.env) ? AUTH_SECURITY : ACCT_SECURITY)) out.headers.set(k, v);
   if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }
   // (Pages' own preload hints name the files unstamped: each would be fetched again, and could be a copy kept from before)
   if (page) out.headers.delete("Link");

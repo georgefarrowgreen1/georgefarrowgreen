@@ -3,6 +3,7 @@
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
 // finance.inflite.ai: Markets, the same way (functions/_mktapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
+// auth.inflite.ai: where every sign-in and sign-out happens, the same files (functions/_acctapp.js).
 // (inflite.ai itself is kept for something else: not this project's.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
 // still (functions/_hop.js). Every other address carries straight on (the home page).
@@ -14,7 +15,7 @@ import { HttpError } from "./_http.js";
 import { isWeather, weatherHost } from "./_wxapp.js";
 import { isFitness, fitnessHost } from "./_fitapp.js";
 import { isMarkets, marketsHost } from "./_mktapp.js";
-import { isAccount, accountHost } from "./_acctapp.js";
+import { isAccount, isAuth, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
@@ -41,7 +42,7 @@ export async function onRequest(ctx) {
   }
   // the passkeys are georgefarrowgreen.com's: the apps on inflite.ai may use them (WebAuthn's related origins)
   if (url.pathname === "/.well-known/webauthn" && url.hostname === homeSite(ctx.env))
-    return new Response(JSON.stringify({ origins: ["chat", "account", "weather", "fitness", "finance"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
+    return new Response(JSON.stringify({ origins: ["chat", "account", "auth", "weather", "fitness", "finance"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
       { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*" } });
   // the emails' pictures, the apps' (functions/_email.js APPS_PICS): at the account's address too, so an app's email is
   // inflite.ai's throughout
@@ -57,7 +58,7 @@ export async function onRequest(ctx) {
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isFitness(url, ctx.env)) return fitnessHost(ctx, url);
   if (isMarkets(url, ctx.env)) return marketsHost(ctx, url);
-  if (isAccount(url, ctx.env)) return accountHost(ctx, url);
+  if (isAccount(url, ctx.env) || isAuth(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
