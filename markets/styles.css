@@ -70,13 +70,13 @@ a { color: inherit; text-decoration: none; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
 /* ---- the sky, and its slow light ---- */
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
+.sky { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
 /* (on a phone or a tablet, as the account page's: the sky ends above Safari's bar at the foot, fading into the page's own
    colour, so Safari takes it as the layer at the top of the page and tints the strip behind the status bar with its
    colour, --sky-top, the green along the top of the sky in the light; reaching the foot of the screen, it's taken for
    the page's background, and the strip is filled with the page's near-white instead) */
 @media (hover: none) {
-  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+  .sky { bottom: auto; height: calc(100% - 120px + var(--fix-gap, 0px)); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
 }
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; will-change: transform; }
 .a1 { top: -34vmax; left: -24vmax; background: radial-gradient(circle closest-side, var(--aura-1), transparent); animation: drift1 28s steps(56) infinite alternate; }
@@ -305,7 +305,7 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .story b { font-size: 17px; font-weight: 500; line-height: 1.35; }
 
 /* ---- the tab bar: InFlite's, three tabs and a pill that springs between them ---- */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
+.tabbar { position: fixed; left: 0; right: 0; bottom: calc(0px - var(--fix-gap, 0px)); z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
   transition: transform 0.4s var(--ease-glide), opacity 0.3s; }
 body.sheet-up .tabbar { transform: translateY(24px); opacity: 0; }
 /* (the page fades and softens as it goes under the tab bar, so what's beneath doesn't show through around it) */
@@ -321,9 +321,9 @@ body.out .tabbar { display: none; }
 .tab[aria-current="page"] { color: var(--text); }
 
 /* ---- the sheet: a stock, search, or settings ---- */
-.dim { position: fixed; inset: 0; z-index: 30; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+.dim { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 30; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity 0.5s; }
 body.sheet-up .dim { opacity: 1; pointer-events: auto; }
-.sheet { position: fixed; left: 0; right: 0; top: calc(var(--top) + 18px); bottom: 0; z-index: 31; max-width: var(--col); margin: 0 auto; border-radius: 38px 38px 0 0;
+.sheet { position: fixed; left: 0; right: 0; top: calc(var(--top) + 18px); bottom: calc(0px - var(--fix-gap, 0px)); z-index: 31; max-width: var(--col); margin: 0 auto; border-radius: 38px 38px 0 0;
   background: var(--sheen), var(--sheet); box-shadow: var(--edge), 0 -20px 40px -20px rgba(0, 0, 0, 0.5); transform: translateY(105%);
   transition: transform 0.65s var(--ease-glide); display: flex; flex-direction: column; }
 body.sheet-up .sheet { transform: none; }
@@ -493,7 +493,7 @@ body.sheet-up .sheet { transform: none; }
 .welcome .ifl-new { margin: 14px 0 0; font-size: 15px; color: var(--text-2); }
 .welcome .ifl-new button { color: var(--tint-text); font-weight: 600; }
 .welcome .said { margin: 0 0 14px; font-size: 14px; color: var(--text-2); text-align: center; }
-.scene { position: fixed; left: 0; right: 0; bottom: 0; height: 52svh; width: 100%; pointer-events: none; }
+.scene { position: fixed; left: 0; right: 0; bottom: calc(0px - var(--fix-gap, 0px)); height: 52svh; width: 100%; pointer-events: none; }
 .scene path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .scene .l1 { stroke: var(--up); stroke-width: 2.5; opacity: 0.9; stroke-dasharray: 1; stroke-dashoffset: 1; animation: arc 3.2s var(--ease-out) 0.8s forwards; }
 .scene .l2 { stroke: var(--blue); stroke-width: 1.5; opacity: 0.45; stroke-dasharray: 1; stroke-dashoffset: 1; animation: arc 3.6s var(--ease-out) 1.1s forwards; }
@@ -506,7 +506,7 @@ body.sheet-up .sheet { transform: none; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 /* ---- the toast ---- */
-.toast { position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom, 0px)); z-index: 60; max-width: calc(100vw - 32px); transform: translate(-50%, 16px) scale(0.94); opacity: 0;
+.toast { position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 60; max-width: calc(100vw - 32px); transform: translate(-50%, 16px) scale(0.94); opacity: 0;
   padding: 11px 18px; border-radius: 22px; background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift);
   font-size: 14.5px; font-weight: 600; text-align: center; transition: transform 0.5s var(--ease-spring), opacity 0.25s; pointer-events: none; }
 .toast.on { transform: translate(-50%, 0); opacity: 1; }

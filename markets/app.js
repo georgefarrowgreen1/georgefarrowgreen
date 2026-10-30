@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.75";
+const BUILD = "1.76";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1835,6 +1835,26 @@ function live() {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); seen(); } });
   addEventListener("online", () => refresh());
 }
+// On the Home Screen, running up behind the status bar, iOS can lay the page out shorter than the screen (by the
+// status bar's height, after a while away), and what's fixed to its foot (the tab bar, a sheet, a toast) then sits
+// that much above the screen's: the gap, measured against the screen itself, is taken back (--fix-gap: styles.css).
+// Only on an iPhone's or iPad's Home Screen, filling it; and never the keyboard's height, which is far more.
+function fitScreen() {
+  if (navigator.standalone !== true || !screen.width || !screen.height) return;
+  const doc = document.documentElement;
+  const fit = () => {
+    const portrait = matchMedia("(orientation: portrait)").matches;
+    const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const h = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    const gap = Math.abs(innerWidth - w) < 2 ? Math.round(h - innerHeight) : 0;
+    doc.style.setProperty("--fix-gap", `${gap > 0 && gap < 120 ? gap : 0}px`);
+  };
+  fit();
+  for (const ev of ["resize", "pageshow", "focus"]) addEventListener(ev, fit);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && fit());
+  addEventListener("orientationchange", () => setTimeout(fit, 300));
+}
+fitScreen();
 start();
 
 // ---- for the desk (desk.js): what it shares with the rest ----
