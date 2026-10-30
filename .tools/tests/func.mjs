@@ -163,24 +163,26 @@ if (await C.p.isVisible('.chatnav .back')) { await C.p.click('.chatnav .back'); 
 await C.p.evaluate(() => document.activeElement?.blur?.());
 await C.p.route(/\/version$/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'chat', build: '9.98' }) }));
 await C.p.waitForTimeout(8500);
-let reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
+// (a reload: the page loaded again, not just a link followed within it)
+const loadsIn = (ms) => C.p.waitForEvent('load', { timeout: ms }).then(() => true, () => false);
+let reloading = loadsIn(8000);
 await back();
-await C.p.waitForTimeout(4000);
+let reloaded = await reloading;
 ok(reloaded, 'an open copy reloads itself when a new version is live, as you come back to it');
 // mid-message, it waits, and InFlite's menu offers Update instead
 await C.p.waitForSelector('.tabs', { timeout: 15000 }); await C.p.click('.mrow'); await C.p.waitForSelector('#msg'); await C.p.fill('#msg', 'half-written');
 await C.p.unroute(/\/version$/);
 await C.p.route(/\/version$/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'chat', build: '9.99' }) }));
 await C.p.waitForTimeout(8500);
-reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
+reloaded = false; C.p.once('load', () => { reloaded = true; });
 await back();
 await C.p.waitForTimeout(5000);
 ok(!reloaded && await C.p.inputValue('#msg') === 'half-written', 'mid-message it doesn\'t reload: what you\'re writing stays');
 await C.p.click('.chatnav .back'); await C.p.waitForSelector('.tabs', { timeout: 15000 });
 await C.p.click('.chead .ifh-me'); await C.p.waitForSelector('.ifm-pop.open .ifm-upd', { timeout: 5000 }).catch(() => {});
 ok(await C.p.isVisible('.ifm-pop .ifm-upd'), 'and its menu says Update', await txt(C, '.ifm-foot').catch(() => ''));
-reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
-await C.p.click('.ifm-pop .ifm-upd'); await C.p.waitForTimeout(3000); await C.p.waitForSelector('.tabs', { timeout: 15000 });
+reloading = loadsIn(20000);
+await C.p.click('.ifm-pop .ifm-upd'); reloaded = await reloading; await C.p.waitForSelector('.tabs', { timeout: 15000 });
 ok(reloaded, 'tapping Update reloads');
 await C.p.unroute(/\/version$/);
 

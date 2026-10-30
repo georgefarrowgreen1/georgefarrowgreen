@@ -156,7 +156,7 @@ const IFL = (() => {
   }
   async function check(now) {
     const t = Date.now();
-    if (!U.app || U.going || t - U.at < (now ? 8e3 : 4 * 60e3)) return;
+    if (!U.app || U.going || t - U.at < (now ? 3e3 : 4 * 60e3)) return;     // (now: back, online, a worker's word, as one)
     U.at = t;
     try {
       const r = await fetch(U.url, { cache: "no-store", credentials: "same-origin" });

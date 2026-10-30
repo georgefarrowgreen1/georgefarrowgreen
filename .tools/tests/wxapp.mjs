@@ -1274,7 +1274,7 @@ await ctx.close();
   await p.waitForTimeout(9000);
   let before = asked.forecast, lookedBefore = looked.n;
   await away(); await p.waitForTimeout(1500);
-  ok(asked.forecast === before && looked.n === lookedBefore + 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${await p.evaluate(() => window.__updates)} checks`);
+  ok(asked.forecast === before && looked.n === lookedBefore + 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${looked.n - lookedBefore} looked`);
   // back after a while (the forecast kept 20 minutes ago, as if the phone had been put away): asked again, and said so
   // (what's kept is read once a session, then held in memory as it's written: so the page is told it's changed, as it
   // is when another tab changes it, data.js keptRaw)
