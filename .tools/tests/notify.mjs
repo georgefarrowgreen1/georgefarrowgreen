@@ -256,7 +256,7 @@ await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-a
 // the subscription is re-sent on launch, so it comes back
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 1'), 'reopening the app re-registers this phone');
 if (await G.p.$('.sheet')) { await G.p.click('.sheet [data-act=close]').catch(() => {}); await G.p.waitForTimeout(400); }
-await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await G.p.click('#screen > main.view [data-act=signout]'); await G.p.click('.asheet [data-act=signoutgo]'); await G.p.waitForSelector('.welcome');
+await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.click('.chead .ifh-me'); await G.p.waitForSelector('.ifm-pop.open'); await G.p.click('.ifm-pop .ifm-out'); await G.p.click('.asheet [data-act=signoutgo]'); await G.p.waitForSelector('.welcome');
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'signing out stops notifications to this phone');
 // a sign-in that ends elsewhere (password reset, sign out everywhere) also stops them
 await signInChat(G.p, URL, { email: 'george@example.com' }); await G.p.waitForSelector('.tabs', { timeout: 20000 });

@@ -2006,7 +2006,8 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
-.ifm-val.warn { color: var(--ifm-warn, #c86a00); font-weight: 600; }
+/* (its own name: an app's .warn, a banner of its own, isn't this) */
+.ifm-val.ifm-warn { color: var(--ifm-warn, #c86a00); font-weight: 600; }
 .ifm-row .ifm-chev { width: 15px; height: 15px; }
 .ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
 .ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;

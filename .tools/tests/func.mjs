@@ -125,7 +125,7 @@ ok(/"photo": 2/.test(sql("SELECT photo FROM pg_msgs WHERE photo > 0")), 'server 
 
 // ---- George: sign out, and back in on the account's page (where Chat signs in; a passkey there opening the
 // messages by itself is acctpkmsg.mjs's, as here the account's page has an address of its own for passkeys) ----
-await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await A.p.click('#screen > main.view [data-act=signout]'); await A.p.click('.asheet [data-act=signoutgo]');
+await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.click('.chead .ifh-me'); await A.p.waitForSelector('.ifm-pop.open'); await A.p.click('.ifm-pop .ifm-out'); await A.p.click('.asheet [data-act=signoutgo]');
 await A.p.waitForSelector('.welcome');
 await signInChat(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' }); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 await A.p.click('.mrow'); await A.p.waitForTimeout(1500);

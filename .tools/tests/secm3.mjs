@@ -101,6 +101,6 @@ ok(!(await G.$('#screen > main.view [data-act=changepw]')) && !(await G.$('#scre
 
 // deleting the account is on its own page, not in Chat
 if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }
-await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=signout]');
+await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=profile]');
 ok(!(await G.$('#screen > main.view [data-act=delask]')), 'no Delete Account in Chat');
 console.log('errors', errs); console.log('FAILS', fails); await b.close();
