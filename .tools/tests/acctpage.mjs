@@ -45,7 +45,8 @@ async function req(x, url, { method = 'GET', headers = {}, data } = {}) {
 }
 const shot = (x, n) => x.p.screenshot({ path: `${out}/${n}.png` });
 const settle = (x, ms = 900) => x.p.waitForTimeout(ms);
-const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
+// (empty while a page is on its way: signing in on the sign-in page goes on to the account's)
+const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel).catch(() => '');
 const sheetText = (x) => text(x, '#sheet');
 const openRow = async (x, title) => { await x.p.click(`.row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
 const closeSheet = async (x) => { await x.p.click('#sheet .x, #sheet .link:text-is("Cancel")'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
