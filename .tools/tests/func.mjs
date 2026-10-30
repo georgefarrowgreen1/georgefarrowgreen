@@ -155,21 +155,34 @@ const a1 = await fetch(`${URL}app.js?v=${appv}`); ok(/immutable/.test(a1.headers
 ok((await a1.text()).includes('./crypto.js?v='), 'app.js imports fingerprinted modules');
 ok(/^no-(cache|store)$/.test((await fetch(`${URL}app.js?v=old`)).headers.get('cache-control')), 'stale fingerprint is not cached');
 ok(!!h.headers.get('content-security-policy')?.includes("script-src 'self'"), 'CSP still applied');
-// pretend a deploy happened: serve this phone a different version and see it reload
-await C.p.route(URL.replace(/^http:\/\/[^/]+/, '**'), async (route) => { const r = await route.fetch(); const body = (await r.text()).replace(/inflight-version" content="\w+"/, 'inflight-version" content="newer000000"'); route.fulfill({ response: r, body }); }, { times: 1 });
+// pretend a deploy happened: Chat's /version says a newer one (the updater every app shares: IFL.updates), and coming
+// back to the app, untouched, it reloads on it
+const back = () => C.p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+// (from the list of chats: in a chat, with its message box to hand, it's never reloaded under your fingers)
+if (await C.p.isVisible('.chatnav .back')) { await C.p.click('.chatnav .back'); await C.p.waitForSelector('.mrow', { timeout: 15000 }); }
+await C.p.evaluate(() => document.activeElement?.blur?.());
+await C.p.route(/\/version$/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'chat', build: '9.98' }) }));
+await C.p.waitForTimeout(8500);
 let reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
-await C.p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
-await C.p.waitForTimeout(2500);
-ok(reloaded, 'an open copy reloads itself when a new version is live');
-// mid-message, it asks instead of reloading
+await back();
+await C.p.waitForTimeout(4000);
+ok(reloaded, 'an open copy reloads itself when a new version is live, as you come back to it');
+// mid-message, it waits, and InFlite's menu offers Update instead
 await C.p.waitForSelector('.tabs', { timeout: 15000 }); await C.p.click('.mrow'); await C.p.waitForSelector('#msg'); await C.p.fill('#msg', 'half-written');
-await C.p.route(URL.replace(/^http:\/\/[^/]+/, '**'), async (route) => { const r = await route.fetch(); const body = (await r.text()).replace(/inflight-version" content="\w+"/, 'inflight-version" content="newer000001"'); route.fulfill({ response: r, body }); }, { times: 1 });
+await C.p.unroute(/\/version$/);
+await C.p.route(/\/version$/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'chat', build: '9.99' }) }));
+await C.p.waitForTimeout(8500);
 reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
-await C.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-await C.p.waitForTimeout(2500);
-ok(!reloaded && (await C.p.isVisible('.toast [data-act=toast]')), 'mid-message it offers Update instead', await txt(C, '.toast').catch(() => ''));
-await C.p.click('.toast [data-act=toast]'); await C.p.waitForSelector('.tabs', { timeout: 15000 });
-ok(true, 'tapping Update reloads');
+await back();
+await C.p.waitForTimeout(5000);
+ok(!reloaded && await C.p.inputValue('#msg') === 'half-written', 'mid-message it doesn\'t reload: what you\'re writing stays');
+await C.p.click('.chatnav .back'); await C.p.waitForSelector('.tabs', { timeout: 15000 });
+await C.p.click('.chead .ifh-me'); await C.p.waitForSelector('.ifm-pop.open .ifm-upd', { timeout: 5000 }).catch(() => {});
+ok(await C.p.isVisible('.ifm-pop .ifm-upd'), 'and its menu says Update', await txt(C, '.ifm-foot').catch(() => ''));
+reloaded = false; C.p.once('framenavigated', () => { reloaded = true; });
+await C.p.click('.ifm-pop .ifm-upd'); await C.p.waitForTimeout(3000); await C.p.waitForSelector('.tabs', { timeout: 15000 });
+ok(reloaded, 'tapping Update reloads');
+await C.p.unroute(/\/version$/);
 
 console.log('errors', errs);
 console.log('FAILS', fails);

@@ -11,6 +11,9 @@
 const SHELL = "inflight-shell-v2", PAGE = "/pigeon/", WAIT = 4000;        // (v2: drops copies kept before files were checked against their fingerprint)
 
 self.addEventListener("install", () => self.skipWaiting());
+// (the updater every app shares, about to load a new version: the page is always asked of the network first, and its
+// files are named for what's in them, so there's nothing more to fetch: IFL.updates)
+self.addEventListener("message", (e) => { if (e.data?.ifl === "renew") e.ports[0]?.postMessage({ ifl: "renewed" }); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k.startsWith("inflight-shell") && k !== SHELL) await caches.delete(k);
   // the page is asked for as the phone starts this worker, not once it's started (a cold open is that much sooner)

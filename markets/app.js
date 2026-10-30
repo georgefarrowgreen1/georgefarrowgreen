@@ -23,7 +23,8 @@ import * as C from "./charts.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
-// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself.
+// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself,
+// and the updater every app shares (updates, below).
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
@@ -125,11 +126,117 @@ const IFL = (() => {
     try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
     return true;
   }
-  // this app's version, as it opens: said once if it's new since last time
-  function built(app, build) {
+  // this app's version, as it opens: said once if it's new since last time, with what's new in it (news: a line, set
+  // beside the app's version with each one that goes out)
+  function built(app, build, news) {
     let was = null;
     try { was = localStorage.getItem(`ifl-build:${app}`); localStorage.setItem(`ifl-build:${app}`, build); } catch (_) {}
-    if (was && was !== build) setTimeout(() => note(app, `${NAME[app]} updated`, `Now V${build}`), 600);
+    if (was && was !== build) setTimeout(() => note(app, `${NAME[app]} updated`, news ? `V${build} · ${news}` : `Now V${build}`), 600);
+  }
+
+  // ---- updates, the same in every app ----
+  // A new version's looked for as the app opens, every time you come back to it, and every five minutes while it's on
+  // the screen (an app on a phone's Home Screen is brought back, not opened again, so looking only as it opened left it
+  // days behind): at the app's own address (/version: functions/_version.js), against the version it's running. Once
+  // there's one, it's put in at the first moment it's not in your way: straight away if you've only just opened the app
+  // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
+  // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
+  // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
+  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
+  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
+  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
+  // over and over.
+  // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
+  //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
+  const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
+  // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
+  const older = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
+  function updates(o) {
+    Object.assign(U, o);
+    const touched = () => { U.touch = Date.now(); };
+    for (const ev of ["pointerdown", "keydown", "wheel"]) addEventListener(ev, touched, { capture: true, passive: true });
+    const back = () => { U.back = Date.now(); U.touch = 0; check(true); };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") back(); });
+    addEventListener("pageshow", (e) => { if (e.persisted) back(); });
+    addEventListener("online", () => check(true));
+    // (a service worker that's noticed the app's files change, as it opened: looked at now)
+    navigator.serviceWorker?.addEventListener("message", (e) => { if (/:new$/.test(e.data?.type || "")) check(true); });
+    setInterval(() => { if (document.visibilityState === "visible") check(); }, 5 * 60e3);
+    setInterval(soon, 4000);
+    setTimeout(() => check(true), 2000);     // (as it opens, a moment after: out of the way of its opening)
+  }
+  async function check(now) {
+    const t = Date.now();
+    if (!U.app || U.going || t - U.at < (now ? 8e3 : 4 * 60e3)) return;
+    U.at = t;
+    try {
+      const r = await fetch(U.url, { cache: "no-store", credentials: "same-origin" });
+      if (r.ok) { const j = await r.json(); offer(j[U.field], j.min); }
+    } catch (_) {}
+  }
+  // the version deployed: from /version, or handed over by an app that asks its server anyway (Mail, as it syncs)
+  function offer(build, min) {
+    if (!build) return;
+    build = String(build);
+    if (build === U.build) { U.ready = null; return; }
+    if (U.ready?.build !== build) U.ready = { build, at: Date.now(), must: !!min && older(U.build, min) };
+    soon();
+  }
+  function soon() {
+    const r = U.ready, t = Date.now();
+    if (!r || U.going || document.visibilityState !== "visible") return;
+    if (busyNow()) return tell();
+    const fresh = t - U.back < 8e3 && !U.touch, still = t - (U.touch || U.back) > (window.__iflQuiet || 60e3);     // (__iflQuiet: tests' shorter minute)
+    if (fresh || still || r.must) return apply();
+    tell();
+  }
+  // (said once, if it's been waiting a while: it'll go in by itself, or now from the menu)
+  function tell() {
+    const r = U.ready;
+    if (!r || U.told === r.build || Date.now() - r.at < 90e3) return;
+    U.told = r.build;
+    note(U.app, `A new ${NAME[U.app]} is ready`, r.must ? "It updates as soon as you’re done" : "It updates itself, or tap Update in the menu");
+  }
+  async function apply(asked) {
+    const r = U.ready;
+    if (!r || U.going) return;
+    const key = `ifl-upd:${U.app}`;
+    try {
+      const k = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
+    } catch (_) {}
+    U.going = true;
+    close(true);
+    try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
+    await afresh();
+    location.reload();
+  }
+  // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
+  // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
+  // again; and without one, the page and its files asked of the network past the browser's own copy
+  async function afresh() {
+    const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+    try {
+      const reg = await sw?.getRegistration();
+      if (reg) {
+        await Promise.race([reg.update().catch(() => {}), wait(6000)]);
+        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        const c = sw.controller;
+        if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
+      }
+      if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
+    } catch (_) {}
+  }
+  // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
+  function here(app) {
+    try {
+      const k = JSON.parse(sessionStorage.getItem(`ifl-here:${app}`) || "null");
+      sessionStorage.removeItem(`ifl-here:${app}`);
+      return k && Date.now() - k.t < 2 * 60e3 ? k.at : null;
+    } catch (_) { return null; }
   }
 
   // the menu, from your photo: o = { app, build, me: { name, line, photo: an element }, rows: [{ icon, color, label,
@@ -190,10 +297,11 @@ const IFL = (() => {
     // button in the dot's place; and Sign Out, the one round button at the end, named for screen readers)
     const said = (t) => el("span", "ifm-sr", t);
     let status;
-    if (o.update) { status = el("button", "ifm-upd"); status.innerHTML = svg("install"); status.append("Update"); status.type = "button"; status.onclick = act(o.update); }
+    const update = o.update || (U.ready ? () => apply(true) : null);
+    if (update) { status = el("button", "ifm-upd"); status.innerHTML = svg("install"); status.append("Update"); status.type = "button"; status.onclick = act(update); }
     else { status = el("span", "ifm-dot", said(" · Up to date")); }
     const out = el("button", "ifm-out", said("Sign Out")); out.insertAdjacentHTML("afterbegin", svg("signout")); out.type = "button"; out.onclick = act(o.signOut);
-    const foot = el("div", "ifm-foot", el("span", "ifm-ver", mark, `${NAME[o.app]} ${o.build}`, o.update ? null : status), o.update ? status : null, o.signOut ? out : null);
+    const foot = el("div", "ifm-foot", el("span", "ifm-ver", mark, `${NAME[o.app]} ${o.build}`, update ? null : status), update ? status : null, o.signOut ? out : null);
     const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
     pop.setAttribute("role", "dialog"); pop.setAttribute("aria-modal", "true"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
@@ -267,12 +375,14 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow };
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready };
 })();
 // ==== end of InFlite's menu ====
 
-// (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.76";
+// (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
+const BUILD = "1.77";
+const NEWS = "Updates itself in the background, and keeps your place";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -289,7 +399,7 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day" };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day" };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -1617,7 +1727,7 @@ function youMenu(at) {
       "-",
       { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
     ],
-    account: openAccount, signOut: () => signOutHere(), update: S.newer ? () => location.reload() : null,
+    account: openAccount, signOut: () => signOutHere(),
   });
 }
 function settingsView() {
@@ -1790,12 +1900,14 @@ function toast(msg, bad = false) {
 // ---- starting ----
 async function start() {
   drawTabs();
-  IFL.built("markets", BUILD);
+  IFL.built("markets", BUILD, NEWS);
   IFL.watch(window);
+  // (a new version put in by itself, the same in every app: never with a sheet up or a list being reordered; the tab
+  // you were on, and how far down, kept for it: back there below)
+  IFL.updates({ app: "markets", build: BUILD, busy: () => !calm(), save: () => (S.me ? { tab: S.tab, y: Math.round(scrollY) } : null) });
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
     navigator.serviceWorker.addEventListener("message", (e) => {
-      if (e.data?.type === "markets:new") S.newer = true;
       if (e.data?.type === "markets:open") { const s = /#s=([^&]+)/.exec(e.data.url || "")?.[1]; if (s && S.me) openStock(decodeURIComponent(s)); }
     });
   }
@@ -1817,7 +1929,11 @@ async function start() {
   if (!m?.signedIn) return welcome();
   const same = S.me?.id === m.id;
   take(m);
+  // (just updated: the tab you were on, and how far down)
+  const was = IFL.here("markets");
+  if (was?.tab && ["today", "holdings", "news"].includes(was.tab)) S.tab = was.tab;
   render(!same);
+  if (was?.y) requestAnimationFrame(() => scrollTo(0, was.y));
   store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
   checkPush();
   loadYears();

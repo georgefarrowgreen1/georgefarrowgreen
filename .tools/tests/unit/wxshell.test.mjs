@@ -12,4 +12,5 @@ test("the service worker's fingerprints and the page's version are this version'
   assert.ok(list.includes("./") && list.includes("./radar.js") && Object.keys(sums).length === list.length - 1);
   const html = readFileSync(new URL("../../../weather/index.html", import.meta.url), "utf8");
   assert.match(html, new RegExp(`name="app-version" content="${cache}"`), "the page isn't marked with this version: run node .tools/wxshell.mjs");
+  assert.ok(sw.includes(`const CACHE = "${cache}"`) && /^wx-\d+\.\d+$/.test(cache), "the offline copy isn't named for Weather's version: run node .tools/wxshell.mjs");
 });

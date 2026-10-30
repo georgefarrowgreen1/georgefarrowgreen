@@ -7,6 +7,7 @@
 // fetches them once for everyone and keeps them a minute or more (functions/_markets.js).
 
 import { notFound } from "./_app.js";
+import { versionResponse } from "./_version.js";
 import { assets } from "./_min.js";
 export const MARKETS_HOST = "finance.inflite.ai";
 // (MARKETS_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
@@ -42,6 +43,8 @@ export function serveMarkets(res, path) {
 // finance.inflite.ai: /x is the file /markets/x; the API is only Markets's own
 export async function marketsHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/markets/") ? ctx.next() : notFound();
+  // (its version as deployed, for the updater every app shares: functions/_version.js)
+  if (url.pathname === "/version") return versionResponse(ctx, url, "markets");
   if (url.pathname === "/markets" || url.pathname.startsWith("/markets/")) {
     const to = new URL(url); to.pathname = url.pathname.slice(8) || "/";
     return Response.redirect(to.href, 301);

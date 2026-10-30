@@ -1256,24 +1256,25 @@ await ctx.close();
   ok(r.fromServiceWorker() && sent === top && top !== '#2b5d96', 'the page arrives with the sky\'s colour as its theme-color, written in by its worker', `${sent} (the sky's ${top})`);
   await ctx.close();
 }
-// fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a
-// new version of the app, starting on it straight away (or, if it came while a sheet was open, the next time it's opened)
+// fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and looks for a
+// new version of the app (the updater every app shares: IFL.updates), starting on it straight away (or, if it came while
+// a sheet was open, the next time it's opened)
 {
   const { ctx, p } = await open({}, { sw: true, settle: false });
   // (the second time in, the app's own worker has it)
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 }).catch(() => {});
   await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
   await p.waitForFunction(() => document.getElementById('status').textContent === '' && /Updated just now/.test(document.getElementById('updated').textContent), null, { timeout: 20000 });
-  await p.evaluate(() => { const u = ServiceWorkerRegistration.prototype.update; window.__updates = 0; ServiceWorkerRegistration.prototype.update = function () { window.__updates++; return u.call(this); }; });
+  const looked = { n: 0 }; p.on('request', (r) => { if (/\/version$/.test(r.url())) looked.n++; });
   const away = (ms = 60) => p.evaluate(async (ms) => {
     const set = (v) => { Object.defineProperty(document, 'visibilityState', { value: v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); };
     set('hidden'); await new Promise((r) => setTimeout(r, ms)); set('visible');
   }, ms);
-  // back after a moment: nothing's due, nothing asked for (but the app checked for a new version)
-  await p.waitForTimeout(5500);
-  let before = asked.forecast;
+  // back after a moment: nothing's due, nothing asked for (but the app looked for a new version)
+  await p.waitForTimeout(9000);
+  let before = asked.forecast, lookedBefore = looked.n;
   await away(); await p.waitForTimeout(1500);
-  ok(asked.forecast === before && await p.evaluate(() => window.__updates) === 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${await p.evaluate(() => window.__updates)} checks`);
+  ok(asked.forecast === before && looked.n === lookedBefore + 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${await p.evaluate(() => window.__updates)} checks`);
   // back after a while (the forecast kept 20 minutes ago, as if the phone had been put away): asked again, and said so
   // (what's kept is read once a session, then held in memory as it's written: so the page is told it's changed, as it
   // is when another tab changes it, data.js keptRaw)
@@ -1284,22 +1285,26 @@ await ctx.close();
   await away();
   await p.waitForFunction(() => /Updated just now/.test(document.getElementById('updated').textContent), null, { timeout: 15000 }).catch(() => {});
   ok(asked.forecast === before + 1 && /Updated just now/.test(await p.textContent('#updated')), 'back after a while: the forecast asked for again as it\'s opened, and the page updated', `${asked.forecast - before} asked; ${await p.textContent('#updated')}`);
-  // a new version of the app, arriving just as it's opened: it starts on it there and then
+  // a new version of the app, deployed (its /version says so), as it's opened: it starts on it there and then
+  await p.route(/\/version$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'weather', build: '9.98' }) }));
   await p.evaluate(() => { window.__same = 1; });
-  await away(); await p.waitForTimeout(300);
-  await p.evaluate(() => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
-  await p.waitForFunction(() => !window.__same, null, { timeout: 10000 }).catch(() => {});
+  await p.waitForTimeout(8500);
+  await away();
+  await p.waitForFunction(() => !window.__same, null, { timeout: 15000 }).catch(() => {});
   await p.waitForSelector('.day-row', { timeout: 20000 });
-  ok(await p.evaluate(() => !window.__same), 'a new version arriving as it\'s opened: it starts again on it');
+  ok(await p.evaluate(() => !window.__same), 'a new version deployed, as it\'s opened: it starts again on it');
   // one arriving with a sheet open: left until the next time it's opened
+  await p.unroute(/\/version$/);
+  await p.route(/\/version$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'weather', build: '9.99' }) }));
   await p.evaluate(() => { window.__same = 1; });
   await p.locator('#settings-btn').evaluate((e) => e.click()); await p.waitForSelector('dialog[open]');
-  await p.evaluate(() => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
-  await p.waitForTimeout(1500);
+  await p.waitForTimeout(8500);
+  await away(); await p.waitForTimeout(3000);
   const stayed = await p.evaluate(() => window.__same === 1);
   await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog[open]'));
+  await p.waitForTimeout(8500);
   await away();
-  await p.waitForFunction(() => !window.__same, null, { timeout: 10000 }).catch(() => {});
+  await p.waitForFunction(() => !window.__same, null, { timeout: 15000 }).catch(() => {});
   ok(stayed && await p.evaluate(() => !window.__same), 'one arriving while a sheet\'s open: not then, but the next time it\'s opened', `stayed ${stayed}`);
   await ctx.close();
 }

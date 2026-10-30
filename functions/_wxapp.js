@@ -10,6 +10,7 @@
 // OpenStreetMap's tiles, without WebGL 2), so those, and nothing else, are allowed.
 
 import { notFound } from "./_app.js";
+import { versionResponse } from "./_version.js";
 
 import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
@@ -60,6 +61,8 @@ export function serveWeather(res, path) {
 // weather.inflite.ai: /x is the file /weather/x; the API is only Weather's own
 export async function weatherHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/weather/") ? ctx.next() : notFound();
+  // (its version as deployed, for the updater every app shares: functions/_version.js)
+  if (url.pathname === "/version") return versionResponse(ctx, url, "weather");
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/weather" || url.pathname.startsWith("/weather/")) {
     const to = new URL(url); to.pathname = url.pathname.slice(8) || "/";

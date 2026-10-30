@@ -57,6 +57,8 @@ async function fill() {
   await Promise.all(got.map(([f, b, res]) => c.put(at(f), new Response(b, { status: res.status, headers: res.headers }))));
 }
 self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(fill().catch(() => {})); });
+// (the updater every app shares, about to load a new version: every file fetched afresh first, then told: IFL.updates)
+self.addEventListener("message", (e) => { if (e.data?.ifl === "renew") e.waitUntil(fill().catch(() => {}).then(() => e.ports[0]?.postMessage({ ifl: "renewed" }))); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k.startsWith("markets-app-") && k !== SHELL) await caches.delete(k);
   await self.clients.claim();

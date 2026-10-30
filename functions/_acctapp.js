@@ -6,6 +6,7 @@
 // the apps' icons.
 
 import { notFound } from "./_app.js";
+import { versionResponse } from "./_version.js";
 
 import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
@@ -87,6 +88,8 @@ async function stamped(ctx, url, html) {
 
 export async function accountHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
+  // (its version as deployed, the sign-in page's too, for the updater every app shares: functions/_version.js)
+  if (url.pathname === "/version") return versionResponse(ctx, url, "account");
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/account" || url.pathname.startsWith("/account/")) { const to = new URL(url); to.pathname = url.pathname.slice(8) || "/"; return Response.redirect(to.href, 301); }
   const path = SHARED[url.pathname] || "/account" + (url.pathname === "/index.html" ? "/" : url.pathname);

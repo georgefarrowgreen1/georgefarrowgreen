@@ -19,6 +19,7 @@ import { isAccount, isAuth, accountHost } from "./_acctapp.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
+import { versionResponse } from "./_version.js";
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
@@ -60,6 +61,8 @@ export async function onRequest(ctx) {
   if (isMarkets(url, ctx.env)) return marketsHost(ctx, url);
   if (isAccount(url, ctx.env) || isAuth(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
+    // (Chat's version, where it's at /pigeon/: locally)
+    if (url.pathname === "/pigeon/version") return versionResponse(ctx, url, "chat");
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
     // (Chat's old admin dashboard: Admin's on the admin's account page now)
@@ -88,6 +91,8 @@ export async function onRequest(ctx) {
     const to = new URL(url); to.pathname = url.pathname.slice(7) || "/";
     return Response.redirect(to.href, 301);
   }
+  // (its version as deployed, for the updater every app shares: functions/_version.js)
+  if (url.pathname === "/version") return versionResponse(ctx, url, "chat");
   // everything else is the app: /x is /pigeon/x
   if (/^\/handover(\.html)?$/.test(url.pathname)) return notFound();   // (the old address's, not this one's)
   const path = "/pigeon" + (url.pathname === "/index.html" ? "/" : url.pathname);

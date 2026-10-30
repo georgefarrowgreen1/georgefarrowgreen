@@ -7,6 +7,7 @@
 // (functions/api/fitness); the one exception, the map under a route (OpenFreeMap's tiles, fitness/map.js).
 
 import { notFound } from "./_app.js";
+import { versionResponse } from "./_version.js";
 
 import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
@@ -48,6 +49,8 @@ export function serveFitness(res, path) {
 // fitness.inflite.ai: /x is the file /fitness/x; the API is only Fitness's own
 export async function fitnessHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/fitness/") ? ctx.next() : notFound();
+  // (its version as deployed, for the updater every app shares: functions/_version.js)
+  if (url.pathname === "/version") return versionResponse(ctx, url, "fitness");
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/fitness" || url.pathname.startsWith("/fitness/")) {
     const to = new URL(url); to.pathname = url.pathname.slice(8) || "/";

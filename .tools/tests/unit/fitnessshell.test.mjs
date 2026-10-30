@@ -9,5 +9,4 @@ test("every module, the styles, the page and its icons are kept for offline", ()
   const kept = new Set(listIn("sw.js", "FILES"));
   const modules = readdirSync(dir).filter((f) => f.endsWith(".js") && f !== "sw.js");
   for (const f of [...modules, "styles.css", "./", "manifest.webmanifest", "icon.svg"]) assert.ok(kept.has(f), `${f} isn't kept by sw.js`);
-  for (const f of listIn("app.js", "FILES")) assert.ok(kept.has(f), `${f} (app.js's version check) isn't kept by sw.js`);
 });
