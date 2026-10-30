@@ -67,12 +67,15 @@ await p.click('.res'); await p.waitForSelector('.sprice'); await p.waitForSelect
 ok((await text(p, '.sprice')) === '£8.94' && /\+£0\.17 \(\+1\.89%\)/.test(await text(p, '.sdelta')), "its page: £8.94 (London's pence, in pounds), +£0.17 today", `${await text(p, '.sprice')} ${await text(p, '.sdelta')}`);
 await p.screenshot({ path: `${out}/3-stock.png` });
 await p.click('button:has-text("Add to Your List")'); await p.waitForSelector('#mk-qty');
-await p.fill('#mk-qty', '640'); await p.fill('#mk-cost', '6.10'); await p.click('#mk-save');
+await p.fill('#mk-qty', '640'); await p.fill('#mk-cost', '6.10'); await p.fill('#mk-since', new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10)); await p.click('#mk-save');
 await p.waitForSelector('.fact:has-text("Yours")', { timeout: 10000 }); await settle(p, 700);
-const rr = rows("SELECT symbol, name, qty, cost FROM mk_holdings")[0];
-ok(rr?.symbol === 'RR.L' && rr.name === 'Rolls-Royce' && rr.qty === 640 && rr.cost === 6.1, 'kept with the account: RR.L, as Rolls-Royce, 640 at £6.10', JSON.stringify(rr));
+const rr = rows("SELECT symbol, name, qty, cost, since FROM mk_holdings")[0];
+ok(rr?.symbol === 'RR.L' && rr.name === 'Rolls-Royce' && rr.qty === 640 && rr.cost === 6.1 && Math.abs(rr.since - (Date.now() - 400 * 864e5)) < 2 * 864e5, 'kept with the account: RR.L, as Rolls-Royce, 640 at £6.10, bought 400 days ago', JSON.stringify(rr));
+await p.waitForSelector('.fact:has-text("Since you bought"):has-text("dividends")', { timeout: 10000 }).catch(() => {});
+ok(/with £38 of dividends/.test(await text(p, '.fact:has-text("Since you bought")')) && /\+£1,856\.00/.test(await text(p, '.fact:has-text("Since you bought")')),
+  "since you bought, with the one dividend it's paid since (6p on 640 shares, £38.40) on top of the price's £1,817.60", await text(p, '.fact:has-text("Since you bought")'));
 ok(/£5,721\.60/.test(await text(p, '.fact:has-text("Yours")')) && /Since you bought/.test(await text(p, '.facts')), "back on its page: yours, worth £5,721.60, and how it's done since you bought", await text(p, '.facts'));
-ok(/6\.00p a share a year/.test(await text(p, '.fact:has-text("Dividends")')) && /about £38 to you/.test(await text(p, '.fact:has-text("Dividends")')), 'its dividends: 6p a share over the year, about £38 to you', await text(p, '.fact:has-text("Dividends")'));
+ok(/6\.00p a share a year/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')) && /about £38 to you/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')), 'its dividends: 6p a share over the year, about £38 to you', await text(p, '.fact:has(> span:text-is("Dividends"))'));
 await p.keyboard.press('Escape'); await settle(p, 800);
 
 // ---- 4. A portfolio of six: worth, its day, and what's worth knowing ----
@@ -132,6 +135,7 @@ await p.click('.tab[data-tab="holdings"]'); await settle(p, 1600);
 await p.screenshot({ path: `${out}/6-holdings.png` });
 ok(await p.locator('.ring .arc').count() === 6 && /Rolls-Royce/.test(await text(p, '.legend')), 'Holdings: the ring of your mix, the five largest and the rest', String(await p.locator('.ring .arc').count()));
 ok(await p.locator('#all .item').count() === 6 && /since you bought/.test(await text(p, '.foot:has-text("since you bought")')), 'everything you own, and how it\'s done since you bought', await text(p, '.foot:has-text("since you bought")'));
+ok(/[+−]\d+\.\d%/.test(await text(p, '.item:has-text("Your year") .r')) && /points (ahead of|behind) FTSE 100/.test(await text(p, '.item:has-text("Your year")')), 'your year against the market, said in its row before it\'s opened', await text(p, '.item:has-text("Your year")'));
 await p.click('.tab[data-tab="news"]'); await p.waitForSelector('a.story', { timeout: 15000 }); await settle(p, 1000);
 await p.screenshot({ path: `${out}/7-news.png` });
 ok(/London is up 0\.6% and New York is up 0\.4% today/.test(await text(p, '.digest')) && await p.locator('a.story').count() >= 6, "News: the day in brief, then the stories about what you hold", await text(p, '.digest'));

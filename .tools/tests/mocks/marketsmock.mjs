@@ -18,7 +18,9 @@ const START = {
   'SMT.L': { name: 'Scottish Mortgage Investment Trust PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1012, price: 1024.5, hi: 1100, lo: 780, tz: 'Europe/London', divs: [[-100, 4.4]] },
   'ALW.L': { name: 'Alliance Witan PLC', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1240, price: 1236, hi: 1290, lo: 1050, tz: 'Europe/London', divs: [[-60, 6.85], [-150, 6.85]] },
   'JAM.L': { name: 'JPMorgan American Investment Trust plc', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'EQUITY', prev: 1094, price: 1101, hi: 1150, lo: 860, tz: 'Europe/London', divs: [[-120, 4.5]] },
-  'VWRL.L': { name: 'Vanguard FTSE All-World UCITS ETF', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'ETF', prev: 11850, price: 11902, hi: 12100, lo: 9800, tz: 'Europe/London', divs: [] },
+  'VWRL.L': { name: 'Vanguard FTSE All-World UCITS ETF', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'ETF', prev: 11850, price: 11902, hi: 12100, lo: 9800, tz: 'Europe/London', divs: [[-70, 41.2], [-160, 38.9], [-250, 40.1], [-340, 37.5]] },
+  'ISF.L': { name: 'iShares Core FTSE 100 UCITS ETF GBP (Dist)', cur: 'GBp', ex: 'LSE', exd: 'London', type: 'ETF', prev: 846.2, price: 851.4, hi: 862, lo: 760, tz: 'Europe/London', divs: [[-50, 9.8], [-140, 7.1], [-230, 10.4], [-320, 6.6]] },
+  SPY: { name: 'SPDR S&P 500 ETF Trust', cur: 'USD', ex: 'PCX', exd: 'NYSEArca', type: 'ETF', prev: 617.4, price: 620.1, hi: 628, lo: 497, tz: 'America/New_York', divs: [[-20, 1.76], [-110, 1.69], [-200, 1.74], [-290, 1.59]] },
   '^FTSE': { name: 'FTSE 100', cur: 'GBP', ex: 'FGI', exd: 'FTSE Index', type: 'INDEX', prev: 8360.7, price: 8412.6, hi: 8550, lo: 7400, tz: 'Europe/London', divs: [] },
   '^GSPC': { name: 'S&P 500', cur: 'USD', ex: 'SNP', exd: 'SNP', type: 'INDEX', prev: 6188.9, price: 6214.3, hi: 6300, lo: 4980, tz: 'America/New_York', divs: [] },
   'BTC-USD': { name: 'Bitcoin USD', cur: 'USD', ex: 'CCC', exd: 'CCC', type: 'CRYPTOCURRENCY', prev: 94770, price: 97420, hi: 109000, lo: 52000, tz: 'UTC', divs: [] },
@@ -36,12 +38,14 @@ function chart(sym, range) {
   const q = Q[sym];
   if (!q) return null;
   const now = Math.floor(Date.now() / 1000), open = now - 4 * 3600, end = now + 4 * 3600;
-  const spec = { '1d': [300, Math.floor((now - open) / 300) + 1, open], '5d': [1800, 5 * 16, now - 5 * DAY], '1mo': [DAY, 22, now - 30 * DAY], '1y': [DAY, 250, now - 365 * DAY], '5y': [7 * DAY, 260, now - 5 * 365 * DAY] }[range] || [300, 48, open];
+  const spec = { '1d': [300, Math.floor((now - open) / 300) + 1, open], '5d': [1800, 5 * 16, now - 5 * DAY], '1mo': [DAY, 22, now - 30 * DAY], '1y': [DAY, 250, now - 365 * DAY], '5y': [7 * DAY, 260, now - 5 * 365 * DAY], max: [91 * DAY, 40, now - 10 * 365 * DAY] }[range] || [300, 48, open];
   const [step, n, from] = spec;
   const ts = Array.from({ length: n }, (_, i) => Math.min(now - 60, from + i * step));
-  const first = range === '1d' ? q.prev : range === '5y' ? q.lo * 0.9 : range === '1y' ? q.lo * 1.1 : q.prev * (range === '5d' ? 0.97 : 0.94);
+  const first = range === '1d' ? q.prev : range === '5y' || range === 'max' ? q.lo * 0.9 : range === '1y' ? q.lo * 1.1 : q.prev * (range === '5d' ? 0.97 : 0.94);
   const close = walk(sym + range, n, first, q.price, range === '1d' ? 0.002 : 0.012);
-  const events = range === '1y' && q.divs.length ? { dividends: Object.fromEntries(q.divs.map(([d, amount]) => [String(now + d * DAY), { amount, date: now + d * DAY }])) } : undefined;
+  // (a year's dividends; and for all of it, the same each year back ten years)
+  const divs = range === '1y' ? q.divs : range === 'max' ? Array.from({ length: 10 }, (_, y) => q.divs.map(([d, a]) => [d - y * 365, a])).flat() : [];
+  const events = divs.length ? { dividends: Object.fromEntries(divs.map(([d, amount]) => [String(now + d * DAY), { amount, date: now + d * DAY }])) } : undefined;
   return { chart: { result: [{
     meta: { currency: q.cur, symbol: sym, exchangeName: q.ex, fullExchangeName: q.exd, instrumentType: q.type, regularMarketTime: now - 60, exchangeTimezoneName: q.tz, regularMarketPrice: q.price,
       fiftyTwoWeekHigh: q.hi, fiftyTwoWeekLow: q.lo, regularMarketDayHigh: Math.max(q.price, q.prev) * 1.004, regularMarketDayLow: Math.min(q.price, q.prev) * 0.996,

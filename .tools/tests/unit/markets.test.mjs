@@ -64,6 +64,14 @@ test("a chart answer: London's pence in pounds, the day, the year and the divide
   assert.equal(readChart({ chart: { result: null, error: { code: "Not Found" } } }, "NOPE"), null);
 });
 
+test("a dividend a hundred times out (pence said as pounds) is put right; a real one's kept", () => {
+  const now = 1_760_000_000, j = (amount) => ({ chart: { result: [{ meta: { currency: "GBp", symbol: "ISF.L", regularMarketPrice: 850 },
+    timestamp: [now - 200 * 86400, now - 100 * 86400, now], indicators: { quote: [{ close: [800, 820, 850] }] },
+    events: { dividends: { a: { amount, date: now - 150 * 86400 } } } }] } });
+  assert.deepEqual(readChart(j(980), "ISF.L").divs, [{ t: now - 150 * 86400, amount: 0.098 }], "980 (pence) on a price of 800 is 9.8p");
+  assert.deepEqual(readChart(j(9.8), "ISF.L").divs, [{ t: now - 150 * 86400, amount: 0.098 }]);
+});
+
 test("Bitcoin is Bitcoin, in dollars", () => {
   const c = readChart({ chart: { result: [{ meta: { currency: "USD", symbol: "BTC-USD", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY", regularMarketPrice: 97420, previousClose: 94770, longName: "Bitcoin USD" }, timestamp: [], indicators: { quote: [{ close: [] }] } }] } }, "BTC-USD");
   assert.equal(c.name, "Bitcoin");

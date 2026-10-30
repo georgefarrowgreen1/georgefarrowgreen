@@ -8,8 +8,8 @@
 // turned into them at the day's rate.
 //
 // mk_holdings: what you own (qty > 0) or just follow (qty 0), each with the name it was added as, what you paid for each
-//   share (cost, optional, in its own currency), its place in your list, and the account it's held in (account: "isa",
-//   "sipp" or "gia", optional).
+//   share (cost, optional, in its own currency), its place in your list, the account it's held in (account: "isa",
+//   "sipp" or "gia", optional), and when you bought it (since, optional: for the dividends it's paid you since).
 // mk_alerts:   a holding you want to hear about when it moves (pct, 3% by default), and the last day it was said.
 // mk_push:     each phone Markets can tell you on (its push subscription), with the sign-in it was turned on with (gone
 //   when that's signed out), and how many sends to it have failed in a row (it's let go after a few).
@@ -34,7 +34,7 @@ export async function mkdb(env) {
   if (!ready) ready = (async () => {
     await D.batch([
       D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
-        ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, PRIMARY KEY (user_id, symbol))`),
+        ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, since INTEGER, PRIMARY KEY (user_id, symbol))`),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
       D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
@@ -48,6 +48,8 @@ export async function mkdb(env) {
     ]);
     // (the accounts, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
+    // (and when each was bought, likewise)
+    await D.prepare("ALTER TABLE mk_holdings ADD COLUMN since INTEGER").run().catch(() => {});
     // (and the phones' sign-ins and failures, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_push ADD COLUMN session TEXT").run().catch(() => {});
     await D.prepare("ALTER TABLE mk_push ADD COLUMN fails INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
@@ -144,7 +146,11 @@ export function readChart(j, symbol) {
   const ts = r.timestamp || [], cl = r.indicators?.quote?.[0]?.close || [], t = [], c = [];
   for (let i = 0; i < ts.length; i++) if (num(cl[i]) != null) { t.push(ts[i]); c.push(s(cl[i])); }
   const price = s(m.regularMarketPrice) ?? c.at(-1) ?? null;
-  const divs = Object.values(r.events?.dividends || {}).filter((d) => num(d?.amount) != null && num(d?.date) != null).map((d) => ({ t: d.date, amount: s(d.amount) })).sort((a, b) => a.t - b.t);
+  // (one over half the price it went ex-dividend at is taken as said in pence where the price is in pounds: Yahoo's
+  // London dividends are, now and then, a hundred times out)
+  const at = (tt) => { let v = c[0]; for (let i = 0; i < t.length && t[i] <= tt; i++) v = c[i]; return v; };
+  const divs = Object.values(r.events?.dividends || {}).filter((d) => num(d?.amount) != null && num(d?.date) != null).map((d) => ({ t: d.date, amount: s(d.amount) }))
+    .map((d) => (c.length && d.amount > at(d.t) * 0.5 ? { ...d, amount: +(d.amount / 100).toPrecision(10) } : d)).sort((a, b) => a.t - b.t);
   const reg = m.currentTradingPeriod?.regular;
   return {
     symbol: m.symbol || symbol, name: m.instrumentType === "CRYPTOCURRENCY" ? String(m.longName || m.shortName || symbol).replace(/\s+(USD|GBP|EUR)$/, "") : plainName(m.longName || m.shortName, symbol), cur, type: m.instrumentType || "", kind: kindOf(m.instrumentType, m.longName || m.shortName, m.symbol || symbol), ex: EXCHANGES[m.exchangeName] || m.fullExchangeName || m.exchangeName || "",
@@ -185,7 +191,15 @@ export async function yearOf(env, symbol) {
   if (!y || !y.c.length) return null;
   const c = y.c, wk = c.length > 5 ? (c.at(-1) / c[c.length - 6] - 1) * 100 : null, yearAgo = Date.now() / 1000 - 365 * 86400;
   const divs = y.divs.filter((d) => d.t >= yearAgo);
-  return { wk, div12: divs.reduce((a, d) => a + d.amount, 0), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100 };
+  return { wk, div12: divs.reduce((a, d) => a + d.amount, 0), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100,
+    first: c[0], last: c.at(-1) };
+}
+// A symbol's dividends, as far back as they go (for what it's paid you since you bought): [{ t, amount }], kept a day
+export async function dividends(env, symbol) {
+  return cached(env, `d:${symbol}`, 24 * HOUR, async () => {
+    const j = await fetchJson(env, `/v8/finance/chart/${encodeURIComponent(symbol)}?range=max&interval=3mo&events=div`);
+    return readChart(j, symbol)?.divs || null;
+  });
 }
 // What a currency's worth in pounds, today (GBP: 1)
 export async function rates(env, curs) {
@@ -244,14 +258,14 @@ export const INDEX_OF = { London: "^FTSE", Nasdaq: "^IXIC", NYSE: "^GSPC", "NYSE
 // ---------------- what you own and follow ----------------
 export async function holdings(env, userId) {
   const D = await mkdb(env);
-  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, a.pct AS alert,
+  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, h.since, a.pct AS alert,
     (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = h.user_id AND b.symbol = h.symbol) AS buys FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
     WHERE h.user_id = ? ORDER BY h.ord, h.added`).bind(userId).all();
-  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
+  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, since: r.since ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
 }
 const cleanText = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 export const ACCOUNTS = ["isa", "sipp", "gia"];
-// Added, or changed (how many, what was paid, the account it's in): { symbol, name?, qty?, cost?, account? }
+// Added, or changed (how many, what was paid, the account it's in, when it was bought): { symbol, name?, qty?, cost?, account?, since? }
 export async function putHolding(env, userId, b) {
   const D = await mkdb(env), symbol = cleanSymbol(b.symbol);
   const qty = b.qty == null || b.qty === "" ? 0 : Number(b.qty), cost = b.cost == null || b.cost === "" ? null : Number(b.cost);
@@ -260,6 +274,9 @@ export async function putHolding(env, userId, b) {
   // (the account: left as it was where none's said; null takes it out of one)
   const account = b.account === undefined ? undefined : b.account == null || b.account === "" ? null : ACCOUNTS.includes(b.account) ? b.account : "bad";
   if (account === "bad") throw new HttpError(400, "That isn’t an account.");
+  // (the day it was bought, likewise: left as it was where none's said)
+  const since = b.since === undefined ? undefined : b.since == null || b.since === "" ? null : Number(b.since);
+  if (since != null && (!Number.isFinite(since) || since > Date.now() + 864e5 || since < Date.UTC(1970, 0, 2))) throw new HttpError(400, "Choose a day that's been.");
   const was = await D.prepare("SELECT name, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
   if (!was) {
     const n = await D.prepare("SELECT COUNT(*) AS n, MAX(ord) AS o FROM mk_holdings WHERE user_id = ?").bind(userId).first();
@@ -268,11 +285,13 @@ export async function putHolding(env, userId, b) {
     const q = await quote(env, symbol);
     if (!q) throw new HttpError(404, "Couldn’t find that one.");
     const name = cleanText(b.name, 60) || q.name;
-    await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now(), account ?? null).run();
+    await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added, account, since) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now(), account ?? null, since ?? null).run();
   // (one with buys has its shares and cost from them: only its account's changed here)
   } else if (was.buys) { if (account !== undefined) await D.prepare("UPDATE mk_holdings SET account = ? WHERE user_id = ? AND symbol = ?").bind(account, userId, symbol).run(); }
-  else if (account === undefined) await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, userId, symbol).run();
-  else await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ?, account = ? WHERE user_id = ? AND symbol = ?").bind(qty, cost, account, userId, symbol).run();
+  else {
+    const set = [["qty", qty], ["cost", cost], ["account", account], ["since", since]].filter(([, v]) => v !== undefined);
+    await D.prepare(`UPDATE mk_holdings SET ${set.map(([k]) => `${k} = ?`).join(", ")} WHERE user_id = ? AND symbol = ?`).bind(...set.map(([, v]) => v), userId, symbol).run();
+  }
   return holdings(env, userId);
 }
 export async function dropHolding(env, userId, symbol) {
@@ -314,18 +333,47 @@ async function repool(env, userId, symbol) {
   await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(b.qty, b.cost, userId, symbol).run();
   return b;
 }
+// What each holding you own has paid you since you bought it: each of its dividends since, on the shares you had the
+// day before it went ex-dividend (from its buys and sales, where it has them; else all of them, from the day you said
+// you bought it). { SYMBOL: { paid (a share's, in its own currency, times the shares), n (how many dividends), from (the
+// day counted from, ms) } }, for those with a day to count from
+export async function paidOf(env, userId) {
+  const D = await mkdb(env);
+  const [{ results: hs }, { results: bs }] = await Promise.all([
+    D.prepare("SELECT symbol, qty, since FROM mk_holdings WHERE user_id = ? AND qty > 0").bind(userId).all(),
+    D.prepare("SELECT symbol, qty, at FROM mk_buys WHERE user_id = ? ORDER BY at, id").bind(userId).all()]);
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10), out = {};
+  const todo = hs.map((x) => ({ ...x, buys: bs.filter((b) => b.symbol === x.symbol) })).filter((x) => x.buys.length || x.since);
+  for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(async (x) => {
+    const divs = await dividends(env, x.symbol).catch(() => null);
+    if (!divs) return;
+    const from = x.buys.length ? x.buys[0].at : x.since;
+    let paid = 0, n = 0;
+    for (const d of divs) {
+      const ex = day(d.t * 1000);
+      // (one bought on the ex-dividend day itself is too late for it)
+      let had = 0;
+      if (x.buys.length) { for (const b of x.buys) if (day(b.at) < ex) had = Math.max(0, had + b.qty); }
+      else if (day(from) < ex) had = x.qty;
+      if (had > 1e-9) { paid += d.amount * had; n++; }
+    }
+    out[x.symbol] = { paid: +paid.toFixed(4), n, from };
+  }));
+  return out;
+}
 // A buy or a sale: { symbol, qty (how many), price (each, in its own currency), at (the day, ms), sold? }. The first,
-// for a holding that already says how many you own, keeps those as where it started (on the day it was added)
+// for a holding that already says how many you own, keeps those as where it started (on the day it was bought, where
+// that's said, else the day it was added)
 export async function addBuy(env, userId, b) {
   const D = await mkdb(env), symbol = cleanSymbol(b.symbol), n = Number(b.qty), price = b.price == null || b.price === "" ? null : Number(b.price), at = Number(b.at) || Date.now();
   if (!Number.isFinite(n) || n <= 0 || n > 1e9) throw new HttpError(400, "How many should be a number.");
   if (price != null && (!Number.isFinite(price) || price < 0 || price > 1e9)) throw new HttpError(400, "The price should be a number.");
   if (at > Date.now() + 864e5 || at < Date.UTC(1970, 0, 2)) throw new HttpError(400, "Choose a day that's been.");
-  const held = await D.prepare("SELECT qty, cost, added, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
+  const held = await D.prepare("SELECT qty, cost, added, since, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
   if (!held) throw new HttpError(404, "Add it to your list first.");
   if ((held.buys || 0) >= 500) throw new HttpError(400, "That's as many as one holding can keep.");
   const t = Date.now(), add = [];
-  if (!held.buys && held.qty > 0) add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, held.qty, held.cost, Math.min(held.added, at), t));
+  if (!held.buys && held.qty > 0) add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, held.qty, held.cost, Math.min(held.since ?? held.added, at), t));
   if (b.sold) {
     const now = pooled([...(await buysOf(env, userId, symbol)).buys, ...(!held.buys && held.qty > 0 ? [{ qty: held.qty, price: held.cost }] : [])]);
     if (n > now.qty + 1e-9) throw new HttpError(400, `You own ${now.qty} of these, so can't have sold ${n}.`);

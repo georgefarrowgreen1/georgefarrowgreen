@@ -30,7 +30,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
@@ -108,6 +108,12 @@ const ROUTES = {
   "GET buys": async ({ request, env }) => {
     const u = await signedIn(request, env), [s] = symbolsOf(request, 1);
     return json(await buysOf(env, u.id, s));
+  },
+  // what each holding's paid you since you bought it (its dividends)
+  "GET paid": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, `mkpaid:${u.id}`, 120, 3600e3);
+    return json({ paid: await paidOf(env, u.id) });
   },
   "POST buy": async ({ request, env }) => {
     sameOrigin(request);
