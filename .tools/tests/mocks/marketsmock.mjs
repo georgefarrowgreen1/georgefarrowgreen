@@ -68,7 +68,7 @@ function chart(sym, range) {
       fiftyTwoWeekHigh: q.hi, fiftyTwoWeekLow: q.lo, regularMarketDayHigh: Math.max(q.price, q.prev) * 1.004, regularMarketDayLow: Math.min(q.price, q.prev) * 0.996,
       longName: q.name, shortName: q.short || q.name, chartPreviousClose: range === '1d' ? q.prev : first, ...(range === '1d' ? { previousClose: q.prev } : {}),
       currentTradingPeriod: { regular: { timezone: 'X', start: open, end, gmtoffset: 0 } }, dataGranularity: '5m', range },
-    timestamp: ts, ...(events ? { events } : {}), indicators: { quote: [{ close }] } }], error: null } };
+    timestamp: ts, ...(events ? { events } : {}), indicators: { quote: [{ close, volume: walk(sym + range + 'v', n, 1, 1, 0.6).map((x) => Math.round(Math.abs(x) * 2e6 + 4e5)) }] } }], error: null } };
 }
 function search(q) {
   const k = String(q || '').toLowerCase();

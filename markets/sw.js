@@ -42,8 +42,8 @@ self.addEventListener("notificationclick", (e) => {
 // ---- the app's own files, kept here: so it opens at once, and with no network at all ----
 // Each is served from here, and asked after as it is (by its ETag); where any has changed, the whole set's fetched
 // again together (never a mix of two versions), and the app's told. Only the app's files: never the API.
-const SHELL = "markets-app-1";
-const FILES = ["./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
+const SHELL = "markets-app-2";
+const FILES = ["./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "desk.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
 const at = (f) => new URL(f, self.registration.scope).href;
 const isFile = (u, scope) => u.pathname.startsWith(scope.pathname) && !u.pathname.slice(scope.pathname.length).includes("/") && /\.(js|css|webmanifest|svg|png)$/.test(u.pathname);
 const tagOf = (res) => res.headers.get("etag") || "";

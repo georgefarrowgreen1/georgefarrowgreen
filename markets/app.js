@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.65";
+const BUILD = "1.66";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -509,9 +509,26 @@ function head(title) {
 }
 const meFace = () => (S.me?.photoAt ? h("img", { src: A.photoUrl(S.me.photoAt), alt: "", width: 44, height: 44 }) : document.createTextNode((S.me?.name || "Y").trim().slice(0, 1).toUpperCase()));
 
+// On a big screen (an iPad across, a Mac): the desk, everything at once (desk.js, fetched only there)
+const DESK = matchMedia("(min-width: 1100px)");
+let deskMod = null;
 function render(animate = true) {
   if (!S.me) return;
   document.body.classList.remove("out");
+  if (DESK.matches && S.list.length) {
+    deskMod ??= import("./desk.js").catch(() => null);
+    deskMod.then((m) => {
+      // (if it couldn't be fetched, the phone's layout instead)
+      if (!m) { DESK.failed = true; render(animate); return; }
+      if (!DESK.matches) return;
+      document.body.classList.add("desk-on");
+      main.replaceChildren(m.deskView(animate));
+      main.removeAttribute("aria-busy");
+      document.title = "Markets";
+    });
+    if (!DESK.failed) return;
+  }
+  document.body.classList.remove("desk-on");
   tabsEl.style.setProperty("--tab", ["today", "holdings", "news"].indexOf(S.tab));
   tabsEl.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === S.tab ? "page" : "false"));
   const body = S.tab === "holdings" ? holdingsView() : S.tab === "news" ? newsView() : todayView();
@@ -1724,6 +1741,7 @@ async function refresh(force = false) {
     const said = marketSaid(), line = $(".mhead .ifh-line .eyebrow");
     if (line) line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), said.text);
     for (const s of syms) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
+    dispatchEvent(new Event("mk:prices"));
     const T = totals(), pv = $("#pv");
     if (pv && Math.abs(T.value - wasT.value) > 0.004) {
       C.count(wasT.value, T.value, 700, (v) => { const [a, b] = fmt(v).split("."); pv.replaceChildren(`£${a}`, h("span.p", { text: "." + b })); });
@@ -1817,3 +1835,8 @@ function live() {
   addEventListener("online", () => refresh());
 }
 start();
+
+// ---- for the desk (desk.js): what it shares with the rest ----
+DESK.addEventListener("change", () => render(false));
+export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
+  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries };

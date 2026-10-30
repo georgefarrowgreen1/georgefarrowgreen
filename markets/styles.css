@@ -509,6 +509,138 @@ body.sheet-up .sheet { transform: none; }
   .page { padding-top: 12px; }
   .card { width: calc(100% - 40px); }
 }
+/* ==== the desk: Markets on a big screen (desk.js) — panes side by side, dense, read with the pointer and the keys ==== */
+body.desk-on .page { max-width: none; padding: 0; }
+body.desk-on .tabbar { display: none; }
+.desk { height: 100svh; min-height: 640px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 14px 20px 10px; font-size: 13px; }
+.desk .live { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--up); } .desk .live.shut { background: var(--text-3); }
+.dtop { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dme { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #8b7cff, #5b4bd6); color: #fff; font-weight: 600; font-size: 15px; }
+.dme img { width: 100%; height: 100%; object-fit: cover; } .dme.act { background: var(--ctl); color: var(--tint-text); }
+.dbrand { flex: none; margin-right: 6px; font: 650 19px/1 var(--font-d); letter-spacing: -0.3px; }
+.dcmd { flex: 0 1 560px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px 0 14px; border-radius: 12px; background: var(--field); }
+.dcmd:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
+.dcmd .prompt { font: 600 18px/1 var(--font-d); color: var(--tint-text); }
+.dcmd input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 14.5px; }
+kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); background: var(--ctl); font: 600 11px/1 var(--font); color: var(--text-2); }
+.tape { flex: 1; display: flex; gap: 0; justify-content: flex-end; min-width: 0; overflow: hidden; }
+.tick { display: grid; grid-template-columns: auto auto; gap: 0 8px; align-items: baseline; padding: 0 16px; border-left: 0.5px solid var(--line); text-align: left; white-space: nowrap; }
+.tick:first-child { border-left: 0; }
+.tick span { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3); }
+.tick b { font-size: 15px; font-weight: 600; } .tick i { font-style: normal; font-size: 12.5px; font-weight: 600; }
+.dgrid { display: grid; grid-template-columns: minmax(380px, 31%) minmax(0, 1fr) minmax(300px, 24%); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+.dcol { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; scrollbar-width: none; }
+.dpane { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 12px 14px; border-radius: 14px; background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
+.dpane.port { overflow: auto; scrollbar-width: thin; }
+.dcol > .dpane { flex: none; }
+.dcol > .dpane.grow { flex: 1 0 260px; min-height: 260px; }
+.dhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.dhead h2 { margin: 0; font: 650 11.5px/1.2 var(--font); letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.dhead small { font-size: 11px; color: var(--text-3); text-align: right; white-space: nowrap; }
+.hkey { display: inline-flex; align-items: center; gap: 6px; } .hkey i { width: 64px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--down), var(--ctl), var(--up)); }
+.dsub { margin: 16px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); }
+.dempty { margin: 6px 0; color: var(--text-3); }
+.dbtn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 999px; background: var(--ctl); font-size: 12.5px; font-weight: 600; color: var(--text); transition: background-color 0.2s; }
+.dbtn:hover { background: var(--press); } .dbtn.go { background: var(--tint); color: var(--tint-ink); }
+/* the portfolio: its totals; a table you sort by any column */
+.dsum { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.dsum div { display: grid; gap: 1px; align-content: start; padding: 10px 12px; border-radius: 11px; background: var(--ctl); }
+.dsum .pv .spk { margin-top: 4px; width: 100%; height: 22px; }
+.dsum small { font-size: 11.5px; color: var(--text-3); } .dsum b { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; white-space: nowrap; } .dsum i { font-style: normal; font-size: 12px; }
+.dt { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.dt th { position: sticky; top: -14px; z-index: 1; padding: 6px 6px; background: var(--glass-strong); text-align: right; white-space: nowrap; }
+.dt th:first-child, .dt td:first-child { text-align: left; padding-left: 8px; }
+.dt th button { font-size: 10.5px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
+.dt th[aria-sort] button { color: var(--text); } .dt .ar { margin-left: 3px; font-size: 8px; }
+.dt td { padding: 7px 6px; border-top: 0.5px solid var(--line); text-align: right; white-space: nowrap; }
+.dt td b { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; font-size: 13px; }
+.dt td small { display: block; font-size: 11px; color: var(--text-3); }
+.dt td.sp { width: 56px; padding-left: 2px; padding-right: 2px; } .dt td.sp .spk { display: block; margin-left: auto; }
+.spkb { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+.dt tbody tr { cursor: pointer; transition: background-color 0.15s; }
+.dt tbody tr:hover { background: var(--press); }
+.dt tbody tr.on { background: var(--ctl); box-shadow: inset 2px 0 0 var(--tint); }
+.dt .wt { display: inline-block; width: 34px; height: 4px; margin-right: 6px; border-radius: 2px; background: var(--line); vertical-align: middle; overflow: hidden; }
+.dt .wt i { display: block; height: 100%; background: var(--m1); }
+.dt.small td { padding: 6px; }
+/* the one chosen */
+.dpane.inst { overflow: auto; scrollbar-width: thin; }
+.ihead { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.ihead small { font-size: 12px; color: var(--text-3); }
+.ihead h2 { margin: 2px 0 0; font: 600 22px/1.15 var(--font-d); letter-spacing: -0.4px; }
+.iprice { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+.iprice b { font: 600 30px/1 var(--font-d); letter-spacing: -0.8px; } .iprice span { font-size: 14px; font-weight: 600; } .iprice .muted { color: var(--text-3); font-weight: 500; }
+.iacts { display: flex; gap: 6px; flex: none; }
+.dtools { display: flex; align-items: center; gap: 6px; margin: 14px 0 6px; flex-wrap: wrap; }
+.dsp { flex: 1; }
+.dseg { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--field); }
+.dseg button, .dtog { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text-3); transition: background-color 0.2s, color 0.2s; }
+.dseg button[aria-pressed="true"] { background: var(--thumb); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+.dtog { border: 1px solid var(--line); } .dtog[aria-pressed="true"] { border-color: transparent; background: var(--ctl); color: var(--text); } .dtog:disabled { opacity: 0.4; cursor: default; }
+.dchartw { position: relative; flex: none; height: max(300px, calc(100svh - 540px)); }
+.dchart { position: absolute; inset: 0; cursor: crosshair; transition: opacity 0.25s; }
+.dchart.loading { opacity: 0.45; }
+.dchart svg { display: block; overflow: visible; }
+.dchart .grid { stroke: var(--line); stroke-width: 1; }
+.dchart .ax { fill: var(--text-3); font: 500 11px var(--font); font-variant-numeric: tabular-nums; }
+.dchart .basel { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.6; }
+.dchart .area { opacity: 0.8; }
+.dchart .pl { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.dchart .ma { fill: none; stroke-width: 1.3; opacity: 0.9; } .dchart .ma0 { stroke: var(--warn); } .dchart .ma1 { stroke: var(--violet); }
+.dchart .vsl { fill: none; stroke: var(--blue); stroke-width: 1.5; }
+.dchart .volb { opacity: 0.3; } .dchart .volb.up { fill: var(--up); } .dchart .volb.dn { fill: var(--down); }
+.dchart .cross, .dchart .cdot { opacity: 0; transition: opacity 0.12s; } .dchart .cross { stroke: var(--text-3); stroke-width: 1; } .dchart .cdot.b { fill: var(--blue); }
+.dchart.reading .cross, .dchart.reading .cdot { opacity: 1; }
+.dchart .cross { stroke-dasharray: 3 3; }
+.dchart .hl { fill: var(--text-2); font: 600 10.5px var(--font); font-variant-numeric: tabular-nums; } .dchart .hld { fill: var(--text-2); }
+.dchart .tag { opacity: 0.95; } .dchart .tagt { fill: var(--tint-ink); font: 700 11px var(--font); font-variant-numeric: tabular-nums; }
+.dchart .tagl { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 1 3; opacity: 0.6; }
+.dchart .pill { fill: var(--text); opacity: 0; } .dchart .pillt { fill: var(--sheet); font: 700 11px var(--font); font-variant-numeric: tabular-nums; opacity: 0; }
+.dchart.reading .pill, .dchart.reading .pillt { opacity: 1; } .dchart.reading .tag, .dchart.reading .tagt { opacity: 0.25; }
+.dtip { position: absolute; top: -2px; left: 4px; padding: 2px 6px; border-radius: 6px; background: var(--glass-strong); display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; pointer-events: none; }
+.dtip:empty { display: none; }
+.dtip b { font-weight: 600; } .dtip .mut { color: var(--text-3); }
+.dlegend { display: flex; gap: 14px; min-height: 18px; margin: 2px 0 6px; font-size: 11.5px; color: var(--text-3); }
+.dlegend span { display: inline-flex; align-items: center; gap: 6px; } .dlegend i { width: 12px; height: 2.5px; border-radius: 2px; }
+.dlegend i.ma0 { background: var(--warn); } .dlegend i.ma1 { background: var(--violet); } .dlegend i.vsi { background: var(--blue); }
+.figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 18px; margin-top: 12px; border-top: 0.5px solid var(--line); }
+.fig { display: grid; gap: 1px; padding: 9px 0; border-bottom: 0.5px solid var(--line); min-width: 0; }
+.fig small { font-size: 11px; color: var(--text-3); } .fig b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fig span { font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dwhy { margin: 14px 0 0; font: 500 15px/1.45 var(--font-d); } .dwhy small { display: block; margin-top: 4px; font: 500 12px var(--font); color: var(--text-3); } .dwhy a { color: inherit; }
+/* on the right: the heat map, the year's risk, the news, the dividends coming */
+.heat { position: relative; height: 206px; margin-top: 2px; }
+.tile { position: absolute; box-sizing: border-box; display: grid; align-content: start; justify-items: start; gap: 2px; padding: 9px 10px; border-radius: 9px; overflow: hidden; text-align: left; transition: filter 0.15s; }
+.tile:hover { filter: brightness(1.12); } .tile b { font-size: 11.5px; font-weight: 700; letter-spacing: 0.1px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tile span { font-size: 11.5px; font-weight: 500; opacity: 0.85; }
+.tile.sm { padding: 8px 6px; } .tile.sm b, .tile.sm span { font-size: 10.5px; }
+.risk { display: grid; }
+.rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding: 7px 0; border-top: 0.5px solid var(--line); align-items: baseline; }
+.rrow:first-child, .ryear + .rrow { border-top: 0; }
+.ryear { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 0 10px; margin-bottom: 2px; border-bottom: 0.5px solid var(--line); }
+.rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rcell { display: grid; gap: 1px; padding: 10px 0 2px; min-width: 0; } .rcell:nth-child(even) { padding-left: 14px; border-left: 0.5px solid var(--line); }
+.rcell:nth-child(n+3) { border-top: 0.5px solid var(--line); margin-top: 8px; }
+.rcell small { font-size: 11px; color: var(--text-3); } .rcell b { font-size: 16px; font-weight: 650; letter-spacing: -0.2px; white-space: nowrap; } .rcell > span { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ryear div { display: grid; } .ryear span { font-size: 11.5px; color: var(--text-3); } .ryear b { font-size: 18px; font-weight: 650; letter-spacing: -0.3px; } .rrow span { color: var(--text-2); } .rrow b { font-size: 14px; font-weight: 600; } .rrow small { grid-column: 1 / -1; font-size: 11px; color: var(--text-3); }
+.dnews { overflow: auto; scrollbar-width: thin; min-height: 0; }
+.nrow { padding: 8px 0; border-top: 0.5px solid var(--line); } .nrow:first-child { border-top: 0; }
+.nrow a { color: var(--text); font-weight: 500; line-height: 1.35; text-decoration: none; } .nrow a:hover { text-decoration: underline; }
+.nm { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
+.ntag { height: 20px; padding: 0 7px; border-radius: 6px; background: var(--ctl); font-size: 11px; font-weight: 700; color: var(--tint-text); }
+.dcome { display: grid; }
+.dcome button { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; padding: 7px 0; border-top: 0.5px solid var(--line); text-align: left; }
+.dcome button:first-child { border-top: 0; } .dcome span { color: var(--text-3); } .dcome b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dcome i { font-style: normal; color: var(--text-2); }
+.dstat { display: flex; align-items: center; gap: 18px; font-size: 12px; color: var(--text-3); }
+.dstat .keys { margin-left: auto; display: flex; gap: 14px; } .dstat .keys span { display: inline-flex; align-items: center; gap: 5px; }
+/* (an iPad held across: two columns, the heat map, risk, news and dividends in a grid under them; the page scrolls) */
+@media (max-width: 1279px) {
+  .desk { height: auto; min-height: 0; }
+  .dgrid { grid-template-columns: minmax(330px, 37%) minmax(0, 1fr); grid-template-rows: auto auto; grid-template-areas: "port inst" "side side"; }
+  .dpane.port { grid-area: port; max-height: 760px; } .dpane.inst { grid-area: inst; max-height: 760px; }
+  .dcol { grid-area: side; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .dcol > .dpane.grow { min-height: 0; max-height: 420px; }
+  .dchartw { height: 340px; } .dt td b { max-width: 150px; } .dt .cp { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

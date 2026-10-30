@@ -148,8 +148,8 @@ export function readChart(j, symbol) {
   const r = j?.chart?.result?.[0];
   if (!r?.meta) return null;
   const m = r.meta, [cur, k] = MINOR[m.currency] || [m.currency || "", 1], s = (x) => (num(x) == null ? null : +(x * k).toPrecision(10));
-  const ts = r.timestamp || [], cl = r.indicators?.quote?.[0]?.close || [], t = [], c = [];
-  for (let i = 0; i < ts.length; i++) if (num(cl[i]) != null) { t.push(ts[i]); c.push(s(cl[i])); }
+  const ts = r.timestamp || [], cl = r.indicators?.quote?.[0]?.close || [], vo = r.indicators?.quote?.[0]?.volume || [], t = [], c = [], v = [];
+  for (let i = 0; i < ts.length; i++) if (num(cl[i]) != null) { t.push(ts[i]); c.push(s(cl[i])); v.push(num(vo[i]) ?? 0); }
   const price = s(m.regularMarketPrice) ?? c.at(-1) ?? null;
   // (one over half the price it went ex-dividend at is taken as said in pence where the price is in pounds: Yahoo's
   // London dividends are, now and then, a hundred times out)
@@ -161,7 +161,7 @@ export function readChart(j, symbol) {
     symbol: m.symbol || symbol, name: m.instrumentType === "CRYPTOCURRENCY" ? String(m.longName || m.shortName || symbol).replace(/\s+(USD|GBP|EUR)$/, "") : plainName(m.longName || m.shortName, symbol), cur, type: m.instrumentType || "", kind: kindOf(m.instrumentType, m.longName || m.shortName, m.symbol || symbol), ex: EXCHANGES[m.exchangeName] || m.fullExchangeName || m.exchangeName || "",
     tz: m.exchangeTimezoneName || "UTC", price, prev: s(m.previousClose ?? m.chartPreviousClose), base: s(m.chartPreviousClose ?? m.previousClose),
     dayHi: s(m.regularMarketDayHigh), dayLo: s(m.regularMarketDayLow), hi52: s(m.fiftyTwoWeekHigh), lo52: s(m.fiftyTwoWeekLow),
-    time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, t, c, divs,
+    time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, t, c, v, divs,
   };
 }
 // a symbol's chart over a range (1d: every five minutes; 5d: every half hour; 1mo, 1y: daily; 5y: weekly)
@@ -176,7 +176,7 @@ export async function chart(env, symbol, range = "1d") {
 export async function quote(env, symbol) {
   const q = await chart(env, symbol, "1d");
   if (!q) return null;
-  const { t, c, divs, ...rest } = q, step = Math.max(1, Math.ceil(c.length / 48));
+  const { t, c, v, divs, ...rest } = q, step = Math.max(1, Math.ceil(c.length / 48));
   const spark = c.filter((_, i) => i % step === 0 || i === c.length - 1), sparkT = t.filter((_, i) => i % step === 0 || i === t.length - 1);
   return { ...rest, chg: rest.price != null && rest.prev ? rest.price - rest.prev : null, chgPct: rest.price != null && rest.prev ? (rest.price / rest.prev - 1) * 100 : null, spark, sparkT };
 }

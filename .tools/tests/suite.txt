@@ -44,4 +44,5 @@ sitepaths
 acctpkmsg
 fitness
 markets
+marketsdesk
 move

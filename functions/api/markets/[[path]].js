@@ -70,7 +70,7 @@ const ROUTES = {
     if (!RANGE_NAMES.includes(r)) throw new HttpError(400, "Bad request.");
     const c = await chart(env, s, r);
     if (!c) throw new HttpError(404, "Couldn’t find that one.");
-    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs }, r === "1d" ? 30 : 300);
+    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs, v: c.v }, r === "1d" ? 30 : 300);
   },
   "GET years": async ({ request, env }) => {
     const u = await signedIn(request, env);
