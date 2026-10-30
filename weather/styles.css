@@ -892,6 +892,8 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* open, a way on to its day or its hours (and one that goes somewhere is never just its line: always opens) */
 .ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background-color: rgba(159, 208, 255, 0.12); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
 .ins-go:active { opacity: 0.6; transition-duration: var(--dur-press); }
+.ins-go { position: relative; }
+.ins-go::after { content: ""; position: absolute; inset: -6px 0; }
 .ins-go span { display: inline-grid; transform: rotate(-90deg); }
 .ins-row.open .ins-go, .ins-row.fold .ins-go { display: inline-flex; }
 .ins-go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -1503,6 +1505,10 @@ a.acct-btn { text-decoration: none; }
 .rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.2); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); }
 .rl-switch button { font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background-color 0.25s var(--glide), color 0.25s var(--glide); }
 .rl-switch button[aria-pressed="true"] { background-color: rgba(255, 255, 255, 0.22); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+/* (small to look at, larger to tap: the wind's switch, the map's zoom, an insight's way in) */
+.rl-switch button { position: relative; }
+.rl-switch button::after { content: ""; position: absolute; inset: -8px 0; }
+.map-zoom button::after { content: ""; position: absolute; inset: 0 -6px; }
 .rl-switch button:focus-visible { outline-offset: 1px; }
 @media (hover: hover) and (pointer: fine) { .rl-switch button:not([aria-pressed="true"]):hover { background-color: rgba(255, 255, 255, 0.1); } }
 .radar.light-map.radar-big .rl-switch button:focus-visible { outline-color: #1c1c1e; }
