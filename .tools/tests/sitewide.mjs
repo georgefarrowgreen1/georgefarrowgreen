@@ -144,10 +144,10 @@ async function look(ctx, size, scheme, [name, url, act, sel, o = {}]) {
   await p.close(); if (c) await c.close();
 }
 
-// each app's first load, from nothing (a laptop, an empty cache): what it fetched, how much, and when it showed
+// each app's first load, from nothing (a phone, an empty cache): what it fetched, how much, and when it showed
 async function load(ctxSigned, name, url, sel) {
   const p = await ctxSigned.newPage();
-  await p.setViewportSize({ width: 1280, height: 800 });
+  try {
   const cdp = await ctxSigned.newCDPSession(p); await cdp.send('Network.enable'); await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
   const reqs = [];
   cdp.on('Network.loadingFinished', (e) => reqs.push(e.encodedDataLength));
@@ -163,7 +163,8 @@ async function load(ctxSigned, name, url, sel) {
   const kb = Math.round(reqs.reduce((a, x) => a + x, 0) / 1024);
   report.loads.push({ name, requests: reqs.length, kb, types, shownMs: shown, ...nav });
   console.log(`load  ${name}: ${reqs.length} requests, ${kb} KB, content shown at ${shown} ms (DCL ${nav.dcl}, load ${nav.load}, LCP ${nav.lcp})`);
-  await p.close();
+  } catch (e) { console.log(`load  ${name}: couldn't measure (${String(e.message).split('\n')[0]})`); }
+  await p.close().catch(() => {});
 }
 
 // someone for each kind of screen, signed up once; their sign-in carried to each size's browser
@@ -175,7 +176,8 @@ for (const kind of ['phone', 'tablet', 'desk']) {
   await ctx.close();
 }
 const save = () => writeFileSync(`${out}/sitewide.json`, JSON.stringify(report, null, 1));
-for (const size of SIZES) {
+// (LOADS_ONLY=1: just each app's first load)
+for (const size of process.env.LOADS_ONLY ? [] : SIZES) {
   const kind = size[3];
   await b.close().catch(() => {}); b = await launch();
   for (const scheme of LIGHT.has(size[0]) ? ['dark', 'light'] : ['dark']) {
@@ -186,7 +188,7 @@ for (const size of SIZES) {
   save();
 }
 await b.close().catch(() => {}); b = await launch();
-const people = { desk: await context('desk', 'dark', states.desk) };
+const people = { desk: await context('phone', 'dark', states.phone) };
 for (const [name, url, sel] of [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen, .hdr'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
   ['fitness', FIT + '/', 'main'], ['markets', MKT + '/', '#pv'], ...(mailUp ? [['mail', MAIL + '/?demo', 'body']] : [])]) await load(people.desk, name, url, sel);
 save();

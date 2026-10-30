@@ -2667,7 +2667,7 @@ async function sync() {
       S.synced = true;                            // from here on, what changes is news
       if (!same || seenMoved) cacheSave();
       if (S.outbox.length) outboxFlush();
-    } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; } }
+    } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; if (!S.started && S.syncFails === 1 && S.view === "messages") render(); } }
     finally { syncing = null; }
   })();
   return syncing;
@@ -4192,6 +4192,10 @@ function vMessages() {
         <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
       </span>
     </button>`).join("");
+  // nothing on this phone yet and the first sync couldn't come (the server, not the network: that's the offline pill):
+  // said, with Try Again, not placeholder rows for ever
+  if (!rows && !S.started && !S.fromCache && S.syncFails) return `${navbar("Messages", { root: true, titleHtml: brandMark() })}
+    <p class="empty"><b>Couldn’t open your messages</b>Chat’s server didn’t answer just now. <br><button class="btn small" data-act="retrysync">Try Again</button></p>`;
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
   if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
@@ -8494,6 +8498,7 @@ async function onClick1(e, t) {
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
     case "acctsignin": return toAccountSignIn(e, "signin");
+    case "retrysync": S.syncFails = 0; render(); return sync().then(() => { if (!S.started) render(); });
     case "acctjoin": return toAccountSignIn(e, "join");
     case "signout": {
       const waiting = S.outbox.filter((o) => !o.err).length;
