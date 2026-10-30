@@ -14,7 +14,8 @@
   // itself a Mac, but a Mac has no touchscreen. Anything else (a computer) is
   // shown a page saying Chat isn't available, and the app never starts.
   var ua = navigator.userAgent || "";
-  var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  // (and a big Android tablet asking for the desktop site, as Chrome does on them: a Linux that's touched)
+  var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh|Linux/.test(ua) && navigator.maxTouchPoints > 1 && matchMedia("(pointer: coarse)").matches);
   if (!mobile) root.setAttribute("data-device", "computer");
   // back from signing in on the account's page (#signin=…): the page's last picture, its sky, its dawn and you, from
   // the very first frame (styles.css html.arriving), until app.js puts up its own copy (arriving). You: the initial

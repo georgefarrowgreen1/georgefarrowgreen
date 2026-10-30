@@ -37,10 +37,16 @@ function gradient(coords, colours) {
   return ["interpolate", ["linear"], ["line-progress"], ...stops];
 }
 
+// Every map made: one whose place has left the page (another activity picked, a sheet closed, the screen drawn again)
+// is let go, its WebGL context with it, before the next is made, and when sweep() is asked (a browser keeps only so many)
+const live = new Set();
+export function sweep() { for (const g of live) if (!g.el.isConnected) g.remove(); }
+
 // The map in `el`: coords [[lon, lat], ...]; colours, one a point (or none: the app's blue); light: the day style;
 // explore: the map can be moved and zoomed (else the page scrolls past it). → { at([lon, lat] | null), remove() }
 export async function routeMap(el, { coords, colours = null, light = true, explore = false, tint = "#0a84ff" }) {
   const m = await load();
+  sweep();
   let w = 180, s = 90, e = -180, n = -90;
   for (const [x, y] of coords) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
   const map = new m.Map({
@@ -69,9 +75,11 @@ export async function routeMap(el, { coords, colours = null, light = true, explo
     map.addLayer({ id: "here", type: "circle", source: "here", paint: { "circle-radius": 7, "circle-color": tint, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
     ok();
   }));
-  return {
-    map,
+  const g = {
+    map, el,
     async at(p) { await ready; map.getSource("here")?.setData(p ? { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: p } } : none); },
-    remove() { map.remove(); },
+    remove() { if (!live.delete(g)) return; try { map.remove(); } catch (_) {} },
   };
+  live.add(g);
+  return g;
 }

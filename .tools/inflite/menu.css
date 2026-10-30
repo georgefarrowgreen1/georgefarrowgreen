@@ -159,7 +159,7 @@
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
-.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
 .ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }

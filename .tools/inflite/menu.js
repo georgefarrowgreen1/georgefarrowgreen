@@ -78,7 +78,10 @@ const IFL = (() => {
     const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "Notifications on this device"), el("p", "ifa-p", line), go, later);
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
     const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
-    const key = (e) => { if (e.key === "Escape") shut(); };
+    const key = (e) => {
+      if (e.key === "Escape") shut();
+      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === go ? later : go).focus(); }
+    };
     const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
     later.onclick = shut;
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
@@ -112,6 +115,7 @@ const IFL = (() => {
     const m = open;
     if (!m) return;
     open = null;
+    m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
@@ -143,7 +147,7 @@ const IFL = (() => {
           sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
           if (r.key) sw.dataset.k = r.key;
           sw.disabled = !!r.disabled;
-          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); const v = await r.toggle?.(next); if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); let v; try { v = await r.toggle?.(next); } catch (_) { v = !next; } if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
           rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
         } else {
           // (a value or none, its chevron in the same column: lined up with every other row's)
@@ -167,7 +171,7 @@ const IFL = (() => {
     const out = el("button", "ifm-out", said("Sign Out")); out.insertAdjacentHTML("afterbegin", svg("signout")); out.type = "button"; out.onclick = act(o.signOut);
     const foot = el("div", "ifm-foot", el("span", "ifm-ver", mark, `${NAME[o.app]} ${o.build}`, o.update ? null : status), o.update ? status : null, o.signOut ? out : null);
     const pop = el("div", `ifm-pop ifm-in-${o.app}`, card, rowsBox, foot);
-    pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "You and your apps");
+    pop.setAttribute("role", "dialog"); pop.setAttribute("aria-modal", "true"); pop.setAttribute("aria-label", "You and your apps");
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
     const key = (e) => {
@@ -179,6 +183,9 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
+    // (the page behind out of reach while it's open: a screen reader stays in the menu)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
     // (under your photo, from where it grows; over it, if your photo's low on the screen)
     const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
@@ -189,7 +196,7 @@ const IFL = (() => {
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));

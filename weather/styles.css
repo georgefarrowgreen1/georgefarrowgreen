@@ -420,12 +420,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   .pv { display: none; }
   .pager > .pg-page { visibility: visible; }
   main > .col { touch-action: auto; }
-  main > .pager { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; margin-inline: 0; }
+  main > .pager { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; margin-inline: 0;
+    max-height: calc(100svh - 64px - env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
   .pager > :is(.hero, .pg-page) { padding-inline: 4px; }
   .hero-temp { font-size: 76px; }
   :is(.hero-icon, .pg-icon) .wi { width: 60px; height: 60px; }
   .brief { font-size: 15px; }
   .top { min-height: 56px; padding-top: 6px; padding-bottom: 4px; }
+  .top.wx-ifh { height: calc(60px - 10px * var(--p)); padding-top: calc(6px - 2px * var(--p)); padding-bottom: calc(6px - 2px * var(--p)); }
   .top .place { min-height: 40px; padding-top: 4px; padding-bottom: 4px; }
   .top .icon-btn { width: 40px; height: 40px; }
   html { scroll-padding-top: 60px; }
@@ -678,7 +680,7 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .c-grid { stroke: rgba(255, 255, 255, 0.13); stroke-width: 1; }
 .c-daysep { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
 .c-night { fill: rgba(0, 0, 0, 0.16); }
-.c-ytick, .c-xtick { fill: rgba(255, 255, 255, 0.72); font-size: 11px; font-variant-numeric: tabular-nums; }
+.c-ytick, .c-xtick { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* scale labels inside a chart, in the middle of their bands: legible over the bars */
 .c-ytick.c-in { fill: rgba(255, 255, 255, 0.85); font-weight: 600; paint-order: stroke; stroke: rgba(14, 22, 38, 0.55); stroke-width: 3px; stroke-linejoin: round; }
 .c-day { fill: #fff; font-weight: 650; }
@@ -2094,7 +2096,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
-.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
 .ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }

@@ -139,7 +139,7 @@ html.night .sky{visibility:hidden}
 @media (min-width:600px){
   html,body{background:var(--sky-top)}
   .page{justify-content:center;padding:16px}
-  .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep)}
+  .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep);transform:translateZ(0)}
 }
 .rotate{display:none}
 /* a computer: no app, just a page saying so (with a code to open it on a phone) */
@@ -166,7 +166,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
   .rotate p{margin:0}
 }
 .screen{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
-.view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;isolation:isolate}
 .view.tabs-pad{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
 /* offline: a pill that floats in under the navigation bar (a banner above everything shoved the whole screen down) */
 .offline{position:absolute;z-index:9;left:50%;top:62px;padding:6px 14px;border-radius:999px;background:#b25400;color:#fff;font-size:13px;font-weight:600;text-align:center;white-space:nowrap;
@@ -225,6 +225,8 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .gfoot{margin:8px 36px 0;font-size:calc(13px * var(--ts, 1));line-height:calc(18px * var(--ts, 1));color:var(--label-2);letter-spacing:-.08px}
 .gfoot.bad{color:var(--red)}
 .group{margin:0 16px;background:var(--cell);border-radius:26px;overflow:hidden}
+.group :focus-visible{outline-offset:-3px}
+.search:focus-within,.fcell:focus-within{box-shadow:inset 0 0 0 1.5px var(--tint)}
 .group + .group{margin-top:22px}
 .cell{position:relative;display:flex;align-items:center;gap:13px;width:100%;min-height:52px;padding:12px 18px;border:0;background:none;text-align:left;color:var(--label);font-size:calc(17px * var(--ts, 1))}
 button.cell:active,label.cell:active{background:var(--fill)}
@@ -298,7 +300,9 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .btn.plain{background:none;color:var(--tint);font-weight:500;box-shadow:none}
 .btn.gray{background:var(--fill);color:var(--label);box-shadow:none}
 .btn.danger{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red);box-shadow:none}
-.btn.small{min-height:36px;padding:0 16px;font-size:15px}
+.btn.small{min-height:36px;padding:0 16px;font-size:15px;position:relative}
+.btn.small::after,.send::after,.attach button::after,.replybar button::after,.seasoncard .sx::after{content:"";position:absolute;inset:-6px}
+.send,.attach button,.replybar button,.seasoncard .sx{position:relative}
 .btn:disabled{opacity:.4;cursor:default}
 .btn:not(:disabled):active{transform:scale(.97)}
 .link{border:0;background:none;padding:0;color:var(--tint);font-size:inherit}
@@ -314,7 +318,7 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .stamp{align-self:center;margin:16px 0 6px;font-size:11px;font-weight:500;color:var(--label-2);text-align:center}
 .stamp b{font-weight:600}
 .b{position:relative;max-width:76%;margin-top:2px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in);color:var(--label);font-size:calc(17px * var(--ts, 1));line-height:calc(22px * var(--ts, 1));align-self:flex-start;overflow-wrap:anywhere}
-.b.me{align-self:flex-end;background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint));color:#fff}
+.b.me{align-self:flex-end;background:linear-gradient(180deg,color-mix(in srgb,var(--tint-fill) 96%,#fff),var(--tint-fill));color:#fff}
 .b.gap-top{margin-top:10px}
 .b.pic{padding:0;background:none;overflow:hidden;border-radius:22px;width:68%}
 .b.pic img,.b.pic .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:22px;background:var(--fill);cursor:zoom-in}
@@ -386,7 +390,7 @@ html.kbup .compose{padding-bottom:6px}
 .tab svg{font-size:var(--ift-icon)}
 .tab[aria-current="true"]{color:var(--ift-tint)}
 .tab:active{transform:scale(.95)}
-.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ift-tint);color:#fff;font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
+.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tint-fill);color:#fff;font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
 
 /* ---------- forms ---------- */
 .fcell{position:relative;display:flex;align-items:center;gap:6px;min-height:52px;padding:0 8px 0 18px;background:var(--cell)}
@@ -1407,7 +1411,7 @@ svg.fillico{fill:currentColor;stroke:none}
 
 /* its time, tucked into the last line (or under it, when the line is full) */
 .b .ft{float:right;display:inline-flex;align-items:center;gap:2px;margin:8px -4px -5px 10px;font-size:11px;line-height:15px;font-weight:500;letter-spacing:0;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--label-2)}
-.b.me .ft{color:rgba(255,255,255,.78)}
+.b.me .ft{color:rgba(255,255,255,.92)}
 .b .ft .ico{font-size:12px;stroke-width:2.2}
 .b .ft .rd{display:inline-flex}
 .b .ft .rd .ico{font-size:14px}
@@ -1697,7 +1701,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 .seasoncard b{font-size:15px;line-height:20px}
 .seasoncard .stext > span{font-size:13px;line-height:17px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seasoncard .btn.small{flex:none}
-.seasoncard .sx{flex:none;display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:50%;background:none;color:var(--label-3);cursor:pointer}
+.seasoncard .sx{flex:none;display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:50%;background:none;color:var(--label-2);cursor:pointer}
 .seasoncard .sx svg{width:15px;height:15px}
 /* the hint in an empty message box stays on one line (cut short with … if it must) */
 .field-wrap textarea:placeholder-shown{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1749,9 +1753,9 @@ html.night .nightsky{display:block}
 .welcome .wtitle span:nth-child(1){animation-delay:.35s}.welcome .wtitle span:nth-child(2){animation-delay:.47s}.welcome .wtitle span:nth-child(3){animation-delay:.59s}.welcome .wtitle span:nth-child(4){animation-delay:.71s}
 .welcome .wtitle span:nth-child(5){animation-delay:.83s}.welcome .wtitle span:nth-child(6){animation-delay:.95s}.welcome .wtitle span:nth-child(7){animation-delay:1.07s}.welcome .wtitle span:nth-child(8){animation-delay:1.19s}
 @keyframes wletter{to{opacity:1;filter:blur(0);transform:none}}
-.welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 2s ease 1.9s forwards}
+.welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 1.4s ease 0.8s forwards}
 @keyframes wfade{to{opacity:1}}
-.welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 1.4s ease 2.6s forwards}
+.welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 0.9s ease 1.2s forwards}
 .welcome .wcta.swap{opacity:1;animation:wcta-swap .45s var(--ease-out) both}
 @keyframes wcta-swap{from{opacity:0;transform:translateY(6px)}}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
@@ -2609,6 +2613,15 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   text-align: center;
   font-size: 15px;
 }
+
+/* A short screen (a phone on its side): the name and the way in side by side, the name on the left, Sign in on the
+   right, rather than one over the other */
+@media (max-height: 500px) and (orientation: landscape) {
+  .ifl-in .ifl-top { top: calc(env(safe-area-inset-top, 0px) + 28px); right: 50%; max-width: none; padding-left: max(24px, env(safe-area-inset-left, 0px)); }
+  .ifl-in .ifl-logo { width: 116px; height: 116px; margin-bottom: -10px; }
+  .ifl-in .ifl-title { font-size: 34px; }
+  .ifl-in .ifl-cta { left: 50%; max-width: none; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+}
 /* ==== end of InFlite's way in ==== */
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
@@ -2773,7 +2786,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
-.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
 .ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }

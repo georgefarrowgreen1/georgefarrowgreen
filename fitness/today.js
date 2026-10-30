@@ -378,7 +378,7 @@ function doneMap(a) {
   if (!(sumOf(a)?.route || a.sample) || (mapsAlways() && !M.able())) return null;
   if (todayMap?.id === a.id) return todayMap.el;
   todayMap?.g?.remove();
-  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route: open the ride", onclick: () => openAct(a) }, mapsAlways() ? mapCredit() : null);
+  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route: open the ride", onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }, onclick: () => openAct(a) }, mapsAlways() ? mapCredit() : null);
   todayMap = { id: a.id, el, g: null };
   (async () => {
     const x = await load(a);

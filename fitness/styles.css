@@ -88,7 +88,7 @@ body { margin: 0; min-height: 100vh; min-height: 100lvh; font: 17px/1.35 var(--f
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
 /* (no zooming: no pinch, and no double-tap; app.js stops Safari's pinch, which pays this no heed) */
-html { touch-action: pan-x pan-y; }
+html { touch-action: manipulation; }
 button, a, input, select, label { touch-action: manipulation; }
 button { cursor: pointer; }
 a { color: inherit; }
@@ -500,6 +500,8 @@ dialog.sheet.edge .sheet-body { -webkit-mask-image: linear-gradient(transparent,
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); font-size: 15px; font-weight: 500;
   transform: translate(-50%, -140%); opacity: 0; transition: transform var(--dur-fast) var(--ease-in), opacity var(--dur-fast) var(--ease-in); pointer-events: none; }
 .toast.on { transform: translate(-50%, 0); opacity: 1; transition: transform 0.55s var(--ease-spring), opacity 0.3s var(--ease-out); }
+/* (a popover, so it shows over an open sheet too, in the top layer with it) */
+.toast[popover] { right: auto; bottom: auto; margin: 0; border: 0; overflow: visible; color: inherit; }
 .toast svg { flex: none; color: var(--good); }
 .toast.bad svg { color: var(--danger); }
 
@@ -1704,7 +1706,7 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .side-me .round.me { width: 36px; height: 36px; font-size: 15px; box-shadow: none; }
 .side-me .tl { display: grid; gap: 1px; min-width: 0; } .side-me b { font-size: 14px; font-weight: 600; } .side-me small { font-size: 12px; color: var(--text-3); }
 @media (min-width: 760px) {
-  .tabbar { top: 0; right: auto; width: 100px; padding: 14px 0 14px 14px; justify-content: stretch; }
+  .tabbar { top: 0; right: auto; width: calc(100px + env(safe-area-inset-left, 0px)); padding: max(14px, env(safe-area-inset-top, 0px)) 0 max(14px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); justify-content: stretch; }
   .tabbar::before { display: none; }
   body.sheet-up .tabbar { transform: none; opacity: 1; }
   .tabs { flex-direction: column; gap: 4px; max-width: none; height: 100%; padding: 14px 10px; border-radius: 26px; }
@@ -1716,7 +1718,7 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
   .tab .tl { display: none; }
   .tab[aria-current="page"] { background: var(--glass-ctl); }
   .side-me { justify-content: center; padding: 6px 0; } .side-me .tl { display: none; }
-  .page { margin-left: 100px; }
+  .page { margin-left: calc(100px + env(safe-area-inset-left, 0px)); }
   /* (the sidebar has you and Upload: the screens' tops don't, here) */
   .ifh .ifh-me, .ifh .up { display: none; }
   .ifh.fhead { margin-top: calc(-1 * (var(--top) + 48px)); --ifh-pt: calc(var(--top) + 40px); }
@@ -1908,6 +1910,15 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
   text-align: center;
   font-size: 15px;
 }
+
+/* A short screen (a phone on its side): the name and the way in side by side, the name on the left, Sign in on the
+   right, rather than one over the other */
+@media (max-height: 500px) and (orientation: landscape) {
+  .ifl-in .ifl-top { top: calc(env(safe-area-inset-top, 0px) + 28px); right: 50%; max-width: none; padding-left: max(24px, env(safe-area-inset-left, 0px)); }
+  .ifl-in .ifl-logo { width: 116px; height: 116px; margin-bottom: -10px; }
+  .ifl-in .ifl-title { font-size: 34px; }
+  .ifl-in .ifl-cta { left: 50%; max-width: none; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+}
 /* ==== end of InFlite's way in ==== */
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
@@ -2072,7 +2083,7 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
-.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(32px - 12px * var(--p)); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
+.ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .ifh-name > span { overflow: hidden; text-overflow: ellipsis; }
 .ifh-pick { display: inline-flex !important; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 !important; font-weight: inherit !important; letter-spacing: inherit; text-align: left; }

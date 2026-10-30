@@ -258,7 +258,7 @@ function actView(a) {
     mapAt = (sec) => { if (sec == null) { r.at(null); gl?.at(null); return; } const i = sampleAt(sec); r.at(i); if (gl && x.s.lat[i] != null) gl.at([x.s.lon[i], x.s.lat[i]]); };
     // (on a real map, where the phone can draw one: the route as ridden, over it; a tap opens it to explore)
     const real = () => {
-      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onclick: () => sub(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
+      const route = routeOf(x.s, zoneAt), holder = h("div.map-gl", { role: "button", tabindex: "0", "aria-label": "The route on a map: open it to explore", onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }, onclick: () => sub(() => bigMapView(a.name, route)) }, mapCredit(), h("span.map-open", { "aria-hidden": "true" }, icon("open", 15, 2.4)));
       box.replaceChildren(holder);
       // (and where it can't after all, its own drawing of the route back)
       M.routeMap(holder, { ...route, light: lightNow() }).then((g) => { gl = g; }).catch(() => box.replaceChildren(r.el));
