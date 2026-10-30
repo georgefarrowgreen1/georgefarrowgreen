@@ -1441,6 +1441,8 @@ svg.fillico{fill:currentColor;stroke:none}
 .trk .cb{position:absolute;left:-8px;top:-1px;width:14px;height:14px;transform:translateX(calc(var(--f,0) * 100cqw));transition:transform 1s linear}
 .trk .cb .bird{display:block;width:14px;height:14px;color:var(--k);transform:scaleX(-1)}
 .b.pic.up{box-shadow:none}
+.b.pic.up{box-shadow:none;overflow:visible}   /* (a photo's or GIF's in the air: the outline round its words only, not round the picture
+   too, and not cut at its corners by the bubble's: the picture rounds its own) */
 .b.pic.up .ptxt{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint)}
 .b.voicem.up .vplay{background:var(--tint-fill);color:#fff}
 /* yours on its way to the server, a moment before it takes off (app.js: send) */
