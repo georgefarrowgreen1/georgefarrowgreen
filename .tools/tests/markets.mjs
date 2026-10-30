@@ -121,7 +121,7 @@ ok(/^£38 this tax year \| 20\d\d–\d\d, so far\. About £[\d,]+ by 5 April/.te
 ok(/^£38 of £500 used/.test(await text(p, '#sbody .irow')) && /Dividend allowance, 20\d\d–\d\d/i.test(await text(p, '#sbody .slabel:has-text("allowance")')), 'its dividend allowance: what outside an ISA has used', await text(p, '#sbody .irow'));
 const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 10000 }).catch(() => null), p.click('#sbody .item:has-text("so far")')]);
 const sheet = dl ? readFileSync(await dl.path(), 'utf8') : '';
-ok(/^Went ex-dividend,Holding,Symbol,Account,Shares,Per share,Currency,Amount,In pounds/.test(sheet) && /,Rolls-Royce,RR\.L,Not in an account,640,0\.06,GBP,38\.4,38\.4,/.test(sheet), "the tax year's dividends as a spreadsheet", sheet.split('\r\n').slice(0, 2).join(' / '));
+ok(/^Went ex-dividend,Holding,Symbol,Account,Shares,Per share,Currency,Amount,"In pounds, at today's rate",One-off\r\n/.test(sheet) && /,Rolls-Royce,RR\.L,Not in an account,640,0\.06,GBP,38\.4,38\.4,/.test(sheet), "the tax year's dividends as a spreadsheet", sheet.split('\r\n').slice(0, 2).join(' / '));
 await p.click('.imode button:has-text("Coming")'); await settle(p, 500);
 await p.click('#sbody .item:has-text("Tesco")'); await p.waitForSelector('#whatif', { timeout: 10000 }); await settle(p, 600);
 ok(/^About £30 a year$/.test(await text(p, '#whatif > b')) && /^In \w{3} and \w{3}/.test(await text(p, '#whatif > p')) && await p.locator('#whatif .ib i.add').count() === 2,
