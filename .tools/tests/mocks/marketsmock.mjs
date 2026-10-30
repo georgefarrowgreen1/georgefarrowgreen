@@ -111,7 +111,8 @@ function search(q) {
   const sym = Object.keys(Q).find((s) => s.toLowerCase() === k);
   const now = Math.floor(Date.now() / 1000);
   const news = sym ? [
-    { uuid: `${sym}-1`, title: `${Q[sym].name.split(' ')[0]} shares move after the morning's update`, publisher: 'Reuters', link: `https://example.com/news/${sym}-1`, providerPublishTime: now - 1800, relatedTickers: [sym] },
+    { uuid: `${sym}-1`, title: `${Q[sym].name.split(' ')[0]} shares move after the morning's update`, publisher: 'Reuters', link: `https://example.com/news/${sym}-1`, providerPublishTime: now - 1800, relatedTickers: [sym],
+      thumbnail: { resolutions: [{ url: `https://example.com/thumb/${sym}-1.png`, width: 140, height: 140, tag: '140x140' }, { url: `https://example.com/thumb/${sym}-1-big.png`, width: 4000, height: 3000, tag: 'original' }] } },
     { uuid: `${sym}-2`, title: `What analysts say about ${Q[sym].name.split(' ')[0]}`, publisher: 'Bloomberg', link: `https://example.com/news/${sym}-2`, providerPublishTime: now - 7200, relatedTickers: [sym, 'AAPL'] },
   ] : [];
   return { quotes, news };
@@ -129,6 +130,18 @@ createServer((req, res) => {
   }
   const c = /^\/v8\/finance\/chart\/([^/]+)$/.exec(u.pathname);
   if (c) { const sym = decodeURIComponent(c[1]), r = u.searchParams.get('range'); log({ kind: 'chart', sym, range: r }); const j = chart(sym, r); return j ? send(200, j) : send(404, { chart: { result: null, error: { code: 'Not Found' } } }); }
+  // (a story's page, as a publisher writes its head for link previews; and a picture: a tiny PNG)
+  if (u.pathname === '/page') {
+    const link = u.searchParams.get('u') || '', m = /\/news\/(.+)-(\d)$/.exec(link), sym = m && decodeURIComponent(m[1]), q = sym && Q[sym];
+    log({ kind: 'page', link });
+    if (!q) { res.writeHead(404, { 'Content-Type': 'text/html' }); return res.end('<html><head><title>Not found</title></head></html>'); }
+    const first = q.name.split(' ')[0];
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(`<!doctype html><html><head><title>${first} | Example News</title><meta property="og:site_name" content="Example News"><meta property="og:title" content="${first} shares move after the morning&#39;s update">`
+      + `<meta name="description" content="${first} said more about its plans this morning, and its shares moved on it. Here&#39;s what it said, and what it means.">`
+      + `<meta property="og:image" content="https://example.com/img/${encodeURIComponent(sym)}.png"><meta property="article:published_time" content="${new Date(Date.now() - 1800e3).toISOString()}"></head><body><p>The story.</p></body></html>`);
+  }
+  if (u.pathname === '/pic') { log({ kind: 'pic', u: u.searchParams.get('u') }); res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGNgYGD4z8DAwMDEwMAAAA0UAQGV0NnCAAAAAElFTkSuQmCC', 'base64')); }
   if (u.pathname === '/v1/finance/search') { const q = u.searchParams.get('q'); log({ kind: Number(u.searchParams.get('newsCount')) > 0 ? 'news' : 'search', q }); return send(200, search(q)); }
   send(404, {});
 }).listen(8801, '127.0.0.1');

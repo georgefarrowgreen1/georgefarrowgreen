@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { plainName, readChart, cleanSymbol, kindOf, topicOf } from "../../../functions/_markets.js";
+import { plainName, readChart, cleanSymbol, kindOf, topicOf, readPreview, marketWide } from "../../../functions/_markets.js";
 
 test("company names, as people say them", () => {
   assert.equal(plainName("Rolls-Royce Holdings plc"), "Rolls-Royce");
@@ -98,4 +98,28 @@ test("a trust's or fund's market, from its name: where its news comes from when 
   assert.equal(topicOf("Murray International", "trust"), "WORLD");
   assert.equal(topicOf("Scottish Mortgage", "trust"), null, "nothing in its name to say");
   assert.equal(topicOf("JPMorgan Chase & Co.", "share"), null, "a company's own stories are its own");
+});
+
+test("a story's page, as it describes itself for link previews", () => {
+  const html = `<html><head><title>Ignored when there's more</title><meta property="og:site_name" content="Barron&#39;s"><meta content="Okta Stock Can Find More Buyers &amp; More" property="og:title">
+    <meta name="description" content="Funds that follow the index will need to buy its shares.  Here&rsquo;s why."><meta property="og:image" content="/img/okta.jpg?w=800&amp;h=450">
+    <meta property="article:published_time" content="2026-10-30T21:20:00Z"></head><body><meta property="og:title" content="not this one"></body></html>`;
+  assert.deepEqual(readPreview(html, "https://www.barrons.com/articles/okta-sp-500-1"), { title: "Okta Stock Can Find More Buyers & More", summary: "Funds that follow the index will need to buy its shares. Here’s why.",
+    image: "https://www.barrons.com/img/okta.jpg?w=800&h=450", site: "Barron's", at: Date.parse("2026-10-30T21:20:00Z") });
+  const bare = readPreview("<head><title>Just a title</title><meta property='og:image' content='http://insecure.example/a.png'></head>", "https://news.example.co.uk/x");
+  assert.deepEqual(bare, { title: "Just a title", summary: null, image: null, site: "news.example.co.uk", at: null }, "a picture over plain http: none");
+  const long = readPreview(`<meta name="description" content="${"word ".repeat(200)}">`, "https://a.example/");
+  assert.ok(long.summary.length <= 421 && long.summary.endsWith("…") && !/\s…$/.test(long.summary), "a long summary cut at a word");
+  assert.equal(readPreview(`<meta property="og:title" content="Same"><meta property="og:description" content="Same">`, "https://a.example/").summary, null, "a summary that's the headline again: none");
+});
+
+test("a market's stories about the market: one company's stories left out unless it's yours, or about an index", () => {
+  const n = (title, tickers) => ({ title, tickers });
+  assert.equal(marketWide(n("Was There Any Sign ADT Stock Would Run?", ["ADT"])), false);
+  assert.equal(marketWide(n("Did The Market Read AppLovin Stock Right?", ["APP"])), false);
+  assert.equal(marketWide(n("Okta Stock Can Find More Buyers as It Joins the S&P 500", ["OKTA"])), true, "joining the index is the index's news");
+  assert.equal(marketWide(n("US stocks fall as chipmakers slide", [])), true);
+  assert.equal(marketWide(n("Nvidia and AMD lead chip stocks lower", ["NVDA", "AMD"])), true, "more than one company: the market's");
+  assert.equal(marketWide(n("Futures slip ahead of the Fed", ["^GSPC", "ES=F"])), true, "indices aren't companies");
+  assert.equal(marketWide(n("Did The Market Read AppLovin Stock Right?", ["APP"]), new Set(["APP"])), true, "yours: kept");
 });

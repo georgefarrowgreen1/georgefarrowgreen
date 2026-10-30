@@ -29,6 +29,9 @@ export const quotes = (syms) => call(`quotes?s=${list(syms)}`);
 export const chart = (sym, r) => call(`chart?s=${encodeURIComponent(sym)}&r=${r}`);
 export const years = (syms) => call(`years?s=${list(syms)}`, { wait: 60000 });
 export const news = (syms, markets = true) => call(`news?s=${list(syms)}${markets ? "" : "&m=0"}`);
+// a story's preview (its page's title, summary and picture), and that picture, passed through Markets
+export const story = (u) => call(`story?u=${encodeURIComponent(u)}`, { wait: 12000 });
+export const picUrl = (u, s) => `${API}/pic?${new URLSearchParams({ u, s: s || "" })}`;
 export const search = (q) => call(`search?q=${encodeURIComponent(q)}`);
 export const putHolding = (h) => call("holding", { method: "PUT", body: h });
 export const dropHolding = (sym) => call(`holding?s=${encodeURIComponent(sym)}`, { method: "DELETE" });

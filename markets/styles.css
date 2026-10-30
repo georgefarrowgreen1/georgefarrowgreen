@@ -380,6 +380,30 @@ button.nghead:active { opacity: 0.6; }
 .nchip.up-t { background: var(--up-soft); color: var(--up); }
 .nchip.down-t { background: var(--down-soft); color: var(--down); }
 .nchip.via { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-3); }
+.nchip.more { background: color-mix(in srgb, var(--ift-tint) 15%, transparent); color: var(--tint-text); }
+/* a story, in Markets: its picture; headline; what it says; what it means for you; more on it; its page a tap away */
+.rpic { margin-top: 12px; overflow: hidden; border-radius: 18px; background: var(--field); aspect-ratio: 16 / 9; animation: fade 0.4s var(--ease-out); }
+.rpic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.rhead { margin: 16px 0 0; font: 700 23px/1.24 var(--font-d); letter-spacing: -0.45px; text-wrap: balance; }
+.rsrc { margin: 8px 0 0; font-size: 13.5px; color: var(--text-3); }
+.rsum { margin-top: 18px; min-height: 24px; }
+.rlab { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
+.rtext { margin: 0; font: 400 17px/1.55 var(--font-d); letter-spacing: -0.15px; color: var(--text); text-wrap: pretty; }
+.rwait, .rnone { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--text-3); }
+.rwait { animation: pulse 1.6s ease-in-out infinite; }
+.ryou { margin-top: 20px; padding: 14px 15px; border-radius: 18px; background: var(--field); }
+.ryou .nchips { margin: 0 0 8px; }
+.ryou p { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--text-2); }
+.rmore span { min-width: 0; }
+.rmore small { display: block; font-size: 12.5px; color: var(--text-3); }
+.rmore b { display: block; margin-top: 2px; font-size: 15px; font-weight: 600; line-height: 1.35; white-space: normal; }
+.racts { display: grid; gap: 8px; margin-top: 24px; }
+.readit { display: flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 16px; border-radius: 16px; background: var(--tint); color: var(--tint-ink); font-size: 16.5px; font-weight: 650; text-align: center; text-decoration: none; transition: opacity 0.2s, transform 0.2s var(--ease-out); }
+.readit:active { opacity: 0.8; transform: scale(0.98); }
+.rtwo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rtwo button { min-height: 44px; border-radius: 14px; background: var(--ctl); font-size: 15px; font-weight: 600; color: var(--tint-text); text-align: center; }
+.rtwo button:active { background: var(--press); }
+.rsafari { justify-self: center; padding: 6px 10px; font-size: 13px; font-weight: 500; color: var(--text-3); text-decoration: none; }
 .nmore { width: 34px; height: 34px; margin-top: 9px; border-radius: 50%; display: grid; place-items: center; color: var(--text-3); transition: background-color 0.2s; }
 .nmore span { display: flex; gap: 3px; }
 .nmore i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
@@ -768,6 +792,11 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .nreact.up-t { background: var(--up-soft); } .nreact.down-t { background: var(--down-soft); } .nreact.flat-t { background: var(--ctl); }
 .nst { margin: 2px 0 0; font: 650 19px/1.3 var(--font-d); letter-spacing: -0.3px; text-wrap: pretty; }
 .nsrc { margin: 6px 0 0; font-size: 12.5px; color: var(--text-3); }
+.npic { margin-top: 12px; overflow: hidden; border-radius: 12px; background: var(--field); aspect-ratio: 16 / 9; }
+.npic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.npre { margin-top: 12px; }
+.npre .npsum { margin: 0; font: 400 14.5px/1.55 var(--font-d); color: var(--text); text-wrap: pretty; }
+.npre small { display: block; margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
 .nacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 a.dbtn { text-decoration: none; }
 .nco { margin-top: 18px; padding-top: 14px; border-top: 0.5px solid var(--line); }

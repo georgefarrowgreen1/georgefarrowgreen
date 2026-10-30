@@ -30,7 +30,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, picture } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
@@ -89,6 +89,24 @@ const ROUTES = {
     const u = await signedIn(request, env);
     await limit(env, `mksearch:${u.id}`, 300, 3600e3);
     return shared({ results: await search(env, new URL(request.url).searchParams.get("q")) }, 600);
+  },
+  // a story's preview, from its page (its title, summary and picture, as it gives them for link previews)
+  "GET story": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, `mkstory:${u.id}`, 300, 3600e3);
+    const link = new URL(request.url).searchParams.get("u") || "";
+    if (!/^https?:\/\//.test(link) || link.length > 2048) throw new HttpError(400, "Bad request.");
+    return json({ story: await story(env, link) });
+  },
+  // its picture, passed through: one of the search's own, or the one its preview gave
+  "GET pic": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, `mkpic:${u.id}`, 900, 3600e3);
+    const p = new URL(request.url).searchParams, src = p.get("u") || "", link = p.get("s") || "";
+    if (!/^https?:\/\//.test(src) || src.length > 2048 || link.length > 2048) throw new HttpError(400, "Bad request.");
+    const pic = await picture(env, src, link);
+    if (!pic) return new Response(null, { status: 404, headers: { "Cache-Control": "private, max-age=3600" } });
+    return new Response(pic.body, { headers: { "Content-Type": pic.type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Cross-Origin-Resource-Policy": "same-origin" } });
   },
   "PUT holding": async ({ request, env }) => {
     sameOrigin(request);

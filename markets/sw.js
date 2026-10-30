@@ -46,7 +46,7 @@ self.addEventListener("notificationclick", (e) => {
 // an iPhone takes what it says of the status bar from the page that's open as it's added to the Home Screen, and a
 // page kept from before said otherwise.
 const SHELL = "markets-app-2";
-const FILES = ["./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "income.js", "desk.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
+const FILES = ["./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "income.js", "stories.js", "desk.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
 const at = (f) => new URL(f, self.registration.scope).href;
 const isFile = (u, scope) => u.pathname.startsWith(scope.pathname) && !u.pathname.slice(scope.pathname.length).includes("/") && /\.(js|css|webmanifest|svg|png)$/.test(u.pathname);
 const tagOf = (res) => res.headers.get("etag") || "";

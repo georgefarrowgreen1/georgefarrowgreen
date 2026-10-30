@@ -164,6 +164,8 @@ const said = await d.locator('.nreact:not(:empty)').allInnerTexts();
 ok(await d.locator('.nrowd .nreact').count() === await d.locator('.nrowd').count() && said.every((t) => /^[+−]\d+\.\d% since$/.test(t)), "each story with room for its price's move since it came out, said only where there's been one", said.slice(0, 3).join(' · ') || 'none moved');
 await d.waitForSelector('.nchart svg circle.nd.on', { timeout: 15000 }).catch(() => {});
 ok(await d.locator('.nchart svg circle.nd.on').count() >= 1 && /^(Little moved since this came out|[+−]\d+\.\d% since this came out|This came out before the week's prices\.)$/.test(await d.locator('.nsince').first().innerText().catch(() => '')), "the story chosen: what it names, on the week's chart, the story marked where it came out", await d.locator('.nsince').first().innerText().catch(() => ''));
+await d.waitForSelector('.npre .npsum', { timeout: 10000 }).catch(() => {});
+ok(/said more about its plans this morning/.test(await d.locator('.npre .npsum').innerText().catch(() => '')) && /From Example News's page/.test(await d.locator('.npre small').innerText().catch(() => '')), "the story chosen: what its page says, beside it", await d.locator('.npre').innerText().catch(() => ''));
 const st1 = await d.locator('.nst').innerText(); await d.keyboard.press('j'); await settle(d, 500); const st2 = await d.locator('.nst').innerText();
 ok(st1 !== st2 && (await d.locator('.nrowd[aria-selected="true"] b').innerText()) === st2, 'j: the next story, chosen', `${st1} → ${st2}`);
 await d.screenshot({ path: `${out}/6-news.png` });

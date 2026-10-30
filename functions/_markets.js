@@ -257,8 +257,22 @@ export function topicOf(name = "", kind = "") {
 const searchNews = (env, q, n = 8) => cached(env, `n:${q}`, 15 * MIN, async () => {
   const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=0&newsCount=${n}&listsCount=0`);
   return { items: (j?.news || []).filter((x) => x?.title && /^https:\/\//.test(x.link || "") && num(x.providerPublishTime) != null)
-    .map((x) => ({ title: String(x.title).slice(0, 240), src: String(x.publisher || "").slice(0, 60), link: x.link, at: x.providerPublishTime * 1000, tickers: (x.relatedTickers || []).map((t) => String(t).toUpperCase()).slice(0, 8) })) };
+    .map((x) => ({ title: String(x.title).slice(0, 240), src: String(x.publisher || "").slice(0, 60), link: x.link, at: x.providerPublishTime * 1000, tickers: (x.relatedTickers || []).map((t) => String(t).toUpperCase()).slice(0, 8), pic: thumbOf(x.thumbnail) })) };
 }).catch(() => ({ items: [] }));
+// (a story's picture, as the search gives it: the largest no more than 1,200 across, else the smallest)
+function thumbOf(t) {
+  const all = (t?.resolutions || []).filter((r) => /^https:\/\//.test(r?.url || "") && num(r.width) != null).sort((a, b) => a.width - b.width);
+  const pick = all.filter((r) => r.width <= 1200).at(-1) || all[0];
+  return pick ? pick.url : null;
+}
+// A market's story that's about the market, not one company: kept unless it names just the one company (not on your
+// list) and no index (one joining the S&P 500 is the S&P 500's news; "Was there any sign ADT would run?" isn't)
+const INDEX_TICKER = /^\^|^(SPY|VOO|IVV|QQQ|DIA|IWM|VTI|VT|ES=F|NQ=F|YM=F|RTY=F)$/;
+export function marketWide(n, mine = new Set()) {
+  const cos = n.tickers.filter((t) => !INDEX_TICKER.test(t));
+  if (cos.length !== 1 || mine.has(cos[0])) return true;
+  return /\b(s&p|ftse|dow|nasdaq|russell|index|indices)\b/i.test(n.title);
+}
 export async function news(env, symbols, { markets = true } = {}) {
   const list = symbols.slice(0, 10), q = await quotes(env, list).catch(() => ({})), topics = {};
   const asks = [];
@@ -275,15 +289,83 @@ export async function news(env, symbols, { markets = true } = {}) {
   }
   if (markets) for (const [t, sym] of Object.entries(TOPIC_QUERY)) asks.push([null, t, searchNews(env, sym)]);
   const got = await Promise.all(asks.map((a) => a[2]));
-  const seen = new Set(), out = [];
+  const seen = new Set(), out = [], mine = new Set(list);
   got.forEach((r, i) => (r?.items || []).forEach((n) => {
     const key = n.link.replace(/[?#].*$/, "");
-    if (seen.has(key)) return;
+    if (seen.has(key) || (asks[i][1] && !marketWide(n, mine))) return;
     seen.add(key);
     out.push({ ...n, for: asks[i][0], topic: asks[i][1] });
   }));
   return { news: out.sort((a, b) => b.at - a.at).slice(0, 40), topics };
 }
+// ---------------- a story, in the app ----------------
+// What a story's page says of itself for link previews (what a link to it shows in Messages), from its <meta> tags:
+// { title, summary (no more than 420 characters, at a word), image (https, from the page's address), site, at (ms) },
+// any of them null
+const ENTITY = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", mdash: "—", ndash: "–", hellip: "…" };
+const unentity = (t) => String(t).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()] ?? m));
+const plainText = (t) => unentity(String(t).replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+export function readPreview(html, url) {
+  const head = String(html).slice(0, 400000), meta = {};
+  for (const tag of head.match(/<meta\b[^>]*>/gi) || []) {
+    const a = {};
+    for (const m of tag.matchAll(/([a-z][\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) a[m[1].toLowerCase()] = m[2] ?? m[3] ?? m[4];
+    const k = (a.property || a.name || a.itemprop || "").toLowerCase();
+    if (k && a.content != null && meta[k] == null) meta[k] = a.content;
+  }
+  const title = plainText(meta["og:title"] || meta["twitter:title"] || (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(head) || [])[1] || "") || null;
+  let summary = plainText(meta["og:description"] || meta["twitter:description"] || meta.description || "") || null;
+  if (summary && title && summary.toLowerCase() === title.toLowerCase()) summary = null;
+  if (summary && summary.length > 420) summary = summary.slice(0, 420).replace(/\s+\S*$/, "") + "…";
+  let image = null;
+  try { const u = new URL(unentity(meta["og:image:secure_url"] || meta["og:image"] || meta["twitter:image"] || meta["twitter:image:src"] || ""), url); if (u.protocol === "https:") image = u.href; } catch (_) {}
+  let site = plainText(meta["og:site_name"] || "") || null;
+  if (!site) { try { site = new URL(url).hostname.replace(/^www\./, ""); } catch (_) {} }
+  const at = Date.parse(meta["article:published_time"] || meta["og:published_time"] || meta.date || "") || null;
+  return { title: title && title.slice(0, 300), summary, image, site: site && site.slice(0, 80), at };
+}
+// (a page Markets will ask for: https, a name and no number for its address, no port or sign-in in it)
+const PAGE_UA = "Mozilla/5.0 (compatible; InFliteMarkets/1.0; link preview; +https://inflite.ai)";
+const okPage = (u) => u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") && /\.[a-z]{2,}$/i.test(u.hostname) && !/^[\d.]+$/.test(u.hostname);
+// (MARKETS_PAGE in the environment: another address to ask for pages and pictures at, a test's stand-in)
+async function readPage(env, link) {
+  let u; try { u = new URL(link); } catch (_) { return null; }
+  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null;
+  if (!hook && !okPage(u)) return null;
+  const r = await fetch(hook ? `${hook}/page?u=${encodeURIComponent(u.href)}` : u.href, { headers: { "User-Agent": PAGE_UA, Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(6000) }).catch(() => null);
+  if (!r?.ok || !/html/i.test(r.headers.get("Content-Type") || "")) { r?.body?.cancel().catch(() => {}); return null; }
+  let end = u;
+  try { if (!hook && r.url) end = new URL(r.url); } catch (_) {}
+  // (a consent page, not the story: nothing to say)
+  if (!hook && (!okPage(end) || /(^|\.)consent\.|\/guce\//i.test(end.hostname + end.pathname))) { r.body?.cancel().catch(() => {}); return null; }
+  // (the head's enough: read no further than it, and never more than 400 KB)
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let html = "";
+  while (html.length < 400000) { const { done, value } = await reader.read(); if (done) break; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; }
+  reader.cancel().catch(() => {});
+  return readPreview(html, end.href);
+}
+// a story's preview: read once a day for everyone (nothing found, kept as nothing for an hour)
+export async function story(env, link) {
+  return cached(env, `st:${String(link).slice(0, 500)}`, 24 * HOUR, () => readPage(env, link));
+}
+// A story's picture, passed through (so your phone asks nothing of the publisher's site): one of the search's own
+// pictures (Yahoo's), or the one a story's preview gave. → { body, type } or null
+const PIC_HOSTS = /(^|\.)(yimg\.com|zenfs\.com)$/i;
+export async function picture(env, src, link) {
+  let u; try { u = new URL(src); } catch (_) { return null; }
+  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null;
+  if (!hook) {
+    if (!okPage(u)) return null;
+    if (!PIC_HOSTS.test(u.hostname)) { const p = link ? await story(env, link).catch(() => null) : null; if (p?.image !== u.href) return null; }
+  }
+  const r = await fetch(hook ? `${hook}/pic?u=${encodeURIComponent(u.href)}` : u.href, { headers: { "User-Agent": PAGE_UA, Accept: "image/avif,image/webp,image/png,image/jpeg,image/*" }, signal: AbortSignal.timeout(6000) }).catch(() => null);
+  const type = (r?.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+  if (!r?.ok || !/^image\/(jpeg|png|webp|gif|avif)$/.test(type)) { r?.body?.cancel().catch(() => {}); return null; }
+  const body = await r.arrayBuffer();
+  return body.byteLength > 3e6 ? null : { body, type };
+}
+
 // The markets everyone sees: London, New York, Bitcoin (and the pound, for adding up what's in dollars)
 export const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 // each exchange's own index, to say how a holding did against its market

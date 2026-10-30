@@ -720,9 +720,22 @@ function storyCol() {
   return h("div.dpane.nstoryc", {}, h("div.dhead", {}, h("h2", { text: "The story" })),
     h("p.nst", { text: sel.title }),
     h("p.nsrc", { text: `${sel.src} · ${new Date(sel.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` }),
+    preview(sel),
     h("div.nacts", {}, h("a.dbtn.go", { href: sel.link, target: "_blank", rel: "noopener", text: `Read it at ${sel.src}` }),
       h("button.dbtn", { type: "button", onclick: () => shareStory(sel) }, icon("send", 14, 2.4), "Send"), h("button.dbtn", { type: "button", onclick: () => copyStory(sel), text: "Copy Link" })),
     named.length ? named.map((sym) => namedChart(sym, sel)) : null);
+}
+// what a story says (its page's own summary for link previews), and its picture, both through Markets
+function preview(n) {
+  const box = h("div.npre", {}, h("p.dempty", { text: "Getting what it says…" })), pic = h("div.npic", { hidden: true });
+  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
+  if (n.pic) show(n.pic);
+  A.story(n.link).then(({ story: p }) => {
+    if (!box.isConnected) return;
+    box.replaceChildren(...(p?.summary ? [h("p.npsum", { text: p.summary }), h("small", { text: `From ${p.site || n.src}'s page` })] : [h("p.dempty", { text: `${n.src} doesn't say more than its headline here.` })]));
+    if (!n.pic && p?.image) show(p.image);
+  }, () => { if (box.isConnected) box.replaceChildren(h("p.dempty", { text: "Couldn't get what it says just now." })); });
+  return [pic, box];
 }
 // one the story names: its week, drawn, each story about it marked where it came out, and its move since this one
 function namedChart(sym, sel) {

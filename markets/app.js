@@ -21,6 +21,7 @@
 import * as A from "./account.js";
 import * as C from "./charts.js";
 import { marked as markDivs, health, project, taxYearOf, csv } from "./income.js";
+import { sameStory, storiesOf } from "./stories.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
@@ -382,8 +383,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.82";
-const NEWS = "News, made more of: a brief that says why, stories by what you own, what's new, and on a big screen a news desk";
+const BUILD = "1.83";
+const NEWS = "A story opens in Markets: what it says, what it means for you, more on it, and its page over the app";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1427,6 +1428,8 @@ function newsGroups(all) {
   for (const x of S.list.filter((y) => !(y.qty > 0))) { const st = take((s) => aboutIt(s, x.symbol), 3); if (st.length) out.push({ kind: "following", x, stories: st }); }
   const mk = take((s) => !!s.topic, 8);
   if (mk.length) out.push({ kind: "markets", stories: mk });
+  // (the same story from several publishers, once, the others under it)
+  for (const g of out) g.items = storiesOf(g.stories);
   return out;
 }
 // what's new since you last looked, about what you own (and its markets) or follow, that you haven't read
@@ -1443,18 +1446,64 @@ function newsBadge() {
   b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n);
   b.closest(".tab").setAttribute("aria-label", n ? `News, ${plural(n, "new story", "new stories")}` : "News");
 }
-function storyRow(n, ctx, fresh, read) {
+function storyRow(n, ctx, fresh, read, more = 0) {
   const chips = [];
   if (n.topic) { const iq = S.q[TOPIC_INDEX[n.topic]]; chips.push(h("span.nchip.via", { text: `${TOPIC_NAME[n.topic]}${iq?.chgPct != null ? ` ${pct(iq.chgPct, 1)}` : ""}` })); }
   for (const t of n.tickers) {
     const x = t !== ctx && S.list.find((y) => y.symbol === t), q = x && S.q[t];
     if (x) chips.push(h(`span.nchip.${tone(q?.chgPct)}`, { text: q?.chgPct != null ? `${x.name} ${pct(q.chgPct, 1)}` : x.name }));
   }
+  if (more) chips.push(h("span.nchip.more", { text: `+${more} more on this` }));
   const cls = ["div.nstory", fresh && !read ? "fresh" : "", read ? "read" : ""].filter(Boolean).join(".");
   return h(cls, { "data-key": newsKey(n) },
-    h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: () => markRead(n) },
+    // (opened in Markets; a click held for a new tab, as one)
+    h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return markRead(n); e.preventDefault(); openSheet(storyView, n); } },
       h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title }), chips.length ? h("span.nchips", {}, chips.slice(0, 4)) : null),
     h("button.nmore", { type: "button", "aria-label": `More: ${n.title}`, onclick: () => storyMenu(n) }, h("span", { "aria-hidden": "true" }, h("i"), h("i"), h("i"))));
+}
+// A story, in Markets: what it says (its page's own summary for link previews, and its picture, both through Markets),
+// what it means for what you own, and the rest of the same story; its publisher's page a tap away (from the Home
+// Screen, opened over the app in iPhone's own browser view, Done coming back)
+function storyView(n) {
+  markRead(n);
+  const pic = h("div.rpic", { hidden: true }), sum = h("div.rsum", {}, h("p.rwait", { text: "Getting what it says…" }));
+  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
+  if (n.pic) show(n.pic);
+  A.story(n.link).then(({ story: p }) => {
+    if (!sum.isConnected) return;
+    sum.replaceChildren(...(p?.summary ? [h("h4.rlab", { text: `From ${p.site || n.src}` }), h("p.rtext", { text: p.summary })]
+      : [h("p.rnone", { text: `${n.src} doesn't say more than its headline here.` })]));
+    if (!n.pic && p?.image) show(p.image);
+  }, () => { if (sum.isConnected) sum.replaceChildren(h("p.rnone", { text: "Couldn't get what it says just now." })); });
+  const home = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  const others = (S.news || []).filter((m) => m !== n && !newsHidden().has(m.src) && sameStory(n, m)).slice(0, 5);
+  return [h("div.shead", {}, backBtn(), h("small", { text: `${n.src} · ${ago(n.at)}` }), closeBtn()),
+    pic, h("h2.rhead", { text: n.title }),
+    h("p.rsrc", { text: `${n.src} · ${new Date(n.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` }),
+    sum, forYou(n),
+    others.length ? [h("h3.slabel", { text: "More on this" }), h("div.list.flush", {}, others.map((m) => h("button.item.two.rmore", { type: "button", onclick: () => pushSheet(storyView, m) },
+      h("span", {}, h("small", { text: `${m.src} · ${ago(m.at)}` }), h("b", { text: m.title })))))] : null,
+    h("div.racts", {},
+      h("a.readit", { href: n.link, rel: "noopener", ...(home ? {} : { target: "_blank" }) }, `Read it at ${n.src}`),
+      h("div.rtwo", {}, h("button", { type: "button", onclick: () => shareStory(n), text: "Send in Chat" }), h("button", { type: "button", onclick: () => copyStory(n), text: "Copy Link" })),
+      home ? h("a.rsafari", { href: n.link, target: "_blank", rel: "noopener", text: "Open in Safari instead" }) : null)];
+}
+// what a story means for what you own: yours, one you follow, or your holdings' market
+function forYou(n) {
+  const own = owned(), on = [...new Set([n.for, ...n.tickers])].map((s) => S.list.find((x) => x.symbol === s)).filter(Boolean);
+  const chips = [], said = [];
+  if (n.topic) { const iq = S.q[TOPIC_INDEX[n.topic]]; chips.push(h("span.nchip.via", { text: `${TOPIC_NAME[n.topic]}${iq?.chgPct != null ? ` ${pct(iq.chgPct, 1)}` : ""}` })); }
+  for (const x of on) { const q = S.q[x.symbol]; chips.push(h(`span.nchip.${tone(q?.chgPct)}`, { text: q?.chgPct != null ? `${x.name} ${pct(q.chgPct, 1)}` : x.name })); }
+  const mine = on.filter((x) => x.qty > 0), followed = on.filter((x) => !(x.qty > 0));
+  if (mine.length) said.push(`You own ${and2(mine.map((x) => `${x.name} (${money(valueOf(x) || 0, "GBP", 0)})`))}.`);
+  if (followed.length) said.push(`You follow ${and2(followed.map((x) => x.name))}.`);
+  if (!on.length && n.topic) {
+    const by = own.filter((x) => { const t = S.newsTopics?.[x.symbol]; return t && (t === "WORLD" || t === n.topic); });
+    for (const x of by) { const q = S.q[x.symbol]; if (q?.chgPct != null) chips.push(h(`span.nchip.${tone(q.chgPct)}`, { text: `${x.name} ${pct(q.chgPct, 1)}` })); }
+    said.push(by.length ? `It's news about the ${TOPIC_NAME[n.topic]}, the market ${and2(by.map((x) => x.name))} ${by.length === 1 ? "invests" : "invest"} in.` : `It's news about the ${TOPIC_NAME[n.topic]}.`);
+  }
+  if (!said.length) return null;
+  return h("div.ryou", {}, h("h4.rlab", { text: "For you" }), chips.length ? h("span.nchips", {}, chips.slice(0, 5)) : null, h("p", { text: said.join(" ") }));
 }
 function markRead(n) {
   const r = store.get("newsRead", []), k = newsKey(n);
@@ -1504,7 +1553,7 @@ function newsView() {
     parts.push(h("section.ngroup.rise", { vars: { i: String(Math.min(gi + 2, 8)) }, "aria-label": g.x?.name || "Markets" },
       h(g.x ? "button.nghead" : "div.nghead", g.x ? { type: "button", onclick: () => openSheet(stockView, g.x.symbol) } : {},
         h("span", {}, h("b", { text: g.x?.name || "Markets" }), h("small", { text: sub })), q?.chgPct != null ? h("span", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct) }) : null),
-      h("div.list.nlist", {}, g.stories.map((n) => storyRow(n, g.x?.symbol, n.at > S.newsSince, read.has(newsKey(n)))))));
+      h("div.list.nlist", {}, g.items.map(({ lead: n, more }) => storyRow(n, g.x?.symbol, n.at > S.newsSince, read.has(newsKey(n)), more.length)))));
   });
   if (hidden.size) parts.push(h("p.foot", {}, `Not showing stories from ${and2([...hidden])}. `, h("button.inline", { type: "button", onclick: () => { store.del("newsHide"); render(false); newsBadge(); }, text: "Show Them" })));
   return parts;
@@ -2316,4 +2365,4 @@ start();
 DESK.addEventListener("change", () => render(false));
 export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
   INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries,
-  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID };
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, storyView };
