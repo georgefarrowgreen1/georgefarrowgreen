@@ -38,6 +38,7 @@ export const setIsa = (paid) => call("isa", { method: "PUT", body: { paid } });
 export const setWrap = (on) => call("wrap", { method: "PUT", body: { on } });
 export const buys = (sym) => call(`buys?s=${encodeURIComponent(sym)}`);
 export const paid = () => call("paid", { wait: 60000 });
+export const divs = (sym) => call(`divs?s=${encodeURIComponent(sym)}`);
 export const addBuy = (b) => call("buy", { method: "POST", body: b });
 export const dropBuy = (id) => call(`buy?id=${encodeURIComponent(id)}`, { method: "DELETE" });
 export const pushKey = () => call("push-key");

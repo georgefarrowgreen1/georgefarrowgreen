@@ -631,6 +631,65 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .dcome button:first-child { border-top: 0; } .dcome span { color: var(--text-3); } .dcome b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dcome i { font-style: normal; color: var(--text-2); }
 .dstat { display: flex; align-items: center; gap: 18px; font-size: 12px; color: var(--text-3); }
 .dstat .keys { margin-left: auto; display: flex; gap: 14px; } .dstat .keys span { display: inline-flex; align-items: center; gap: 5px; }
+/* the two screens; the command line's suggestions */
+.dtabs { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--field); flex: none; }
+.dtabs button { height: 30px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text-3); }
+.dtabs button[aria-selected="true"] { background: var(--thumb); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+.dcmdw { position: relative; flex: 0 1 520px; min-width: 260px; } .dcmdw .dcmd { width: 100%; flex: none; }
+.dsug { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border-radius: 14px; background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), 0 18px 40px -12px rgba(0, 0, 0, 0.45); }
+.sitem { display: grid; grid-template-columns: 64px minmax(0, auto) minmax(0, 1fr); align-items: baseline; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 9px; text-align: left; }
+.sitem[aria-selected="true"] { background: var(--ctl); }
+.sitem b { font: 700 12.5px/1.2 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); } .sitem b.fn { color: var(--tint-text); }
+.sitem span { font-weight: 600; white-space: nowrap; } .sitem small { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the one chosen: its views */
+.ivtabs { display: flex; gap: 18px; margin-top: 12px; border-bottom: 0.5px solid var(--line); }
+.ivtabs button { position: relative; padding: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-3); }
+.ivtabs button small { margin-left: 5px; font: 600 10px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-3); opacity: 0.8; }
+.ivtabs button[aria-selected="true"] { color: var(--text); } .ivtabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--tint); }
+.dtools { position: relative; }
+.dtog.menu { display: inline-flex; align-items: center; gap: 5px; } .dtog.menu[aria-expanded="true"] { background: var(--ctl); color: var(--text); } .car { font-size: 9px; }
+.dmenu { position: absolute; z-index: 30; top: calc(100% + 4px); right: 120px; min-width: 230px; padding: 6px; border-radius: 12px; background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), 0 18px 40px -12px rgba(0, 0, 0, 0.45); }
+.dmenu.r { right: 0; }
+.dmenu button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; font-size: 13px; font-weight: 500; }
+.dmenu button:hover { background: var(--ctl); } .dmenu small { color: var(--text-3); font-size: 11.5px; }
+.dmenu .chk { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--text-3); }
+.dmenu [aria-checked="true"] .chk { border-color: var(--tint); background: var(--tint); box-shadow: inset 0 0 0 2.5px var(--glass-strong); }
+.dmenu p { margin: 6px 8px 2px; font-size: 11.5px; color: var(--text-3); }
+/* the chart's candles, bands and panes */
+.dchart .cu line, .dchart .cd line { stroke-width: 1; } .dchart .cu line { stroke: var(--up); } .dchart .cd line { stroke: var(--down); }
+.dchart .cu rect { fill: var(--up); } .dchart .cd rect { fill: var(--down); }
+.dchart .bbf { fill: var(--blue); opacity: 0.08; } .dchart .bbl { fill: none; stroke: var(--blue); stroke-width: 1; opacity: 0.55; } .dchart .bbm { fill: none; stroke: var(--blue); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.6; }
+.dchart .psep { stroke: var(--line); stroke-width: 1; } .dchart .plab { fill: var(--text-3); font: 600 10.5px var(--font); }
+.dchart .grid.dash { stroke-dasharray: 3 4; } .dchart .rsiz { fill: var(--violet); opacity: 0.07; } .dchart .rsil { fill: none; stroke: var(--violet); stroke-width: 1.4; }
+.dchart .mh.up { fill: var(--up); opacity: 0.45; } .dchart .mh.dn { fill: var(--down); opacity: 0.45; } .dchart .mml { fill: none; stroke: var(--blue); stroke-width: 1.3; } .dchart .msl { fill: none; stroke: var(--warn); stroke-width: 1.3; }
+.dlegend i.bbi { background: var(--blue); }
+/* its prices, day by day; its dividends; its news */
+.hp { overflow: auto; max-height: calc(100svh - 300px); scrollbar-width: thin; }
+.hpt th, .dvt th { text-align: right; } .hpt th:first-child, .dvt th:first-child { text-align: left; } .hpt td b { font-weight: 600; } .hpt td, .dvt td { padding: 6px; }
+.dv .figs { margin-top: 4px; }
+.dvbars { display: flex; align-items: flex-end; gap: 6px; height: 110px; margin: 16px 0 12px; }
+.dvbars div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.dvbars i { width: 100%; max-width: 28px; border-radius: 4px 4px 1px 1px; background: var(--m3); opacity: 0.8; } .dvbars small { margin-top: 4px; font-size: 10.5px; color: var(--text-3); }
+.dnews.full { margin-top: 6px; max-height: none; }
+/* every function and key */
+.dhelp { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--dim); }
+.dhelpc { width: min(820px, calc(100vw - 80px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px 20px; border-radius: 18px; background: var(--sheet); box-shadow: var(--edge), 0 30px 60px -20px rgba(0, 0, 0, 0.5); }
+.hgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 22px; }
+.hgrid div { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 0 10px; padding: 8px 0; border-top: 0.5px solid var(--line); }
+.hgrid b.fn { font: 700 12.5px ui-monospace, "SF Mono", Menlo, monospace; color: var(--tint-text); } .hgrid span { font-size: 13px; color: var(--text-2); } .hgrid strong { color: var(--text); font-weight: 600; }
+.hgrid small { grid-column: 2; font: 500 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-3); }
+.hkeys { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 12.5px; color: var(--text-2); } .hkeys span { display: inline-flex; align-items: center; gap: 6px; }
+/* the World screen */
+.wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+.wcol { overflow: auto; scrollbar-width: thin; }
+.wt td.wn b { max-width: 160px; } .wt th:first-child { text-align: left; }
+.wt td { padding: 6px; } .wt tbody tr:hover { background: var(--press); }
+.odot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: 0.5; } .odot.on { background: var(--up); opacity: 1; }
+.fxm { width: 100%; border-collapse: separate; border-spacing: 3px; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.fxm th { padding: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--text-3); }
+.fxm td { padding: 8px 4px; border-radius: 6px; background: var(--ctl); text-align: center; }
+.fxm td.self { color: var(--text-3); background: none; }
+.fxm td.fup { background: color-mix(in srgb, var(--up) 22%, var(--ctl)); } .fxm td.fdn { background: color-mix(in srgb, var(--down) 22%, var(--ctl)); }
 /* (an iPad held across: two columns, the heat map, risk, news and dividends in a grid under them; the page scrolls) */
 @media (max-width: 1279px) {
   .desk { height: auto; min-height: 0; }
@@ -638,6 +697,9 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
   .dpane.port { grid-area: port; max-height: 760px; } .dpane.inst { grid-area: inst; max-height: 760px; }
   .dcol { grid-area: side; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
   .dcol > .dpane.grow { min-height: 0; max-height: 420px; }
+  .wgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; } .wcol { max-height: none; }
+  /* (the command line takes what the two markets leave, so neither's cut off) */
+  .dcmdw { flex: 1 1 auto; min-width: 200px; } .tape { flex: none; } .tape .tick:nth-child(n+3) { display: none; }
   .dchartw { height: 340px; } .dt td b { max-width: 150px; } .dt .cp { display: none; }
 }
 

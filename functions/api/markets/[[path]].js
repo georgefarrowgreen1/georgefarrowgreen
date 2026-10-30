@@ -30,7 +30,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, dividends } from "../../_markets.js";
 
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
@@ -70,7 +70,7 @@ const ROUTES = {
     if (!RANGE_NAMES.includes(r)) throw new HttpError(400, "Bad request.");
     const c = await chart(env, s, r);
     if (!c) throw new HttpError(404, "Couldn’t find that one.");
-    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs, v: c.v }, r === "1d" ? 30 : 300);
+    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs, v: c.v, o: c.o, h: c.h, l: c.l }, r === "1d" ? 30 : 300);
   },
   "GET years": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -108,6 +108,13 @@ const ROUTES = {
   "GET buys": async ({ request, env }) => {
     const u = await signedIn(request, env), [s] = symbolsOf(request, 1);
     return json(await buysOf(env, u.id, s));
+  },
+  // every dividend one has paid, as far back as they go
+  "GET divs": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await limit(env, `mkdivs:${u.id}`, 240, 3600e3);
+    const [s] = symbolsOf(request, 1);
+    return shared({ symbol: s, divs: (await dividends(env, s)) || [] }, 3600);
   },
   // what each holding's paid you since you bought it (its dividends)
   "GET paid": async ({ request, env }) => {

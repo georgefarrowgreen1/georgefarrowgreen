@@ -41,6 +41,34 @@ const START = {
   GOOGL: { name: 'Alphabet Inc.', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 241.6, price: 238.9, hi: 256, lo: 150, tz: 'America/New_York', divs: [] },
   AMZN: { name: 'Amazon.com, Inc.', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 226.1, price: 229.4, hi: 242, lo: 170, tz: 'America/New_York', divs: [] },
   META: { name: 'Meta Platforms, Inc.', cur: 'USD', ex: 'NMS', exd: 'NASDAQ', type: 'EQUITY', prev: 736.2, price: 741.9, hi: 790, lo: 480, tz: 'America/New_York', divs: [] },
+  '^FTMC': { name: 'FTSE 250', cur: 'GBP', ex: 'FGI', exd: 'FTSE Index', type: 'INDEX', prev: 21480, price: 21562, hi: 22100, lo: 18900, tz: 'Europe/London', divs: [] },
+  '^GDAXI': { name: 'DAX PERFORMANCE-INDEX', cur: 'EUR', ex: 'GER', exd: 'XETRA', type: 'INDEX', prev: 23890, price: 24012, hi: 24500, lo: 18800, tz: 'Europe/Berlin', divs: [] },
+  '^FCHI': { name: 'CAC 40', cur: 'EUR', ex: 'PAR', exd: 'Paris', type: 'INDEX', prev: 7812, price: 7790, hi: 8250, lo: 7000, tz: 'Europe/Paris', divs: [] },
+  '^STOXX50E': { name: 'EURO STOXX 50 I', cur: 'EUR', ex: 'STO', exd: 'STOXX', type: 'INDEX', prev: 5402, price: 5418, hi: 5600, lo: 4600, tz: 'Europe/Berlin', divs: [] },
+  '^DJI': { name: 'Dow Jones Industrial Average', cur: 'USD', ex: 'DJI', exd: 'DJI', type: 'INDEX', prev: 44210, price: 44380, hi: 45100, lo: 37600, tz: 'America/New_York', divs: [] },
+  '^IXIC': { name: 'NASDAQ Composite', cur: 'USD', ex: 'NIM', exd: 'Nasdaq GIDS', type: 'INDEX', prev: 20410, price: 20532, hi: 20900, lo: 15200, tz: 'America/New_York', divs: [] },
+  '^N225': { name: 'Nikkei 225', cur: 'JPY', ex: 'OSA', exd: 'Osaka', type: 'INDEX', prev: 39820, price: 39510, hi: 42400, lo: 31100, tz: 'Asia/Tokyo', divs: [] },
+  '^HSI': { name: 'HANG SENG INDEX', cur: 'HKD', ex: 'HKG', exd: 'HKSE', type: 'INDEX', prev: 23410, price: 23690, hi: 24900, lo: 16400, tz: 'Asia/Hong_Kong', divs: [] },
+  'GBPUSD=X': { name: 'GBP/USD', cur: 'USD', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 1.2934, price: 1.2951, hi: 1.36, lo: 1.21, tz: 'Europe/London', divs: [] },
+  'GBPEUR=X': { name: 'GBP/EUR', cur: 'EUR', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 1.1842, price: 1.1856, hi: 1.21, lo: 1.15, tz: 'Europe/London', divs: [] },
+  'EURUSD=X': { name: 'EUR/USD', cur: 'USD', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 1.0922, price: 1.0924, hi: 1.18, lo: 1.02, tz: 'Europe/London', divs: [] },
+  'USDJPY=X': { name: 'USD/JPY', cur: 'JPY', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 151.42, price: 150.88, hi: 161.9, lo: 139.6, tz: 'Europe/London', divs: [] },
+  'USDCHF=X': { name: 'USD/CHF', cur: 'CHF', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 0.8812, price: 0.8796, hi: 0.92, lo: 0.78, tz: 'Europe/London', divs: [] },
+  'EURGBP=X': { name: 'EUR/GBP', cur: 'GBP', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 0.8445, price: 0.8435, hi: 0.87, lo: 0.82, tz: 'Europe/London', divs: [] },
+  'JPYGBP=X': { name: 'JPY/GBP', cur: 'GBP', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 0.005107, price: 0.005124, hi: 0.0056, lo: 0.0048, tz: 'Europe/London', divs: [] },
+  'CHFGBP=X': { name: 'CHF/GBP', cur: 'GBP', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 0.8775, price: 0.8780, hi: 0.93, lo: 0.85, tz: 'Europe/London', divs: [] },
+  'GC=F': { name: 'Gold Dec 26', cur: 'USD', ex: 'CMX', exd: 'COMEX', type: 'FUTURE', prev: 3342.1, price: 3368.4, hi: 3510, lo: 2560, tz: 'America/New_York', divs: [] },
+  'SI=F': { name: 'Silver Dec 26', cur: 'USD', ex: 'CMX', exd: 'COMEX', type: 'FUTURE', prev: 38.42, price: 38.11, hi: 40.1, lo: 28.3, tz: 'America/New_York', divs: [] },
+  'BZ=F': { name: 'Brent Crude Oil Last Day Financ', cur: 'USD', ex: 'NYM', exd: 'NY Mercantile', type: 'FUTURE', prev: 66.82, price: 67.41, hi: 82.6, lo: 58.4, tz: 'America/New_York', divs: [] },
+  'CL=F': { name: 'Crude Oil Dec 26', cur: 'USD', ex: 'NYM', exd: 'NY Mercantile', type: 'FUTURE', prev: 63.12, price: 63.88, hi: 78.4, lo: 55.1, tz: 'America/New_York', divs: [] },
+  'NG=F': { name: 'Natural Gas Dec 26', cur: 'USD', ex: 'NYM', exd: 'NY Mercantile', type: 'FUTURE', prev: 3.412, price: 3.338, hi: 4.9, lo: 2.6, tz: 'America/New_York', divs: [] },
+  'HG=F': { name: 'Copper Dec 26', cur: 'USD', ex: 'CMX', exd: 'COMEX', type: 'FUTURE', prev: 4.812, price: 4.861, hi: 5.4, lo: 4.0, tz: 'America/New_York', divs: [] },
+  '^IRX': { name: '13 WEEK TREASURY BILL', cur: 'USD', ex: 'CXI', exd: 'Cboe Indices', type: 'INDEX', prev: 4.212, price: 4.205, hi: 5.3, lo: 4.0, tz: 'America/Chicago', divs: [] },
+  '^FVX': { name: 'Treasury Yield 5 Years', cur: 'USD', ex: 'CXI', exd: 'Cboe Indices', type: 'INDEX', prev: 3.882, price: 3.914, hi: 4.6, lo: 3.4, tz: 'America/Chicago', divs: [] },
+  '^TNX': { name: 'CBOE Interest Rate 10 Year T No', cur: 'USD', ex: 'CXI', exd: 'Cboe Indices', type: 'INDEX', prev: 4.268, price: 4.301, hi: 4.8, lo: 3.6, tz: 'America/Chicago', divs: [] },
+  '^TYX': { name: 'Treasury Yield 30 Years', cur: 'USD', ex: 'CXI', exd: 'Cboe Indices', type: 'INDEX', prev: 4.822, price: 4.851, hi: 5.1, lo: 4.1, tz: 'America/Chicago', divs: [] },
+  'ETH-USD': { name: 'Ethereum USD', cur: 'USD', ex: 'CCC', exd: 'CCC', type: 'CRYPTOCURRENCY', prev: 3610, price: 3702, hi: 4100, lo: 1500, tz: 'UTC', divs: [] },
+  'SOL-USD': { name: 'Solana USD', cur: 'USD', ex: 'CCC', exd: 'CCC', type: 'CRYPTOCURRENCY', prev: 182.4, price: 178.9, hi: 260, lo: 110, tz: 'UTC', divs: [] },
   'USDGBP=X': { name: 'USD/GBP', cur: 'GBP', ex: 'CCY', exd: 'CCY', type: 'CURRENCY', prev: 0.7734, price: 0.7731, hi: 0.83, lo: 0.74, tz: 'Europe/London', divs: [] },
 };
 let Q = structuredClone(START);
@@ -50,6 +78,12 @@ function walk(sym, n, a, b, wiggle = 0.004) {
   let s = [...sym].reduce((x, c) => x * 31 + c.charCodeAt(0), 7) % 233280, v = 0; const out = [];
   for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; v += (s / 233280 - 0.5) * wiggle * 2; out.push(v); }
   return out.map((x, i) => { const f = n > 1 ? i / (n - 1) : 1; return +(a + (b - a) * f + (x - out[n - 1] * f) * a).toFixed(4); });
+}
+// each point's open (near the close before it), high and low (a little either side)
+function ohlc(seed, close) {
+  const j = walk(seed + 'j', close.length, 1, 1, 0.5).map((x) => Math.abs(x));
+  const open = close.map((c, i) => +(i ? close[i - 1] * (1 + (j[i] - 0.5) * 0.004) : c).toFixed(4));
+  return { open, high: close.map((c, i) => +(Math.max(c, open[i]) * (1 + j[i] * 0.006)).toFixed(4)), low: close.map((c, i) => +(Math.min(c, open[i]) * (1 - j[(i + 7) % j.length] * 0.006)).toFixed(4)) };
 }
 function chart(sym, range) {
   const q = Q[sym];
@@ -68,7 +102,7 @@ function chart(sym, range) {
       fiftyTwoWeekHigh: q.hi, fiftyTwoWeekLow: q.lo, regularMarketDayHigh: Math.max(q.price, q.prev) * 1.004, regularMarketDayLow: Math.min(q.price, q.prev) * 0.996,
       longName: q.name, shortName: q.short || q.name, chartPreviousClose: range === '1d' ? q.prev : first, ...(range === '1d' ? { previousClose: q.prev } : {}),
       currentTradingPeriod: { regular: { timezone: 'X', start: open, end, gmtoffset: 0 } }, dataGranularity: '5m', range },
-    timestamp: ts, ...(events ? { events } : {}), indicators: { quote: [{ close, volume: walk(sym + range + 'v', n, 1, 1, 0.6).map((x) => Math.round(Math.abs(x) * 2e6 + 4e5)) }] } }], error: null } };
+    timestamp: ts, ...(events ? { events } : {}), indicators: { quote: [{ close, volume: walk(sym + range + 'v', n, 1, 1, 0.6).map((x) => Math.round(Math.abs(x) * 2e6 + 4e5)), ...ohlc(sym + range, close) }] } }], error: null } };
 }
 function search(q) {
   const k = String(q || '').toLowerCase();

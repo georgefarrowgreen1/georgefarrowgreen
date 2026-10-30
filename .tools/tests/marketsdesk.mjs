@@ -1,7 +1,10 @@
 // Markets on a big screen (markets/desk.js): the desk, at a Mac's size. Your portfolio in a table, sorted by any column,
 // moved through with the keys; the one chosen, its chart (prices and times on its edges, volume, averages, against the
 // market, read under the pointer) and its figures; a heat map of your money, your year's risk, the news, the dividends
-// coming; the command line. At an iPad's size held across, two columns with the rest under them; on a phone, no desk.
+// coming; the command line, its function codes suggested as you type (SHEL DVD, RR HP and its CSV, RR GPC, RR COMP SHEL),
+// the words it took before (vs off); candles a week each, Bollinger bands, RSI, MACD, a log scale, the Studies menu; the
+// World screen (its markets, yields in basis points, the currencies each against the others) and the help. At an iPad's
+// size held across, two columns with the rest under them; on a phone, no desk.
 // (The markets' data is mocks/marketsmock.mjs, standing in for Yahoo Finance's.)
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
@@ -77,7 +80,7 @@ await d.locator('.dt th button:has-text("Value")').click(); await settle(d, 400)
 await d.locator('.desk').click({ position: { x: 5, y: 5 } }).catch(() => {});
 await d.keyboard.press('ArrowDown'); await settle(d, 1500);
 ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'RR.L' && /Rolls-Royce/.test(await d.locator('.inst h2').innerText()), '↓: the next one, chosen', await d.locator('.inst h2').innerText());
-await d.keyboard.press('5'); await d.waitForFunction(() => document.querySelector('.dseg button[aria-pressed="true"]')?.textContent === '5Y'); await settle(d, 1800);
+await d.keyboard.press('5'); await d.waitForFunction(() => document.querySelector('.dseg[aria-label="Range"] button[aria-pressed="true"]')?.textContent === '5Y'); await settle(d, 1800);
 ok(/in 5 years/.test(await d.locator('#dchgsaid').innerText()) && await d.locator('#dchart path.ma').count() === 2 && /200-day average/.test(await d.locator('#dlegend').innerText()), '5: five years, with its 50- and 200-day averages', await d.locator('#dlegend').innerText());
 ok(await d.locator('#dchart .volb').count() > 50 && await d.locator('#dchart text.ax').count() >= 8 && await d.locator('#dchart .tag').count() === 1 && /High /.test(await d.locator('#dchart').textContent()), 'its volume under it, prices and times on its edges, its price now tagged, its high and low marked', (await d.locator('#dchart').textContent()).slice(0, 120));
 await d.keyboard.press('c'); await d.waitForFunction(() => /FTSE 100/.test(document.querySelector('#dlegend')?.textContent || '')); await settle(d, 1500);
@@ -92,7 +95,7 @@ ok(await d.evaluate(() => document.activeElement?.id === 'dcmd'), '/: the comman
 await d.keyboard.type('vs off'); await d.keyboard.press('Enter'); await settle(d, 1500);
 ok(!/FTSE 100/.test(await d.locator('#dlegend').innerText()) && !(await d.$('.sheet:not([hidden])')), 'vs off: back to its price alone (and no page opened)');
 await d.keyboard.press('/'); await d.keyboard.type('tesco 1y'); await d.keyboard.press('Enter'); await settle(d, 1800);
-ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'TSCO.L' && (await d.locator('.dseg button[aria-pressed="true"]').innerText()) === '1Y', 'tesco 1y: Tesco chosen, over a year', await d.locator('.inst h2').innerText());
+ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'TSCO.L' && (await d.locator('.dseg[aria-label="Range"] button[aria-pressed="true"]').innerText()) === '1Y', 'tesco 1y: Tesco chosen, over a year', await d.locator('.inst h2').innerText());
 // ---- on the right ----
 ok(await d.locator('#dheat .tile').count() === 6 && /TSCO/.test(await d.locator('#dheat').innerText()), 'a heat map of your money: a tile each');
 await d.waitForSelector('.rgrid', { timeout: 15000 }).catch(() => {});
@@ -103,8 +106,71 @@ ok(await d.locator('.dcome button').count() >= 1, 'the dividends coming');
 await d.locator('#dheat .tile').first().click(); await settle(d, 1500);
 ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'JAM.L', 'a tile tapped: it chosen');
 await d.locator('.iacts button:has-text("Edit")').click(); await d.waitForSelector('#mk-qty', { timeout: 10000 });
+await d.waitForFunction(() => document.body.classList.contains('sheet-up'));
 ok(true, 'Edit: its page, over the desk');
-await d.keyboard.press('Escape'); await settle(d, 800);
+await d.keyboard.press('Escape'); await d.waitForFunction(() => !document.body.classList.contains('sheet-up')); await settle(d, 700);
+// ---- the function codes, suggested as you type ----
+const sugs = () => d.locator('#dsug .sitem').allInnerTexts().then((a) => a.map((x) => x.replace(/\s+/g, ' ').trim()));
+await d.keyboard.press('/'); await d.keyboard.type('shel'); await settle(d, 400);
+let sg = await sugs();
+ok(/^SHEL Shell/.test(sg[0]) && /^GP Chart/.test(sg[1] || '') && sg.some((x) => /^DVD Dividends/.test(x)), 'shel: Shell first, then what can be done with it', sg.join(' | '));
+await d.keyboard.type(' d'); await settle(d, 300); sg = await sugs();
+ok(sg.length === 1 && /^DVD/.test(sg[0]), 'shel d: its one function that starts with D', sg.join(' | '));
+await d.keyboard.press('Tab'); await settle(d, 200);
+ok((await d.inputValue('#dcmd')) === 'SHEL DVD', 'Tab: completed', await d.inputValue('#dcmd'));
+await d.keyboard.press('Enter'); await d.waitForSelector('.dvt tbody tr', { timeout: 15000 }); await settle(d, 400);
+ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'SHEL.L' && /Dividends/.test(await d.locator('.ivtabs [aria-selected="true"]').innerText()) && await d.locator('.dvt tbody tr').count() >= 20 && await d.locator('.dvbars div').count() >= 8 && /%/.test(await d.locator('.dv .figs').innerText()),
+  "SHEL DVD: Shell's dividends, each year's in a bar, every one in a table, its yield", (await d.locator('.dv .figs').innerText()).replace(/\s+/g, ' '));
+await d.keyboard.press('/'); await d.keyboard.type('RR HP'); await d.keyboard.press('Enter'); await d.waitForSelector('.hpt tbody tr', { timeout: 15000 }); await settle(d, 400);
+const hp = await d.locator('.hpt tbody tr').first().locator('td').allInnerTexts();
+ok((await d.getAttribute('#dhold tbody tr.on', 'data-sym')) === 'RR.L' && await d.locator('.hpt tbody tr').count() > 200 && hp.length === 7 && hp.slice(1, 5).every((x) => /£\d/.test(x)) && parseFloat(hp[2].slice(1)) >= parseFloat(hp[3].slice(1)),
+  "RR HP: Rolls-Royce's prices, day by day: open, high, low, close, change, volume", hp.join(' | '));
+const [dl] = await Promise.all([d.waitForEvent('download'), d.locator('.dtools button:has-text("Download")').click()]);
+const csv = readFileSync(await dl.path(), 'utf8').trim().split('\n');
+ok(dl.suggestedFilename() === 'RR-1y.csv' && csv[0] === 'Date,Open,High,Low,Close,Volume' && csv.length > 200 && /^\d{4}-\d\d-\d\d,[\d.]+,[\d.]+,[\d.]+,[\d.]+,\d+$/.test(csv[1]), 'and downloaded, as a CSV', `${dl.suggestedFilename()} ${csv[0]} ${csv[1]}`);
+// ---- candles and the studies ----
+await d.keyboard.press('/'); await d.keyboard.type('RR GPC'); await d.keyboard.press('Enter'); await d.waitForSelector('#dchart g.cu, #dchart g.cd', { timeout: 15000 }); await settle(d, 600);
+const nc = await d.locator('#dchart g.cu, #dchart g.cd').count();
+ok(nc > 20 && nc < 60 && /weekly candles/.test(await d.locator('#dlegend').innerText()) && !(await d.$('#dchart path.pl')), 'RR GPC: candles, a week each over a year (a day each would be too thin)', `${nc} ${await d.locator('#dlegend').innerText()}`);
+await d.locator('.desk').click({ position: { x: 5, y: 5 } }).catch(() => {});
+for (const k of ['b', 'r', 'm']) { await d.keyboard.press(k); await settle(d, 900); }
+ok(await d.locator('#dchart path.bbf').count() === 1 && await d.locator('#dchart path.rsil').count() === 1 && await d.locator('#dchart path.mml').count() === 1 && /RSI 14 · \d/.test(await d.locator('#dchart').textContent()) && /Bollinger/.test(await d.locator('#dlegend').innerText()),
+  'B, R, M: Bollinger bands on it, RSI and MACD under it');
+const cb = await d.locator('#dchart').boundingBox(); await d.mouse.move(cb.x + cb.width * 0.5, cb.y + 80); await settle(d, 400);
+const tipT = (await d.locator('#dtip').innerText()).replace(/\s+/g, ' ');
+ok(/Week of \d/.test(tipT) && /O £[\d.]+ H £[\d.]+ L £[\d.]+ C £[\d.]+/.test(tipT) && /in the week/.test(tipT) && /RSI \d/.test(tipT) && /MACD/.test(tipT), 'read under the pointer: its week, open, high, low and close, RSI and MACD', tipT);
+await d.mouse.move(2, 2);
+await d.keyboard.press('l'); await settle(d, 900);
+ok(/log/.test(await d.locator('#dlegend').innerText()), 'L: a log scale');
+await d.locator('.dtog.menu:has-text("Studies")').click(); await settle(d, 300);
+ok(await d.locator('.dmenu [role="menuitemcheckbox"]').count() === 6 && await d.locator('.dmenu [aria-checked="true"]').count() === 6, 'the Studies menu: each study, and each on', String(await d.locator('.dmenu [aria-checked="true"]').count()));
+await d.locator('.dmenu button:has-text("Volume")').click(); await settle(d, 900);
+ok(await d.locator('#dchart .volb').count() === 0 && await d.locator('.dmenu [aria-checked="true"]').count() === 5, 'Volume off: its bars gone');
+await d.locator('.desk').click({ position: { x: 5, y: 5 } }).catch(() => {}); await settle(d, 300);
+ok(!(await d.$('.dmenu')), 'a click elsewhere: the menu shut');
+for (const k of ['k', 'b', 'r', 'm', 'l', 'v']) await d.keyboard.press(k);
+await settle(d, 900);
+// ---- compared, by code and as before ----
+await d.keyboard.press('/'); await d.keyboard.type('RR COMP SHEL'); await d.keyboard.press('Enter'); await d.waitForFunction(() => /Shell/.test(document.querySelector('#dlegend')?.textContent || '')); await settle(d, 600);
+ok(await d.locator('#dchart path.vsl').count() === 1 && /vs Shell/.test(await d.locator('.dtog.menu:has-text("vs")').innerText()), 'RR COMP SHEL: Rolls-Royce against Shell');
+await d.keyboard.press('/'); await d.keyboard.type('vs off'); await d.keyboard.press('Enter'); await settle(d, 1200);
+ok(await d.locator('#dchart path.vsl').count() === 0, 'vs off (as it was typed before): its price alone again');
+// ---- the World screen ----
+await d.keyboard.press('w'); await d.waitForSelector('.wgrid .wt tbody tr[data-sym]', { timeout: 15000 }); await settle(d, 1500);
+ok(await d.locator('.wgrid .wt tbody tr[data-sym]').count() === 28 && await d.locator('.wgrid .wcol').count() === 3 && !(await d.$('#dhold')), 'W: the world, its 28 markets in three columns', String(await d.locator('.wgrid .wt tbody tr[data-sym]').count()));
+const ten = (await d.locator('.wt tr[data-sym="^TNX"]').innerText()).replace(/\s+/g, ' ');
+ok(/US 10-year/.test(ten) && /\d\.\d{3}%/.test(ten) && /bp/.test(ten), 'a yield said in % and its day in basis points', ten);
+const fxc = await d.locator('.fxm tbody td').allInnerTexts();
+ok(fxc.length === 25 && fxc.filter((x) => x === '—').length === 5 && fxc.filter((x) => /^\d[\d,]*\.\d+$/.test(x)).length === 20, 'the currencies, each against the others', fxc.slice(0, 6).join(' '));
+const gu = Number((await d.locator('.fxm tbody tr:first-child td:nth-of-type(2)').innerText()).replace(/,/g, '')), ug = Number((await d.locator('.fxm tbody tr:nth-child(2) td:nth-of-type(1)').innerText()).replace(/,/g, ''));
+ok(Math.abs(gu * ug - 1) < 0.002, 'and they agree: a pound in dollars, a dollar in pounds', `${gu} × ${ug}`);
+await d.screenshot({ path: `${out}/4-world.png` });
+await d.keyboard.press('?'); await settle(d, 300);
+ok(await d.isVisible('.dhelp') && await d.locator('.hgrid > div').count() === 12, '?: every function and key', String(await d.locator('.hgrid > div').count()));
+await d.keyboard.press('Escape'); await settle(d, 300);
+ok(!(await d.$('.dhelp')), 'Esc: shut');
+await d.locator('.wt tr[data-sym="^GDAXI"]').click(); await d.waitForSelector('#dhold', { timeout: 10000 }); await settle(d, 1500);
+ok(/DAX/.test(await d.locator('.inst h2').innerText()) && await d.isVisible('.inst .dbtn.go'), 'a market tapped: back on the Portfolio screen, it chosen, there to add', await d.locator('.inst h2').innerText());
 await dctx.close();
 // ---- an iPad, held across ----
 const ictx = await b.newContext({ viewport: { width: 1180, height: 820 }, locale: 'en-GB', storageState: state, serviceWorkers: 'block' });
@@ -112,7 +178,13 @@ const ip = await ictx.newPage(); pages.push(ip); ip.on('pageerror', (e) => errs.
 await ip.goto(MKT + '/'); await ip.waitForSelector('.desk', { timeout: 20000 }); await settle(ip, 2500);
 const lay = await ip.evaluate(() => { const g = document.querySelector('.dgrid'), c = document.querySelector('.dcol'), pr = document.querySelector('.port').getBoundingClientRect(), cr = c.getBoundingClientRect(); return { cols: getComputedStyle(g).gridTemplateColumns.split(' ').length, under: cr.top > pr.bottom - 2 }; });
 ok(lay.cols === 2 && lay.under && !(await ip.isVisible('#dhold th.cp')), "on an iPad held across: two columns, the heat map, risk and news under them", JSON.stringify(lay));
+const tape = await ip.evaluate(() => { const t = document.querySelector('.tape').getBoundingClientRect(), k = [...document.querySelectorAll('.tape .tick')].filter((x) => x.offsetParent).map((x) => x.getBoundingClientRect()); return k.every((r) => r.left >= t.left - 1 && r.right <= t.right + 1) && k.length === 2; });
+ok(tape, 'and along its top, two markets, neither cut off');
 await ip.screenshot({ path: `${out}/3-ipad.png` });
+await ip.keyboard.press('w'); await ip.waitForSelector('.wgrid .wt tbody tr[data-sym]', { timeout: 15000 }); await settle(ip, 1200);
+const wl = await ip.evaluate(() => ({ cols: getComputedStyle(document.querySelector('.wgrid')).gridTemplateColumns.split(' ').length, wide: document.documentElement.scrollWidth <= innerWidth }));
+ok(wl.cols === 2 && wl.wide, 'its World screen: two columns, nothing off the side', JSON.stringify(wl));
+await ip.screenshot({ path: `${out}/5-ipad-world.png` });
 await ictx.close();
 ok(!errs.length, 'no errors on the page', errs.join(' ; '));
 console.log(`FAILS ${fails}`);
