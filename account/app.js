@@ -353,7 +353,7 @@ S.signFor = SIGN_FOR;
 // once, and kept two minutes, so signing in here first doesn't lose it. Signed in, a sheet asks whether to sign the
 // computer in (qrView)
 // (and in a tab where the page is open already: below, hashchange) → whether the address had one
-const QR_IN = { code: null };
+const QR_IN = { code: null, scanned: false };
 function takeQr(hash) {
   const m = /^#qr=([A-Za-z0-9_-]{32})$/.exec(hash);
   try {
@@ -1048,12 +1048,29 @@ function codeView() {
 }
 // A computer asking to be signed in, from its QR code scanned on this phone (functions/_qrsign.js): which computer, and
 // roughly where; then the number it shows, picked from three; or Don't sign in. A wrong number's a no.
-const QRV = { code: null, look: null, err: null, done: null, busy: false };
+// First (for a code that came by the camera or a link, not this page's own scanner), whether you opened it yourself at
+// the computer showing it: nothing's asked of the server, nor the number shown there, till you say so. Then, unless it's
+// been shown in the last ten minutes, that it's you (a passkey or the password).
+const QRV = { code: null, look: null, err: null, done: null, busy: false, go: false, scanned: false, asking: false };
 function qrView() {
-  if (QRV.code !== QR_IN.code) Object.assign(QRV, { code: QR_IN.code, look: null, err: null, done: null, busy: false });
-  const close = () => { QR_IN.code = null; closeSheet(); };
+  if (QRV.code !== QR_IN.code) Object.assign(QRV, { code: QR_IN.code, look: null, err: null, done: null, busy: false, go: QR_IN.scanned, scanned: QR_IN.scanned, asking: false });
+  const close = () => { QR_IN.code = null; QR_IN.scanned = false; closeSheet(); };
+  // (it's you, shown here first, then back to this, on to the computer)
+  // (once at a time; not showing it, the whole thing's left)
+  const shown = (then) => { if (QRV.asking) return; QRV.asking = true;
+    pushSheet(() => confirmView(() => { QRV.asking = false; S.me.fresh = true; then(); popSheet(); }, () => { QRV.asking = false; close(); })); };
+  if (!QRV.go) return { title: "Sign-in request", body: [
+    h("div.qrask", {}, h("div.qrhero", {}, icon("laptop", 36, 2)), h("h2", { text: "Signing in on a computer?" }),
+      h("p", { text: "Go on only if you’re at a computer that’s showing this code, and you opened it yourself." })),
+    h("div.qrwarn", {}, icon("alert", 19, 2.2), h("span", { text: "If someone sent you this link, or asked you to scan a code, stop: they’d be signed in as you." })),
+    h("button.btn", { type: "button", onclick: () => { if (S.me.fresh) { QRV.go = true; redraw(); } else shown(() => { QRV.go = true; }); } }, "Continue"),
+    h("button.btn.quiet", { type: "button", onclick: close }, "Cancel")] };
   if (!QRV.look && !QRV.err && !QRV.done) {
-    post("qr/look", { code: QRV.code }).then((r) => { QRV.look = r; redraw(); }, (e) => { QRV.err = { title: "That code didn’t work", text: e.message }; redraw(); });
+    if (!S.me.fresh) { setTimeout(() => shown(() => {})); return { title: "Sign-in request", body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] }; }
+    post("qr/look", { code: QRV.code }).then((r) => { QRV.look = r; redraw(); }, (e) => {
+      // (it's you, asked again, if the server's word for when you last showed it is older than this page's)
+      if (e.field === "reauth") { S.me.fresh = false; return shown(() => {}); }
+      QRV.err = { title: "That code didn’t work", text: e.message }; redraw(); });
     return { title: "Sign-in request", body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
   }
   const end = (ic, title, text, cls) => ({ title: "Sign-in request", body: [h("div.qrend" + (cls || ""), {}, h("div.qrhero", {}, icon(ic, 34, 2.2)), h("h2", { text: title }), h("p", { text }),
@@ -1064,7 +1081,10 @@ function qrView() {
   const answer = async (num, b) => {
     if (QRV.busy) return; QRV.busy = true; b?.classList.add("working");
     try { await post("qr/answer", { code: QRV.code, num }); if (num == null) { toast("Not signed in."); return close(); } QRV.done = true; }
-    catch (e) { QRV.err = { title: e.field === "mismatch" || e.status === 400 ? "That wasn’t its number" : "That code didn’t work", text: e.message, bad: true }; }
+    catch (e) {
+      if (e.field === "reauth") { QRV.busy = false; S.me.fresh = false; return shown(() => {}); }
+      QRV.err = { title: e.field === "mismatch" ? "That wasn’t its number" : "That code didn’t work", text: e.message, bad: true };
+    }
     QRV.busy = false; redraw();
   };
   // (which computer, in a line: its browser and what it is; then roughly where, and when)
@@ -1072,11 +1092,17 @@ function qrView() {
   return { title: "Sign-in request", body: [
     h("div.qrask", {}, h("div.qrhero", {}, icon(dev[0] === "iPad" ? "phone" : "laptop", 36, 2)), h("h2", { text: `Sign in on ${kind}?` }),
       h("p", { text: "Only if it’s one you’re using now. Whoever’s at it will be signed in as you, on every app." })),
-    QRV.look.far && h("div.qrwarn", { role: "alert" }, icon("alert", 19, 2.2), h("span", { text: "This computer looks to be in a different country from this phone. If you’re not at it, don’t sign in." })),
+    QRV.look.far && h("div.qrwarn", { role: "alert" }, icon("alert", 19, 2.2), h("span", { text: `${QRV.look.far === "elsewhere" ? "This computer looks to be in a different country from this phone." : "We can’t tell where this computer is."} If you’re not at it, don’t sign in.` })),
     h("div.group", {},
       h("div.row.static", {}, h("span.ic.blue", {}, icon("laptop", 19)), h("span.tx", {}, h("b", { text: what }), h("small", { text: [QRV.look.place && `Near ${QRV.look.place}`, "just now"].filter(Boolean).join(" · ") })))),
-    h("p.qrpick-said", { text: "Tap the number showing on its screen" }),
-    h("div.qrpick", { role: "group", "aria-label": "The number on the computer" }, QRV.look.picks.map((n) => h("button", { type: "button", onclick: (e) => answer(n, e.currentTarget), text: String(n) }))),
+    // (far, or not known to be near: the number typed, not picked from three, so it can't be tapped by chance)
+    ...(QRV.look.far ? (() => {
+      const typed = h("input.qrtype", { type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "2", pattern: "[0-9]*", "aria-label": "The number on the computer", placeholder: "––" });
+      const go = h("button.btn", { type: "submit" }, "Sign in");
+      return [h("p.qrpick-said", { text: "Type the number showing on its screen" }),
+        h("form.qrtyped", { onsubmit: (e) => { e.preventDefault(); if (/^\d{2}$/.test(typed.value)) answer(Number(typed.value), go); else typed.focus(); } }, typed, go)];
+    })() : [h("p.qrpick-said", { text: "Tap the number showing on its screen" }),
+      h("div.qrpick", { role: "group", "aria-label": "The number on the computer" }, QRV.look.picks.map((n) => h("button", { type: "button", onclick: (e) => answer(n, e.currentTarget), text: String(n) })))]),
     h("button.btn.quiet", { type: "button", onclick: () => answer(null) }, "Don’t sign in"),
     QRV.look.place && h("p.qrfoot", { text: "Where it is comes from its internet address, so it’s only roughly right." }),
   ] };
@@ -1119,7 +1145,7 @@ async function startScan(video, said) {
       } catch (_) {}
     }
     const m = text && /^(.+)\/#qr=([A-Za-z0-9_-]{32})$/.exec(text);
-    if (m && m[1] === location.origin) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; return pushSheet(qrView); }
+    if (m && m[1] === location.origin) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; QR_IN.scanned = true; return pushSheet(qrView); }
     if (text && text !== SCAN.last) { SCAN.last = text; said.textContent = "That isn’t an InFlite sign-in code. Point it at the one on the computer’s sign-in page."; said.classList.add("bad"); }
     setTimeout(look, det ? 150 : 250);
   };
@@ -1545,11 +1571,12 @@ function notYouLine() {
 // Signed out on a computer: a QR code, to scan with a phone that's signed in (functions/_qrsign.js), beside the usual
 // way. A new one every two minutes, five in a row at most before it waits to be asked for another (a page left open
 // doesn't keep making them); asked after every two and a half seconds while it's in view, and every second and a half
-// once a phone's looked, with the number to tap there; once it's said yes, signed in here, as with a password (though
-// not as having just shown it's you)
+// once a phone's looked, with the number to tap there; once the phone's said yes, whose account it is, to continue as
+// (or not: someone else who saw the code may have scanned it), and then signed in here, as with a password (though not
+// as having just shown it's you). Something gone wrong is tried again later each time, and after four, left to be asked.
 const QR_WIDE = matchMedia("(min-width: 960px)");
 QR_WIDE.addEventListener("change", () => { if (S.me && !S.me.signedIn) render(); });
-const QRS = { code: null, poll: null, until: 0, state: "waiting", num: null, phone: null, note: null, err: null, t: 0, made: 0 };
+const QRS = { code: null, poll: null, until: 0, state: "waiting", num: null, phone: null, who: null, note: null, err: null, t: 0, made: 0, fails: 0 };
 function qrCard() {
   const card = h("div.qrc.glass", { id: "qrc", "aria-live": "polite" });
   drawQr(card);
@@ -1566,12 +1593,20 @@ function drawQr(card = $("#qrc")) {
     h("p", {}, "Tap ", h("b", { text: String(QRS.num) }), " there to sign in here."),
     h("p.qrwait", {}, h("span.spin.sm"), `Waiting for your ${phone}`),
     h("button.link", { type: "button", onclick: () => { Object.assign(QRS, { code: null, state: "waiting", made: 0 }); drawQr(); qrTick(); } }, "Not you? Get a new code"));
+  // (said yes to on the phone: whose account, before taking it)
+  if (QRS.state === "ready") {
+    const go = h("button.btn", { type: "button", onclick: () => qrTake(go) }, "Continue");
+    return card.replaceChildren(h("div.qrwho", {}, h("span.av", { text: String(QRS.who.name || "?").trim()[0]?.toUpperCase() || "?" })),
+      h("h2", { text: `Continue as ${String(QRS.who.name).trim()}?` }), h("p", { text: `@${QRS.who.handle}, said yes to on your ${phone}.` }), go,
+      h("button.link", { type: "button", onclick: () => { Object.assign(QRS, { code: null, state: "waiting", who: null, note: "Not signed in. This is a new code." }); drawQr(); qrTick(); } }, "That’s not me"));
+  }
   if (QRS.state === "done") return card.replaceChildren(h("div.qrdone", {}, icon("check", 34, 2.6)), h("h2", { text: "Signed in" }),
     h("p.qrwait", {}, h("span.spin.sm"), S.signFor && S.signFor.app !== "home" ? `Opening ${APPS[S.signFor.app].name}` : "Opening your account"));
   // (five in a row gone unscanned: resting, till it's asked for again)
   if (QRS.state === "rest") return card.replaceChildren(h("h2", { text: "Sign in with your phone" }),
-    h("div.qrbox.rest", {}, h("button.btn.quiet", { type: "button", onclick: () => { Object.assign(QRS, { state: "waiting", made: 0 }); drawQr(); qrTick(); } }, icon("qr", 19, 2), "Show a code")),
-    h("p", { text: "Codes stop after ten minutes unused." }));
+    QRS.err ? h("p.said", { role: "alert", text: QRS.err }) : null,
+    h("div.qrbox.rest", {}, h("button.btn.quiet", { type: "button", onclick: () => { Object.assign(QRS, { state: "waiting", made: 0, fails: 0, err: null }); drawQr(); qrTick(); } }, icon("qr", 19, 2), "Show a code")),
+    QRS.err ? null : h("p", { text: "Codes stop after ten minutes unused." }));
   const link = QRS.code ? `${location.origin}/#qr=${QRS.code}` : "";
   // (InFlite's mark in its middle: small enough that the code reads without what it covers)
   const qr = h("div.qrbox", { "data-link": link }, QRS.code ? null : h("span.spin"));
@@ -1589,24 +1624,37 @@ function qrBar() { const i = h("i"); if (QRS.code) i.style.animationDuration = `
 async function qrTick() {
   clearTimeout(QRS.t);
   if (!$("#qrc") || S.me?.signedIn) { QRS.code = null; return; }               // (the card gone: nothing kept)
-  if (document.hidden || QRS.state === "rest") { QRS.t = setTimeout(qrTick, 2500); return; }
+  if (document.hidden || QRS.state === "rest" || QRS.state === "ready") { QRS.t = setTimeout(qrTick, 2500); return; }
   try {
     if (!QRS.code || Date.now() > QRS.until) {
       if (QRS.made >= 5) { Object.assign(QRS, { code: null, state: "rest", note: null }); return drawQr(); }
       const r = await post("signin/qr");
-      Object.assign(QRS, { code: r.code, poll: r.poll, until: Date.now() + r.ttl - 4000, state: "waiting", num: null, err: null, made: QRS.made + 1 });
+      Object.assign(QRS, { code: r.code, poll: r.poll, until: Date.now() + r.ttl - 4000, state: "waiting", num: null, err: null, made: QRS.made + 1, fails: 0 });
       drawQr();
     } else {
-      const r = await post("signin/qr/wait", { code: QRS.code, poll: QRS.poll, app: S.signFor?.app });
-      if (r.signedIn) { Object.assign(QRS, { code: null, state: "done" }); drawQr(); return qrSignedIn(r); }
+      const r = await post("signin/qr/wait", { code: QRS.code, poll: QRS.poll });
+      if (r.state === "ready") { Object.assign(QRS, { state: "ready", who: { name: r.name, handle: r.handle }, phone: r.phone || QRS.phone }); return drawQr(); }
       if (r.state === "seen" && QRS.state !== "seen") { Object.assign(QRS, { state: "seen", num: r.num, phone: r.phone, note: null, until: Date.now() + 2 * 60e3 - 4000 }); drawQr(); }
       else if (r.state === "no" || r.state === "gone") {
         Object.assign(QRS, { code: null, state: "waiting", made: r.state === "no" ? 0 : QRS.made, note: r.state === "no" ? "That phone didn’t say yes, so you’re not signed in here. This is a new code." : null });
         return qrTick();
       }
     }
-  } catch (e) { QRS.err = e.offline ? e.message : "Couldn’t make a code just now. Trying again…"; QRS.code = null; drawQr(); QRS.t = setTimeout(qrTick, 5000); return; }
+  } catch (e) {
+    // (later each time: 5, 10, 20 seconds; after four, left till it's asked for)
+    QRS.fails++; QRS.code = null;
+    if (QRS.fails >= 4) { Object.assign(QRS, { state: "rest", err: e.status === 429 ? e.message : "Couldn’t make a code just now." }); return drawQr(); }
+    QRS.err = e.offline ? e.message : "Couldn’t make a code just now. Trying again…"; drawQr(); QRS.t = setTimeout(qrTick, 5000 * 2 ** (QRS.fails - 1)); return;
+  }
   QRS.t = setTimeout(qrTick, QRS.state === "seen" ? 1500 : 2500);
+}
+// (Continue: the sign-in taken, once)
+async function qrTake(btn) {
+  try {
+    const m = await busy(btn, "Signing in…", () => post("signin/qr/take", { code: QRS.code, poll: QRS.poll, app: S.signFor?.app }));
+    if (!m.signedIn) throw new Error("That code has run out. Here’s a new one.");
+    Object.assign(QRS, { code: null, state: "done" }); drawQr(); qrSignedIn(m);
+  } catch (e) { Object.assign(QRS, { code: null, state: "waiting", who: null, note: e.message }); drawQr(); qrTick(); }
 }
 async function qrSignedIn(m) {
   remember(m, "phone");

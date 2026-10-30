@@ -7,7 +7,7 @@
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
-import { qrStart, qrWait, qrLook, qrAnswer } from "./_qrsign.js";
+import { qrStart, qrWait, qrTake, qrLook, qrAnswer } from "./_qrsign.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
 
 // (answers about the account: never kept by anything in between, and for this page's own address alone)
@@ -31,11 +31,13 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
   // or as the app's it's for, where an app sent you here to sign in (app: "inflight", "weather", "fitness" or "markets")
   // (the session's own token's never given out here: only the cookie's; and the browser's word that it's signed in to
   // this account before, so guessing elsewhere can't hold its password sign-in back: functions/_account.js withKnown)
-  // (authAt: when it was shown it's you, now, unless it wasn't: a sign-in from your phone, 0)
+  // (authAt: when it was shown it's you, now, unless it wasn't: a sign-in from your phone, 0, and no word that the
+  // browser's known to this account's password either)
   async function started(request, env, waitUntil, u, how, app, authAt = Date.now()) {
     const token = await issueSession(env, u.id, request, authAt), hash = hex(await sha256(token));
     waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", ["weather", "fitness", "markets"].includes(app) ? app : null).catch(() => {}));
-    return withKnown(await withSession(json(await view(env, { ...u, sessionHash: hash, authAt })), request, env, hash), request, env, u);
+    const res = await withSession(json(await view(env, { ...u, sessionHash: hash, authAt })), request, env, hash);
+    return authAt ? withKnown(res, request, env, u) : res;
   }
   const ins = {
     "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
@@ -55,12 +57,14 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
       const b = await body(request);
       return started(request, env, waitUntil, (await passkeyUser(env, request, b, { deleting })).u, "Passkey", b.app);
     },
-    // signing in on a computer with your phone (functions/_qrsign.js): the computer's QR code, and its asking after it
-    // until a phone's said yes (signed in then, though not as just having shown it's you)
+    // signing in on a computer with your phone (functions/_qrsign.js): the computer's QR code, its asking after it till a
+    // phone's said yes, and then, once it's said whose account that is is right, its sign-in (though not as having just
+    // shown it's you)
     "POST signin/qr": async ({ request, env }) => { sameOrigin(request); return json(await qrStart(env, request)); },
-    "POST signin/qr/wait": async ({ request, env, waitUntil }) => {
+    "POST signin/qr/wait": async ({ request, env }) => { sameOrigin(request); return json(await qrWait(env, request, await body(request))); },
+    "POST signin/qr/take": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
-      const b = await body(request), r = await qrWait(env, request, b);
+      const b = await body(request), r = await qrTake(env, request, b);
       return r.u ? started(request, env, waitUntil, r.u, `QR code, from ${r.phone || "your phone"}`, b.app, 0) : json(r);
     },
     // (and the phone that scanned it, signed in: the computer that's asking, then yes with its number, or no)

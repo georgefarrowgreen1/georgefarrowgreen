@@ -1,12 +1,15 @@
 // Signing in on a computer with your phone (functions/_qrsign.js; account/app.js qrCard, qrView, scanView). In browsers:
 // a Mac's sign-in page shows a QR code (one that reads, InFlite's mark and all) and a phone's doesn't; the phone,
-// signed in, opens it, sees which computer's asking, taps the number the Mac shows, and the Mac's signed in; the same
-// from an app (Markets, handed back); a wrong number refused on both; a phone signed out asked to sign in first; the
-// account page's own scanner (a stand-in camera held up to the Mac) reading it, and the camera then off. And the routes
-// themselves, as an attacker would try them: only from the page's own address; a wrong poll word, or none, gets
-// nothing; a code another account has looked at isn't yours; a wrong number ends it; a code's good once; one run out
-// is refused; the Mac's sign-in is its own, said to the account's email, and not one that's just shown it's you (Chat's
-// key isn't handed over on it).
+// signed in, opens it and is asked first whether it opened it itself (the Mac shown nothing till then), sees which
+// computer's asking, taps the number the Mac shows, and the Mac asks "Continue as Sam Lee?" before it's signed in; the
+// same from an app (Markets, handed back); a wrong number refused on both; That's not me on the Mac; a computer in
+// another country, its number typed; a phone signed out asked to sign in first; the account page's own scanner (a
+// stand-in camera held up to the Mac) reading it, the camera then off, and a phone that hasn't shown it's you lately
+// asked to first. And the routes themselves, as an attacker would try them: only from the page's own address; a wrong
+// poll word, or none, gets nothing; only a phone that's just shown it's you, and isn't one kept to the account's page,
+// can look or answer; a code another account has looked at isn't yours; a wrong number ends it; nothing's signed in
+// till the Mac takes it, and only once; one run out is refused; the Mac's sign-in is its own, said to the account's
+// email, and not one that's just shown it's you (Chat's key isn't handed over on it).
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -31,6 +34,8 @@ const api = (path, { body, cookie, origin = ACCT, ua = MAC } = {}) => new Promis
   (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => { let j = null; try { j = JSON.parse(t); } catch (_) {} done({ status: res.statusCode, j, set: res.headers['set-cookie'] || [] }); }); });
   if (data) r.write(data); r.end();
 });
+const PASSWORD = 'a long test password';
+const sessionsOf = (handle) => `(SELECT id FROM pg_users WHERE handle = '${handle}')`;
 const cookieOf = async (ctx) => (await ctx.cookies(ACCT)).map((c) => `${c.name}=${c.value}`).join('; ');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: [HOSTS, `--unsafely-treat-insecure-origin-as-secure=${CHAT},${MKT},${ACCT}`] });
@@ -59,6 +64,13 @@ ok((await api('signin/qr/wait', { body: { code: s1.j.code, poll: s1.j.poll }, or
 ok((await api('signin/qr/wait', { body: { code: s1.j.code, poll: s1.j.poll } })).j?.state === 'waiting', 'asked after rightly: waiting');
 ok((await api('qr/look', { body: { code: s1.j.code } })).status === 401, 'looked at signed out: refused');
 ok((await api('qr/look', { body: { code: s1.j.code }, cookie: samCookie, origin: 'https://evil.example' })).status === 403, 'looked at from another address: refused');
+sql0(`UPDATE pg_sessions SET auth_at = 1 WHERE user_id = ${sessionsOf('olaberg')}`);
+const stale = await api('qr/look', { body: { code: s1.j.code }, cookie: olaCookie });
+sql0(`UPDATE pg_sessions SET auth_at = ${Date.now()}, handed = 1 WHERE user_id = ${sessionsOf('olaberg')}`);
+const handed = await api('qr/look', { body: { code: s1.j.code }, cookie: olaCookie });
+sql0(`UPDATE pg_sessions SET handed = NULL WHERE user_id = ${sessionsOf('olaberg')}`);
+ok(stale.status === 403 && stale.j?.field === 'reauth' && handed.status === 403 && handed.j?.field === 'reauth' && (await api('signin/qr/wait', { body: { code: s1.j.code, poll: s1.j.poll } })).j?.state === 'waiting',
+  'looked at by a phone that hasn’t shown it’s you lately, or one kept to the account’s page: refused, and the code untouched', `${stale.status} ${handed.status}`);
 const look = await api('qr/look', { body: { code: s1.j.code }, cookie: samCookie, ua: IPHONE });
 ok(look.status === 200 && look.j.label === 'Mac · Chrome' && look.j.picks.length === 3 && !('num' in look.j), 'the phone: which computer, three numbers (and not which is right)', JSON.stringify(look.j));
 const seen = await api('signin/qr/wait', { body: { code: s1.j.code, poll: s1.j.poll } });
@@ -79,11 +91,17 @@ const n0 = mails().length;
 const s3 = await api('signin/qr', { body: {} });
 const l3 = await api('qr/look', { body: { code: s3.j.code }, cookie: samCookie, ua: IPHONE }), w3 = await api('signin/qr/wait', { body: { code: s3.j.code, poll: s3.j.poll } });
 ok((await api('qr/answer', { body: { code: s3.j.code, num: w3.j.num }, cookie: samCookie })).j?.ok === true, 'the right number: yes');
-const yes = await api('signin/qr/wait', { body: { code: s3.j.code, poll: s3.j.poll, app: 'markets' } });
+const ready = await api('signin/qr/wait', { body: { code: s3.j.code, poll: s3.j.poll } });
+ok(ready.j?.state === 'ready' && ready.j.name === 'Sam Lee' && ready.j.handle === 'samlee' && !ready.set.length, 'the Mac: told whose account said yes, to ask before taking it (nothing signed in yet)', JSON.stringify(ready.j));
+ok((await api('signin/qr/take', { body: { code: s3.j.code, poll: s3.j.poll.slice(0, -1) + (s3.j.poll.endsWith('A') ? 'B' : 'A') } })).j?.state === 'gone' && (await api('signin/qr/take', { body: { code: s3.j.code, poll: s3.j.poll }, origin: 'https://evil.example' })).status === 403,
+  'taken with the wrong word, or from another address: nothing');
+const yes = await api('signin/qr/take', { body: { code: s3.j.code, poll: s3.j.poll, app: 'markets' } });
 const macCookie = (yes.set.find((c) => /^account=/.test(c)) || '').split(';')[0];
-ok(yes.status === 200 && yes.j?.signedIn && yes.j.handle === 'samlee' && yes.j.fresh === false && /^account=[A-Za-z0-9_-]{20,}$/.test(macCookie), 'the Mac: signed in, with a cookie of its own, and not as having just shown it’s you', JSON.stringify({ fresh: yes.j?.fresh, handle: yes.j?.handle }));
-const again = await api('signin/qr/wait', { body: { code: s3.j.code, poll: s3.j.poll } });
-ok(again.j?.state === 'gone' && !again.set.length, 'the same code and word again: nothing (good once)');
+ok(yes.status === 200 && yes.j?.signedIn && yes.j.handle === 'samlee' && yes.j.fresh === false && /^account=[A-Za-z0-9_-]{20,}$/.test(macCookie) && !yes.set.some((c) => /known/i.test(c)), 'taken: the Mac signed in, with a cookie of its own, not as having just shown it’s you, nor known to the password', JSON.stringify({ fresh: yes.j?.fresh, handle: yes.j?.handle }));
+const again = await api('signin/qr/take', { body: { code: s3.j.code, poll: s3.j.poll } }), again2 = await api('signin/qr/wait', { body: { code: s3.j.code, poll: s3.j.poll } });
+ok(again.j?.state === 'gone' && again2.j?.state === 'gone' && !again.set.length, 'the same code and word again: nothing (good once)');
+const s4 = await api('signin/qr', { body: {} });
+ok((await api('signin/qr/take', { body: { code: s4.j.code, poll: s4.j.poll } })).j?.state === 'gone', 'taken before a phone’s said yes: nothing');
 const me = await api('me', { cookie: macCookie });
 ok(me.j?.signedIn && me.j.devices.some((d) => d.label === 'Mac · Chrome' && d.current) && macCookie !== samCookie.match(/account=[^;]+/)?.[0], 'its own sign-in, as a Mac, beside the phone’s', me.j?.devices.map((d) => d.label).join(', '));
 const hb = await api('handback', { body: { app: 'inflight', ask: 'A'.repeat(43), box: 'B'.repeat(60) }, cookie: macCookie });
@@ -103,32 +121,60 @@ const read = async (pg, png) => pg.evaluate(async (b64) => { const jsQR = (await
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0); return jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height)?.data || null; }, png.toString('base64'));
 ok(/^http:\/\/account\.ifl\.test:8788\/#qr=[A-Za-z0-9_-]{32}$/.test(link) && (await read(ph, await m.locator('#qrc .qrbox').screenshot())) === link, 'on a Mac: a QR code beside the usual sign-in, that reads (InFlite’s mark and all)', link);
 await m.screenshot({ path: `${out}/1-mac.png` });
-await ph.goto(link); await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await settle(ph, 800);
-ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()), 'the phone, opening it: which computer is asking');
-await ph.screenshot({ path: `${out}/2-phone.png` });
+await ph.goto(link); await ph.waitForSelector('.sheet-body .qrask h2:has-text("Signing in on a computer?")', { timeout: 20000 }); await settle(ph, 2500);
+ok(/someone sent you this link/.test(await ph.locator('.sheet-body').innerText()) && !(await m.$('.qrnum')) && await m.isVisible('#qrc .qrbox svg'), 'the phone, opening it: asked first whether it opened it itself, and the Mac shown nothing yet');
+await ph.screenshot({ path: `${out}/2-phone-first.png` });
+await ph.locator('.sheet-body button:has-text("Continue")').click();
+await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await settle(ph, 600);
+ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()), 'Continue: which computer is asking');
+await ph.screenshot({ path: `${out}/3-phone.png` });
 await m.waitForSelector('.qrnum b', { timeout: 10000 });
 ok(/Check your iPhone/.test(await m.locator('#qrc').innerText()), 'the Mac: check your iPhone, and the number');
 await ph.locator(`.qrpick button:text-is("${(await m.locator('.qrnum b').innerText()).trim()}")`).click();
 await ph.waitForSelector('.qrend.good', { timeout: 10000 });
+await m.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await settle(m, 500);
+ok(/Continue as Sam Lee\?/.test(await m.locator('#qrc').innerText()) && !(await m.$('main .hero')), 'tapped: the Mac asks “Continue as Sam Lee?”, not signed in till then');
+await m.screenshot({ path: `${out}/4-mac-who.png` });
+await m.locator('#qrc button:has-text("Continue")').click();
 await m.waitForSelector('main .hero', { timeout: 20000 }); await settle(m, 1000);
-ok(/Sam Lee/.test(await m.locator('main').innerText()), 'tapped: the Mac signed in');
+ok(/Sam Lee/.test(await m.locator('main').innerText()), 'Continue: the Mac signed in');
 // (from an app: Markets, handed back)
 const [, m2] = await macPage();
 await m2.goto(`${MKT}/`); await m2.waitForSelector('#sign-in:not([disabled])', { timeout: 20000 }); await m2.click('#sign-in');
 await m2.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
 ok(/continue to\s*Markets/.test(await m2.locator('main').innerText()), 'Markets → Sign in: the account’s page, its QR code there too');
-await ph.goto(await m2.getAttribute('#qrc .qrbox', 'data-link')); await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await m2.waitForSelector('.qrnum b', { timeout: 10000 });
-await ph.locator(`.qrpick button:text-is("${(await m2.locator('.qrnum b').innerText()).trim()}")`).click();
+const viaPhone = async (pg, mac) => {
+  await pg.goto(await mac.getAttribute('#qrc .qrbox', 'data-link')); await pg.locator('.sheet-body button:has-text("Continue")').click();
+  await pg.waitForSelector('.qrpick button, .qrtype', { timeout: 20000 }); await mac.waitForSelector('.qrnum b', { timeout: 10000 });
+  return (await mac.locator('.qrnum b').innerText()).trim();
+};
+await ph.locator(`.qrpick button:text-is("${await viaPhone(ph, m2)}")`).click();
+await m2.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await m2.locator('#qrc button:has-text("Continue")').click();
 await m2.waitForURL(/finance\.ifl\.test/, { timeout: 30000 }); await m2.waitForSelector('.empty h2, .hero, .desk', { timeout: 30000 });
 ok(true, 'and back in Markets, signed in');
 // (a wrong number, in the page)
 const [, m3] = await macPage();
 await m3.goto(`${ACCT}/`); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
-await ph.goto(await m3.getAttribute('#qrc .qrbox', 'data-link')); await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await m3.waitForSelector('.qrnum b', { timeout: 10000 });
-const right = (await m3.locator('.qrnum b').innerText()).trim(), off = (await ph.locator('.qrpick button').allInnerTexts()).map((x) => x.trim()).find((x) => x !== right);
+const right = await viaPhone(ph, m3), off = (await ph.locator('.qrpick button').allInnerTexts()).map((x) => x.trim()).find((x) => x !== right);
 await ph.locator(`.qrpick button:text-is("${off}")`).click();
 await ph.waitForSelector('.qrend.bad', { timeout: 10000 }); await m3.waitForSelector('#qrc .said', { timeout: 10000 }); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 });
 ok(!(await m3.$('main .hero')) && /didn’t say yes/.test(await m3.locator('#qrc .said').innerText()), 'a wrong number: refused on the phone; the Mac told, not signed in, a new code');
+// (That's not me, on the Mac)
+await ph.locator(`.qrpick button:text-is("${await viaPhone(ph, m3)}")`).click();
+await m3.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await m3.locator('#qrc button:has-text("That’s not me")').click();
+await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 }); await settle(m3, 2600);
+ok(!(await m3.$('main .hero')) && /Not signed in/.test(await m3.locator('#qrc').innerText()), 'That’s not me: not signed in, a new code');
+// (a computer in another country: its number typed, not picked)
+const link5 = await m3.getAttribute('#qrc .qrbox', 'data-link');
+sql0(`UPDATE pg_qrsign SET cc = 'FR' WHERE state = 'new'`);
+await ph.goto(link5); await ph.locator('.sheet-body button:has-text("Continue")').click(); await ph.waitForSelector('.qrtype', { timeout: 20000 }); await settle(ph, 500);
+ok(/different country/.test(await ph.locator('.sheet-body').innerText()) && !(await ph.$('.qrpick')), 'a computer in another country: said so, and its number to be typed', (await ph.locator('.qrwarn').innerText()));
+await ph.screenshot({ path: `${out}/5-phone-far.png` });
+await m3.waitForSelector('.qrnum b', { timeout: 10000 });
+await ph.fill('.qrtype', (await m3.locator('.qrnum b').innerText()).trim()); await ph.locator('.qrtyped button').click();
+await ph.waitForSelector('.qrend.good', { timeout: 10000 }); await m3.waitForSelector('#qrc .qrwho', { timeout: 10000 });
+ok(true, 'typed rightly: yes, and the Mac asks whose account');
+await m3.locator('#qrc button:has-text("That’s not me")').click(); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 });
 // (a phone signed out, opening one)
 await pout.goto(await m3.getAttribute('#qrc .qrbox', 'data-link')); await pout.reload(); await pout.waitForSelector('main h1', { timeout: 20000 }); await settle(pout, 600);
 ok(/Sign in on this phone first/.test(await pout.locator('main h1').innerText()), 'a phone signed out, opening it: asked to sign in there first');
@@ -140,15 +186,21 @@ const box = await m4.locator('#qrc .qrbox').boundingBox(), cx = box.x + box.widt
 const jpg = await m4.screenshot({ type: 'jpeg', quality: 90, clip: { x: cx - 320, y: cy - 240, width: 640, height: 480 } });
 writeFileSync(`${out}/camera.mjpeg`, Buffer.concat(Array(30).fill(jpg)));
 const cb = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: [HOSTS, `--unsafely-treat-insecure-origin-as-secure=${ACCT}`, '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${out}/camera.mjpeg`] });
+sql0(`UPDATE pg_sessions SET auth_at = 1 WHERE user_id = ${sessionsOf('samlee')}`);
 const cctx = await cb.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: IPHONE, locale: 'en-GB', storageState: await pctx.storageState() });
 await cctx.grantPermissions(['camera'], { origin: ACCT });
 const cam = watch(await cctx.newPage());
 await cam.goto(`${ACCT}/`); await cam.waitForSelector('main .hero', { timeout: 30000 }); await settle(cam, 800);
 await cam.locator('button.row[data-k="Sign-in and Security"]').click(); await cam.waitForSelector('button.row[data-k="Sign in on a computer"]', { timeout: 10000 }); await settle(cam, 500);
 await cam.locator('button.row[data-k="Sign in on a computer"]').click();
+await cam.waitForSelector('.sheet-body input[type=password]', { timeout: 20000 }); await settle(cam, 400);
+ok(/Confirm it’s you/.test(await cam.locator('.sheet-head, .sheet-body').first().innerText().catch(() => '')) || /show it’s you/.test(await cam.locator('.sheet-body').innerText()), 'Sign-in and Security › Sign in on a computer: the code read by the camera, and, not shown lately, asked to show it’s you first');
+ok(!(await m4.$('.qrnum')), 'the Mac shown nothing till then');
+await cam.fill('.sheet-body input[type=password]', PASSWORD); await cam.locator('.sheet-body form button[type=submit]').click();
 await cam.waitForSelector('.qrpick button', { timeout: 20000 }); await m4.waitForSelector('.qrnum b', { timeout: 10000 });
-ok(!(await cam.evaluate(() => [...document.querySelectorAll('video')].some((v) => v.srcObject?.active))), 'Sign-in and Security › Sign in on a computer: the code read by the camera, on to the request, the camera off');
+ok(!(await cam.evaluate(() => [...document.querySelectorAll('video')].some((v) => v.srcObject?.active))), 'shown: on to the request, the camera off');
 await cam.locator(`.qrpick button:text-is("${(await m4.locator('.qrnum b').innerText()).trim()}")`).click();
+await m4.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await m4.locator('#qrc button:has-text("Continue")').click();
 await m4.waitForSelector('main .hero', { timeout: 20000 });
 ok(true, 'and the Mac signed in from it');
 await cb.close();
