@@ -106,13 +106,18 @@ const MINOR = { GBp: ["GBP", 0.01], GBX: ["GBP", 0.01], ZAc: ["ZAR", 0.01], ILA:
 const EXCHANGES = { LSE: "London", IOB: "London", NMS: "Nasdaq", NGM: "Nasdaq", NCM: "Nasdaq", NAS: "Nasdaq", NYQ: "NYSE", NYS: "NYSE", ASE: "NYSE American", PCX: "NYSE Arca",
   CCC: "Crypto", CCY: "Currency", GER: "Xetra", PAR: "Paris", AMS: "Amsterdam", MIL: "Milan", EBS: "Swiss", TOR: "Toronto", ASX: "Sydney", JPX: "Tokyo", HKG: "Hong Kong",
   FGI: "FTSE", SNP: "S&P", DJI: "Dow Jones", NIM: "Nasdaq", CXI: "Cboe" };
-// A company's name, as people say it: "Rolls-Royce Holdings plc" → "Rolls-Royce", "NVIDIA Corporation" → "NVIDIA"
+// A name as written, where Yahoo's has its characters escaped as for a web page ("AT&amp;T" → "AT&T")
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+export const unescaped = (s) => String(s ?? "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e.toLowerCase()] ?? m));
+// A company's name, as people say it: "Rolls-Royce Holdings plc" → "Rolls-Royce", "NVIDIA Corporation" → "NVIDIA",
+// "JPMorgan Chase &amp; Co." → "JPMorgan Chase"
 export function plainName(n, symbol = "") {
-  let s = String(n || "").replace(/\s+/g, " ").trim();
+  let s = unescaped(n).replace(/\s+/g, " ").trim();
   if (!s) return symbol;
   if (s === s.toUpperCase() && /[A-Z]{4,}/.test(s)) s = s.toLowerCase().replace(/(^|[\s(&/-])([a-z])/g, (_, a, b) => a + b.toUpperCase());
   const TAILS = /[,.]?\s+(investment trust|investment company|american depositary shares?|american depositary receipts?|depositary receipts?|sponsored adr|adr|ads|common stock|ordinary shares?|ord sh|ord(inary)?( [0-9.p]+)?|class [a-z]( shares)?|plc|p\.l\.c\.|inc\.?|incorporated|corporation|corp\.?|company|co\.?|limited|ltd\.?|holdings?|group|n\.v\.|s\.a\.|se|ag|sa)$/i;
-  for (let i = 0, was = ""; i < 6 && was !== s; i++) { was = s; s = s.replace(TAILS, "").trim(); }
+  // (and an & left on its own at the end, once "Co." is gone)
+  for (let i = 0, was = ""; i < 6 && was !== s; i++) { was = s; s = s.replace(TAILS, "").replace(/\s*&$/, "").trim(); }
   return s.replace(/^the\s+/i, "") || symbol;
 }
 // What kind of thing it is: "share", "trust" (an investment trust: a company listed in London that invests in others, its
@@ -218,7 +223,7 @@ const FILLER = /\b(investment trust|investment company|trust|plc|fund|shares?|in
 export async function search(env, q) {
   const words = String(q || "").replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
   if (words.length < 1) return [];
-  return cached(env, `s3:${words.toLowerCase()}`, 24 * HOUR, async () => {
+  return cached(env, `s4:${words.toLowerCase()}`, 24 * HOUR, async () => {
     const ask = async (w) => {
       const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(w)}&quotesCount=12&newsCount=0&listsCount=0&enableFuzzyQuery=false&region=GB&lang=en-GB`);
       return (j?.quotes || []).filter((x) => x?.symbol && SYMBOL.test(String(x.symbol).toUpperCase()) && KINDS.has(x.quoteType))
@@ -261,7 +266,7 @@ export async function holdings(env, userId) {
   const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, h.since, a.pct AS alert,
     (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = h.user_id AND b.symbol = h.symbol) AS buys FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
     WHERE h.user_id = ? ORDER BY h.ord, h.added`).bind(userId).all();
-  return results.map((r) => ({ symbol: r.symbol, name: r.name, qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, since: r.since ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
+  return results.map((r) => ({ symbol: r.symbol, name: unescaped(r.name), qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, since: r.since ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
 }
 const cleanText = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 export const ACCOUNTS = ["isa", "sipp", "gia"];

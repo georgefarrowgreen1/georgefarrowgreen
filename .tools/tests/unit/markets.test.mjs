@@ -14,6 +14,10 @@ test("company names, as people say them", () => {
   assert.equal(plainName("BP p.l.c."), "BP");
   assert.equal(plainName("Vanguard S&P 500 UCITS ETF"), "Vanguard S&P 500 UCITS ETF");
   assert.equal(plainName("", "AAPL"), "AAPL");
+  assert.equal(plainName("JPMorgan Chase &amp; Co."), "JPMorgan Chase", "Yahoo's &amp; read as &, and one left at the end dropped");
+  assert.equal(plainName("Procter &amp; Gamble Company"), "Procter & Gamble");
+  assert.equal(plainName("AT&amp;T Inc."), "AT&T");
+  assert.equal(plainName("Marks &#38; Spencer Group plc"), "Marks & Spencer");
 });
 
 test("investment trusts, told from shares and funds", () => {
