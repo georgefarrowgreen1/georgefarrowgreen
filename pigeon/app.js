@@ -264,7 +264,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.53";            // shown in InFlite's menu
+const APP_VERSION = "1.54";            // shown in InFlite's menu
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -3672,6 +3672,31 @@ function mount() {
     if (window.innerHeight - window.visualViewport.height < 80 && document.activeElement !== $ta) typing(false);
   });
   fitKeyboard();
+  fitScreen();
+}
+// On the Home Screen, running up behind the status bar, iOS can lay the page out shorter than the screen (by the
+// status bar's height, or a Safari toolbar's), and change its mind on its own (after a while away, or the keyboard),
+// so the list stops short with a band under it: there (an iPhone or iPad, filling the screen), Chat is sized to the
+// screen itself, as Mail is (styles.css html.fullscreen-fix; the keyboard's own height still wins while it's up)
+let screenFitted = false;
+function fitScreen() {
+  if (screenFitted || navigator.standalone !== true || !screen.width || !screen.height) return;
+  screenFitted = true;
+  const doc = document.documentElement;
+  const fit = () => {
+    const portrait = matchMedia("(orientation: portrait)").matches;
+    const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const h = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    // (only when the window is the whole screen, not an iPad window beside another app)
+    const whole = Math.abs(window.innerWidth - w) < 2;
+    doc.classList.toggle("fullscreen-fix", whole);
+    if (whole) doc.style.setProperty("--screen-h", `${h}px`);
+    if (window.scrollY) window.scrollTo(0, 0);
+  };
+  fit();
+  for (const ev of ["resize", "pageshow", "focus"]) window.addEventListener(ev, fit);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && fit());
+  window.addEventListener("orientationchange", () => setTimeout(fit, 300));
 }
 // iOS doesn't shrink the page for the keyboard: it slides the whole page up
 // under it, taking the chat's header and Back off the top of the screen. So

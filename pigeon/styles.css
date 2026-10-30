@@ -83,6 +83,11 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{height:100%;background:var(--sky-top)}
+/* on the Home Screen, where iOS lays the page out shorter than the screen: the screen's own height (app.js fitScreen) */
+html.fullscreen-fix,html.fullscreen-fix body{height:var(--screen-h)}
+/* (and what's laid over it, fixed to the screen, InFlite's menu, its Allow sheet and notes, measured against that page
+   rather than iOS's short one, as Mail's are) */
+html.fullscreen-fix body{transform:translateZ(0)}
 /* with the keyboard up: the page is only as tall as the space above it, so there's nothing for iOS to slide */
 html.kbup,html.kbup body{height:var(--app-h,100%);overflow:hidden}
 body{height:100%;margin:0;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--sky-top);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
