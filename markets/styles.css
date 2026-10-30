@@ -25,7 +25,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --sky-a: #e4f3ee; --sky-b: #eef4f7; --sky-c: #f6f8fb; --sky-top: #e2f1ec;
+    --sky-a: #e4f3ee; --sky-b: #eef4f7; --sky-c: #f6f8fb; --sky-top: #d2ebe3;
     --aura-1: rgba(60, 200, 150, 0.32); --aura-2: rgba(110, 150, 255, 0.26);
     --text: #0c1420; --text-2: rgba(16, 24, 40, 0.72); --text-3: rgba(16, 24, 40, 0.64); --line: rgba(16, 24, 40, 0.1);
     --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(250, 252, 255, 0.92); --ctl: rgba(16, 30, 50, 0.06); --press: rgba(16, 24, 40, 0.05); --field: rgba(16, 30, 50, 0.06);
@@ -41,7 +41,7 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --sky-a: #e4f3ee; --sky-b: #eef4f7; --sky-c: #f6f8fb; --sky-top: #e2f1ec;
+  --sky-a: #e4f3ee; --sky-b: #eef4f7; --sky-c: #f6f8fb; --sky-top: #d2ebe3;
   --aura-1: rgba(60, 200, 150, 0.32); --aura-2: rgba(110, 150, 255, 0.26);
   --text: #0c1420; --text-2: rgba(16, 24, 40, 0.72); --text-3: rgba(16, 24, 40, 0.64); --line: rgba(16, 24, 40, 0.1);
   --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(250, 252, 255, 0.92); --ctl: rgba(16, 30, 50, 0.06); --press: rgba(16, 24, 40, 0.05); --field: rgba(16, 30, 50, 0.06);
@@ -71,6 +71,13 @@ a { color: inherit; text-decoration: none; }
 
 /* ---- the sky, and its slow light ---- */
 .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
+/* (on a phone or a tablet, as the account page's: the sky ends above Safari's bar at the foot, fading into the page's own
+   colour, so Safari takes it as the layer at the top of the page and tints the strip behind the status bar with its
+   colour, --sky-top, the green along the top of the sky in the light; reaching the foot of the screen, it's taken for
+   the page's background, and the strip is filled with the page's near-white instead) */
+@media (hover: none) {
+  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+}
 .aura { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; will-change: transform; }
 .a1 { top: -34vmax; left: -24vmax; background: radial-gradient(circle closest-side, var(--aura-1), transparent); animation: drift1 28s steps(56) infinite alternate; }
 .a2 { top: 30vmax; right: -36vmax; background: radial-gradient(circle closest-side, var(--aura-2), transparent); animation: drift2 36s steps(72) infinite alternate; }
