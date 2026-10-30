@@ -383,8 +383,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.83";
-const NEWS = "A story opens in Markets: what it says, what it means for you, more on it, and its page over the app";
+const BUILD = "1.84";
+const NEWS = "A story with more on it from other publishers shows them properly, under More on this";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1481,8 +1481,9 @@ function storyView(n) {
     pic, h("h2.rhead", { text: n.title }),
     h("p.rsrc", { text: `${n.src} · ${new Date(n.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` }),
     sum, forYou(n),
-    others.length ? [h("h3.slabel", { text: "More on this" }), h("div.list.flush", {}, others.map((m) => h("button.item.two.rmore", { type: "button", onclick: () => pushSheet(storyView, m) },
-      h("span", {}, h("small", { text: `${m.src} · ${ago(m.at)}` }), h("b", { text: m.title })))))] : null,
+    // (spread: a sheet's parts are each its own, never a list of them)
+    ...(others.length ? [h("h3.slabel", { text: "More on this" }), h("div.list.flush", {}, others.map((m) => h("button.item.two.rmore", { type: "button", onclick: () => pushSheet(storyView, m) },
+      h("span", {}, h("small", { text: `${m.src} · ${ago(m.at)}` }), h("b", { text: m.title })))))] : []),
     h("div.racts", {},
       h("a.readit", { href: n.link, rel: "noopener", ...(home ? {} : { target: "_blank" }) }, `Read it at ${n.src}`),
       h("div.rtwo", {}, h("button", { type: "button", onclick: () => shareStory(n), text: "Send in Chat" }), h("button", { type: "button", onclick: () => copyStory(n), text: "Copy Link" })),
@@ -1604,7 +1605,7 @@ function pushSheet(view, ...args) { Sheet.stack.push([view, args]); drawSheet();
 function backSheet() { Sheet.stack.pop(); if (!Sheet.stack.length) return closeSheet(); drawSheet(); }
 function drawSheet() {
   const [view, args] = Sheet.stack.at(-1);
-  sbody.replaceChildren(...[].concat(view(...args)).filter(Boolean));
+  sbody.replaceChildren(...[view(...args)].flat(9).filter(Boolean));
   sbody.querySelectorAll("h2, .sname").forEach((e) => e.setAttribute("tabindex", "-1"));
   sbody.scrollTop = 0;
 }

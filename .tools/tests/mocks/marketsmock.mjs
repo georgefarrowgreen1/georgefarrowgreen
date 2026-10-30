@@ -110,6 +110,11 @@ function search(q) {
     .map(([s, x]) => ({ symbol: s, shortname: x.short || x.name, longname: x.name, exchange: x.ex, exchDisp: x.exd === 'NASDAQ' ? 'NASDAQ' : x.exd, quoteType: x.type, typeDisp: x.type === 'ETF' ? 'ETF' : x.type === 'INDEX' ? 'Index' : 'Equity' }));
   const sym = Object.keys(Q).find((s) => s.toLowerCase() === k);
   const now = Math.floor(Date.now() / 1000);
+  // (the S&P 500's: one story told by two publishers, for "more on this")
+  if (sym === '^GSPC') return { quotes, news: [
+    { uuid: 'spx-1', title: 'S&P 500 falls as chipmakers slide on a weaker outlook', publisher: 'Reuters', link: 'https://example.com/news/^GSPC-1', providerPublishTime: now - 2400, relatedTickers: ['^GSPC'] },
+    { uuid: 'spx-2', title: 'Chipmakers slide, dragging the S&P 500 lower', publisher: 'Bloomberg', link: 'https://example.com/news/^GSPC-2', providerPublishTime: now - 5400, relatedTickers: ['^GSPC'] },
+  ] };
   const news = sym ? [
     { uuid: `${sym}-1`, title: `${Q[sym].name.split(' ')[0]} shares move after the morning's update`, publisher: 'Reuters', link: `https://example.com/news/${sym}-1`, providerPublishTime: now - 1800, relatedTickers: [sym],
       thumbnail: { resolutions: [{ url: `https://example.com/thumb/${sym}-1.png`, width: 140, height: 140, tag: '140x140' }, { url: `https://example.com/thumb/${sym}-1-big.png`, width: 4000, height: 3000, tag: 'original' }] } },

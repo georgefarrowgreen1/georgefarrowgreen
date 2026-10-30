@@ -232,6 +232,13 @@ await p.click('.tab[data-tab="holdings"]'); await settle(p, 500);
 ok(await p.locator('.tab[data-tab="news"] .tabn').isHidden(), 'nothing new once looked at');
 await p.evaluate(() => localStorage.setItem('markets:newsSeen', '0')); await p.click('.tab[data-tab="today"]'); await settle(p, 500);
 ok(/^\d+\+?$/.test(await text(p, '.tab[data-tab="news"] .tabn')) && await p.locator('.tab[data-tab="news"] .tabn').isVisible(), 'stories since you last looked: counted on the News tab', await text(p, '.tab[data-tab="news"] .tabn'));
+// (one story from two publishers: shown once, the other under it, there in its sheet as More on this)
+await p.click('.tab[data-tab="news"]'); await p.waitForSelector('.nstory .nchip.more', { timeout: 10000 }).catch(() => {});
+ok(/^\+1 more on this$/.test(await text(p, '.nstory .nchip.more')) && (await p.locator('.nstory a.story b').allInnerTexts()).filter((t) => /S&P 500/.test(t)).length === 1, 'one story from two publishers: shown once, with the other under it', await text(p, '.nstory:has(.nchip.more) a.story'));
+await p.locator('.nstory:has(.nchip.more) a.story').click(); await p.waitForSelector('#sheet .rmore', { timeout: 8000 }).catch(() => {}); await settle(p, 900);
+ok(await p.locator('#sheet .rmore').count() === 1 && /Chipmakers slide, dragging the S&P 500 lower/.test(await text(p, '#sheet .rmore')) && !/\[object /.test(await text(p, '#sheet')),
+  'its sheet: the other publisher\'s under More on this, each part as itself (no code shown)', await text(p, '#sheet .rmore'));
+await p.keyboard.press('Escape'); await settle(p, 600);
 
 // ---- 9. One taken off the list ----
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 900);
