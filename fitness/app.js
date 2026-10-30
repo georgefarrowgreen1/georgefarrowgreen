@@ -1900,10 +1900,11 @@ async function signOutHere(already = false) {
   const d = already !== true && S.me ? dusk() : null;
   if (d) await d.dark;
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
-  store.set("meAt", null); idb.clear().catch(() => {});
+  store.set("meAt", null); const cleared = idb.clear().catch(() => {});
   welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
   d?.done();
-  if (already !== true) A.outVia("fitness");
+  // (on to the sign-in page once this phone's copies of your files are gone, not before: leaving would stop that)
+  if (already !== true) { await cleared; A.outVia("fitness"); }
 }
 
 // (the sign-in gone, found out mid-way: signed out here too, and said so)

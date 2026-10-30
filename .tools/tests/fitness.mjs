@@ -391,10 +391,14 @@ await P.p.goto(`${FIT}/`); await P.p.waitForSelector('.ifh-me');
 await you(P);
 await P.p.click('#sheet .row.action.danger');
 await P.p.waitForTimeout(700); await P.p.screenshot({ path: `${out}/dusk.png` }).catch(() => {});
+// (said on the sign-in page, of every app, and back to Fitness from there)
+await P.p.waitForSelector('main .welcome h1:has-text("You’re signed out")', { timeout: 20000 });
+const outSaid = await P.p.innerText('main');
+await P.p.click('main .btn:has-text("Back to Fitness")');
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 await P.p.waitForTimeout(1500); await P.p.screenshot({ path: `${out}/welcome-again.png` });
 const cached = await P.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('fitness'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => res(q.result); }; r.onerror = () => res(-1); }));
-ok(/Signed out\./.test(await P.p.innerText('main')) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
+ok(/Of every app on InFlite/.test(outSaid) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
 await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.ifh-me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
