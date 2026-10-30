@@ -382,8 +382,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.81";
-const NEWS = "On the Home Screen, the tab bar sits at the foot of News as it does on Today";
+const BUILD = "1.82";
+const NEWS = "News, made more of: a brief that says why, stories by what you own, what's new, and on a big screen a news desk";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -401,7 +401,7 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
 const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
-  inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000 };
+  inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -1378,26 +1378,135 @@ function isaView() {
     h("p.hint", { text: "What you've put in, not what it's grown to. Money moved in from past years' ISAs doesn't count. It starts again on 6 April." }), save];
 }
 
-function newsView() {
-  if (!S.list.length) return emptyView();
-  const f = S.q["^FTSE"], g = S.q["^GSPC"], parts = [], said = [];
+// ---- News: the day in brief (the markets, and the headline behind them; your day, who did it, and why; what's coming),
+// then the stories: by what you own (each one's own, and for a trust or fund, the market it invests in), what you
+// follow, and the markets; what's new since you last looked marked, and counted on the News tab ----
+const TOPIC_NAME = { UK: "FTSE 100", US: "S&P 500" }, TOPIC_INDEX = { UK: "^FTSE", US: "^GSPC" };
+const TOPIC_SAID = { UK: "UK companies", US: "US companies", WORLD: "companies around the world" };
+const newsKey = (n) => n.link.replace(/[?#].*$/, "");
+const aboutIt = (n, sym) => n.for === sym || n.tickers.includes(sym);
+const sansStop = (t) => t.replace(/[.!?]$/, "");
+// (when you last looked: stories since are new; set as you leave News, or the app, from it)
+const newsSeen = () => store.get("newsSeen", 0);
+function newsBrief() {
+  const f = S.q["^FTSE"], g = S.q["^GSPC"], out = [], now = Date.now();
   const mv = (q, where) => (q?.chgPct == null ? null : `${where} ${Math.abs(q.chgPct) < 0.05 ? "is flat" : `is ${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}%`}`);
   const l1 = [mv(f, "London"), mv(g, "New York")].filter(Boolean);
-  if (l1.length) said.push(`${l1.join(" and ")} today.`);
-  const big = [...S.list].filter((x) => S.q[x.symbol]?.chgPct != null).sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0];
-  const story = big && S.news?.find((n) => n.for === big.symbol && Date.now() - n.at < 36 * 3600e3);
-  if (big) said.push(`Your biggest mover is ${big.name}, ${S.q[big.symbol].chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(S.q[big.symbol].chgPct), 1)}%${story ? `: ${story.title.replace(/[.!?]$/, "")}.` : "."}`);
-  parts.push(h("div.digest", {}, h("span.eyebrow", { text: "Today, in brief" }), said.map((t, i) => h("p.rise", { vars: { i: String(i) }, text: t }))));
-  parts.push(h("h3.label", {}, "For you"));
+  if (l1.length) {
+    // (the headline behind the bigger of the two moves)
+    const t = Math.abs(g?.chgPct ?? 0) >= Math.abs(f?.chgPct ?? 0) ? "US" : "UK", head = S.news?.find((n) => n.topic === t && now - n.at < 18 * 3600e3 && !newsHidden().has(n.src));
+    out.push(head ? [`${l1.join(" and ")} today: `, h("span.hl", { text: sansStop(head.title) }), "."] : `${l1.join(" and ")} today.`);
+  }
+  const T = totals();
+  if (T.o.length) {
+    const top = [...T.o].sort((a, b) => Math.abs(dayOf(b) || 0) - Math.abs(dayOf(a) || 0))[0], q = S.q[top.symbol], t = S.newsTopics?.[top.symbol], iq = S.q[TOPIC_INDEX[t]];
+    const own = S.news?.find((n) => aboutIt(n, top.symbol) && now - n.at < 36 * 3600e3 && !newsHidden().has(n.src));
+    const why = own ? `: ${sansStop(own.title)}` : iq?.chgPct != null && q.chgPct != null && Math.sign(iq.chgPct) === Math.sign(q.chgPct) ? `: it invests in ${TOPIC_SAID[t]}, and ${t === "US" ? "US" : "UK"} shares ${iq.chgPct >= 0 ? "rose" : "fell"}` : "";
+    const moved = `${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}%`;
+    out.push(Math.abs(T.day) < 0.5 ? `Your portfolio's little changed today.`
+      : `You're ${T.day >= 0 ? "up" : "down"} ${money(Math.abs(T.day), "GBP", 0)} today (${fmt(Math.abs(T.dayPct), 1)}%). ${T.o.length === 1 ? `${top.name} is ${moved}` : `${top.name} did most of it, ${moved}`}${why}.`);
+  } else {
+    const big = [...S.list].filter((x) => S.q[x.symbol]?.chgPct != null).sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0];
+    if (big) out.push(`The biggest mover on your list is ${big.name}, ${S.q[big.symbol].chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(S.q[big.symbol].chgPct), 1)}%.`);
+  }
+  const ev = income().events[0];
+  if (ev) out.push((ev.at - now) / 864e5 <= 14 ? `Coming up: about ${money(ev.v, "GBP", 0)} from ${ev.x.name}, around ${ev.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.`
+    : `Your next dividend: about ${money(ev.v, "GBP", 0)} from ${ev.x.name}, in ${monthSaid(ev.at, true)}.`);
+  return out;
+}
+const newsHidden = () => new Set(store.get("newsHide", []));
+const newsRead = () => new Set(store.get("newsRead", []));
+// the stories in groups: { kind (holdings, following, markets), x (the holding), topic, stories }, each story once
+function newsGroups(all) {
+  const used = new Set(), out = [], newest = (a, b) => b.at - a.at;
+  const take = (pred, n) => { const got = all.filter((s) => !used.has(s) && pred(s)).sort(newest).slice(0, n); got.forEach((s) => used.add(s)); return got; };
+  for (const x of [...owned()].sort((a, b) => valueOf(b) - valueOf(a))) {
+    const t = S.newsTopics?.[x.symbol], mine = take((s) => aboutIt(s, x.symbol), 5), mkt = t ? take((s) => s.topic && (t === "WORLD" || s.topic === t), 3) : [];
+    if (mine.length || mkt.length) out.push({ kind: "holdings", x, topic: t, stories: [...mine, ...mkt].sort(newest) });
+  }
+  for (const x of S.list.filter((y) => !(y.qty > 0))) { const st = take((s) => aboutIt(s, x.symbol), 3); if (st.length) out.push({ kind: "following", x, stories: st }); }
+  const mk = take((s) => !!s.topic, 8);
+  if (mk.length) out.push({ kind: "markets", stories: mk });
+  return out;
+}
+// what's new since you last looked, about what you own (and its markets) or follow, that you haven't read
+function newsNew() {
+  if (!S.news) return [];
+  const seen = S.tab === "news" && S.newsSince != null ? S.newsSince : newsSeen(), read = newsRead(), hidden = newsHidden();
+  return newsGroups(S.news.filter((n) => !hidden.has(n.src))).filter((g) => g.kind !== "markets").flatMap((g) => g.stories).filter((n) => n.at > seen && !read.has(newsKey(n)));
+}
+// the News tab's count of them (none on News itself)
+function newsBadge() {
+  const b = $('.tab[data-tab="news"] .tabn');
+  if (!b) return;
+  const n = S.tab === "news" ? 0 : newsNew().length;
+  b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n);
+  b.closest(".tab").setAttribute("aria-label", n ? `News, ${plural(n, "new story", "new stories")}` : "News");
+}
+function storyRow(n, ctx, fresh, read) {
+  const chips = [];
+  if (n.topic) { const iq = S.q[TOPIC_INDEX[n.topic]]; chips.push(h("span.nchip.via", { text: `${TOPIC_NAME[n.topic]}${iq?.chgPct != null ? ` ${pct(iq.chgPct, 1)}` : ""}` })); }
+  for (const t of n.tickers) {
+    const x = t !== ctx && S.list.find((y) => y.symbol === t), q = x && S.q[t];
+    if (x) chips.push(h(`span.nchip.${tone(q?.chgPct)}`, { text: q?.chgPct != null ? `${x.name} ${pct(q.chgPct, 1)}` : x.name }));
+  }
+  const cls = ["div.nstory", fresh && !read ? "fresh" : "", read ? "read" : ""].filter(Boolean).join(".");
+  return h(cls, { "data-key": newsKey(n) },
+    h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: () => markRead(n) },
+      h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title }), chips.length ? h("span.nchips", {}, chips.slice(0, 4)) : null),
+    h("button.nmore", { type: "button", "aria-label": `More: ${n.title}`, onclick: () => storyMenu(n) }, h("span", { "aria-hidden": "true" }, h("i"), h("i"), h("i"))));
+}
+function markRead(n) {
+  const r = store.get("newsRead", []), k = newsKey(n);
+  if (!r.includes(k)) { r.push(k); store.set("newsRead", r.slice(-300)); }
+  setTimeout(() => { const e = $(`.nstory[data-key="${CSS.escape(k)}"]`); e?.classList.add("read"); e?.classList.remove("fresh"); newsBadge(); }, 400);
+}
+// a story's own few things: sent in Chat, its link copied, or its source not shown again
+function storyMenu(n) {
+  const back = document.activeElement, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const close = () => { removeEventListener("keydown", esc, true); layer.classList.add("closing"); setTimeout(() => layer.remove(), 260); back?.focus?.(); };
+  const act = (label, fn, cls) => h(cls ? `button.${cls}` : "button", { type: "button", onclick: () => { close(); fn(); }, text: label });
+  const layer = h("div.amenu", { role: "dialog", "aria-modal": "true", "aria-label": n.title, onclick: (e) => { if (e.target === layer) close(); } },
+    h("div.amg", {}, h("p.amt", { text: n.title }), act("Send in Chat", () => shareStory(n)), act("Copy Link", () => copyStory(n)), act(`Hide Stories from ${n.src}`, () => hideSource(n.src), "warn")),
+    h("button.amc", { type: "button", onclick: close, text: "Cancel" }));
+  document.body.append(layer);
+  addEventListener("keydown", esc, true);
+  requestAnimationFrame(() => layer.querySelector(".amg button")?.focus());
+}
+function shareStory(n) {
+  const text = `${n.title} (${n.src})\n${n.link}`, chat = A.chatPage();
+  if (chat) { location.assign(`${chat}#${new URLSearchParams({ share: text })}`); return; }
+  if (navigator.share) { navigator.share({ title: n.title, url: n.link }).catch(() => {}); return; }
+  copyStory(n);
+}
+const copyStory = (n) => navigator.clipboard?.writeText(n.link).then(() => toast("Link copied"), () => toast(n.link)) ?? toast(n.link);
+function hideSource(src) { store.set("newsHide", [...new Set([...store.get("newsHide", []), src])].slice(-50)); toast(`Stories from ${src} hidden`); render(false); newsBadge(); }
+function newsView() {
+  if (!S.list.length) return emptyView();
   // (asked for when there's none, and again after a quarter of an hour; one that couldn't come, said, with Try Again)
   if (!S.newsErr && (S.news == null || Date.now() - (S.newsAt || 0) > 15 * 60e3)) loadNews();
-  if (S.newsErr && S.news == null) parts.push(h("p.foot", { style: "padding-top:0" }, "Couldn't get the news just now. ", h("button.inline", { type: "button", onclick: () => { S.newsErr = null; loadNews(); render(false); }, text: "Try Again" })));
-  else if (S.news == null) parts.push(h("div.list", {}, [0, 1, 2].map((i) => h("div.story", {}, h("span.m", { text: " " }), h("b", { style: "opacity:.25", text: "—" })))));
-  else if (!S.news.length) parts.push(h("p.foot", { style: "padding-top:0", text: "No stories about your list just now." }));
-  else parts.push(h("div.list", {}, S.news.slice(0, 20).map((n, i) => { const q = S.q[n.for];
-    return h("a.story.rise", { href: n.link, target: "_blank", rel: "noopener", vars: { i: String(Math.min(i, 8)) } },
-      h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` }), q ? h("span", { class: `num ${tone(q.chgPct)}`, text: `${nameOf(n.for)} ${pct(q.chgPct, 1)}` }) : null),
-      h("b", { text: n.title })); })));
+  S.newsSince ??= newsSeen();
+  const parts = [h("div.digest", {}, h("span.eyebrow", { text: "Today, in brief" }), newsBrief().map((t, i) => h("p.rise", { vars: { i: String(i) } }, t)))];
+  if (S.newsErr && S.news == null) return [...parts, h("p.foot", {}, "Couldn't get the news just now. ", h("button.inline", { type: "button", onclick: () => { S.newsErr = null; loadNews(); render(false); }, text: "Try Again" }))];
+  if (S.news == null) return [...parts, h("div.list.nlist", {}, [0, 1, 2].map(() => h("div.story.ghost", {}, h("span.m", { text: " " }), h("b", { text: " " }))))];
+  const hidden = newsHidden(), read = newsRead(), groups = newsGroups(S.news.filter((n) => !hidden.has(n.src)));
+  const kinds = ["holdings", "following", "markets"].filter((k) => groups.some((g) => g.kind === k));
+  if (!kinds.includes(S.nfilter)) S.nfilter = "all";
+  const shown = groups.filter((g) => S.nfilter === "all" || g.kind === S.nfilter), fresh = newsNew().length;
+  if (kinds.length > 1) parts.push(h("div.nfilter", { role: "group", "aria-label": "Show" }, [["all", "All"], ["holdings", "Holdings"], ["following", "Following"], ["markets", "Markets"]].filter(([k]) => k === "all" || kinds.includes(k))
+    .map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.nfilter === k), text: label, onclick: () => { if (S.nfilter !== k) { S.nfilter = k; render(false); } } }))));
+  if (fresh) parts.push(h("p.nnew", { text: `${plural(fresh, "new story", "new stories")} since you last looked` }));
+  if (!shown.length) parts.push(h("p.foot", { style: "padding-top:12px", text: "No stories about your list just now." }));
+  shown.forEach((g, gi) => {
+    const q = g.x ? S.q[g.x.symbol] : null;
+    const sub = g.kind === "markets" ? [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]].filter(([s]) => S.q[s]?.chgPct != null).map(([s, nm]) => `${nm} ${pct(S.q[s].chgPct, 1)}`).join(" · ")
+      : g.kind === "following" ? "You follow it" : [money(valueOf(g.x), "GBP", 0), g.topic ? `Invests in ${TOPIC_SAID[g.topic]}` : null].filter(Boolean).join(" · ");
+    parts.push(h("section.ngroup.rise", { vars: { i: String(Math.min(gi + 2, 8)) }, "aria-label": g.x?.name || "Markets" },
+      h(g.x ? "button.nghead" : "div.nghead", g.x ? { type: "button", onclick: () => openSheet(stockView, g.x.symbol) } : {},
+        h("span", {}, h("b", { text: g.x?.name || "Markets" }), h("small", { text: sub })), q?.chgPct != null ? h("span", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct) }) : null),
+      h("div.list.nlist", {}, g.stories.map((n) => storyRow(n, g.x?.symbol, n.at > S.newsSince, read.has(newsKey(n)))))));
+  });
+  if (hidden.size) parts.push(h("p.foot", {}, `Not showing stories from ${and2([...hidden])}. `, h("button.inline", { type: "button", onclick: () => { store.del("newsHide"); render(false); newsBadge(); }, text: "Show Them" })));
   return parts;
 }
 async function loadNews() {
@@ -1405,20 +1514,26 @@ async function loadNews() {
   loadNews.busy = true;
   try {
     const syms = [...S.list].sort((a, b) => (valueOf(b) ?? 0) - (valueOf(a) ?? 0)).slice(0, 10).map((x) => x.symbol);
-    S.news = syms.length ? (await A.news(syms)).news : [];
+    const r = syms.length ? await A.news(syms) : { news: [], topics: {} };
+    S.news = r.news; S.newsTopics = r.topics || {};
     S.newsAt = Date.now(); S.newsErr = null;
-    if (S.tab === "news") render(false);
+    if (S.tab === "news" && calm()) render(false);
+    newsBadge();
   } catch (e) { S.newsErr = e.message || "offline"; S.newsAt = Date.now(); if (S.tab === "news") render(false); } finally { loadNews.busy = false; }
 }
 
 function go(tab) {
   if (S.tab === tab) { scrollTo({ top: 0, behavior: C.still() ? "auto" : "smooth" }); return; }
-  S.tab = tab; render(); scrollTo(0, 0);
+  // (News left: what was there, seen; News opened: what's new marked from when you last looked)
+  if (S.tab === "news") store.set("newsSeen", Date.now());
+  if (tab === "news") S.newsSince = newsSeen();
+  S.tab = tab; render(); scrollTo(0, 0); newsBadge();
   requestAnimationFrame(() => fitScreen.fit?.());
   if (tab === "holdings") loadPaid();
 }
 function drawTabs() {
-  tabsEl.replaceChildren(...[["today", "Today"], ["holdings", "Holdings"], ["news", "News"]].map(([t, l]) => h("button.tab", { type: "button", "data-tab": t, onclick: () => go(t), text: l })));
+  tabsEl.replaceChildren(...[["today", "Today"], ["holdings", "Holdings"], ["news", "News"]].map(([t, l]) => h("button.tab", { type: "button", "data-tab": t, onclick: () => go(t) }, l, t === "news" ? h("span.tabn", { hidden: true, "aria-hidden": "true" }) : null)));
+  newsBadge();
 }
 
 // ---- the sheet: a stock, search, adding, settings ----
@@ -1623,7 +1738,7 @@ async function whyMoving(sym, el) {
   }
   let story = null, about = [];
   try {
-    const r = await A.news([sym]);
+    const r = await A.news([sym], false);
     about = r.news.filter((n) => n.tickers.includes(sym) || n.for === sym);
     story = about.find((n) => Date.now() - n.at < 36 * 3600e3) || null;
   } catch (_) {}
@@ -2163,7 +2278,11 @@ function live() {
   live.on = true;
   setInterval(refresh, 30000);
   seen();
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); seen(); } });
+  setTimeout(() => { if (S.news == null) loadNews(); }, 2500);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { refresh(); seen(); if (Date.now() - (S.newsAt || 0) > 15 * 60e3) loadNews(); }
+    else if (S.tab === "news") store.set("newsSeen", Date.now());
+  });
   addEventListener("online", () => refresh());
 }
 // On the Home Screen, running up behind the status bar, iOS can lay the page out shorter than the screen (by the
@@ -2196,4 +2315,5 @@ start();
 // ---- for the desk (desk.js): what it shares with the rest ----
 DESK.addEventListener("change", () => render(false));
 export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
-  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries };
+  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries,
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID };

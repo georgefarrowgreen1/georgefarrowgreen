@@ -155,6 +155,21 @@ await d.keyboard.press('/'); await d.keyboard.type('RR COMP SHEL'); await d.keyb
 ok(await d.locator('#dchart path.vsl').count() === 1 && /vs Shell/.test(await d.locator('.dtog.menu:has-text("vs")').innerText()), 'RR COMP SHEL: Rolls-Royce against Shell');
 await d.keyboard.press('/'); await d.keyboard.type('vs off'); await d.keyboard.press('Enter'); await settle(d, 1200);
 ok(await d.locator('#dchart path.vsl').count() === 0, 'vs off (as it was typed before): its price alone again');
+// ---- the News screen: a note for the morning; your list, the stories (each with its price's move since), the one chosen ----
+await d.keyboard.press('n'); await d.waitForSelector('.nscreen .nrowd', { timeout: 15000 }); await settle(d, 1500);
+ok(await d.locator('.nnote h3').count() === 3 && await d.locator('.nlists button').count() >= 4 && await d.locator('.nrowd').count() >= 6, 'N: the News screen, a note for the morning, your list and the stories', `${await d.locator('.nlists button').count()} lists, ${await d.locator('.nrowd').count()} stories`);
+// (the stand-in's week of prices ends before its stories: none's moved since, so none says a move, and the story says so)
+await settle(d, 1200);
+const said = await d.locator('.nreact:not(:empty)').allInnerTexts();
+ok(await d.locator('.nrowd .nreact').count() === await d.locator('.nrowd').count() && said.every((t) => /^[+−]\d+\.\d% since$/.test(t)), "each story with room for its price's move since it came out, said only where there's been one", said.slice(0, 3).join(' · ') || 'none moved');
+await d.waitForSelector('.nchart svg circle.nd.on', { timeout: 15000 }).catch(() => {});
+ok(await d.locator('.nchart svg circle.nd.on').count() >= 1 && /^(Little moved since this came out|[+−]\d+\.\d% since this came out|This came out before the week's prices\.)$/.test(await d.locator('.nsince').first().innerText().catch(() => '')), "the story chosen: what it names, on the week's chart, the story marked where it came out", await d.locator('.nsince').first().innerText().catch(() => ''));
+const st1 = await d.locator('.nst').innerText(); await d.keyboard.press('j'); await settle(d, 500); const st2 = await d.locator('.nst').innerText();
+ok(st1 !== st2 && (await d.locator('.nrowd[aria-selected="true"] b').innerText()) === st2, 'j: the next story, chosen', `${st1} → ${st2}`);
+await d.screenshot({ path: `${out}/6-news.png` });
+await d.keyboard.press('/'); await d.keyboard.type('TOP'); await d.keyboard.press('Enter'); await settle(d, 900);
+ok(/Markets/.test(await d.locator('.nlists button[aria-selected="true"]').innerText()) && await d.locator('.nrowd').count() >= 1, "TOP: the markets' headlines", await d.locator('.nlists button[aria-selected="true"]').innerText());
+await d.keyboard.press('p'); await settle(d, 900);
 // ---- the World screen ----
 await d.keyboard.press('w'); await d.waitForSelector('.wgrid .wt tbody tr[data-sym]', { timeout: 15000 }); await settle(d, 1500);
 ok(await d.locator('.wgrid .wt tbody tr[data-sym]').count() === 28 && await d.locator('.wgrid .wcol').count() === 3 && !(await d.$('#dhold')), 'W: the world, its 28 markets in three columns', String(await d.locator('.wgrid .wt tbody tr[data-sym]').count()));
@@ -166,7 +181,7 @@ const gu = Number((await d.locator('.fxm tbody tr:first-child td:nth-of-type(2)'
 ok(Math.abs(gu * ug - 1) < 0.002, 'and they agree: a pound in dollars, a dollar in pounds', `${gu} × ${ug}`);
 await d.screenshot({ path: `${out}/4-world.png` });
 await d.keyboard.press('?'); await settle(d, 300);
-ok(await d.isVisible('.dhelp') && await d.locator('.hgrid > div').count() === 12, '?: every function and key', String(await d.locator('.hgrid > div').count()));
+ok(await d.isVisible('.dhelp') && await d.locator('.hgrid > div').count() === 13, '?: every function and key', String(await d.locator('.hgrid > div').count()));
 await d.keyboard.press('Escape'); await settle(d, 300);
 ok(!(await d.$('.dhelp')), 'Esc: shut');
 await d.locator('.wt tr[data-sym="^GDAXI"]').click(); await d.waitForSelector('#dhold', { timeout: 10000 }); await settle(d, 1500);

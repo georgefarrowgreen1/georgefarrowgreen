@@ -28,7 +28,7 @@ export function me() {
 export const quotes = (syms) => call(`quotes?s=${list(syms)}`);
 export const chart = (sym, r) => call(`chart?s=${encodeURIComponent(sym)}&r=${r}`);
 export const years = (syms) => call(`years?s=${list(syms)}`, { wait: 60000 });
-export const news = (syms) => call(`news?s=${list(syms)}`);
+export const news = (syms, markets = true) => call(`news?s=${list(syms)}${markets ? "" : "&m=0"}`);
 export const search = (q) => call(`search?q=${encodeURIComponent(q)}`);
 export const putHolding = (h) => call("holding", { method: "PUT", body: h });
 export const dropHolding = (sym) => call(`holding?s=${encodeURIComponent(sym)}`, { method: "DELETE" });

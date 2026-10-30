@@ -352,6 +352,51 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .story:first-child { border-top: 0; }
 .story .m { font-size: 13px; color: var(--text-3); display: flex; gap: 8px; justify-content: space-between; }
 .story b { font-size: 17px; font-weight: 500; line-height: 1.35; }
+/* ---- News: the brief's headline; filters; what's new; each group (what you own, follow, the markets) and its stories,
+   unread ones dotted; what else a story names; a story's few things, from the foot; the News tab's count ---- */
+.digest .hl { color: var(--text); }
+.nfilter { display: flex; gap: 6px; padding: 24px 24px 0; overflow-x: auto; scrollbar-width: none; }
+.nfilter::-webkit-scrollbar { display: none; }
+.nfilter button { flex: none; height: 34px; padding: 0 15px; border-radius: 999px; background: var(--ctl); font-size: 14px; font-weight: 600; color: var(--text-2); transition: background-color 0.25s, color 0.25s; }
+.nfilter button[aria-pressed="true"] { background: var(--text); color: var(--sky-c); }
+.nnew { display: flex; align-items: center; gap: 10px; margin: 22px 24px 0; font-size: 12.5px; font-weight: 600; color: var(--blue); }
+.nnew::before, .nnew::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--blue) 30%, transparent); }
+.ngroup { margin-top: 28px; }
+.nghead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; width: calc(100% - 48px); margin: 0 24px; padding: 0 0 11px; border-bottom: 0.5px solid var(--line); text-align: left; transition: opacity 0.2s; }
+button.nghead:active { opacity: 0.6; }
+.nghead b { display: block; font: 600 17px/1.25 var(--font-d); letter-spacing: -0.25px; }
+.nghead small { display: block; margin-top: 2px; font-size: 13px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nghead .num { font-size: 15px; font-weight: 600; }
+.nstory { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: start; border-top: 0.5px solid var(--line); }
+.nlist .nstory:first-child { border-top: 0; }
+.nstory .story { padding: 15px 0; border-top: 0; gap: 5px; transition: opacity 0.2s; }
+.nstory .story:active { opacity: 0.6; }
+.nstory .story b { font-size: 16.5px; font-weight: 600; letter-spacing: -0.25px; transition: color 0.4s; }
+.nstory.fresh .story { padding-left: 15px; }
+.nstory.fresh::before { content: ""; position: absolute; left: 0; top: 23px; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+.nstory.read .story b { color: var(--text-2); font-weight: 500; }
+.nchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+.nchip { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--ctl); color: var(--text-2); white-space: nowrap; }
+.nchip.up-t { background: var(--up-soft); color: var(--up); }
+.nchip.down-t { background: var(--down-soft); color: var(--down); }
+.nchip.via { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-3); }
+.nmore { width: 34px; height: 34px; margin-top: 9px; border-radius: 50%; display: grid; place-items: center; color: var(--text-3); transition: background-color 0.2s; }
+.nmore span { display: flex; gap: 3px; }
+.nmore i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.nmore:active, .nmore:hover { background: var(--ctl); }
+.story.ghost .m { width: 38%; height: 12px; border-radius: 4px; background: var(--ctl); }
+.story.ghost b { height: 40px; border-radius: 8px; background: var(--ctl); animation: pulse 1.6s ease-in-out infinite; }
+.tabn { position: absolute; top: 8px; right: calc(50% - 40px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--blue); color: #fff; font: 700 10.5px/17px var(--font); text-align: center; pointer-events: none; }
+.tabn[hidden] { display: none; }
+.amenu { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--dim); animation: fade 0.25s var(--ease-out); transition: opacity 0.25s; }
+.amenu.closing { opacity: 0; }
+.amg, .amc { width: 100%; max-width: 520px; margin: 0 auto; overflow: hidden; border-radius: 18px; background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); animation: view-in 0.35s var(--ease-glide); }
+.amt { margin: 0; padding: 13px 20px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text-3); border-bottom: 0.5px solid var(--line); }
+.amg button, .amc { display: block; width: 100%; padding: 16px; text-align: center; font-size: 17px; color: var(--tint-text); }
+.amg button + button { border-top: 0.5px solid var(--line); }
+.amg button:active, .amc:active { background: var(--press); }
+.amg button.warn { color: var(--down); }
+.amc { font-weight: 600; }
 
 /* ---- the tab bar: InFlite's, three tabs and a pill that springs between them ---- */
 .tabbar { position: fixed; left: 0; right: 0; bottom: calc(0px - var(--fix-gap, 0px)); z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
@@ -682,6 +727,65 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .nrow a { color: var(--text); font-weight: 500; line-height: 1.35; text-decoration: none; } .nrow a:hover { text-decoration: underline; }
 .nm { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
 .ntag { height: 20px; padding: 0 7px; border-radius: 6px; background: var(--ctl); font-size: 11px; font-weight: 700; color: var(--tint-text); }
+.ntag.mk { display: inline-flex; align-items: center; color: var(--text-3); font-weight: 600; }
+.dlink { font-size: 11.5px; font-weight: 600; color: var(--tint-text); white-space: nowrap; }
+.dlink:hover { text-decoration: underline; }
+/* ---- the desk's News screen: a note for the morning across the top; your list, the stories, and the one chosen ---- */
+.nscreen { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
+.nwait { justify-content: center; align-items: center; }
+.nnote { display: grid; grid-template-columns: 1.25fr 1.3fr 1fr; gap: 32px; padding: 16px 20px 15px; background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--ift-tint) 12%, transparent), transparent 60%), var(--sheen), var(--glass); }
+.nnote h3 { margin: 0 0 7px; font: 650 11.5px/1.2 var(--font); letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-2); }
+.nnote p { margin: 0; font: 500 15.5px/1.45 var(--font-d); letter-spacing: -0.15px; color: var(--text); text-wrap: pretty; }
+.nnote p.sub { margin-top: 5px; font: 400 13px/1.45 var(--font); letter-spacing: 0; color: var(--text-2); }
+.nnote p.sub b { font-weight: 600; color: var(--text); }
+.nnote p.sub b.num { color: inherit; }
+.nmv { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 0 8px; width: 100%; padding: 3px 0; text-align: left; border-radius: 6px; }
+.nmv:hover b { text-decoration: underline; }
+.nmv i { grid-row: span 2; font-style: normal; font-size: 13px; font-weight: 650; padding-top: 1px; }
+.nmv b { font-size: 13.5px; font-weight: 600; }
+.nmv span { grid-column: 2; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ncols { display: grid; grid-template-columns: 236px minmax(0, 1fr) minmax(330px, 30%); gap: 12px; min-height: 0; }
+.nlistc, .nfeed, .nstoryc { overflow: auto; scrollbar-width: thin; }
+.nlists { display: grid; gap: 2px; }
+.nlists button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 8px 10px; border-radius: 10px; text-align: left; transition: background-color 0.2s; }
+.nlists button:hover { background: var(--press); }
+.nlists button[aria-selected="true"] { background: color-mix(in srgb, var(--ift-tint) 15%, transparent); }
+.nlists b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlists small { grid-column: 1; font-size: 11.5px; color: var(--text-3); }
+.nlists i { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-style: normal; font-size: 12.5px; font-weight: 600; }
+.nrows { display: grid; }
+.nrowd { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 10px 11px 12px; border-top: 0.5px solid var(--line); text-align: left; transition: background-color 0.2s; }
+.nrowd:first-child { border-top-color: transparent; }
+.nrowd:hover { background: var(--press); }
+.nrowd[aria-selected="true"] { background: var(--field); border-radius: 10px; border-top-color: transparent; }
+.nrowd[aria-selected="true"] + .nrowd { border-top-color: transparent; }
+.nrowd[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--tint-text); }
+.nrowd .nt { padding-top: 1px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.nrowd b { display: block; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text); text-wrap: pretty; }
+.nrowd small { display: block; margin-top: 3px; font-size: 12px; color: var(--text-3); }
+.nreact { align-self: center; padding: 3px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.nreact:empty { display: none; }
+.nreact.up-t { background: var(--up-soft); } .nreact.down-t { background: var(--down-soft); } .nreact.flat-t { background: var(--ctl); }
+.nst { margin: 2px 0 0; font: 650 19px/1.3 var(--font-d); letter-spacing: -0.3px; text-wrap: pretty; }
+.nsrc { margin: 6px 0 0; font-size: 12.5px; color: var(--text-3); }
+.nacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+a.dbtn { text-decoration: none; }
+.nco { margin-top: 18px; padding-top: 14px; border-top: 0.5px solid var(--line); }
+.ncoh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ncoh button { font-size: 14px; font-weight: 600; color: var(--text); text-align: left; }
+.ncoh button:hover { text-decoration: underline; }
+.ncoh i { font-style: normal; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.nchart { min-height: 96px; margin-top: 8px; }
+.nchart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.nchart .na.up { fill: var(--up-soft); } .nchart .na.down { fill: var(--down-soft); }
+.nchart .nl { fill: none; stroke-width: 1.6; stroke-linejoin: round; } .nchart .nl.up { stroke: var(--up); } .nchart .nl.down { stroke: var(--down); }
+.nchart .nbase { stroke: var(--line); }
+.nchart text { fill: var(--text-3); font: 600 9.5px var(--font); }
+.nchart .nd { fill: var(--sky-c); stroke: var(--text-2); stroke-width: 1.6; cursor: pointer; transition: r 0.2s; }
+.nchart .nd:hover { stroke: var(--blue); }
+.nchart .nd.on { fill: var(--blue); stroke: var(--blue); }
+.nsince { margin: 6px 0 0; font-size: 12.5px; font-weight: 600; }
+@media (max-width: 1180px) { .nnote { grid-template-columns: 1fr 1fr; } .nnote > :last-child { display: none; } .ncols { grid-template-columns: 200px minmax(0, 1fr) minmax(280px, 34%); } }
 .dcome { display: grid; }
 .dcome button { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; padding: 7px 0; border-top: 0.5px solid var(--line); text-align: left; }
 .dcome button:first-child { border-top: 0; } .dcome span { color: var(--text-3); } .dcome b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dcome i { font-style: normal; color: var(--text-2); }
