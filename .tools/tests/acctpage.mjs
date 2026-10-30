@@ -371,7 +371,9 @@ await Ph.p.waitForSelector('main .signin input[name=password]', { state: 'attach
 await signInPw(Ph, 'rowan.hale@example.com', 'wrong wrong wrong'); await waitText(Ph, /match/, 'main .said');
 ok((await text(Ph, 'main .said')).length > 0 && !/Rowan/.test(await text(Ph)), 'a wrong password: said, still signed out', await text(Ph, 'main .said'));
 await signInPw(Ph, 'rowan.hale@example.com', PW2);
-await waitText(Ph, /Rowan Ash Hale/);
+// (signed in on the sign-in page, on to the account's, which greets you)
+await Ph.p.waitForURL((u) => u.hostname.startsWith('account.'), { timeout: 30000 }).catch(() => {});
+await waitText(Ph, /Rowan Ash Hale/); await waitText(Ph, /Welcome back/, '#toast', 10000);
 ok(/Rowan Ash Hale/.test(await text(Ph)) && /Welcome back, Rowan/.test(await text(Ph, '#toast')), 'signed in with the password: welcomed back', await text(Ph, '#toast'));
 const sessions = rows(`SELECT hash FROM pg_sessions WHERE user_id = '${user('rowan_h').id}'`).length;
 // signing out here signs this browser out of the site
