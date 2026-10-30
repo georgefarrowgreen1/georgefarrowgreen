@@ -424,6 +424,8 @@ await Ph.p.waitForSelector('main .signin input[name=password]', { state: 'attach
 await signInPw(Ph, 'rowan.hale@example.com', PW2);
 await Ph.p.waitForFunction(() => /being deleted/.test(document.body.innerText), null, { timeout: 30000 }).catch(() => {});
 ok(/being deleted/.test(await Ph.p.evaluate(() => document.body.innerText)) && !(await Ph.p.$('.tabs')), 'Chat won\'t sign in to it, and says where to keep it');
+await L.p.click('main .welcome .btn:has-text("Sign in")'); await L.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 });
+await L.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 }); await settle(L, 600);
 await signInPw(L, 'rowan.hale@example.com', PW2);
 await waitText(L, /being deleted/);
 await settle(L, 600);
@@ -438,7 +440,9 @@ await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#keep=${tokenIn(km2, 'kee
 ok(user('rowan_h').delete_at && /Keep your account\?/.test(await text(D)), 'the email\'s link, opened: asks first (a mail scanner opening it doesn\'t keep it)', (await text(D)).slice(0, 80));
 await D.p.click('main .btn:has-text("Keep my account")'); await waitText(D, /staying/, '#toast');
 ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, once tapped, signed out', await text(D, '#toast'));
-// asked a third time, and the week up: gone
+// asked a third time, and the week up: gone (signed in again from the account's page: Sign in, on the sign-in page)
+await L.p.waitForSelector('main .welcome .btn:has-text("Sign in")', { timeout: 20000 }); await L.p.click('main .welcome .btn:has-text("Sign in")');
+await L.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 }); await L.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 }); await settle(L, 600);
 await signInPw(L, 'rowan.hale@example.com', PW2);
 await waitText(L, /Rowan Ash Hale/);
 await delete1();
