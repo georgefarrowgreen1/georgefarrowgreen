@@ -29,7 +29,7 @@
     --text: #0c1420; --text-2: rgba(16, 24, 40, 0.72); --text-3: rgba(16, 24, 40, 0.64); --line: rgba(16, 24, 40, 0.1);
     --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(250, 252, 255, 0.92); --ctl: rgba(16, 30, 50, 0.06); --press: rgba(16, 24, 40, 0.05); --field: rgba(16, 30, 50, 0.06);
     --sheet: #f8fafc; --dim: rgba(10, 16, 30, 0.3);
-    --tint: #0b7d55; --tint-ink: #ffffff; --tint-text: #0a7650; --up: #0a7a4d; --down: #d63c30; --warn: #a15f00; --violet: #6a55d8; --blue: #2f6fd6;
+    --tint: #0b7d55; --tint-ink: #ffffff; --tint-text: #0a7650; --up: #0a7a4d; --down: #bf3227; --warn: #a15f00; --violet: #6a55d8; --blue: #2f6fd6;
     --up-soft: rgba(15, 154, 98, 0.14); --down-soft: rgba(214, 60, 48, 0.12);
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 60, 90, 0.26);
@@ -44,7 +44,7 @@
   --text: #0c1420; --text-2: rgba(16, 24, 40, 0.72); --text-3: rgba(16, 24, 40, 0.64); --line: rgba(16, 24, 40, 0.1);
   --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(250, 252, 255, 0.92); --ctl: rgba(16, 30, 50, 0.06); --press: rgba(16, 24, 40, 0.05); --field: rgba(16, 30, 50, 0.06);
   --sheet: #f8fafc; --dim: rgba(10, 16, 30, 0.3);
-  --tint: #0b7d55; --tint-ink: #ffffff; --tint-text: #0a7650; --up: #0a7a4d; --down: #d63c30; --warn: #a15f00; --violet: #6a55d8; --blue: #2f6fd6;
+  --tint: #0b7d55; --tint-ink: #ffffff; --tint-text: #0a7650; --up: #0a7a4d; --down: #bf3227; --warn: #a15f00; --violet: #6a55d8; --blue: #2f6fd6;
   --up-soft: rgba(15, 154, 98, 0.14); --down-soft: rgba(214, 60, 48, 0.12);
   --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4);
   --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 60, 90, 0.26);
@@ -128,7 +128,7 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .dots { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
 .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width 0.45s var(--ease-spring), background 0.3s; }
 .dots i.on { width: 18px; background: var(--text-2); }
-.dots button { padding: 8px 0; }
+.dots button { padding: 14px 3px; margin: -6px 0; }
 .dots button i { display: block; }
 @media (hover: hover) { .dots button { cursor: pointer; } .dots button:hover i:not(.on) { background: var(--text-3); } }
 .vbar { display: grid; gap: 8px; margin-top: 6px; }
@@ -176,6 +176,7 @@ button.fact { width: 100%; text-align: left; }
 .ichart { margin-top: 26px; }
 .ibars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; align-items: end; }
 .ib { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; min-width: 0; }
+.ichart .ib { min-height: 150px; }
 .ib i { display: block; border-radius: 5px; background: var(--up); opacity: 0.4; transform-origin: bottom; animation: bar-up 0.9s var(--ease-out) backwards; animation-delay: calc(var(--k, 0) * 45ms + 120ms); transition: opacity 0.25s; }
 .ib i.none { background: var(--ctl); opacity: 1; }
 .ib[aria-pressed="true"] i { opacity: 1; }
@@ -726,4 +727,11 @@ body.sheet-up .sheet { transform: none; }
   .item > svg { display: none; }
   .ring { grid-template-columns: 1fr; justify-items: center; }
   .legend { width: 100%; }
+}
+/* a phone on its side: a slimmer tab bar, nearer the edge, so it covers less of the little height there is */
+@media (max-height: 500px) and (orientation: landscape) {
+  .tabbar { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .tabs { height: 46px; padding: 4px; }
+  .tabs::before { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); }
+  .page { padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
 }

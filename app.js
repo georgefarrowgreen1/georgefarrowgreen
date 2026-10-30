@@ -10,6 +10,11 @@
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+// Chat's old home was here (georgefarrowgreen.com/pigeon/); it's at chat.inflite.ai now, and what a phone kept of it
+// here, its sign-in and the handle on its key, goes: nothing on this site's own address keeps them now
+if (/^(www\.)?georgefarrowgreen\.com$/.test(location.hostname)) {
+  try { indexedDB.deleteDatabase("inflight"); for (const k of Object.keys(localStorage)) if (k.startsWith("inflight")) localStorage.removeItem(k); } catch (_) {}
+}
 const clamp = (v) => Math.min(1, Math.max(0, v));
 const body = document.body, root = document.documentElement;
 const motion = matchMedia("(prefers-reduced-motion: reduce)");

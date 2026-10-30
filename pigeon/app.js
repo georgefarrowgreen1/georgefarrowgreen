@@ -2163,6 +2163,8 @@ function welcomeCta() {
 // link you came in on, for half an hour or until it's used; on the phone, not just the tab, as a Home Screen app can
 // open the account's page in a view of its own), and back with a code for it (signInBack).
 const SIGNIN_KEY = "inflight-signin";
+// (one started and never finished, its word and key not kept past a couple of hours)
+try { const k = JSON.parse(localStorage.getItem(SIGNIN_KEY) || "null"); if (k && !(Math.abs(Date.now() - k.at) < 2 * 3600e3)) localStorage.removeItem(SIGNIN_KEY); } catch (_) {}
 async function toAccountSignIn(e, mode) {
   e?.preventDefault?.();
   const covered = handOff();      // (the page's sky comes in while the trip's got ready)

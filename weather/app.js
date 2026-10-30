@@ -2799,6 +2799,8 @@ function signedOutElsewhere() {
 // Signing in is on the account's own page (account.<site>, beside weather.<site>), where every app on the site signs
 // in: there with a word for the sign-in (kept on this device for half an hour, or until it's used), and back with a code
 // for it (signedBack). That page's sky comes in as the word's made (handOff), and it's off there once that's done
+// (a sign-in started here and never finished: its word not kept past a couple of hours)
+try { const k = JSON.parse(localStorage.getItem("wx:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("wx:signin"); } catch (_) {}
 async function toAccountSignIn(e) {
   const page = accountPage(); if (!page || leaving) return;
   const away = handOff();

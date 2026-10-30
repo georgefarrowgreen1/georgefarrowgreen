@@ -380,7 +380,8 @@ const monthSaid = (d, long = false) => d.toLocaleDateString("en-GB", { month: lo
 // a year of it, a bar a month (the chosen one bright)
 function incomeBars(I, chosen, onPick, tall = 120) {
   const max = Math.max(...I.months.map((m) => m.total), 0.01);
-  return h("div.ibars", { role: "group", "aria-label": "Dividends by month" }, I.months.map((m, i) => h(onPick ? "button.ib" : "span.ib", { ...(onPick ? { type: "button", "aria-pressed": String(i === chosen), onclick: () => onPick(i) } : {}), "aria-label": `${monthSaid(m.d, true)}: ${money(m.total, "GBP", 0)}`, vars: { k: String(i) } },
+  // (as buttons, each says its month and what's in it; drawn small in a row, the row is a picture, its words the row's)
+  return h("div.ibars", onPick ? { role: "group", "aria-label": "Dividends by month" } : { "aria-hidden": "true" }, I.months.map((m, i) => h(onPick ? "button.ib" : "span.ib", { ...(onPick ? { type: "button", "aria-pressed": String(i === chosen), onclick: () => onPick(i), "aria-label": `${monthSaid(m.d, true)}: ${money(m.total, "GBP", 0)}` } : {}), vars: { k: String(i) } },
     h("i", { class: m.total > 0 ? null : "none", style: `height:${Math.max(3, Math.round((m.total / max) * tall))}px` }), onPick ? h("span", { text: monthSaid(m.d).slice(0, 3) }) : null)));
 }
 

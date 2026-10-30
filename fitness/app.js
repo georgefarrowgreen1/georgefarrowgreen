@@ -1642,6 +1642,8 @@ function courseScene() {
   }
   return el;
 }
+// (a sign-in started here and never finished: its word not kept past a couple of hours)
+try { const k = JSON.parse(localStorage.getItem("fitness:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("fitness:signin"); } catch (_) {}
 async function toAccountSignIn(e, mode = "signin") {
   const page = A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
