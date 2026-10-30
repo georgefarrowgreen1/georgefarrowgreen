@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.61";
+const BUILD = "1.62";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -566,7 +566,6 @@ function todayView() {
   parts.push(h("h3.label", {}, "Markets"));
   parts.push(h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];
     return h("button.mk.rise.press", { type: "button", vars: { i: String(i + 4) }, onclick: () => openStock(s) }, h("small", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); })));
-  parts.push(h("p.foot", { text: "Prices from Yahoo Finance, up to 20 minutes behind. Not advice." }));
   return parts;
 }
 function daySaid(T) {
@@ -700,8 +699,7 @@ function emptyView() {
     h("div.chips.rise", { vars: { i: "3" } }, picks.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => openStock(s, { name: n }), text: n })))),
   h("h3.label", {}, "Markets"),
   h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];
-    return h("button.mk.rise.press", { type: "button", vars: { i: String(i + 4) }, onclick: () => openStock(s) }, h("small", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); })),
-  h("p.foot", { text: "Prices from Yahoo Finance, up to 20 minutes behind. Not advice." })];
+    return h("button.mk.rise.press", { type: "button", vars: { i: String(i + 4) }, onclick: () => openStock(s) }, h("small", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); }))];
 }
 
 function holdingsView() {
