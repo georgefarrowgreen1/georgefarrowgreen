@@ -284,7 +284,7 @@ await closeSheet(L);
 // (the phone's page, looked at again on coming back to it)
 await Ph.p.waitForTimeout(15500); await Ph.p.evaluate(() => dispatchEvent(new Event('focus')));
 await waitText(Ph, /Sign in with a passkey/, 'main', 15000);
-ok(/Sign in with a passkey/.test(await text(Ph)) && /signed out/.test(await text(Ph, '#toast')), 'and the phone\'s page notices, without a reload', (await text(Ph, '#toast')));
+ok(!!(await Ph.p.$('main .welcome .btn:has-text("Sign in")')) && /signed out/.test(await text(Ph, '#toast')), 'and the phone\'s page notices, without a reload: Sign in, on the sign-in page', (await text(Ph, '#toast')));
 
 // ---- 6b. Recent activity ----
 await openSecure(L, 'Recent activity');
@@ -364,7 +364,9 @@ await closeSheet(L);
 // ---- 7. Signed out: how it looks; signing in with a password (wrong first), and with a passkey ----
 await Ph.p.evaluate(() => document.querySelectorAll('.rise').forEach((e) => e.getAnimations().filter((a) => a.animationName === 'rise').forEach((a) => a.finish())));
 await shot(Ph, '16-signed-out');
-// (the phone remembers who signed in there last, as they were then: their email since changed, on the laptop)
+// (on to the sign-in page, which remembers who signed in there last, as they were then: their email since changed, on the laptop)
+await Ph.p.click('main .welcome .btn:has-text("Sign in")'); await Ph.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 });
+await Ph.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 }); await settle(Ph, 600);
 await signInPw(Ph, 'rowan.hale@example.com', 'wrong wrong wrong'); await waitText(Ph, /match/, 'main .said');
 ok((await text(Ph, 'main .said')).length > 0 && !/Rowan/.test(await text(Ph)), 'a wrong password: said, still signed out', await text(Ph, 'main .said'));
 await signInPw(Ph, 'rowan.hale@example.com', PW2);

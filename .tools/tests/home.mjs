@@ -64,7 +64,7 @@ await home(V);
 ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycling · Apps$/i.test(await text(V, '.eyebrow')) && /I ride, I take photos/.test(await text(V, '.lede')),
   'the name, the line above it and the one under it', await text(V, '.hero'));
 ok(await shown(V, '#sign-in') && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: Sign in, no Edit and no photo');
-ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT}/#signin=home`, 'Sign in goes to the account’s page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
+ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT.replace('//account.', '//auth.')}/#signin=home`, 'Sign in goes to the sign-in page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
 ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.ifl.test:8788/', 'the apps open at their own addresses');
 ok(await text(V, '#app-inflight small') === 'Letters carried by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');

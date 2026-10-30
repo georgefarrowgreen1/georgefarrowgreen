@@ -256,8 +256,10 @@ await lc.close();
 // ---- 13. Signing out: back to the start ----
 await p.click('.ifh-me'); await p.waitForSelector('.ifm-pop.open'); await settle(p, 500);
 ok(/Markets 1\.\d\d/.test(await text(p, '.ifm-foot')) && /Find and Add/.test(await text(p, '.ifm-pop')), "InFlite's menu: Markets and its version, and Find and Add", await text(p, '.ifm-foot'));
-await p.click('.ifm-out'); await p.waitForSelector('.welcome #sign-in', { timeout: 10000 });
-ok(true, 'signed out: back to the start');
+await p.click('.ifm-out'); await p.waitForSelector('main .welcome h1:has-text("You’re signed out")', { timeout: 20000 });
+ok(new URL(p.url()).hostname.startsWith('auth.') && /Back to Markets/.test(await text(p, 'main')), 'signed out: said on the sign-in page, of every app, with the way back', p.url());
+await p.click('main .btn:has-text("Back to Markets")'); await p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
+ok(true, 'and back to the start');
 
 ok(!errs.length, 'no errors on the page', errs.join(' ; '));
 console.log(`FAILS ${fails}`);

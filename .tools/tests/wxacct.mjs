@@ -376,6 +376,10 @@ await waitFor(() => tDev()?.user_id, 20000);
 const t3 = tDev();
 await settings(T); await T.p.waitForSelector('#out-grp:not([hidden]) #sign-out', { timeout: 15000 }).catch(() => {});
 await T.p.click('#sign-out');
+// (signed out: said on the sign-in page, and back to Weather from there)
+await T.p.waitForSelector('main .welcome h1:has-text("You’re signed out")', { timeout: 20000 });
+await T.p.click('main .btn:has-text("Back to Weather")'); await T.p.waitForURL((u) => u.hostname.startsWith('weather.'), { timeout: 20000 });
+await settings(T);
 await waitFor(async () => !tDev()?.user_id && await T.p.isVisible('#acct-signin'), 15000);
 const t4 = tDev();
 ok(t3?.user_id && t4 && !t4.user_id && t4.n === t3.n && await T.p.isVisible('#acct-signin') && await T.p.isHidden('#out-grp'), 'signed out from Weather\'s Settings: signed out here, the tablet\'s notifications its own', JSON.stringify({ t3, t4 }));
