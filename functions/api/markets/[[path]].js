@@ -82,7 +82,8 @@ const ROUTES = {
   "GET news": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mknews:${u.id}`, 240, 3600e3);
-    return shared({ news: await news(env, symbolsOf(request, 12)) }, 120);
+    // (m=0: only what's about these, not the markets' too)
+    return shared(await news(env, symbolsOf(request, 12), { markets: new URL(request.url).searchParams.get("m") !== "0" }), 120);
   },
   "GET search": async ({ request, env }) => {
     const u = await signedIn(request, env);

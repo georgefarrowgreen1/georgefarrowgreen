@@ -240,21 +240,49 @@ export async function search(env, q) {
     return [...london, ...out].filter((x) => !seen.has(x.symbol) && seen.add(x.symbol)).map((x, i) => [rank(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((r) => r[2]).slice(0, 8);
   });
 }
-// The news about each of a few symbols, together, newest first
-export async function news(env, symbols) {
-  const all = await Promise.all(symbols.slice(0, 10).map((s) => cached(env, `n:${s}`, 15 * MIN, async () => {
-    const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(s)}&quotesCount=0&newsCount=8&listsCount=0`);
-    return { items: (j?.news || []).filter((n) => n?.title && /^https:\/\//.test(n.link || "") && num(n.providerPublishTime) != null)
-      .map((n) => ({ title: String(n.title).slice(0, 240), src: String(n.publisher || "").slice(0, 60), link: n.link, at: n.providerPublishTime * 1000, tickers: (n.relatedTickers || []).map((x) => String(x).toUpperCase()).slice(0, 8) })) };
-  }).catch(() => ({ items: [] }))));
+// The news about what you hold and follow, and the markets'. For each symbol, the stories filed under it; for an
+// investment trust or fund, also those that name it (they're rarely filed under its symbol), and the stories about the
+// market its name says it invests in; and the day's stories about London's and New York's markets. → { news: [{ title,
+// src, link, at, tickers, for (the symbol it's about, or null), topic (a market's: "UK", "US"; or null) }], newest first
+// and no story twice; topics: { SYMBOL: "UK" | "US" | "WORLD" } (a trust's or fund's market, by its name) }
+const TOPIC_QUERY = { UK: "^FTSE", US: "^GSPC" };
+export function topicOf(name = "", kind = "") {
+  if (kind !== "trust" && kind !== "fund") return null;
+  if (/\b(american|america|north america|us|u\.s\.|s&p|nasdaq|usa)\b/i.test(name)) return "US";
+  // (the world before the UK: FTSE's All-World is the world's)
+  if (/\b(global|world|all-world|international|worldwide)\b/i.test(name)) return "WORLD";
+  if (/\b(uk|u\.k\.|british|britain|ftse|city of london|united kingdom|smaller companies)\b/i.test(name)) return "UK";
+  return null;
+}
+const searchNews = (env, q, n = 8) => cached(env, `n:${q}`, 15 * MIN, async () => {
+  const j = await fetchJson(env, `/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=0&newsCount=${n}&listsCount=0`);
+  return { items: (j?.news || []).filter((x) => x?.title && /^https:\/\//.test(x.link || "") && num(x.providerPublishTime) != null)
+    .map((x) => ({ title: String(x.title).slice(0, 240), src: String(x.publisher || "").slice(0, 60), link: x.link, at: x.providerPublishTime * 1000, tickers: (x.relatedTickers || []).map((t) => String(t).toUpperCase()).slice(0, 8) })) };
+}).catch(() => ({ items: [] }));
+export async function news(env, symbols, { markets = true } = {}) {
+  const list = symbols.slice(0, 10), q = await quotes(env, list).catch(() => ({})), topics = {};
+  const asks = [];
+  for (const s of list) {
+    asks.push([s, null, searchNews(env, s)]);
+    const x = q[s];
+    if (x?.kind === "trust" || x?.kind === "fund") {
+      // (by its name: kept only where the story says it, or names it among its companies)
+      const name = String(x.name || "").trim();
+      if (name.length >= 4) asks.push([s, null, searchNews(env, `${name}${x.kind === "trust" ? " investment trust" : ""}`).then((r) => ({ items: r.items.filter((n) => n.tickers.includes(s) || n.title.toLowerCase().includes(name.toLowerCase())) }))]);
+      const t = topicOf(name, x.kind);
+      if (t) topics[s] = t;
+    }
+  }
+  if (markets) for (const [t, sym] of Object.entries(TOPIC_QUERY)) asks.push([null, t, searchNews(env, sym)]);
+  const got = await Promise.all(asks.map((a) => a[2]));
   const seen = new Set(), out = [];
-  all.forEach((r, i) => (r?.items || []).forEach((n) => {
+  got.forEach((r, i) => (r?.items || []).forEach((n) => {
     const key = n.link.replace(/[?#].*$/, "");
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ ...n, for: symbols[i] });
+    out.push({ ...n, for: asks[i][0], topic: asks[i][1] });
   }));
-  return out.sort((a, b) => b.at - a.at).slice(0, 30);
+  return { news: out.sort((a, b) => b.at - a.at).slice(0, 40), topics };
 }
 // The markets everyone sees: London, New York, Bitcoin (and the pound, for adding up what's in dollars)
 export const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
@@ -553,7 +581,9 @@ export async function alertTick(env, t = Date.now()) {
     const claim = await D.prepare("UPDATE mk_alerts SET fired = ?3 WHERE user_id = ?1 AND symbol = ?2 AND (fired IS NULL OR fired != ?3)").bind(r.user_id, r.symbol, day).run();
     if (!claim.meta?.changes) continue;
     const up = x.chgPct >= 0;
-    const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`, body: `${money(x.price, x.cur)} now. Tap to see why.`, tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
+    // (why, where a story from the last day says: the newest about it)
+    const why = (await news(env, [r.symbol], { markets: false }).catch(() => null))?.news.find((n) => (n.for === r.symbol || n.tickers.includes(r.symbol)) && t - n.at < 24 * 3600e3);
+    const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`, body: `${money(x.price, x.cur)} now. ${why ? `${why.title.replace(/[.!?]$/, "")}.` : "Tap to see why."}`, tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
     sent += await tell(env, D, r.user_id, note);
   }
   return { alerts: results.length, sent };

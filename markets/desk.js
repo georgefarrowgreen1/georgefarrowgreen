@@ -5,16 +5,20 @@
 //     against any market or holding, read exactly under the pointer), its price history (to download), its dividends
 //     and its news; on the right, a heat map of your money, your year's risk, the news and the dividends coming;
 //   - World: the world's markets at once (indices by region, currencies and how each stands against the others,
-//     commodities, US Treasury yields, crypto).
+//     commodities, US Treasury yields, crypto);
+//   - News: a note for the morning (the markets and why, your movers and why, what's coming); your list, the stories
+//     about each (with the price's move since each came out), and the one chosen: what it names, on the week's chart,
+//     each story about it marked where it came out.
 // Along the top, a command line that takes a terminal's function codes, suggesting as you type: RR GP (its chart),
 // RR GPC (candles), RR HP (its prices), RR DVD (its dividends), RR N (its news), RR COMP SHEL, RR ALRT 5, WEI, FXC, PORT,
 // ADD Tesco, HELP (and the words it took before: vs FTSE, vs off, alert NVDA 5, news). Keys: / or ⌘K the command line,
 // ↑ ↓ the holdings, 1–5 the range, K candles, L log, A averages, B bands, V volume, R RSI, M MACD, C against the market,
-// W world, P portfolio, ? help.
+// W world, P portfolio, N news (j k through it, o to open one, s to send it), ? help.
 import { S, h, A, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
-  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, meFace, youMenu, daySeries } from "./app.js";
+  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, meFace, youMenu, daySeries,
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID } from "./app.js";
 
-const D = { screen: "port", view: "chart", sel: null, range: "1y", sort: { k: "value", dir: -1 }, type: "line", log: false, ma: true, bb: false, vol: true, rsi: false, macd: false, vs: null, menu: null, news: null, risk: null };
+const D = { screen: "port", view: "chart", sel: null, range: "1y", sort: { k: "value", dir: -1 }, type: "line", log: false, ma: true, bb: false, vol: true, rsi: false, macd: false, vs: null, menu: null, news: null, risk: null , nlist: "all", nsel: null };
 const VS = [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]];
 const NS = "http://www.w3.org/2000/svg";
 const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const [k, v] of Object.entries(a)) if (v != null) e.setAttribute(k, v); return e; };
@@ -61,6 +65,7 @@ const FN = [
   ["DVD", "Dividends", "every dividend it's paid", true], ["N", "News", "the news about it", true], ["COMP", "Compare", "set against another: RR COMP SHEL", true],
   ["ALRT", "Alert", "when it moves this much in a day: RR ALRT 5", true], ["WEI", "World markets", "indices, currencies, commodities, rates, crypto", false],
   ["FXC", "Currencies", "the pound, dollar, euro, yen and franc against each other", false], ["PORT", "Portfolio", "your holdings, and the one chosen", false],
+  ["TOP", "Top news", "the markets' headlines, and the news about what you hold", false],
   ["ADD", "Add", "find one to add or follow: ADD Tesco", false], ["HELP", "Help", "every function and key", false],
 ];
 // (the words the command line took before it took codes, still taken)
@@ -70,7 +75,7 @@ const fnOf = (w) => { const k = w.toUpperCase(); return FN.find(([c]) => c === (
 export function deskView() {
   const own = owned();
   if (!D.sel || !S.q[D.sel]) D.sel = ([...own].sort((a, b) => valueOf(b) - valueOf(a))[0] || S.list[0])?.symbol;
-  const body = D.screen === "world" ? worldGrid() : h("div.dgrid", {}, portPane(), instPane(), h("div.dcol", {}, heatPane(), riskPane(), newsPane(), comingPane()));
+  const body = D.screen === "world" ? worldGrid() : D.screen === "news" ? newsScreen() : h("div.dgrid", {}, portPane(), instPane(), h("div.dcol", {}, heatPane(), riskPane(), newsPane(), comingPane()));
   const root = h("section.desk", {}, topBar(), body, statusBar());
   keys.on();
   return root;
@@ -109,7 +114,7 @@ function topBar() {
   const tape = h("div.tape", {}, INDICES.filter((s) => S.q[s]).map((s) => { const q = S.q[s];
     return h("button.tick", { type: "button", onclick: () => go(s) }, h("span", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); }));
   const me = h("button.dme", { type: "button", "aria-label": "You, your apps and settings", onclick: (e) => youMenu(e.currentTarget) }, meFace());
-  const tabs = h("div.dtabs", { role: "tablist" }, [["port", "Portfolio", "P"], ["world", "World", "W"]].map(([k, label, key]) =>
+  const tabs = h("div.dtabs", { role: "tablist" }, [["port", "Portfolio", "P"], ["news", "News", "N"], ["world", "World", "W"]].map(([k, label, key]) =>
     h("button", { type: "button", role: "tab", "aria-selected": String(D.screen === k), title: `${label} (${key})`, onclick: () => { if (D.screen !== k) { D.screen = k; redraw(); } }, text: label })));
   return h("div.dtop", {}, me, h("b.dbrand", { text: "Markets" }), tabs, h("div.dcmdw", {}, h("label.dcmd", {}, h("span.prompt", { text: "›" }), input, h("kbd", { text: "/" })), sug), tape,
     h("button.dme.act", { type: "button", "aria-label": "Find and add", onclick: () => openSheet(searchView) }, icon("search", 17, 2.4)));
@@ -148,6 +153,7 @@ async function run(code, sym, arg) {
   if (code === "WEI") { D.screen = "world"; redraw(); return true; }
   if (code === "FXC") { D.screen = "world"; redraw(); requestAnimationFrame(() => $("#dfx")?.scrollIntoView({ block: "nearest", behavior: "smooth" })); return true; }
   if (code === "PORT") { D.screen = "port"; redraw(); return true; }
+  if (code === "TOP") { D.screen = "news"; D.nlist = "markets"; redraw(); return true; }
   if (code === "HELP") { help(); return true; }
   if (code === "ADD") { openSheet(searchView); if (arg) setTimeout(() => { const q = $("#mk-q"); if (q) { q.value = arg; q.dispatchEvent(new Event("input")); } }, 450); return true; }
   sym ??= D.sel;
@@ -328,7 +334,7 @@ function divView(sym, q, x) {
 // the news about it
 function symNews(sym) {
   const list = h("div.dnews.full", {}, h("p.dempty", { text: "Getting the news…" }));
-  A.news([sym]).then((r) => {
+  A.news([sym], false).then((r) => {
     if (!list.isConnected) return;
     const items = r.news || [];
     list.replaceChildren(...(items.length ? items.slice(0, 20).map((n) => h("div.nrow", {}, h("a", { href: n.link, target: "_blank", rel: "noopener", text: n.title }), h("div.nm", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })))) : [h("p.dempty", { text: "No news about it just now." })]));
@@ -620,19 +626,130 @@ async function drawRisk(body) {
 }
 
 // ---- the news about what you hold ----
+// (asked for once a quarter of an hour, for the right column and the News screen: { at, list, topics })
+async function loadNews(force) {
+  if (!force && D.news && Date.now() - D.news.at < 15 * 60e3) return D.news;
+  const syms = [...S.list].sort((a, b) => (valueOf(b) ?? 0) - (valueOf(a) ?? 0)).slice(0, 10).map((x) => x.symbol);
+  const r = syms.length ? await A.news(syms) : { news: [], topics: {} };
+  D.news = { at: Date.now(), list: r.news, topics: r.topics || {} };
+  return D.news;
+}
 function newsPane() {
   const list = h("div.dnews", {}, h("p.dempty", { text: "Getting the news…" }));
   requestAnimationFrame(async () => {
-    if (!D.news || Date.now() - D.news.at > 15 * 60e3) {
-      try { const syms = [...S.list].sort((a, b) => (valueOf(b) ?? 0) - (valueOf(a) ?? 0)).slice(0, 10).map((x) => x.symbol); D.news = { at: Date.now(), list: syms.length ? (await A.news(syms)).news : [] }; }
-      catch (_) { if (list.isConnected) list.replaceChildren(h("p.dempty", { text: "Couldn't get the news just now." })); return; }
-    }
+    try { await loadNews(); } catch (_) { if (list.isConnected) list.replaceChildren(h("p.dempty", { text: "Couldn't get the news just now." })); return; }
     if (!list.isConnected) return;
     list.replaceChildren(...D.news.list.slice(0, 12).map((n) => { const tag = n.tickers.find((t) => S.list.some((x) => x.symbol === t)) || n.for;
       return h("div.nrow", {}, h("a", { href: n.link, target: "_blank", rel: "noopener", text: n.title }),
-        h("div.nm", {}, tag ? h("button.ntag", { type: "button", onclick: () => choose(tag), text: plainSym(tag) }) : null, h("span", { text: `${n.src} · ${ago(n.at)}` }))); }));
+        h("div.nm", {}, tag ? h("button.ntag", { type: "button", onclick: () => choose(tag), text: plainSym(tag) }) : n.topic ? h("span.ntag.mk", { text: TOPIC_NAME[n.topic] }) : null, h("span", { text: `${n.src} · ${ago(n.at)}` }))); }));
   });
-  return h("div.dpane.grow", { id: "dnews" }, h("div.dhead", { title: "The latest about what you hold" }, h("h2", { text: "News" })), list);
+  return h("div.dpane.grow", { id: "dnews" }, h("div.dhead", { title: "The latest about what you hold" }, h("h2", { text: "News" }), h("button.dlink", { type: "button", onclick: () => { D.screen = "news"; redraw(); }, text: "All news (N)" })), list);
+}
+
+// ---- the News screen: a note for the morning; your list, the stories about each, and the one chosen ----
+const aboutOf = (sym, topics) => (n) => n.for === sym || n.tickers.includes(sym) || (!!topics[sym] && !!n.topic && (topics[sym] === "WORLD" || topics[sym] === n.topic));
+const agoSaid = (t) => { const a = ago(t); return a === "now" ? "just now" : `${a} ago`; };
+// (what a story's about, to say how its price has moved since: its holding, else its market, else one on your list it names)
+const storySym = (n) => n.for || (n.topic ? TOPIC_INDEX[n.topic] : n.tickers.find((t) => S.q[t]));
+// the price's move since a moment, from the week's prices (null if the moment's before them)
+async function sinceOf(sym, at) {
+  const c = await chartOf(sym, "5d").catch(() => null);
+  if (!c?.c?.length) return null;
+  const i = c.t.findLastIndex((t) => t * 1000 <= at);
+  return i < 0 ? null : (c.c.at(-1) / c.c[i] - 1) * 100;
+}
+function newsScreen() {
+  if (!D.news) {
+    const wait = h("div.dpane.nwait", {}, h("p.dempty", { text: "Getting the news…" }));
+    loadNews().then(() => { if (wait.isConnected && D.screen === "news") redraw(); }, () => { if (wait.isConnected) wait.replaceChildren(h("p.dempty", { text: "Couldn't get the news just now." })); });
+    return wait;
+  }
+  const { list: all, topics } = D.news, own = [...owned()].sort((a, b) => valueOf(b) - valueOf(a)), fol = S.list.filter((x) => !(x.qty > 0));
+  const lists = [["all", "Everything", null, () => true], ...own.map((x) => [x.symbol, x.name, x, aboutOf(x.symbol, topics)]), ...fol.map((x) => [x.symbol, x.name, x, aboutOf(x.symbol, topics)]), ["markets", "Markets", null, (n) => !!n.topic]];
+  const cur = lists.find((l) => l[0] === D.nlist) || lists[0];
+  D.nlist = cur[0];
+  const feed = all.filter(cur[3]);
+  if (!feed.some((n) => n.link === D.nsel)) D.nsel = feed[0]?.link || null;
+  return h("div.nscreen", {}, morningNote(all, topics), h("div.ncols", {}, listCol(lists, all), feedCol(feed), storyCol()));
+}
+function morningNote(all, topics) {
+  const f = S.q["^FTSE"], g = S.q["^GSPC"], T = totals(), now = Date.now();
+  const mv = (q, w) => (q?.chgPct == null ? null : `${w} ${Math.abs(q.chgPct) < 0.05 ? "flat" : `${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}%`}`);
+  const t = Math.abs(g?.chgPct ?? 0) >= Math.abs(f?.chgPct ?? 0) ? "US" : "UK", head = all.find((n) => n.topic === t && now - n.at < 18 * 3600e3);
+  const why = (x) => all.find((n) => (n.for === x.symbol || n.tickers.includes(x.symbol)) && now - n.at < 36 * 3600e3);
+  const movers = [...T.o].sort((a, b) => Math.abs(dayOf(b) || 0) - Math.abs(dayOf(a) || 0)).slice(0, 3), ev = income().events.slice(0, 2);
+  return h("div.dpane.nnote", {},
+    h("div", {}, h("h3", { text: "Today" }), h("p", { text: `${[mv(f, "London"), mv(g, "New York")].filter(Boolean).join(", ")}${head ? `: ${head.title.replace(/[.!?]$/, "")}` : ""}.` }),
+      T.o.length ? h("p.sub", {}, "You're ", h("b", { class: `num ${tone(T.day)}`, text: `${T.day >= 0 ? "up" : "down"} ${money(Math.abs(T.day), "GBP", 0)}` }), ` (${fmt(Math.abs(T.dayPct), 1)}%) today.`) : null),
+    h("div", {}, h("h3", { text: "Your movers, and why" }), movers.length ? movers.map((x) => { const q = S.q[x.symbol], w = why(x), tp = topics[x.symbol];
+      return h("button.nmv", { type: "button", onclick: () => { D.nlist = x.symbol; redraw(); } }, h("i", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct, 1) }), h("b", { text: x.name }),
+        h("span", { text: w ? w.title : tp ? `Invests in ${TOPIC_SAID[tp]}` : "No story about it today" })); }) : h("p.sub", { text: "Nothing you own yet." })),
+    h("div", {}, h("h3", { text: "Coming up" }), ev.length ? ev.map((e) => h("p.sub", {}, h("b", { text: `About ${money(e.v, "GBP", 0)}` }), ` from ${e.x.name}, around ${e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`))
+      : h("p.sub", { text: "No dividends expected soon." })));
+}
+function listCol(lists, all) {
+  return h("div.dpane.nlistc", {}, h("div.dhead", {}, h("h2", { text: "Your list" })), h("div.nlists", { role: "listbox", "aria-label": "Stories about" }, lists.map(([id, name, x, pred]) => {
+    const n = all.filter(pred).length, q = x && S.q[x.symbol];
+    return h("button", { type: "button", role: "option", "aria-selected": String(D.nlist === id), onclick: () => { if (D.nlist !== id) { D.nlist = id; redraw(); } } },
+      h("b", { text: name }), h("small", { text: n === 1 ? "1 story" : `${n} stories` }), q?.chgPct != null ? h("i", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct, 1) }) : null); })));
+}
+function feedCol(feed) {
+  const today = new Date().toDateString();
+  const rows = feed.map((n) => {
+    const at = new Date(n.at), sym = storySym(n), react = h("span.nreact");
+    if (sym) sinceOf(sym, n.at).then((v) => { if (v == null || !react.isConnected) return; react.textContent = `${pct(v, 1)} since`; react.className = `nreact num ${tone(v)}`; react.title = `${nameOf(sym)} since this came out`; });
+    return h("button.nrowd", { type: "button", role: "option", "aria-selected": String(n.link === D.nsel), "data-link": n.link, onclick: () => pickStory(n.link), ondblclick: () => window.open(n.link, "_blank", "noopener") },
+      h("span.nt.num", { text: at.toDateString() === today ? at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString("en-GB", { weekday: "short" }) }),
+      h("span", {}, h("b", { text: n.title }), h("small", { text: [n.src, agoSaid(n.at), n.topic ? TOPIC_NAME[n.topic] : n.for ? nameOf(n.for) : null].filter(Boolean).join(" · ") })), react);
+  });
+  return h("div.dpane.nfeed", {}, h("div.dhead", {}, h("h2", { text: "Stories" }), h("small", { text: "j k to move · o to open · s to send" })),
+    rows.length ? h("div.nrows", { role: "listbox", "aria-label": "Stories" }, rows) : h("p.dempty", { text: "No stories about these just now." }));
+}
+// one story chosen: the list marks it, and the right column's it
+function pickStory(link) {
+  D.nsel = link;
+  document.querySelectorAll(".nrowd").forEach((r) => r.setAttribute("aria-selected", String(r.dataset.link === link)));
+  $(".nrowd[aria-selected=\"true\"]")?.scrollIntoView({ block: "nearest" });
+  $(".nstoryc")?.replaceWith(storyCol());
+}
+function storyCol() {
+  const sel = D.news?.list.find((n) => n.link === D.nsel);
+  if (!sel) return h("div.dpane.nstoryc", {}, h("p.dempty", { text: "Choose a story." }));
+  const named = [...new Set([sel.for, ...sel.tickers.filter((t) => S.list.some((x) => x.symbol === t)), sel.topic ? TOPIC_INDEX[sel.topic] : null].filter(Boolean))].slice(0, 3);
+  return h("div.dpane.nstoryc", {}, h("div.dhead", {}, h("h2", { text: "The story" })),
+    h("p.nst", { text: sel.title }),
+    h("p.nsrc", { text: `${sel.src} · ${new Date(sel.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` }),
+    h("div.nacts", {}, h("a.dbtn.go", { href: sel.link, target: "_blank", rel: "noopener", text: `Read it at ${sel.src}` }),
+      h("button.dbtn", { type: "button", onclick: () => shareStory(sel) }, icon("send", 14, 2.4), "Send"), h("button.dbtn", { type: "button", onclick: () => copyStory(sel), text: "Copy Link" })),
+    named.length ? named.map((sym) => namedChart(sym, sel)) : null);
+}
+// one the story names: its week, drawn, each story about it marked where it came out, and its move since this one
+function namedChart(sym, sel) {
+  const q = S.q[sym], name = S.list.find((x) => x.symbol === sym)?.name || INDEX_NAMES[sym] || worldName(sym) || nameOf(sym), chart = h("div.nchart"), since = h("p.nsince");
+  const box = h("div.nco", {}, h("div.ncoh", {}, h("button", { type: "button", onclick: () => go(sym), text: name }), q?.chgPct != null ? h("i", { class: `num ${tone(q.chgPct)}`, text: `${pct(q.chgPct)} today` }) : null), chart, since);
+  chartOf(sym, "5d").then((c) => {
+    if (!box.isConnected || !c?.c?.length) return;
+    const W = 340, H = 96, t0 = c.t[0], t1 = c.t.at(-1), lo = Math.min(...c.c), hi = Math.max(...c.c), up = c.c.at(-1) >= c.c[0];
+    const X = (t) => 3 + ((t - t0) / (t1 - t0 || 1)) * (W - 6), Y = (v) => 6 + (1 - (v - lo) / (hi - lo || 1)) * (H - 26);
+    const d = c.c.map((v, i) => `${i ? "L" : "M"}${X(c.t[i]).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
+    const s = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${name} over the week, with its stories marked` });
+    s.append(el("path", { d: `${d} L${X(t1)} ${H - 18} L${X(t0)} ${H - 18} Z`, class: `na ${up ? "up" : "down"}` }), el("path", { d, class: `nl ${up ? "up" : "down"}` }), el("line", { x1: 3, x2: W - 3, y1: H - 18, y2: H - 18, class: "nbase" }));
+    // (each day's start, along the foot)
+    let last = "";
+    c.t.forEach((t) => { const day = new Date(t * 1000).toLocaleDateString("en-GB", { weekday: "short" }); if (day !== last) { last = day; const x = X(t); if (x < W - 24) { const tx = el("text", { x: x + 1, y: H - 4 }); tx.textContent = day; s.append(tx); } } });
+    const about = D.news.list.filter((n) => n.for === sym || n.tickers.includes(sym) || (n.topic && TOPIC_INDEX[n.topic] === sym));
+    for (const n of about) {
+      const ts = n.at / 1000, i = c.t.findLastIndex((t) => t <= ts);
+      if (i < 0) continue;
+      const on = n.link === sel.link, m = el("circle", { cx: X(c.t[i]).toFixed(1), cy: Y(c.c[i]).toFixed(1), r: on ? 5 : 3.6, class: on ? "nd on" : "nd", tabindex: "-1" }), tt = el("title");
+      tt.textContent = n.title; m.append(tt); m.addEventListener("click", () => pickStory(n.link)); s.append(m);
+    }
+    chart.replaceChildren(s);
+    const i = c.t.findLastIndex((t) => t * 1000 <= sel.at), v = i < 0 ? null : (c.c.at(-1) / c.c[i] - 1) * 100;
+    since.textContent = v == null ? "This came out before the week's prices." : `${pct(v, 1)} since this came out`;
+    since.className = `nsince num ${v == null ? "flat-t" : tone(v)}`;
+  }, () => {});
+  return box;
 }
 // ---- the dividends coming up ----
 function comingPane() {
@@ -645,7 +762,7 @@ function comingPane() {
 function statusBar() {
   const said = marketSaid();
   return h("div.dstat", {}, h("span", {}, h("i.live" + (said.open ? "" : ".shut")), said.text), h("span", { id: "dupd", text: `Prices at ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` }),
-    h("span.keys", {}, ...[["/", "command"], ["↑↓", "holdings"], ["1–5", "range"], ["K", "candles"], ["R", "RSI"], ["M", "MACD"], ["W", "world"], ["?", "help"]].map(([k, s]) => h("span", {}, h("kbd", { text: k }), s))));
+    h("span.keys", {}, ...[["/", "command"], ["↑↓", "holdings"], ["1–5", "range"], ["K", "candles"], ["R", "RSI"], ["M", "MACD"], ["W", "world"], ["N", "news"], ["?", "help"]].map(([k, s]) => h("span", {}, h("kbd", { text: k }), s))));
 }
 
 // ---- the keys, and prices as they change ----
@@ -663,6 +780,14 @@ const keys = {
       if (e.key === "?") { help(); return; }
       if (k === "w") { if (port) { D.screen = "world"; redraw(); } return; }
       if (k === "p") { if (!port) { D.screen = "port"; redraw(); } return; }
+      if (k === "n" && D.screen !== "news") { D.screen = "news"; redraw(); return; }
+      if (D.screen === "news") {
+        const rows = [...document.querySelectorAll(".nrowd")], i = rows.findIndex((r) => r.dataset.link === D.nsel), sel = D.news?.list.find((n) => n.link === D.nsel);
+        if (k === "j" || e.key === "ArrowDown" || k === "k" || e.key === "ArrowUp") { const n = rows[Math.max(0, Math.min(rows.length - 1, i + (k === "j" || e.key === "ArrowDown" ? 1 : -1)))]; if (n) { e.preventDefault(); pickStory(n.dataset.link); } return; }
+        if (k === "o" && sel) { window.open(sel.link, "_blank", "noopener"); return; }
+        if (k === "s" && sel) { shareStory(sel); return; }
+        return;
+      }
       if (!port) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         const rows = [...document.querySelectorAll(".port .dt tr[data-sym]")], i = rows.findIndex((r) => r.dataset.sym === D.sel), n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];

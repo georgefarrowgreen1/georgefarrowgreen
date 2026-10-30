@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { plainName, readChart, cleanSymbol, kindOf } from "../../../functions/_markets.js";
+import { plainName, readChart, cleanSymbol, kindOf, topicOf } from "../../../functions/_markets.js";
 
 test("company names, as people say them", () => {
   assert.equal(plainName("Rolls-Royce Holdings plc"), "Rolls-Royce");
@@ -87,4 +87,15 @@ test("the service worker keeps every one of the app's files, for offline", () =>
   const dir = new URL("../../../markets/", import.meta.url);
   const kept = new Set(JSON.parse(`[${/const FILES = \[([^\]]*)\]/.exec(readFileSync(new URL("sw.js", dir), "utf8"))[1]}]`));
   for (const f of [...readdirSync(dir).filter((f) => f.endsWith(".js") && f !== "sw.js"), "styles.css", "./", "manifest.webmanifest", "icon.svg", "inflite.svg"]) assert.ok(kept.has(f), `${f} isn't kept by sw.js`);
+});
+
+test("a trust's or fund's market, from its name: where its news comes from when nothing's filed under it", () => {
+  assert.equal(topicOf("JPMorgan American", "trust"), "US");
+  assert.equal(topicOf("Vanguard S&P 500 UCITS ETF", "fund"), "US");
+  assert.equal(topicOf("iShares Core FTSE 100 UCITS ETF GBP (Dist)", "fund"), "UK");
+  assert.equal(topicOf("City of London", "trust"), "UK");
+  assert.equal(topicOf("Vanguard FTSE All-World UCITS ETF", "fund"), "WORLD", "the world's, though FTSE's");
+  assert.equal(topicOf("Murray International", "trust"), "WORLD");
+  assert.equal(topicOf("Scottish Mortgage", "trust"), null, "nothing in its name to say");
+  assert.equal(topicOf("JPMorgan Chase & Co.", "share"), null, "a company's own stories are its own");
 });

@@ -197,6 +197,30 @@ await p.click('.tab[data-tab="news"]'); await p.waitForSelector('a.story', { tim
 await p.screenshot({ path: `${out}/7-news.png` });
 ok(/London is up 0\.6% and New York is up 0\.4% today/.test(await text(p, '.digest')) && await p.locator('a.story').count() >= 6, "News: the day in brief, then the stories about what you hold", await text(p, '.digest'));
 ok((await p.getAttribute('a.story', 'href')).startsWith('https://example.com/news/') && (await p.getAttribute('a.story', 'target')) === '_blank', "each opens the publisher's page");
+ok(/today: .+\./.test(await text(p, '.digest p')) && /You're (up|down) £[\d,]+ today \(\d+\.\d%\)\. Rolls-Royce did most of it/.test(await text(p, '.digest')), "the brief: the markets and the headline behind them, then your day and who did it", await text(p, '.digest'));
+const heads = await p.locator('.nghead b').allInnerTexts();
+ok(heads[0] === 'Rolls-Royce' && heads.includes('Markets') && await p.locator('.nstory.fresh').count() >= 6 && await p.locator('.nchip:has-text("Apple")').count() >= 1,
+  'stories by what you own (the largest first), then the markets; all new on a first look, and what else each names', heads.join(' · '));
+await p.click('.nfilter button:has-text("Markets")'); await settle(p, 500);
+ok((await p.locator('.nghead b').allInnerTexts()).join() === 'Markets' && await p.locator('.nchip.via').count() >= 1, 'Markets, filtered: only the markets\' stories, each with its market', (await p.locator('.nghead b').allInnerTexts()).join());
+await p.click('.nfilter button:has-text("All")'); await settle(p, 500);
+await p.locator('.nstory .nmore').first().click(); await p.waitForSelector('.amenu .amg', { timeout: 5000 });
+const acts = await p.locator('.amenu .amg button').allInnerTexts(), src = (/Hide Stories from (.+)$/.exec(acts[2] || '') || [])[1];
+ok(acts[0] === 'Send in Chat' && acts[1] === 'Copy Link' && !!src, "a story's few things: sent in Chat, its link copied, or its source hidden", acts.join(' · '));
+await p.locator('.amenu .amg button.warn').click(); await settle(p, 700);
+const srcs = await p.locator('.nstory .story .m').allInnerTexts();
+ok(srcs.length > 0 && !srcs.some((m) => m.startsWith(`${src} ·`)) && /Not showing stories from/.test(await text(p, '.foot')), `${src}'s stories hidden, and said, with the way back`, srcs.slice(0, 3).join(' / '));
+await p.click('.foot button.inline:has-text("Show Them")'); await settle(p, 600);
+ok((await p.locator('.nstory .story .m').allInnerTexts()).some((m) => m.startsWith(`${src} ·`)), 'and shown again');
+const [pop] = await Promise.all([p.context().waitForEvent('page', { timeout: 5000 }).catch(() => null), p.locator('.nstory a.story').first().click()]);
+if (pop) await pop.close();
+await settle(p, 700);
+ok(await p.locator('.nstory.read').count() === 1, 'a story read: marked so');
+// (away from News, what was there's seen; told it's all new again, the tab counts it)
+await p.click('.tab[data-tab="holdings"]'); await settle(p, 500);
+ok(await p.locator('.tab[data-tab="news"] .tabn').isHidden(), 'nothing new once looked at');
+await p.evaluate(() => localStorage.setItem('markets:newsSeen', '0')); await p.click('.tab[data-tab="today"]'); await settle(p, 500);
+ok(/^\d+\+?$/.test(await text(p, '.tab[data-tab="news"] .tabn')) && await p.locator('.tab[data-tab="news"] .tabn').isVisible(), 'stories since you last looked: counted on the News tab', await text(p, '.tab[data-tab="news"] .tabn'));
 
 // ---- 9. One taken off the list ----
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 900);
