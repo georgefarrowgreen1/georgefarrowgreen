@@ -88,18 +88,25 @@ const pv = (await text(p, '#pv')).replace(/[£,\s]/g, '');
 ok(Math.abs(Number(pv) - want) < 0.02, `your portfolio: £${want.toFixed(2)} (dollars at the day's rate, pence in pounds)`, pv);
 ok(/^Rolls-Royce did most of the work, adding £106\.\d\d\. Arm gave back £35\.\d\d\.$/.test(await text(p, '#say')), "the day, said: who did the work, and who gave back (names said plainly)", await text(p, '#say'));
 ok(await p.locator('#pchart path[data-draw]').count() === 1, 'its day drawn through the day');
+ok(/Moving today/i.test(await text(p, '.label:has-text("Moving today")')) && /Coming up/i.test(await text(p, '.label:has-text("Coming up")')) && /Tesco[\s\S]*Dividend, around/.test(await text(p, '.list:has(.item:has-text("Dividend, around"))')),
+  "what's moving today, and what's coming up: Tesco's dividend, expected in the next two months", await text(p, '.list:has(.item:has-text("Dividend, around"))'));
+await p.click('.pseg button[data-r="1mo"]'); await p.waitForFunction(() => document.querySelector('#ps')?.textContent === 'this month', null, { timeout: 15000 }).catch(() => {}); await settle(p, 900);
+ok((await text(p, '#ps')) === 'this month' && /^[+−]£[\d,]+\.\d\d$/.test(await text(p, '#pd')) && /Over the month, .+ did most of the work/.test(await text(p, '#say')), 'your portfolio over a month: its change, and who did most of the work', `${await text(p, '#pd')} ${await text(p, '#ps')} · ${await text(p, '#say')}`);
+await p.screenshot({ path: `${out}/4-today-month.png` });
+await p.click('.pseg button[data-r="1d"]'); await settle(p, 1200);
+ok((await text(p, '#ps')) === 'today', 'and back to today');
 const cards = await p.locator('.card').allInnerTexts();
 ok(cards.some((t) => /Arm is falling while the S&P 500 rises/.test(t)), 'worth knowing: Arm going the other way from its market', cards.join(' | ').slice(0, 300));
 ok(cards.some((t) => /Rolls-Royce is close to its 52-week high/.test(t)), 'and one near its high');
 ok(cards.some((t) => /% of your money is in one company/.test(t)), 'and how much is in one company');
 ok(cards.length <= 4 && cards.length >= 3, 'four at most, one at a time', String(cards.length));
-const movers = await p.locator('#main .list .item').count();
+const movers = await p.locator('#movers .item').count();
 ok(movers === 4, 'your four biggest movers today', String(movers));
 
 // ---- 5. A stock's page: drawn, reshaped to a year, read with the pointer ----
 await p.locator('.item:has-text("Nvidia"), .item:has-text("NVIDIA")').first().click(); await p.waitForSelector('.chartbox path.line[d]'); await settle(p, 1800);
 const d1 = await p.getAttribute('.chartbox path.line', 'd');
-await p.click('.seg button[data-r="1y"]'); await settle(p, 350);
+await p.click('#sheet .seg button[data-r="1y"]'); await settle(p, 350);
 const dMid = await p.getAttribute('.chartbox path.line', 'd');
 await settle(p, 1200);
 const d2 = await p.getAttribute('.chartbox path.line', 'd');
@@ -107,7 +114,7 @@ ok(d1 && d2 && d1 !== d2 && dMid !== d2, 'switching to a year reshapes the line 
 ok(/this year/.test(await text(p, '#rsaid')), 'and says the change over the year', await text(p, '.sdelta'));
 const box = await p.locator('.chartbox').boundingBox();
 await p.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2); await settle(p, 300);
-ok(/^\$\d+\.\d\d · \d+ \w+ \d\d$/.test(await text(p, '.scrub-tip')), 'read with the pointer: the price and the day there', await text(p, '.scrub-tip'));
+ok(/^\$\d+\.\d\d · \d+ \w+ \d\d$/.test(await text(p, '#sheet .scrub-tip')), 'read with the pointer: the price and the day there', await text(p, '#sheet .scrub-tip'));
 await p.screenshot({ path: `${out}/5-chart.png` });
 await p.waitForFunction(() => !/Finding out why/.test(document.querySelector('#why')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
 ok(/move after the morning's update/.test(await text(p, '#why')) && /Reuters/.test(await text(p, '#why small')), "why it's moving: the day's story about it", await text(p, '#why'));
@@ -133,7 +140,17 @@ ok(/\$1(9[0-9]|8[0-9])\.\d\d/.test(await text(p, '[data-px="NVDA"]')), 'Nvidia\'
 // ---- 8. Holdings: the ring of your mix; News: the stories ----
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 1600);
 await p.screenshot({ path: `${out}/6-holdings.png` });
-ok(await p.locator('.ring .arc').count() === 6 && /Rolls-Royce/.test(await text(p, '.legend')), 'Holdings: the ring of your mix, the five largest and the rest', String(await p.locator('.ring .arc').count()));
+ok(await p.locator('.dial .arc').count() === 6 && await p.locator('.mkey').count() === 6 && /Rolls-Royce/.test(await text(p, '.mkeys')), 'Holdings: the dial of your mix, the five largest and the rest, with its key', String(await p.locator('.dial .arc').count()));
+await p.locator('.mkey:has-text("Tesco")').click(); await settle(p, 500);
+ok(/Tesco\s*£3,708\s*\d+% of your money/.test(await text(p, '.dialc')) && await p.locator('.dial .arc.dim').count() === 5, "a slice tapped: lifted out, the others faded, what it's worth in the middle", (await text(p, '.dialc')).replace(/\s+/g, ' '));
+await p.locator('.mkey:has-text("Tesco")').click(); await settle(p, 400);
+ok(/6 holdings/.test(await text(p, '.dialc')), 'tapped again: back to the whole', (await text(p, '.dialc')).replace(/\s+/g, ' '));
+await p.locator('.label .per button[data-k="back"]').click(); await settle(p, 500);
+ok(/^\+47\.5%$/.test(await text(p, '#all .item[data-sym="RR.L"] .r small')) && (await text(p, '#all .item[data-sym="NVDA"] .r small')) === '–', 'under each, since you bought instead of today (with its dividends; none said for one with no cost)', `${await text(p, '#all .item[data-sym="RR.L"] .r small')} / ${await text(p, '#all .item[data-sym="NVDA"] .r small')}`);
+await p.locator('.label .per button[data-k="day"]').click(); await settle(p, 300);
+ok(await put({ symbol: 'VUSA.L', qty: 0 }) === 200, 'one followed, not owned');
+await p.reload(); await p.waitForSelector('.tab[data-tab="holdings"]'); await p.click('.tab[data-tab="holdings"]'); await settle(p, 2500);
+ok(await p.locator('#following .item').count() === 1 && /VUSA · London/.test(await text(p, '#following .item')) && await p.locator('#all .item').count() === 6, "what you follow, apart from what you own", await text(p, '#following'));
 ok(await p.locator('#all .item').count() === 6 && /Since you bought\s+[+−]£[\d,]+\.\d\d\s+[+−][\d.]+% · £38 in dividends/.test(await text(p, '.stat:has-text("Since you bought")')) && /Today\s+[+−]£/.test(await text(p, '.stat:has-text("Today")')),
   'everything you own, and under the ring how it\'s done: since you bought (with its dividends), and today', `${await text(p, '.stats')}`);
 ok(/from the 3 of your 6 holdings you've said what you paid for/.test(await text(p, '.stats-note')), 'and what since you bought is from', await text(p, '.stats-note'));
@@ -171,12 +188,13 @@ await p.fill('#mk-qty', '500'); await p.fill('#mk-cost', '8'); await p.click('#m
 await p.waitForSelector('.fact:has-text("Yours")', { timeout: 10000 }); await settle(p, 600);
 await p.keyboard.press('Escape'); await settle(p, 700);
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 1500);
-const kinds = await text(p, '#kinds'), kp = [...kinds.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
+await p.click('.seg.ways button[data-k="kind"]'); await settle(p, 900);
+const kinds = await text(p, '.mkeys'), kp = [...kinds.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
 ok(/Shares\s*\d+%/.test(kinds) && /Investment trusts\s*\d+%/.test(kinds) && Math.abs(kp.reduce((a, v) => a + v, 0) - 100) <= 1, 'Holdings: how your money splits between shares and investment trusts', kinds.replace(/\s+/g, ' '));
 await p.screenshot({ path: `${out}/9b-kinds.png` });
 await p.locator('.item:has-text("Scottish Mortgage")').first().click(); await p.waitForSelector('.links .danger'); await settle(p, 800);
 await p.click('.links .danger'); await settle(p, 300); await p.click('.links .danger'); await settle(p, 1200);
-ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'SMT.L'").length && !(await p.isVisible('#kinds')), 'taken off again: all shares, no split to show');
+ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'SMT.L'").length && !(await p.isVisible('.seg.ways button[data-k="kind"]')), 'taken off again: all shares, no split to show');
 
 // ---- 10. Only signed in, and only at Markets's own address ----
 const fromFit = await (await ctx.newPage()).goto(FIT + '/api/markets/me').then((r) => r.status());
@@ -194,7 +212,7 @@ await small.close();
 const ACCT = 'http://account.ifl.test:8788';
 const w = await ctx.newPage(); pages.push(w);
 await w.goto(ACCT + '/'); await w.waitForSelector('.app:has-text("Markets")', { timeout: 30000 }); await settle(w, 800);
-ok(/5 holdings/.test(await text(w, '.app:has-text("Markets")')) && /5 you own/.test(await text(w, '.app:has-text("Markets")')), "the account's page: Markets among your apps, with what you have there", await text(w, '.app:has-text("Markets")'));
+ok(/6 holdings/.test(await text(w, '.app:has-text("Markets")')) && /5 you own/.test(await text(w, '.app:has-text("Markets")')), "the account's page: Markets among your apps, with what you have there", await text(w, '.app:has-text("Markets")'));
 await w.evaluate(() => history.replaceState(null, '', location.pathname + '#from=markets&open=notify-markets')); await w.reload();
 await w.waitForSelector('#sheet[open] #nt-m-on', { timeout: 20000 }); await settle(w, 800);
 await w.screenshot({ path: `${out}/9-account-notify.png` });

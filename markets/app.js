@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.60";
+const BUILD = "1.61";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -283,11 +283,13 @@ const BENCHES = [["ISF.L", "FTSE 100"], ["VWRL.L", "the world"], ["SPY", "S&P 50
 // the accounts a holding can be held in; and an ISA's allowance, for each tax year (6 April to 5 April)
 const ACCOUNTS = [["isa", "ISA"], ["sipp", "Pension"], ["gia", "General"]];
 const ACCOUNT_NAME = Object.fromEntries(ACCOUNTS);
+// your portfolio, seen over the day, or (as if you'd held what you own now) a week, a month or a year
+const PRANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", "this month"], ["1y", "1Y", "this year"]];
 const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", "this month"], ["1y", "1Y", "this year"], ["5y", "5Y", "in 5 years"]];
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, newer: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day" };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
@@ -532,8 +534,8 @@ function todayView() {
     parts.push(h("div.hero", {},
       h("span.eyebrow", { text: "Your portfolio" }),
       h("span.big.num", { id: "pv" }, `£${a}`, h("span.p", { text: "." + b })),
-      h("span.delta.num", {}, h("span", { id: "pd", class: tone(T.day), text: signed(T.day) }), h("span", { id: "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { text: "today" }))));
-    parts.push(portfolioChart());
+      h("span.delta.num", {}, h("span", { id: "pd", class: tone(T.day), text: signed(T.day) }), h("span", { id: "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { id: "ps", text: "today" }))));
+    parts.push(portfolioBox());
   } else {
     const up = S.list.filter((x) => (S.q[x.symbol]?.chgPct || 0) > 0).length;
     parts.push(h("div.hero", {}, h("span.eyebrow", { text: "Your list" }), h("span.big", { style: "font-size:40px" }, `${up} of ${S.list.length} up`), h("span.delta", {}, h("span.muted", { text: "today" }))));
@@ -550,8 +552,17 @@ function todayView() {
     parts.push(box, cards.length > 1 ? dots : null);
   }
   const movers = [...S.list].filter((x) => S.q[x.symbol]).sort((a, b) => Math.abs(S.q[b.symbol].chgPct ?? 0) - Math.abs(S.q[a.symbol].chgPct ?? 0)).slice(0, 4);
-  parts.push(h("h3.label", {}, T.o.length ? "Your holdings" : "Your list", S.list.length > 4 ? h("button", { type: "button", onclick: () => go("holdings"), text: "See all" }) : h("span", { text: "today" })));
-  parts.push(h("div.list", {}, movers.map((x, i) => itemRow(x, i, "day"))));
+  parts.push(h("h3.label", {}, "Moving today", S.list.length > 4 ? h("button", { type: "button", onclick: () => go("holdings"), text: "See all" }) : null));
+  parts.push(h("div.list", { id: "movers" }, movers.map((x, i) => itemRow(x, i, "day"))));
+  // (what's coming up: the dividends expected in the next two months)
+  const soon = T.o.length ? income().events.filter((e) => e.at - Date.now() < 62 * 864e5).slice(0, 3) : [];
+  if (soon.length) {
+    parts.push(h("h3.label", {}, "Coming up", h("button", { type: "button", onclick: () => openSheet(incomeView), text: "Income" })));
+    parts.push(h("div.list", {}, soon.map((e, i) => { const d = Math.max(1, Math.round((e.at - Date.now()) / 864e5));
+      return h("button.item.two.rise", { type: "button", vars: { i: String(i) }, onclick: () => openStock(e.x.symbol) },
+        h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Dividend, around ${e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` })),
+        h("span.r", {}, h("b.num", { text: `about ${money(e.v, "GBP", e.v >= 100 ? 0 : 2)}` }), h("small", { text: d < 14 ? plural(d, "day") : `${Math.round(d / 7)} weeks` }))); })));
+  }
   parts.push(h("h3.label", {}, "Markets"));
   parts.push(h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];
     return h("button.mk.rise.press", { type: "button", vars: { i: String(i + 4) }, onclick: () => openStock(s) }, h("small", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); })));
@@ -571,6 +582,83 @@ function daySaid(T) {
   if (o.length === 1) { const q = S.q[o[0].symbol]; return [h("b", { text: o[0].name }), ` is ${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct))}% today.`]; }
   const big = [...S.list].filter((x) => S.q[x.symbol]?.chgPct != null).sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0];
   return big ? ["Biggest mover: ", h("b", { text: big.name }), `, ${pct(S.q[big.symbol].chgPct)}. Add what you own to see your portfolio.`] : [];
+}
+// Your portfolio's chart, in a box you can read along, with its ranges under it: the day's from its prices through the
+// day; a week's, a month's and a year's from each holding's chart, what you own now at today's exchange rates
+function portfolioBox() {
+  const svg = portfolioChart(), box = h("div.pbox", { id: "pbox" }, svg);
+  // (the range chosen kept when the page is drawn again: the day's drawn first, then reshaped to it)
+  const kept = PRANGES.some(([r]) => r === S.prange) ? S.prange : "1d";
+  const seg = h("div.seg.pseg", { role: "group", "aria-label": "Your portfolio over" }, h("span.sl"), PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: label })));
+  S.prange = "1d";
+  if (kept !== "1d") requestAnimationFrame(() => { const b = seg.querySelector(`[data-r="${kept}"]`); if (b) seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; show(kept); });
+  let seq = 0;
+  const show = async (r) => {
+    const n = ++seq;
+    S.prange = r;
+    box.classList.add("loading");
+    const s = r === "1d" ? daySeries() : await rangeSeries(r);
+    if (n !== seq || !box.isConnected) return;
+    box.classList.remove("loading");
+    if (!s) { toast("Couldn't draw that just now.", true); return; }
+    const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
+    const up = s.vals.at(-1) >= s.base, line = svg.querySelector("path[data-draw]"), fill = svg.querySelectorAll("path")[0];
+    svg.querySelectorAll("stop").forEach((x) => x.setAttribute("stop-color", up ? "#5fe0a6" : "#ff8a80"));
+    line.setAttribute("stroke", up ? "var(--up)" : "var(--down)");
+    const k = Math.max(pts.length, portfolioChart.pts?.length || 0), rs = (p) => C.resample(p.map((x) => x[0]), k).map((x, i) => [x, C.resample(p.map((y) => y[1]), k)[i]]);
+    if (portfolioChart.pts) await C.tween(rs(portfolioChart.pts), rs(pts), 700, (p) => { line.setAttribute("d", C.smooth(p)); fill.setAttribute("d", C.area(p, 150)); });
+    portfolioChart.pts = pts; portfolioChart.raw = { pts, s, r };
+    // (and what's said over it: the change over the range, and who did it)
+    const ch = s.vals.at(-1) - s.base, chp = s.base ? (ch / s.base) * 100 : 0, pd = $("#pd"), pp = $("#pp"), ps = $("#ps"), say = $("#say");
+    if (pd) { pd.textContent = signed(ch); pd.className = tone(ch); pp.textContent = pct(chp); pp.className = tone(ch); ps.textContent = PRANGES.find((x) => x[0] === r)[2]; }
+    if (say) say.replaceChildren(...(r === "1d" ? daySaid(totals()) : rangeSaid(s, r)));
+  };
+  C.scrubber(box, (x, w) => {
+    const raw = portfolioChart.raw || { pts: portfolioChart.pts, s: daySeries(), r: "1d" };
+    if (!raw.pts || !raw.s) return null;
+    const xv = (x / w) * 390;
+    let k = 0, best = Infinity;
+    raw.pts.forEach((p, i) => { const d = Math.abs(p[0] - xv); if (d < best) { best = d; k = i; } });
+    const t = raw.s.T[k] * 1000, r = raw.r;
+    const when = r === "1d" ? new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : r === "5d" ? new Date(t).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return { x: (raw.pts[k][0] / 390) * w, y: raw.pts[k][1], label: `${money(raw.s.vals[k], "GBP", 0)} · ${when}` };
+  });
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-r]");
+    if (!b || b.getAttribute("aria-pressed") === "true") return;
+    seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`;
+    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    show(b.dataset.r);
+  });
+  return [box, seg];
+}
+// what you own now, through a range: each holding's chart (kept ten minutes), its price carried over when its market's
+// shut, at today's exchange rates. { T, vals, base, by: each holding's change over it, in pounds }
+async function rangeSeries(r) {
+  const o = owned(), charts = {};
+  const get = async (sym) => { const k = `${sym}:${r}`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, r); S.charts.set(k, { at: Date.now(), c }); return c; };
+  for (let i = 0; i < o.length; i += 6) await Promise.all(o.slice(i, i + 6).map((x) => get(x.symbol).then((c) => { charts[x.symbol] = c; }, () => {})));
+  const held = o.filter((x) => charts[x.symbol]?.c?.length > 1);
+  if (!held.length) return null;
+  const key = r === "5d" ? (t) => Math.round(t / 1800) * 1800 : (t) => Date.parse(dayKey(t)) / 1000;
+  const T = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(key)))].sort((a, b) => a - b), vals = T.map(() => 0), by = [];
+  for (const x of held) {
+    const c = charts[x.symbol], m = new Map(c.t.map((t, i) => [key(t), c.c[i]])), k = x.qty * rate(S.q[x.symbol].cur);
+    let last = c.c[0];
+    T.forEach((t, i) => { if (m.has(t)) last = m.get(t); vals[i] += last * k; });
+    by.push({ x, v: (S.q[x.symbol].price - c.c[0]) * k });
+  }
+  // (ending now: the prices as they are)
+  vals[vals.length - 1] = held.reduce((a, x) => a + valueOf(x), 0);
+  return { T, vals, base: vals[0], by };
+}
+function rangeSaid(s, r) {
+  const by = [...s.by].sort((a, b) => b.v - a.v), top = by[0], low = by.at(-1), out = [];
+  const over = { "5d": "the week", "1mo": "the month", "1y": "the year" }[r];
+  if (top?.v > 0) out.push(`Over ${over}, `, h("b", { text: top.x.name }), ` did most of the work, adding ${money(top.v, "GBP", 0)}.`);
+  if (low && low !== top && low.v < 0) out.push(out.length ? " " : `Over ${over}, `, h("b", { text: low.x.name }), ` ${out.length ? "gave back" : "took away"} ${money(-low.v, "GBP", 0)}.`);
+  out.push(h("small", { text: " As if you'd held what you own now all along." }));
+  return out;
 }
 function portfolioChart() {
   const s = daySeries(), svg = C.el("svg", { class: "pchart", viewBox: "0 0 390 150", preserveAspectRatio: "none", role: "img", "aria-label": "Your portfolio today", id: "pchart" });
@@ -592,8 +680,17 @@ function itemRow(x, i, mode, open = (s) => openStock(s)) {
   sp.append(C.el("path", { d: C.spark(q.spark, 64, 26, q.prev), fill: "none", stroke: (q.chgPct || 0) >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 1.6, "stroke-linecap": "round", "data-draw": String(0.15 + i * 0.05) }));
   const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
   return h("button.item.rise", { type: "button", vars: { i: String(i) }, "data-sym": x.symbol, onclick: () => open(x.symbol) },
-    h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "Following · ") : "", h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
-    sp, h("span.r", {}, ...right, h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
+    h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "") : "",
+      mode === "day" && !own ? "Following" : mode === "value" && !own ? [plainSym(x.symbol), q.ex].filter(Boolean).join(" · ") : h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
+    sp, h("span.r", {}, ...right, mode === "value" && own ? figOf(x) : h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
+}
+// under a holding's worth: today's change, or (switched) how it's done since you bought, with its dividends
+function figOf(x) {
+  const q = S.q[x.symbol];
+  if (S.fig !== "back") return h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) });
+  if (x.cost == null || !x.cost) return h("small", { class: "num flat-t", text: "–" });
+  const paid = paidFor(x), g = valueOf(x) - paid + (divsOf(x) || 0);
+  return h("small", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) });
 }
 function emptyView() {
   const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
@@ -610,37 +707,84 @@ function emptyView() {
 function holdingsView() {
   if (!S.list.length) return emptyView();
   const T = totals(), parts = [];
-  if (T.o.length) {
-    const by = [...T.o].sort((a, b) => valueOf(b) - valueOf(a)), top = by.slice(0, 5), rest = by.slice(5).reduce((a, x) => a + valueOf(x), 0);
-    const slices = [...top.map((x, i) => ({ n: x.name, v: valueOf(x), c: MIXC[i] })), ...(rest > 0 ? [{ n: "Everything else", v: rest, c: MIXC[5] }] : [])];
-    const svg = C.el("svg", { viewBox: "0 0 132 132", role: "img", "aria-label": "Your mix" });
-    let a0 = -Math.PI / 2;
-    const gap = slices.length > 1 ? 0.07 : 0;
-    slices.forEach((sl, i) => {
-      const a1 = a0 + (sl.v / T.value) * Math.PI * 2 - gap, r = 56, c = 66, P = (a) => [c + r * Math.cos(a), c + r * Math.sin(a)];
-      if (slices.length === 1) svg.append(C.el("circle", { class: "arc", cx: 66, cy: 66, r, stroke: sl.c, pathLength: 1, style: `--i:${i}` }));
-      else { const [x0, y0] = P(a0), [x1, y1] = P(a1); svg.append(C.el("path", { class: "arc", d: `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`, stroke: sl.c, pathLength: 1, style: `--i:${i}` })); }
-      a0 = a1 + gap;
-    });
-    const t1 = C.el("text", { x: 66, y: 64, "text-anchor": "middle", "font-size": 19, "font-weight": 600 }); t1.textContent = T.value >= 1e6 ? `£${fmt(T.value / 1e6, 2)}m` : T.value >= 1e4 ? `£${fmt(T.value / 1e3, 1)}k` : money(T.value, "GBP", 0);
-    const t2 = C.el("text", { class: "sub", x: 66, y: 82, "text-anchor": "middle", "font-size": 11.5 }); t2.textContent = plural(T.o.length, "holding");
-    svg.append(t1, t2);
-    parts.push(h("div.ring", {}, svg, h("div.legend", {}, slices.map((sl) => h("div", {}, h("i", { style: `background:${sl.c}` }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` }))))));
-    // (and, where it's more than one kind, how it splits between them)
-    const kinds = {};
-    for (const x of T.o) { const k = kindOf(S.q[x.symbol]); kinds[k] = (kinds[k] || 0) + valueOf(x); }
-    const ks = Object.entries(kinds).filter(([k, v]) => KINDS_SAID[k] && v > 0).sort((a, b) => b[1] - a[1]), KC = { share: "#7db8ff", trust: "#5ed6cc", fund: "#9b8cff", crypto: "#ffc56e" };
-    if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
-      h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
-  }
+  if (T.o.length) parts.push(...mixPart(T));
   if (T.o.length) parts.push(...statsPart(T));
-  parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
-  parts.push(movable(h("div.list", { id: "all" }, S.list.map((x, i) => itemRow(x, i, "value")))));
-  if (S.list.length > 1) parts.push(h("p.hint.center", { text: "Press and hold one to move it." }));
+  const own = S.list.filter((x) => x.qty > 0), fol = S.list.filter((x) => !(x.qty > 0));
+  if (own.length) {
+    // (under each one's worth: today's change, or how it's done since you bought, switched here)
+    const fig = T.costed.length ? h("div.per", { role: "group", "aria-label": "Under each, show" }, [["day", "Today"], ["back", "Since bought"]].map(([k, label]) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === S.fig), text: label,
+      onclick: (e) => { if (S.fig === k) return; S.fig = k; e.currentTarget.parentNode.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); $("#all")?.querySelectorAll(".item[data-sym]").forEach((r) => r.querySelector(".r small")?.replaceWith(figOf(S.list.find((x) => x.symbol === r.dataset.sym)))); } }))) : null;
+    parts.push(h("h3.label", {}, "Your holdings", fig));
+    parts.push(movable(h("div.list.sortable", { id: "all" }, own.map((x, i) => itemRow(x, i, "value")))));
+  }
+  if (fol.length) {
+    parts.push(h("h3.label", {}, "Following", h("span", { text: "price today" })));
+    parts.push(movable(h("div.list.sortable", { id: "following" }, fol.map((x, i) => itemRow(x, i, "value")))));
+  }
+  parts.push(h("div.links", {}, h("button", { type: "button", onclick: () => openSheet(searchView), text: "Find and Add" })));
+  if (S.list.length > 1) parts.push(h("p.hint.center", { style: "margin-top:4px", text: "Press and hold one to move it." }));
   if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
   return parts;
 }
 
+// Your mix: a dial of it, by holding (the five largest, and the rest), by kind (shares, trusts, funds), or by account,
+// switched above it. Its slices are rounded and apart, on a faint track; what it's worth in the middle. Tap a slice,
+// or its name under the dial, and it's lifted out (the others fade back), what it's worth said in the middle; tap it
+// again, or another, to change that
+const MIX = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)", "var(--m6)"];
+const MIX_KINDS = { share: MIX[0], trust: MIX[2], fund: MIX[1], crypto: MIX[3] }, MIX_ACCTS = { isa: MIX[2], sipp: MIX[1], gia: MIX[0] };
+function mixSlices(T, by) {
+  if (by === "kind") {
+    const kinds = {};
+    for (const x of T.o) { const k = kindOf(S.q[x.symbol]); kinds[k] = (kinds[k] || 0) + valueOf(x); }
+    return Object.entries(kinds).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ n: KINDS_SAID[k] || "Other", v, c: MIX_KINDS[k] || MIX[5] }));
+  }
+  if (by === "account") return byAccount(T.o).map((a) => ({ n: a.name, v: a.value, c: MIX_ACCTS[a.key] || MIX[5], key: a.key }));
+  const all = [...T.o].sort((a, b) => valueOf(b) - valueOf(a)), top = all.slice(0, 5), rest = all.slice(5).reduce((a, x) => a + valueOf(x), 0);
+  return [...top.map((x, i) => ({ n: x.name, v: valueOf(x), c: MIX[i], sym: x.symbol })), ...(rest > 0 ? [{ n: "Everything else", v: rest, c: MIX[5] }] : [])];
+}
+const bigMoney = (v) => (v >= 1e6 ? `£${fmt(v / 1e6, 2)}m` : money(v, "GBP", 0));
+function mixRing(T, by) {
+  const slices = mixSlices(T, by), R = 82, SW = 17, cap = SW / 2 / R, gapA = slices.length > 1 ? 2 * cap + 0.045 : 0;
+  const svg = C.el("svg", { viewBox: "0 0 200 200", class: "dialsvg", role: "img", "aria-label": `Your mix, by ${by}: ${slices.map((sl) => `${sl.n} ${Math.round((sl.v / T.value) * 100)}%`).join(", ")}` });
+  svg.append(C.el("circle", { class: "track", cx: 100, cy: 100, r: R }));
+  let a0 = -Math.PI / 2;
+  const arcs = slices.map((sl, i) => {
+    const span = (sl.v / T.value) * Math.PI * 2, s0 = a0 + gapA / 2, s1 = Math.max(s0 + 0.001, a0 + span - gapA / 2), P = (a) => [100 + R * Math.cos(a), 100 + R * Math.sin(a)];
+    a0 += span;
+    const el = slices.length === 1 ? C.el("circle", { class: "arc", cx: 100, cy: 100, r: R, pathLength: 1 })
+      : (() => { const [x0, y0] = P(s0), [x1, y1] = P(s1); return C.el("path", { class: "arc", d: `M${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 ${s1 - s0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`, pathLength: 1 }); })();
+    el.style.cssText = `--c:${sl.c};--i:${i}`;
+    el.addEventListener("click", () => pick(i));
+    svg.append(el);
+    return el;
+  });
+  const big = h("b.num", { text: bigMoney(T.value) }), name = h("span", { text: plural(T.o.length, "holding") }), share = h("small.num");
+  const centre = h("div.dialc", { "aria-live": "polite" }, name, big, share);
+  const keys = slices.map((sl, i) => h("button.mkey", { type: "button", "aria-pressed": "false", onclick: () => pick(i) }, h("i", { style: `background:${sl.c}` }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` })));
+  let on = -1;
+  function pick(i) {
+    on = on === i ? -1 : i;
+    arcs.forEach((a, k) => { a.classList.toggle("on", k === on); a.classList.toggle("dim", on >= 0 && k !== on); });
+    keys.forEach((b, k) => b.setAttribute("aria-pressed", String(k === on)));
+    const sl = slices[on];
+    if (!sl) { name.textContent = plural(T.o.length, "holding"); big.textContent = bigMoney(T.value); share.textContent = ""; return; }
+    name.textContent = sl.n; big.textContent = bigMoney(sl.v); share.textContent = `${Math.round((sl.v / T.value) * 100)}% of your money`;
+  }
+  return h("div.dial", { id: "ring" }, h("div.dialw", {}, svg, centre), h("div.mkeys", {}, keys));
+}
+function mixPart(T) {
+  const ways = [["holding", "Holdings"], ["kind", "Kinds"], ["account", "Accounts"]].filter(([k]) => k === "holding" || mixSlices(T, k).length > 1);
+  if (!ways.some(([k]) => k === S.mix)) S.mix = "holding";
+  const ring = mixRing(T, S.mix);
+  if (ways.length < 2) return [ring];
+  // (a segmented control, its thumb sliding to the one chosen)
+  const at = ways.findIndex(([k]) => k === S.mix);
+  const seg = h("div.seg.ways", { role: "group", "aria-label": "Your mix, by", vars: { n: String(ways.length) } }, h("span.sl", { style: `transform:translateX(${at * 100}%)` }),
+    ways.map(([k, label], i) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === S.mix), text: label,
+      onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); $("#ring")?.replaceWith(mixRing(totals(), k)); } })));
+  return [h("div.mixrow", {}, seg), ring];
+}
 // How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
 // year's dividends; and today. Then what it's from, where that's not everything, and a day asked for where one that
 // pays has none to count its dividends from
@@ -673,7 +817,7 @@ function movable(list) {
     quiet = Date.now() + 450;
     if (!keep || from === to) return;
     list.insertBefore(row, rows.filter((r) => r !== row)[to] || null);
-    const order = [...list.children].map((r) => r.dataset.sym).filter(Boolean);
+    const order = [...main.querySelectorAll(".sortable .item[data-sym]")].map((r) => r.dataset.sym);
     try { const r = await A.order(order); S.list = r.holdings; } catch (e) { toast(e.message, true); render(false); }
   };
   list.addEventListener("pointerdown", (e) => {
@@ -1018,11 +1162,13 @@ function stockView(sym, o = {}) {
     held ? h("div", { id: "buys" }) : null,
   ];
   // what can be done with it
-  if (held) parts.push(h("div.btns", {},
-    h("button.btn.press" + (held.alert ? ".on" : ""), { type: "button", id: "alert", onclick: (e) => toggleAlert(sym, e.currentTarget) }, held.alert ? `Alert On · ±${fmt(held.alert, 0)}%` : "Alert Me"),
-    h("button.btn.press", { type: "button", onclick: () => sendInChat(sym) }, "Send in Chat")),
-  h("div.links", {}, h("button", { type: "button", onclick: () => pushSheet(editView, sym), text: held.qty > 0 ? "Edit Holding" : "Add What You Own" }), removeBtn(sym, held)));
-  else parts.push(h("div.btns", {}, h("button.btn.go.press.wide", { type: "button", onclick: () => pushSheet(editView, sym, { name }) }, "Add to Your List"), h("button.btn.press.wide", { type: "button", onclick: () => sendInChat(sym, name) }, "Send in Chat")));
+  const tool = (sel, ic, label, on, attrs = {}) => h(`button.tool.press${sel}`, { type: "button", onclick: on, ...attrs }, icon(ic, 20, 2), h("span", { text: label }));
+  if (held) parts.push(h("div.links", {}, removeBtn(sym, held)),
+    h("div.sbar", {},
+      tool(held.alert ? ".on" : "", "bell", held.alert ? `Alert On · ±${fmt(held.alert, 0)}%` : "Alert Me", (e) => toggleAlert(sym, e.currentTarget), { id: "alert" }),
+      tool("", "send", "Send in Chat", () => sendInChat(sym)),
+      tool("", "pen", held.qty > 0 ? "Edit Holding" : "Add What You Own", () => pushSheet(editView, sym))));
+  else parts.push(h("div.sbar.two", {}, h("button.btn.go.press", { type: "button", onclick: () => pushSheet(editView, sym, { name }) }, "Add to Your List"), tool("", "send", "Send in Chat", () => sendInChat(sym, name))));
   requestAnimationFrame(() => { stockChart(sym, box, seg); whyMoving(sym, why); if (held) drawBuys(sym); });
   return parts;
 }
@@ -1337,7 +1483,7 @@ async function toggleAlert(sym, btn) {
     S.list = r.holdings;
     const now = S.list.find((x) => x.symbol === sym);
     btn.classList.toggle("on", !!now?.alert);
-    btn.textContent = now?.alert ? `Alert On · ±${fmt(now.alert, 0)}%` : "Alert Me";
+    (btn.querySelector("span") || btn).textContent = now?.alert ? `Alert On · ±${fmt(now.alert, 0)}%` : "Alert Me";
     toast(now?.alert ? `You'll hear when ${now.name} moves ${fmt(now.alert, 0)}% in a day${S.alertsOff ? " (alerts are off in your account)" : quiet}` : "Alert off");
   } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
@@ -1473,7 +1619,7 @@ async function loadPaid(force = false) {
   if (f && top?.[0] === stockView) { const sym = top[1][0]; f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); }
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
-const calm = () => !document.body.classList.contains("sheet-up") && !$("#all.sorting");
+const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");
 // Prices again: every half a minute while the app's open and in front, each change flashed where it shows
 async function refresh(force = false) {
   if (!S.me || (!force && document.hidden)) return;
@@ -1489,11 +1635,11 @@ async function refresh(force = false) {
     const T = totals(), pv = $("#pv");
     if (pv && Math.abs(T.value - wasT.value) > 0.004) {
       C.count(wasT.value, T.value, 700, (v) => { const [a, b] = fmt(v).split("."); pv.replaceChildren(`£${a}`, h("span.p", { text: "." + b })); });
-      const pd = $("#pd"), pp = $("#pp");
+      const pd = S.prange === "1d" && $("#pd"), pp = $("#pp");
       if (pd) { pd.textContent = signed(T.day); pd.className = tone(T.day); pp.textContent = pct(T.dayPct); pp.className = tone(T.day); }
-      const say = $("#say"); if (say) say.replaceChildren(...daySaid(T));
+      const say = S.prange === "1d" && $("#say"); if (say) say.replaceChildren(...daySaid(T));
       // the day's line: reshaped to take the new prices in
-      const svg = $("#pchart"), line = svg?.querySelector("path[data-draw]"), fill = svg?.querySelectorAll("path")[0], s = daySeries();
+      const svg = S.prange === "1d" && $("#pchart"), line = svg?.querySelector("path[data-draw]"), fill = svg?.querySelectorAll("path")[0], s = daySeries();
       if (line && s && portfolioChart.pts) {
         const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
         const n = Math.max(pts.length, portfolioChart.pts.length), rs = (p) => C.resample(p.map((x) => x[0]), n).map((x, i) => [x, C.resample(p.map((y) => y[1]), n)[i]]);
