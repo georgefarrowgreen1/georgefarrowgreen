@@ -96,7 +96,7 @@ await shot(L, '01a-menu');
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
-ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/`, 'each app\'s card opens the app, on this site', opens.join());
+ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/,${CHAT.replace('//chat.', '//finance.')}/`, 'each app\'s card opens the app, on this site (Markets at finance.)', opens.join());
 const links = [];
 for (const name of ['Chat', 'Weather', 'Fitness']) {
   await L.p.click(`main .app:has(b:text-is("${name}")) .about`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
