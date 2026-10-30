@@ -80,9 +80,22 @@ async function served(e, key) {
   e.waitUntil(now.then((res) => { if (res.ok && tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) return renew(); }, () => {}));
   return hit;
 }
+// (the page itself: from the network while there is one, what's kept offline or after three seconds, as an iPhone takes
+// what it says of the status bar from the page that's open as it's added to the Home Screen, and a page kept from before
+// could say otherwise; a change in it renews the rest, as a changed file does)
+async function page(e, key) {
+  const c = await caches.open(SHELL), hit = await c.match(key);
+  try {
+    const res = await Promise.race([fetch(key, { cache: "no-cache" }), new Promise((_, no) => setTimeout(() => no(new Error("slow")), hit ? 3000 : 20000))]);
+    if (!res.ok) return hit || res;
+    if (!hit) { if (res.type === "basic") e.waitUntil(c.put(key, res.clone())); }
+    else if (tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) e.waitUntil(renew());
+    return res;
+  } catch (err) { if (hit) return hit; throw err; }
+}
 self.addEventListener("fetch", (e) => {
   const r = e.request, u = new URL(r.url), scope = new URL(self.registration.scope);
   if (r.method !== "GET" || u.origin !== scope.origin || u.pathname.includes("/api/")) return;
-  if (r.mode === "navigate") { if (u.pathname === scope.pathname || u.pathname === scope.pathname + "index.html") e.respondWith(served(e, at("./"))); return; }
+  if (r.mode === "navigate") { if (u.pathname === scope.pathname || u.pathname === scope.pathname + "index.html") e.respondWith(page(e, at("./"))); return; }
   if (isFile(u, scope)) e.respondWith(served(e, u.origin + u.pathname));
 });
