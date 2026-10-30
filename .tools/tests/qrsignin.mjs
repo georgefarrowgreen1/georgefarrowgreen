@@ -126,14 +126,16 @@ ok(/someone sent you this link/.test(await ph.locator('.sheet-body').innerText()
 await ph.screenshot({ path: `${out}/2-phone-first.png` });
 await ph.locator('.sheet-body button:has-text("Continue")').click();
 await ph.waitForSelector('.qrpick button', { timeout: 20000 }); await settle(ph, 600);
-ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()), 'Continue: which computer is asking');
+ok(/Sign in on a Mac\?/.test(await ph.locator('.sheet-body').innerText()) && /Chrome on a Mac/.test(await ph.locator('.sheet-body').innerText()) && /address bar shows account\.ifl\.test:8788/.test(await ph.locator('.sheet-body').innerText()),
+  'Continue: which computer is asking, and to go on only if its address bar shows the account’s own address');
 await ph.screenshot({ path: `${out}/3-phone.png` });
 await m.waitForSelector('.qrnum b', { timeout: 10000 });
 ok(/Check your iPhone/.test(await m.locator('#qrc').innerText()), 'the Mac: check your iPhone, and the number');
 await ph.locator(`.qrpick button:text-is("${(await m.locator('.qrnum b').innerText()).trim()}")`).click();
 await ph.waitForSelector('.qrend.good', { timeout: 10000 });
 await m.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await settle(m, 500);
-ok(/Continue as Sam Lee\?/.test(await m.locator('#qrc').innerText()) && !(await m.$('main .hero')), 'tapped: the Mac asks “Continue as Sam Lee?”, not signed in till then');
+ok(/Continue as Sam Lee\?/.test(await m.locator('#qrc').innerText()) && /@samlee/.test(await m.locator('#qrc').innerText()) && /s••@example\.com/.test(await m.locator('#qrc').innerText()) && !(await m.$('main .hero')),
+  'tapped: the Mac asks “Continue as Sam Lee?”, with the handle and the email partly hidden, not signed in till then', (await m.locator('#qrc').innerText()).replace(/\s+/g, ' '));
 await m.screenshot({ path: `${out}/4-mac-who.png` });
 await m.locator('#qrc button:has-text("Continue")').click();
 await m.waitForSelector('main .hero', { timeout: 20000 }); await settle(m, 1000);
@@ -160,10 +162,12 @@ await ph.locator(`.qrpick button:text-is("${off}")`).click();
 await ph.waitForSelector('.qrend.bad', { timeout: 10000 }); await m3.waitForSelector('#qrc .said', { timeout: 10000 }); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 });
 ok(!(await m3.$('main .hero')) && /didn’t say yes/.test(await m3.locator('#qrc .said').innerText()), 'a wrong number: refused on the phone; the Mac told, not signed in, a new code');
 // (That's not me, on the Mac)
+const code6 = (await m3.getAttribute('#qrc .qrbox', 'data-link')).split('#qr=')[1];
 await ph.locator(`.qrpick button:text-is("${await viaPhone(ph, m3)}")`).click();
 await m3.waitForSelector('#qrc .qrwho', { timeout: 10000 }); await m3.locator('#qrc button:has-text("That’s not me")').click();
 await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 }); await settle(m3, 2600);
-ok(!(await m3.$('main .hero')) && /Not signed in/.test(await m3.locator('#qrc').innerText()), 'That’s not me: not signed in, a new code');
+ok(!(await m3.$('main .hero')) && /Not signed in/.test(await m3.locator('#qrc').innerText()) && (await api('qr/look', { body: { code: code6 }, cookie: samCookie })).status === 410,
+  'That’s not me: not signed in, a new code, and the old one ended on the server');
 // (a computer in another country: its number typed, not picked)
 const link5 = await m3.getAttribute('#qrc .qrbox', 'data-link');
 sql0(`UPDATE pg_qrsign SET cc = 'FR' WHERE state = 'new'`);

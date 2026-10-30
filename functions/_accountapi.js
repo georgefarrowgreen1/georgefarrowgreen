@@ -7,7 +7,7 @@
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
-import { qrStart, qrWait, qrTake, qrLook, qrAnswer } from "./_qrsign.js";
+import { qrStart, qrWait, qrTake, qrRefuse, qrLook, qrAnswer } from "./_qrsign.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
 
 // (answers about the account: never kept by anything in between, and for this page's own address alone)
@@ -62,6 +62,7 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
     // shown it's you)
     "POST signin/qr": async ({ request, env }) => { sameOrigin(request); return json(await qrStart(env, request)); },
     "POST signin/qr/wait": async ({ request, env }) => { sameOrigin(request); return json(await qrWait(env, request, await body(request))); },
+    "POST signin/qr/refuse": async ({ request, env }) => { sameOrigin(request); return json(await qrRefuse(env, request, await body(request))); },
     "POST signin/qr/take": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
       const b = await body(request), r = await qrTake(env, request, b);
