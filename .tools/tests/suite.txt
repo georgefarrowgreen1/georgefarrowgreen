@@ -42,6 +42,7 @@ acctsignin
 acctinflight
 sitepaths
 acctpkmsg
+qrsignin
 fitness
 markets
 marketsdesk

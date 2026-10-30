@@ -404,6 +404,11 @@ const MIGRATIONS = [
   // code good once, for two minutes, only with the word the app's tab kept for it (ask: its hash); for Chat, what
   // unlocks the key there, sealed to that tab (box), and the passkey whose own copy of the key it opens (pk)
   "CREATE TABLE IF NOT EXISTS pg_handback (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, app TEXT NOT NULL, ask TEXT NOT NULL, box TEXT, pk TEXT, expires INTEGER NOT NULL)",
+  // signing in on a computer with your phone (functions/_qrsign.js): the code its QR code carries (hash), the word only
+  // the computer's tab keeps (poll: its hash), the number to match and the three the phone picks from, the computer as
+  // it's said (label, place, and its country's code, cc); once a phone's looked, whose it is and which phone; and where
+  // it's got to
+  "CREATE TABLE IF NOT EXISTS pg_qrsign (hash TEXT PRIMARY KEY, poll TEXT NOT NULL, num INTEGER NOT NULL, picks TEXT NOT NULL, label TEXT, place TEXT, cc TEXT, user_id TEXT, phone TEXT, state TEXT NOT NULL, expires INTEGER NOT NULL)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

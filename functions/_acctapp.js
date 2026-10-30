@@ -17,7 +17,8 @@ export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(
 
 export const ACCT_SECURITY = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://email.inflite.ai; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
-  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  // (the camera for this page alone: scanning a computer's QR code to sign it in, app.js scanView)
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=(self)",
   "Referrer-Policy": "same-origin",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
@@ -26,7 +27,7 @@ export const ACCT_SECURITY = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // what it shares with the rest of the site: its address here → where it's kept
-const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/formats.js": "/fitness/formats.js", "/fit.js": "/fitness/fit.js", "/workouts.js": "/fitness/workouts.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png", "/apps/mail.png": "/account/mail-icon.png" };
+const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/argon2w.js": "/pigeon/argon2w.js", "/qr.js": "/pigeon/qr.js", "/jsqr.js": "/pigeon/jsqr.js", "/formats.js": "/fitness/formats.js", "/fit.js": "/fitness/fit.js", "/workouts.js": "/fitness/workouts.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png", "/apps/mail.png": "/account/mail-icon.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
 // The page's script and styles, and every module the script brings in, stamped with what's in them as sent (?v=: a
 // module's own imports stamped in turn), as Chat's are (functions/_app.js): so the page always runs the files it

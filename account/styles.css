@@ -362,6 +362,84 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .said.bad { color: var(--danger); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 13px; }
 .or::before, .or::after { content: ""; flex: 1; height: 0.5px; background: var(--line); }
+/* signing in with your phone (app.js qrCard, qrView; functions/_qrsign.js): on a computer, the usual card and a QR code
+   side by side, "or" between them; on the phone, the computer that's asking, and the number to tap */
+.signpair { display: grid; grid-template-columns: 400px auto 300px; align-items: center; gap: 22px; margin-top: 14px; }
+.signpair > .signin { margin-top: 0; }
+.vor { align-self: stretch; display: grid; grid-template-rows: 1fr auto 1fr; justify-items: center; gap: 10px; color: var(--text-3); font-size: 13px; }
+.vor::before, .vor::after { content: ""; width: 0.5px; background: var(--line); }
+.qrc { display: grid; justify-items: center; align-content: center; gap: 12px; padding: 22px 22px 20px; border-radius: var(--r-hero); text-align: center; }
+.qrc h2 { margin: 0; font: 600 17px/1.2 var(--font-d); }
+.qrc p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; max-width: 24ch; }
+.qrc p b { color: var(--text); }
+.qrc .said { margin: 0; max-width: 26ch; }
+.qrbox { position: relative; width: 196px; aspect-ratio: 1; padding: 12px; border-radius: 22px; background: var(--qr-card); box-shadow: var(--qr-edge); display: grid; place-items: center; }
+/* (InFlite's mark in the middle, on a tile of the card's own colour: 17% across, which the code reads through) */
+.qrlogo { position: absolute; left: 50%; top: 50%; width: 17%; aspect-ratio: 1; transform: translate(-50%, -50%); padding: 2.5%; border-radius: 24%; background: var(--qr-card); animation: fade-in var(--dur-base) var(--ease-out); }
+.qrlogo img { display: block; width: 100%; height: 100%; border-radius: 22%; }
+.qrbox.rest { background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); padding: 28px; }
+.qrbox.rest .btn { width: auto; }
+.qrbox svg { display: block; width: 100%; height: 100%; animation: fade-in var(--dur-base) var(--ease-out); }
+.qrtime { width: 120px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.qrtime i { display: block; height: 100%; background: var(--tint); transform-origin: left; animation: qrtime linear forwards; }
+@keyframes qrtime { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.qrsteps { margin: 2px 0 0; padding: 0 0 0 20px; display: grid; gap: 6px; text-align: left; font-size: 13.5px; color: var(--text-2); line-height: 1.35; }
+.qrsteps li::marker { color: var(--text-3); font-weight: 600; }
+.qrhint { margin: 2px 0 0 !important; padding-top: 12px; border-top: 0.5px solid var(--line); font-size: 12.5px !important; line-height: 1.45 !important; color: var(--text-3) !important; max-width: 30ch !important; }
+.qrhint b { color: var(--text-2); font-weight: 600; }
+.qrwait { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px !important; color: var(--text-3) !important; }
+.spin.sm { width: 13px; height: 13px; border-width: 1.75px; }
+.qrnum { width: 132px; height: 132px; margin: 6px 0; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--tint) 16%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tint) 45%, transparent); animation: pop 0.5s var(--ease-spring) backwards; }
+.qrnum { position: relative; }
+.qrnum::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--tint) 40%, transparent); animation: breathe 2.2s var(--ease) infinite; }
+@keyframes breathe { 0% { transform: scale(0.94); opacity: 0.9; } 70% { transform: scale(1.12); opacity: 0; } 100% { opacity: 0; } }
+.qrnum b { font: 700 56px/1 var(--font-d); color: var(--tint-text); font-variant-numeric: tabular-nums; }
+.qrdone { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--good); animation: pop 0.5s var(--ease-spring) backwards; }
+/* the apps one sign-in is for, each by its icon (the page's lead, signed out) */
+.leadrow { display: grid; justify-items: center; gap: 10px; margin: -2px 0 6px; }
+.leadrow p.lead { margin: 0; }
+.approw { display: flex; gap: 18px; }
+.approw span { display: grid; justify-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+.approw img { width: 40px; height: 40px; border-radius: 11px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 18px -10px rgba(0, 0, 0, 0.6); }
+.qrask, .qrend { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 6px 8px 0; }
+.qrask h2, .qrend h2 { margin: 6px 0 0; font: 700 24px/1.15 var(--font-d); }
+.qrask p, .qrend p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.45; max-width: 32ch; }
+.qrhero { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, #7186ff, #4a45dc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 16px 34px -14px rgba(74, 69, 220, 0.8); }
+.qrend.good .qrhero { background: linear-gradient(160deg, #4fdc8e, #1fa75a); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 16px 34px -14px rgba(31, 167, 90, 0.7); animation: pop 0.5s var(--ease-spring) backwards; }
+.qrend.bad .qrhero { background: linear-gradient(160deg, #ff8a7a, #e0453a); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 16px 34px -14px rgba(224, 69, 58, 0.7); }
+.qrend .btn { margin-top: 16px; }
+.row.static { cursor: default; }
+.qrwarn { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 16px; font-size: 14.5px; line-height: 1.4; text-align: left;
+  color: var(--text); background: color-mix(in srgb, #ff9f0a 16%, transparent); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, #ff9f0a 45%, transparent); }
+.qrwarn svg { flex: none; color: #ff9f0a; margin-top: 1px; }
+.sheet-body > p.qrfoot { margin: -4px 10px 0; text-align: center; font-size: 12.5px; color: var(--text-3); }
+/* scanning a computer's code from here (app.js scanView): the camera in a square, a frame at its corners, a line that
+   sweeps while it looks */
+.scanbox { position: relative; width: 100%; max-width: 340px; justify-self: center; aspect-ratio: 1; border-radius: 28px; overflow: hidden; background: #05060c;
+  box-shadow: 0 0 0 0.5px var(--line), 0 18px 40px -20px rgba(0, 0, 0, 0.7); }
+.scanbox video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scanframe { position: absolute; inset: 18%; border-radius: 18px; pointer-events: none;
+  background: linear-gradient(#fff, #fff) top left / 28px 3px no-repeat, linear-gradient(#fff, #fff) top left / 3px 28px no-repeat,
+    linear-gradient(#fff, #fff) top right / 28px 3px no-repeat, linear-gradient(#fff, #fff) top right / 3px 28px no-repeat,
+    linear-gradient(#fff, #fff) bottom left / 28px 3px no-repeat, linear-gradient(#fff, #fff) bottom left / 3px 28px no-repeat,
+    linear-gradient(#fff, #fff) bottom right / 28px 3px no-repeat, linear-gradient(#fff, #fff) bottom right / 3px 28px no-repeat;
+  box-shadow: 0 0 0 999px rgba(5, 6, 12, 0.38); }
+.scanline { position: absolute; left: 20%; right: 20%; top: 20%; height: 2px; border-radius: 1px; background: linear-gradient(90deg, transparent, #7ea2ff, transparent);
+  box-shadow: 0 0 12px 2px rgba(126, 162, 255, 0.55); animation: sweep 2.4s var(--ease) infinite alternate; }
+@keyframes sweep { to { top: 80%; } }
+.sheet-body > p.scan-said { margin: 0 8px; text-align: center; font-weight: 500; color: var(--text); }
+.sheet-body > p.scan-said.bad { color: var(--bad, #ff6b5e); }
+.scan-how { margin: 0 8px; padding: 0 0 0 20px; display: grid; gap: 6px; font-size: 14px; line-height: 1.4; color: var(--text-2); }
+.scan-how b { color: var(--text); font-weight: 600; }
+.sheet-body > p.qrpick-said { margin: 4px 0 -4px; text-align: center; font-weight: 600; color: var(--text); }
+.qrpick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.qrpick button { min-height: 78px; border: 0; border-radius: 20px; font: 700 34px/1 var(--font-d); font-variant-numeric: tabular-nums; color: var(--text); background: var(--glass-ctl);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line); transition: transform 0.15s var(--ease-out), opacity 0.15s; }
+.qrpick button:active { transform: scale(0.95); }
+.qrpick button.working { opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) { .qrnum, .qrdone, .qrend.good .qrhero, .qrnum::after, .scanline { animation: none; } .qrtime i { animation: none; } }
 /* signed out: what the account's for (under the title), and how a new one's made (by invitation) */
 .welcome p.lead { margin: -2px 0 14px; max-width: none; }
 .lead img { width: 20px; height: 20px; border-radius: 6px; vertical-align: -4px; margin: 0 4px 0 2px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
