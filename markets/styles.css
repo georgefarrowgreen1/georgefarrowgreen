@@ -208,6 +208,7 @@ button.fact { width: 100%; text-align: left; }
 .ib i.est { background: var(--up-soft); box-shadow: inset 0 0 0 1.5px var(--up); opacity: 0.75; }
 .ib i.add, .mini .ib i.add { margin-bottom: 2px; background: var(--blue); opacity: 0.6; }
 .imode { margin-top: 12px; }
+.imode button { flex: 1; text-align: center; }     /* (its three sharing the width, the track no wider than they are) */
 .ilegend { display: flex; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--text-3); }
 .ilegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 3px; vertical-align: -1px; background: var(--up); }
 .ilegend i.est { background: var(--up-soft); box-shadow: inset 0 0 0 1.5px var(--up); }
@@ -360,10 +361,10 @@ body.sheet-up .tabbar { transform: translateY(24px); opacity: 0; }
 body.out .tabbar { display: none; }
 .tabs { position: relative; pointer-events: auto; display: flex; width: 100%; max-width: 330px; height: 60px; padding: 5px; border-radius: 999px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
-.tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 3); border-radius: 999px; background: var(--ctl);
+.tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 3); border-radius: 999px; background: color-mix(in srgb, var(--ift-tint) 15%, transparent);
   transform: translateX(calc(var(--tab, 0) * 100%)); transition: transform 0.6s var(--ease-spring); }
 .tab { position: relative; flex: 1; display: grid; place-items: center; text-align: center; font-size: 14px; font-weight: 600; color: var(--text-3); transition: color 0.3s; }
-.tab[aria-current="page"] { color: var(--text); }
+.tab[aria-current="page"] { color: var(--ift-tint); }     /* (the tab you're on, in Markets' green, as InFlite's other apps' tab bars say it) */
 
 /* ---- the sheet: a stock, search, or settings ---- */
 .dim { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 30; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity 0.5s; }

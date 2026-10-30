@@ -382,8 +382,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.79";
-const NEWS = "Income: what you've been paid, the tax year and its allowance, a goal, each payer's record, and what a buy would add";
+const BUILD = "1.80";
+const NEWS = "The tab you're on, in green as in InFlite's other apps, and Income's Coming, Received and Tax year sharing the width";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
