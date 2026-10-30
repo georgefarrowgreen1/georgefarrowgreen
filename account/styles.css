@@ -479,6 +479,12 @@ dialog.sheet.dragging { transition: none; }
   @keyframes sheet-out { from { transform: var(--from-tf, none); opacity: var(--from-o, 1); } to { transform: translateY(26px) scale(0.97); opacity: 0; } }
   body.sheet-up .page { transform: scale(0.97); }
 }
+/* (in a phone's browser, its toolbar can float over the foot of the page: iOS 26's Safari, and the browser an app opens
+   this page in (each app's Notifications). A sheet sized to what's in it then had its last rows under the toolbar, out
+   of reach, with nothing to scroll. There, its foot keeps clear of it; a Home Screen app has no toolbar to clear.) */
+@media (hover: none) and (display-mode: browser) {
+  dialog.sheet .sheet-body { padding-bottom: calc(22px + max(env(safe-area-inset-bottom, 0px), 88px)); }
+}
 .grab { flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--text-3); opacity: 0.6; margin: 8px auto 0; }
 .sheet-head { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 14px 6px; }
 .sheet-head h2 { margin: 0; font: 600 17px/1.2 var(--font); text-align: center; grid-column: 2; }
