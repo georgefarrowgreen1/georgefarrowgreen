@@ -676,8 +676,9 @@ async function load() {
       else if (now.signedIn) { S.me = now; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
       else { S.me = now; S.handoff = who; }
     } catch (e) {
-      // (whose code it was not known: what it was to open isn't opened for whoever's signed in here)
-      HANDOFF.open = null; mine.then(() => setTimeout(() => toast(e.message, true), 400), () => {});
+      // (whose code it was not known: what it was to open isn't opened for whoever's signed in here; said here, before
+      // any sign-in)
+      HANDOFF.open = null; S.stay = true; mine.then(() => setTimeout(() => toast(e.message, true), 400), () => {});
     }
   }
   try { if (!S.me) S.me = await mine; S.pulled = Date.now(); }
@@ -698,7 +699,7 @@ async function load() {
   // (each page its own: signed in, the sign-in page has nothing more to ask, unless a computer's code or an app's waiting,
   // and it's on to your account; signed out, the account's page is on to the sign-in page)
   if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && S.gate !== "join") return location.replace(`${AUTH.account}/`);
-  if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said) return location.replace(`${AUTH.auth}/`);
+  if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said && !S.stay) return location.replace(`${AUTH.auth}/`);
   // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
   if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
   if (S.me?.signedIn) S.gate = null;

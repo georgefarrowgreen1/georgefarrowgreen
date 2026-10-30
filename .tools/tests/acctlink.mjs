@@ -91,7 +91,10 @@ ok(/Edit profile/.test(await text(F1.p, '#sheet')), 'a fresh browser: signed in 
 const meAt = async (x, url) => { const q = await x.ctx.newPage(); try { return await (await q.goto(url)).json(); } catch (_) { return {}; } finally { await q.close(); } };
 const handedHere = await F1.p.evaluate(async () => (await (await fetch('/api/account/me')).json()).handed);
 const wxSays = await meAt(F1, `${WX}/api/weather/me`);
-const handBack = await F1.p.evaluate(async () => (await fetch('/api/account/handback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: 'weather', ask: 'a'.repeat(43) }) })).status);
+// (asked where it's answered, the sign-in page: the account's page never makes one)
+const AQ = await F1.ctx.newPage(); await AQ.goto(`${ACCT.replace('//account.', '//auth.')}/crypto.js`);
+const handBack = await AQ.evaluate(async () => (await fetch('/api/account/handback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: 'weather', ask: 'a'.repeat(43) }) })).status);
+await AQ.close();
 ok(handedHere === true && wxSays.signedIn === false && handBack === 403, 'that sign-in is the account page\'s alone: Weather says signed out, and no app is handed it', `${handedHere} ${JSON.stringify(wxSays).slice(0, 60)} ${handBack}`);
 // (Weather's Sign in, from there: Continue to Weather asks it's you first, then it's the browser's own)
 await F1.ctx.route(/\/\/weather\.ifl\.test/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Weather</title>' }));
