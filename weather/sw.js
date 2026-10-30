@@ -46,7 +46,9 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const req = e.request, u = new URL(req.url), page = req.mode === "navigate";
-  if (req.method !== "GET" || u.origin !== self.location.origin || u.pathname.startsWith("/api/")) return;
+  // (never /version: the updater every app shares asks it which version's deployed, IFL.updates, and a kept answer would
+  // say the same forever)
+  if (req.method !== "GET" || u.origin !== self.location.origin || u.pathname.startsWith("/api/") || u.pathname.endsWith("/version")) return;
   e.respondWith((async () => {
     // (a page is kept under the one address, not each link's own: those would pile up, and say where you've looked)
     const cache = await caches.open(u.pathname.includes("/vendor/") ? LIBS : CACHE), key = page ? "./" : req;
