@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.62";
+const BUILD = "1.63";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -312,7 +312,9 @@ function h(sel, attrs = {}, ...kids) {
   for (const k of kids.flat(9)) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));
   return e;
 }
-const icon = (name, size = 18, w = 2.2) => { const s = C.el("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": w, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }); s.innerHTML = IFL.glyph(name).replace(/^<svg[^>]*>|<\/svg>$/g, ""); return s; };
+// (InFlite's glyphs, and Markets's own few)
+const GLYPHS_MK = { check: '<path d="m5 12.5 4.5 4.5L19 7"/>' };
+const icon = (name, size = 18, w = 2.2) => { const s = C.el("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": w, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }); s.innerHTML = GLYPHS_MK[name] || IFL.glyph(name).replace(/^<svg[^>]*>|<\/svg>$/g, ""); return s; };
 
 // ---- saying numbers ----
 const SYM = { GBP: "£", USD: "$", EUR: "€", JPY: "¥", INR: "₹" };
@@ -1338,27 +1340,90 @@ async function stockChart(sym, box, seg) {
 }
 
 // Find something to add
+// Find and Add. Before anything's typed: what you looked at last, and rows to browse (each with its price today). As
+// you type: what matches in your list and those rows, at once, then the markets' own answer under them; each with its
+// price and day, the letters typed shown bold, and a + to follow it in one tap (a tick once it's in your list).
+// Return opens the first
+const BROWSE = [
+  ["Popular in the UK", [["SHEL.L", "Shell"], ["AZN.L", "AstraZeneca"], ["HSBA.L", "HSBC"], ["ULVR.L", "Unilever"], ["BP.L", "BP"], ["RR.L", "Rolls-Royce"], ["LLOY.L", "Lloyds"], ["TSCO.L", "Tesco"]]],
+  ["Index funds", [["VWRL.L", "Vanguard All-World"], ["VUSA.L", "Vanguard S&P 500"], ["ISF.L", "iShares FTSE 100"], ["VUKE.L", "Vanguard FTSE 100"], ["VFEM.L", "Vanguard Emerging Markets"]]],
+  ["Investment trusts", TRUST_PICKS],
+  ["US tech", [["AAPL", "Apple"], ["NVDA", "Nvidia"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["META", "Meta"]]],
+];
+const recent = { get: () => store.get("recent", []), add(sym, name) { store.set("recent", [{ s: sym, n: name }, ...recent.get().filter((x) => x.s !== sym)].slice(0, 6)); } };
+// the letters typed, bold where they are in a name
+function marked(name, q) {
+  const k = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  return k < 0 ? [name] : [name.slice(0, k), h("mark", { text: name.slice(k, k + q.length) }), name.slice(k + q.length)];
+}
+// following one in a tap: added with none owned; the + turns to a tick
+async function follow(sym, name, btn) {
+  if (S.list.some((x) => x.symbol === sym)) return pushSheet(stockView, sym, { name });
+  btn.disabled = true;
+  try {
+    const r = await A.putHolding({ symbol: sym, name, qty: 0 });
+    S.list = r.holdings; S.news = null;
+    btn.classList.add("on"); btn.replaceChildren(icon("check", 15, 2.8)); btn.setAttribute("aria-label", `${name} is in your list`);
+    navigator.vibrate?.(8);
+    toast(`Following ${name}`);
+    render(false);
+  } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
+}
+const addBtn = (sym, name) => { const have = S.list.some((x) => x.symbol === sym), b = h("button.addb.press" + (have ? ".on" : ""), { type: "button", "aria-label": have ? `${name} is in your list` : `Follow ${name}` }, icon(have ? "check" : "plus", 15, 2.8));
+  b.onclick = (e) => { e.stopPropagation(); follow(sym, name, b); }; return b; };
+const dayOfQ = (sym) => { const q = S.q[sym]; return q?.price != null ? [h("b.num", { text: priceSaid(q) }), h("small", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct) })] : [h("b.num.dimmed", { text: "–" })]; };
 function searchView() {
   const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund, trust or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
-  const start = () => [h("p.hint", { text: "Try a name like Rolls-Royce, Vanguard or Scottish Mortgage, or a symbol like AAPL or JAM." }),
-    h("div.browse", {}, h("h3", { text: "Investment trusts" }), h("div.chips", {}, TRUST_PICKS.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => pushSheet(stockView, s, { name: n }), text: n }))))];
+  const open = (sym, name) => { recent.add(sym, name); pushSheet(stockView, sym, { name }); };
+  // one result: its name (what's typed, bold), what it is, its price and day, and a + to follow it
+  const row = (x, q) => h("div.res", { "data-sym": x.symbol },
+    h("button.resopen", { type: "button", onclick: () => open(x.symbol, x.name), "aria-label": x.name }),
+    h("span.rn", {}, h("b", {}, marked(x.name, q)), h("small", { text: [plainSym(x.symbol), x.ex, KIND_SAID[x.kind]].filter(Boolean).join(" · ") })),
+    h("span.rp", {}, dayOfQ(x.symbol)), addBtn(x.symbol, x.name));
+  // a row to browse: cards across, each with its price today
+  const card = ([sym, name], i) => h("div.bcard.glass.rise", { vars: { i: String(i) } },
+    h("button.resopen", { type: "button", onclick: () => open(sym, name), "aria-label": name }),
+    h("b", { text: name }), h("small", { text: [plainSym(sym), S.q[sym]?.ex].filter(Boolean).join(" · ") }), h("span.bp", {}, dayOfQ(sym)), addBtn(sym, name));
+  const start = () => {
+    const rec = recent.get();
+    return [
+      rec.length ? h("div.browse", {}, h("h3", {}, "Recent", h("button", { type: "button", onclick: () => { store.del("recent"); results.replaceChildren(...start()); }, text: "Clear" })),
+        h("div.list.flush", {}, rec.slice(0, 4).map((x) => row({ symbol: x.s, name: x.n, ex: S.q[x.s]?.ex, kind: S.q[x.s] ? kindOf(S.q[x.s]) : null }, "")))) : null,
+      ...BROWSE.map(([title, list]) => h("div.browse", {}, h("h3", { text: title }), h("div.brow", {}, list.map(card))))].filter(Boolean);
+  };
   const results = h("div.results", { id: "results" }, ...start());
-  let t = null, n = 0;
+  // (the prices for what's to browse, and what was looked at last: asked for once, drawn in as they come)
+  const want = [...new Set([...BROWSE.flatMap(([, l]) => l.map((x) => x[0])), ...recent.get().map((x) => x.s)])].filter((sym) => !S.q[sym]);
+  if (want.length) A.quotes(want.slice(0, 64)).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (!input.value.trim() && results.isConnected) results.replaceChildren(...start()); }, () => {});
+  // (what matches here already, before the markets answer: in your list first, then the rows)
+  const local = (q) => {
+    const k = q.toLowerCase(), pool = [...S.list.map((x) => [x.symbol, x.name]), ...BROWSE.flatMap(([, l]) => l)], seen = new Set();
+    return pool.filter(([sym, name]) => (name.toLowerCase().includes(k) || plainSym(sym).toLowerCase().startsWith(k)) && !seen.has(sym) && seen.add(sym))
+      .slice(0, 4).map(([sym, name]) => ({ symbol: sym, name, ex: S.q[sym]?.ex || "", kind: S.q[sym] ? kindOf(S.q[sym]) : null }));
+  };
+  let t = null, n = 0, shown = [];
+  const draw = (list, q) => { shown = list; results.replaceChildren(h("div.list.flush", {}, list.map((x) => row(x, q)))); };
   input.addEventListener("input", () => {
     clearTimeout(t);
     const q = input.value.trim();
-    if (!q) { results.replaceChildren(...start()); return; }
+    if (!q) { shown = []; results.replaceChildren(...start()); return; }
+    const mine = local(q);
+    if (mine.length) draw(mine, q);
     t = setTimeout(async () => {
       const k = ++n;
       try {
         const r = await A.search(q);
         if (k !== n) return;
-        results.replaceChildren(...(r.results.length ? r.results.map((x, i) => h("button.res.rise", { type: "button", vars: { i: String(i) }, onclick: () => pushSheet(stockView, x.symbol, { name: x.name }) },
-          h("b", { text: x.name }), h("small", { text: [plainSym(x.symbol), x.ex, KIND_SAID[x.kind]].filter(Boolean).join(" · ") }),
-          h("span.r", { class: "r", style: "color:var(--text-3)" }, S.list.some((y) => y.symbol === x.symbol) ? "In your list" : icon("chev", 16, 2.4)))) : [h("p.hint", { text: `Nothing found for “${q}”.` })]));
+        const seen = new Set(), all = [...mine, ...r.results].filter((x) => !seen.has(x.symbol) && seen.add(x.symbol)).slice(0, 10);
+        if (!all.length) { shown = []; results.replaceChildren(h("div.nores", {}, h("b", { text: `Nothing found for “${q}”` }), h("p", { text: "Check the spelling, or try its symbol (like RR or AAPL). For a fund, paste its ISIN from your broker (like GB00B41YBW71)." }))); return; }
+        draw(all, q);
+        // (their prices, for those that haven't one here yet)
+        const need = all.map((x) => x.symbol).filter((sym) => !S.q[sym]);
+        if (need.length) A.quotes(need).then((qr) => { Object.assign(S.q, qr.quotes); Object.assign(S.fx, qr.rates); if (k === n && results.isConnected) draw(all, q); }, () => {});
       } catch (e) { if (k === n) results.replaceChildren(h("p.hint", { text: e.message })); }
     }, 250);
   });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && shown[0]) { e.preventDefault(); open(shown[0].symbol, shown[0].name); } });
   setTimeout(() => input.focus({ preventScroll: true }), 420);
   return [h("div.shead", {}, h("h2", { text: "Find and Add" }), closeBtn()), h("label.field", {}, icon("search", 18, 2.2), input), results];
 }

@@ -170,7 +170,14 @@ ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length && await 
 
 // ---- 9b. Investment trusts: found, said as such, explained, and how your money splits between them and shares ----
 await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForSelector('#mk-q'); await settle(p, 600);
-ok(/Investment trusts/i.test(await text(p, '.browse h3')) && await p.locator('.browse .chip:has-text("Scottish Mortgage")').count() === 1, 'Find and Add: a few well-known investment trusts to start from', await text(p, '.browse'));
+ok(await p.locator('.browse h3:has-text("Investment trusts")').count() === 1 && await p.locator('.browse .bcard:has-text("Scottish Mortgage")').count() === 1, 'Find and Add: rows to browse, investment trusts among them', await text(p, '.results'));
+ok(await p.locator('.browse:has(h3:has-text("Recent")) .res:has-text("Rolls-Royce")').count() === 1, 'and what you looked at last: Rolls-Royce', await text(p, '.browse'));
+await p.waitForFunction(() => [...document.querySelectorAll('.bcard')].some((c) => /Shell/.test(c.textContent) && /£27\.81/.test(c.textContent)), null, { timeout: 10000 }).catch(() => {});
+ok(/£27\.81\s*[+−]1\.10%/.test(await text(p, '.bcard:has-text("Shell") .bp')), "each with its price and day: Shell at £27.81, −1.10%", await text(p, '.bcard:has-text("Shell") .bp'));
+await p.locator('.bcard:has-text("AstraZeneca") .addb').click(); await settle(p, 1200);
+ok(rows("SELECT qty FROM mk_holdings WHERE symbol = 'AZN.L'")[0]?.qty === 0 && await p.locator('.bcard:has-text("AstraZeneca") .addb.on').count() === 1, 'its + follows it in a tap, and becomes a tick', JSON.stringify(rows("SELECT symbol, qty FROM mk_holdings WHERE symbol = 'AZN.L'")));
+await p.fill('#mk-q', 'zzqx'); await p.waitForSelector('.nores', { timeout: 10000 }); await settle(p, 300);
+ok(/Nothing found for “zzqx”/.test(await text(p, '.nores')) && /ISIN/.test(await text(p, '.nores')), 'nothing found: and what to try instead', await text(p, '.nores'));
 await p.fill('#mk-q', 'scottish'); await p.waitForSelector('.res', { timeout: 10000 }); await settle(p, 300);
 ok((await text(p, '.res b')) === 'Scottish Mortgage' && /SMT · London · Investment trust/.test(await text(p, '.res small')), 'search: Scottish Mortgage, an investment trust', await text(p, '.res'));
 const alw = await p.evaluate(() => fetch('/api/markets/search?q=alliance', { credentials: 'same-origin' }).then((r) => r.json()));
@@ -212,7 +219,7 @@ await small.close();
 const ACCT = 'http://account.ifl.test:8788';
 const w = await ctx.newPage(); pages.push(w);
 await w.goto(ACCT + '/'); await w.waitForSelector('.app:has-text("Markets")', { timeout: 30000 }); await settle(w, 800);
-ok(/6 holdings/.test(await text(w, '.app:has-text("Markets")')) && /5 you own/.test(await text(w, '.app:has-text("Markets")')), "the account's page: Markets among your apps, with what you have there", await text(w, '.app:has-text("Markets")'));
+ok(/7 holdings/.test(await text(w, '.app:has-text("Markets")')) && /5 you own/.test(await text(w, '.app:has-text("Markets")')), "the account's page: Markets among your apps, with what you have there", await text(w, '.app:has-text("Markets")'));
 await w.evaluate(() => history.replaceState(null, '', location.pathname + '#from=markets&open=notify-markets')); await w.reload();
 await w.waitForSelector('#sheet[open] #nt-m-on', { timeout: 20000 }); await settle(w, 800);
 await w.screenshot({ path: `${out}/9-account-notify.png` });
