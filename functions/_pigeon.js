@@ -845,14 +845,16 @@ export async function checkClientData(env, request, b, type, mode, userId) {
 // A passkey being added: what the authenticator itself says of it (its data, as the browser hands it over), not only what
 // the page sends: made for this site (the hash of its id), with a person there and verified, and the id and public key
 // the page sends are the ones in it. Returns how many times it says it's been used (0 where it doesn't count). (Who made
-// the authenticator isn't asked: attestation "none", as for every passkey of a phone's own.)
-export async function checkRegistration(request, env, b) {
+// the authenticator isn't asked: attestation "none", as for every passkey of a phone's own.) One the browser made by
+// itself as the password was signed in with (quiet: conditional create) has no one there or verified, by design: the
+// password, just now (requireFresh), is what showed it's you; every sign-in with it is verified.
+export async function checkRegistration(request, env, b, { quiet = false } = {}) {
   const bad = () => new HttpError(400, "The passkey response didn’t match this site.");
   let ad = null; try { ad = fromB64url(String(b.authenticatorData || "")); } catch (_) {}
   if (!ad || ad.length < 55) throw new HttpError(400, "This browser didn’t say enough about the passkey. Update it and try again.");
   const rpHash = await sha256(rpIdFor(request, env));
   for (let i = 0; i < 32; i++) if (ad[i] !== rpHash[i]) throw bad();
-  if (!(ad[32] & 0x01) || !(ad[32] & 0x04) || !(ad[32] & 0x40)) throw bad();     // present, verified, and the key in it
+  if ((!quiet && (!(ad[32] & 0x01) || !(ad[32] & 0x04))) || !(ad[32] & 0x40)) throw bad();     // present, verified, and the key in it
   const n = (ad[53] << 8) | ad[54];
   if (b64url(ad.slice(55, 55 + n)) !== String(b.id || "")) throw bad();
   let cose; try { cose = cbor(ad, 55 + n).v; } catch (_) { throw bad(); }

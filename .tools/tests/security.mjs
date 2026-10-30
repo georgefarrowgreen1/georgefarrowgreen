@@ -66,9 +66,9 @@ const okN = sends.filter((r) => r.s === 200).length;
 const left = (await call(a, 'sync')).j.me.swift;
 ok(okN + left === 9 && okN <= 9, 'parallel sends never spend more swift pigeons than the loft held', `${okN} sent, ${left} left`);
 // rate limits hold under a burst
-const burst = await Promise.all(Array.from({ length: 25 }, () => acctCall('signin/password', { email: 'nobody@example.com', proof: b64u(rnd(32)) }, { ip: '10.9.9.9' })));
+const burst = await Promise.all(Array.from({ length: 45 }, () => acctCall('signin/password', { email: 'nobody@example.com', proof: b64u(rnd(32)) }, { ip: '10.9.9.9' })));
 const passed = burst.filter((r) => r.s === 401).length;
-ok(passed <= 10, 'a burst of 25 logins from one IP lets at most 10 through', passed);
+ok(passed <= 30, 'a burst of 45 logins from one IP lets at most 30 through', passed);
 // a body sent in pieces with no Content-Length is still held to its cap (refused as it passes it, not read whole first)
 const PORT = Number(new URL(BASE).port);
 const raw = (host, method, path, { body, chunks, cookie } = {}) => new Promise((done) => {

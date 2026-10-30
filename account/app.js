@@ -501,6 +501,20 @@ async function call(path, { method = "GET", body, type } = {}) {
 }
 const post = (path, body = {}) => call(path, { method: "POST", body });
 const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials?.get);
+// The passkeys a password manager keeps for this account, told which the account still has, and the name and email to
+// show on them (the WebAuthn Signal API, where the browser has it): so one taken off the account here stops being
+// offered there, and a new name or email shows on the rest. (RP: the site's passkeys are for, once it's been said.)
+let RP = null;
+async function signalPasskeys(m) {
+  if (!m?.signedIn || !m.id || !Array.isArray(m.passkeys) || !window.PublicKeyCredential?.signalAllAcceptedCredentials) return;
+  try {
+    const rpId = RP ||= (await post("signin/options")).rpId, userId = b64url(new TextEncoder().encode(m.id));
+    await PublicKeyCredential.signalAllAcceptedCredentials({ rpId, userId, allAcceptedCredentialIds: m.passkeys.map((p) => p.id) });
+    await PublicKeyCredential.signalCurrentUserDetails?.({ rpId, userId, name: m.email, displayName: m.name });
+  } catch (_) {}
+}
+// (a passkey the account doesn't have any more, used to sign in: its password manager told, so it stops offering it)
+function signalGone(id) { try { if (RP && id) PublicKeyCredential.signalUnknownCredential?.({ rpId: RP, credentialId: id }).catch(() => {}); } catch (_) {} }
 // (one passkey asked for at a time: one offered in the keyboard put away first)
 const passkeyAsk = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.get(o); };
 const passkeyMake = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.create(o); };
@@ -515,7 +529,7 @@ async function startAutofill(field, picked) {
   try { if (!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return; } catch (_) { return; }
   const ac = new AbortController(); autofill = ac;
   try {
-    const o = await post("signin/options");
+    const o = await post("signin/options"); RP = o.rpId;
     if (ac.signal.aborted || !field.isConnected) return;
     // (its challenge lasts 5 minutes, and a keyboard's ask has no end: asked for anew before then, while the page is in
     // sight, else on coming back to it)
@@ -1466,7 +1480,7 @@ function unlockCard(m, said) {
 // with (a passkey that can't), the password's asked for first; with anything else wrong, it's said, to try again.
 async function handBack(m, way, btn) {
   const a = S.signFor;
-  S.me = m; S.pulled = Date.now(); stopAutofill();
+  S.me = m; S.pulled = Date.now(); stopAutofill(); signalPasskeys(m);
   // (a sign-in an app handed over to this browser, signed in to nothing, is this page's alone: it goes on to an app once
   // you've shown it's you here, as Chat's way on always asks anyway)
   if (m.handed && a.app !== "inflight") { if (!(await shownHere())) return; m.handed = false; m.fresh = true; }
@@ -1477,13 +1491,17 @@ async function handBack(m, way, btn) {
   const go = async () => {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
-    const { code } = await post("handback", { app: a.app, ask: a.ask, ...key });
-    const face = await leaving(btn, m);
+    // (its code asked for as the page lets go, not before: so the one's done as the other is)
+    // (one that fails is said once the page has let go, so it can come back whole)
+    const asked = post("handback", { app: a.app, ask: a.ask, ...key }).then((r) => r, (e) => ({ e }));
+    const [face, { code, e }] = await Promise.all([leaving(btn, m), asked]);
+    if (e) throw e;
     leaveFor(`${a.back}#signin=${code}${faceHint(m, face)}`);
     await new Promise(() => {});             // (going: you, there, until the app's there)
   };
   try { await (!btn?.isConnected ? go() : btn.classList.contains("working") ? go() : working(btn, `Opening ${APPS[a.app].name}`, go)); }
   catch (e) {
+    stayed();
     S.need = e.more ? "password" : S.need; S.said = e.more ? null : { text: e.message, bad: true };
     anew(() => { S.settled = false; render(); scrollTo(0, 0); });
   }
@@ -1538,8 +1556,9 @@ function cardTo(old, nu) {
 }
 function signinCard() {
   const said = h("p.said", { role: "alert" });
-  const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
-  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
+  const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true,
+    onchange: () => saltSoon(email.value) });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: () => { warmUp(); saltSoon(email.value); } });
   const go = h("button.btn" + (passkeysWork() ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon("face", 21, 1.9), "Sign in with a passkey");
@@ -1551,7 +1570,7 @@ function signinCard() {
 // email known (a passkey offered in its keyboard too, and a button for one)
 function rememberedCard(l) {
   const said = h("p.said", { role: "alert" }), can = passkeysWork(), byKey = can && l.way === "passkey";
-  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password webauthn", required: true, onfocus: warmUp });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password webauthn", required: true, onfocus: () => { warmUp(); saltSoon(l.email); } });
   const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(l.email, null, pw, go, said); } },
     h("input.vh", { type: "email", autocomplete: "username", value: l.email, tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
@@ -1676,6 +1695,15 @@ async function qrSignedIn(m) {
 
 // (the password's stretching needs its WebAssembly: fetched as soon as a password field's used, not when it's sent)
 function warmUp() { import("./argon2.js").catch(() => {}); }
+// An email's salt, asked for as soon as the email's there (typed and left, filled in by a password manager, or known
+// from last time, as the password's started), so signing in doesn't wait on it. (The same for any email, real or not.)
+const SALTS = new Map();
+function saltOf(email) {
+  email = String(email || "").trim().toLowerCase();
+  if (!SALTS.has(email)) { const p = post("signin/salt", { email }).then((r) => r.salt); SALTS.set(email, p); p.catch(() => SALTS.delete(email)); }
+  return SALTS.get(email);
+}
+const saltSoon = (email) => { if (EMAIL_OK.test(String(email || "").trim())) { warmUp(); saltOf(email).catch(() => {}); } };
 
 // A new account: name, handle (suggested from the name, and checked as it's typed), email and password. The slow parts
 // (the key pair, the password's stretching) start while it's typed, so creating it is quick; the key's made, and locked
@@ -1754,7 +1782,7 @@ function joinCard() {
       return toStep(2);
     }
     if (at === 2) return EMAIL_OK.test(v.email) ? toStep(3) : say(said, "That doesn’t look like an email address.", email);
-    if (v.password.length < 10) return say(said, "Use at least 10 characters for your password.", pw);
+    if (v.password.length < MIN_PW) return say(said, `Use at least ${MIN_PW} characters for your password.`, pw);
     try {
       let proof, lock, checked = false;
       const m = await working(go, "Creating your account", async () => {
@@ -1850,7 +1878,7 @@ function resetPage(r) {
   const canKeep = info.passkeys.length > 0 && passkeysWork(), other = S.me?.signedIn && S.me.handle !== info.handle;
   const act = (mode) => async (e) => {
     const b = e.currentTarget; say(said, "");
-    if (pw.value.length < 10) return say(said, "Use at least 10 characters.", pw);
+    if (pw.value.length < MIN_PW) return say(said, `Use at least ${MIN_PW} characters.`, pw);
     try {
       let proof;
       const m = await busy(b, mode === "keep" ? "Waiting for your passkey…" : "Making your new key…", async () => {
@@ -1898,6 +1926,7 @@ function resetPage(r) {
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
 async function signInWithPasskey(only) {
   const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
+  RP = o.rpId;
   let a;
   try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
     allowCredentials: only ? [{ type: "public-key", id: fromB64url(only) }] : undefined,
@@ -1908,7 +1937,8 @@ async function signInWithPasskey(only) {
 }
 async function passkeySignedIn(o, a) {
   const m = await post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
-    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature), app: S.signFor?.app });
+    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature), app: S.signFor?.app })
+    .catch((e) => { if (e.field === "unknownpasskey") signalGone(a.id); throw e; });
   return { m, prf: S.signFor?.app === "inflight" ? prfOf(a) : null, id: a.id };
 }
 // Signed in, with a passkey (get: asked for, or picked from the keyboard) or a password: who it was kept here, then back to
@@ -1929,7 +1959,7 @@ async function withPassword(email, emailIn, pw, go, said) {
   try {
     let k;
     const m = await working(go, "Signing in", async () => {
-      const { salt } = await post("signin/salt", { email });
+      const salt = await saltOf(email);
       k = await E2E.fromPassword(pw.value, salt);
       const m = await post("signin/password", { email, proof: k.proof, app: S.signFor?.app });
       // (an account from before Argon2id: stretched the new way, now the password's here)
@@ -1937,11 +1967,22 @@ async function withPassword(email, emailIn, pw, go, said) {
       if (nk) { k = nk; m.salt = nk.salt; }
       return m;
     });
-    remember(m, "password");
-    if (S.signFor && !m.deleting) return (await offerFits(m)) ? offerThen(m, k, go.closest(".signin")) : handBack(m, { lock: k.lock }, go);
+    remember(m, "password"); SALTS.clear();
+    if (S.signFor && !m.deleting) {
+      if (!(await offerFits(m))) return handBack(m, { lock: k.lock }, go);
+      // (one made by itself first, where the browser can: then there's nothing to offer, or tap)
+      if (await quietPasskey(m, k)) return handBack(S.me, { lock: k.lock }, go);
+      return offerThen(m, k, go.closest(".signin"));
+    }
     if (!m.deleting) { dawnBreak(true); await ticked(go); }
     welcome(m);
-    if (!m.deleting) { checkQuietly(pw.value, k.proof); maybeNudge(m); }
+    if (!m.deleting) {
+      checkQuietly(pw.value, k.proof);
+      quietPasskey(m, k).then((made) => {
+        if (!made) return maybeNudge(m);
+        patch(); toast("Passkey saved. Next time, just a glance.", false, 4000);
+      });
+    }
   } catch (err) { say(said, err.message, err.field === "email" ? emailIn : pw); }
 }
 // Who signed in here last (in this browser only): their name, handle and email, and how (with a passkey: which), so that
@@ -1968,10 +2009,7 @@ function offerThen(m, k, card) {
       let made;
       await working(yes, "Waiting for your device", async () => {
         made = await addPasskey();
-        if (made.secret) {
-          const { vault } = await post("password/vault", { proof: k.proof });
-          S.me = await post("passkeys/vault", { id: made.id, vault: await E2E.lock(await E2E.fromSecret(made.secret), await E2E.unlock(k.lockKey, vault)) });
-        }
+        if (made.secret) await keyCopy(made, k);
       });
       remember(S.me?.signedIn ? S.me : m, "passkey", made.id);
       handBack(S.me?.signedIn ? S.me : m, { lock: k.lock }, yes);
@@ -1986,7 +2024,7 @@ function offerThen(m, k, card) {
 }
 // (next: a sheet to open straight away, over the page there already rather than rising under it)
 async function welcome(m, word, next) {
-  S.me = m; S.pulled = Date.now(); stopAutofill();
+  S.me = m; S.pulled = Date.now(); stopAutofill(); signalPasskeys(m);
   next ||= qrNext();
   await anew(() => {
     S.settled = !!next;
@@ -2108,11 +2146,11 @@ function unwork(btn, kids) {
   if (still.matches) clear(); else { btn.addEventListener("transitionend", clear, { once: true }); setTimeout(clear, ms("--dur-base") + 120); }
 }
 const pause = (t) => new Promise((r) => setTimeout(r, t));
-async function ticked(btn) {
+async function ticked(btn, held = 260) {
   const t = icon("check", 26, 2.8); t.classList.add("tick");
   btn.classList.add("done"); btn.replaceChildren(t);
   if (!still.matches) btn.animate([{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }], { duration: 460, easing: tok("--ease-spring") });
-  await pause(still.matches ? 160 : 260);
+  await pause(still.matches ? Math.min(160, held) : held);
 }
 // Dawn over the sky, as you're signed in: in, as the page hands you on; or in and away again (passing), staying here
 function dawnBreak(passing, dur = 1100) {
@@ -2135,8 +2173,8 @@ function duskFall() {
 // sky and its drifting lights go, leaving just what the app opens on: the sky, its dawn and you. One movement, with
 // nothing held. (With Reduce Motion: there, without the journey.) → you, as you're left there (for the app's picture)
 async function leaving(btn, m) {
-  dawnBreak(false, 700);
-  if (btn?.isConnected && btn.classList.contains("working")) await ticked(btn);
+  dawnBreak(false, 500);
+  if (btn?.isConnected && btn.classList.contains("working")) await ticked(btn, 120);
   const r = btn?.isConnected ? btn.getBoundingClientRect() : { left: innerWidth / 2 - 26, top: innerHeight / 2 - 26, width: 52, height: 52 };
   const face = h("span.face", {}, initialOf(m));
   if (m.photoAt) face.append(h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "" }));
@@ -2152,14 +2190,18 @@ async function leaving(btn, m) {
     await page.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: ease, fill: "forwards" }).finished.catch(() => {});
     return face;
   }
-  page.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }], { duration: 380, easing: ease, fill: "forwards" });
-  const move = me.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(1.5)` }], { duration: 560, easing: glide, fill: "forwards" });
-  await pause(200);
-  me.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: ease, fill: "forwards" });
-  face.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: 400, easing: tok("--ease-spring"), fill: "forwards" });
+  page.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }], { duration: 260, easing: ease, fill: "forwards" });
+  const move = me.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(1.5)` }], { duration: 300, easing: glide, fill: "forwards" });
+  await pause(90);
+  me.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: ease, fill: "forwards" });
+  face.animate([{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: tok("--ease-spring"), fill: "forwards" });
   await move.finished.catch(() => {});
-  await pause(80);
   return face;
+}
+// (staying after all, the app's code not given: the page back as it was before it let go)
+function stayed() {
+  document.querySelectorAll("body > .leave").forEach((e) => e.remove());
+  for (const el of [$("main"), ...document.querySelectorAll(".sky .aura")]) el?.getAnimations().forEach((x) => x.cancel());
 }
 const initialOf = (m) => [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?";
 // Who's coming, for the app to draw from its very first frame: the initial and, if your photo's here, a small copy of
@@ -2583,6 +2625,7 @@ function profileView() {
     try {
       S.me = await busy(done, "Saving…", () => call("me/profile", { method: "PATCH", body: changes }));
       closeSheet(); render(); toast(changes.handle ? `You’re @${S.me.handle} now.` : "Profile saved.");
+      if (changes.name) signalPasskeys(S.me);
       if (justEditing()) setTimeout(backToApp, 1100);         // (back to Chat, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
@@ -2650,11 +2693,14 @@ async function leakedCount(pw) {
   return LEAKS.get(hx).catch(() => null);
 }
 const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
-// how strong a password looks, 0 to 4 (at least 10 characters to count at all)
+// A new password's least length: 15 characters (NIST SP 800-63B-4, for a password that's all it takes to sign in), with
+// no rules about what's in it. (One set before, shorter, still signs in.)
+const MIN_PW = 15;
+// how strong a password looks, 0 to 4 (at least MIN_PW characters to count at all)
 function strength(pw) {
-  if (pw.length < 10 || /^(.)\1+$/.test(pw)) return 0;
+  if (pw.length < MIN_PW || /^(.)\1+$/.test(pw)) return 0;
   const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(pw)).length;
-  return Math.min(4, 1 + (pw.length >= 14) + (pw.length >= 18) + (kinds >= 3));
+  return Math.min(4, 1 + (pw.length >= 18) + (pw.length >= 22) + (kinds >= 3));
 }
 // A new password, as it's typed: how strong, and whether it's turned up in a data breach (asked a moment after typing
 // stops). { meter, hint } go under its field.
@@ -2666,7 +2712,7 @@ function rated(nw) {
     bar.style.setProperty("--m", v ? (leaked ? 0.12 : [0.12, 0.4, 0.62, 0.84, 1][s]) : 0);
     bar.style.setProperty("--mc", leaked || s === 0 ? "var(--danger)" : s === 1 ? "var(--warn)" : "var(--good)");
     // (only when it's changed: its words are read out each time they're set)
-    const c = "hint" + (v && (leaked || !s) ? " bad" : v && s >= 2 ? " ok" : ""), t = !v ? "At least 10 characters. A few unrelated words make a strong one." : leaked ? leakedSay(leaked) : ["Use at least 10 characters.", "Fair. Longer would be stronger.", "Good.", "Strong.", "Very strong."][s];
+    const c = "hint" + (v && (leaked || !s) ? " bad" : v && s >= 2 ? " ok" : ""), t = !v ? `At least ${MIN_PW} characters. A few unrelated words make a strong one.` : leaked ? leakedSay(leaked) : [`Use at least ${MIN_PW} characters.`, "Fair. Longer would be stronger.", "Good.", "Strong.", "Very strong."][s];
     if (hint.className !== c) hint.className = c;
     if (hint.textContent !== t) hint.textContent = t;
   };
@@ -2689,7 +2735,7 @@ function passwordView({ then } = {}) {
     h("form.form", { onsubmit: async (e) => {
       e.preventDefault(); say(said, "");
       if (!cur.value) return say(said, "Enter your current password.", cur);
-      if (nw.value.length < 10) return say(said, "Use at least 10 characters for your new password.", nw);
+      if (nw.value.length < MIN_PW) return say(said, `Use at least ${MIN_PW} characters for your new password.`, nw);
       if (nw.value !== again.value) return say(said, "The new passwords don’t match.", again);
       if (nw.value === cur.value) return say(said, "That’s your current password. Choose a new one.", nw);
       try {
@@ -2722,7 +2768,7 @@ function passkeysView() {
       h("span.ic.indigo", {}, icon("passkey", 19)),
       h("span.tx", {}, h("b", { text: p.label }), h("small", { text: [p.provider, `added ${day(p.createdAt)}`].filter(Boolean).join(" · ") })),
       h("span.chev", {}, icon("chev", 16, 2.4))), "Remove", async (b) => {
-        try { S.me = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id }))); await leave(sheetEl.querySelector(`.sheet-body:not(.going) [data-id="${CSS.escape(p.id)}"]`)); redraw(); patch(); toast("Passkey removed."); }
+        try { S.me = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id }))); signalPasskeys(S.me); await leave(sheetEl.querySelector(`.sheet-body:not(.going) [data-id="${CSS.escape(p.id)}"]`)); redraw(); patch(); toast("Passkey removed."); }
         catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
       }); box.dataset.id = p.id; return box; }))
     : h("div.group", {}, h("div.empty", { text: "No passkeys yet." }));
@@ -2764,33 +2810,63 @@ function passkeyView(id) {
       } catch (err) { say(said, err.message); }
     } }, "Use it for Chat messages")),
     h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
-      try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
+      try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); signalPasskeys(S.me); patch(); popSheet(); toast("Passkey removed."); }
       catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
     }, "button.row.action.danger")),
     said] };
 }
+// (what a new passkey's made with: the site's, this account's, with Face ID or the like, and asking for its PRF secret)
+const passkeyFor = async (o, uv = "required") => ({
+  challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlite" },
+  user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
+  pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+  authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: uv },
+  excludeCredentials: o.exclude.map((id) => ({ type: "public-key", id: fromB64url(id) })), attestation: "none", timeout: 120000,
+  extensions: { prf: { eval: { first: await E2E.prfSalt() } } } });
 async function addPasskey() {
-  const o = await post("passkeys/options");
+  const o = await post("passkeys/options"); RP = o.rpId;
   let cred;
-  try {
-    cred = await passkeyMake({ publicKey: {
-      challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlite" },
-      user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
-      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-      authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
-      excludeCredentials: o.exclude.map((id) => ({ type: "public-key", id: fromB64url(id) })), attestation: "none", timeout: 120000,
-      extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
-  } catch (e) {
+  try { cred = await passkeyMake({ publicKey: await passkeyFor(o) }); }
+  catch (e) {
     throw new Error(e?.name === "InvalidStateError" ? "This device already has a passkey for your account." : e?.name === "NotAllowedError" ? "No passkey was saved." : "A passkey couldn’t be made here.");
   }
+  return savePasskey(o, cred);
+}
+// (a passkey just made, kept on the account: → its id, and its PRF secret if it gave one)
+async function savePasskey(o, cred, quiet = false) {
   const r = cred.response, spki = r.getPublicKey?.(), alg = r.getPublicKeyAlgorithm?.();
   if (!spki) throw new Error("This browser can’t save passkeys here yet.");
   // (the authenticator data says where it's saved: iCloud Keychain, Google Password Manager…)
   S.me = await post("passkeys", { challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(r.clientDataJSON),
-    authenticatorData: r.getAuthenticatorData ? b64url(r.getAuthenticatorData()) : undefined });
-  // (its PRF secret, for its own copy of the messages' key: given as it's made, or, by some devices, only once it's used)
-  const secret = prfOf(cred) || (cred.getClientExtensionResults?.().prf?.enabled ? await prfByUse(cred.id, o.rpId) : null);
+    authenticatorData: r.getAuthenticatorData ? b64url(r.getAuthenticatorData()) : undefined, quiet: quiet || undefined });
+  // (its PRF secret, for its own copy of the messages' key: given as it's made, or, by some devices, only once it's used;
+  // not asked for then for one made by itself, which would mean asking after all)
+  const secret = prfOf(cred) || (!quiet && cred.getClientExtensionResults?.().prf?.enabled ? await prfByUse(cred.id, o.rpId) : null);
   return { id: cred.id, secret };
+}
+// A passkey made by itself as the password's signed in with, where the browser can (conditional create: Safari 18 on,
+// and Chrome, with the password from their own password managers): nothing asked and nothing to tap, the browser
+// saying it's saved. So the next sign-in's just Face ID. → { id, secret }, or null where none was made (the offer's
+// made instead, as before). k: the password's, for the passkey's own copy of Chat's key where it gave its PRF secret.
+// (A browser that can't, this time, may say nothing at all rather than no: so it's given a moment and a half, and only
+// asked where the offer would be made anyway, or on this page, where nothing waits on it.)
+async function quietPasskey(m, k) {
+  if (!passkeysWork() || m.passkeys?.length || m.deleting || m.handed) return null;
+  try { if (!(await PublicKeyCredential.getClientCapabilities?.())?.conditionalCreate) return null; } catch (_) { return null; }
+  try {
+    const o = await post("passkeys/options"); RP = o.rpId;
+    const cred = await navigator.credentials.create({ mediation: "conditional", signal: AbortSignal.timeout(1500), publicKey: await passkeyFor(o, "preferred") });
+    if (!cred) return null;
+    const made = await savePasskey(o, cred, true);
+    if (made.secret) await keyCopy(made, k).catch(() => {});
+    remember(S.me, "passkey", made.id);
+    return made;
+  } catch (_) { return null; }
+}
+// (a passkey's own copy of the key to Chat's messages, made from the password-locked one while the password's here)
+async function keyCopy(made, k) {
+  const { vault } = await post("password/vault", { proof: k.proof });
+  S.me = await post("passkeys/vault", { id: made.id, vault: await E2E.lock(await E2E.fromSecret(made.secret), await E2E.unlock(k.lockKey, vault)) });
 }
 
 // ---- a passkey that opens Chat's messages too: what only it can work out (its PRF secret, for the site's one salt)

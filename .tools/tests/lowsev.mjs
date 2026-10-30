@@ -21,9 +21,9 @@ for (let ip = 1; ip <= 4; ip++) for (let i = 0; i < 10; i++) codes.push((await a
 ok(codes.every((c) => c === 401), 'forty wrong tries from elsewhere: each just refused', JSON.stringify([...new Set(codes)]));
 const A2 = await K.phone('ann2'); await signInChat(A2.p, K.URL, { email: 'ann@example.com' });
 ok(await A2.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'Ann still signs in with her password, from her own phone');
-// one address that keeps guessing is held back (its own 10 per 15 minutes, before the account's 30)
-const more = []; for (let i = 0; i < 3; i++) more.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'y'.repeat(43) }, { ip: '203.0.113.1' })).s);
-ok(more.every((c) => c === 429), 'the guessing address itself is held back', JSON.stringify(more));
+// one address that keeps guessing is held back (30 wrong an hour, whatever the accounts; right ones don't count)
+const more = []; for (let i = 0; i < 23; i++) more.push((await acctCall('signin/password', { email: 'ann@example.com', proof: 'y'.repeat(43) }, { ip: '203.0.113.1' })).s);
+ok(more.slice(0, 20).every((c) => c === 401) && more.slice(20).every((c) => c === 429), 'the guessing address itself is held back, after its 30th wrong one', JSON.stringify(more));
 
 // 2. two standard pigeons at the same moment, one from each of them: only one takes the turn
 const ct = 'c'.repeat(40);

@@ -51,7 +51,7 @@ ok(/taken/i.test(taken) && await B.p.isVisible('main input[name=handle]'), 'take
 await B.p.fill('main input[name=handle]', 'mira'); await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main input[name=email]', { state: 'visible' }); await B.p.fill('main input[name=email]', 'mira@example.com'); await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main input[name=password]', { state: 'visible' }); await B.p.fill('main input[name=password]', 'shortpw'); await B.p.click('main .signin form .btn');
-ok(/10/.test(await aerr()), 'short password refused', await B.p.innerText('main .said'));
+ok(/15/.test(await aerr()), 'short password refused', await B.p.innerText('main .said'));
 await B.p.fill('main input[name=password]', 'new york pigeons 7'); await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main .hero', { timeout: 40000 });
 await signInChat(B.p, URL, { email: 'mira@example.com', password: 'new york pigeons 7' });

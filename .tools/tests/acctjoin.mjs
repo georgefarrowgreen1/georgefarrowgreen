@@ -164,7 +164,7 @@ const RT2 = tokenIn(await waitMail('ivy@example.com', /Reset your password/, 2),
 await open(R, `${ACCT}/#reset=${RT2}`); await waitText(R, /Choose a new password/);
 ok(!/Keep messages with passkey/.test(await text(R)) && /Set new password/.test(await text(R)), 'no passkey with her key: a new password, and a new key');
 await R.p.fill('main input[name=password]', 'short'); await R.p.click('main .btn:has-text("Set new password")');
-ok(/at least 10 characters/.test(await text(R, 'main .said')), 'a short one refused', await text(R, 'main .said'));
+ok(/at least 15 characters/.test(await text(R, 'main .said')), 'a short one refused', await text(R, 'main .said'));
 await R.p.fill('main input[name=password]', PW3); await R.p.click('main .btn:has-text("Set new password")');
 await waitText(R, /Password changed/, '#toast');
 ok(/starting fresh with a new key/.test(await text(R, '#toast')) && user('ivy').pub !== ivy.pub && /Ivy Lane/.test(await text(R, 'main .hero')), 'a new key, and signed in', await text(R, '#toast'));
