@@ -1445,7 +1445,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (!document.startViewTransition || calm) return big(on);
     card.style.viewTransitionName = "radar";
     // (once it has grown, the map measured again and filled to its new edges: measured mid-way, it can leave gaps)
-    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; map?.resize(); });
+    // (cut short, say by the window resized mid-way: let go quietly, the change itself already made)
+    const vt = document.startViewTransition(() => big(on));
+    vt.ready.catch(() => {});
+    vt.finished.catch(() => {}).finally(() => { card.style.viewTransitionName = ""; map?.resize(); });
   }
   play.addEventListener("click", () => (playing ? stop() : run()));
   slider.addEventListener("input", () => { stop(); show(tOf(Number(slider.value))); });

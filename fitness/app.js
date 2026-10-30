@@ -628,7 +628,9 @@ function morph(kind, fn) {
   if (!canMorph()) return fn();
   document.documentElement.dataset.vt = kind;
   const t = document.startViewTransition(fn);
-  t.finished.finally(() => { if (document.documentElement.dataset.vt === kind) delete document.documentElement.dataset.vt; });
+  // (cut short, say by the window resized mid-way: let go quietly, the change itself already made)
+  t.ready.catch(() => {});
+  t.finished.catch(() => {}).finally(() => { if (document.documentElement.dataset.vt === kind) delete document.documentElement.dataset.vt; });
 }
 function go(tab) {
   if (tab === S.tab) {

@@ -9354,7 +9354,7 @@ function syncTheme() {
 }
 // Light to Dark (or back): the whole app cross-fades to its new colours, rather than changing in one frame
 // (a cross-fade is what Reduce Motion keeps too: shorter, styles.css)
-function themeFade(go) { if (document.startViewTransition && !document.hidden) document.startViewTransition(go); else go(); }
+function themeFade(go) { if (document.startViewTransition && !document.hidden) { const t = document.startViewTransition(go); t.ready.catch(() => {}); t.finished.catch(() => {}); } else go(); }
 function chosenTheme() { try { return THEMES.includes(localStorage.getItem("inflight-theme")); } catch (_) { return false; } }
 function applyTheme(t = theme()) {
   document.documentElement.setAttribute("data-theme", t);
