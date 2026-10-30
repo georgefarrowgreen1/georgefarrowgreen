@@ -161,8 +161,11 @@ const back = () => C.p.evaluate(() => { Object.defineProperty(document, 'visibil
 // (from the list of chats: in a chat, with its message box to hand, it's never reloaded under your fingers)
 if (await C.p.isVisible('.chatnav .back')) { await C.p.click('.chatnav .back'); await C.p.waitForSelector('.mrow', { timeout: 15000 }); }
 await C.p.evaluate(() => document.activeElement?.blur?.());
+// (once its look as it opened is done: a version found then, the app only just opened, goes in there and then, and only
+// once, so this one's to be found coming back)
+await C.p.waitForTimeout(3500);
 await C.p.route(/\/version$/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ app: 'chat', build: '9.98' }) }));
-await C.p.waitForTimeout(8500);
+await C.p.waitForTimeout(4000);
 // (a reload: the page loaded again, not just a link followed within it)
 const loadsIn = (ms) => C.p.waitForEvent('load', { timeout: ms }).then(() => true, () => false);
 let reloading = loadsIn(8000);
