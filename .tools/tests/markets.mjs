@@ -97,6 +97,39 @@ ok((await text(p, '#ps')) === 'this month' && /^[+−]£[\d,]+\.\d\d$/.test(awai
 await p.screenshot({ path: `${out}/4-today-month.png` });
 await p.click('.pseg button[data-r="1d"]'); await settle(p, 1200);
 ok((await text(p, '#ps')) === 'today', 'and back to today');
+// ---- 4b. Your income: coming, received, the tax year and its allowance; what it pays on what you paid; a plan; who pays,
+// and how dependably; a tax year's dividends to keep; and on a stock's page, what buying some would add ----
+await p.click('.label:has-text("Coming up") button:has-text("Income")'); await p.waitForSelector('.imode'); await settle(p, 900);
+const isay = async () => `${await text(p, '#sbody .sprice')} | ${await text(p, '#sbody .sprice + .hint')}`;
+ok(/^£[\d,]+ a year \| About £[\d,]+ a month on average, from 4 holdings/.test(await isay()), 'income, coming: a year of it, from the four that pay', await isay());
+const who = await text(p, '#sbody .list:has(.ichip), #sbody .list:has-text("No dividends in the last year")');
+ok(/Tesco[\s\S]*2 payments a year · Not in an account/.test(who) && /Shell[\s\S]*4 payments a year[\s\S]*No cut in \d+ years/.test(who) && /NVIDIA[\s\S]*No dividends in the last year/.test(who),
+  'who pays: each with how often and where, how dependably (Shell: no cut in years), and those that pay nothing listed too', who.replace(/\s+/g, ' ').slice(0, 300));
+ok(/Yield, at today's prices\s*[\d.]+%[\s\S]*On what you paid\s*[\d.]+%/.test(await text(p, '#sbody .stats')), 'what it pays: on what it is worth, and on what you paid', await text(p, '#sbody .stats'));
+const planWas = await text(p, '#plan .out');
+await p.evaluate(() => { const r = document.querySelector('#iadd'); r.value = '1000'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+const planNow = await text(p, '#plan .out');
+ok(await p.locator('#plan .proj path.pl[d]').count() === 1 && /£1,000/.test(await text(p, 'label[for="iadd"]')) && planNow !== planWas && /by 20\d\d, in \d+ years?\./.test(planNow),
+  'a plan: twenty years drawn, and £1,000 more a month brings the goal sooner', `${planWas} → ${planNow}`);
+await p.evaluate(() => { const r = document.querySelector('#iadd'); r.value = '0'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+await p.click('.imode button:has-text("Received")'); await p.waitForFunction(() => /in a year$/.test(document.querySelector('#sbody .sprice')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+ok(/^£38 in a year \| £38 since \w+ \d{4}, on the shares you had each time one went ex-dividend/.test(await isay()) && /Rolls-Royce[\s\S]*Went ex-dividend[\s\S]*640 shares[\s\S]*£38\.40/.test(await text(p, '#imonth')),
+  "received: Rolls-Royce's 6p on the 640 you had (the only one with a day it was bought)", `${await isay()} / ${await text(p, '#imonth')}`);
+await p.click('.imode button:has-text("Tax year")'); await settle(p, 500);
+ok(/^£38 this tax year \| 20\d\d–\d\d, so far\. About £[\d,]+ by 5 April/.test(await isay()) && await p.isVisible('#sbody .ilegend') && await p.locator('#sbody .ib i.est').count() > 0,
+  'the tax year: paid so far, and the rest to come outlined', await isay());
+ok(/^£38 of £500 used/.test(await text(p, '#sbody .irow')) && /Dividend allowance, 20\d\d–\d\d/i.test(await text(p, '#sbody .slabel:has-text("allowance")')), 'its dividend allowance: what outside an ISA has used', await text(p, '#sbody .irow'));
+const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 10000 }).catch(() => null), p.click('#sbody .item:has-text("so far")')]);
+const sheet = dl ? readFileSync(await dl.path(), 'utf8') : '';
+ok(/^Went ex-dividend,Holding,Symbol,Account,Shares,Per share,Currency,Amount,In pounds/.test(sheet) && /,Rolls-Royce,RR\.L,Not in an account,640,0\.06,GBP,38\.4,38\.4,/.test(sheet), "the tax year's dividends as a spreadsheet", sheet.split('\r\n').slice(0, 2).join(' / '));
+await p.click('.imode button:has-text("Coming")'); await settle(p, 500);
+await p.click('#sbody .item:has-text("Tesco")'); await p.waitForSelector('#whatif', { timeout: 10000 }); await settle(p, 600);
+ok(/^About £30 a year$/.test(await text(p, '#whatif > b')) && /^In \w{3} and \w{3}/.test(await text(p, '#whatif > p')) && await p.locator('#whatif .ib i.add').count() === 2,
+  "on Tesco's page: £1,000 of it would add about £30 a year, in its two months, drawn on your year", `${await text(p, '#whatif > b')} · ${await text(p, '#whatif > p')}`);
+await p.click('#whatif button:has-text("£5,000")'); await settle(p, 300);
+ok(/^About £150 a year$/.test(await text(p, '#whatif > b')), 'and £5,000, five times it', await text(p, '#whatif > b'));
+await p.keyboard.press('Escape'); await settle(p, 800);
+
 const cards = await p.locator('.card').allInnerTexts();
 ok(cards.some((t) => /Arm is falling while the S&P 500 rises/.test(t)), 'worth knowing: Arm going the other way from its market', cards.join(' | ').slice(0, 300));
 ok(cards.some((t) => /Rolls-Royce is close to its 52-week high/.test(t)), 'and one near its high');

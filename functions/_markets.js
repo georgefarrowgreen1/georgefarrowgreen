@@ -339,31 +339,50 @@ async function repool(env, userId, symbol) {
   await D.prepare("UPDATE mk_holdings SET qty = ?, cost = ? WHERE user_id = ? AND symbol = ?").bind(b.qty, b.cost, userId, symbol).run();
   return b;
 }
-// What each holding you own has paid you since you bought it: each of its dividends since, on the shares you had the
-// day before it went ex-dividend (from its buys and sales, where it has them; else all of them, from the day you said
-// you bought it). { SYMBOL: { paid (a share's, in its own currency, times the shares), n (how many dividends), from (the
-// day counted from, ms) } }, for those with a day to count from
-export async function paidOf(env, userId) {
+// What you own, each with its buys and sales, oldest first (also: sold: one you've sold all of, kept for what it paid
+// you while you had it)
+async function withBuys(env, userId, { sold = false } = {}) {
   const D = await mkdb(env);
   const [{ results: hs }, { results: bs }] = await Promise.all([
-    D.prepare("SELECT symbol, qty, since FROM mk_holdings WHERE user_id = ? AND qty > 0").bind(userId).all(),
+    D.prepare(`SELECT symbol, name, qty, since FROM mk_holdings WHERE user_id = ?1 AND (qty > 0${sold ? " OR symbol IN (SELECT symbol FROM mk_buys WHERE user_id = ?1)" : ""})`).bind(userId).all(),
     D.prepare("SELECT symbol, qty, at FROM mk_buys WHERE user_id = ? ORDER BY at, id").bind(userId).all()]);
-  const day = (ms) => new Date(ms).toISOString().slice(0, 10), out = {};
-  const todo = hs.map((x) => ({ ...x, buys: bs.filter((b) => b.symbol === x.symbol) })).filter((x) => x.buys.length || x.since);
+  return hs.map((x) => ({ ...x, buys: bs.filter((b) => b.symbol === x.symbol) }));
+}
+const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+// how many of one you had the day before it went ex-dividend on a day ("YYYY-MM-DD"): from its buys and sales, where it
+// has them; else all of them, from the day you said you bought it (one bought on the ex-dividend day itself is too late)
+function hadBefore(x, ex) {
+  let had = 0;
+  if (x.buys.length) { for (const b of x.buys) if (isoDay(b.at) < ex) had = Math.max(0, had + b.qty); }
+  else if (x.since && isoDay(x.since) < ex) had = x.qty;
+  return had;
+}
+// What each holding you own has paid you since you bought it: each of its dividends since, on the shares you had the
+// day before it went ex-dividend. { SYMBOL: { paid (a share's, in its own currency, times the shares), n (how many
+// dividends), from (the day counted from, ms) } }, for those with a day to count from
+export async function paidOf(env, userId) {
+  const out = {}, todo = (await withBuys(env, userId)).filter((x) => x.buys.length || x.since);
   for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(async (x) => {
     const divs = await dividends(env, x.symbol).catch(() => null);
     if (!divs) return;
-    const from = x.buys.length ? x.buys[0].at : x.since;
     let paid = 0, n = 0;
-    for (const d of divs) {
-      const ex = day(d.t * 1000);
-      // (one bought on the ex-dividend day itself is too late for it)
-      let had = 0;
-      if (x.buys.length) { for (const b of x.buys) if (day(b.at) < ex) had = Math.max(0, had + b.qty); }
-      else if (day(from) < ex) had = x.qty;
-      if (had > 1e-9) { paid += d.amount * had; n++; }
-    }
-    out[x.symbol] = { paid: +paid.toFixed(4), n, from };
+    for (const d of divs) { const had = hadBefore(x, isoDay(d.t * 1000)); if (had > 1e-9) { paid += d.amount * had; n++; } }
+    out[x.symbol] = { paid: +paid.toFixed(4), n, from: x.buys.length ? x.buys[0].at : x.since };
+  }));
+  return out;
+}
+// Your income's history, for the Income sheet: for each holding you own (and each you've sold all of), its dividends
+// over the last eight years (to say how dependable it's been), and each that's paid you, on the shares you had the day
+// before it went ex-dividend. { SYMBOL: { divs: [{ t, amount }], got: [{ t, amount (a share's, in its own currency),
+// qty }], from (the day counted from, ms; null with none to count from, and nothing got) } }
+export async function incomeOf(env, userId) {
+  const out = {}, xs = await withBuys(env, userId, { sold: true }), since = Date.now() / 1000 - 8 * 366 * 86400;
+  for (let i = 0; i < xs.length; i += 6) await Promise.all(xs.slice(i, i + 6).map(async (x) => {
+    const divs = await dividends(env, x.symbol).catch(() => null);
+    if (!divs) return;
+    const from = x.buys.length ? x.buys[0].at : x.since || null, got = [];
+    if (from) for (const d of divs) { const had = hadBefore(x, isoDay(d.t * 1000)); if (had > 1e-9) got.push({ t: d.t, amount: d.amount, qty: +had.toFixed(6) }); }
+    out[x.symbol] = { divs: divs.filter((d) => d.t >= since), got, from };
   }));
   return out;
 }
@@ -573,10 +592,38 @@ export async function wrapTick(env, t = Date.now()) {
           ? `${top.name} did most of the work, adding ${pounds(day(top))}.` : `${low.name} took away most, ${pounds(day(low))}.`),
       tag: "mk-wrap", url: "./", ttl: 6 * 3600,
     };
+    // (and what's to know about dividends: one gone ex-dividend today, and on a month's first weekday, last month's)
+    const more = wrapIncome(await incomeOf(env, userId).catch(() => null), held, fx, t);
+    if (more) note.body += ` ${more}`;
     await tell(env, D, userId, note);
     wraps++;
   }
   return { wraps };
+}
+
+// What the evening wrap says about dividends (inc: incomeOf's; held: what you own, [{ symbol, name, x: its quote }]; fx:
+// a currency's worth in pounds): those that went ex-dividend today on what you own, and about what they'll pay you; and
+// on a month's first weekday, what last month's came to and the tax year's so far. → a sentence or two, or ""
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+export function wrapIncome(inc, held, fx, t = Date.now()) {
+  if (!inc) return "";
+  const gbp = (v) => money(v, "GBP"), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || ""), out = [];
+  const got = held.filter((r) => r.x?.cur && fx[r.x.cur] != null)
+    .flatMap((r) => (inc[r.symbol]?.got || []).map((g) => ({ r, at: g.t * 1000, v: g.amount * g.qty * fx[r.x.cur] })));
+  const exToday = got.filter((g) => { const tz = g.r.x.tz || "Europe/London"; return dayIn(tz, g.at) === dayIn(tz, t); });
+  if (exToday.length) {
+    const v = exToday.reduce((a, g) => a + g.v, 0), names = [...new Set(exToday.map((g) => g.r.name))];
+    if (v >= 0.5) out.push(`${and(names)} went ex-dividend today: about ${gbp(v)} to come in the next few weeks.`);
+  }
+  // (a month's first weekday: the 1st, or a Monday the 2nd or 3rd)
+  const [y, m, d] = dayIn("Europe/London", t).split("-").map(Number), wd = LONDON.formatToParts(new Date(t)).find((p) => p.type === "weekday")?.value;
+  if (d === 1 || (wd === "Mon" && d <= 3)) {
+    const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`, from = `${taxYear(t).slice(0, 4)}-04-06`;
+    const last = got.filter((g) => dayIn("Europe/London", g.at).startsWith(prev)).reduce((a, g) => a + g.v, 0);
+    const year = got.filter((g) => dayIn("Europe/London", g.at) >= from).reduce((a, g) => a + g.v, 0);
+    if (last >= 0.5) out.push(`${MONTH_NAMES[(m + 10) % 12]}'s dividends came to ${gbp(last)}, ${gbp(year)} so far this tax year.`);
+  }
+  return out.join(" ");
 }
 
 // ---------------- the account going ----------------

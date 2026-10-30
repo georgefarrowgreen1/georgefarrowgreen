@@ -20,6 +20,7 @@
 
 import * as A from "./account.js";
 import * as C from "./charts.js";
+import { marked as markDivs, health, project, taxYearOf, csv } from "./income.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
@@ -381,8 +382,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.78";
-const NEWS = "Today or Since bought, over your holdings: a clearer switch, level with its label";
+const BUILD = "1.79";
+const NEWS = "Income: what you've been paid, the tax year and its allowance, a goal, each payer's record, and what a buy would add";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -399,12 +400,15 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day" };
+const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
+  inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000 };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("markets:" + k, JSON.stringify(v)); } catch (_) {} },
   del(k) { try { localStorage.removeItem("markets:" + k); } catch (_) {} },
 };
+// (the Income sheet's plan, as you left it on this phone)
+{ const p = store.get("plan"); if (p) { S.goal = +p.goal || 100; S.add = +p.add || 0; S.reinvest = p.reinvest !== false; } }
 
 // ---- building the page ----
 function h(sel, attrs = {}, ...kids) {
@@ -473,38 +477,101 @@ function byAccount(o = owned()) {
   return out.filter((a) => a.o.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
 }
 // Your income: each dividend each holding paid over the last year, for what you own now, expected again a year on, in
-// the month it went ex-dividend. { months: the next twelve, from this one ({ d, total, items }), events (to come, soonest
-// first), payers (largest first, with each one's yield), total (a year's) }
+// the month it went ex-dividend; one-offs (specials) said apart, and not expected again. { months: the next twelve, from
+// this one ({ d, total, items }), events (to come, soonest first), payers (largest first, with each one's yield and how
+// many it pays a year), total (a year's), none (what you own that's paid nothing over the year), specials ({ x, v, at }) }
 function income() {
   const now = new Date(), y0 = now.getFullYear(), m0 = now.getMonth();
-  const months = Array.from({ length: 12 }, (_, i) => ({ d: new Date(y0, m0 + i, 1), total: 0, items: [] })), events = [], payers = [];
+  const months = Array.from({ length: 12 }, (_, i) => ({ d: new Date(y0, m0 + i, 1), total: 0, items: [] })), events = [], payers = [], none = [], specials = [];
   for (const x of owned()) {
     const yr = S.years[x.symbol], q = S.q[x.symbol];
-    if (!yr?.divs?.length) continue;
-    let year = 0;
-    for (const d of yr.divs) {
-      // (only the last year's: one older isn't next year's to expect)
-      if (d.t * 1000 < now - 365 * 864e5) continue;
+    if (!yr) continue;
+    // (only the last year's: one older isn't next year's to expect)
+    const last = (yr.divs || []).filter((d) => d.t * 1000 >= now - 365 * 864e5);
+    // (one-offs told from the years it's paid, where they're here; else from its last year's)
+    const one = new Set(markDivs(divHistory(x.symbol)).filter((d) => d.special).map((d) => d.t));
+    let year = 0, n = 0;
+    for (const d of last) {
       const v = d.amount * x.qty * rate(q.cur), at = new Date(d.t * 1000);
+      if (one.has(d.t)) { specials.push({ x, v, at }); continue; }
       at.setFullYear(at.getFullYear() + 1);
       // (one that's gone this month already comes round again next year, in this month's place)
       let k = (at.getFullYear() - y0) * 12 + at.getMonth() - m0;
       if (k >= 12) k -= 12;
-      year += v;
+      year += v; n++;
       months[Math.max(0, k)].total += v; months[Math.max(0, k)].items.push({ x, v, at });
       events.push({ x, v, at });
     }
-    payers.push({ x, year, yld: q.price ? (yr.div12 / q.price) * 100 : null });
+    if (n) payers.push({ x, year, n, yld: q.price ? (year / (x.qty * rate(q.cur)) / q.price) * 100 : null });
+    else none.push(x);
   }
-  return { months, events: events.filter((e) => e.at > now).sort((a, b) => a.at - b.at), payers: payers.sort((a, b) => b.year - a.year), total: payers.reduce((a, p) => a + p.year, 0) };
+  return { months, events: events.filter((e) => e.at > now).sort((a, b) => a.at - b.at), payers: payers.sort((a, b) => b.year - a.year), total: payers.reduce((a, p) => a + p.year, 0), none, specials };
+}
+// one's dividends over the years (from your income's history, S.inc), else over the last year
+const divHistory = (sym) => (S.inc?.v?.[sym]?.divs?.length ? S.inc.v[sym].divs : S.years[sym]?.divs || []);
+// every dividend that's paid you (S.inc), in pounds at today's rate, oldest first: [{ x (the holding, or one you've sold
+// all of), v, at, qty, amount (a share's, in its currency), cur, special }]
+function gotAll() {
+  const out = [];
+  for (const [sym, g] of Object.entries(S.inc?.v || {})) {
+    const q = S.q[sym], r = rate(q?.cur);
+    if (r == null) continue;
+    const x = S.list.find((y) => y.symbol === sym) || { symbol: sym, name: nameOf(sym), qty: 0 }, one = new Set(markDivs(g.divs).filter((d) => d.special).map((d) => d.t));
+    for (const e of g.got) out.push({ x, v: e.amount * e.qty * r, at: new Date(e.t * 1000), qty: e.qty, amount: e.amount, cur: q.cur, special: one.has(e.t) });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+// What's paid you, month by month over the last twelve, this month last: { months ({ d, total, items }), total (the
+// twelve's), since (all of it), from (the first day counted, ms) }
+function received() {
+  const now = new Date(), y0 = now.getFullYear(), m0 = now.getMonth(), months = Array.from({ length: 12 }, (_, i) => ({ d: new Date(y0, m0 - 11 + i, 1), total: 0, items: [] }));
+  let since = 0, from = null;
+  for (const e of gotAll()) {
+    since += e.v;
+    const k = (e.at.getFullYear() - y0) * 12 + e.at.getMonth() - m0 + 11;
+    if (k >= 0 && k < 12) { months[k].total += e.v; months[k].items.push(e); }
+  }
+  for (const g of Object.values(S.inc?.v || {})) if (g.from && (!from || g.from < from)) from = g.from;
+  return { months, total: months.reduce((a, m) => a + m.total, 0), since, from };
+}
+// The tax year's dividends, April to March: what's paid so far, and what's expected for the rest of it. { months ({ d,
+// total, paid, items }), paid, coming, name ("2026–27"), outside (paid so far outside an ISA or pension: what counts
+// towards the dividend allowance), outsideComing, inside (paid so far in one, tax-free) }
+const DIVIDEND_ALLOWANCE = 500;     // (the UK's, a tax year, since April 2024)
+function taxMonths(I = income()) {
+  const ty = taxYearOf(), now = Date.now(), months = Array.from({ length: 12 }, (_, i) => ({ d: new Date(ty.start, 3 + i, 1), total: 0, paid: 0, items: [] }));
+  const at = (d) => (d.getFullYear() - ty.start) * 12 + d.getMonth() - 3, wrapped = (x) => x.account === "isa" || x.account === "sipp";
+  const T = { months, paid: 0, coming: 0, name: ty.name, outside: 0, outsideComing: 0, inside: 0 };
+  for (const e of gotAll()) {
+    const k = at(e.at);
+    if (+e.at < ty.from || +e.at > now || k < 0 || k > 11) continue;
+    months[k].total += e.v; months[k].paid += e.v; months[k].items.push({ ...e, done: true }); T.paid += e.v;
+    if (wrapped(e.x)) T.inside += e.v; else T.outside += e.v;
+  }
+  for (const e of I.events) {
+    const k = at(e.at);
+    if (+e.at >= ty.to || k < 0 || k > 11) continue;
+    months[k].total += e.v; months[k].items.push(e); T.coming += e.v;
+    if (!wrapped(e.x)) T.outsideComing += e.v;
+  }
+  return T;
+}
+// how fast your dividends have grown, a year, over five (each payer's, weighted by what it pays you; null where none's
+// paid long enough to say), kept between a 5% fall and a 10% rise
+function growthOf(I) {
+  let w = 0, g = 0;
+  for (const p of I.payers) { const r = health(divHistory(p.x.symbol)); if (r?.growth != null) { w += p.year; g += p.year * r.growth; } }
+  return w ? Math.max(-0.05, Math.min(0.1, g / w)) : null;
 }
 const monthSaid = (d, long = false) => d.toLocaleDateString("en-GB", { month: long ? "long" : "short" });
-// a year of it, a bar a month (the chosen one bright)
-function incomeBars(I, chosen, onPick, tall = 120) {
-  const max = Math.max(...I.months.map((m) => m.total), 0.01);
+// a year of it, a bar a month (the chosen one bright). o: { add: twelve more, drawn on top apart (what a buy would add),
+// est (m) → true where it's still to come (drawn outlined) }
+function incomeBars(I, chosen, onPick, tall = 120, o = {}) {
+  const max = Math.max(...I.months.map((m, i) => m.total + (o.add?.[i] || 0)), 0.01), bar = (v) => `height:${Math.max(3, Math.round((v / max) * tall))}px`;
   // (as buttons, each says its month and what's in it; drawn small in a row, the row is a picture, its words the row's)
   return h("div.ibars", onPick ? { role: "group", "aria-label": "Dividends by month" } : { "aria-hidden": "true" }, I.months.map((m, i) => h(onPick ? "button.ib" : "span.ib", { ...(onPick ? { type: "button", "aria-pressed": String(i === chosen), onclick: () => onPick(i), "aria-label": `${monthSaid(m.d, true)}: ${money(m.total, "GBP", 0)}` } : {}), vars: { k: String(i) } },
-    h("i", { class: m.total > 0 ? null : "none", style: `height:${Math.max(3, Math.round((m.total / max) * tall))}px` }), h("span", { text: monthSaid(m.d).slice(0, onPick ? 3 : 1) }))));
+    o.add?.[i] ? h("i.add", { style: bar(o.add[i]) }) : null,
+    h("i", { class: m.total > 0 ? (o.est?.(m) ? "est" : null) : "none", style: bar(m.total) }), h("span", { text: monthSaid(m.d).slice(0, onPick ? 3 : 1) }))));
 }
 
 // the ISA's tax year: what's left of its allowance, and how long to use it (it ends on 5 April, London's)
@@ -1014,32 +1081,170 @@ function incomePart() {
     h("span.r", {}, h("b.num", { text: money(I.total, "GBP", 0) }), h("small", { text: "a year" })),
     h("div.mini", {}, incomeBars(I, -1, null, 26))))];
 }
-// Your income: a year of dividends, month by month; what's coming next; and who pays what
+// Your income: what's coming, month by month; what's paid you; the tax year, with its allowance; what it pays on what
+// you paid; where it could go; who pays, and how dependably; and each tax year's payments, to keep
 function incomeView() {
   const I = income();
-  // (dividends asked for where they aren't here yet: once)
+  // (dividends asked for where they aren't here yet, and your income's history: once)
   if (!incomeView.asked && owned().some((x) => !S.years[x.symbol]?.divs)) { incomeView.asked = true; loadYears().then(() => { if (Sheet.stack.at(-1)?.[0] === incomeView) drawSheet(); }); }
-  let chosen = Math.max(0, I.months.findIndex((m) => m.total > 0));
+  loadIncome();
+  const mode = S.imode, have = !!S.inc;
+  const sw = h("div.per.imode", { role: "group", "aria-label": "Show" }, [["coming", "Coming"], ["received", "Received"], ["tax", "Tax year"]].map(([k, label]) => h("button", { type: "button", "aria-pressed": String(mode === k), text: label,
+    onclick: () => { if (S.imode !== k) { S.imode = k; drawSheet(); } } })));
+  const top = [h("div.shead", {}, h("small", { text: "Income" }), closeBtn()), sw];
+  if (mode !== "coming" && !have) return [...top, h("p.hint", { style: "margin-top:18px", text: "Counting what's been paid…" })];
+  const R = mode === "received" ? received() : null, T = have ? taxMonths(I) : null, M = mode === "coming" ? I : mode === "received" ? R : T;
+  const total = mode === "coming" ? I.total : mode === "received" ? R.total : T.paid + T.coming;
+  // (the month first shown: the next with anything coming; the last that paid; this one)
+  let chosen = mode === "coming" ? Math.max(0, M.months.findIndex((m) => m.total > 0)) : mode === "received" ? Math.max(0, M.months.findLastIndex((m) => m.total > 0)) : Math.max(0, M.months.findIndex((m) => m.d.getMonth() === new Date().getMonth()));
   const month = h("div", { id: "imonth" }), say = h("p.why", { style: "margin-top:22px" });
+  const dayMon = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const row = (e) => e.done || mode === "received"
+    ? h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Went ex-dividend ${dayMon(e.at)} · ${fmt(e.qty, e.qty % 1 ? 2 : 0)} ${e.qty === 1 ? "share" : "shares"}${e.special ? " · a one-off" : ""}` })), h("span.r", {}, h("b.num", { text: money(e.v) })))
+    : h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Goes ex-dividend around ${dayMon(e.at)}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` })));
   const pick = (i) => {
     chosen = i;
     bars.querySelectorAll(".ib").forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
-    const m = I.months[i];
-    say.replaceChildren(m.total > 0 ? `About ${money(m.total, "GBP", 0)} in ${monthSaid(m.d, true)}` : `Nothing expected in ${monthSaid(m.d, true)}`, h("small", { text: m.total > 0 ? `From ${and2(m.items.map((e) => e.x.name))}` : "Tap another month" }));
-    month.replaceChildren(h("div.list.flush", {}, m.items.sort((a, b) => b.v - a.v).map((e, k) => h("button.item.two.rise", { type: "button", vars: { i: String(k) }, onclick: () => pushSheet(stockView, e.x.symbol) },
-      h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Around ${e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` }))))));
+    const m = M.months[i], past = mode === "received" || (mode === "tax" && m.paid >= m.total - 0.005 && m.total > 0);
+    say.replaceChildren(m.total > 0 ? `${past ? "" : "About "}${money(m.total, "GBP", 0)} in ${monthSaid(m.d, true)}${mode === "coming" ? "" : ` ${m.d.getFullYear()}`}` : `Nothing ${mode === "received" ? "paid" : "expected"} in ${monthSaid(m.d, true)}`,
+      h("small", { text: m.total > 0 ? `From ${and2([...new Set(m.items.map((e) => e.x.name))])}` : "Tap another month" }));
+    month.replaceChildren(h("div.list.flush", {}, m.items.slice().sort((a, b) => b.v - a.v).map((e, k) => { const r = row(e); r.style.setProperty("--i", String(k)); return r; })));
   };
-  const bars = incomeBars(I, chosen, pick);
+  const bars = incomeBars(M, chosen, pick, 120, mode === "tax" ? { est: (m) => m.paid < m.total / 2 } : {});
   pick(chosen);
-  return [h("div.shead", {}, h("small", { text: "Income" }), closeBtn()),
-    h("div.sprice.num", { style: "margin-top:14px", text: I.total ? `${money(I.total, "GBP", 0)} a year` : "No dividends yet" }),
-    h("p.hint", { style: "margin-top:8px", text: I.total ? `About ${money(I.total / 12, "GBP", 0)} a month on average, from ${plural(I.payers.length, "holding")}, at what each paid over the last year for what you own now.` : "None of what you own has paid a dividend in the last year." }),
-    ...(I.total ? [h("div.ichart", {}, bars), say, month,
-      h("h3.slabel", { text: "Who pays" }),
-      h("div.list.flush", {}, I.payers.map((p, k) => h("button.item.two.rise", { type: "button", vars: { i: String(k) }, onclick: () => pushSheet(stockView, p.x.symbol) },
-        h("span", {}, h("b", { text: p.x.name }), h("small", { text: p.yld != null ? `Yield ${fmt(p.yld, 1)}% · ${plural(S.years[p.x.symbol].divs.length, "payment")} a year` : "" })),
-        h("span.r", {}, h("b.num", { text: money(p.year, "GBP", 0) }), h("small", { text: `${Math.round((p.year / I.total) * 100)}%` }))))),
-      h("p.hint", { text: "Expected from last year's dividends, in the month each went ex-dividend (it's paid a few weeks after). Amounts and dates can change, and ones paid in dollars are shown in pounds at today's rate." })] : [])];
+  const head = mode === "coming" ? (I.total ? `${money(I.total, "GBP", 0)} a year` : "No dividends yet") : mode === "received" ? `${money(R.total, "GBP", 0)} in a year` : `${money(T.paid, "GBP", 0)} this tax year`;
+  const sub = mode === "coming"
+    ? (I.total ? `About ${money(I.total / 12, "GBP", 0)} a month on average, from ${plural(I.payers.length, "holding")}, at what each paid over the last year for what you own now.${I.specials.length ? ` One-offs left out: ${and2(I.specials.map((e) => `${money(e.v, "GBP", 0)} from ${e.x.name}`))}.` : ""}` : "None of what you own has paid a dividend in the last year.")
+    : mode === "received" ? (R.from ? `${money(R.since, "GBP", 0)} since ${new Date(R.from).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}, on the shares you had each time one went ex-dividend. In pounds at today's rate.` : "Say when you bought each holding (on its page) to count what it's paid you.")
+    : `${T.name}, so far. About ${money(T.paid + T.coming, "GBP", 0)} by 5 April, with what's still to come outlined.`;
+  return [...top,
+    h("div.sprice.num", { style: "margin-top:14px", text: head }),
+    h("p.hint", { style: "margin-top:8px", text: sub }),
+    ...(total || mode !== "coming" ? [h("div.ichart", {}, bars), mode === "tax" ? h("div.ilegend", {}, h("span", {}, h("i"), "Paid"), h("span", {}, h("i.est"), "To come")) : null, say, month] : []),
+    ...(I.total ? yieldPart(I) : []),
+    ...(T ? allowancePart(T) : []),
+    ...(I.total ? [h("h3.slabel", { text: "Where it could go" }), planCard(I)] : []),
+    ...(I.payers.length || I.none.length ? [h("h3.slabel", { text: "Who pays" }), h("div.list.flush", {}, I.payers.map((p, k) => payerRow(p, k, I)), I.none.map((x) => h("button.item.two", { type: "button", onclick: () => pushSheet(stockView, x.symbol) },
+      h("span", {}, h("b", { text: x.name }), h("small", { text: /\b(acc|accumulating|accumulation)\b/i.test(x.name) ? "Accumulation units: it reinvests inside the fund" : "No dividends in the last year" })), h("span.r", {}, h("b.flat-t", { text: "None" })))))] : []),
+    ...exportPart(),
+    h("p.hint", { text: "Expected from last year's dividends, in the month each went ex-dividend (it's paid a few weeks after); one-offs are left out. Amounts and dates can change, and ones paid in dollars are shown in pounds at today's rate." })];
+}
+// what it pays on what it's worth, and on what you paid
+function yieldPart(I) {
+  const T = totals(), costed = I.payers.filter((p) => p.x.cost != null), paidIn = costed.reduce((a, p) => a + paidFor(p.x), 0), fromCosted = costed.reduce((a, p) => a + p.year, 0);
+  const stat = (label, v, sub) => h("div.stat", {}, h("small", { text: label }), h("b.num", { text: v }), h("span", { text: sub }));
+  return [h("h3.slabel", { text: "What it pays you" }), h("div.stats.flush", {},
+    stat("Yield, at today's prices", T.value ? `${fmt((I.total / T.value) * 100, 1)}%` : "–", `on the ${money(T.value, "GBP", 0)} it's all worth`),
+    paidIn ? stat("On what you paid", `${fmt((fromCosted / paidIn) * 100, 1)}%`, `on the ${money(paidIn, "GBP", 0)} you put in`) : stat("On what you paid", "–", "Say what you paid on each one's page"))];
+}
+// the tax year's dividend allowance: what outside an ISA or pension has used of it
+function allowancePart(T) {
+  const used = Math.min(1, T.outside / DIVIDEND_ALLOWANCE), soon = Math.min(1 - used, T.outsideComing / DIVIDEND_ALLOWANCE);
+  return [h("h3.slabel", { text: `Dividend allowance, ${T.name}` }),
+    h("div.irow", {}, h("b.num", { text: `${money(T.outside, "GBP", 0)} of ${money(DIVIDEND_ALLOWANCE, "GBP", 0)} used` }), h("small", { text: T.outsideComing >= 0.5 ? `about ${money(T.outside + T.outsideComing, "GBP", 0)} by 5 April` : `${money(Math.max(0, DIVIDEND_ALLOWANCE - T.outside), "GBP", 0)} left` })),
+    h("div.allow2", {}, h("i", { style: `width:${used * 100}%` }), h("i.soon", { style: `width:${soon * 100}%` })),
+    h("p.ismall", { text: `Dividends outside an ISA or pension count towards it; in one they're tax-free${T.inside >= 0.5 ? ` (${money(T.inside, "GBP", 0)} so far)` : ""}. Counted by when each went ex-dividend: it's paid, and taxed, a few weeks after.` })];
+}
+// a payer, and how dependable it's been
+function payerRow(p, k, I) {
+  const r = health(divHistory(p.x.symbol)), tags = [];
+  if (r?.raised >= 2) tags.push(["up", `Raised ${r.raised} years running`]);
+  else if (r?.held >= 3) tags.push(["", `No cut in ${r.held} years`]);
+  if (r?.cut) tags.push(["warn", `Cut in ${r.cut}`]);
+  if (r?.growth != null && Math.abs(r.growth) >= 0.005) tags.push(["", `${r.growth > 0 ? "+" : "−"}${fmt(Math.abs(r.growth) * 100, 1)}% a year over 5 years`]);
+  for (const e of I.specials.filter((e) => e.x === p.x)) tags.push(["warn", `One-off ${money(e.v, "GBP", 0)} in ${monthSaid(e.at, true)}, left out`]);
+  return h("button.item.two.rise", { type: "button", vars: { i: String(k) }, onclick: () => pushSheet(stockView, p.x.symbol) },
+    h("span", {}, h("b", { text: p.x.name }), h("small", { text: `${p.yld != null ? `Yield ${fmt(p.yld, 1)}% · ` : ""}${plural(p.n, "payment")} a year · ${p.x.account ? ACCOUNT_NAME[p.x.account] : "Not in an account"}` }),
+      tags.length ? h("span.ichips", {}, tags.map(([c, t]) => h(c ? `span.ichip.${c}` : "span.ichip", { text: t }))) : null),
+    h("span.r", {}, h("b.num", { text: money(p.year, "GBP", 0) }), h("small", { text: `${Math.round((p.year / I.total) * 100)}%` })));
+}
+// Where it could go: a monthly income to aim for, how far along you are, and twenty years ahead, reinvesting or not
+function planCard(I) {
+  const T = totals(), g = growthOf(I), growth = g ?? 0.03, y = T.value ? I.total / T.value : 0, year0 = new Date().getFullYear();
+  const ring = h("span.gring"), head = h("b"), sub = h("small"), goalSaid = h("span"), addSaid = h("span"), chart = h("div.proj"), out = h("p.out"), note = h("p.ismall");
+  const update = () => {
+    const P = project({ worth: T.value, yield: y, growth, add: S.add, reinvest: S.reinvest, goal: S.goal * 12 }), now = I.total / 12;
+    goalSaid.textContent = `${money(S.goal, "GBP", 0)} a month`; addSaid.textContent = money(S.add, "GBP", 0);
+    ring.replaceChildren(ringSvg(now / S.goal));
+    head.textContent = `${money(now, "GBP", 0)} of ${money(S.goal, "GBP", 0)} a month`;
+    sub.textContent = `${Math.round(Math.min(1, now / S.goal) * 100)}% of your goal, at today's yield`;
+    chart.replaceChildren(projSvg(P, S.goal * 12, year0));
+    out.textContent = P.reach === 0 ? "You're there already." : P.reach != null ? `About ${money(S.goal, "GBP", 0)} a month by ${year0 + P.reach}, in ${plural(P.reach, "year")}.` : "Not within 60 years like this. Try adding more each month.";
+    note.textContent = `${S.reinvest ? "" : `Paid to you over 20 years: about ${money(P.cash, "GBP", 0)}. `}Assumes today's yield (${fmt(y * 100, 1)}%), and that dividends and prices grow ${fmt(growth * 100, 1)}% a year${g != null ? ", as your holdings' dividends have over five years" : " (there's too little history to go on)"}. Before inflation and tax.`;
+    store.set("plan", { goal: S.goal, add: S.add, reinvest: S.reinvest });
+  };
+  const knob = (id, label, said, key, min, max, step) => h("div.knob", {}, h("label", { for: id }, label, said),
+    h("input", { id, type: "range", min: String(min), max: String(max), step: String(step), value: String(S[key]), oninput: (e) => { S[key] = +e.target.value; update(); } }));
+  const sw = h("div.per", { role: "group", "aria-label": "Dividends" }, [[true, "Reinvest"], [false, "Take as cash"]].map(([v, label]) => h("button", { type: "button", "aria-pressed": String(S.reinvest === v), text: label,
+    onclick: () => { S.reinvest = v; sw.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String((i === 0) === v))); update(); } })));
+  update();
+  return h("div.plan", { id: "plan" }, h("div.goal", {}, ring, h("span", {}, head, sub)),
+    knob("igoal", "Your goal", goalSaid, "goal", 25, 1000, 25), knob("iadd", "Adding each month", addSaid, "add", 0, 1500, 50),
+    h("div.knob.inline", {}, h("span", { text: "Dividends" }), sw), chart, out, note);
+}
+const ringSvg = (f) => {
+  const c = 2 * Math.PI * 22, s = C.el("svg", { viewBox: "0 0 56 56", width: 56, height: 56, "aria-hidden": "true" });
+  s.append(C.el("circle", { class: "rbg", cx: 28, cy: 28, r: 22 }), C.el("circle", { class: "rfg", cx: 28, cy: 28, r: 22, "stroke-dasharray": c.toFixed(1), "stroke-dashoffset": (c * (1 - Math.max(0, Math.min(1, f)))).toFixed(1), transform: "rotate(-90 28 28)" }));
+  return s;
+};
+// twenty years of a year's income, drawn to scale, with the goal across it
+function projSvg(P, goal, year0) {
+  const W = 320, H = 150, l = 40, r = 8, t = 14, b = 22, top = Math.max(...P.income, goal) * 1.08;
+  const step = [50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000, 250000, 500000].find((v) => v * 2 >= top) || Math.ceil(top / 2), ymax = step * 2;
+  const X = (i) => l + (i / 20) * (W - l - r), Y = (v) => t + (1 - v / ymax) * (H - t - b), k = (v) => (v >= 1000 ? `£${fmt(v / 1000, v % 1000 ? 1 : 0)}k` : money(v, "GBP", 0));
+  const txt = (x, y, said, anchor) => { const e = C.el("text", { x, y, "text-anchor": anchor }); e.textContent = said; return e; };
+  const s = C.el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `A year's dividends, ${year0} to ${year0 + 20}` });
+  for (const v of [0, step, ymax]) s.append(C.el("line", { class: "pg", x1: l, x2: W - r, y1: Y(v), y2: Y(v) }), txt(l - 6, Y(v) + 3.5, k(v), "end"));
+  const line = P.income.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
+  s.append(C.el("path", { class: "pa", d: `${line} L${X(20)} ${Y(0)} L${X(0)} ${Y(0)} Z` }), C.el("path", { class: "pl", d: line }));
+  s.append(C.el("line", { class: "pgoal", x1: l, x2: W - r, y1: Y(goal), y2: Y(goal) }), txt(W - r, Y(goal) - 5, `Goal ${k(goal)} a year`, "end"));
+  if (P.reach != null && P.reach <= 20) s.append(C.el("circle", { class: "pdot", r: 4.5, cx: X(P.reach), cy: Y(P.income[P.reach]) }));
+  for (const i of [0, 10, 20]) s.append(txt(X(i), H - 6, String(year0 + i), i === 0 ? "start" : i === 20 ? "end" : "middle"));
+  return s;
+}
+// each tax year's dividends, as a spreadsheet to keep (the last whole one, and this one so far)
+function exportPart() {
+  const got = gotAll(), ty = taxYearOf(), last = taxYearOf(ty.from - 864e5);
+  const years = [[last, `The ${last.name} tax year`], [ty, `${ty.name}, so far`]].filter(([y]) => got.some((e) => +e.at >= y.from && +e.at < y.to));
+  if (!years.length) return [];
+  return [h("h3.slabel", { text: "For your tax return" }), h("div.list.flush", {}, years.map(([y, label]) => h("button.item.two", { type: "button", onclick: () => keepFile(`dividends-${y.name}.csv`, yearCsv(got, y)) },
+    h("span", {}, h("b", { text: label }), h("small", { text: "Each dividend, its holding and account, as a spreadsheet" })), h("span.r", {}, h("b.tint-t", { text: "CSV" }))))),
+    h("p.ismall", { text: "Dated when each went ex-dividend; your broker's statements say when each was paid." })];
+}
+function yearCsv(got, y) {
+  const rows = [["Went ex-dividend", "Holding", "Symbol", "Account", "Shares", "Per share", "Currency", "Amount", "In pounds, at today's rate", "One-off"]];
+  for (const e of got) if (+e.at >= y.from && +e.at < y.to) rows.push([e.at.toLocaleDateString("en-CA"), e.x.name, e.x.symbol, e.x.account ? ACCOUNT_NAME[e.x.account] : "Not in an account", +e.qty.toFixed(6), +e.amount.toFixed(6), e.cur, +(e.amount * e.qty).toFixed(2), +e.v.toFixed(2), e.special ? "Yes" : ""]);
+  return csv(rows);
+}
+// a file of the app's own, to keep: offered to share where the phone can (an iPhone's way to save one), else downloaded
+async function keepFile(name, text, type = "text/csv") {
+  const file = new File([text], name, { type });
+  if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e?.name === "AbortError") return; } }
+  const a = h("a", { href: URL.createObjectURL(file), download: name });
+  document.body.append(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+// If you bought some of one: what a year of its dividends would add (at what it paid over the last year, one-offs aside)
+// and when, drawn on your own year, and whether it pays when nothing else does
+function whatIf(q, y) {
+  const box = h("div.whatif", { id: "whatif" }), r = rate(q.cur), one = new Set(markDivs(y.divs).filter((d) => d.special).map((d) => d.t)), now = new Date(), y0 = now.getFullYear(), m0 = now.getMonth();
+  const draw = () => {
+    const shares = S.buyAmt / (q.price * r), add = Array(12).fill(0), I = income();
+    for (const d of y.divs) {
+      if (one.has(d.t) || d.t * 1000 < now - 365 * 864e5) continue;
+      const at = new Date(d.t * 1000); at.setFullYear(at.getFullYear() + 1);
+      let k = (at.getFullYear() - y0) * 12 + at.getMonth() - m0; if (k >= 12) k -= 12;
+      add[Math.max(0, k)] += d.amount * shares * r;
+    }
+    const per = add.reduce((a, v) => a + v, 0), when = I.months.map((m, i) => (add[i] ? monthSaid(m.d) : null)).filter(Boolean), gaps = I.months.map((m, i) => (add[i] && !m.total ? monthSaid(m.d) : null)).filter(Boolean);
+    const said = !I.total ? `In ${and2(when)}.` : gaps.length === when.length ? `In ${and2(when)}, when nothing comes now.` : gaps.length ? `In ${and2(when)}: ${and2(gaps)} when nothing comes now.` : `In ${and2(when)}, beside what you have.`;
+    box.replaceChildren(h("div.whead", {}, h("span", { text: "If you bought" }), h("div.per", { role: "group", "aria-label": "How much" }, [500, 1000, 5000].map((v) => h("button", { type: "button", "aria-pressed": String(S.buyAmt === v), text: money(v, "GBP", 0), onclick: () => { S.buyAmt = v; draw(); } })))),
+      h("b.num", { text: `About ${money(per, "GBP", 0)} a year` }),
+      h("p", { text: `${said}${I.total ? ` Your year would go from ${money(I.total, "GBP", 0)} to about ${money(I.total + per, "GBP", 0)}.` : ""}` }),
+      h("div.mini", {}, incomeBars(I, -1, null, 30, { add })));
+  };
+  draw();
+  return box;
 }
 
 // Your year against the market, from your holdings' years and the market's (before its chart's been drawn): what you own
@@ -1340,6 +1545,7 @@ function facts(sym, held, q) {
   if (y?.div12 > 0 && q.price) { const nx = held?.qty > 0 ? income().events.find((e) => e.x.symbol === sym) : null;
     rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%` }),
       held?.qty > 0 && rate(q.cur) != null ? h("p", {}, `About ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} a year to you`, nx ? h("span.nx", { text: ` · next about ${money(nx.v, "GBP", nx.v >= 100 ? 0 : 2)}, around ${nx.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` }) : null) : null)); }
+  if (y?.div12 > 0 && q.price && rate(q.cur) != null && !isIndex(q) && y.divs?.length) rows.push(whatIf(q, y));
   if (kindOf(q) === "trust") rows.push(h("details.more", {}, h("summary", {}, h("b", { text: "What's an investment trust?" }), icon("chev", 16, 2.4)),
     h("p", { text: "A company that invests in many others. You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
   if (!y && !isIndex(q) && q.type !== "CURRENCY") A.years([sym]).then((r) => { if (r.years[sym]) { S.years[sym] = r.years[sym]; const f = $("#facts"); if (f && Sheet.stack.at(-1)?.[1]?.[0] === sym) f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); } }, () => {});
@@ -1362,7 +1568,7 @@ async function drawBuys(sym) {
       e.stopPropagation();
       if (!del.classList.contains("sure")) { del.classList.add("sure"); del.replaceChildren("Delete"); setTimeout(() => { if (del.isConnected) { del.classList.remove("sure"); del.replaceChildren(icon("x", 14, 2.6)); } }, 3000); return; }
       del.disabled = true;
-      try { const r = await A.dropBuy(x.id); S.list = r.holdings; toast(x.qty > 0 ? "Buy taken off" : "Sale taken off"); await refresh(true); drawSheet(); render(false); loadPaid(true); }
+      try { const r = await A.dropBuy(x.id); S.list = r.holdings; toast(x.qty > 0 ? "Buy taken off" : "Sale taken off"); await refresh(true); drawSheet(); render(false); loadPaid(true); S.inc = null; }
       catch (err) { toast(err.message, true); del.disabled = false; }
     };
     return h("div.item.buy.rise", { vars: { i: String(i) } },
@@ -1396,7 +1602,7 @@ function buyView(sym) {
       S.list = r.holdings;
       toast(sold ? "Sale saved" : "Buy saved");
       await refresh(true);
-      backSheet(); render(false); loadPaid(true);
+      backSheet(); render(false); loadPaid(true); S.inc = null;
     } catch (e) { toast(e.message, true); save.disabled = false; }
   };
   return [h("div.shead", {}, backBtn(), h("h2", { text: name }), closeBtn()),
@@ -1648,7 +1854,7 @@ function editView(sym, o = {}) {
       await refresh(true);
       if (back) { Sheet.stack.pop(); drawSheet(); } else closeSheet();
       render(false);
-      loadYears(); loadPaid(true);
+      loadYears(); loadPaid(true); S.inc = null;
     } catch (e) { toast(e.message, true); save.disabled = false; }
   };
   if (held?.buys) return [h("div.shead", {}, backBtn(), h("h2", { text: name }), closeBtn()),
@@ -1837,6 +2043,14 @@ async function loadPaid(force = false) {
   // (and on a holding's page, if that's open, its facts)
   const top = Sheet.stack.at(-1), f = $("#facts");
   if (f && top?.[0] === stockView) { const sym = top[1][0], held = S.list.find((x) => x.symbol === sym); f.replaceWith(facts(sym, held, S.q[sym])); if (held?.qty > 0 && valueOf(held) != null) $("#yours")?.replaceWith(yoursPart(sym, held, S.q[sym])); }
+}
+// your income's history (each holding's dividends over the years, and each that's paid you), for the Income sheet:
+// kept ten minutes, and asked again once what you own has changed (S.inc emptied)
+async function loadIncome(force = false) {
+  if (loadIncome.busy || (!force && S.inc && Date.now() - S.inc.at < 600e3) || !owned().length) return;
+  loadIncome.busy = true;
+  try { S.inc = { at: Date.now(), v: (await A.income()).income }; } catch (_) { return; } finally { loadIncome.busy = false; }
+  if (Sheet.stack.at(-1)?.[0] === incomeView) drawSheet();
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
 const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");

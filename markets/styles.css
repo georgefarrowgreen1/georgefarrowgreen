@@ -204,6 +204,51 @@ button.fact { width: 100%; text-align: left; }
 .mini { grid-column: 1 / -1; margin-top: 10px; }
 .mini .ibars { gap: 3px; }
 .mini .ib i { opacity: 0.75; border-radius: 3px; }
+/* the Income sheet: what's still to come, outlined; what a buy would add, on top in blue; each payer's record; the plan */
+.ib i.est { background: var(--up-soft); box-shadow: inset 0 0 0 1.5px var(--up); opacity: 0.75; }
+.ib i.add, .mini .ib i.add { margin-bottom: 2px; background: var(--blue); opacity: 0.6; }
+.imode { margin-top: 12px; }
+.ilegend { display: flex; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--text-3); }
+.ilegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 3px; vertical-align: -1px; background: var(--up); }
+.ilegend i.est { background: var(--up-soft); box-shadow: inset 0 0 0 1.5px var(--up); }
+.ichips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.ichip { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--ctl); color: var(--text-2); white-space: nowrap; }
+.ichip.up { background: var(--up-soft); color: var(--up); }
+.ichip.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.stats.flush { padding: 8px 0 0; }
+.irow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 6px; }
+.irow b { font: 600 17px var(--font-d); letter-spacing: -0.2px; }
+.irow small { font-size: 13px; color: var(--text-3); white-space: nowrap; }
+.allow2 { display: flex; height: 8px; margin-top: 10px; border-radius: 4px; overflow: hidden; background: var(--ctl); }
+.allow2 i { display: block; height: 100%; background: var(--up); }
+.allow2 i.soon { opacity: 0.35; }
+.ismall { margin: 8px 2px 0; font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+.plan { margin-top: 10px; padding: 16px; border-radius: 22px; background: var(--field); }
+.goal { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 14px; align-items: center; }
+.goal svg { display: block; }
+.goal b { display: block; font: 600 17px var(--font-d); letter-spacing: -0.2px; }
+.goal small { display: block; margin-top: 2px; font-size: 13px; color: var(--text-3); }
+.goal .rbg { fill: none; stroke: var(--ctl); stroke-width: 6; }
+.goal .rfg { fill: none; stroke: var(--up); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.5s var(--ease-out); }
+.knob { margin-top: 14px; }
+.knob label { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 500; }
+.knob label span { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.knob input { width: 100%; margin: 8px 0 0; accent-color: var(--up); }
+.knob.inline { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 500; }
+.proj { margin-top: 14px; }
+.proj svg { display: block; width: 100%; height: auto; overflow: visible; }
+.proj .pa { fill: var(--up-soft); }
+.proj .pl { fill: none; stroke: var(--up); stroke-width: 2; }
+.proj .pg { stroke: var(--line); stroke-width: 1; }
+.proj .pgoal { stroke: var(--text-3); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.proj text { fill: var(--text-3); font: 600 10px var(--font); }
+.proj .pdot { fill: var(--up); stroke: var(--sheet); stroke-width: 2; }
+.plan .out { margin: 12px 0 0; font: 600 16px/1.35 var(--font-d); letter-spacing: -0.2px; }
+.whatif { grid-column: 1 / -1; margin-top: 6px; padding-top: 14px; border-top: 0.5px solid var(--line); }
+.whead { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-3); }
+.whatif > b { display: block; margin-top: 10px; font: 600 18px var(--font-d); letter-spacing: -0.2px; }
+.whatif > p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+.tint-t { color: var(--tint-text); }
 /* (each month's letter, under its bar) */
 .mini .ib span { margin-top: 5px; font-size: 9.5px; font-weight: 600; line-height: 1; text-align: center; color: var(--text-3); }
 /* what's left to do: said where the bar would be */
