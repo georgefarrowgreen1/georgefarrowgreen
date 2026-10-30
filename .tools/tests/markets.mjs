@@ -140,6 +140,8 @@ ok((await p.getAttribute('a.story', 'href')).startsWith('https://example.com/new
 // ---- 9. One taken off the list ----
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 900);
 await p.locator('.item:has-text("Arm")').first().click(); await p.waitForSelector('.links .danger'); await settle(p, 900);
+await p.click('.links .danger'); await settle(p, 300);
+ok(/Tap again to remove/.test(await text(p, '.links .danger')) && rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length === 1, 'Remove asks for a second tap first');
 await p.click('.links .danger'); await settle(p, 1200);
 ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length && await p.locator('#main .list .item').count() === 5, 'Remove: off the list, and off the page');
 
@@ -167,7 +169,7 @@ const kinds = await text(p, '#kinds'), kp = [...kinds.matchAll(/(\d+)%/g)].map((
 ok(/Shares\s*\d+%/.test(kinds) && /Investment trusts\s*\d+%/.test(kinds) && Math.abs(kp.reduce((a, v) => a + v, 0) - 100) <= 1, 'Holdings: how your money splits between shares and investment trusts', kinds.replace(/\s+/g, ' '));
 await p.screenshot({ path: `${out}/9b-kinds.png` });
 await p.locator('.item:has-text("Scottish Mortgage")').first().click(); await p.waitForSelector('.links .danger'); await settle(p, 800);
-await p.click('.links .danger'); await settle(p, 1200);
+await p.click('.links .danger'); await settle(p, 300); await p.click('.links .danger'); await settle(p, 1200);
 ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'SMT.L'").length && !(await p.isVisible('#kinds')), 'taken off again: all shares, no split to show');
 
 // ---- 10. Only signed in, and only at Markets's own address ----
