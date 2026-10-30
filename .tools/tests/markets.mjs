@@ -134,7 +134,9 @@ ok(/\$1(9[0-9]|8[0-9])\.\d\d/.test(await text(p, '[data-px="NVDA"]')), 'Nvidia\'
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 1600);
 await p.screenshot({ path: `${out}/6-holdings.png` });
 ok(await p.locator('.ring .arc').count() === 6 && /Rolls-Royce/.test(await text(p, '.legend')), 'Holdings: the ring of your mix, the five largest and the rest', String(await p.locator('.ring .arc').count()));
-ok(await p.locator('#all .item').count() === 6 && /since you bought/.test(await text(p, '.foot:has-text("since you bought")')), 'everything you own, and how it\'s done since you bought', await text(p, '.foot:has-text("since you bought")'));
+ok(await p.locator('#all .item').count() === 6 && /Since you bought\s+[+−]£[\d,]+\.\d\d\s+[+−][\d.]+% · £38 in dividends/.test(await text(p, '.stat:has-text("Since you bought")')) && /Today\s+[+−]£/.test(await text(p, '.stat:has-text("Today")')),
+  'everything you own, and under the ring how it\'s done: since you bought (with its dividends), and today', `${await text(p, '.stats')}`);
+ok(/from the 3 of your 6 holdings you've said what you paid for/.test(await text(p, '.stats-note')), 'and what since you bought is from', await text(p, '.stats-note'));
 ok(/[+−]\d+\.\d%/.test(await text(p, '.item:has-text("Your year") .r')) && /points (ahead of|behind) FTSE 100/.test(await text(p, '.item:has-text("Your year")')), 'your year against the market, said in its row before it\'s opened', await text(p, '.item:has-text("Your year")'));
 await p.click('.tab[data-tab="news"]'); await p.waitForSelector('a.story', { timeout: 15000 }); await settle(p, 1000);
 await p.screenshot({ path: `${out}/7-news.png` });

@@ -399,7 +399,8 @@ export function taxYear(t = Date.now()) {
 // what you've said you've paid in this tax year (nothing yet, in a new one)
 export async function isaOf(env, userId, t = Date.now()) {
   const D = await mkdb(env), year = taxYear(t), r = await D.prepare("SELECT year, paid FROM mk_isa WHERE user_id = ?").bind(userId).first();
-  return { year, paid: r?.year === year ? r.paid : 0, allowance: ISA_ALLOWANCE };
+  // (said: whether what's been paid in has been said this tax year at all)
+  return { year, paid: r?.year === year ? r.paid : 0, said: r?.year === year, allowance: ISA_ALLOWANCE };
 }
 export async function setIsa(env, userId, paid) {
   const v = Number(paid);

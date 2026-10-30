@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.59";
+const BUILD = "1.60";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -390,7 +390,7 @@ function incomeBars(I, chosen, onPick, tall = 120) {
   const max = Math.max(...I.months.map((m) => m.total), 0.01);
   // (as buttons, each says its month and what's in it; drawn small in a row, the row is a picture, its words the row's)
   return h("div.ibars", onPick ? { role: "group", "aria-label": "Dividends by month" } : { "aria-hidden": "true" }, I.months.map((m, i) => h(onPick ? "button.ib" : "span.ib", { ...(onPick ? { type: "button", "aria-pressed": String(i === chosen), onclick: () => onPick(i), "aria-label": `${monthSaid(m.d, true)}: ${money(m.total, "GBP", 0)}` } : {}), vars: { k: String(i) } },
-    h("i", { class: m.total > 0 ? null : "none", style: `height:${Math.max(3, Math.round((m.total / max) * tall))}px` }), onPick ? h("span", { text: monthSaid(m.d).slice(0, 3) }) : null)));
+    h("i", { class: m.total > 0 ? null : "none", style: `height:${Math.max(3, Math.round((m.total / max) * tall))}px` }), h("span", { text: monthSaid(m.d).slice(0, onPick ? 3 : 1) }))));
 }
 
 // the ISA's tax year: what's left of its allowance, and how long to use it (it ends on 5 April, London's)
@@ -633,18 +633,29 @@ function holdingsView() {
     if (ks.length > 1) parts.push(h("div.kinds", { id: "kinds" }, h("div.mix", {}, ks.map(([k, v], i) => h("i", { style: `flex:${v};background:${KC[k]};animation-delay:${0.5 + i * 0.08}s` }))),
       h("div.klegend", {}, ks.map(([k, v]) => h("span", {}, h("i", { style: `background:${KC[k]}` }), KINDS_SAID[k], h("b.num", { text: `${Math.round((v / T.value) * 100)}%` }))))));
   }
+  if (T.o.length) parts.push(...statsPart(T));
   parts.push(h("h3.label", {}, "Everything", h("button", { type: "button", onclick: () => openSheet(searchView), text: "Add" })));
   parts.push(movable(h("div.list", { id: "all" }, S.list.map((x, i) => itemRow(x, i, "value")))));
   if (S.list.length > 1) parts.push(h("p.hint.center", { text: "Press and hold one to move it." }));
   if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
-  if (T.back != null) parts.push(h("p.foot", { class: "foot num", text: `${T.back >= 0 ? "Up" : "Down"} ${money(Math.abs(T.back), "GBP", 0)} (${pct(T.backPct, 1)}) since you bought${T.divs >= 0.5 ? `, ${money(T.divs, "GBP", 0)} of it in dividends` : ""}${T.costed.length < T.o.length ? `, on the ${plural(T.costed.length, "holding")} you've said what you paid for` : ""}` }));
-  // (and those that pay dividends with no day to count them from, asked for)
-  if (T.undated.length) parts.push(h("p.foot", { class: "foot", style: "padding-top:10px" }, T.undated.length === 1
-    ? ["Say when you bought ", h("button.inline", { type: "button", onclick: () => openSheet(editView, T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you."]
-    : "Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you."));
   return parts;
 }
 
+// How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
+// year's dividends; and today. Then what it's from, where that's not everything, and a day asked for where one that
+// pays has none to count its dividends from
+function statsPart(T) {
+  const I = T.back == null ? income() : null, stat = (label, v, cls, sub) => h("div.stat", {}, h("small", { text: label }), h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub }));
+  const notes = [];
+  if (T.back != null && T.costed.length < T.o.length) notes.push(`Since you bought is from the ${T.costed.length} of your ${T.o.length} holdings you've said what you paid for. `);
+  if (T.undated.length === 1) notes.push("Say when you bought ", h("button.inline", { type: "button", onclick: () => openSheet(editView, T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you.");
+  else if (T.undated.length) notes.push("Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you.");
+  return [h("div.stats", {},
+      T.back != null ? stat("Since you bought", signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), `${pct(T.backPct, 1)}${T.divs >= 0.5 ? ` · ${money(T.divs, "GBP", 0)} in dividends` : ""}`)
+        : I?.total ? stat("Dividends", `${money(I.total, "GBP", 0)}`, "", "a year, expected") : null,
+      stat("Today", signed(T.day, "GBP", Math.abs(T.day) >= 1e4 ? 0 : 2), tone(T.day), pct(T.dayPct))),
+    notes.length ? h("p.stats-note", {}, notes) : null];
+}
 // A list put in your order: press and hold a row (or, with a mouse, hold and drag), it lifts, and follows your finger, the
 // others parting for it; let go and it settles there, and the order's kept with your account
 function movable(list) {
@@ -719,7 +730,7 @@ function accountsPart(T) {
     h("span.r", {}, h("b.num", { text: money(a.value) }), h("small", { class: `num ${tone(a.day)}`, text: `${signed(a.day)} today` }))));
   if (iy && tracksIsa()) rows.push(h("button.item.two.rise", { type: "button", vars: { i: String(rows.length) }, onclick: () => openSheet(isaView) },
     h("span", {}, h("b", { text: "ISA allowance" }), h("small", { text: `${iy.year} · ${plural(iy.days, "day")} left to use it` })),
-    h("span.r", {}, h("b.num", { text: money(iy.left, "GBP", 0) }), h("small", { text: "left" })), allowBar(iy.used)));
+    h("span.r", {}, h("b.num", { text: money(iy.left, "GBP", 0) }), h("small", { text: "left" })), S.isa.said === false ? h("span.todo", { text: "Say what you've paid in so far" }) : allowBar(iy.used)));
   return [h("h3.label", {}, "Accounts"), h("div.list", {}, rows)];
 }
 // Your income, in a row: a year of dividends, the next one coming, and the year's shape
@@ -728,7 +739,7 @@ function incomePart() {
   if (!I.total) return [];
   const next = I.events[0];
   return [h("h3.label", {}, "Income"), h("div.list", {}, h("button.item.two.rise", { type: "button", onclick: () => openSheet(incomeView) },
-    h("span", {}, h("b", { text: "Dividends" }), h("small", { text: next ? `Next: ${next.x.name}, in ${monthSaid(next.at, true)}` : `From ${plural(I.payers.length, "holding")}` })),
+    h("span", {}, h("b", { text: "Dividends" }), h("small", { text: next ? `Next: about ${money(next.v, "GBP", 0)} in ${monthSaid(next.at, true)}, from ${next.x.name}` : `From ${plural(I.payers.length, "holding")}` })),
     h("span.r", {}, h("b.num", { text: money(I.total, "GBP", 0) }), h("small", { text: "a year" })),
     h("div.mini", {}, incomeBars(I, -1, null, 26))))];
 }
@@ -808,7 +819,8 @@ async function vsDraw(box, seg, big, say) {
   const along = (c) => {
     const m = new Map(c.t.map((t, i) => [dayKey(t), c.c[i]])), divs = (c.divs || []).map((d) => [dayKey(d.t), d.amount]).filter(([k]) => k > days[0]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
     let last = c.c[0], paid = 0, j = 0;
-    return days.map((d) => { if (m.has(d)) last = m.get(d); while (j < divs.length && divs[j][0] <= d) paid += divs[j++][1]; return last + paid; });
+    // (one gone ex-dividend since the last price there is, counted at the end)
+    return days.map((d, i) => { if (m.has(d)) last = m.get(d); while (j < divs.length && (divs[j][0] <= d || i === days.length - 1)) paid += divs[j++][1]; return last + paid; });
   };
   const value = days.map(() => 0);
   for (const x of held) { const r = rate(S.q[x.symbol].cur), p = along(charts[x.symbol]); p.forEach((v, i) => { value[i] += v * x.qty * r; }); }
@@ -834,7 +846,7 @@ async function vsDraw(box, seg, big, say) {
     big.className = `sprice num ${tone(yv)}`; big.textContent = pct(yv, 1);
     const nm = $("#vsname"); if (nm) nm.textContent = name === "the world" ? "World" : name;
     say.replaceChildren(`You're ${yv >= 0 ? "up" : "down"} ${fmt(Math.abs(yv), 1)}% over the year with dividends, and ${name} is ${bv >= 0 ? "up" : "down"} ${fmt(Math.abs(bv), 1)}%: ${Math.abs(gap) < 0.05 ? "level with it" : `${fmt(Math.abs(gap), 1)} points ${gap >= 0 ? "ahead" : "behind"}`}.`,
-      h("small", { text: held.length < o.length ? `From ${plural(held.length, "holding")} of your ${o.length} with a year's prices` : `From all ${plural(held.length, "holding")}` }));
+      h("small", { text: held.length < o.length ? `From ${plural(held.length, "holding")} of your ${o.length} with a year's prices` : held.length === 1 ? "From your one holding" : `From all ${held.length} of your holdings` }));
     S.vs = { at: Date.now(), you: yv, bench: bv, name };
   };
   C.scrubber(box, (x, w) => {
@@ -1214,15 +1226,38 @@ function editView(sym, o = {}) {
   // (when you bought it: for the dividends it's paid you since)
   const today = new Date().toLocaleDateString("en-CA");
   const since = h("input", { type: "date", id: "mk-since", max: today, value: held?.since ? new Date(held.since).toISOString().slice(0, 10) : "", "aria-label": "When you bought" });
+  // (what you paid: for each, or in total, as your broker may say it; and what that comes to, said under it as you type)
+  const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
+  const curMoney = (v) => (cs ? money(v, q.cur) : `${fmt(v)} ${q?.cur || ""}`.trim());
+  let per = "each";
+  const echo = h("p.echo", { id: "mk-echo", "aria-live": "polite" });
+  const tell = () => {
+    const n = num(qty.value) ?? 0, c = num(cost.value);
+    echo.textContent = c == null || !Number.isFinite(c) || !(n > 0) ? "" : per === "each" ? `${curMoney(c * n)} in all, for ${fmt(n, n % 1 ? 2 : 0)} shares` : `${curMoney(c / n)} each`;
+  };
+  const perSeg = h("div.per", { role: "group", "aria-label": "What you paid is" }, [["each", "Each"], ["total", "In total"]].map(([k, label]) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === per), text: label,
+    onclick: () => {
+      if (k === per) return;
+      const n = num(qty.value) ?? 0, c = num(cost.value);
+      if (c != null && Number.isFinite(c) && n > 0) cost.value = String(k === "total" ? +(c * n).toFixed(2) : +(c / n).toFixed(4));
+      per = k;
+      perSeg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === per)));
+      cost.setAttribute("aria-label", per === "each" ? "What you paid per share" : "What you paid in total");
+      cost.placeholder = q?.price ? fmt(per === "each" ? q.price : q.price * (n || 1), 2).replace(/,/g, "") : "";
+      tell();
+    } })));
+  qty.addEventListener("input", tell); cost.addEventListener("input", tell);
+  tell();
   let acct = held?.account ?? null;
   const choice = h("div.choice", { role: "group", "aria-label": "Held in" }, ACCOUNTS.map(([k, n]) => h("button.press", { type: "button", "data-a": k, "aria-pressed": String(acct === k), text: n,
     onclick: (e) => { acct = acct === k ? null : k; choice.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.a === acct))); } })));
   const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-save" }, held ? "Save" : "Add to Your List");
   save.onclick = async () => {
-    const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
-    const n = num(qty.value) ?? 0, c = num(cost.value), t = since.value ? Date.parse(since.value + "T12:00:00Z") : null;
+    const n = num(qty.value) ?? 0, c0 = num(cost.value), t = since.value ? Date.parse(since.value + "T12:00:00Z") : null;
     if (!Number.isFinite(n) || n < 0) return toast("How many you own should be a number.", true);
-    if (c != null && (!Number.isFinite(c) || c < 0)) return toast("What you paid should be a number.", true);
+    if (c0 != null && (!Number.isFinite(c0) || c0 < 0)) return toast("What you paid should be a number.", true);
+    if (c0 != null && per === "total" && !(n > 0)) return toast("Say how many shares you own, to work out what each cost.", true);
+    const c = c0 != null && per === "total" ? +(c0 / n).toPrecision(10) : c0;
     if (t != null && (!Number.isFinite(t) || t > Date.now() + 864e5)) return toast("Choose the day you bought it, as on a calendar.", true);
     save.disabled = true;
     try {
@@ -1242,10 +1277,10 @@ function editView(sym, o = {}) {
   return [h("div.shead", {}, backBtn(), h("h2", { text: held ? name : `Add ${name}` }), closeBtn()),
     h("div.form", {},
       h("label", { for: "mk-qty", text: "Shares you own" }), h("div.field", {}, qty),
-      h("label", { for: "mk-cost", text: `What you paid for each${cs ? "" : ` (${q?.cur || ""})`}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost),
+      h("div.lrow", {}, h("label", { for: "mk-cost", text: `What you paid${cs ? "" : ` (${q?.cur || ""})`}` }), perSeg), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost), echo,
       h("label", { for: "mk-since", text: "When you bought" }), h("div.field", {}, since),
       h("label", { text: "Held in" }), choice),
-    h("p.hint", { text: "Leave shares at 0 to just follow it. The rest is optional: with it, Markets shows how you've done since you bought (with the dividends it's paid you), and each account's total. Topped up over time? Record each buy on its page instead." }), save];
+    h("p.hint", { text: "Leave shares at 0 to just follow it. The rest is optional, for how you've done since you bought (dividends included) and each account's total. Bought at different times? Record each buy on its page instead." }), save];
 }
 // Remove: a second tap to be sure, saying what goes with it (its buys and sales, its alert)
 function removeBtn(sym, held) {

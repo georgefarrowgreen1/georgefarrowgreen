@@ -166,7 +166,9 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item.buy:active { opacity: 1; }
 .del { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--ctl); color: var(--text-3); font-size: 13px; font-weight: 600; transition: background-color 0.2s, color 0.2s; }
 .del.sure { background: var(--down); color: var(--tint-ink); }
-.field input[type="date"] { color-scheme: inherit; font-family: inherit; }
+.field input[type="date"] { color-scheme: inherit; font-family: inherit; -webkit-appearance: none; appearance: none; min-height: 1.5em; }
+/* (Safari's day sits to the left like everything else's, and an empty one keeps its height) */
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .slabel { margin: 30px 0 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
 /* how much of the ISA's allowance is used */
 .allow { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--ctl); overflow: hidden; margin-top: 10px; }
@@ -186,10 +188,29 @@ button.fact { width: 100%; text-align: left; }
 .mini { grid-column: 1 / -1; margin-top: 10px; }
 .mini .ibars { gap: 3px; }
 .mini .ib i { opacity: 0.75; border-radius: 3px; }
+/* (each month's letter, under its bar) */
+.mini .ib span { margin-top: 5px; font-size: 9.5px; font-weight: 600; line-height: 1; text-align: center; color: var(--text-3); }
+/* what's left to do: said where the bar would be */
+.todo { grid-column: 1 / -1; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--tint-text); }
+/* how you've done: since you bought, and today, under the ring */
+.stats { padding: 24px 24px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.stat { min-width: 0; }
+.stat small { display: block; font-size: 13px; color: var(--text-3); }
+.stat b { display: block; margin-top: 3px; font-size: 20px; font-weight: 500; letter-spacing: -0.3px; }
+.stat span { display: block; margin-top: 1px; font-size: 13.5px; line-height: 1.35; color: var(--text-2); }
+.stats-note { margin: 12px 24px 0; font-size: 13px; line-height: 1.45; color: var(--text-3); }
 button.inline { display: inline; color: var(--tint-text); font-weight: 600; font-size: inherit; }
 /* one of a few: the account a holding's held in */
 .choice { display: flex; gap: 8px; }
-.choice button { flex: 1; min-height: 46px; border-radius: 14px; background: var(--field); font-size: 15.5px; font-weight: 600; color: var(--text-2); transition: background-color 0.25s, color 0.25s, transform 0.2s; }
+.choice button { flex: 1; min-width: 0; min-height: 46px; padding: 0 8px; border-radius: 14px; background: var(--field); text-align: center; font-size: 15.5px; font-weight: 600; color: var(--text-2); transition: background-color 0.25s, color 0.25s, transform 0.2s; }
+/* a label with a choice beside it (what you paid: each, or in total); and what that comes to, said under it */
+.lrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 2px 4px; }
+.form .lrow label { margin: 0; }
+.per { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--field); }
+.per button { position: relative; padding: 4px 11px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text-3); transition: background-color 0.25s, color 0.25s; }
+.per button::after { content: ""; position: absolute; inset: -8px -2px; }
+.per button[aria-pressed="true"] { background: var(--ctl); color: var(--text); }
+.echo { margin: 8px 4px 0; min-height: 1.4em; font-size: 13.5px; color: var(--text-3); }
 .choice button[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
 .flash-up { animation: flash-up 1.2s ease-out; } .flash-down { animation: flash-down 1.2s ease-out; }
 @keyframes flash-up { 0%, 20% { color: var(--up); text-shadow: 0 0 14px var(--up-soft); } }
@@ -221,7 +242,7 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .ring text { fill: var(--text); } .ring text.sub { fill: var(--text-3); }
 .legend { display: grid; gap: 9px; font-size: 14px; min-width: 0; }
 .legend div { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; color: var(--text-2); }
-.legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
 .legend i { width: 8px; height: 8px; border-radius: 50%; }
 .legend b { color: var(--text); font-weight: 500; }
 /* (what it splits into: shares, investment trusts, funds) */
@@ -245,6 +266,10 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: center; padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
   transition: transform 0.4s var(--ease-glide), opacity 0.3s; }
 body.sheet-up .tabbar { transform: translateY(24px); opacity: 0; }
+/* (the page fades and softens as it goes under the tab bar, so what's beneath doesn't show through around it) */
+.tabbar::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: -1; height: calc(100% + 30px); pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, var(--sky-c) 72%, transparent) 30%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); -webkit-mask-image: linear-gradient(to top, #000 55%, transparent); mask-image: linear-gradient(to top, #000 55%, transparent); }
 body.out .tabbar { display: none; }
 .tabs { position: relative; pointer-events: auto; display: flex; width: 100%; max-width: 330px; height: 60px; padding: 5px; border-radius: 999px;
   background: var(--sheen), var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
@@ -331,7 +356,7 @@ body.sheet-up .sheet { transform: none; }
 .hint { margin: 18px 2px 0; font-size: 14px; line-height: 1.5; color: var(--text-3); }
 .browse { margin-top: 26px; }
 .browse h3 { margin: 0 2px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
-.form { display: grid; gap: 4px; margin-top: 18px; }
+.form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-top: 18px; }
 .form label { font-size: 13.5px; font-weight: 500; color: var(--text-3); margin: 12px 2px 4px; }
 .form .field { margin-top: 0; }
 .form .unit { color: var(--text-3); font-size: 16px; }
@@ -394,6 +419,7 @@ body.sheet-up .sheet { transform: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass, .tabs, .toast { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); }
+  .tabbar::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
