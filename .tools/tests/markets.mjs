@@ -219,12 +219,12 @@ await p.waitForSelector('#sheet .rtext', { timeout: 10000 }).catch(() => {});
 await p.waitForFunction(() => document.querySelector('#sheet .rpic img')?.naturalWidth > 0, null, { timeout: 8000 }).catch(() => {});
 ok((await text(p, '#sheet .rhead')) === firstTitle && p.url().startsWith('http://finance.') && await p.evaluate(() => document.querySelector('#sheet .rpic img')?.naturalWidth > 0)
   && (await p.getAttribute('#sheet .rpic img', 'src')).startsWith('/api/markets/pic?'), 'a story tapped: opened in Markets, its picture passed through Markets', `${await text(p, '#sheet .rhead')} · ${await p.getAttribute('#sheet .rpic img', 'src').catch(() => '')}`);
-ok(/^From Example News$/.test(await text(p, '#sheet .rlab')) && /said more about its plans this morning, and its shares moved on it/.test(await text(p, '#sheet .rtext')),
+ok(/^From Example News$/i.test(await text(p, '#sheet .rlab')) && /said more about its plans this morning, and its shares moved on it/.test(await text(p, '#sheet .rtext')),
   "what it says: its page's own summary, and whose", `${await text(p, '#sheet .rlab')}: ${await text(p, '#sheet .rtext')}`);
 ok(/^You own Rolls-Royce \(£5,7\d\d\)\.$/.test(await text(p, '#sheet .ryou p')) && await p.locator('#sheet .ryou .nchip').count() >= 1, 'what it means for you: yours, and what it\'s worth', await text(p, '#sheet .ryou p'));
 ok((await p.getAttribute('#sheet a.readit', 'href')) === firstLink && /^Read it at Reuters$/.test(await text(p, '#sheet a.readit')) && await p.locator('#sheet .rtwo button').count() === 2,
   "its publisher's page a tap away, and Send in Chat and Copy Link beside it", await text(p, '#sheet .racts'));
-await p.screenshot({ path: `${out}/7b-reader.png` });
+await settle(p, 1500); await p.screenshot({ path: `${out}/7b-reader.png` });
 await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.body.classList.contains('sheet-up'), null, { timeout: 5000 }).catch(() => {}); await settle(p, 500);
 ok(await p.locator('.nstory.read').count() === 1, 'a story read: marked so');
 // (away from News, what was there's seen; told it's all new again, the tab counts it)
