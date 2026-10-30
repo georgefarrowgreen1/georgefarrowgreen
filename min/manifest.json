@@ -1,5 +1,4 @@
 {
- "markets/stories.js": "0595eef619382cd8b30d1b0da7e8569d45b46d795ab798861c50b065d266da3b",
  "account/admin.js": "817f05dcbe5a0321051665fd65070be3620e4ac0c9b2ccb5702aeb8b14e89556",
  "account/app.js": "e30acfb482bef77d609ad1503539a708cde27aebbeb61920bfa124a2e189480c",
  "account/boot.js": "774f53a3f4f557117e69cf4bd4cb7dcf6805d07d23a5ff1938cd30d8ad93a6a6",
@@ -37,6 +36,7 @@
  "markets/charts.js": "c26a4fabe921b3f8749087c1bc7e48dbc94dbb05d8c297605a8979b314cdba49",
  "markets/desk.js": "82c39f0fc88824bda3c1060f1bebee93165a50974c03872d465115e18c21db1e",
  "markets/income.js": "1eabffb2f99f50d677c48bf2a12aa82393003b50e762178a2ff3afb74ce07e8e",
+ "markets/stories.js": "0595eef619382cd8b30d1b0da7e8569d45b46d795ab798861c50b065d266da3b",
  "markets/styles.css": "29b508e354a460f416fa9458955df994108ad76055fca04aec7defa1efcf3f39",
  "markets/theme.js": "aef45ff914bc63432de7d48441fa5ff75995205dc0198439f62a0cd8e39cf6f1",
  "pigeon/app.js": "195e900f42009c82c6bdd5b49ce4c7be20ea1ddf8a13c55d292bf1fe067a3b12",
