@@ -382,8 +382,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.80";
-const NEWS = "The tab you're on, in green as in InFlite's other apps, and Income's Coming, Received and Tax year sharing the width";
+const BUILD = "1.81";
+const NEWS = "On the Home Screen, the tab bar sits at the foot of News as it does on Today";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1414,6 +1414,7 @@ async function loadNews() {
 function go(tab) {
   if (S.tab === tab) { scrollTo({ top: 0, behavior: C.still() ? "auto" : "smooth" }); return; }
   S.tab = tab; render(); scrollTo(0, 0);
+  requestAnimationFrame(() => fitScreen.fit?.());
   if (tab === "holdings") loadPaid();
 }
 function drawTabs() {
@@ -2169,9 +2170,13 @@ function live() {
 // status bar's height, after a while away), and what's fixed to its foot (the tab bar, a sheet, a toast) then sits
 // that much above the screen's: the gap, measured against the screen itself, is taken back (--fix-gap: styles.css).
 // Only on an iPhone's or iPad's Home Screen, filling it; and never the keyboard's height, which is far more.
+// A page shorter than the screen is laid out that way more than a longer one (so News, with little in it, had its tab bar
+// sitting higher than Today's): there, every page is a little taller than the screen (html.homescreen: styles.css),
+// and the gap's measured again as each tab's drawn.
 function fitScreen() {
   if (navigator.standalone !== true || !screen.width || !screen.height) return;
   const doc = document.documentElement;
+  doc.classList.add("homescreen");
   const fit = () => {
     const portrait = matchMedia("(orientation: portrait)").matches;
     const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
@@ -2180,6 +2185,7 @@ function fitScreen() {
     doc.style.setProperty("--fix-gap", `${gap > 0 && gap < 120 ? gap : 0}px`);
   };
   fit();
+  fitScreen.fit = fit;
   for (const ev of ["resize", "pageshow", "focus"]) addEventListener(ev, fit);
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && fit());
   addEventListener("orientationchange", () => setTimeout(fit, 300));
