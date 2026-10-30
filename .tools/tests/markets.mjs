@@ -68,14 +68,16 @@ ok((await text(p, '.sprice')) === '£8.94' && /\+£0\.17 \(\+1\.89%\)/.test(awai
 await p.screenshot({ path: `${out}/3-stock.png` });
 await p.click('button:has-text("Add to Your List")'); await p.waitForSelector('#mk-qty');
 await p.fill('#mk-qty', '640'); await p.fill('#mk-cost', '6.10'); await p.fill('#mk-since', new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10)); await p.click('#mk-save');
-await p.waitForSelector('.fact:has-text("Yours")', { timeout: 10000 }); await settle(p, 700);
+await p.waitForSelector('.ystats', { timeout: 10000 }); await settle(p, 700);
 const rr = rows("SELECT symbol, name, qty, cost, since FROM mk_holdings")[0];
 ok(rr?.symbol === 'RR.L' && rr.name === 'Rolls-Royce' && rr.qty === 640 && rr.cost === 6.1 && Math.abs(rr.since - (Date.now() - 400 * 864e5)) < 2 * 864e5, 'kept with the account: RR.L, as Rolls-Royce, 640 at £6.10, bought 400 days ago', JSON.stringify(rr));
-await p.waitForSelector('.fact:has-text("Since you bought"):has-text("dividends")', { timeout: 10000 }).catch(() => {});
-ok(/with £38 of dividends/.test(await text(p, '.fact:has-text("Since you bought")')) && /\+£1,856\.00/.test(await text(p, '.fact:has-text("Since you bought")')),
-  "since you bought, with the one dividend it's paid since (6p on 640 shares, £38.40) on top of the price's £1,817.60", await text(p, '.fact:has-text("Since you bought")'));
-ok(/£5,721\.60/.test(await text(p, '.fact:has-text("Yours")')) && /Since you bought/.test(await text(p, '.facts')), "back on its page: yours, worth £5,721.60, and how it's done since you bought", await text(p, '.facts'));
-ok(/6\.00p a share a year/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')) && /about £38 to you/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')), 'its dividends: 6p a share over the year, about £38 to you', await text(p, '.fact:has(> span:text-is("Dividends"))'));
+await p.waitForSelector('.ynote:has-text("dividends")', { timeout: 10000 }).catch(() => {});
+ok(/\+£1,856\.00/.test(await text(p, '.ystat:has-text("Since bought")')) && /£38 of dividends counted/.test(await text(p, '.ynote')),
+  "since you bought, up top, with the one dividend it's paid since (6p on 640 shares, £38.40) on top of the price's £1,817.60", `${await text(p, '.ystat:has-text("Since bought")')} · ${await text(p, '.ynote')}`);
+ok(/£5,721\.60\s*640 shares/.test(await text(p, '.ystat:has-text("Yours")')) && /Today\s*[+−]£/.test(await text(p, '.ystat:has-text("Today")')), "back on its page: what you have of it, up top (worth £5,721.60), and its day", await text(p, '.ystats'));
+ok(await p.locator('.axis span').count() === 3 && /yesterday/.test(await text(p, '.blabel')) && await p.isVisible('.nowdot'), "its chart: the day's open, middle and close along the bottom, now on the line, and the dashed line said", `${await text(p, '.axis')} · ${await text(p, '.blabel')}`);
+ok(/Today's range[\s\S]*closed £8\.77 yesterday/.test(await text(p, '.fact:has(> span:text-is("Today\'s range"))')), "today's range, as a bar, with yesterday's close", await text(p, '.fact:has(> span:text-is("Today\'s range"))'));
+ok(/6\.00p a share a year/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')) && /About £38 a year to you/.test(await text(p, '.fact:has(> span:text-is("Dividends"))')), 'its dividends: 6p a share over the year, about £38 a year to you', await text(p, '.fact:has(> span:text-is("Dividends"))'));
 await p.keyboard.press('Escape'); await settle(p, 800);
 
 // ---- 4. A portfolio of six: worth, its day, and what's worth knowing ----
@@ -118,9 +120,12 @@ ok(/^\$\d+\.\d\d · \d+ \w+ \d\d$/.test(await text(p, '#sheet .scrub-tip')), 're
 await p.screenshot({ path: `${out}/5-chart.png` });
 await p.waitForFunction(() => !/Finding out why/.test(document.querySelector('#why')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
 ok(/move after the morning's update/.test(await text(p, '#why')) && /Reuters/.test(await text(p, '#why small')), "why it's moving: the day's story about it", await text(p, '#why'));
+ok(await p.locator('#snews a.story').count() >= 1 && /Reuters · /.test(await text(p, '#snews a.story')), 'and the latest news about it, under that', await text(p, '#snews'));
 
 // ---- 6. An alert, from the scheduler, once ----
-await p.click('#alert'); await p.waitForSelector('#alert.on', { timeout: 10000 });
+await p.click('#alert'); await p.waitForSelector('.choice.amt', { timeout: 10000 }); await settle(p, 600);
+ok(/2%\s*3%\s*5%\s*10%/.test(await text(p, '.choice.amt')), 'Alert Me: how much a move is worth hearing about', await text(p, '.choice.amt'));
+await p.click('.choice.amt button:has-text("3%")'); await p.waitForSelector('#alert.on', { timeout: 10000 });
 const al = rows("SELECT symbol, pct FROM mk_alerts")[0], ph = rows("SELECT endpoint FROM mk_push")[0];
 ok(al?.symbol === 'NVDA' && al.pct === 3 && /markets-phone/.test(ph?.endpoint || ''), 'Alert Me: on at 3%, and this phone kept to tell', JSON.stringify([al, ph]));
 const tick = () => ask(MKT + '/api/markets/tick', { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } }).then((r) => JSON.parse(r.body || '{}'));
@@ -188,11 +193,11 @@ const jam = await found('jam'), jam2 = await found('JPMorgan JAM trust');
 ok(jam.results?.[0]?.symbol === 'JAM.L' && jam.results[0].name === 'JPMorgan American' && jam.results[0].kind === 'trust', 'its London symbol alone (jam) finds JPMorgan American first', JSON.stringify(jam.results?.[0]));
 ok(jam2.results?.[0]?.symbol === 'JAM.L', 'and so does its name with words Yahoo has it without (JPMorgan JAM trust)', JSON.stringify(jam2.results));
 await p.click('.res'); await p.waitForSelector('.sprice'); await p.waitForSelector('.chartbox path.line[d]'); await settle(p, 1400);
-ok(/SMT · London · Investment trust/.test(await text(p, '.shead small')) && /A company that invests in many others/.test(await text(p, '.facts')) && /premium, or a discount/.test(await text(p, '.facts')), 'its page: said to be an investment trust, and what one is', await text(p, '.shead small'));
+ok(/SMT · London · Investment trust/.test(await text(p, '.shead small')) && /What's an investment trust\?/.test(await text(p, 'details.more summary')) && await p.locator('details.more').evaluate((d) => { d.open = true; return /A company that invests in many others[\s\S]*premium, or a discount/.test(d.innerText); }), 'its page: said to be an investment trust, and what one is', await text(p, '.shead small'));
 await p.screenshot({ path: `${out}/9b-trust.png` });
 await p.click('button:has-text("Add to Your List")'); await p.waitForSelector('#mk-qty');
 await p.fill('#mk-qty', '500'); await p.fill('#mk-cost', '8'); await p.click('#mk-save');
-await p.waitForSelector('.fact:has-text("Yours")', { timeout: 10000 }); await settle(p, 600);
+await p.waitForSelector('.ystats', { timeout: 10000 }); await settle(p, 600);
 await p.keyboard.press('Escape'); await settle(p, 700);
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 1500);
 await p.click('.seg.ways button[data-k="kind"]'); await settle(p, 900);

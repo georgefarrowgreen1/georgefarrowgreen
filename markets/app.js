@@ -272,7 +272,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.64";
+const BUILD = "1.65";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1158,14 +1158,15 @@ function stockView(sym, o = {}) {
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
     h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
-    box, seg, why, facts(sym, held, q),
+    held?.qty > 0 && valueOf(held) != null ? yoursPart(sym, held, q) : null,
+    box, seg, why, h("div", { id: "snews" }), facts(sym, held, q),
     held ? h("div", { id: "buys" }) : null,
   ];
   // what can be done with it
   const tool = (sel, ic, label, on, attrs = {}) => h(`button.tool.press${sel}`, { type: "button", onclick: on, ...attrs }, icon(ic, 20, 2), h("span", { text: label }));
   if (held) parts.push(h("div.links", {}, removeBtn(sym, held)),
     h("div.sbar", {},
-      tool(held.alert ? ".on" : "", "bell", held.alert ? `Alert On · ±${fmt(held.alert, 0)}%` : "Alert Me", (e) => toggleAlert(sym, e.currentTarget), { id: "alert" }),
+      tool(held.alert ? ".on" : "", "bell", held.alert ? `Alert On · ±${fmt(held.alert, 0)}%` : "Alert Me", () => pushSheet(alertView, sym), { id: "alert" }),
       tool("", "send", "Send in Chat", () => sendInChat(sym)),
       tool("", "pen", held.qty > 0 ? "Edit Holding" : "Add What You Own", () => pushSheet(editView, sym))));
   else parts.push(h("div.sbar.two", {}, h("button.btn.go.press", { type: "button", onclick: () => pushSheet(editView, sym, { name }) }, "Add to Your List"), tool("", "send", "Send in Chat", () => sendInChat(sym, name))));
@@ -1173,21 +1174,47 @@ function stockView(sym, o = {}) {
   return parts;
 }
 stockView.failed = new Set();
+// what you have of it, up top: what it's worth, its day, and since you bought (with its dividends)
+function yoursPart(sym, held, q) {
+  const v = valueOf(held), d = dayOf(held) || 0, dv = divsOf(held) || 0, paid = held.cost ? paidFor(held) : null, g = paid != null ? v - paid + dv : null;
+  const stat = (label, b, sub) => h("div.ystat", {}, h("small", { text: label }), b, sub);
+  return h("div", { id: "yours" }, h("div.ystats", {},
+      stat("Yours", h("b.num", { "data-val": sym, text: money(v, "GBP", v >= 1e5 ? 0 : 2) }), h("span", { text: `${fmt(held.qty, held.qty % 1 ? 2 : 0)} shares` })),
+      stat("Today", h("b", { class: `num ${tone(d)}`, "data-dg": sym, text: signed(d) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": sym, text: pct(q.chgPct) })),
+      g != null ? stat("Since bought", h("b", { class: `num ${tone(g)}`, text: signed(g, "GBP", Math.abs(g) >= 1e4 ? 0 : 2) }), h("span", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) }))
+        : stat("Since bought", h("button.inline", { type: "button", onclick: () => pushSheet(editView, sym), text: "Add cost" }), h("span", { text: "to see it" }))),
+    h("p.ynote", { text: [held.account ? `In your ${ACCOUNT_NAME[held.account]}` : null, held.cost != null ? `${held.buys > 1 ? "average" : "paid"} ${priceSaid(q, held.cost)} a share` : null, dv >= 0.5 ? `${money(dv, "GBP", 0)} of dividends counted` : null].filter(Boolean).join(" · ") }));
+}
+// Alert Me: how much a move in a day is worth hearing about (or off)
+function alertView(sym) {
+  const held = S.list.find((x) => x.symbol === sym), name = held?.name || nameOf(sym), cur = held?.alert || null;
+  const pick = async (p, btn) => {
+    btn.disabled = true;
+    try {
+      if (p && !S.pushOn) await turnOnHere();
+      const r = await A.setAlert(sym, !!p, p || 3);
+      S.list = r.holdings;
+      toast(p ? `You'll hear when ${name} moves ${p}% in a day${S.alertsOff ? " (alerts are off in your account)" : !S.pushOn ? " (notifications are off on this phone)" : ""}` : "Alert off");
+      backSheet(); render(false);
+    } catch (e) { toast(e.message, true); btn.disabled = false; }
+  };
+  return [h("div.shead", {}, backBtn(), h("h2", { text: "Alert Me" }), closeBtn()),
+    h("p.why", { style: "margin-top:14px" }, `When ${name} moves this much in a day, up or down:`),
+    h("div.choice.amt", { role: "group", "aria-label": "How much" }, [2, 3, 5, 10].map((p) => h("button.press", { type: "button", "aria-pressed": String(cur === p), onclick: (e) => pick(p, e.currentTarget), text: `${p}%` }))),
+    h("p.hint", { text: "You'll hear once a day at most, on the phones you've turned notifications on for. Your account's Quiet Hours are kept." }),
+    cur ? h("div.links", {}, h("button.danger", { type: "button", onclick: (e) => pick(0, e.currentTarget), text: "Turn Off" })) : null];
+}
 function facts(sym, held, q) {
   const rows = [], y = S.years[sym];
-  if (held?.qty > 0 && valueOf(held) != null) {
-    rows.push(h("div.fact", {}, h("span", { text: held.account ? `Yours · in your ${ACCOUNT_NAME[held.account]}` : "Yours" }), h("b.num", { "data-val": sym, text: money(valueOf(held)) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-dg": sym, text: `${signed(dayOf(held))} today` })));
-    // (with the dividends it's paid you on top, where there's a day to count them from)
-    if (held.cost != null) { const dv = divsOf(held) || 0, g = (q.price - held.cost) * held.qty * rate(q.cur) + dv, gp = held.cost ? (g / paidFor(held)) * 100 : 0;
-      rows.push(h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(g)}`, text: signed(g) }),
-        h("i.num", { text: dv >= 0.5 ? `${pct(gp, 1)}, with ${money(dv, "GBP", 0)} of dividends` : `${pct(gp, 1)} on ${held.buys > 1 ? "an average of " : ""}${priceSaid(q, held.cost)} a share` }))); }
-  }
-  if (q.dayLo != null && q.dayHi != null) rows.push(h("div.fact", {}, h("span", { text: "Today" }), h("b.num", { text: `${priceSaid(q, q.dayLo)} – ${priceSaid(q, q.dayHi)}` }), h("i.num", { text: q.prev ? `closed at ${priceSaid(q, q.prev)}` : "" })));
+  if (q.dayLo != null && q.dayHi != null && q.dayHi > q.dayLo) { const at = (q.price - q.dayLo) / (q.dayHi - q.dayLo);
+    rows.push(h("div.fact", {}, h("span", { text: "Today's range" }), h("b", { text: at >= 0.85 ? "Near the day's high" : at <= 0.15 ? "Near the day's low" : "Mid-range" }), h("i.num", { text: q.prev ? `closed ${priceSaid(q, q.prev)} yesterday` : "" }), ...range52(q, q.dayLo, q.dayHi, at))); }
   const hi = q.hi52 ?? y?.hi52, lo = q.lo52 ?? y?.lo52;
-  if (hi && lo && hi > lo) { const at = (q.price - lo) / (hi - lo); rows.push(h("div.fact", {}, h("span", { text: "The last 52 weeks" }), h("b", { text: at >= 0.9 ? "Near its high" : at <= 0.1 ? "Near its low" : at >= 0.5 ? "In the upper half" : "In the lower half" }), h("i.num", { text: y?.yr != null ? `${pct(y.yr, 1)} on a year ago` : "" }), ...range52(q, lo, hi, at))); }
-  if (y?.div12 > 0 && q.price) rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%${held?.qty > 0 && rate(q.cur) != null ? ` · about ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} to you` : ""}` })));
-  if (kindOf(q) === "trust") rows.push(h("div.fact", {}, h("span", { text: "Investment trust" }), h("b", { text: "A company that invests in many others" }),
-    h("p", { text: "You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
+  if (hi && lo && hi > lo) { const at = (q.price - lo) / (hi - lo); rows.push(h("div.fact", {}, h("span", { text: "52-week range" }), h("b", { text: at >= 0.9 ? "Near its high" : at <= 0.1 ? "Near its low" : at >= 0.5 ? "In the upper half" : "In the lower half" }), h("i.num", { text: y?.yr != null ? `${pct(y.yr, 1)} on a year ago` : "" }), ...range52(q, lo, hi, at))); }
+  if (y?.div12 > 0 && q.price) { const nx = held?.qty > 0 ? income().events.find((e) => e.x.symbol === sym) : null;
+    rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%` }),
+      held?.qty > 0 && rate(q.cur) != null ? h("p", {}, `About ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} a year to you`, nx ? h("span.nx", { text: ` · next about ${money(nx.v, "GBP", nx.v >= 100 ? 0 : 2)}, around ${nx.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` }) : null) : null)); }
+  if (kindOf(q) === "trust") rows.push(h("details.more", {}, h("summary", {}, h("b", { text: "What's an investment trust?" }), icon("chev", 16, 2.4)),
+    h("p", { text: "A company that invests in many others. You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
   if (!y && !isIndex(q) && q.type !== "CURRENCY") A.years([sym]).then((r) => { if (r.years[sym]) { S.years[sym] = r.years[sym]; const f = $("#facts"); if (f && Sheet.stack.at(-1)?.[1]?.[0] === sym) f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); } }, () => {});
   return h("div.facts", { id: "facts" }, rows);
 }
@@ -1260,12 +1287,17 @@ async function whyMoving(sym, el) {
     const big = q.symbol === "^FTSE" || q.symbol === "^GSPC" ? S.list.filter((x) => MARKET_OF[S.q[x.symbol]?.ex] === sym && S.q[x.symbol]?.chgPct != null).sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0] : null;
     return said(`${INDEX_NAMES[sym] || q.name} is ${Math.abs(q.chgPct || 0) < 0.05 ? "flat" : `${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}%`} today.${big ? ` Of yours here, ${big.name} has moved most, ${pct(S.q[big.symbol].chgPct, 1)}.` : ""}`, "From the day's prices");
   }
-  let story = null;
+  let story = null, about = [];
   try {
     const r = await A.news([sym]);
-    story = r.news.find((n) => (n.tickers.includes(sym) || n.for === sym) && Date.now() - n.at < 36 * 3600e3) || null;
+    about = r.news.filter((n) => n.tickers.includes(sym) || n.for === sym);
+    story = about.find((n) => Date.now() - n.at < 36 * 3600e3) || null;
   } catch (_) {}
   if (!el.isConnected) return;
+  // (the latest few about it, under what's said)
+  const list = $("#snews");
+  if (list && about.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, about.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener" },
+    h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title })))));
   const move = q.chgPct || 0, vsMarket = m?.chgPct != null ? ` The ${INDEX_NAMES[MARKET_OF[q.ex]]} is ${m.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(m.chgPct), 1)}%.` : "";
   if (story && Math.abs(move) >= 1) return said(story.title, `${story.src} · ${ago(story.at)}`, story.link);
   if (Math.abs(move) < 1) return said(`A quiet day for it, moving with the market.${vsMarket}`, story ? `Latest: ${story.title.slice(0, 90)}${story.title.length > 90 ? "…" : ""}` : "No news about it today");
@@ -1279,6 +1311,8 @@ async function stockChart(sym, box, seg) {
   svg.innerHTML = `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient></defs>`;
   const base = C.el("line", { class: "base", x1: 0, x2: W(), "vector-effect": "non-scaling-stroke" }), fill = C.el("path", { class: "fill", fill: `url(#${gid})` }), line = C.el("path", { class: "line", "vector-effect": "non-scaling-stroke" });
   svg.append(base, fill, line); box.append(svg);
+  const axis = h("div.axis.num"), now = h("i.nowdot"), blabel = h("span.blabel.num");
+  box.append(now, blabel); box.after(axis);
   let shown = null, raw = null, range = "1d", seq = 0;
   const show = async (r, first) => {
     const n = ++seq;
@@ -1309,6 +1343,16 @@ async function stockChart(sym, box, seg) {
     if (!shown || first) { draw(target); C.drawIn(line, 0.1, 1.2); fill.style.opacity = "0"; requestAnimationFrame(() => { fill.style.opacity = "1"; }); }
     else await C.tween(shown, target, 700, draw);
     shown = target;
+    // (along the bottom: the day's open and close, or where the range starts and ends; on the line, now, while it's
+    // open; and on the dashed line, what it is)
+    const tz = q.tz || undefined, tm = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+    const dd = (t) => new Date(t * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: r === "1y" || r === "5y" ? "numeric" : undefined, timeZone: tz });
+    axis.replaceChildren(...(session ? [tm(session.start), tm((session.start + session.end) / 2), tm(session.end)] : [dd(ts[0]), r === "5d" ? "Now" : "Today"]).map((t) => h("span", { text: t })));
+    const live = session && Date.now() / 1000 < session.end, last = pts.at(-1);
+    now.hidden = !live;
+    if (live) { now.style.transform = `translate(${last[0]}px, ${last[1]}px)`; now.style.color = col; }
+    blabel.textContent = r === "1d" ? `${priceSaid(q, b)} yesterday` : `${priceSaid(q, b)} then`;
+    blabel.style.top = `${Math.max(0, baseY - 20)}px`;
     // what's said over it: the change over the range
     const ch = vals.at(-1) - b, chp = (vals.at(-1) / b - 1) * 100, rp = $("#rpct"), rs = $("#rsaid");
     if (rp && rs) { rp.className = `num ${tone(chp)}`; rp.textContent = isIndex(q) ? pct(chp) : `${signed(ch, q.cur, q.price < 1 ? 4 : 2)} (${pct(chp)})`; rs.textContent = RANGES.find((x) => x[0] === r)[2]; }
@@ -1536,21 +1580,6 @@ async function turnOnHere() {
     return true;
   } catch (e) { toast(e.message || "Couldn’t turn on alerts here just now.", true); return false; }
 }
-async function toggleAlert(sym, btn) {
-  const held = S.list.find((x) => x.symbol === sym), on = !held?.alert;
-  btn.disabled = true;
-  try {
-    if (on && !S.pushOn) await turnOnHere();
-    const r = await A.setAlert(sym, on, 3);
-    const quiet = on && !S.pushOn ? " (notifications are off on this phone)" : "";
-    S.list = r.holdings;
-    const now = S.list.find((x) => x.symbol === sym);
-    btn.classList.toggle("on", !!now?.alert);
-    (btn.querySelector("span") || btn).textContent = now?.alert ? `Alert On · ±${fmt(now.alert, 0)}%` : "Alert Me";
-    toast(now?.alert ? `You'll hear when ${now.name} moves ${fmt(now.alert, 0)}% in a day${S.alertsOff ? " (alerts are off in your account)" : quiet}` : "Alert off");
-  } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
-}
-
 // ---- sending one to a friend, in Chat ----
 function sendInChat(sym, name = nameOf(sym)) {
   const q = S.q[sym], text = `${name} (${plainSym(sym)}) is ${q?.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q?.chgPct || 0), 1)}% today, at ${priceSaid(q)}.`;
@@ -1679,7 +1708,7 @@ async function loadPaid(force = false) {
   if (S.tab !== "news" && calm()) render(false);
   // (and on a holding's page, if that's open, its facts)
   const top = Sheet.stack.at(-1), f = $("#facts");
-  if (f && top?.[0] === stockView) { const sym = top[1][0]; f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); }
+  if (f && top?.[0] === stockView) { const sym = top[1][0], held = S.list.find((x) => x.symbol === sym); f.replaceWith(facts(sym, held, S.q[sym])); if (held?.qty > 0 && valueOf(held) != null) $("#yours")?.replaceWith(yoursPart(sym, held, S.q[sym])); }
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
 const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");

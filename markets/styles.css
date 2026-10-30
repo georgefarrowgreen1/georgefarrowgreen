@@ -372,6 +372,34 @@ body.sheet-up .sheet { transform: none; }
 .fact i { font-style: normal; font-size: 14px; color: var(--text-2); text-align: right; }
 .fact .range52, .fact .ends { grid-column: 1 / -1; }
 .fact p { grid-column: 1 / -1; margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.fact p .nx { color: var(--text-3); }
+/* what you have of it, up top: three figures in a row, and a line under them */
+.ystats { margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ystat { min-width: 0; padding: 12px 12px 11px; border-radius: 18px; background: var(--ctl); display: grid; gap: 1px; }
+.ystat small { font-size: 12.5px; color: var(--text-3); }
+.ystat b { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ystat span { font-size: 12.5px; color: var(--text-2); }
+.ystat button.inline { font-size: 15px; text-align: left; }
+.ynote { margin: 10px 2px 0; font-size: 13px; color: var(--text-3); }
+/* the chart's times along the bottom; now, pulsing on the line; and what the dashed line is */
+.axis { display: flex; justify-content: space-between; margin: 4px 0 0; font-size: 11.5px; color: var(--text-3); }
+.nowdot { position: absolute; top: 0; left: 0; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: currentColor; color: var(--text); pointer-events: none; }
+.nowdot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid currentColor; opacity: 0; animation: ping 1.8s ease-out infinite; }
+@keyframes ping { 0% { transform: scale(0.4); opacity: 0.7; } 100% { transform: scale(1.4); opacity: 0; } }
+.blabel { position: absolute; right: 24px; font-size: 11.5px; color: var(--text-3); pointer-events: none; transition: top 0.5s var(--ease-out); }
+.scrubbing .blabel, .scrubbing .nowdot { opacity: 0; }
+/* the latest news about it */
+.snews .story b { font-size: 15.5px; }
+/* a fact folded away until asked for */
+.more { border-top: 0.5px solid var(--line); }
+.more summary { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; list-style: none; cursor: pointer; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary b { font-size: 15.5px; font-weight: 500; color: var(--tint-text); }
+.more summary svg { color: var(--text-3); transition: transform 0.3s var(--ease-out); }
+.more[open] summary svg { transform: rotate(90deg); }
+.more p { margin: 0 0 14px; font-size: 14.5px; line-height: 1.5; color: var(--text-2); }
+/* how much a move is worth an alert */
+.choice.amt { margin-top: 18px; }
 .btns { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .btns .wide { grid-column: 1 / -1; }
 .links { margin-top: 14px; display: flex; justify-content: center; gap: 22px; }
