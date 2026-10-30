@@ -1937,6 +1937,8 @@ const signedOutHere = () => signOutHere(true);
   } catch (e) {
     arv?.away();
     if (early) return;   // (offline: what was here last stays)
+    // (offline: it opens by itself once the network's back, rather than waiting to be closed and opened again)
+    if (e.offline) addEventListener("online", () => location.reload(), { once: true });
     return welcome(e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
   }
   if (!m.signedIn) { arv?.away(); return early ? signOutHere(true) : welcome(); }
