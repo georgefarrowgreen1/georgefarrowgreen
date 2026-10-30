@@ -131,7 +131,7 @@ ok(/\$1(9[0-9]|8[0-9])\.\d\d/.test(await text(p, '[data-px="NVDA"]')), 'Nvidia\'
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 1600);
 await p.screenshot({ path: `${out}/6-holdings.png` });
 ok(await p.locator('.ring .arc').count() === 6 && /Rolls-Royce/.test(await text(p, '.legend')), 'Holdings: the ring of your mix, the five largest and the rest', String(await p.locator('.ring .arc').count()));
-ok(await p.locator('#main .list .item').count() === 6 && /since you bought/.test(await text(p, '.foot')), 'everything you own, and how it\'s done since you bought', await text(p, '.foot'));
+ok(await p.locator('#all .item').count() === 6 && /since you bought/.test(await text(p, '.foot:has-text("since you bought")')), 'everything you own, and how it\'s done since you bought', await text(p, '.foot:has-text("since you bought")'));
 await p.click('.tab[data-tab="news"]'); await p.waitForSelector('a.story', { timeout: 15000 }); await settle(p, 1000);
 await p.screenshot({ path: `${out}/7-news.png` });
 ok(/London is up 0\.6% and New York is up 0\.4% today/.test(await text(p, '.digest')) && await p.locator('a.story').count() >= 6, "News: the day in brief, then the stories about what you hold", await text(p, '.digest'));
@@ -143,7 +143,7 @@ await p.locator('.item:has-text("Arm")').first().click(); await p.waitForSelecto
 await p.click('.links .danger'); await settle(p, 300);
 ok(/Tap again to remove/.test(await text(p, '.links .danger')) && rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length === 1, 'Remove asks for a second tap first');
 await p.click('.links .danger'); await settle(p, 1200);
-ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length && await p.locator('#main .list .item').count() === 5, 'Remove: off the list, and off the page');
+ok(!rows("SELECT symbol FROM mk_holdings WHERE symbol = 'ARM'").length && await p.locator('#all .item').count() === 5, 'Remove: off the list, and off the page');
 
 // ---- 9b. Investment trusts: found, said as such, explained, and how your money splits between them and shares ----
 await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForSelector('#mk-q'); await settle(p, 600);

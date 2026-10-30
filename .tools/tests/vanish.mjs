@@ -57,8 +57,11 @@ ok(qv && !qv.readAt && offAt && qv.vanishAt === offAt + DAY, 'George’s phone i
 sql(`UPDATE pg_users SET no_receipts_at = ${Date.now() - DAY - 1000} WHERE id = '${ms.me.id}'`);
 // (its time up, not yet wiped: George's phone hides it already, by that; no tick meanwhile)
 sql(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('tick', '${Date.now()}')`);
-await G.p.reload(); await G.p.waitForSelector('.tabs'); await openChat(G, ms.me.id); await G.p.waitForTimeout(1200);
-ok(!/gone unread/.test(await G.p.locator('.msgs').innerText()) && !one(`SELECT gone_at FROM pg_msgs WHERE id = '${quiet.id}'`)[0].gone_at, 'its time up: gone from George’s phone before the server wipes it');
+await G.p.reload(); await G.p.waitForSelector('.tabs'); await openChat(G, ms.me.id);
+// (the phone's own copy of the chat shows first, from before; it's gone once the chat as it is now comes in)
+await G.p.waitForFunction(() => !/gone unread/.test(document.querySelector('.msgs')?.innerText || ''), null, { timeout: 6000 }).catch(() => {});
+{ const shown = /gone unread/.test(await G.p.locator('.msgs').innerText()), wiped = one(`SELECT gone_at FROM pg_msgs WHERE id = '${quiet.id}'`)[0].gone_at;
+  ok(!shown && !wiped, 'its time up: gone from George’s phone before the server wipes it', JSON.stringify({ shown, wiped })); }
 await tick();
 const q = one(`SELECT ct, gone_at FROM pg_msgs WHERE id = '${quiet.id}'`)[0];
 ok(q.gone_at && q.ct === '', 'read receipts off: wiped a day after that, though unread', JSON.stringify({ ...q, ct: q.ct.length }));
