@@ -158,10 +158,12 @@ ok(await d.locator('#dchart path.vsl').count() === 0, 'vs off (as it was typed b
 // ---- the News screen: a note for the morning; your list, the stories (each with its price's move since), the one chosen ----
 await d.keyboard.press('n'); await d.waitForSelector('.nscreen .nrowd', { timeout: 15000 }); await settle(d, 1500);
 ok(await d.locator('.nnote h3').count() === 3 && await d.locator('.nlists button').count() >= 4 && await d.locator('.nrowd').count() >= 6, 'N: the News screen, a note for the morning, your list and the stories', `${await d.locator('.nlists button').count()} lists, ${await d.locator('.nrowd').count()} stories`);
-await d.waitForSelector('.nreact:not(:empty)', { timeout: 15000 }).catch(() => {});
-ok(/^[+−]\d+\.\d% since$/.test(await d.locator('.nreact:not(:empty)').first().innerText().catch(() => '')), "each story with its price's move since it came out", await d.locator('.nreact:not(:empty)').first().innerText().catch(() => ''));
+// (the stand-in's week of prices ends before its stories: none's moved since, so none says a move, and the story says so)
+await settle(d, 1200);
+const said = await d.locator('.nreact:not(:empty)').allInnerTexts();
+ok(await d.locator('.nrowd .nreact').count() === await d.locator('.nrowd').count() && said.every((t) => /^[+−]\d+\.\d% since$/.test(t)), "each story with room for its price's move since it came out, said only where there's been one", said.slice(0, 3).join(' · ') || 'none moved');
 await d.waitForSelector('.nchart svg circle.nd.on', { timeout: 15000 }).catch(() => {});
-ok(await d.locator('.nchart svg circle.nd.on').count() >= 1 && /since this came out|before the week/.test(await d.locator('.nsince').first().innerText().catch(() => '')), "the story chosen: what it names, on the week's chart, the story marked where it came out", await d.locator('.nsince').first().innerText().catch(() => ''));
+ok(await d.locator('.nchart svg circle.nd.on').count() >= 1 && /^(Little moved since this came out|[+−]\d+\.\d% since this came out|This came out before the week's prices\.)$/.test(await d.locator('.nsince').first().innerText().catch(() => '')), "the story chosen: what it names, on the week's chart, the story marked where it came out", await d.locator('.nsince').first().innerText().catch(() => ''));
 const st1 = await d.locator('.nst').innerText(); await d.keyboard.press('j'); await settle(d, 500); const st2 = await d.locator('.nst').innerText();
 ok(st1 !== st2 && (await d.locator('.nrowd[aria-selected="true"] b').innerText()) === st2, 'j: the next story, chosen', `${st1} → ${st2}`);
 await d.screenshot({ path: `${out}/6-news.png` });

@@ -697,7 +697,8 @@ function feedCol(feed) {
   const today = new Date().toDateString();
   const rows = feed.map((n) => {
     const at = new Date(n.at), sym = storySym(n), react = h("span.nreact");
-    if (sym) sinceOf(sym, n.at).then((v) => { if (v == null || !react.isConnected) return; react.textContent = `${pct(v, 1)} since`; react.className = `nreact num ${tone(v)}`; react.title = `${nameOf(sym)} since this came out`; });
+    // (a move too small to say, not said)
+    if (sym) sinceOf(sym, n.at).then((v) => { if (v == null || Math.abs(v) < 0.05 || !react.isConnected) return; react.textContent = `${pct(v, 1)} since`; react.className = `nreact num ${tone(v)}`; react.title = `${nameOf(sym)} since this came out`; });
     return h("button.nrowd", { type: "button", role: "option", "aria-selected": String(n.link === D.nsel), "data-link": n.link, onclick: () => pickStory(n.link), ondblclick: () => window.open(n.link, "_blank", "noopener") },
       h("span.nt.num", { text: at.toDateString() === today ? at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString("en-GB", { weekday: "short" }) }),
       h("span", {}, h("b", { text: n.title }), h("small", { text: [n.src, agoSaid(n.at), n.topic ? TOPIC_NAME[n.topic] : n.for ? nameOf(n.for) : null].filter(Boolean).join(" · ") })), react);
@@ -735,8 +736,11 @@ function namedChart(sym, sel) {
     const s = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${name} over the week, with its stories marked` });
     s.append(el("path", { d: `${d} L${X(t1)} ${H - 18} L${X(t0)} ${H - 18} Z`, class: `na ${up ? "up" : "down"}` }), el("path", { d, class: `nl ${up ? "up" : "down"}` }), el("line", { x1: 3, x2: W - 3, y1: H - 18, y2: H - 18, class: "nbase" }));
     // (each day's start, along the foot)
-    let last = "";
-    c.t.forEach((t) => { const day = new Date(t * 1000).toLocaleDateString("en-GB", { weekday: "short" }); if (day !== last) { last = day; const x = X(t); if (x < W - 24) { const tx = el("text", { x: x + 1, y: H - 4 }); tx.textContent = day; s.append(tx); } } });
+    let last = "", lastX = -99;
+    c.t.forEach((t) => { const day = new Date(t * 1000).toLocaleDateString("en-GB", { weekday: "short" }), x = X(t);
+      if (day === last) return; last = day;
+      if (x - lastX < 30 || x > W - 24) return; lastX = x;
+      const tx = el("text", { x: x + 1, y: H - 4 }); tx.textContent = day; s.append(tx); });
     const about = D.news.list.filter((n) => n.for === sym || n.tickers.includes(sym) || (n.topic && TOPIC_INDEX[n.topic] === sym));
     for (const n of about) {
       const ts = n.at / 1000, i = c.t.findLastIndex((t) => t <= ts);
@@ -746,8 +750,8 @@ function namedChart(sym, sel) {
     }
     chart.replaceChildren(s);
     const i = c.t.findLastIndex((t) => t * 1000 <= sel.at), v = i < 0 ? null : (c.c.at(-1) / c.c[i] - 1) * 100;
-    since.textContent = v == null ? "This came out before the week's prices." : `${pct(v, 1)} since this came out`;
-    since.className = `nsince num ${v == null ? "flat-t" : tone(v)}`;
+    since.textContent = v == null ? "This came out before the week's prices." : Math.abs(v) < 0.05 ? "Little moved since this came out" : `${pct(v, 1)} since this came out`;
+    since.className = `nsince num ${v == null || Math.abs(v) < 0.05 ? "flat-t" : tone(v)}`;
   }, () => {});
   return box;
 }
