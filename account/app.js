@@ -277,7 +277,7 @@ const tok = (name) => getComputedStyle(document.documentElement).getPropertyValu
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out)
-const BUILD = "1.52";
+const BUILD = "1.53";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -319,7 +319,7 @@ if (/^#from=home$/.test(location.hash)) {
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
 const SIGN_FOR = (() => {
-  const m = /^#(signin|join)=(inflight|weather|fitness|mail|home)(&|$)/.exec(ARRIVED);
+  const m = /^#(signin|join)=(inflight|weather|fitness|markets|mail|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
       const k = JSON.parse(sessionStorage.getItem("acct-for") || "null");
@@ -2934,7 +2934,8 @@ function notifyView() {
       appRow("weather", "Weather", wxSaid(NT.weather), () => pushSheet(weatherNotifyView)),
       appRow("fitness", "Fitness", fxNotifySaid(NT.fitness), () => pushSheet(fitnessNotifyView)),
       NT.markets && appRow("markets", "Markets", mkNotifySaid(NT.markets), () => pushSheet(marketsNotifyView)),
-      NT.mail && appRow("mail", "Mail", "New mail, for each of your addresses", () => pushSheet(mailNotifyView))),
+      // (Mail's asked afresh each time it's opened, where it couldn't answer before)
+      NT.mail && appRow("mail", "Mail", "New mail, for each of your addresses", () => { if (MAILN?.error) MAILN = null; pushSheet(mailNotifyView); })),
     h("p.hint", { text: "Sign-in and security emails always come." })] };
 }
 // Chat: which pigeons and friends' doings tell you, how they read on the lock screen, and its emails
@@ -3027,7 +3028,7 @@ function marketsNotifyView() {
 // Mail (the admin's): each address's new mail on or off, as Mail keeps them (asked of Mail itself, with this sign-in)
 function mailNotifyView() {
   const back = ntBack("mail"), base = siteUrl(APPS.mail.sub).replace(/\/$/, "");
-  const ask = (init) => fetch(`${base}/api/notify`, { credentials: "include", ...init, headers: { "X-Inflite": "1", ...(init?.body ? { "Content-Type": "application/json" } : {}) } })
+  const ask = (init) => fetch(`${base}/api/notify`, { credentials: "include", signal: AbortSignal.timeout(15000), ...init, headers: { "X-Inflite": "1", ...(init?.body ? { "Content-Type": "application/json" } : {}) } })
     .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Mail didn’t answer."); return j; });
   if (!MAILN) { MAILN = { wait: true }; ask().then((r) => { MAILN = r; if (Sheet.stack.at(-1) === mailNotifyView) redraw(); }, (e) => { MAILN = { error: e.message }; if (Sheet.stack.at(-1) === mailNotifyView) redraw(); }); }
   if (MAILN.wait) return { title: "Mail", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
@@ -3397,7 +3398,7 @@ function exportView() {
         const { dataPdf } = await import("./datapdf.js");
         return dataPdf(data, { did: (x) => (DID[x.kind] || (() => x.kind))(x), units: (u) => unitsSaid({ ...unitsHere(), ...u }) });
       }));
-      const a = h("a", { href: URL.createObjectURL(file), download: `georgefarrowgreen-account-${S.me.handle}.pdf` });
+      const a = h("a", { href: URL.createObjectURL(file), download: `inflite-account-${S.me.handle}.pdf` });
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 30000);
       toast("Your data is downloading.");
@@ -3421,6 +3422,7 @@ function deleteView() {
     h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
     h("ul.gone", {}, h("li", { text: "Chat: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
       h("li", { text: "Fitness: your activities and their files, your plan and your workouts" }),
+      h("li", { text: "Markets: what you own and follow, your buys and sales, and your alerts" }),
       h("li", { text: "Your profile, password and passkeys" })),
     h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),
     h("form.form", { onsubmit: async (e) => {

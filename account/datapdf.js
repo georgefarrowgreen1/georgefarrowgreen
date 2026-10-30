@@ -48,7 +48,7 @@ export async function dataPdf(data, { did, units }) {
   const a = data.account || {}, si = data.signIn || {}, inf = data.inflight || {}, wx = data.weather || {}, at = new Date(data.exportedAt || Date.now());
   const pdf = new PDF({ title: `Your data · ${a.name}`, author: `${a.name} (@${a.handle})`, raster: rasterizer() });
   const icons = {};
-  await Promise.all([["inflight", "/apps/inflight.png"], ["weather", "/apps/weather.png"]].map(async ([k, src]) => { try { icons[k] = pdf.jpeg(await asJpeg(src)); } catch (_) {} }));
+  await Promise.all([["inflight", "/apps/inflight.png"], ["weather", "/apps/weather.png"], ["fitness", "/apps/fitness.png"], ["markets", "/apps/markets.png"]].map(async ([k, src]) => { try { icons[k] = pdf.jpeg(await asJpeg(src)); } catch (_) {} }));
   // (every page after the first: whose data, at the top)
   const f = new Flow(pdf, { onPage: (p, n, fl) => {
     if (n === 1) return;
@@ -207,6 +207,27 @@ export async function dataPdf(data, { did, units }) {
   sub("Settings");
   const acts = (set.activities || []).map((x) => x.name).filter(Boolean);
   rows([["Units", units(set)], set.commute && ["Commute", set.commute.on ? `${set.commute.am} and ${set.commute.pm}` : "Off"], acts.length && ["Activities", acts.join(", ")]]);
+
+  // ---- Fitness ----
+  const fx = data.fitness || {}, rides = fx.activities || [];
+  section("Fitness", icons.fitness);
+  figures([[rides.length, rides.length === 1 ? "activity" : "activities"], [(fx.nights?.length ?? 0), "nights of sleep"]]);
+  sub("Activities", "Newest first. Each one's file, as imported, is in Fitness: Export everything.");
+  table([{ label: "Name", w: 4 }, { label: "Sport", w: 1.6 }, { label: "On", w: 2 }, { label: "From", w: 2.2 }],
+    rides.map((x) => [x.name || "An activity", x.sport || "", day(x.startedAt), x.device || ""]), "No activities yet.");
+
+  // ---- Markets ----
+  const mk = data.markets || {}, held = mk.holdings || [], NAMES = { isa: "ISA", sipp: "Pension", gia: "General" };
+  section("Markets", icons.markets);
+  figures([[held.filter((x) => x.shares > 0).length, "holdings"], [held.filter((x) => !(x.shares > 0)).length, "followed"], [held.reduce((n, x) => n + (x.buysAndSales || []).length, 0), "buys and sales"]]);
+  sub("What you own and follow");
+  table([{ label: "Name", w: 3.4 }, { label: "Symbol", w: 1.6 }, { label: "Account", w: 1.4 }, { label: "Shares", w: 1.4, right: true }, { label: "Average cost", w: 1.8, right: true }],
+    held.map((x) => [x.name, x.symbol, NAMES[x.account] || "", x.shares ? String(x.shares) : "Following", x.averageCost != null ? String(+x.averageCost.toFixed(4)) : ""]), "Nothing added yet.");
+  const bs = held.flatMap((x) => (x.buysAndSales || []).map((b) => [x.name, day(b.on), b.shares > 0 ? `Bought ${b.shares}` : `Sold ${-b.shares}`, b.priceEach != null ? String(b.priceEach) : ""]));
+  if (bs.length) { sub("Buys and sales", "Prices in each one's own currency."); table([{ label: "Name", w: 3.4 }, { label: "On", w: 2 }, { label: "What", w: 2 }, { label: "Price each", w: 1.8, right: true }], bs); }
+  sub("ISA and notifications");
+  rows([mk.isa && ["ISA paid in", `£${Number(mk.isa.paidIn || 0).toLocaleString("en-GB")} in ${mk.isa.taxYear}`],
+    mk.notifications && ["Price alerts", onOff(mk.notifications.priceAlerts)], mk.notifications && ["Evening wrap", onOff(mk.notifications.eveningWrap)]]);
 
   // ---- the foot of every page ----
   const N = pdf.pages.length;

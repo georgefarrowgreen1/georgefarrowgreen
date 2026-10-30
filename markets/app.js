@@ -265,7 +265,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out)
-const BUILD = "1.57";
+const BUILD = "1.58";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -354,6 +354,8 @@ function income() {
     if (!yr?.divs?.length) continue;
     let year = 0;
     for (const d of yr.divs) {
+      // (only the last year's: one older isn't next year's to expect)
+      if (d.t * 1000 < now - 365 * 864e5) continue;
       const v = d.amount * x.qty * rate(q.cur), at = new Date(d.t * 1000);
       at.setFullYear(at.getFullYear() + 1);
       // (one that's gone this month already comes round again next year, in this month's place)
@@ -388,14 +390,14 @@ const allowBar = (used) => h("div.allow", {}, h("i", { style: `width:${Math.max(
 
 // your money through the day: each holding at its price at each moment (its last close before it opened)
 function daySeries() {
-  const o = owned().filter((x) => S.q[x.symbol].sparkT?.length > 1);
-  if (!o.length) return null;
-  const T = [...new Set(o.flatMap((x) => S.q[x.symbol].sparkT))].sort((a, b) => a - b);
+  const o = owned(), drawn = o.filter((x) => S.q[x.symbol].sparkT?.length > 1);
+  if (!drawn.length) return null;
+  const T = [...new Set(drawn.flatMap((x) => S.q[x.symbol].sparkT))].sort((a, b) => a - b);
   if (T.length < 2) return null;
   const base = o.reduce((a, x) => a + S.q[x.symbol].prev * x.qty * rate(S.q[x.symbol].cur), 0);
   const vals = T.map((t) => o.reduce((a, x) => {
     const q = S.q[x.symbol]; let p = q.prev, j = -1;
-    for (let i = 0; i < q.sparkT.length && q.sparkT[i] <= t; i++) j = i;
+    for (let i = 0; i < (q.sparkT?.length || 0) && q.sparkT[i] <= t; i++) j = i;
     if (j >= 0) p = q.spark[j];
     return a + p * x.qty * rate(q.cur);
   }, 0));
@@ -431,7 +433,7 @@ function insights() {
   }
   // near its year's high or low
   for (const x of list) {
-    const q = S.q[x.symbol], y = S.years[x.symbol], hi = y?.hi52 ?? q.hi52, lo = y?.lo52 ?? q.lo52;
+    const q = S.q[x.symbol], y = S.years[x.symbol], hi = q.hi52 ?? y?.hi52, lo = q.lo52 ?? y?.lo52;
     if (!hi || !lo || hi <= lo) continue;
     const at = (q.price - lo) / (hi - lo);
     if (q.price >= hi * 0.98) { out.push({ rank: 4, kick: "Near its high", c: "var(--up)", sym: x.symbol, h: `${x.name} is close to its 52-week high`, p: y?.yr != null ? `It's ${y.yr >= 0 ? "up" : "down"} ${fmt(Math.abs(y.yr), 0)}% on a year ago.` : `${priceSaid(q, hi)} is the highest it's been in a year.`, viz: () => range52(q, lo, hi, at) }); break; }
@@ -526,12 +528,13 @@ function todayView() {
     parts.push(h("h3.label", {}, "Worth knowing", h("span", { id: "cardn", text: cards.length > 1 ? `1 of ${cards.length}` : "" })));
     const box = h("div.cards", {}, cards.map((c, i) => h("button.card.glass.press.rise", { type: "button", vars: { c: c.c, i: String(i) }, onclick: () => (c.open ? c.open() : c.sym && openStock(c.sym)) },
       h("span.kick", { text: c.kick }), h("h4", { text: c.h }), h("p", { text: c.p }), c.viz ? c.viz() : null)));
-    const dots = h("div.dots", { "aria-hidden": "true" }, cards.map((_, i) => h("i", { class: i ? null : "on" })));
-    box.addEventListener("scroll", () => { const w = box.firstElementChild.offsetWidth + 12, i = Math.round(box.scrollLeft / w); [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i)); const n = $("#cardn"); if (n) n.textContent = `${i + 1} of ${cards.length}`; }, { passive: true });
+    const dots = h("div.dots", { role: "group", "aria-label": "Cards" }, cards.map((_, i) => h("button", { type: "button", "aria-label": `Card ${i + 1} of ${cards.length}`,
+      onclick: () => box.scrollTo({ left: i * (box.firstElementChild.offsetWidth + 12), behavior: C.still() ? "auto" : "smooth" }) }, h("i", { class: i ? null : "on" }))));
+    box.addEventListener("scroll", () => { const w = box.firstElementChild.offsetWidth + 12, i = Math.round(box.scrollLeft / w); [...dots.children].forEach((d, k) => d.firstChild.classList.toggle("on", k === i)); const n = $("#cardn"); if (n) n.textContent = `${i + 1} of ${cards.length}`; }, { passive: true });
     parts.push(box, cards.length > 1 ? dots : null);
   }
-  const movers = [...S.list].filter((x) => S.q[x.symbol]).sort((a, b) => Math.abs(dayOf(b) ?? S.q[b.symbol].chgPct ?? 0) - Math.abs(dayOf(a) ?? S.q[a.symbol].chgPct ?? 0)).slice(0, 4);
-  parts.push(h("h3.label", {}, T.o.length ? "Your holdings" : "Your list", h("button", { type: "button", onclick: () => go("holdings"), text: S.list.length > 4 ? "See all" : "today" })));
+  const movers = [...S.list].filter((x) => S.q[x.symbol]).sort((a, b) => Math.abs(S.q[b.symbol].chgPct ?? 0) - Math.abs(S.q[a.symbol].chgPct ?? 0)).slice(0, 4);
+  parts.push(h("h3.label", {}, T.o.length ? "Your holdings" : "Your list", S.list.length > 4 ? h("button", { type: "button", onclick: () => go("holdings"), text: "See all" }) : h("span", { text: "today" })));
   parts.push(h("div.list", {}, movers.map((x, i) => itemRow(x, i, "day"))));
   parts.push(h("h3.label", {}, "Markets"));
   parts.push(h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];
@@ -625,14 +628,14 @@ function holdingsView() {
 // A list put in your order: press and hold a row (or, with a mouse, hold and drag), it lifts, and follows your finger, the
 // others parting for it; let go and it settles there, and the order's kept with your account
 function movable(list) {
-  let wait = null, drag = null, y0 = 0, pid = null, quiet = 0;
+  let wait = null, drag = null, y0 = 0, pid = null, quiet = 0, edge = 0, lastY = 0;
   // (the tap that ends a move doesn't open it)
   list.addEventListener("click", (e) => { if (Date.now() < quiet) { e.stopPropagation(); e.preventDefault(); } }, true);
   const end = async (keep) => {
     clearTimeout(wait); wait = null;
     if (!drag) return;
     const { row, rows, from, to } = drag;
-    drag = null;
+    drag = null; edge = 0;
     list.classList.remove("sorting");
     rows.forEach((r) => { r.style.transform = ""; });
     row.classList.remove("lifted");
@@ -654,13 +657,29 @@ function movable(list) {
       navigator.vibrate?.(8);
     }, 420);
   });
-  list.addEventListener("pointermove", (e) => {
-    if (!drag) { if (wait && Math.abs(e.clientY - y0) > 8) { clearTimeout(wait); wait = null; } return; }
-    const dy = e.clientY - y0, { row, rows, from, step } = drag;
+  // (near the screen's top or bottom, the page scrolls with the lifted row)
+  const roll = () => {
+    if (!drag || !edge) { edge = 0; return; }
+    const before = scrollY;
+    scrollBy(0, edge);
+    y0 -= scrollY - before;
+    move(lastY);
+    requestAnimationFrame(roll);
+  };
+  const move = (y) => {
+    const dy = y - y0, { row, rows, from, step } = drag;
     const to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / step)));
     drag.to = to;
     row.style.transform = `translateY(${dy}px) scale(1.02)`;
     rows.forEach((r, i) => { if (r !== row) r.style.transform = i > from && i <= to ? `translateY(${-step}px)` : i < from && i >= to ? `translateY(${step}px)` : ""; });
+  };
+  list.addEventListener("pointermove", (e) => {
+    if (!drag) { if (wait && Math.abs(e.clientY - y0) > 8) { clearTimeout(wait); wait = null; } return; }
+    lastY = e.clientY;
+    move(lastY);
+    const was = edge;
+    edge = e.clientY < 90 ? -8 : e.clientY > innerHeight - 120 ? 8 : 0;
+    if (edge && !was) requestAnimationFrame(roll);
   });
   list.addEventListener("pointerup", () => end(true));
   list.addEventListener("pointercancel", () => end(false));
@@ -848,7 +867,10 @@ function newsView() {
   if (big) said.push(`Your biggest mover is ${big.name}, ${S.q[big.symbol].chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(S.q[big.symbol].chgPct), 1)}%${story ? `: ${story.title.replace(/[.!?]$/, "")}.` : "."}`);
   parts.push(h("div.digest", {}, h("span.eyebrow", { text: "Today, in brief" }), said.map((t, i) => h("p.rise", { vars: { i: String(i) }, text: t }))));
   parts.push(h("h3.label", {}, "For you"));
-  if (S.news == null) { loadNews(); parts.push(h("div.list", {}, [0, 1, 2].map((i) => h("div.story", {}, h("span.m", { text: " " }), h("b", { style: "opacity:.25", text: "—" }))))); }
+  // (asked for when there's none, and again after a quarter of an hour; one that couldn't come, said, with Try Again)
+  if (!S.newsErr && (S.news == null || Date.now() - (S.newsAt || 0) > 15 * 60e3)) loadNews();
+  if (S.newsErr && S.news == null) parts.push(h("p.foot", { style: "padding-top:0" }, "Couldn't get the news just now. ", h("button.inline", { type: "button", onclick: () => { S.newsErr = null; loadNews(); render(false); }, text: "Try Again" })));
+  else if (S.news == null) parts.push(h("div.list", {}, [0, 1, 2].map((i) => h("div.story", {}, h("span.m", { text: " " }), h("b", { style: "opacity:.25", text: "—" })))));
   else if (!S.news.length) parts.push(h("p.foot", { style: "padding-top:0", text: "No stories about your list just now." }));
   else parts.push(h("div.list", {}, S.news.slice(0, 20).map((n, i) => { const q = S.q[n.for];
     return h("a.story.rise", { href: n.link, target: "_blank", rel: "noopener", vars: { i: String(Math.min(i, 8)) } },
@@ -862,8 +884,9 @@ async function loadNews() {
   try {
     const syms = [...S.list].sort((a, b) => (valueOf(b) ?? 0) - (valueOf(a) ?? 0)).slice(0, 10).map((x) => x.symbol);
     S.news = syms.length ? (await A.news(syms)).news : [];
+    S.newsAt = Date.now(); S.newsErr = null;
     if (S.tab === "news") render(false);
-  } catch (_) { S.news = []; } finally { loadNews.busy = false; }
+  } catch (e) { S.newsErr = e.message || "offline"; S.newsAt = Date.now(); if (S.tab === "news") render(false); } finally { loadNews.busy = false; }
 }
 
 function go(tab) {
@@ -877,21 +900,34 @@ function drawTabs() {
 // ---- the sheet: a stock, search, adding, settings ----
 const Sheet = { stack: [] };
 function openSheet(view, ...args) {
+  const fresh = !Sheet.stack.length;
+  if (fresh) Sheet.back = document.activeElement;
   Sheet.stack = [[view, args]];
   drawSheet();
   sheetEl.hidden = false;
-  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("sheet-up")));
+  $("#page").inert = true; tabsEl.inert = true;
+  // (Back, or the edge swipe, closes it rather than leaving the app)
+  if (fresh && !history.state?.mkSheet) history.pushState({ mkSheet: true }, "");
+  requestAnimationFrame(() => requestAnimationFrame(() => { document.body.classList.add("sheet-up"); focusSheet(); }));
 }
-function pushSheet(view, ...args) { Sheet.stack.push([view, args]); drawSheet(); }
+const focusSheet = () => (sbody.querySelector("h2, .sname, input, button:not(.x)") || sheetEl).focus?.({ preventScroll: true });
+addEventListener("popstate", () => { if (Sheet.stack.length) closeSheet(true); });
+function pushSheet(view, ...args) { Sheet.stack.push([view, args]); drawSheet(); focusSheet(); }
 function backSheet() { Sheet.stack.pop(); if (!Sheet.stack.length) return closeSheet(); drawSheet(); }
 function drawSheet() {
   const [view, args] = Sheet.stack.at(-1);
   sbody.replaceChildren(...[].concat(view(...args)).filter(Boolean));
+  sbody.querySelectorAll("h2, .sname").forEach((e) => e.setAttribute("tabindex", "-1"));
   sbody.scrollTop = 0;
 }
-function closeSheet() {
+function closeSheet(fromBack = false) {
+  const was = Sheet.stack.length;
   document.body.classList.remove("sheet-up");
   Sheet.stack = [];
+  $("#page").inert = false; tabsEl.inert = false;
+  if (was && !fromBack && history.state?.mkSheet) history.back();
+  if (was && Sheet.back?.isConnected) Sheet.back.focus?.({ preventScroll: true });
+  Sheet.back = null;
   setTimeout(() => { if (!document.body.classList.contains("sheet-up")) { sheetEl.hidden = true; sbody.replaceChildren(); } }, 650);
 }
 $("#dim").addEventListener("click", closeSheet);
@@ -913,8 +949,14 @@ function openStock(sym, o = {}) { openSheet(stockView, sym, o); }
 function stockView(sym, o = {}) {
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
   if (!q) {
-    A.quotes([sym]).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (Sheet.stack.at(-1)?.[1]?.[0] === sym) drawSheet(); else if (!r.quotes[sym]) toast("Couldn’t find that one.", true); }, (e) => toast(e.message, true));
-    return [h("div.shead", {}, h("small", { text: plainSym(sym) }), closeBtn()), h("div.sname", { text: o.name || sym }), h("div.sprice", { style: "opacity:.3", text: "–" })];
+    const head = [h("div.shead", {}, backBtn(), h("small", { text: plainSym(sym) }), closeBtn()), h("div.sname", { text: o.name || sym })];
+    // (asked for once: where there's no price for it, that's said, with a way to ask again)
+    if (stockView.failed.has(sym)) return [...head, h("p.why", { text: "Couldn't get its price just now." }, h("small", { text: "The markets' data may be busy, or it may not be traded any more." })),
+      h("div.btns", {}, h("button.btn.press.wide", { type: "button", onclick: () => { stockView.failed.delete(sym); drawSheet(); } }, "Try Again"))];
+    const here = () => Sheet.stack.at(-1)?.[1]?.[0] === sym;
+    A.quotes([sym]).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (!r.quotes[sym]) stockView.failed.add(sym); if (here()) drawSheet(); },
+      () => { stockView.failed.add(sym); if (here()) drawSheet(); });
+    return [...head, h("div.sprice", { style: "opacity:.3", text: "–" })];
   }
   const name = held?.name || INDEX_NAMES[sym] || o.name || q.name;
   const box = h("div.chartbox", { id: "cb" });
@@ -932,11 +974,12 @@ function stockView(sym, o = {}) {
   if (held) parts.push(h("div.btns", {},
     h("button.btn.press" + (held.alert ? ".on" : ""), { type: "button", id: "alert", onclick: (e) => toggleAlert(sym, e.currentTarget) }, held.alert ? `Alert On · ±${fmt(held.alert, 0)}%` : "Alert Me"),
     h("button.btn.press", { type: "button", onclick: () => sendInChat(sym) }, "Send in Chat")),
-  h("div.links", {}, h("button", { type: "button", onclick: () => pushSheet(editView, sym), text: held.qty > 0 ? "Edit Holding" : "Add What You Own" }), h("button.danger", { type: "button", onclick: () => removeHolding(sym), text: "Remove" })));
+  h("div.links", {}, h("button", { type: "button", onclick: () => pushSheet(editView, sym), text: held.qty > 0 ? "Edit Holding" : "Add What You Own" }), removeBtn(sym, held)));
   else parts.push(h("div.btns", {}, h("button.btn.go.press.wide", { type: "button", onclick: () => pushSheet(editView, sym, { name }) }, "Add to Your List"), h("button.btn.press.wide", { type: "button", onclick: () => sendInChat(sym, name) }, "Send in Chat")));
   requestAnimationFrame(() => { stockChart(sym, box, seg); whyMoving(sym, why); if (held) drawBuys(sym); });
   return parts;
 }
+stockView.failed = new Set();
 function facts(sym, held, q) {
   const rows = [], y = S.years[sym];
   if (held?.qty > 0 && valueOf(held) != null) {
@@ -944,9 +987,9 @@ function facts(sym, held, q) {
     if (held.cost != null) { const g = (q.price - held.cost) * held.qty * rate(q.cur), gp = (q.price / held.cost - 1) * 100; rows.push(h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(g)}`, text: signed(g) }), h("i.num", { text: `${pct(gp, 1)} on ${held.buys > 1 ? "an average of " : ""}${priceSaid(q, held.cost)} a share` }))); }
   }
   if (q.dayLo != null && q.dayHi != null) rows.push(h("div.fact", {}, h("span", { text: "Today" }), h("b.num", { text: `${priceSaid(q, q.dayLo)} – ${priceSaid(q, q.dayHi)}` }), h("i.num", { text: q.prev ? `closed at ${priceSaid(q, q.prev)}` : "" })));
-  const hi = y?.hi52 ?? q.hi52, lo = y?.lo52 ?? q.lo52;
+  const hi = q.hi52 ?? y?.hi52, lo = q.lo52 ?? y?.lo52;
   if (hi && lo && hi > lo) { const at = (q.price - lo) / (hi - lo); rows.push(h("div.fact", {}, h("span", { text: "The last 52 weeks" }), h("b", { text: at >= 0.9 ? "Near its high" : at <= 0.1 ? "Near its low" : at >= 0.5 ? "In the upper half" : "In the lower half" }), h("i.num", { text: y?.yr != null ? `${pct(y.yr, 1)} on a year ago` : "" }), ...range52(q, lo, hi, at))); }
-  if (y?.div12 > 0 && q.price) rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%${held?.qty > 0 ? ` · about ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} to you` : ""}` })));
+  if (y?.div12 > 0 && q.price) rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%${held?.qty > 0 && rate(q.cur) != null ? ` · about ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} to you` : ""}` })));
   if (kindOf(q) === "trust") rows.push(h("div.fact", {}, h("span", { text: "Investment trust" }), h("b", { text: "A company that invests in many others" }),
     h("p", { text: "You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
   if (!y && !isIndex(q) && q.type !== "CURRENCY") A.years([sym]).then((r) => { if (r.years[sym]) { S.years[sym] = r.years[sym]; const f = $("#facts"); if (f && Sheet.stack.at(-1)?.[1]?.[0] === sym) f.replaceWith(facts(sym, S.list.find((x) => x.symbol === sym), S.q[sym])); } }, () => {});
@@ -974,11 +1017,11 @@ async function drawBuys(sym) {
     };
     return h("div.item.buy.rise", { vars: { i: String(i) } },
       h("span", {}, h("b", { text: `${x.qty > 0 ? "Bought" : "Sold"} ${fmt(Math.abs(x.qty), Math.abs(x.qty) % 1 ? 2 : 0)}` }), h("small", { text: when(x.at) })),
-      h("span.r", {}, h("b.num", { text: x.price != null ? priceSaid(q, x.price) : "–" }), h("small", { text: x.price != null ? money(Math.abs(x.qty) * x.price * (rate(q.cur) ?? 1)) : "price not said" })), del);
+      h("span.r", {}, h("b.num", { text: x.price != null ? priceSaid(q, x.price) : "–" }), h("small", { text: x.price != null ? (rate(q.cur) != null ? money(Math.abs(x.qty) * x.price * rate(q.cur)) : money(Math.abs(x.qty) * x.price, q.cur)) : "price not said" })), del);
   };
   el.replaceChildren(h("h3.slabel", {}, "Buys and sales"),
     h("div.list.flush", {}, [...b.buys].reverse().map(row)),
-    b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: signed(b.made * (rate(q.cur) ?? 1)) }), h("i", { text: "over what it cost you on average" }))) : null,
+    b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: rate(q.cur) != null ? signed(b.made * rate(q.cur)) : signed(b.made, q.cur) }), h("i", { text: "over what it cost you on average" }))) : null,
     h("div.links", { style: "margin-top:14px" }, add));
 }
 // A buy or a sale: which, the day, how many and the price each (today's to start with)
@@ -1043,7 +1086,7 @@ async function stockChart(sym, box, seg) {
   let shown = null, raw = null, range = "1d", seq = 0;
   const show = async (r, first) => {
     const n = ++seq;
-    range = r;
+    range = r; box.dataset.range = r;
     const key = `${sym}:${r}`;
     box.classList.add("loading");
     const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 60e3 : 600e3);
@@ -1088,11 +1131,15 @@ async function stockChart(sym, box, seg) {
   seg.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-r]");
     if (!b || b.dataset.r === range) return;
-    const i = [...seg.querySelectorAll("button")].indexOf(b), step = (seg.clientWidth - 52) / 4;
-    seg.querySelector(".sl").style.transform = `translateX(${i * step}px)`;
+    const i = [...seg.querySelectorAll("button")].indexOf(b);
+    seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`;
     seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     show(b.dataset.r);
   });
+  // (the phone turned, or the window resized: drawn again at the new width)
+  let drawnW = W();
+  const ro = new ResizeObserver(() => { if (!box.isConnected) return ro.disconnect(); if (shown && Math.abs(W() - drawnW) > 2) { drawnW = W(); show(range, true); } });
+  ro.observe(box);
   await show("1d", true);
 }
 
@@ -1157,6 +1204,17 @@ function editView(sym, o = {}) {
       h("label", { text: "Held in" }), choice),
     h("p.hint", { text: "Leave shares at 0 to just follow it. What you paid and where you hold it are optional: with them, Markets shows how you've done since you bought, and each account's total." }), save];
 }
+// Remove: a second tap to be sure, saying what goes with it (its buys and sales, its alert)
+function removeBtn(sym, held) {
+  const b = h("button.danger", { type: "button", text: "Remove" });
+  b.onclick = () => {
+    if (b.classList.contains("sure")) return removeHolding(sym);
+    b.classList.add("sure");
+    b.textContent = held.buys ? `Remove, with ${plural(held.buys, "buy and sale", "buys and sales")}?` : "Tap again to remove";
+    setTimeout(() => { if (b.isConnected) { b.classList.remove("sure"); b.textContent = "Remove"; } }, 3500);
+  };
+  return b;
+}
 async function removeHolding(sym) {
   const name = nameOf(sym);
   try { const r = await A.dropHolding(sym); S.list = r.holdings; S.news = null; closeSheet(); toast(`${name} removed`); render(false); }
@@ -1166,7 +1224,12 @@ async function removeHolding(sym) {
 // ---- alerts: on this phone, and for each holding you choose ----
 const pushable = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 async function checkPush() {
-  try { const reg = await navigator.serviceWorker?.getRegistration(); S.pushOn = !!(reg && Notification.permission === "granted" && (await reg.pushManager.getSubscription())); } catch (_) { S.pushOn = false; }
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration(), sub = reg && Notification.permission === "granted" ? await reg.pushManager.getSubscription() : null;
+    S.pushOn = !!sub;
+    // (this phone kept with the sign-in it's opened with now: the alerts go where you're signed in, and stop where you're not)
+    if (sub) A.pushOn(sub.toJSON()).catch(() => {});
+  } catch (_) { S.pushOn = false; }
 }
 const b64key = (k) => { const raw = atob(k.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((k.length + 3) % 4)); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); };
 // turned on here (from a tap: a phone asks only then) → whether it's on
@@ -1192,11 +1255,12 @@ async function toggleAlert(sym, btn) {
   try {
     if (on && !S.pushOn) await turnOnHere();
     const r = await A.setAlert(sym, on, 3);
+    const quiet = on && !S.pushOn ? " (notifications are off on this phone)" : "";
     S.list = r.holdings;
     const now = S.list.find((x) => x.symbol === sym);
     btn.classList.toggle("on", !!now?.alert);
     btn.textContent = now?.alert ? `Alert On · ±${fmt(now.alert, 0)}%` : "Alert Me";
-    toast(now?.alert ? `You'll hear when ${now.name} moves ${fmt(now.alert, 0)}% in a day${S.alertsOff ? " (alerts are off in your account)" : ""}` : "Alert off");
+    toast(now?.alert ? `You'll hear when ${now.name} moves ${fmt(now.alert, 0)}% in a day${S.alertsOff ? " (alerts are off in your account)" : quiet}` : "Alert off");
   } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
 
@@ -1245,7 +1309,7 @@ function wrapSwitch() {
     try {
       S.wrap = (await A.setWrap(on)).wrap;
       if (on && !S.pushOn) await turnOnHere();
-      toast(on ? "You'll get the evening wrap once your markets close" : "Evening wrap off");
+      toast(on ? (S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone") : "Evening wrap off");
     } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
   };
   return sw;
@@ -1303,7 +1367,7 @@ async function signOutHere() {
   try { await A.signOut(); } catch (_) {}
   signedOut();
 }
-function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.isa = null; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
+function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.isa = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
 
 // ---- signed in: your list and its prices ----
 function take(m) {
@@ -1314,9 +1378,10 @@ function take(m) {
 }
 // your holdings' years (for what's worth knowing), behind: drawn again once they're in
 async function loadYears() {
-  const syms = S.list.map((x) => x.symbol).filter((s) => !S.years[s]?.divs);
+  const old = Date.now() - (S.yearsAt || 0) > 12 * 3600e3;
+  const syms = S.list.map((x) => x.symbol).filter((s) => old || !S.years[s]?.divs);
   if (!syms.length) return;
-  try { const r = await A.years(syms.slice(0, 40)); Object.assign(S.years, r.years); store.set("years", { at: Date.now(), years: S.years }); if (S.tab === "today" && !document.body.classList.contains("sheet-up")) render(false); } catch (_) {}
+  try { const r = await A.years(syms.slice(0, 60)); Object.assign(S.years, r.years); if (old) S.yearsAt = Date.now(); store.set("years", { at: S.yearsAt || Date.now(), years: S.years }); if (S.tab === "today" && !document.body.classList.contains("sheet-up")) render(false); } catch (_) {}
 }
 // Prices again: every half a minute while the app's open and in front, each change flashed where it shows
 async function refresh(force = false) {
@@ -1327,6 +1392,8 @@ async function refresh(force = false) {
     Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates);
     store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
     if (force) return;
+    const said = marketSaid(), line = $(".mhead .ifh-line .eyebrow");
+    if (line) line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), said.text);
     for (const s of syms) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
     const T = totals(), pv = $("#pv");
     if (pv && Math.abs(T.value - wasT.value) > 0.004) {
@@ -1351,7 +1418,10 @@ function paint(sym, up) {
   const q = S.q[sym], held = S.list.find((x) => x.symbol === sym);
   const flash = (el) => { el.classList.remove("flash-up", "flash-down"); void el.offsetWidth; el.classList.add(up ? "flash-up" : "flash-down"); };
   document.querySelectorAll(`[data-px="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = priceSaid(q); flash(el); });
-  document.querySelectorAll(`[data-pct="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = el.id === "rpct" && q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur)} (${pct(q.chgPct)})` : pct(q.chgPct); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(q.chgPct)); });
+  document.querySelectorAll(`[data-pct="${CSS.escape(sym)}"]`).forEach((el) => {
+    // (a stock's page showing a longer range than today says its change over that, not today's)
+    if (el.id === "rpct" && ($("#cb")?.dataset.range || "1d") !== "1d") return;
+    el.textContent = el.id === "rpct" && q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(q.chgPct)); });
   if (held?.qty > 0) {
     document.querySelectorAll(`[data-val="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = money(valueOf(held)); flash(el); });
     document.querySelectorAll(`[data-dg="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = el.tagName === "I" ? `${signed(dayOf(held))} today` : signed(dayOf(held)); });
@@ -1364,7 +1434,10 @@ async function seen() {
 }
 
 let toastT = null;
-function toast(msg, bad = false) { toastEl.textContent = msg; toastEl.classList.toggle("bad", !!bad); toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), bad ? 4200 : 2400); }
+function toast(msg, bad = false) {
+  // (said inside an open sheet too: a reader there hears nothing outside it)
+  const say = $("#sheet-say"); if (say) say.textContent = document.body.classList.contains("sheet-up") ? msg : "";
+  toastEl.textContent = msg; toastEl.classList.toggle("bad", !!bad); toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), bad ? 4200 : 2400); }
 
 // ---- starting ----
 async function start() {
@@ -1378,6 +1451,8 @@ async function start() {
       if (e.data?.type === "markets:open") { const s = /#s=([^&]+)/.exec(e.data.url || "")?.[1]; if (s && S.me) openStock(decodeURIComponent(s)); }
     });
   }
+  // (a sign-in started here and never finished: its word not kept past half an hour)
+  if (Date.now() - (store.get("signin")?.at || Date.now()) > 30 * 60e3) store.del("signin");
   const askNotify = IFL.wantsAllow();
   const deep = /(?:^#|&)s=([^&]+)/.exec(location.hash)?.[1];
   const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
@@ -1387,9 +1462,9 @@ async function start() {
   else {
     // (drawn at once from this phone's copy, while the account's is asked for)
     const last = store.get("last");
-    if (last?.me) { take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.years = store.get("years")?.years || {}; render(); }
+    if (last?.me) { take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0; render(); }
     try { m = await A.me(); }
-    catch (e) { if (S.me) { toast(e.message, true); return; } return welcome(e.message); }
+    catch (e) { if (S.me) { toast(e.message, true); live(); return; } return welcome(e.message); }
   }
   if (!m?.signedIn) return welcome();
   const same = S.me?.id === m.id;
@@ -1400,8 +1475,15 @@ async function start() {
   loadYears();
   if (deep) openStock(decodeURIComponent(deep));
   if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
+  live();
+}
+// kept fresh: every half a minute, on coming back to it, and when the network's back
+function live() {
+  if (live.on) return;
+  live.on = true;
   setInterval(refresh, 30000);
   seen();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); seen(); } });
+  addEventListener("online", () => refresh());
 }
 start();

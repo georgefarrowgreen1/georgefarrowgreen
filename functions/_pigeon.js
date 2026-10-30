@@ -550,10 +550,11 @@ export function placeOf(request) {
   const cf = request?.cf || {}, country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
   return [city, country].filter(Boolean).join(", ") || null;
 }
-// Which app a request's for, by its API: "inflight", "weather" or "account" (the account's own page)
+// Which app a request's for, by its API: "inflight", "weather", "fitness", "markets", "mail" or "account" (the account's
+// own page)
 export function appKey(request) {
   const p = request ? new URL(request.url).pathname : "";
-  return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness"
+  return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness" : p.startsWith("/api/markets/") ? "markets"
     : p.startsWith("/api/account/mail/") ? "mail" : p.startsWith("/api/account/") ? "account" : null;
 }
 // The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null

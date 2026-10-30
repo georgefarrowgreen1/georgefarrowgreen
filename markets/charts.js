@@ -84,7 +84,9 @@ export function scrubber(box, at) {
     line.style.transform = `translateX(${got.x}px)`;
     dot.style.transform = `translate(${got.x}px, ${got.y}px)`;
     tip.textContent = got.label;
-    tip.style.transform = `translateX(${Math.max(56, Math.min(r.width - 56, got.x))}px) translateX(-50%)`;
+    // (kept on the chart: held in by half its own width)
+    const half = Math.min(r.width / 2, (tip.offsetWidth || 112) / 2 + 4);
+    tip.style.transform = `translateX(${Math.max(half, Math.min(r.width - half, got.x))}px) translateX(-50%)`;
   };
   const end = () => { on = false; box.classList.remove("scrubbing"); };
   box.addEventListener("pointerdown", (e) => { show(e); if (e.pointerType !== "mouse") box.setPointerCapture?.(e.pointerId); });

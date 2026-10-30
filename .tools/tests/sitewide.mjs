@@ -31,8 +31,10 @@ const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.1
 const SIZES = [['se', 320, 568, 'phone'], ['mini', 375, 812, 'phone'], ['phone', 390, 844, 'phone'], ['max', 430, 932, 'phone'], ['side', 844, 390, 'phone'],
   ['ipad', 768, 1024, 'tablet'], ['ipad-side', 1024, 768, 'tablet'], ['laptop', 1280, 800, 'desk'], ['desk', 1440, 900, 'desk'], ['wide', 1920, 1080, 'desk']];
 const LIGHT = new Set(['phone', 'desk']);
-const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${MKT},${ACCT},${WX},${FIT}`] });
+// (a browser of its own for each size: a long run in one wears it out)
+const launch = () => chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
+  args: ['--disable-dev-shm-usage', '--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${MKT},${ACCT},${WX},${FIT}`] });
+let b = await launch();
 const report = { pages: [], loads: [] };
 let fails = 0;
 
@@ -59,8 +61,8 @@ async function weatherRoutes(ctx) {
     return r.fulfill({ status: 200, contentType: /\.png$/.test(u) ? 'image/png' : 'application/x-protobuf', headers: cors, body: /\.png$/.test(u) ? PNG : Buffer.alloc(0) });
   });
 }
-async function context(kind, scheme) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk',
+async function context(kind, scheme, storageState) {
+  const ctx = await b.newContext({ storageState, viewport: { width: 390, height: 844 }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk',
     userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', timezoneId: 'Europe/London', colorScheme: scheme, serviceWorkers: 'block',
     geolocation: { latitude: 51.5072, longitude: -0.1276 }, permissions: ['geolocation'] });
   await weatherRoutes(ctx);
@@ -93,17 +95,17 @@ const SCREENS = [
   ['home-out', HOME + '/', null, '.hero, h1', { fresh: true }],
   ['404', HOME + '/no-such-page', null, 'body'],
   ['account', ACCT + '/', null, '.app, .group'],
-  ['account-notify', ACCT + '/', async (p) => { await p.locator('button:has-text("Notifications"), .row:has-text("Notifications")').first().click(); await p.waitForTimeout(900); }, '.sheet, .group'],
+  ['account-notify', ACCT + '/', async (p) => { await p.locator('button:has-text("Notifications"), .row:has-text("Notifications")').first().click(); await p.waitForTimeout(900); }, '.app, .group'],
   ['chat', CHAT + '/', null, '#screen, .welcome, .hdr'],
   ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', null, '.day-row'],
   ['fitness', FIT + '/', null, 'main, .empty, .ifh'],
   ['markets-today', MKT + '/', null, '#pv'],
-  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(1600); }, '.ring'],
-  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await p.waitForTimeout(1600); }, '.digest'],
-  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1800); }, '.sprice'],
-  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Dividends")').first().click(); await p.waitForTimeout(1600); }, '.sprice'],
-  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Your year")').first().click(); await p.waitForTimeout(3000); }, '.sprice'],
-  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForTimeout(900); }, '#mk-q'],
+  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(1600); }, '#pv'],
+  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await p.waitForTimeout(1600); }, '#pv'],
+  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1800); }, '#pv'],
+  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Dividends")').first().click(); await p.waitForTimeout(1600); }, '#pv'],
+  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Your year")').first().click(); await p.waitForTimeout(3000); }, '#pv'],
+  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForTimeout(900); }, '#pv'],
   ['markets-menu', MKT + '/', async (p) => { await p.click('.ifh-me, .ifl-me, [aria-label="You"], .ifh button.me').catch(() => {}); await p.waitForTimeout(900); }, '#pv'],
   ['mail', MAIL + '/?demo', null, 'body', { mail: true }],
 ];
@@ -164,24 +166,30 @@ async function load(ctxSigned, name, url, sel) {
   await p.close();
 }
 
-const people = {};
+// someone for each kind of screen, signed up once; their sign-in carried to each size's browser
+const states = {};
 for (const kind of ['phone', 'tablet', 'desk']) {
-  people[kind] = await context(kind, 'dark');
-  await person(people[kind], kind);
+  const ctx = await context(kind, 'dark');
+  await person(ctx, kind);
+  states[kind] = await ctx.storageState();
+  await ctx.close();
 }
+const save = () => writeFileSync(`${out}/sitewide.json`, JSON.stringify(report, null, 1));
 for (const size of SIZES) {
   const kind = size[3];
-  for (const scr of SCREENS) await look(people[kind], size, 'dark', scr);
-  if (LIGHT.has(size[0])) {
-    const lc = await context(kind, 'light');
-    await lc.addCookies(await people[kind].cookies());
-    for (const scr of SCREENS) await look(lc, size, 'light', scr);
-    await lc.close();
+  await b.close().catch(() => {}); b = await launch();
+  for (const scheme of LIGHT.has(size[0]) ? ['dark', 'light'] : ['dark']) {
+    const ctx = await context(kind, scheme, states[kind]);
+    for (const scr of SCREENS) await look(ctx, size, scheme, scr);
+    await ctx.close();
   }
+  save();
 }
+await b.close().catch(() => {}); b = await launch();
+const people = { desk: await context('desk', 'dark', states.desk) };
 for (const [name, url, sel] of [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen, .hdr'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
   ['fitness', FIT + '/', 'main'], ['markets', MKT + '/', '#pv'], ...(mailUp ? [['mail', MAIL + '/?demo', 'body']] : [])]) await load(people.desk, name, url, sel);
-writeFileSync(`${out}/sitewide.json`, JSON.stringify(report, null, 1));
+save();
 console.log(`${report.pages.length} screens looked at`);
 console.log(`FAILS ${fails}`);
 await b.close();

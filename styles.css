@@ -203,7 +203,7 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
 @keyframes gone { to { visibility: hidden; } }
 
 .hero {
-  min-height: max(560px, 84svh);
+  min-height: max(min(560px, 100svh), 84svh);
   display: flex; flex-direction: column; justify-content: flex-end;
   padding: calc(env(safe-area-inset-top) + 96px) 0 24px;
 }

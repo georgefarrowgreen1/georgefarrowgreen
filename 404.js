@@ -18,11 +18,15 @@ if (document.referrer && history.length > 1) {
 const ACCOUNT = { key: "account", name: "Your account", about: "Sign in, your profile", href: "https://account.inflite.ai/", ic: "person" };
 const INFLIGHT = { key: "inflight", name: "Chat", about: "Letters by pigeon", href: "https://chat.inflite.ai/", img: "/apps/inflight.png" };
 const WEATHER = { key: "weather", name: "Weather", about: "Forecasts and radar", href: "https://weather.inflite.ai/", img: "/apps/weather.png" };
+const FITNESS = { key: "fitness", name: "Fitness", about: "Training, using AI", href: "https://fitness.inflite.ai/", img: "/apps/fitness.png" };
+const MARKETS = { key: "markets", name: "Markets", about: "Your money, said simply", href: "https://finance.inflite.ai/", img: "/apps/markets.png" };
 const CONTACT = { key: "contact", name: "Get in touch", about: "Send me a message", href: "/#contact", ic: "mail" };
 const PLACES = {
   weather: WEATHER, forecast: WEATHER, radar: WEATHER, rain: WEATHER,
   inflight: INFLIGHT, chat: INFLIGHT, pigeon: INFLIGHT, letters: INFLIGHT, messages: INFLIGHT,
   account: ACCOUNT, signin: ACCOUNT, login: ACCOUNT, profile: ACCOUNT, settings: ACCOUNT,
+  fitness: FITNESS, training: FITNESS, rides: FITNESS, workouts: FITNESS,
+  markets: MARKETS, finance: MARKETS, stocks: MARKETS, shares: MARKETS, portfolio: MARKETS,
   contact: CONTACT, message: CONTACT, email: CONTACT, hello: CONTACT,
 };
 const word = (path.split("/").find(Boolean) || "").toLowerCase().replace(/\.html?$/, "").replace(/[^a-z]/g, "");

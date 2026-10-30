@@ -58,12 +58,14 @@ const ROUTES = {
     return withCookie(json(await view(env, u)), request, env, u.token);
   },
   "GET quotes": async ({ request, env }) => {
-    await signedIn(request, env);
-    const q = await quotes(env, symbolsOf(request));
+    const u = await signedIn(request, env);
+    await limit(env, `mkquotes:${u.id}`, 600, 3600e3);
+    const q = await quotes(env, symbolsOf(request, 64));
     return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur)), at: Date.now() }, 20);
   },
   "GET chart": async ({ request, env }) => {
-    await signedIn(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, `mkchart:${u.id}`, 600, 3600e3);
     const p = new URL(request.url).searchParams, [s] = symbolsOf(request, 1), r = p.get("r") || "1d";
     if (!RANGE_NAMES.includes(r)) throw new HttpError(400, "Bad request.");
     const c = await chart(env, s, r);
@@ -71,13 +73,15 @@ const ROUTES = {
     return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs }, r === "1d" ? 30 : 300);
   },
   "GET years": async ({ request, env }) => {
-    await signedIn(request, env);
-    const list = symbolsOf(request), out = {};
+    const u = await signedIn(request, env);
+    await limit(env, `mkyears:${u.id}`, 120, 3600e3);
+    const list = symbolsOf(request, 64), out = {};
     for (let i = 0; i < list.length; i += 6) (await Promise.all(list.slice(i, i + 6).map((s) => yearOf(env, s)))).forEach((y, j) => { if (y) out[list[i + j]] = y; });
     return shared({ years: out }, 600);
   },
   "GET news": async ({ request, env }) => {
-    await signedIn(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, `mknews:${u.id}`, 240, 3600e3);
     return shared({ news: await news(env, symbolsOf(request, 12)) }, 120);
   },
   "GET search": async ({ request, env }) => {
@@ -137,11 +141,12 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     await limit(env, `mkpush:${u.id}`, 60, 3600e3);
-    return json(await addPhone(env, u.id, (await body(request)).sub));
+    return json(await addPhone(env, u, (await body(request)).sub));
   },
   "POST push-move": async ({ request, env }) => {
+    sameOrigin(request);
     const u = await signedIn(request, env);
-    return json(await movePhone(env, u.id, await body(request)));
+    return json(await movePhone(env, u, await body(request)));
   },
   "DELETE push": async ({ request, env }) => {
     sameOrigin(request);

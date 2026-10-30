@@ -11,7 +11,8 @@
 //   share (cost, optional, in its own currency), its place in your list, and the account it's held in (account: "isa",
 //   "sipp" or "gia", optional).
 // mk_alerts:   a holding you want to hear about when it moves (pct, 3% by default), and the last day it was said.
-// mk_push:     each phone Markets can tell you on (its push subscription).
+// mk_push:     each phone Markets can tell you on (its push subscription), with the sign-in it was turned on with (gone
+//   when that's signed out), and how many sends to it have failed in a row (it's let go after a few).
 // mk_off:      the account's own choice, from its Notifications page: Markets's alerts off everywhere.
 // mk_buys:     each buy (qty > 0) and sale (qty < 0) of a holding, with the price each and the day: where a holding has
 //   them, how many you own and what each cost on average are worked out from them (pooled: a sale takes shares out at
@@ -35,10 +36,11 @@ export async function mkdb(env) {
       D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
         ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, PRIMARY KEY (user_id, symbol))`),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL)"),
+      D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
       D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_off (user_id TEXT PRIMARY KEY)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
+      D.prepare("CREATE INDEX IF NOT EXISTS mk_cache_at ON mk_cache (at)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_wrap (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, sent TEXT)"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_buys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, symbol TEXT NOT NULL, qty REAL NOT NULL, price REAL, at INTEGER NOT NULL, added INTEGER NOT NULL)"),
@@ -46,6 +48,9 @@ export async function mkdb(env) {
     ]);
     // (the accounts, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
+    // (and the phones' sign-ins and failures, added to a list kept from before them)
+    await D.prepare("ALTER TABLE mk_push ADD COLUMN session TEXT").run().catch(() => {});
+    await D.prepare("ALTER TABLE mk_push ADD COLUMN fails INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
   await ready;
   return D;
@@ -76,13 +81,19 @@ async function cached(env, key, ttl0, make) {
   if (old && t - old.at < ttl) { memory.set(key, old); return old.v; }
   try {
     const v = await make();
-    if (v == null) return null;
+    if (v == null) {
+      // (nothing there: kept as nothing for an hour at most, so it isn't asked for again on every request)
+      const at = t - Math.max(0, ttl - HOUR);
+      memory.set(key, { at, v: null });
+      await D.prepare("INSERT OR REPLACE INTO mk_cache (k, at, v) VALUES (?, ?, ?)").bind(key, at, "null").run().catch(() => {});
+      return null;
+    }
     memory.set(key, { at: t, v });
     if (memory.size > 2000) memory.delete(memory.keys().next().value);
     await D.prepare("INSERT OR REPLACE INTO mk_cache (k, at, v) VALUES (?, ?, ?)").bind(key, t, JSON.stringify(v)).run().catch(() => {});
     return v;
   } catch (e) {
-    if (old) return Array.isArray(old.v) ? old.v : { ...old.v, stale: true };
+    if (old) return old.v == null ? null : Array.isArray(old.v) ? old.v : { ...old.v, stale: true };
     throw e;
   }
 }
@@ -253,9 +264,10 @@ export async function putHolding(env, userId, b) {
   if (!was) {
     const n = await D.prepare("SELECT COUNT(*) AS n, MAX(ord) AS o FROM mk_holdings WHERE user_id = ?").bind(userId).first();
     if ((n?.n || 0) >= MAX_HOLDINGS) throw new HttpError(400, `You can follow up to ${MAX_HOLDINGS}.`);
-    // (its name, as the market has it, where none was sent: and it must be a real one)
-    let name = cleanText(b.name, 60);
-    if (!name) { const q = await quote(env, symbol).catch(() => null); if (!q) throw new HttpError(404, "Couldn’t find that one."); name = q.name; }
+    // (it must be a real one, priced: the name sent with it is kept, else the market's)
+    const q = await quote(env, symbol);
+    if (!q) throw new HttpError(404, "Couldn’t find that one.");
+    const name = cleanText(b.name, 60) || q.name;
     await D.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, cost, ord, added, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(userId, symbol, name, qty, cost, (n?.o ?? -1) + 1, Date.now(), account ?? null).run();
   // (one with buys has its shares and cost from them: only its account's changed here)
   } else if (was.buys) { if (account !== undefined) await D.prepare("UPDATE mk_holdings SET account = ? WHERE user_id = ? AND symbol = ?").bind(account, userId, symbol).run(); }
@@ -394,12 +406,18 @@ async function keysOk(sub) {
     return { p256dh, auth };
   } catch (_) { return null; }
 }
-export async function addPhone(env, userId, sub) {
+// A phone to tell, with the sign-in it's turned on with (u: the signed-in user, with its session's hash). A push address
+// another account here is still signed in with stays theirs, so one that's somehow learnt can't be taken over; and an
+// account keeps its ten newest
+export async function addPhone(env, u, sub) {
   const keys = await keysOk(sub);
-  if (!sub || !pushEndpointOk(sub.endpoint) || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
+  if (!sub || !pushEndpointOk(sub.endpoint) || sub.endpoint.length > 1000 || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
   const D = await mkdb(env);
-  await D.prepare("INSERT INTO mk_push (endpoint, user_id, p256dh, auth, added) VALUES (?, ?, ?, ?, ?) ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth")
-    .bind(sub.endpoint, userId, keys.p256dh, keys.auth, Date.now()).run();
+  await D.prepare(`INSERT INTO mk_push (endpoint, user_id, p256dh, auth, added, session, fails) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)
+    ON CONFLICT (endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, added = ?5, session = ?6, fails = 0
+    WHERE mk_push.user_id = ?2 OR mk_push.session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = mk_push.session)`)
+    .bind(sub.endpoint, u.id, keys.p256dh, keys.auth, Date.now(), u.sessionHash || null).run();
+  await D.prepare("DELETE FROM mk_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM mk_push WHERE user_id = ?1 ORDER BY added DESC LIMIT 10)").bind(u.id).run();
   return { on: true };
 }
 export async function dropPhone(env, userId, endpoint) {
@@ -407,12 +425,36 @@ export async function dropPhone(env, userId, endpoint) {
   await D.prepare("DELETE FROM mk_push WHERE endpoint = ? AND user_id = ?").bind(String(endpoint || ""), userId).run();
 }
 // the browser renewed its subscription by itself: the alerts move to the new one
-export async function movePhone(env, userId, b) {
+export async function movePhone(env, u, b) {
   const keys = await keysOk(b?.sub);
-  if (!b?.sub || !pushEndpointOk(b.sub.endpoint) || !keys) throw new HttpError(400, "Bad request.");
+  if (!b?.sub || !pushEndpointOk(b.sub.endpoint) || b.sub.endpoint.length > 1000 || !keys) throw new HttpError(400, "Bad request.");
   const D = await mkdb(env);
-  const r = await D.prepare("UPDATE mk_push SET endpoint = ?, p256dh = ?, auth = ? WHERE endpoint = ? AND user_id = ?").bind(b.sub.endpoint, keys.p256dh, keys.auth, String(b.was || ""), userId).run();
+  const r = await D.prepare("UPDATE mk_push SET endpoint = ?, p256dh = ?, auth = ?, session = ?, fails = 0 WHERE endpoint = ? AND user_id = ?").bind(b.sub.endpoint, keys.p256dh, keys.auth, u.sessionHash || null, String(b.was || ""), u.id).run();
   return { moved: !!r.meta?.changes };
+}
+// An account's phones told (those whose sign-in is still there), all at once: one that's unsubscribed is forgotten, and
+// one that's failed five times in a row is let go. How many were told
+const MAX_FAILS = 5;
+async function tell(env, D, userId, note) {
+  const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth, fails FROM mk_push WHERE user_id = ? AND (session IS NULL OR session IN (SELECT hash FROM pg_sessions))").bind(userId).all();
+  const outs = await Promise.all(phones.map((p) => pushToSub(env, p, note).catch(() => "error")));
+  const later = [];
+  outs.forEach((out, i) => {
+    const p = phones[i];
+    if (out === "gone" || (out === "error" && p.fails + 1 >= MAX_FAILS)) later.push(D.prepare("DELETE FROM mk_push WHERE endpoint = ?").bind(p.endpoint));
+    else if (out === "error") later.push(D.prepare("UPDATE mk_push SET fails = fails + 1 WHERE endpoint = ?").bind(p.endpoint));
+    else if (p.fails) later.push(D.prepare("UPDATE mk_push SET fails = 0 WHERE endpoint = ?").bind(p.endpoint));
+  });
+  if (later.length) await D.batch(later);
+  return outs.filter((o) => o === "sent").length;
+}
+// (once a turn: phones whose sign-in has gone, accounts being deleted, and the markets' data no one's asked for in days)
+async function tidy(D, t) {
+  await D.batch([
+    D.prepare("DELETE FROM mk_push WHERE session IS NOT NULL AND session NOT IN (SELECT hash FROM pg_sessions)"),
+    D.prepare("DELETE FROM mk_push WHERE user_id IN (SELECT id FROM pg_users WHERE delete_at IS NOT NULL)"),
+    D.prepare("DELETE FROM mk_cache WHERE at < ?").bind(t - 3 * 24 * HOUR),
+  ]).catch(() => {});
 }
 // the day where a market is ("2026-10-29")
 const dayIn = (tz, t) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t)); } catch (_) { return new Date(t).toISOString().slice(0, 10); } };
@@ -422,6 +464,7 @@ const money = (v, cur) => `${{ GBP: "£", USD: "$", EUR: "€" }[cur] || ""}${v.
 // after them if it's still that far
 export async function alertTick(env, t = Date.now()) {
   const D = await mkdb(env);
+  await tidy(D, t);
   const { results } = await D.prepare(`SELECT a.user_id, a.symbol, a.pct, a.fired, h.name, u.notify_prefs FROM mk_alerts a
     JOIN mk_holdings h ON h.user_id = a.user_id AND h.symbol = a.symbol LEFT JOIN pg_users u ON u.id = a.user_id
     WHERE a.user_id NOT IN (SELECT user_id FROM mk_off) AND a.user_id IN (SELECT user_id FROM mk_push)`).all();
@@ -435,13 +478,9 @@ export async function alertTick(env, t = Date.now()) {
     if (r.fired === day || isQuiet(prefsOf({ notify_prefs: r.notify_prefs }), t)) continue;
     const claim = await D.prepare("UPDATE mk_alerts SET fired = ?3 WHERE user_id = ?1 AND symbol = ?2 AND (fired IS NULL OR fired != ?3)").bind(r.user_id, r.symbol, day).run();
     if (!claim.meta?.changes) continue;
-    const up = x.chgPct >= 0, { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth FROM mk_push WHERE user_id = ?").bind(r.user_id).all();
+    const up = x.chgPct >= 0;
     const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`, body: `${money(x.price, x.cur)} now. Tap to see why.`, tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
-    for (const p of phones) {
-      const out = await pushToSub(env, p, note).catch(() => "error");
-      if (out === "gone") await D.prepare("DELETE FROM mk_push WHERE endpoint = ?").bind(p.endpoint).run();
-      else if (out === "sent") sent++;
-    }
+    sent += await tell(env, D, r.user_id, note);
   }
   return { alerts: results.length, sent };
 }
@@ -479,11 +518,7 @@ export async function wrapTick(env, t = Date.now()) {
           ? `${top.name} did most of the work, adding ${pounds(day(top))}.` : `${low.name} took away most, ${pounds(day(low))}.`),
       tag: "mk-wrap", url: "./", ttl: 6 * 3600,
     };
-    const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth FROM mk_push WHERE user_id = ?").bind(userId).all();
-    for (const p of phones) {
-      const out = await pushToSub(env, p, note).catch(() => "error");
-      if (out === "gone") await D.prepare("DELETE FROM mk_push WHERE endpoint = ?").bind(p.endpoint).run();
-    }
+    await tell(env, D, userId, note);
     wraps++;
   }
   return { wraps };
