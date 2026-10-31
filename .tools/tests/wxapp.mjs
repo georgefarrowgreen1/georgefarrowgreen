@@ -1119,7 +1119,8 @@ await ctx.close();
     nodes: x.nodes.map((n) => ({ t: n.target.join(' '), behind: (n.any?.[0]?.relatedNodes || []).map((r) => r.target.join(' ')).join(','), d: n.any?.[0]?.data || {} })) })));
   const lumOf = (rgb) => rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
   const v = [];
-  for (const x of found) {
+  // (pinch zoom is off in every app, by choice, so axe's meta-viewport rule is left out)
+  for (const x of found.filter((y) => y.id !== 'meta-viewport')) {
     const keep = x.id === 'color-contrast' ? x.nodes.filter((n) => n.behind !== 'html') : x.nodes;
     if (keep.length) v.push(`${x.id}: ${keep.map((n) => n.t + (n.d.contrastRatio ? ` (${n.d.fgColor} on ${n.d.bgColor}: ${n.d.contrastRatio}, behind: ${n.behind})` : '')).slice(0, 3).join(' | ')}`);
     if (x.id !== 'color-contrast') continue;

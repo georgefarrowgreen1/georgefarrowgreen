@@ -1,6 +1,6 @@
 // Pwned Passwords stand-in: /range/ABCDE answers suffixes (with padding), logs only what it was asked
 import http from 'http'; import { createHash } from 'crypto'; import { appendFileSync } from 'fs';
-const LEAKED = { 'password1234': 123456, 'correct horse battery staple': 2 };
+const LEAKED = { 'password1234': 123456, 'password12345678': 123456, 'correct horse battery staple': 2 };
 const H = Object.fromEntries(Object.entries(LEAKED).map(([p, n]) => [createHash('sha1').update(p).digest('hex').toUpperCase(), n]));
 http.createServer((req, res) => {
   const m = /^\/range\/([0-9A-F]{5})$/.exec(req.url);
