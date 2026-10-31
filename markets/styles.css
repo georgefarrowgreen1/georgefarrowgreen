@@ -97,6 +97,10 @@ html.arriving .page, html.arriving .tabbar { opacity: 0; }
 .page { max-width: var(--col); margin: 0 auto; padding: 0 0 calc(140px + env(safe-area-inset-bottom, 0px)); transform-origin: 50% 0;
   transition: transform 0.6s var(--ease-glide), border-radius 0.6s; }
 body.sheet-up .page { transform: scale(0.94) translateY(10px); border-radius: 30px; }
+/* (a control on the page brought into view, by the keys or a scroll to it, comes to rest clear of the header and the tab
+   bar: below the header as it is once the page has scrolled (it has, by then), and above the bar. Set on each control,
+   not the page, so the header's own buttons, held at the top, aren't scrolled to. Not on the desk, which has neither) */
+body:not(.desk-on) .view :is(a[href], button, input, select, textarea, summary) { scroll-margin: calc(var(--top) + 62px) 0 calc(78px + env(safe-area-inset-bottom, 0px)); }
 main { min-height: 60vh; }
 main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height: 26px; margin: 40vh auto 0; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--text-2); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -176,8 +180,11 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item:first-child { border-top: 0; }
 .item:active { opacity: 0.6; }
 .item b { display: block; font-size: 16.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* (a name over two lines where it must, as a fund's often is, rather than cut; the figures beside it stay on one) */
+/* (a name over two lines where it must, as a fund's often is, rather than cut; the figures beside it stay on one. In a
+   row (not the desk's table), a third where even two won't do, as a fund's full name on a phone: its end is often what
+   tells it from another, Dist or Acc. The rest are as tall as they were) */
 .item:not(.rmore) > span:first-child > b, .res .rn b, .dt td:first-child b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+.item:not(.rmore) > span:first-child > b, .res .rn b { -webkit-line-clamp: 3; }
 .item small { display: block; font-size: 13.5px; color: var(--text-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item svg { width: 64px; height: 26px; overflow: visible; }
 .item .r { text-align: right; min-width: 0; }
@@ -213,7 +220,9 @@ button.fact { width: 100%; text-align: left; }
 .ichart { margin-top: 26px; }
 .ibars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; align-items: end; }
 .ib { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; min-width: 0; }
-.ichart .ibars { gap: 0; }
+/* (no wider than the page's words, but where that's under twelve 24px columns, as on a small phone, a little of the
+   sheet's margin each side, so each month's a 24px target) */
+.ichart .ibars { gap: 0; margin-inline: min(0px, (100% - 290px) / 2); }
 .ichart .ib { min-height: 150px; padding: 0 2.5px; }     /* (the gap between bars inside each, so the whole column's a target) */
 .ib i { display: block; border-radius: 5px; background: var(--up); opacity: 0.4; transform-origin: bottom; animation: bar-up 0.9s var(--ease-out) backwards; animation-delay: calc(var(--k, 0) * 45ms + 120ms); transition: opacity 0.25s; }
 .ib i.none { background: var(--ctl); opacity: 1; }
@@ -327,6 +336,13 @@ button.fact { width: 100%; text-align: left; }
 .mkey span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }     /* (a long name over two lines, not cut) */
 .mkey b { font-weight: 500; color: var(--text); }
 .mkey[aria-pressed="true"] { background: var(--ctl); color: var(--text); }
+/* (to a finger, each 44px tall: the rows 4px further apart, and each key reaching to the middle of the gap above and
+   below it, its neighbours' meeting it there; the keys themselves as they were) */
+@media (pointer: coarse) {
+  .mkeys { row-gap: 6px; }
+  .mkey { position: relative; }
+  .mkey::before { content: ""; position: absolute; inset: -3px 0; }
+}
 /* (one column on a small phone, so the names are whole) */
 @media (max-width: 359px) { .mkeys { grid-template-columns: minmax(0, 1fr); } }
 .stats-note { margin: 12px 24px 0; font-size: 13px; line-height: 1.45; color: var(--text-3); }
@@ -383,6 +399,12 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .nfilter::-webkit-scrollbar { display: none; }
 .nfilter button { flex: none; height: 34px; padding: 0 15px; border-radius: 999px; background: var(--ctl); font-size: 14px; font-weight: 600; color: var(--text-2); transition: background-color 0.25s, color 0.25s; }
 .nfilter button[aria-pressed="true"] { background: var(--text); color: var(--sky-c); }
+/* (to a finger, each 44px tall: 5px more above and below it, the strip keeping room under them for that, nothing moved) */
+@media (pointer: coarse) {
+  .nfilter { padding-bottom: 5px; margin-bottom: -5px; }
+  .nfilter button { position: relative; }
+  .nfilter button::after { content: ""; position: absolute; inset: -5px 0; }
+}
 .nnew { display: flex; align-items: center; gap: 10px; margin: 22px 24px 0; font-size: 12.5px; font-weight: 600; color: var(--blue); }
 .nnew::before, .nnew::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--blue) 30%, transparent); }
 .ngroup { margin-top: 28px; }
@@ -433,6 +455,8 @@ button.nghead:active { opacity: 0.6; }
 .nmore span { display: flex; gap: 3px; }
 .nmore i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 .nmore:active, .nmore:hover { background: var(--ctl); }
+/* (to a finger, 44px: 5px above and below, and 10px out into the margin beside it, none over the story's own) */
+@media (pointer: coarse) { .nmore { position: relative; } .nmore::after { content: ""; position: absolute; inset: -5px -10px -5px 0; } }
 .story.ghost .m { width: 38%; height: 12px; border-radius: 4px; background: var(--ctl); }
 .story.ghost b { height: 40px; border-radius: 8px; background: var(--ctl); animation: pulse 1.6s ease-in-out infinite; }
 .tabn { position: absolute; top: 8px; left: calc(50% + 22px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--blue); color: #fff; font: 700 10.5px/17px var(--font); text-align: center; pointer-events: none; }
@@ -596,10 +620,12 @@ body.sheet-up .sheet { transform: none; }
 /* a row to browse: cards across, each with its price today */
 .brow { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 24px; margin: 4px -24px 0; padding: 4px 24px 10px; scrollbar-width: none; }
 .brow::-webkit-scrollbar { display: none; }
-.bcard { position: relative; flex: none; width: 160px; scroll-snap-align: start; display: grid; align-content: start; gap: 2px; padding: 14px 14px 13px; border-radius: 22px; }
-.bcard b { padding-right: 34px; min-height: 2.6em; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* (a name over two lines, or three where it must, as Vanguard Emerging Markets beside the +; a row with one that long a
+   line taller, its prices still level along the foot) */
+.bcard { position: relative; flex: none; width: 160px; scroll-snap-align: start; display: grid; grid-template-rows: auto auto 1fr; align-content: start; gap: 2px; padding: 14px 14px 13px; border-radius: 22px; }
+.bcard b { padding-right: 34px; min-height: 2.6em; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .bcard small { font-size: 12.5px; color: var(--text-3); }
-.bcard .bp { margin-top: 12px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.bcard .bp { align-self: end; margin-top: 12px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .bcard .bp b { padding: 0; min-height: 0; font-size: 15.5px; font-weight: 500; }
 .bcard .bp small { font-size: 13px; }
 .bcard .addb { position: absolute; top: 11px; right: 11px; }
@@ -1293,5 +1319,7 @@ html { touch-action: pan-x pan-y; }
   .tabbar { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
   .tabs { height: 46px; padding: 4px; }
   .tabs::before { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); }
+  .tab::after { content: ""; position: absolute; inset: -4px 0; }     /* (each still 44px or more to tap: out to the capsule's edge) */
   .page { padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
+  body:not(.desk-on) .view :is(a[href], button, input, select, textarea, summary) { scroll-margin-bottom: calc(54px + env(safe-area-inset-bottom, 0px)); }
 }

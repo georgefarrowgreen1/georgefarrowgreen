@@ -1588,8 +1588,6 @@ a.acct-btn { text-decoration: none; }
 .radar.radar-big .radar-dry { top: calc(var(--top) + 10px); }
 .radar.radar-big .map-scale, .radar.radar-big .radar-credit { bottom: calc(env(safe-area-inset-bottom) + 168px); }
 .radar.radar-big .map-scale { left: max(16px, env(safe-area-inset-left)); }
-/* (a phone on its side: too short for it under the legend, so in the corner beside the dock, which leaves room there) */
-@media (max-height: 480px) and (min-width: 840px) { .radar.radar-big .map-scale { bottom: calc(env(safe-area-inset-bottom) + 14px); } }
 .radar.radar-big .radar-credit { right: max(16px, env(safe-area-inset-right)); }
 .radar.radar-big .radar-legend, .radar.radar-big .radar-dock {
   position: absolute; z-index: 600; color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
@@ -1610,6 +1608,15 @@ a.acct-btn { text-decoration: none; }
 .radar.light-map.radar-big .rl-switch { background-color: rgba(0, 0, 0, 0.07); }
 .radar.light-map.radar-big .rl-switch button[aria-pressed="true"] { background-color: #fff; }
 .radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: 28px; }
+/* (a phone on its side: too short for the legend over the dock, so the dock beside the legend's column instead (the legend
+   no wider than that: a long title in two lines), the scale in the corner under the legend, and the © just over the
+   dock, clear of the map's buttons above it. Not on a screen too narrow for the dock beside it: a short one upright) */
+@media (max-height: 480px) and (min-width: 560px) {
+  .radar.radar-big .radar-legend { box-sizing: border-box; max-width: 150px; }
+  .radar.radar-big .radar-dock { left: calc(max(16px, env(safe-area-inset-left)) + 162px); }
+  .radar.radar-big .map-scale { bottom: calc(env(safe-area-inset-bottom) + 14px); }
+  .radar.radar-big .radar-credit { bottom: calc(env(safe-area-inset-bottom) + 140px); }
+}
 .radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: rgba(120, 120, 128, 0.16); color: #1c1c1e; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 .radar.light-map.radar-big .radar-full { background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
 .radar.radar-big .radar-status { display: none; }
@@ -2240,4 +2247,9 @@ html { touch-action: pan-x pan-y; }
 .wx-ifh .ifh-acts { flex: none; gap: 0; }
 .wx-ifh .ifh-acts .icon-btn { width: 38px; height: 38px; min-width: 0; padding: 0; border-radius: 50%; color: #fff; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .wx-ifh .ifh-acts .icon-btn::before { display: none !important; }
+/* (a 44px target round each, over the capsule's padding: two side by side meet between them, each reaching the 3px
+   further out on its own side instead, so neither takes the other's taps; its focus ring stays round the button) */
+.wx-ifh .ifh-acts .icon-btn::after { content: ""; position: absolute; inset: -3px; }
+.wx-ifh .ifh-acts .icon-btn:has(+ .icon-btn:not([hidden]))::after { right: 0; left: -6px; }
+.wx-ifh .ifh-acts .icon-btn:not([hidden]) + .icon-btn::after { left: 0; right: -6px; }
 .wx-ifh .ifh-acts .icon-btn svg { width: 22px; height: 22px; }

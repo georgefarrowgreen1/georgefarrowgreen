@@ -981,6 +981,13 @@ button.adm-alert:active { transform: scale(0.98); transition-duration: var(--dur
 /* (the join step's Back and the links under the card, between signing in, joining and a forgotten password, are a
    short line of text: more above and below) */
 .jhead .back::after, .welcome .new .link::after { content: ""; position: absolute; inset: -9px -6px; }
+/* (to a finger, the 40px ones on the page a little more round them, drawn the same: Edit profile and Your code, Add a
+   photo or the camera on the card, and each app's Open and its settings) */
+@media (pointer: coarse) {
+  .pc-acts .pill, .app .open-app, .app .app-set { position: relative; }
+  .pc-acts .pill::after, .pc-add::after, .app .open-app::after { content: ""; position: absolute; inset: -3px 0; }
+  .pc-cam::after, .app .app-set::after { content: ""; position: absolute; inset: -3px; }
+}
 .sheet-head h2:focus { outline: none; }
 
 /* (what the handle checks says: room for two lines, so the fields under it don't move as it changes) */

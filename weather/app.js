@@ -2940,8 +2940,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.61";
-const NEWS = "Swiping between places, the next place's cards come in already tinted for its sky, with the colour at the foot of the screen; on small phones the radar's legend words and scale no longer run into each other or its credits; and a Highlight too long for one line takes two rather than losing a figure";
+const BUILD = "1.62";
+const NEWS = "The location and Settings buttons at the top are easier to tap; on more phones the radar's scale shows beside its credits from the start; and full screen on a phone on its side, the radar's legend, timeline, scale and © no longer cover one another";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

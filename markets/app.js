@@ -423,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.90";
-const NEWS = "Long fund names show over two lines instead of being cut off; the card dots, the income plan's sliders, the form fields and the switches are easier to tap; and a stray “null” no longer shows under Buys and sales";
+const BUILD = "1.91";
+const NEWS = "Easier to tap with a finger: the income chart's months on a small phone, News' filters and each story's ••• button, the Holdings key, and the tabs on a phone on its side; long fund names take a third line where two won't do; and moving through with the keyboard stops clear of the header and the tab bar";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1680,7 +1680,7 @@ function markRead(n) {
 // a story's own few things: sent in Chat, its link copied, or its source not shown again
 function storyMenu(n) {
   const back = document.activeElement, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
-  const close = () => { removeEventListener("keydown", esc, true); layer.classList.add("closing"); setTimeout(() => layer.remove(), 260); back?.focus?.(); };
+  const close = () => { removeEventListener("keydown", esc, true); layer.classList.add("closing"); setTimeout(() => layer.remove(), 260); back?.focus?.({ preventScroll: true }); };
   const act = (label, fn, cls) => h(cls ? `button.${cls}` : "button", { type: "button", onclick: () => { close(); fn(); }, text: label });
   const layer = h("div.amenu", { role: "dialog", "aria-modal": "true", "aria-label": n.title, onclick: (e) => { if (e.target === layer) close(); } },
     h("div.amg", {}, h("p.amt", { text: n.title }), act("Send in Chat", () => shareStory(n)), act("Copy Link", () => copyStory(n)), act(`Hide Stories from ${n.src}`, () => hideSource(n.src), "warn")),

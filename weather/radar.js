@@ -1350,8 +1350,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     };
     const moved = () => {
       const s = map.state(), f = foot, hinted = f && hintW && touch && !card.classList.contains("radar-big");
+      // (and where the names, open, are along the foot beside it, what's left short of them: a step shorter, so both are
+      // there as the map appears, rather than the scale out of their way till they fold. Not where that leaves too little
+      // for one (the narrowest), which steps aside instead: under, below)
+      const nm = f?.names, by = nm && nm.top < f.bottom + APART && f.top < nm.bottom + APART ? nm.l - APART - f.x : Infinity;
       // (90 pixels, or what's left of the foot beside the hint, where it's to come in)
-      const most = s.mpp * (hinted ? Math.max(40, Math.min(90, f.c - APART - hintW - APART - f.x)) : 90);
+      const most = s.mpp * Math.min(hinted ? Math.max(40, Math.min(90, f.c - APART - hintW - APART - f.x)) : 90, by >= 40 ? by : Infinity);
       zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;
       // the longest round distance that fits in that
       const [n, unit, m] = miles() ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
@@ -1359,7 +1363,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       ruler.textContent = `${n} ${unit}`;
       ruler.style.width = `${long}px`;
       if (!f) return;
-      const mid = (f.w - hintW) / 2, nm = f.names;
+      const mid = (f.w - hintW) / 2;
       hint.style.marginLeft = hinted && end + APART > mid ? `${Math.max(0, Math.round(Math.min(end + APART, f.c - APART - hintW) - mid))}px` : "";
       ruler.classList.toggle("under", nm.l < end + APART && f.x < nm.r + APART && nm.top < f.bottom + APART && f.top < nm.bottom + APART);
     };

@@ -523,6 +523,15 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 .lost .slide.loaded { opacity: 1; }
 .lost .bg::after { z-index: 2; background: linear-gradient(180deg, rgba(5, 7, 12, 0.6) 0%, rgba(5, 7, 12, 0.72) 45%, rgba(5, 7, 12, 0.92) 100%); }
 .lost .bar .mid { opacity: 1; transform: none; animation: none; }
+/* (and to a finger, a finger's height to tap, drawn as it is: more above and below it, its words still cut short at its
+   side were they ever too long. Only where it can be clipped at its side alone: elsewhere (an older Safari) as it was,
+   rather than a scroller) */
+@supports (overflow: clip) {
+  @media (pointer: coarse) {
+    .lost .bar .mid { position: relative; overflow-x: clip; overflow-y: visible; }
+    .lost .bar .mid::after { content: ""; position: absolute; inset: -5px 0; }
+  }
+}
 .lost-page { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 84px); }
 .lost-page > * { animation: arrive 0.6s var(--ease-out) backwards; }
 .lost-page > :nth-child(2) { animation-delay: 0.04s; }
