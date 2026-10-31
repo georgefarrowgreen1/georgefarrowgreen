@@ -394,8 +394,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.60";
-const NEWS = "Opened from an app's Notifications, every row of its settings in reach above the browser's toolbar";
+const BUILD = "1.61";
+const NEWS = "Opened from an app's Notifications, its settings sit within what the browser shows, above its toolbar";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -637,6 +637,20 @@ const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator
 // (in a phone's browser rather than on its Home Screen, its toolbar can float over the page's foot: every sheet keeps
 // clear of it, styles.css html.inbrowser. Said here, not by a media query a phone's in-app browser may not know)
 if (!homeScreen && matchMedia("(hover: none)").matches) document.documentElement.classList.add("inbrowser");
+// (and what of the page can be seen there: on an iPhone, the browser an app opens a link in lays the page out taller
+// than what's seen, so a sheet set at its foot sat under the toolbar, its last rows out of reach. --seen: the height
+// that's seen; --below: what's laid out under the toolbar, which a sheet stands above. Not while it's zoomed in)
+if (document.documentElement.classList.contains("inbrowser") && window.visualViewport) {
+  const vv = visualViewport, root = document.documentElement;
+  const fit = () => {
+    if (vv.scale > 1.01) return;
+    root.style.setProperty("--seen", `${Math.round(vv.height)}px`);
+    root.style.setProperty("--below", `${Math.max(0, Math.round(root.clientHeight - vv.offsetTop - vv.height))}px`);
+  };
+  fit();
+  vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit);
+  addEventListener("pageshow", fit); addEventListener("orientationchange", () => setTimeout(fit, 300));
+}
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function call(path, { method = "GET", body, type } = {}) {
