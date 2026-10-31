@@ -715,8 +715,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 /* ---- messages pop out of the composer, or in from the sky when they land ---- */
 .b.fresh,.fly.fresh{animation:bubble-in .6s var(--bouncy);transform-origin:bottom left}
-.b.me.fresh{transform-origin:bottom right;animation:bubble-send .42s var(--snappy)}
-@keyframes bubble-send{from{opacity:0;transform:translateY(18px) scale(.9)}}
+/* (yours rises out of the box: from as far below as the box is, --rise, app.js sendRise) */
+.b.me.fresh{transform-origin:bottom right;animation:bubble-send .46s var(--snappy)}
+@keyframes bubble-send{from{opacity:0;transform:translateY(var(--rise,18px)) scale(.92)}}
 @keyframes bubble-in{from{opacity:0;transform:scale(.4) translateY(20px)}}
 .attach:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
 .send:not(:disabled){animation:send-in .45s var(--bouncy)}
@@ -1433,8 +1434,8 @@ svg.fillico{fill:currentColor;stroke:none}
 .b.up .quote{background:var(--fill);border-left-color:var(--tint)}
 .b.up .quote b{color:var(--tint)}
 .b.up.waiting{border:0;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--tint) 55%,transparent);color:var(--label)}
-.b.up .frow{clear:both;display:flex;align-items:center;gap:10px;margin:7px -4px -4px 0}
-.b.up .frow .ft{float:none;margin:0 0 0 auto}
+.b.up .frow,.b.me.sending .frow{clear:both;display:flex;align-items:center;gap:10px;margin:7px -4px -4px 0}
+.b.up .frow .ft,.b.me.sending .frow .ft{float:none;margin:0 0 0 auto}
 .trk{position:relative;flex:1;min-width:48px;height:12px;container-type:inline-size}
 .trk::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42}
 .trk i{position:absolute;left:0;top:5px;height:2px;width:100%;transform:scaleX(var(--f,0));transform-origin:0 50%;border-radius:1px;background:var(--k);transition:transform 1s linear}
@@ -1446,8 +1447,10 @@ svg.fillico{fill:currentColor;stroke:none}
 .b.pic.up .ptxt{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint)}
 .b.voicem.up .vplay{background:var(--tint-fill);color:#fff}
 /* yours on its way to the server, a moment before it takes off (app.js: send) */
-.b.me.sending{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--k,var(--tint)) 45%,transparent);min-width:min(224px,76%)}
-.b.me.sending .ft{float:none;display:flex;justify-content:flex-end;margin:7px -4px -4px 0;color:var(--label-2)}
+/* (as it'll be once it's in the air, so nothing changes but its words: the same outline, its track, "Sending…" for the time) */
+.b.me.sending{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%)}
+.b.me.sending .ft{color:var(--label-2)}
+.b.me.sending > .ft{float:none;display:flex;justify-content:flex-end;margin:7px -4px -4px 0}
 .b.me.sending .quote{background:var(--fill);border-left-color:var(--tint)}
 .b.me.sending .quote b{color:var(--tint)}
 /* the send button, while what you sent goes up: a spinner where the arrow was */

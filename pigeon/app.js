@@ -373,8 +373,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.59";            // shown in InFlite's menu
-const APP_NEWS = "A photo or GIF on its way has its outline whole";       // (said once it's in)
+const APP_VERSION = "1.60";            // shown in InFlite's menu
+const APP_NEWS = "Sending is smoother: your words rise out of the box into place";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -440,7 +440,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true,
-  chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), rise: new Map(), nav: null,
   avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
@@ -3950,8 +3950,12 @@ function flashMsg(el, id) { el.classList.remove("flash"); void el.offsetWidth; e
 // New bubbles pop in once; if the list redraws mid-animation, carry on from where it was.
 function playFresh() {
   const t = Date.now();
-  for (const [id, at] of S.fresh) if (t - at > 700) S.fresh.delete(id);
-  $view.querySelectorAll("[data-fresh]").forEach((el) => { const at = S.fresh.get(el.dataset.fresh); if (at) el.style.animationDelay = `${at - t}ms`; else el.classList.remove("fresh"); });
+  for (const [id, at] of S.fresh) if (t - at > 700) { S.fresh.delete(id); S.rise.delete(id); }
+  $view.querySelectorAll("[data-fresh]").forEach((el) => {
+    const at = S.fresh.get(el.dataset.fresh); if (!at) { el.classList.remove("fresh"); return; }
+    el.style.animationDelay = `${at - t}ms`;
+    const r = S.rise.get(el.dataset.fresh); if (r != null) el.style.setProperty("--rise", `${r}px`);
+  });
   $view.querySelectorAll("img.arrive[data-born]").forEach((el) => { el.style.animationDelay = `${+el.dataset.born - t}ms`; });
   const f = S.flashMid, el = f && t - f.at < 1100 && S.view === "chat" && $(`[data-mid="${CSS.escape(f.id)}"]`, $view);
   if (el) { el.classList.add("flash"); el.style.animationDelay = `${f.at - t}ms`; }
@@ -4027,7 +4031,9 @@ function playKeyed(was) {
     const b = boxes.get(el.parentElement) || boxes.set(el.parentElement, { moved: [], stayed: 0, inner }).get(el.parentElement);
     if (still || Math.abs(dy) < 1) b.stayed++; else b.moved.push([el, dy]);
     const sig = el.dataset.sig || "";
-    if (o.sig !== sig) {
+    // what you sent, now in the air: drawn in that shape already, so only its "Sending…" becomes when it lands
+    if (o.sig === "pending" && sig !== "pending") { const ft = $(".ft", el); if (ft && !still) ft.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease" }); }
+    else if (o.sig !== sig) {
       // a pigeon that was in the air and is here now comes down to land (on its sender's side); else it dissolves in
       const land = !still && how === "land" && o.sig === "fly" && /^in/.test(sig), mine = el.classList.contains("me");
       if (land) { el.style.transformOrigin = mine ? "100% 100%" : "0 100%"; if (!mine) landed = true; }
@@ -4067,9 +4073,12 @@ addEventListener("touchstart", () => { touching++; }, { passive: true, capture: 
 addEventListener("touchend", (e) => { touching = e.touches.length; }, { passive: true, capture: true });
 addEventListener("touchcancel", (e) => { touching = e.touches.length; }, { passive: true, capture: true });
 addEventListener("scroll", () => { glidedAt = performance.now(); }, { passive: true, capture: true });
+// (and while words you've sent are rising out of the box: sendingAt)
+let sendingAt = -1e9;
+const SEND_MS = 560;
 function calmRender() {
   if (calmWait) return;
-  const busy = () => touching > 0 || performance.now() - glidedAt < 180 || performance.now() - navAt < NAV_MS + 40;
+  const busy = () => touching > 0 || performance.now() - glidedAt < 180 || performance.now() - navAt < NAV_MS + 40 || performance.now() - sendingAt < SEND_MS;
   if (!busy()) return render();
   const later = () => { if (busy()) { calmWait = setTimeout(later, 120); return; } calmWait = null; render(); };
   calmWait = setTimeout(later, 120);
@@ -4120,13 +4129,9 @@ function render() {
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
-  if (chat && S.stick) {
-    // down to the newest: gliding there when you've just sent from not far up, else straight there
-    const gap = $view.scrollHeight - $view.clientHeight - keepTop;
-    if (S.glideDown && gap > 2 && gap < 2 * $view.clientHeight && !STILL.matches) { $view.scrollTop = keepTop; $view.scrollTo({ top: $view.scrollHeight, behavior: "smooth" }); }
-    else $view.scrollTop = $view.scrollHeight;
-  } else if (Math.abs($view.scrollTop - keepTop) > 1) $view.scrollTop = keepTop;     // (left be when it's there already: setting it stops a glide)
-  S.glideDown = false;
+  // down to the newest (what you've just sent rises into place itself: sendRise)
+  if (chat && S.stick) $view.scrollTop = $view.scrollHeight;
+  else if (Math.abs($view.scrollTop - keepTop) > 1) $view.scrollTop = keepTop;     // (left be when it's there already: setting it stops a glide)
   if (chat) newPigeons();
   if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
@@ -9317,7 +9322,24 @@ async function outboxFlush(force) {
 window.addEventListener("online", () => { S.offline = false; renderOffline(); outboxFlush(); sync(); });
 window.addEventListener("offline", () => { S.offline = true; renderOffline(); });
 // yours on its way to the server: an outline at the foot of the chat, "Sending…", until it takes off (send)
-const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${esc(p.t).replace(/\n/g, "<br>")}<span class="ft">Sending…</span></div>`;
+// (in its shape once it's in the air, to a friend: its track there from the start, "Sending…" where it'll say when it lands,
+// so the bubble doesn't change its size as it goes up)
+const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${esc(p.t).replace(/\n/g, "<br>")}${group(p.to) ? `<span class="ft">Sending…</span>` : `<span class="frow"><span class="trk" aria-hidden="true"><i></i><b class="cb">${I.bird}</b></span><span class="ft">Sending…</span></span>`}</div>`;
+// What you've sent rises out of the box into its place by itself. It's added to the chat as it is, rather than the chat
+// being drawn again (on a phone that took a frame or several, with the bubble already moving: and three times over, as
+// it went up and its answer and the sync came back); the chat is at its foot at once, and the bubble starts from the box.
+// A redraw that would come meanwhile waits until it's there (calmRender), and so do notices (afterRise).
+function sendRise(id) {
+  sendingAt = performance.now();
+  const box = $(".field-wrap", $compose)?.getBoundingClientRect(), list = $(".msgs", $view);
+  // (an empty chat, its "say hello" to go: drawn anew)
+  if (!list || $(".msgs > .empty", $view) || S.view !== "chat") render();
+  else { list.insertAdjacentHTML("beforeend", pendingBubble(S.pending)); renderCompose(); $view.scrollTop = $view.scrollHeight; }
+  const el = $(`[data-fresh="${CSS.escape(id)}"]`, $view);
+  if (el && box && !STILL.matches) { const d = Math.max(0, Math.round(box.bottom - el.getBoundingClientRect().bottom)); S.rise.set(id, d); el.style.setProperty("--rise", `${d}px`); }
+}
+// once what you've sent is in its place (a notice before then would land on top of it moving)
+const afterRise = () => new Promise((res) => setTimeout(res, Math.max(0, sendingAt + SEND_MS - performance.now()) + 120));
 // a waiting pigeon in its chat: your message, with a badge
 function outboxBubbles(chat) {
   return S.outbox.filter((o) => o.to === chat).map((o) => {
@@ -9332,7 +9354,8 @@ async function send() {
   const raw = $ta.value, text = (dumbText() ?? raw).trim();
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
-  S.busy = true; S.err = ""; renderCompose();
+  S.busy = true; S.err = "";
+  if (S.attach) renderCompose();          // (words alone: the box drawn once, cleared, as they go up: sendRise)
   // what's being sent belongs to this chat, even if you leave it before it's gone
   const to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
   S.sendingTo = to; S.sending = att;
@@ -9341,7 +9364,7 @@ async function send() {
   const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
   if (!att) {
     S.pending = { id, to, t: text, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
-    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; S.glideDown = true; render();
+    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id);
   }
   const tidy = () => {
     if (!att) return;              // (words alone left the box as they went up: what's in it now is the next one)
@@ -9406,28 +9429,29 @@ async function send() {
     } catch (e) { if (!e.offline) throw e; upAnim?.stop(); upAnim = null; await queue(); S.busy = false; renderCompose(); return; }
     S.pick = null;                    // next time, back to the default
     { const f = friend(to), was = f?.streak, s = r.streak;
-      if (f && s) { f.streak = s; if (s.n >= STREAK_MIN && (!was || !was.today || was.n < s.n)) toast(`${I.flame} ${s.n}-day streak with ${esc(first(f.name))}`); } }
+      if (f && s) { f.streak = s; if (s.n >= STREAK_MIN && (!was || !was.today || was.n < s.n)) afterRise().then(() => toast(`${I.flame} ${s.n}-day streak with ${esc(first(f.name))}`)); } }
     if (r.message.mystery) {
       const k = kindOf(r.message), word = { rocket: "A rocket pigeon!", turbo: "A turbo pigeon!", swift: "A swift pigeon.", standard: "A standard pigeon.", dumb: "A dumb pigeon…" }[k];
       if (r.me) S.me = r.me;
-      setTimeout(() => toast(`${pg(k, S.me.skin)} ${word} ${r.message.flock ? "Off it goes." : `It lands ${esc(atTime(r.message.deliverAt))}.`}`), 350);
+      afterRise().then(() => toast(`${pg(k, S.me.skin)} ${word} ${r.message.flock ? "Off it goes." : `It lands ${esc(atTime(r.message.deliverAt))}.`}`));
       if (k === "rocket") haptic("success");
     }
     S.birdPick = null; const flew = r.message.bird?.id && S.birds.find((b) => b.id === r.message.bird.id); if (flew) flew.state = "flying";
     haptic("success");
     if (rt) S.replyTo = null;
-    if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
+    if (sc) { S.sched = null; if (r.me) S.me = r.me; afterRise().then(() => toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`)); }
     S.noShip = null;
-    if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
+    if (vi) { S.via = null; afterRise().then(() => toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`)); }
     S.plain.set(id, payload);
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
     tidy(); S.stick = true; S.pending = null;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     if (att) S.fresh.set(r.message.id, Date.now());        // (words were up already: they just take off)
     loadSkies();                      // it's in the air now: ready for the strip on Messages
-    render();                         // show it now; on a slow connection the sync below can outlast the pop
+    // shown now (on a slow connection the sync below can outlast the pop): words that went up already, once they're in place
+    if (att) render(); else calmRender();
     await sync();
-    offerNotify();
+    await afterRise(); offerNotify();
   } catch (err) {
     // (the browser's own errors, a key it can't use, can come with no words: never a silent nothing)
     const say = err.message || "Couldn’t seal this pigeon. Try again, or check their safety number.";
