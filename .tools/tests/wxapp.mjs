@@ -266,13 +266,16 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
   const sum = await p.evaluate(() => { const b = document.querySelector('#alerts .warn-sum'); return b && { title: b.querySelector('.ins-open').textContent, line: b.querySelector('p').textContent,
     open: b.querySelector('.ins-open').getAttribute('aria-expanded'), hidden: document.getElementById('warn-all').hidden,
     first: (() => { for (let n = document.getElementById('alerts'); n && n !== document.body;) { const s = n.previousElementSibling; if (!s) { n = n.parentElement; continue; } n = s; if (!n.matches('script')) return n.matches('.hero, .pager:has(> .hero)'); } return false; })() }; });
-  // (the official ones first, worst first; the app's own after, in either order)
-  ok(sum && sum.title === '4 warnings' && /^Amber thunderstorm, Yellow rain, (Gales, (Frost|Icy patches)|(Frost|Icy patches), Gales)$/.test(sum.line) && sum.open === 'false' && sum.hidden && sum.first,
+  // (the official ones first, worst first; the app's own after, in either order. From 5pm the app looks to tomorrow, whose
+  // freezing night comes near the record for the date: a fifth, then, insights.js reclow)
+  const said = sum ? sum.line.split(', ') : [], own = said.slice(2).filter((t) => !/^Tomorrow: near-record cold night$/.test(t)).sort().join(', ');
+  ok(sum && sum.title === `${said.length} warnings` && said.length - own.split(', ').length - 2 <= 1 && said[0] === 'Amber thunderstorm' && said[1] === 'Yellow rain'
+    && /^(Frost, Gales|Gales, Icy patches)$/.test(own) && sum.open === 'false' && sum.hidden && sum.first,
     'several warnings: one banner under the temperature, saying what they are, worst first', JSON.stringify(sum));
   await p.locator('#alerts .warn-sum .ins-open').click();
   await p.waitForTimeout(400);
-  ok(await p.evaluate(() => !document.getElementById('warn-all').hidden && document.querySelector('#alerts .warn-sum .ins-open').getAttribute('aria-expanded') === 'true' && document.querySelectorAll('#warn-all > .ins').length === 4),
-    'and tapped, it opens to all four');
+  ok(await p.evaluate((n) => !document.getElementById('warn-all').hidden && document.querySelector('#alerts .warn-sum .ins-open').getAttribute('aria-expanded') === 'true' && document.querySelectorAll('#warn-all > .ins').length === n, said.length),
+    'and tapped, it opens to all of them', said.length);
 }
 // official warnings (the Met Office's, through MeteoAlarm's feed, stood in for): worst first, above the app's own
 {
