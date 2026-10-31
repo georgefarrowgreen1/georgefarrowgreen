@@ -394,8 +394,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.59";
-const NEWS = "Opened from an app's Notifications, its settings clear the browser's toolbar: every row in reach";
+const BUILD = "1.60";
+const NEWS = "Opened from an app's Notifications, every row of its settings in reach above the browser's toolbar";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -634,6 +634,9 @@ function icon(name, size = 20, width = 2) {
 // ---- asking the account ----
 // (on the Home Screen, not in the browser: said with each ask, so Signed-in devices calls this sign-in "Account")
 const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+// (in a phone's browser rather than on its Home Screen, its toolbar can float over the page's foot: every sheet keeps
+// clear of it, styles.css html.inbrowser. Said here, not by a media query a phone's in-app browser may not know)
+if (!homeScreen && matchMedia("(hover: none)").matches) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function call(path, { method = "GET", body, type } = {}) {
