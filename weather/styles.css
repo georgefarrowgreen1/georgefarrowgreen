@@ -1941,6 +1941,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .acct-ic.inflite { border-radius: 11px; background: none; box-shadow: 0 4px 14px -4px rgba(10, 14, 40, 0.6); }
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
+/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
+html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer {

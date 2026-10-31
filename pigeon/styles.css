@@ -92,7 +92,7 @@ html.fullscreen-fix body{transform:translateZ(0)}
 html.kbup,html.kbup body{height:var(--app-h,100%);overflow:hidden}
 body{height:100%;margin:0;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--sky-top);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 button,input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
-/* the app can't be copied from (a pinch still zooms it); typing and pasting still work */
+/* the app can't be copied from, or pinched bigger; typing and pasting still work */
 input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 img{-webkit-user-drag:none}
 body.admin{touch-action:auto}
@@ -2635,6 +2635,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* ==== end of InFlite's way in ==== */
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
+/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
+html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer {

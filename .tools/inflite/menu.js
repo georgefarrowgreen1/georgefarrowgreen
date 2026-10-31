@@ -4,6 +4,9 @@
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
+  // (no app's page pinched bigger, as no app's is: iPhone takes no notice of a page's viewport saying so, only of its own
+  // gesture events refused. A map or a photo still pinches itself, by its touches; menu.css says the rest, touch-action)
+  for (const n of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(n, (e) => e.preventDefault(), { passive: false });
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
   const ICONS = /*ICONS*/{};

@@ -1,3 +1,5 @@
+/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
+html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer {
