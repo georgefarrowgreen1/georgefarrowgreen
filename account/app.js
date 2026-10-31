@@ -397,8 +397,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.62";
-const NEWS = "Pinching no longer zooms the page: it stays the app's own size (maps and photos still pinch)";
+const BUILD = "1.63";
+const NEWS = "Pinching no longer zooms the page; and opened from an app, its settings fill the screen, every row in reach";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -637,23 +637,11 @@ function icon(name, size = 20, width = 2) {
 // ---- asking the account ----
 // (on the Home Screen, not in the browser: said with each ask, so Signed-in devices calls this sign-in "Account")
 const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-// (in a phone's browser rather than on its Home Screen, its toolbar can float over the page's foot: every sheet keeps
-// clear of it, styles.css html.inbrowser. Said here, not by a media query a phone's in-app browser may not know)
-if (!homeScreen && matchMedia("(hover: none)").matches) document.documentElement.classList.add("inbrowser");
-// (and what of the page can be seen there: on an iPhone, the browser an app opens a link in lays the page out taller
-// than what's seen, so a sheet set at its foot sat under the toolbar, its last rows out of reach. --seen: the height
-// that's seen; --below: what's laid out under the toolbar, which a sheet stands above. Not while it's zoomed in)
-if (document.documentElement.classList.contains("inbrowser") && window.visualViewport) {
-  const vv = visualViewport, root = document.documentElement;
-  const fit = () => {
-    if (vv.scale > 1.01) return;
-    root.style.setProperty("--seen", `${Math.round(vv.height)}px`);
-    root.style.setProperty("--below", `${Math.max(0, Math.round(root.clientHeight - vv.offsetTop - vv.height))}px`);
-  };
-  fit();
-  vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit);
-  addEventListener("pageshow", fit); addEventListener("orientationchange", () => setTimeout(fit, 300));
-}
+// (shown with a browser's bars on a phone: in its browser, or opened from an app, which an iPhone shows in that app's
+// own window with a browser's bars added (and where the page counts as on the Home Screen). There, a sheet set at the
+// page's foot sat under the bottom bar, its last rows out of reach: so a sheet there is the whole screen instead, from
+// under the top bar, its rows scrolling clear of the bottom one. styles.css html.inbrowser)
+if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function call(path, { method = "GET", body, type } = {}) {

@@ -479,13 +479,12 @@ dialog.sheet.dragging { transition: none; }
   @keyframes sheet-out { from { transform: var(--from-tf, none); opacity: var(--from-o, 1); } to { transform: translateY(26px) scale(0.97); opacity: 0; } }
   body.sheet-up .page { transform: scale(0.97); }
 }
-/* (in a phone's browser, its toolbar can float over the foot of the page: iOS 26's Safari, and the browser an app opens
-   this page in (each app's Notifications). A sheet sized to what's in it then had its last rows under the toolbar, out
-   of reach, with nothing to scroll. There, its foot keeps clear of it; a Home Screen app has no toolbar to clear: app.js says which, html.inbrowser.) */
-/* (stood above what's laid out under the toolbar, no taller than what's seen (app.js: --below, --seen); where the
-   browser says nothing of either, room at its foot instead) */
-html.inbrowser dialog.sheet { margin-bottom: calc(8px + var(--below, 0px)); max-height: calc(min(var(--seen, 100dvh), 100dvh) - var(--top) - 24px); }
-html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(22px + max(env(safe-area-inset-bottom, 0px), 96px - var(--below, 0px))); }
+/* (shown with a browser's bars on a phone, html.inbrowser from app.js: in its browser, or opened from an app, which an
+   iPhone shows in that app's window with a browser's bars added. Where the page's foot is drawn under the bottom bar,
+   a sheet set at it had its last rows out of reach, so there a sheet is the whole screen: from under the top bar
+   (--top), its rows scrolling, with room at their end to come clear of the bottom bar, however tall it is) */
+html.inbrowser dialog.sheet { inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding-top: var(--top); border-radius: 0; }
+html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
 .grab { flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--text-3); opacity: 0.6; margin: 8px auto 0; }
 .sheet-head { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 14px 6px; }
 .sheet-head h2 { margin: 0; font: 600 17px/1.2 var(--font); text-align: center; grid-column: 2; }
