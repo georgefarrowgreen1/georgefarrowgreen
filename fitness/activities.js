@@ -1,7 +1,7 @@
 // Fitness's Activities: every ride, run and swim, each with its route, figures, charts, zones, efforts and best
 // efforts; their figures filled in, in the background. Drawn by app.js render.
 
-import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, calendar, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dur, fileKey, fitness, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, idb, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plan, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, upload, wait, weeks, wkById, zoneOf } from "./app.js";
+import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, calendar, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, fileKey, fitness, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plan, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, upload, wait, weeks, wkById, zoneOf } from "./app.js";
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
@@ -134,7 +134,7 @@ function actMenu(e, a) {
 }
 async function removeAct(a) {
   try { await A.remove(a.id); } catch (err) { if (err.status === 401) return signedOutHere(); return toast(err.message, true); }
-  S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); held.delete(a.id); idb.del(fileKey(a)).catch(() => {});
+  S.own = S.own.filter((y) => y.id !== a.id); setActs(); S.sums.delete(a.id); held.delete(a.id); dropFile(fileKey(a));
   closeSheet(); toast("Deleted"); redraw();
 }
 // Your first activities: Garmin connected (six months in at once, then each new one by itself), or files uploaded,

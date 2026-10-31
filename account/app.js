@@ -434,8 +434,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.64";
-const NEWS = "Sign in with your phone in any size of window, Fitness's export is quicker, buttons are easier to read, and Try Again where settings couldn't load";
+const BUILD = "1.65";
+const NEWS = "Signing out shows a turning ring on your photo until it's done, and Apple Health shows the Shortcut's steps again without a new key";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2395,9 +2395,11 @@ async function checkQuietly(pw, proof) {
   try { const n = await leakedCount(pw); if (n === null) return; S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
 }
 async function signOut(btn, next) {
-  // (from InFlite's menu, with no button of its own to turn: just done)
+  // (from InFlite's menu, whose button's gone with it: your photo up top turning instead, till the page moves on)
+  const letGo = btn ? null : photoBusy("Signing out…");
   try { await (btn ? busy(btn, "Signing out…", () => post("signout")) : post("signout")); }
-  catch (e) { if (!e.offline) return toast(e.message, true); }
+  catch (e) { if (!e.offline) { letGo?.(); return toast(e.message, true); } }
+  fxKeep(null);                     // (Apple Health's new key, kept on this device: gone with the sign-in)
   // (signed out for something to follow, that's taken it from here: takeRefused)
   if (next && await next()) return;
   // (on the account's page: then on to the sign-in page, signed out already, which says so)
@@ -2457,6 +2459,18 @@ async function busy(btn, label, fn) {
     btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
     if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
   }
+}
+// (your photo up top, busy: a ring turning round it, the photo kept, as busy's words don't fit in it; said to a screen
+// reader in its name) → what lets it go, as it was
+function photoBusy(label) {
+  const me = $(".ahead .ifh-me");
+  if (!me) return () => {};
+  const was = me.getAttribute("aria-label"), had = document.activeElement === me, ring = h("span.spin", { "aria-hidden": "true" });
+  me.append(ring); me.disabled = true; me.setAttribute("aria-busy", "true"); me.setAttribute("aria-label", label);
+  return () => {
+    ring.remove(); me.disabled = false; me.removeAttribute("aria-busy"); me.setAttribute("aria-label", was);
+    if (had && me.isConnected && (!document.activeElement || document.activeElement === document.body)) me.focus({ preventScroll: true });
+  };
 }
 // A switch or a list held while its change is kept (disabled, so it isn't changed again meanwhile): let go by what this
 // gives back, once the sheet's been drawn again (if it is), with the focus it had put back, as being held loses it: on
@@ -3999,35 +4013,52 @@ function fxStravaView() {
     h("p.hint", { text: "Strava tells Fitness as each new activity’s saved, so it’s there a minute or two after." }),
     ...(fxLeave("strava", "Strava") || []), h("p.hint.powered", { text: "Powered by Strava" })] };
 }
-// Apple Health: a key for a Shortcut that sends last night each morning (made here, shown once, with the steps)
+// Apple Health: a key for a Shortcut that sends last night each morning. Its address is shown as it's made, and till the
+// Shortcut's first morning comes, with the six steps to make the Shortcut, which can be seen again any time without it (a
+// new key's address breaks the one in your Shortcut)
 let fxKey = null;
-function fxHealthView() {
+// (the key, as it's made: kept on this device till then, so going to Shortcuts to make it, and the page opened afresh on
+// the way back, doesn't lose its address; a week at most, and never another account's)
+const fxKeep = (k) => { fxKey = k; try { if (k) localStorage.setItem("acct:hk", JSON.stringify(k)); else localStorage.removeItem("acct:hk"); } catch (_) {} };
+function fxHeldKey() {
   const c = FX.health || {};
-  const make = h("button.btn" + (c.on ? ".quiet" : ""), { type: "button", onclick: async () => {
-    try { const r = await busy(make, "Making your key…", () => call("fitness/health", { method: "POST" })); fxKey = r.address; FX = r; redraw(); }
+  if (!fxKey) try { fxKey = JSON.parse(localStorage.getItem("acct:hk") || "null"); } catch (_) {}
+  if (fxKey?.id === S.me.id && c.on && !c.last && Date.now() - fxKey.at < 7 * 864e5) return fxKey.address;
+  if (fxKey) fxKeep(null);
+  return null;
+}
+const fxSteps = () => [
+  h("h4.app-k", { text: "Make the Shortcut" }),
+  h("ol.steps-list", {},
+    h("li", { text: "Shortcuts › Automation › New Automation: Time of Day, 07:30, Daily, Run Immediately; then New Blank Automation." }),
+    h("li", { text: "Find Health Samples: Heart Rate Variability, Start Date in the last 12 hours." }),
+    h("li", { text: "Find Health Samples: Resting Heart Rate, in the last 1 day (if it says Filter, tap Health Samples and Clear it)." }),
+    h("li", { text: "Find Health Samples: Sleep, in the last 16 hours, Value not In Bed, not Awake; then Get Details of Health Samples: Duration." }),
+    h("li", { text: "Get Contents of URL: paste your address. Method POST, Request Body JSON." }),
+    h("li", { text: "Three fields: hrv, step 2’s Health Samples; rhr, step 3’s; sleep, step 4’s Duration (each a blue variable chip). Then tap Run once." }))];
+function fxHealthView() {
+  const c = FX.health || {}, key = fxHeldKey();
+  const make = async (b) => {
+    try { const r = await busy(b, "Making your key…", () => call("fitness/health", { method: "POST" })); FX = r; fxKeep({ id: S.me.id, address: r.address, at: Date.now() }); redraw(); }
     catch (e) { if (!e.quiet) toast(e.message, true); }
-  } }, c.on ? "Make a new key, and see the steps again" : "Make my key");
-  const copy = (text) => h("button.btn.quiet", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast("Address copied"), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy the address");
-  const steps = fxKey && [
-    h("h4.app-k", { text: "Your address" }), h("p.fx-addr", { text: fxKey }), copy(fxKey),
-    h("p.hint", { text: "Yours alone, and shown this once: copy it now. It can only send your nights to Fitness." }),
-    h("h4.app-k", { text: "Make the Shortcut" }),
-    h("ol.steps-list", {},
-      h("li", { text: "Shortcuts › Automation › New Automation: Time of Day, 07:30, Daily, Run Immediately; then New Blank Automation." }),
-      h("li", { text: "Find Health Samples: Heart Rate Variability, Start Date in the last 12 hours." }),
-      h("li", { text: "Find Health Samples: Resting Heart Rate, in the last 1 day (if it says Filter, tap Health Samples and Clear it)." }),
-      h("li", { text: "Find Health Samples: Sleep, in the last 16 hours, Value not In Bed, not Awake; then Get Details of Health Samples: Duration." }),
-      h("li", { text: "Get Contents of URL: paste your address. Method POST, Request Body JSON." }),
-      h("li", { text: "Three fields: hrv, step 2’s Health Samples; rhr, step 3’s; sleep, step 4’s Duration (each a blue variable chip). Then tap Run once." }))];
+  };
+  // (making a key leaves the focus on Copy, where the button pressed was: data-k, as the sheet's drawn again)
+  const copy = (text) => h("button.btn.quiet", { type: "button", "data-k": "hk", onclick: () => navigator.clipboard?.writeText(text).then(() => toast("Address copied"), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy the address");
+  const act = (text, onclick, k) => h("button.row.plain.act", { type: "button", onclick, "data-k": k }, h("span.tx", {}, h("b", { text })));
   const off = c.on && h("button.row.plain.act.danger", { type: "button", onclick: async (e) => {
     const b = e.currentTarget;
     if (!b.dataset.sure) { b.dataset.sure = "1"; b.querySelector("b").textContent = "Turn off: the key stops, its nights forgotten"; return; }
-    try { FX = await call("fitness/health", { method: "DELETE" }); fxKey = null; stepBack(); toast("Apple Health off"); } catch (er) { toast(er.message, true); }
+    try { FX = await call("fitness/health", { method: "DELETE" }); fxKeep(null); stepBack(); toast("Apple Health off"); } catch (er) { toast(er.message, true); }
   } }, h("span.tx", {}, h("b", { text: "Turn off" })));
   return { title: "Apple Health", body: [
     c.on ? h("div.group", {}, fxStat("Last sent", c.last ? ago(c.last) : "Not yet"), fxStat("Nights", String(c.nights || 0)))
       : h("p", { text: "Apple keeps Health on your iPhone, with no way for a website to ask for it. So a Shortcut sends it: each morning, last night’s HRV, resting heart rate and sleep, with a key of your own. Rhythm eases the day when your night says you need it." }),
-    ...(steps || []), make,
+    ...(key ? [h("h4.app-k", { text: "Your address" }), h("p.fx-addr", { text: key }), copy(key),
+      h("p.hint", { text: "Yours alone, and shown till the Shortcut’s first morning: copy it now. It can only send your nights to Fitness." }), ...fxSteps()] : []),
+    !c.on && h("button.btn", { type: "button", "data-k": "hk", onclick: (e) => make(e.currentTarget) }, "Make my key"),
+    // (the steps again, without a new key: the address in your Shortcut keeps working)
+    ...(c.on && !key ? [h("div.group", {}, act("See the steps again", () => pushSheet(() => ({ title: "The Shortcut", body: fxSteps() }))), act("Make a new key", (e) => make(e.currentTarget), "hk")),
+      h("p.hint", { text: "A new key’s address replaces the one in your Shortcut: paste it into step 5 again." })] : []),
     off && h("div.group", {}, off)] };
 }
 function fxDevicesView() {

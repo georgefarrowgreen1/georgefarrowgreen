@@ -15,14 +15,19 @@ import { ZONES, HR_ZONES, zoneOf, DAY, startOfDay } from "./workouts.js";
 
 export const CURVE = [5, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600];
 
+// (moving at a sample: the wheels turning, or the pedals, or the feet; where nothing says how fast (an indoor trainer
+// with no speed, a pool swim), whenever it's recording)
+function mover(a) {
+  const s = a.s, fast = s.spd && s.spd.some((v) => v > 0.5), thr = a.sport === "ride" ? 1 : 0.5;
+  return (i, gap) => gap <= 10 && (!fast || a.sport === "swim" || (s.spd[i] ?? 0) > thr || (s.pwr?.[i] || 0) > 0 || (s.cad?.[i] || 0) > 0);
+}
+// (as many seconds as about 24 MB holds, the more sensors the fewer: nearly six days with all six, so a ride of days is
+// held whole, and a file dated years on by a fault doesn't fill the phone)
+const CELLS = 3e6;
 // The samples as one a second (each held until the next, as long as it's not a pause of more than 10 s)
 export function perSecond(a) {
-  // (two days at most: anything longer is a file's fault, not a ride)
-  const s = a.s, n = s.t.length, end = Math.min(2 * 86400, Math.floor(s.t[n - 1]));
-  // (moving: the wheels turning, or the pedals, or the feet; where nothing says how fast (an indoor trainer with no speed,
-  // a pool swim), whenever it's recording)
-  const fast = s.spd && s.spd.some((v) => v > 0.5), thr = a.sport === "ride" ? 1 : 0.5;
-  const keys = ["pwr", "hr", "cad", "spd", "ele", "dist"].filter((k) => s[k]);
+  const s = a.s, n = s.t.length, keys = ["pwr", "hr", "cad", "spd", "ele", "dist"].filter((k) => s[k]);
+  const end = Math.min(Math.floor(CELLS / Math.max(1, keys.length)), Math.floor(s.t[n - 1])), moves = mover(a);
   const out = Object.fromEntries(keys.map((k) => [k, new Float64Array(end + 1).fill(NaN)]));
   out.moving = new Uint8Array(end + 1);
   for (let i = 0; i < n; i++) {
@@ -34,16 +39,44 @@ export function perSecond(a) {
       const hold = gap > 10 && (k === "pwr" || k === "cad") ? 0 : v;
       for (let x = from; x < Math.min(to, end + 1); x++) out[k][x] = x === from ? v : hold;
     }
-    const moved = gap <= 10 && (!fast || a.sport === "swim" || (s.spd[i] ?? 0) > thr || (s.pwr?.[i] || 0) > 0 || (s.cad?.[i] || 0) > 0);
+    const moved = moves(i, gap);
     for (let x = from; x < Math.min(to, end + 1); x++) out.moving[x] = moved ? 1 : 0;
   }
   return out;
 }
+// Moving time over the whole of it: as perSecond counts it, but from the samples themselves, so on past where it stops
+export function movingOf(a) {
+  const t = a.s.t, n = t.length, moves = mover(a), last = Math.floor(t[n - 1]) + 1;
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const from = Math.ceil(t[i]), to = Math.min(last, i + 1 < n ? Math.ceil(t[i + 1]) : from + 1);
+    if (to > from && moves(i, i + 1 < n ? t[i + 1] - t[i] : 1)) m += to - from;
+  }
+  return m;
+}
+// (a stop of over an hour, a night between days say, isn't part of the ride: left out of its power and its stress, as
+// counted as hours of nothing, the riding's power would read low and its stress high)
+const STOP = 3600;
+function stops(moving) {
+  const off = new Uint8Array(moving.length);
+  for (let i = 0; i < moving.length;) {
+    if (moving[i]) { i++; continue; }
+    let j = i + 1;
+    while (j < moving.length && !moving[j]) j++;
+    if (j - i > STOP) off.fill(1, i, j);
+    i = j;
+  }
+  return off;
+}
 
 // A ride's figures, for your FTP and threshold heart rate
 export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260, css = 108 } = {}) {
-  const s = a.s, n = s.t.length, ps = perSecond(a), secs = ps.moving.length;
-  const moving = ps.moving.reduce((x, m) => x + m, 0);
+  const s = a.s, n = s.t.length, ps = perSecond(a), off = stops(ps.moving);
+  // (moving time over the whole of it; and should it go on past the seconds held (perSecond), the rest taken as more of
+  // the same, for its stress and its work)
+  const moving = movingOf(a), held = ps.moving.reduce((x, m) => x + m, 0), more = held ? moving / held : 1;
+  // (the time its stress is over: start to finish, but for its long stops)
+  const secs = off.length - off.reduce((x, o) => x + o, 0);
   // (distance: as far as it got from where it started, which a device's reset mid-file can't make less than nothing)
   let dist = 0;
   if (s.dist) { const first = s.dist.find((v) => v != null) ?? 0; for (const v of s.dist) if (v != null && v - first > dist) dist = v - first; }
@@ -60,18 +93,20 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260
   }
   // (and the numbers it was worked out with, so it can be worked out again for new ones without the file: rescale)
   const out = { secs: s.t[n - 1], moving, dist, ascent: Math.round(ascent), ftp, lthr, runPace, css, kind: s.pwr ? "power" : null };
-  const avg = (arr, onlyMoving) => { let t = 0, c = 0; for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i]) && (!onlyMoving || ps.moving[i])) { t += arr[i]; c++; } return c ? t / c : null; };
+  const avg = (arr, onlyMoving) => { let t = 0, c = 0; for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i]) && !off[i] && (!onlyMoving || ps.moving[i])) { t += arr[i]; c++; } return c ? t / c : null; };
   const max = (arr) => { let m = -Infinity; for (const v of arr) if (Number.isFinite(v) && v > m) m = v; return m === -Infinity ? null : m; };
   if (ps.pwr) {
     const p = ps.pwr.map((v) => (Number.isFinite(v) ? v : 0));
     out.avgPwr = Math.round(avg(p)); out.maxPwr = Math.round(max(p));
-    out.kj = Math.round(p.reduce((x, v) => x + v, 0) / 1000);
-    // Normalized Power: 30-second rolling averages, raised to the fourth power, averaged, rooted
-    let sum = 0, roll = 0, k = 0;
-    for (let i = 0; i < p.length; i++) { roll += p[i]; if (i >= 30) roll -= p[i - 30]; if (i >= 29) { sum += (roll / 30) ** 4; k++; } }
+    out.kj = Math.round((p.reduce((x, v) => x + v, 0) * more) / 1000);
+    // Normalized Power: 30-second rolling averages, raised to the fourth power, averaged, rooted (the long stops left out,
+    // the riding either side of one rolled on as one)
+    let sum = 0, roll = 0, k = 0, c = 0;
+    const last30 = new Float64Array(30);
+    for (let i = 0; i < p.length; i++) { if (off[i]) continue; roll += p[i]; roll -= last30[c % 30]; last30[c % 30] = p[i]; if (++c >= 30) { sum += (roll / 30) ** 4; k++; } }
     out.np = Math.round(k ? (sum / k) ** 0.25 : out.avgPwr);
     out.iF = Math.round((out.np / ftp) * 1000) / 1000;
-    out.tss = Math.round(((secs * out.np * out.iF) / (ftp * 3600)) * 100);
+    out.tss = Math.round(((secs * more * out.np * out.iF) / (ftp * 3600)) * 100);
     out.curve = bestEfforts(p);
     out.zones = ZONES.map(() => 0);
     for (let i = 0; i < p.length; i++) if (ps.moving[i] || p[i] > 0) out.zones[zoneOf(p[i] / ftp).n - 1]++;
@@ -82,11 +117,11 @@ export function summarise(a, { ftp = 250, lthr = 165, maxHr = 190, runPace = 260
     let hrs = 0, heard = 0;
     for (let i = 0; i < ps.hr.length; i++) {
       const v = ps.hr[i];
-      if (!Number.isFinite(v)) continue;
+      if (!Number.isFinite(v) || off[i]) continue;
       out.hrZones[(HR_ZONES.find((z) => v / lthr < z.top) || HR_ZONES[4]).n - 1]++;
       if (ps.moving[i]) { hrs += (v / lthr) ** 2; heard++; }
     }
-    if (out.tss == null && heard > moving / 2) { out.tss = Math.round((hrs / 3600) * 100); out.kind = "hr"; }
+    if (out.tss == null && heard > held / 2) { out.tss = Math.round(((hrs * more) / 3600) * 100); out.kind = "hr"; }
   }
   if (out.tss == null && dist > 0 && moving > 0 && (a.sport === "run" || a.sport === "walk" || a.sport === "swim")) {
     const iF = dist / moving / (a.sport === "swim" ? 100 / css : 1000 / runPace);

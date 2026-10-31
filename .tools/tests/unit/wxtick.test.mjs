@@ -2,7 +2,8 @@
 // official warnings it asks for, and what's kept of the warnings told of (weather/alerts.js warningAlert).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toLook, allowance, warningsFor } from "../../../functions/_wxpush.js";
+import { DatabaseSync } from "node:sqlite";
+import { toLook, allowance, warningsFor, claim, LEASE } from "../../../functions/_wxpush.js";
 import { warningAlert } from "../../../weather/alerts.js";
 import { makeFormat } from "../../../weather/format.js";
 
@@ -113,4 +114,23 @@ test("a warning with no end time, told of: what's kept of it isn't rewritten eve
   // no longer listed: still remembered half a day on, so it isn't told again if it's listed again
   const back = NOON + 24 * H + 11 * H;
   assert.equal(warningAlert([flood(back)], warningAlert([], told, back - H, back - H, f).told, back, back, f, 0, "Cambridge").alert, null);
+});
+
+// A notification is claimed before it's sent, so two ticks never both send it; and only while the tick's still beginning
+// things, so one cut off part way (its scheduler giving up on it) hasn't claimed what it then never sends: a briefing
+// whose lookups ran on past the tick's time is left for the next. A tick that dies holds its lease for less than the
+// 5 minutes between the schedulers' ticks, so it never holds up the next
+test("a notification claimed once, and only while the tick's still beginning things; a dead tick's lease lapses before the next", async () => {
+  const sql = new DatabaseSync(":memory:");
+  sql.exec("CREATE TABLE wx_subs (id TEXT PRIMARY KEY, last_brief TEXT, last_rain INTEGER)");
+  sql.prepare("INSERT INTO wx_subs (id, last_brief) VALUES ('a', '2026-10-30')").run();
+  const D = { prepare: (q) => ({ bind: (...b) => ({ run: async () => ({ meta: { changes: Number(sql.prepare(q).run(...b).changes) } }) }) }) };
+  const row = () => sql.prepare("SELECT * FROM wx_subs WHERE id = 'a'").get(), s = { ...row() };
+  assert.equal(await claim(D, s, "last_brief", "2026-10-31", Date.now() - 1), false, "the tick's time up: not claimed");
+  assert.equal(row().last_brief, "2026-10-30", "and nothing written: the next tick sends it");
+  assert.equal(await claim(D, s, "last_brief", "2026-10-31", Date.now() + 10e3), true, "in time: claimed");
+  assert.equal(row().last_brief, "2026-10-31");
+  assert.equal(await claim(D, s, "last_brief", "2026-10-31"), false, "claimed already (by another tick, from what it read before): not again");
+  assert.equal(await claim(D, { id: "a" }, "last_rain", NOON), true, "nothing claimed before (null): claimed");
+  assert.ok(LEASE > 60e3 && LEASE < 5 * 60e3, `the lease: longer than a tick is let run, shorter than the time between ticks (${LEASE} ms)`);
 });

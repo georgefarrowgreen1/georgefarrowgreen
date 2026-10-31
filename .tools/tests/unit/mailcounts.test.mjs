@@ -125,10 +125,18 @@ const eml = ({ to, cc = '', id = 'two@studio-north.co', subject = 'Drawings', fr
   `From: ${from}\r\nTo: ${to}\r\n${cc ? `Cc: ${cc}\r\n` : ''}Subject: ${subject}\r\nMessage-ID: <${id}>\r\nDate: ${new Date().toUTCString()}\r\nContent-Type: text/plain\r\n\r\nThe drawings are attached.\r\n`;
 const delivery = (rcpt, raw) => ({ to: rcpt, from: 'maya@studio-north.co', raw, rawSize: raw.length, setReject: () => assert.fail('refused'), forward: async () => {} });
 const rows = (id) => sql.prepare(`SELECT id, thread_id, mailbox, also_to, folder FROM messages WHERE message_id = ? ORDER BY date`).all(id);
+// (each address's unread, as its own list finds its mail: what came to it, and what came to it too, kept on another of yours)
+const unreadTo = (a) => sql.prepare(`SELECT COUNT(*) AS n FROM messages WHERE folder = 'inbox' AND unread = 1
+  AND (lower(mailbox) = ?1 OR instr(COALESCE(also_to, ''), ',' || ?1 || ',') > 0)`).get(a).n;
+const chips = async () => {
+  const { counts } = await load('src/threads.js');
+  return Object.fromEntries((await counts(env)).addresses.map((a) => [a.address, a.unread]));
+};
 
 test('one message to two of your addresses: one conversation, the other address noted on it, its list finding it', { skip }, async () => {
   const { receiveEmail } = await load('src/receive.js');
   const { listThreads } = await load('src/threads.js');
+  const was = await chips();
   const raw = eml({ to: 'hello@inflite.ai', cc: 'george@inflite.ai' });
   await receiveEmail(delivery('hello@inflite.ai', raw), env, ctx);
   await receiveEmail(delivery('george@inflite.ai', raw), env, ctx);
@@ -144,6 +152,18 @@ test('one message to two of your addresses: one conversation, the other address 
   assert.ok(!(await ids('shop@inflite.ai')).includes(kept[0].thread_id));
   const found = await listThreads(env, new URL('https://x/api/threads?q=to:george'));
   assert.ok(found.threads.some((t) => t.id === kept[0].thread_id), 'and to: finds it');
+  // (each address's chip counts it too, as its list has it: one more unread for both, none for the third)
+  let after = await chips();
+  assert.equal(after['hello@inflite.ai'], was['hello@inflite.ai'] + 1);
+  assert.equal(after['george@inflite.ai'], was['george@inflite.ai'] + 1, 'the other address’s chip counts it');
+  assert.equal(after['shop@inflite.ai'], was['shop@inflite.ai']);
+  // (an address mail has only ever come to beside another of yours: a chip of its own, with its unread)
+  const press = eml({ to: 'hello@inflite.ai', cc: 'press@inflite.ai', id: 'press@studio-north.co', subject: 'Launch' });
+  await receiveEmail(delivery('hello@inflite.ai', press), env, ctx);
+  await receiveEmail(delivery('press@inflite.ai', press), env, ctx);
+  after = await chips();
+  assert.equal(after['press@inflite.ai'], 1);
+  for (const a of [...ADDRS, 'press@inflite.ai']) assert.equal(after[a], unreadTo(a), a);
 });
 
 test('both at the same moment: the one that comes second, finding nothing yet, still kept once', { skip }, async () => {

@@ -238,11 +238,15 @@ export async function dividends(env, symbol) {
     return readChart(j, symbol)?.divs || null;
   });
 }
-// What a currency's worth in pounds, today (GBP: 1; by: as quotes)
+// What a currency's worth in pounds, today (GBP: 1; by: as quotes, though one never had before, with nothing kept to
+// give, has a couple of seconds of its own past it: the prices may have taken all of theirs, and what's held in it
+// would be left out of your total till the next refresh)
+const RATE_BY = 2000;
 export async function rates(env, curs, by = Infinity) {
   const out = { GBP: 1 };
   await Promise.all([...new Set(curs)].filter((c) => c && c !== "GBP" && /^[A-Z]{3}$/.test(c)).map(async (c) => {
-    const q = await quoteBy(env, `${c}GBP=X`, by);
+    const s = `${c}GBP=X`, none = Number.isFinite(by) && !(await quote(env, s, { kept: true }).catch(() => null));
+    const q = await quoteBy(env, s, none ? Math.max(by, Date.now() + RATE_BY) : by);
     if (q?.price) out[c] = q.price;
   }));
   return out;
@@ -580,19 +584,22 @@ export function oversold(buys) {
   }
   return Object.assign(out, { short });
 }
+// The sale a change breaks (before, after: oversold's, without it and with it): the first left short by it, or shorter
+// than it was, not one short from before the change that it doesn't touch
+export const brokenSale = (before, after) => after.find((s) => { const o = before.find((x) => x.b === s.b); return !o || s.had < o.had - 1e-9; }) || after[0];
 // A new buy or sale, among a holding's (buys: those kept, oldest first; held: the holding, { qty, cost, since, added };
 // add: the new one, { qty (less than nothing for a sale), price, at }). The first, for a holding that already says how
 // many you own, keeps those as where it started (start): on the day they were bought, where that's said, else the day
 // it was added (a sale before then moving them back to its own day, so there were some to sell). And a sale's checked
-// against what you had on its day, and so's every sale after it: → { start (or null), short (the first sale that would
-// now take out more than you had, { b, had }, or null) }. (A shortfall there before, from before they were checked,
+// against what you had on its day, and so's every sale after it: → { start (or null), short (the first sale it would
+// leave short, or shorter, { b, had }: brokenSale; or null) }. (A shortfall there before, from before they were checked,
 // is no reason to refuse another: only one that's more)
 export function planBuy(buys, held, add) {
   const start = !buys.length && held.qty > 0 ? { qty: held.qty, price: held.cost ?? null, at: add.qty < 0 ? Math.min(held.since ?? held.added, add.at) : held.since ?? held.added } : null;
   const was = [...buys, ...(start ? [start] : [])];
   // (in day order: one on the same day as another comes after it, as they're kept)
   const now = [...was, add].sort((a, b) => a.at - b.at), before = oversold(was), after = oversold(now);
-  return { start, short: after.short > before.short + 1e-9 ? after.find((s) => !before.some((o) => o.b === s.b)) || after[0] : null };
+  return { start, short: after.short > before.short + 1e-9 ? brokenSale(before, after) : null };
 }
 const daySaid = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
 const many = (n) => +Number(n).toFixed(6);
@@ -621,7 +628,7 @@ export async function dropBuy(env, userId, id) {
   if (!r) throw new HttpError(404, "That one's gone already.");
   const { buys } = await buysOf(env, userId, r.symbol), before = oversold(buys), after = oversold(buys.filter((x) => x.id !== Number(id)));
   if (after.short > before.short + 1e-9) {
-    const s = after.find((x) => !before.some((o) => o.b === x.b)) || after[0];
+    const s = brokenSale(before, after);
     throw new HttpError(400, `The ${many(-s.b.qty)} you sold on ${daySaid(s.b.at)} needs these. Take that sale off first.`);
   }
   await D.prepare("DELETE FROM mk_buys WHERE id = ? AND user_id = ?").bind(Number(id), userId).run();

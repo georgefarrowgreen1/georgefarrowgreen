@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { plainName, readChart, cleanSymbol, kindOf, topicOf, readPreview, marketWide, chart, quotes, pooled, oversold, planBuy, wrapFigures, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../../functions/_markets.js";
+import { plainName, readChart, cleanSymbol, kindOf, topicOf, readPreview, marketWide, chart, quotes, rates, pooled, oversold, planBuy, brokenSale, wrapFigures, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../../functions/_markets.js";
 
 test("company names, as people say them", () => {
   assert.equal(plainName("Rolls-Royce Holdings plc"), "Rolls-Royce");
@@ -172,6 +172,11 @@ test("a sale, checked against what was held on its day, and every sale after it"
   // (a shortfall from before sales were checked is no reason to refuse another that's fine)
   const old = [{ id: 1, qty: 10, at: JAN }, { id: 2, qty: -15, at: FEB }];
   assert.equal(planBuy(old, held, { qty: 5, price: 6, at: MAR }).short, null);
+  // (and where one is, a refusal names the sale the change makes shorter, not that older one)
+  const APR = Date.UTC(2026, 3, 10), two = [...old, { id: 3, qty: 5, at: MAR }, { id: 4, qty: -10, at: APR }];
+  const s3 = planBuy(two, held, { qty: -2, price: 6, at: MAR + 864e5 }).short;
+  assert.equal(s3?.b, two[3], "2 more sold in March: April's sale, now 2 shorter, named, not February's"); assert.equal(s3.had, 3);
+  assert.equal(brokenSale(oversold(two), oversold(two.filter((b) => b.id !== 3))).b, two[3], "March's buy taken off: April's sale, not February's");
 });
 
 test("the first buy recorded keeps the shares already said where they were bought; a sale before then moves them back to its day", () => {
@@ -277,4 +282,19 @@ test("a price slow past its request's time: what's kept given meanwhile, and the
     await later.at(-1); await Promise.all(later);
     assert.equal((await quotes(env, ["SLOW"], Date.now() - 1)).SLOW.price, 11, "and once it came, kept: the next request's");
   } finally { globalThis.fetch = was; }
+});
+
+test("a currency's rate never had before isn't left out where the prices took all their time; one that's kept is given without waiting", async () => {
+  const stmt = { bind: () => stmt, first: async () => null, run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] };
+  const later = [], env = { DB: { prepare: () => stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) }, MARKETS_DATA: "https://data.test", MARKETS_TTL: 0, waitUntil: (p) => later.push(p) };
+  const was = globalThis.fetch;
+  let asked = 0;
+  globalThis.fetch = async () => { asked++; await new Promise((ok) => setTimeout(ok, 30));
+    return new Response(JSON.stringify({ chart: { result: [{ meta: { currency: "GBP", symbol: "ZZZGBP=X", regularMarketPrice: 0.5, previousClose: 0.5 }, timestamp: [1, 2], indicators: { quote: [{ close: [0.5, 0.5] }] } }] } })); };
+  try {
+    assert.deepEqual(await rates(env, ["ZZZ", "GBP"], Date.now() - 1), { GBP: 1, ZZZ: 0.5 }, "past the prices' time, with none kept: asked for all the same, in its own few seconds");
+    asked = 0;
+    const fx = await rates(env, ["ZZZ"], Date.now() - 1);
+    assert.equal(fx.ZZZ, 0.5); assert.equal(asked, 0, "once kept (if old): given at once, without asking, as a price is");
+  } finally { globalThis.fetch = was; await Promise.all(later); }
 });

@@ -469,6 +469,11 @@ function keepFile(k, bytes = null) {
   if (bytes) idb.put(k, bytes).catch(() => {});
   for (const x of gone) idb.del(x).catch(() => {});
 }
+// (an activity deleted, or removed with what brought it in: its file let go here at once, and taken off the list)
+function dropFile(k) {
+  store.set("files", filesUsed().filter((x) => x !== k));
+  idb.del(k).catch(() => {});
+}
 // (and once a session, what's here squared with that: files kept before there was a limit, or not in the list, counted
 // the longest unused)
 async function tidyFiles() {
@@ -865,8 +870,8 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.59";
-const NEWS = "Today moves on by itself overnight, a ride from both Garmin and Strava is kept once, and days before your plan began aren't marked missed";
+const BUILD = "1.60";
+const NEWS = "A ride of several days added from now on counts in full, nights left out; and a check-in left half done in the evening no longer carries into the morning";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -1520,7 +1525,7 @@ function leaving(src, on) {
     let r;
     try { r = await (src === "garmin" ? A.garminDisconnect(acts) : A.stravaDisconnect(acts)); } catch (e) { b.disabled = false; return toast(e.message, true); }
     if (on) c.set({ ...r, gone: undefined });
-    if (acts) { S.own = S.own.filter((a) => !re.test(a.id)); for (const k of [...S.sums.keys()]) if (re.test(k)) S.sums.delete(k); setActs(); estimate(); }
+    if (acts) { for (const a of S.own) if (re.test(a.id)) dropFile(fileKey(a)); S.own = S.own.filter((a) => !re.test(a.id)); for (const k of [...S.sums.keys()]) if (re.test(k)) S.sums.delete(k); setActs(); estimate(); }
     sheetBack(); redraw();
     toast([on && `Disconnected from ${c.label}`, acts && `${plural(r.gone || 0, "activity", "activities")} removed`].filter(Boolean).join("; "));
   };
@@ -1612,9 +1617,9 @@ function healthView() {
   const x = S.health, key = healthView.key || heldKey();
   const copy = (text, what) => h("button.pill.small", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast(`${what} copied`), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy");
   const make = async (btn) => {
-    btn.disabled = true; btn.textContent = "Making your key…";
+    btn.disabled = true; btn.textContent = "Making Your Key…";
     try { const r = await A.healthKey(); healthView.key = r.key; S.health = { ...r, key: undefined }; store.set("hk", { id: S.me?.id, key: r.key, at: Date.now() }); }
-    catch (e) { btn.disabled = false; btn.textContent = "Try again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
+    catch (e) { btn.disabled = false; btn.textContent = "Try Again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
     Sheet.redraw();
   };
   const step = (n, title, sub) => h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: String(n) })), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })));
@@ -1634,23 +1639,23 @@ function healthView() {
   if (!x?.on && !key) return { title: "Apple Health", body: [
     h("div.sheet-top", {}, h("h1", { text: "Apple Health" }), h("div.sub", { text: "Your nights from your Apple Watch: HRV, resting heart rate and sleep, each morning." })),
     section(null, h("p.line-said", { text: "Apple keeps Health on your iPhone, with no way for a website to ask for it. So a Shortcut sends it: each morning, it finds last night in Health and sends it here, with a key of your own. Rhythm then eases the day when your night says you need it." })),
-    (() => { const b = h("button.btn", { type: "button", onclick: () => make(b) }, "Make my key"); return b; })(),
+    (() => { const b = h("button.btn", { type: "button", onclick: () => make(b) }, "Make My Key"); return b; })(),
     section(null, h("p.foot", { text: "Only those three numbers are sent, once a morning, and only from your phone. Turning it off forgets the key and every night it sent." })),
   ] };
   const sure = h("p.foot", { text: "The key stops working, and the nights it sent are forgotten." });
   sure.hidden = true;
   const off = async (e) => {
     const b = e.currentTarget;
-    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Turn off Apple Health"; sure.hidden = false; return; }
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Turn Off Apple Health"; sure.hidden = false; return; }
     try { S.health = await A.healthOff(); healthView.key = null; store.set("hk", null); } catch (e) { return toast(e.message, true); }
     sheetBack(); redraw(); toast("Apple Health off");
   };
   const check = async (btn) => {
     btn.disabled = true; btn.textContent = "Checking…";
-    try { S.health = await A.health(); } catch (e) { return toast(e.message, true); } finally { btn.disabled = false; btn.textContent = "Check again"; }
+    try { S.health = await A.health(); } catch (e) { return toast(e.message, true); } finally { btn.disabled = false; btn.textContent = "Check Again"; }
     Sheet.redraw(); redraw();
   };
-  const again = h("button.btn.quiet", { type: "button", onclick: () => check(again) }, "Check again");
+  const again = h("button.btn.quiet", { type: "button", onclick: () => check(again) }, "Check Again");
   const last = x?.said && !x.said.none ? nightSaid(x.said) : null;
   return { title: "Apple Health", body: [
     h("div.sheet-top", {}, h("h1", { text: "Apple Health" }), h("div.sub", { text: x?.last ? (last ? `Last morning: ${last}` : "The Shortcut sent nothing Fitness could read: check step 6") : "Waiting for the Shortcut’s first morning" })),
@@ -1664,7 +1669,7 @@ function healthView() {
       h("button.row.action", { type: "button", onclick: (e) => make(e.currentTarget) }, "Make a New Key")),
       h("p.foot", { text: "A new key’s address replaces the one in your Shortcut: paste it into step 5 again." })),
     section(null, h("p.foot", { text: "Your Apple Watch measures HRV its own way (SDNN, where Garmin’s is RMSSD), so Rhythm reads it against its own usual range, and never mixes it with Garmin’s. With both, it goes by whichever has more of this month’s nights." })),
-    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: off }, "Turn off")), sure),
+    section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: off }, "Turn Off")), sure),
   ] };
 }
 
@@ -2249,4 +2254,4 @@ export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView, stopped };
-export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
+export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dropFile, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

@@ -1,5 +1,6 @@
 // Mail's page (the inflite repo's email/public/app.js, where it's checked out beside this one): an email address in a
-// message, or a mailto: link, writing a message in Mail rather than another app. Its own words, taken from the page.
+// message, or a mailto: link, writing a message in Mail rather than another app; a send that fails offering Try Again
+// unless Mail refused it; and a row swiped all the way only well past its actions. Its own words, taken from the page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -41,4 +42,26 @@ test('a tap on an email address, in a message’s frame or its text, writes the 
   assert.match(src, /function mailtoHere\(e\) \{[\s\S]*?mailtoDraft\(a\.getAttribute\("href"\)\)[\s\S]*?e\.preventDefault\(\);[\s\S]*?openCompose\(draft\)/);
   assert.match(src, /d\.addEventListener\("click", mailtoHere\)/, 'in a message’s own frame');
   assert.match(src, /document\.addEventListener\("click", mailtoHere\)/, 'and in a message shown as text');
+});
+
+test('a send that fails: Try Again, as the same message, wherever it may have gone; Edit only where Mail refused it, or it never left', { skip }, () => {
+  // (what runSend makes of a failure, taken from it: Mail refused it (to be changed), and whether to ask again)
+  const line = (k) => new RegExp(`\\n\\s+const ${k} = (.+);\\n`).exec(/async function runSend\(job[\s\S]*?\n {2}\}\n/.exec(src)?.[0] || '')?.[1] || assert.fail(`runSend: ${k}`);
+  const choice = vm.runInNewContext(`(err) => { const refused = ${line('refused')}; const again = ${line('again')}; return again ? 'Try Again' : 'Edit'; }`, {});
+  const said = (status) => choice(Object.assign(new Error('x'), status === undefined ? {} : { status }));
+  // (no answer at all, Mail or the way to it failing, still sending it from the time before, or signed out)
+  for (const status of [0, 500, 502, 503, 504, 401]) assert.equal(said(status), 'Try Again', status);
+  // (refused: no one to send it to, an address that isn't one, too big; or a file of it that couldn't be read here)
+  for (const status of [400, 403, 404, 413, undefined]) assert.equal(said(status), 'Edit', status);
+});
+
+test('a row swiped left: all the way always well past the actions it shows, and within reach on a narrow phone', { skip }, () => {
+  const rightW = vm.runInNewContext(`${/\n {2}const rightW = (.+);\n/.exec(src)?.[1] || assert.fail('app.js: rightW')}`, {});
+  const fullRight = vm.runInNewContext(`(rightW, LEFT_W) => (width) => { const fullAt = ${/\n\s+const fullAt = (.+);\n/.exec(src)?.[1] || assert.fail('app.js: fullAt')}; return fullRight; }`, {})(rightW, 88);
+  for (const width of [320, 360, 375, 390, 414, 430, 744, 1024]) {
+    const shown = rightW(width), all = -fullRight(width);
+    assert.ok(all - shown >= 40, `${width}pt: all the way at ${all}pt, the actions ${shown}pt`);
+    assert.ok(all <= width * 0.8, `${width}pt: all the way at ${all}pt, out of reach`);
+    assert.ok(shown / 4 >= 52 && shown <= 4 * 72, `${width}pt: each action ${shown / 4}pt`);
+  }
 });

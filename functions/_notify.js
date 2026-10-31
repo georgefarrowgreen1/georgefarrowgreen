@@ -846,10 +846,14 @@ export async function maybeTick(env, origin) {
   if (r.meta.changes) await oneTick(D, () => tick(env, origin));
 }
 // One tick at a time, whoever asks for it (the site's traffic, above, or the schedulers: notify-tick, from workers/ticker
-// and GitHub's), so two never do the same work side by side: a lease, given back at the end, that lapses by itself if a
-// tick dies part way (one traffic asked for is cut off 30 s or so after its request). wait: how long to wait for one
-// already running to finish, to run after it; past that (or with none), { busy: true } and nothing run
-const LEASE = 60e3;
+// and GitHub's), so two never do the same work side by side: a lease, given back at the end, and kept fresh every few
+// seconds while the tick runs (for a minute at most), so one left by a tick that died part way (a restart, or one traffic
+// asked for, cut off 30 s or so after its request) lapses within 15 s, and the next takes over. wait: how long to wait
+// for one already running to finish, to run after it; past that (or with none), { busy: true } and nothing run
+const LEASE = 15e3, FRESH = 5e3, LONGEST = 60e3;
+// (the schedulers' wait: longer than a lease, so one that's been left is always taken over, and short enough that it and
+// a tick of its own fit well inside the ticker's 55 s and GitHub's 60)
+export const TICK_WAIT = 20e3;
 export async function oneTick(D, run, wait = 0) {
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('tick_run', '0')").run();
   const until = Date.now() + wait;
@@ -860,8 +864,20 @@ export async function oneTick(D, run, wait = 0) {
     if (t >= until) return { busy: true };
     await new Promise((r) => setTimeout(r, 500));
   }
+  const began = Date.now();
+  let fresh = Promise.resolve();
+  const keep = setInterval(() => {
+    if (Date.now() - began > LONGEST) return;
+    fresh = fresh.then(async () => {
+      const next = String(Date.now() + LEASE);
+      if ((await D.prepare("UPDATE pg_meta SET v = ?1 WHERE k = 'tick_run' AND v = ?2").bind(next, mine).run()).meta.changes) mine = next;
+    }).catch(() => {});
+  }, FRESH);
   try { return await run(); }
-  finally { await D.prepare("UPDATE pg_meta SET v = '0' WHERE k = 'tick_run' AND v = ?").bind(mine).run().catch(() => {}); }
+  finally {
+    clearInterval(keep); await fresh;
+    await D.prepare("UPDATE pg_meta SET v = '0' WHERE k = 'tick_run' AND v = ?").bind(mine).run().catch(() => {});
+  }
 }
 
 export function tickAuthOk(request, env, secret = env.PIGEON_TICK_SECRET) {

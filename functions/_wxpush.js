@@ -48,7 +48,7 @@ import { radarForTick } from "./_wxradar.js";
 
 // (MAX_SUBS: devices not signed in, at most, and NET_DAY of them a day from one network; MAX_ALL: every device, the
 // account's included: accounts are by invite, so theirs aren't held back by anyone else's)
-const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
+const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46;
 // (a device's places with notifications: as many as a list of saved places is likely to want)
 export const MAX_PLACES = 12;
 // what Open-Meteo is asked, in its own measure: a place's rain is one call, its whole forecast about seven (its free
@@ -68,6 +68,10 @@ const WARN_PLACES = 150, WARN_AT_ONCE = 6, WARN_MS = 20e3, WARN_LEAST = 10e3;
 // leaving what it's begun time to finish and the lease to be given back; the scheduler's, its minute. What's not
 // reached waits for the next tick, nothing claimed for it
 const TICK_MS = 45e3, TRAFFIC_MS = 22e3;
+// how long a tick's lease lasts if it isn't given back (the tick died part way): longer than any tick runs (its
+// scheduler gives up on it within a minute, the site's traffic within 30 seconds), shorter than the 5 minutes between
+// the schedulers' ticks, so one that dies never holds up the next
+export const LEASE = 3 * 60e3;
 // Weather's emails a day, at most (WX_MAIL_DAY sets another), a briefing only within four-fifths of them
 const MAIL_DAY = 60, MAIL = "mail:";
 // roofs looked at for the sun coming out a tick, at most; and how long before a sunny spell it's told of
@@ -249,7 +253,7 @@ async function roofSun(env, s) {
 const zonesFrom = (sp, f) => { const a = sp.zones.map((x) => `${x.zone.name} from about ${f.time(x.sp.start)}`); return a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]; };
 // The sun coming out on a place's panels: told of up to an hour and a half before a sunny spell (or as one starts), once a
 // spell, twice a day at most, outside the quiet hours (last_sun claimed first, so two ticks never both tell it)
-async function sunNotify(env, D, s, t, out, origin) {
+async function sunNotify(env, D, s, t, out, origin, until = Infinity) {
   const got = await roofSun(env, s);
   if (!got?.o.alert) return;
   const now = nowWall(got.off, t), sp = zonesSpell(got.zs, now);
@@ -258,7 +262,7 @@ async function sunNotify(env, D, s, t, out, origin) {
   const day = keyOf(now);
   if (told.day === day && (told.n >= 2 || told.start === sp.start)) return;
   const next = JSON.stringify({ day, n: told.day === day ? (told.n || 0) + 1 : 1, start: sp.start });
-  if (!(await D.prepare("UPDATE wx_subs SET last_sun = ?1 WHERE id = ?2 AND last_sun IS ?3").bind(next, s.id, s.last_sun ?? null).run()).meta?.changes) return;
+  if (Date.now() >= until || !(await D.prepare("UPDATE wx_subs SET last_sun = ?1 WHERE id = ?2 AND last_sun IS ?3").bind(next, s.id, s.last_sun ?? null).run()).meta?.changes) return;
   let units = {}; try { units = JSON.parse(s.units || "{}"); } catch (_) {}
   const f = makeFormat(units), at = s.name ? `${s.name}: ` : "";
   const r = await pushToSub(env, s, sp.on
@@ -489,7 +493,7 @@ async function tick(env, D, t, origin, until = Infinity) {
   for (const s of need) {
     if (!more()) break;
     // (one phone's trouble doesn't stop the others')
-    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s)), origin); } catch (e) { console.error("weather tick:", e && e.message); }
+    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s)), origin, until); } catch (e) { console.error("weather tick:", e && e.message); }
   }
   // official warnings, every tick, for each place that wants them (warningsFor), and sent from those looked at (a feed
   // that several of them are in asked for once: asking, functions/_wxwarn.js shaped)
@@ -499,12 +503,12 @@ async function tick(env, D, t, origin, until = Infinity) {
   for (const s of subs) {
     if (!more()) break;
     if (!s.warn || s.tz_off == null || !warned.has(spot(s))) continue;
-    try { await warnNotify(env, D, s, t, out, warned, origin); } catch (e) { console.error("weather tick: warnings", e && e.message); }
+    try { await warnNotify(env, D, s, t, out, warned, origin, until); } catch (e) { console.error("weather tick: warnings", e && e.message); }
   }
   // the sun coming out on panels: each roof looked at once a half hour (the first tick in it), outside the quiet hours
   if (new Date(t).getUTCMinutes() % 30 < 5) {
     const roofs = subs.filter((s) => s.solar && !s.held && !isMail(s) && (s.tz_off == null || !isQuiet(local(s)))).slice(0, SUN_PLACES);
-    for (const s of roofs) { if (!more()) break; try { await sunNotify(env, D, s, t, out, origin); } catch (e) { console.error("weather tick: sun", e && e.message); } }
+    for (const s of roofs) { if (!more()) break; try { await sunNotify(env, D, s, t, out, origin, until); } catch (e) { console.error("weather tick: sun", e && e.message); } }
   }
   return out;
 }
@@ -542,7 +546,7 @@ export async function warningsFor(subs, look, t, most = WARN_PLACES, rnd = Math.
 }
 // A warning new, or raised, since the last told (alerts.js warningAlert), sent; the record of what's been told kept
 // either way (and claimed before it's sent, as the others are, so it can't go twice)
-async function warnNotify(env, D, s, t, out, cache, origin) {
+async function warnNotify(env, D, s, t, out, cache, origin, until = Infinity) {
   const k = `${s.lat},${s.lon}`;
   if (!cache.has(k)) cache.set(k, warningsAt(env, s.lat, s.lon, t).then((r) => r.warnings).catch(() => null));
   const list = await cache.get(k);
@@ -553,7 +557,7 @@ async function warnNotify(env, D, s, t, out, cache, origin) {
   const off = s.tz_off || 0, f = makeFormat(units), now = t + off * 1000, { alert, told: next, fresh } = warningAlert(list, told, now, t, f, off, s.name);
   const json = JSON.stringify(next);
   if (!alert) { if (json !== s.told) await D.prepare("UPDATE wx_subs SET told = ?2 WHERE id = ?1").bind(s.id, json).run(); return; }
-  if (!(await claim(D, s, "told", json))) return;
+  if (!(await claim(D, s, "told", json, until))) return;
   const r = isMail(s) ? await mailOut(env, D, s, t, origin, { kind: "warn", ...warningMail(fresh, now, f, off, s.name) })
     : await pushToSub(env, s, { ...alert, tag: `${alert.tag}:${s.lat},${s.lon}`, url: linkTo(s.lat, s.lon, s.name), ttl: 6 * 3600, urgency: "high" });
   if (r === "sent") { out.warn++; await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run(); return; }
@@ -602,10 +606,13 @@ export function budgeted(cells, budget = BUDGET, rnd = Math.random) {
 }
 // a device its push service says is gone: all its places, and it
 const forget = (D, s) => D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(s.dev || s.id), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(s.dev || s.id)]);
-const claim = async (D, s, col, v) => !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
+// A notification claimed (col set to v, if no other tick has since), only while the tick's still beginning things
+// (until: TICK_MS): one claimed after, a briefing's lookups having run on past it, say, could be cut off with the tick
+// before it's sent, claimed and never sent; left, it goes with the next tick
+export const claim = async (D, s, col, v, until = Infinity) => Date.now() < until && !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
 const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(s[col] ?? null, s.id, v).run();
 // (rain: the radar's say on the next couple of hours here, if it was read: rainmap.js radarAt)
-async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
+async function notify(env, D, s, j, t, out, rain = null, origin = SITE, until = Infinity) {
   if (!j) return;
   let wx = shapeForecast(j, { name: s.name, lat: s.lat, lon: s.lon });
   const now = nowWall(wx.place.offset, t);
@@ -617,7 +624,7 @@ async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
   if (s.tz_off !== wx.place.offset) await D.prepare("UPDATE wx_subs SET tz_off = ?2 WHERE id = ?1").bind(s.id, wx.place.offset).run();
   if (s.rain && !s.held) {
     const a = rainAlert(wx, now, f, s.last_rain ? t - s.last_rain : null);
-    if (a && await claim(D, s, "last_rain", t)) {
+    if (a && await claim(D, s, "last_rain", t, until)) {
       const r = await pushToSub(env, s, { ...a, url, ttl: 1800, urgency: "high" });
       got.push(r); if (r === "sent") out.rain++; else await giveBack(D, s, "last_rain", t);
     }
@@ -630,7 +637,7 @@ async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
     wx.official = (await warningsAt(env, s.lat, s.lon, t).catch(() => null))?.warnings || null;
     // (where the panels are, and a sunny spell's to come today: when, in a line of its own; Settings › Solar)
     const sun = s.solar ? await roofSun(env, s).catch(() => null) : null;
-    if (await claim(D, s, "last_brief", key)) {
+    if (await claim(D, s, "last_brief", key, until)) {
       // (an email's: the morning, afternoon and evening drawn with Weather's own pictures, mail/wx-*.png)
       const m = isMail(s) && briefMail(wx, now, f);
       if (m) m.strip = m.strip.map(([part, icon, temp, chance]) => [part, `wx-${icon}`, temp, chance]);

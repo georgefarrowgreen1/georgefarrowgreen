@@ -423,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.86";
-const NEWS = "Old prices say when they're from, a price in pence is caught before it's saved, stories open in Markets' own reader, and Try Again wherever something can't load";
+const BUILD = "1.87";
+const NEWS = "Turning on the Evening Wrap asks for notifications straight away, a late dividend says it's due, and the line at the top fits again when you turn your phone";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -701,11 +701,16 @@ function sayLine() {
 // (its dot and its words; in fewer words where the header's too narrow for them all, an iPhone SE's: "London · 2h 5m
 // left", so the time's never what's cut)
 function lineIn(line, said) {
-  const words = h("span.said", { text: said.text });
+  const words = h("span.said", { text: said.text, ...(said.short ? { "data-full": said.text, "data-short": said.short } : {}) });
   line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), words);
-  if (said.short) requestAnimationFrame(() => { if (words.scrollWidth > words.clientWidth + 1) words.textContent = said.short; });
+  if (said.short) requestAnimationFrame(() => fitLine(words));
   return line;
 }
+// (all its words where they fit, else fewer: measured again as the phone turns or the window's resized, a frame at a time
+// at most, and only its words, not the page)
+function fitLine(words) { words.textContent = words.dataset.full; if (words.scrollWidth > words.clientWidth + 1) words.textContent = words.dataset.short; }
+let refit = 0;
+for (const ev of ["resize", "orientationchange"]) addEventListener(ev, () => { refit ||= requestAnimationFrame(() => { refit = 0; const w = $(".mhead .ifh-line .said[data-short]"); if (w) fitLine(w); }); });
 
 // ---- what's worth knowing ----
 function insights() {
@@ -1255,7 +1260,8 @@ function incomeView() {
   const dayMon = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const row = (e) => e.done || mode === "received"
     ? h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Went ex-dividend ${dayMon(e.at)} · ${fmt(e.qty, e.qty % 1 ? 2 : 0)} ${e.qty === 1 ? "share" : "shares"}${e.special ? " · a one-off" : ""}` })), h("span.r", {}, h("b.num", { text: money(e.v) })))
-    : h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Goes ex-dividend around ${aroundDay(e.at)}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` })));
+    // (one whose day's been, with nothing paid yet, counted in this month: said as due, not as a day that's been)
+    : h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: +e.at < new Date().setHours(0, 0, 0, 0) ? `Ex-dividend due, was around ${dayMon(e.at)}` : `Goes ex-dividend around ${aroundDay(e.at)}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` })));
   const pick = (i) => {
     chosen = i;
     bars.querySelectorAll(".ib").forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
@@ -2306,16 +2312,17 @@ function settingsView() {
       h("button.srow.danger", { type: "button", onclick: signOutHere }, "Sign Out")),
     h("p.hint", { style: "text-align:center", text: "Markets shows prices and news to help you follow your money. It isn't financial advice." })];
 }
-// the evening wrap, on or off (on it asks this phone to allow notifications, where it hasn't)
+// the evening wrap, on or off (on it asks this phone to allow notifications, where it hasn't: straight from the tap, as
+// a phone asks only then, and saved after, as Alert Me does)
 function wrapSwitch() {
   const sw = h("button.sw", { type: "button", role: "switch", id: "mk-wrap", "aria-checked": String(!!S.wrap), "aria-label": "Evening Wrap" });
   sw.onclick = async () => {
     const on = sw.getAttribute("aria-checked") !== "true";
     sw.setAttribute("aria-checked", String(on)); sw.disabled = true;
     try {
-      S.wrap = (await A.setWrap(on)).wrap;
       let why = null;
       if (on && !S.pushOn) await turnOnHere((m) => { why = m; });
+      S.wrap = (await A.setWrap(on)).wrap;
       toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
     } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
   };
