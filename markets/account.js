@@ -9,7 +9,11 @@ async function call(path, { method = "GET", body, wait = 30000 } = {}) {
   let r;
   try {
     r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: AbortSignal.timeout(wait) });
-  } catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
+  } catch (e) {
+    // (no answer in time, though this phone's online: Markets is slow just now, not you)
+    if (navigator.onLine !== false && /^(TimeoutError|AbortError)$/.test(e?.name || "")) throw Object.assign(new Error("Markets is slow to answer just now. Try again in a minute."), { offline: true, slow: true });
+    throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true });
+  }
   return answer(r);
 }
 async function answer(r) {
@@ -29,9 +33,10 @@ export const quotes = (syms) => call(`quotes?s=${list(syms)}`);
 export const chart = (sym, r) => call(`chart?s=${encodeURIComponent(sym)}&r=${r}`);
 export const years = (syms) => call(`years?s=${list(syms)}`, { wait: 60000 });
 export const news = (syms, markets = true) => call(`news?s=${list(syms)}${markets ? "" : "&m=0"}`);
-// a story's preview (its page's title, summary and picture), and that picture, passed through Markets
-export const story = (u) => call(`story?u=${encodeURIComponent(u)}`, { wait: 12000 });
-export const picUrl = (u, s) => `${API}/pic?${new URLSearchParams({ u, s: s || "" })}`;
+// a story's preview (its page's title, summary and picture), and that picture, passed through Markets (k: the story's
+// key, as the news gave it: functions/_markets.js storyKey)
+export const story = (u, k) => call(`story?${new URLSearchParams({ u, k: k || "" })}`, { wait: 12000 });
+export const picUrl = (u, s, k) => `${API}/pic?${new URLSearchParams({ u, s: s || "", k: k || "" })}`;
 export const search = (q) => call(`search?q=${encodeURIComponent(q)}`);
 export const putHolding = (h) => call("holding", { method: "PUT", body: h });
 export const dropHolding = (sym) => call(`holding?s=${encodeURIComponent(sym)}`, { method: "DELETE" });

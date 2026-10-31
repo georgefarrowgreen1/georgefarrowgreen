@@ -1,9 +1,11 @@
 // Markets (functions/_markets.js, markets/): names said as people say them, investment trusts told apart, London's pence in pounds, a chart answer read
-// whole (its points, its day, its year, its dividends), and the app's files all kept for offline
+// whole (its points, its day, its year, its dividends), the prices kept while their source is down, a sale checked against what was held on its day,
+// the evening wrap's day from what traded that day, a story read only where the news gave it (and its redirects each checked), a page that stalls
+// or a picture too big given up on without harm, the source asked a few at a time without rounds, and the app's files all kept for offline
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { plainName, readChart, cleanSymbol, kindOf, topicOf, readPreview, marketWide } from "../../../functions/_markets.js";
+import { plainName, readChart, cleanSymbol, kindOf, topicOf, readPreview, marketWide, chart, quotes, pooled, oversold, planBuy, wrapFigures, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../../functions/_markets.js";
 
 test("company names, as people say them", () => {
   assert.equal(plainName("Rolls-Royce Holdings plc"), "Rolls-Royce");
@@ -122,4 +124,157 @@ test("a market's stories about the market: one company's stories left out unless
   assert.equal(marketWide(n("Nvidia and AMD lead chip stocks lower", ["NVDA", "AMD"])), true, "more than one company: the market's");
   assert.equal(marketWide(n("Futures slip ahead of the Fed", ["^GSPC", "ES=F"])), true, "indices aren't companies");
   assert.equal(marketWide(n("Did The Market Read AppLovin Stock Right?", ["APP"]), new Set(["APP"])), true, "yours: kept");
+});
+
+test("while the prices' source is down, what's kept is given (said as stale), and it isn't asked again on every request", async () => {
+  const stmt = { bind: () => stmt, first: async () => null, run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] };
+  const env = { DB: { prepare: () => stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) }, MARKETS_DATA: "https://data.test" };
+  const was = { now: Date.now, fetch: globalThis.fetch };
+  let asked = 0, down = false, now = 1_800_000_000_000;
+  Date.now = () => now;
+  globalThis.fetch = async () => { asked++; if (down) throw new Error("down");
+    return new Response(JSON.stringify({ chart: { result: [{ meta: { currency: "USD", symbol: "KEPT", regularMarketPrice: 10, previousClose: 9 }, timestamp: [1, 2], indicators: { quote: [{ close: [9, 10] }] } }] } })); };
+  try {
+    assert.equal((await chart(env, "KEPT", "1d")).stale, undefined);
+    now += 61e3; down = true;
+    assert.equal((await chart(env, "KEPT", "1d")).stale, true, "a minute on, the source down: the last one, said as stale");
+    now += 5e3;
+    const c = await chart(env, "KEPT", "1d");
+    assert.equal(c.stale, true); assert.equal(c.price, 10); assert.equal(asked, 2, "and for a minute, given without asking again");
+    now += 60e3; await chart(env, "KEPT", "1d");
+    assert.equal(asked, 3, "then asked again");
+    await assert.rejects(chart(env, "NONE", "1d"), /aren’t available/);
+    await assert.rejects(chart(env, "NONE", "1d"), /aren’t available/);
+    assert.equal(asked, 4, "nothing kept: the failure kept a few seconds, not asked for on every request");
+    now += 61e3;
+    const q = await quotes(env, ["KEPT", "NONE"], now - 1);
+    assert.deepEqual(Object.keys(q), ["KEPT"]); assert.equal(q.KEPT.stale, true); assert.equal(asked, 4, "a request that's waited long enough: what's kept, without asking");
+    down = false; now += 61e3;
+    assert.equal((await chart(env, "KEPT", "1d")).stale, undefined, "back: fresh again");
+  } finally { Date.now = was.now; globalThis.fetch = was.fetch; }
+});
+
+test("a sale, checked against what was held on its day, and every sale after it", () => {
+  const JAN = Date.UTC(2026, 0, 10), FEB = Date.UTC(2026, 1, 10), MAR = Date.UTC(2026, 2, 10), held = { qty: 20, cost: 5, since: null, added: MAR, buys: 2 };
+  const buys = [{ id: 1, qty: 10, price: 5, at: JAN }, { id: 2, qty: 10, price: 6, at: MAR }];
+  // (as it was: 20 owned today, so a sale of 15 in February passed, and only 10 came out)
+  assert.equal(pooled([...buys.slice(0, 1), { qty: -15, at: FEB }, buys[1]]).qty, 10);
+  const feb = { qty: -15, price: 7, at: FEB }, short = planBuy(buys, held, feb).short;
+  assert.equal(short?.b, feb, "15 sold in February, when 10 were held: refused"); assert.equal(short.had, 10);
+  assert.equal(planBuy(buys, held, { qty: -10, price: 7, at: FEB }).short, null, "10 then: fine");
+  assert.equal(planBuy(buys, held, { qty: -20, price: 7, at: Date.UTC(2026, 3, 1) }).short, null, "and all 20 after March's");
+  // (one that would leave a later sale short)
+  const sold = [...buys.slice(0, 1), { id: 3, qty: -10, price: 8, at: MAR }], s2 = planBuy(sold, { ...held, qty: 0 }, { qty: -5, price: 7, at: FEB }).short;
+  assert.equal(s2?.b, sold[1], "5 sold in February leaves too few for March's 10"); assert.equal(s2.had, 5);
+  // (a buy taken off that a later sale needs)
+  assert.ok(oversold(sold.filter((b) => b.id !== 1)).short > oversold(sold).short, "January's buy taken off: March's sale short");
+  assert.equal(oversold(buys.filter((b) => b.id !== 2)).short, 0, "March's buy, with nothing sold: fine");
+  // (a shortfall from before sales were checked is no reason to refuse another that's fine)
+  const old = [{ id: 1, qty: 10, at: JAN }, { id: 2, qty: -15, at: FEB }];
+  assert.equal(planBuy(old, held, { qty: 5, price: 6, at: MAR }).short, null);
+});
+
+test("the first buy recorded keeps the shares already said where they were bought; a sale before then moves them back to its day", () => {
+  const MAY24 = Date.UTC(2024, 4, 1), JAN23 = Date.UTC(2023, 0, 1), held = { qty: 100, cost: 2, since: MAY24, added: Date.UTC(2025, 0, 1) };
+  const { start } = planBuy([], held, { qty: 50, price: 1.5, at: JAN23 });
+  assert.deepEqual(start, { qty: 100, price: 2, at: MAY24 }, "an older buy of 50: the 100 still from May 2024");
+  assert.equal(planBuy([], held, { qty: -20, price: 3, at: JAN23 }).start.at, JAN23, "a sale dated before them: they're moved back, so there were some to sell");
+  assert.equal(planBuy([], { ...held, since: null }, { qty: 5, price: 3, at: Date.UTC(2026, 0, 1) }).start.at, held.added, "no day said: the day it was added");
+  assert.equal(planBuy([], { ...held, qty: 0 }, { qty: 5, price: 3, at: JAN23 }).start, null, "none said: nothing to keep");
+});
+
+test("the evening wrap: the day from what traded today; a market shut for its holiday adds nothing, and is said", () => {
+  const t = Date.UTC(2026, 10, 26, 17, 0), was = Date.UTC(2026, 10, 25, 21, 0) / 1000, now = Date.UTC(2026, 10, 26, 16, 30) / 1000;   // (Thanksgiving)
+  const q = (ex, tz, time, price, prev, extra = {}) => ({ ex, tz, time, price, prev, cur: "GBP", kind: "share", ...extra });
+  const held = [{ name: "Shell", qty: 100, x: q("London", "Europe/London", now, 30, 29) }, { name: "Apple", qty: 10, x: q("Nasdaq", "America/New_York", was, 200, 180) },
+    { name: "Bitcoin", qty: 0.01, x: q("Crypto", "UTC", now - 60, 60000, 59000, { kind: "crypto" }) }];
+  const F = wrapFigures(held, { GBP: 1 }, t);
+  assert.equal(F.total, 100 + 10, "Shell's £100 and Bitcoin's £10; not Apple's £200, Wednesday's");
+  assert.equal(F.top.name, "Shell"); assert.deepEqual(F.shut, ["New York"]);
+  assert.equal(F.value, 3000 + 2000 + 600); assert.ok(Math.abs(F.pct - (110 / (5600 - 110)) * 100) < 1e-9);
+  // (one holding that didn't trade, where another there did: not its market shut)
+  const sus = [held[0], { name: "Suspended", qty: 10, x: q("London", "Europe/London", was, 5, 4) }];
+  assert.deepEqual(wrapFigures(sus, { GBP: 1 }, t).shut, []); assert.equal(wrapFigures(sus, { GBP: 1 }, t).total, 100);
+});
+
+test("a story's page read only where Markets's news gave it, its redirects each checked as the first was", async () => {
+  // (the server's secret, from pg_meta; nothing else kept)
+  const stmt = (sql) => { const st = { bind: () => st, first: async () => (/pg_meta/.test(sql) ? { v: "a-test-secret" } : null), run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] }; return st; };
+  const env = { DB: { prepare: stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) } };
+  const link = "https://news.example.com/a?x=1", k = await storyKey(env, link);
+  assert.equal(k.length, 32); assert.equal(await storyKeyOk(env, link, k), true);
+  assert.equal(await storyKeyOk(env, "https://evil.example.net/", k), false, "another address with it: refused");
+  assert.equal(await storyKeyOk(env, link, null), false); assert.equal(await storyKeyOk(env, link, k.replace(/^./, (c) => (c === "A" ? "B" : "A"))), false);
+  const was = globalThis.fetch, asked = [];
+  const pages = { "https://news.example.com/a": [301, "https://www.example.org/story"], "https://www.example.org/story": [200],
+    "https://news.example.com/b": [302, "https://10.0.0.1/inside"], "https://news.example.com/c": [302, "http://www.example.org/story"], "https://news.example.com/d": [302, "https://news.example.com/d"] };
+  globalThis.fetch = async (url, init) => {
+    asked.push(url); assert.equal(init.redirect, "manual", "never followed by itself");
+    const [status, to] = pages[url] || [404];
+    return status === 200 ? new Response('<html><head><meta property="og:title" content="It moved"><meta property="og:description" content="What it says."></head>', { headers: { "Content-Type": "text/html" } })
+      : new Response(null, { status, headers: to ? { Location: to } : {} });
+  };
+  try {
+    assert.equal((await story(env, "https://news.example.com/a"))?.summary, "What it says.", "a redirect to another https page: followed, and read");
+    assert.equal(await story(env, "https://news.example.com/b"), null, "to an address by number: not followed");
+    assert.ok(!asked.includes("https://10.0.0.1/inside"));
+    assert.equal(await story(env, "https://news.example.com/c"), null, "to plain http: not followed");
+    assert.equal(await story(env, "https://news.example.com/d"), null, "round and round: given up on");
+    assert.equal(asked.filter((u) => u === "https://news.example.com/d").length, 5);
+  } finally { globalThis.fetch = was; }
+});
+
+test("a story's page that stalls part way, read for what came; a picture too big, never read whole", async () => {
+  const stmt = { bind: () => stmt, first: async () => null, run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] };
+  const env = { DB: { prepare: () => stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) } };
+  const enc = new TextEncoder(), was = globalThis.fetch;
+  // (a body that gives what it has, then fails, as one cut off by its six seconds does)
+  const stalls = (first) => new ReadableStream({ pull(c) { if (first) { c.enqueue(enc.encode(first)); first = null; } else c.error(new Error("The operation was aborted due to timeout")); } });
+  let pulled = 0;
+  const pages = {
+    "https://news.example.com/half": () => new Response(stalls('<html><head><meta property="og:title" content="Half a page"><meta property="og:description" content="What came."><script>'), { headers: { "Content-Type": "text/html" } }),
+    "https://news.example.com/none": () => new Response(stalls("<html><he"), { headers: { "Content-Type": "text/html" } }),
+    "https://s.yimg.com/said-big.jpg": () => new Response("x", { headers: { "Content-Type": "image/jpeg", "Content-Length": "9000000" } }),
+    "https://s.yimg.com/big.jpg": () => new Response(new ReadableStream({ pull(c) { pulled++; c.enqueue(new Uint8Array(1e6)); } }), { headers: { "Content-Type": "image/jpeg" } }),
+    "https://s.yimg.com/small.png": () => new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "Content-Type": "image/png" } }),
+  };
+  globalThis.fetch = async (url) => (pages[url] || (() => new Response(null, { status: 404 })))();
+  try {
+    const half = await story(env, "https://news.example.com/half");
+    assert.equal(half?.title, "Half a page"); assert.equal(half.summary, "What came.");
+    assert.equal(await story(env, "https://news.example.com/none"), null, "nothing came that says anything: nothing (kept as such, not an error)");
+    assert.equal(await picture(env, "https://s.yimg.com/said-big.jpg"), null, "one that says it's over 3 MB: refused unread");
+    assert.equal(await picture(env, "https://s.yimg.com/big.jpg"), null, "one that's over 3 MB as it comes: given up on");
+    assert.ok(pulled <= 5, `read no further than 3 MB (${pulled} MB)`);
+    const small = await picture(env, "https://s.yimg.com/small.png");
+    assert.equal(small?.type, "image/png"); assert.deepEqual([...new Uint8Array(small.body)], [137, 80, 78, 71]);
+  } finally { globalThis.fetch = was; }
+});
+
+test("asked a few at a time: the next as each is done, not in rounds; answers in the list's order", async () => {
+  let running = 0, most = 0, done = 0, beforeSlow = null;
+  const waits = [150, 2, 2, 2, 2, 2, 2, 2, 2, 2];
+  const got = await fewAtATime(waits, async (ms, i) => { running++; most = Math.max(most, running); await new Promise((ok) => setTimeout(ok, ms)); running--; if (i === 0) beforeSlow = done; done++; return i * 2; }, 3);
+  assert.deepEqual(got, waits.map((_, i) => i * 2));
+  assert.equal(most, 3, "never more than three at once");
+  assert.equal(beforeSlow, 9, "the slow one held up none of the others (in rounds, all but two would have waited on it)");
+  assert.deepEqual(await fewAtATime([], async () => 1), []);
+});
+
+test("a price slow past its request's time: what's kept given meanwhile, and the answer, once it comes, kept for the next", async () => {
+  const stmt = { bind: () => stmt, first: async () => null, run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] };
+  const later = [], env = { DB: { prepare: () => stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) }, MARKETS_DATA: "https://data.test", MARKETS_TTL: 0, waitUntil: (p) => later.push(p) };
+  const was = globalThis.fetch;
+  let slow = 0, price = 10;
+  globalThis.fetch = async () => { const p = price; if (slow) await new Promise((ok) => setTimeout(ok, slow));
+    return new Response(JSON.stringify({ chart: { result: [{ meta: { currency: "USD", symbol: "SLOW", regularMarketPrice: p, previousClose: 9 }, timestamp: [1, 2], indicators: { quote: [{ close: [9, p] }] } }] } })); };
+  try {
+    assert.equal((await quotes(env, ["SLOW"])).SLOW.price, 10);
+    slow = 80; price = 11;
+    const n0 = later.length, q = await quotes(env, ["SLOW"], Date.now() + 20);
+    assert.equal(q.SLOW.price, 10); assert.equal(q.SLOW.stale, true, "by its time: the last one, said as stale");
+    assert.equal(later.length - n0, 1, "the one still on its way carried on past the answer (waitUntil)");
+    await later.at(-1); await Promise.all(later);
+    assert.equal((await quotes(env, ["SLOW"], Date.now() - 1)).SLOW.price, 11, "and once it came, kept: the next request's");
+  } finally { globalThis.fetch = was; }
 });

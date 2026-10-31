@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { makeFormat, parseWall, keyOf, compass, beaufort } from "../../../weather/format.js";
 import { skyDay, nextPhases, offsetFor, moonPhase } from "../../../weather/sky.js";
 import { compactClimate, climateOn, rankIn, yearsAgo, climateSpan, figures, extremes } from "../../../weather/climate.js";
-import { shapeForecast, shapeModels, shapeEnsemble } from "../../../weather/data.js";
+import { shapeForecast, shapeModels, shapeEnsemble, placesFound } from "../../../weather/data.js";
 import { codeInfo, iconOf } from "../../../weather/codes.js";
 import * as I from "../../../weather/insights.js";
 
@@ -152,6 +152,30 @@ test("shapes a forecast, the models and the ensemble", () => {
   assert.ok(Math.abs(e.hourly[14].p50 - 15.5) < 1e-9);
   assert.ok(Math.abs(e.days["2026-10-19"].wet - 4 / 11) < 1e-9);       // 4 runs with 4.8 mm, the rest dry
   assert.ok(e.days["2026-10-19"].tmaxP90 > e.days["2026-10-19"].tmaxP10);
+});
+
+// Places found by a search: each with its region, and those of the same name that would read the same told apart by
+// their county, then the district in it (Open-Meteo's admin2, admin3)
+test("places found by a search: two of the same name told apart", () => {
+  const uk = { country: "United Kingdom", country_code: "GB", admin1: "England" };
+  const found = placesFound([
+    { name: "Richmond", ...uk, admin2: "North Yorkshire", admin3: "Richmondshire", latitude: 54.4, longitude: -1.74 },
+    { name: "Richmond", ...uk, admin2: "Greater London", admin3: "Richmond upon Thames", latitude: 51.46, longitude: -0.3 },
+    { name: "Richmond", country: "United States", country_code: "US", admin1: "Virginia", admin2: "City of Richmond", latitude: 37.55, longitude: -77.46 },
+    { name: "Newport", ...uk, admin2: "Isle of Wight", latitude: 50.7, longitude: -1.29 },
+    { name: "Newport", country: "United Kingdom", country_code: "GB", admin1: "Wales", admin2: "Newport", latitude: 51.59, longitude: -3 },
+    { name: "Ashford", ...uk, admin2: "Kent", admin3: "Ashford", latitude: 51.15, longitude: 0.87 },
+    { name: "Ashford", ...uk, admin2: "Kent", admin3: "Folkestone and Hythe", latitude: 51.1, longitude: 1.0 },
+    { name: "Singapore", country: "Singapore", country_code: "SG", admin1: "Singapore", latitude: 1.29, longitude: 103.85 },
+  ]);
+  assert.deepEqual(found.map((p) => `${p.name} / ${p.region}`), [
+    "Richmond / North Yorkshire, England, United Kingdom", "Richmond / Greater London, England, United Kingdom", "Richmond / Virginia, United States",
+    "Newport / England, United Kingdom", "Newport / Wales, United Kingdom",
+    "Ashford / Kent, England, United Kingdom", "Ashford / Folkestone and Hythe, Kent, England, United Kingdom",
+    "Singapore / Singapore",
+  ], "the county only where it's needed; the district where the county's the same (one named for the town itself left out)");
+  assert.deepEqual(found[0], { name: "Richmond", region: "North Yorkshire, England, United Kingdom", country: "GB", lat: 54.4, lon: -1.74 });
+  assert.deepEqual(placesFound(undefined), []);
 });
 
 /* ---------- the next few hours ---------- */

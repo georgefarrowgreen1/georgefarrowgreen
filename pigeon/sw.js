@@ -2,8 +2,8 @@
 // when one is tapped, and keeps a copy of the app so it opens with no signal.
 //
 // The page is always asked of the network first (so a new version arrives as
-// soon as it's out); only if there's no answer within a few seconds, or no
-// signal at all, does the copy from last time open instead. The app's files
+// soon as it's out); only if there's no answer within a few seconds, no signal
+// at all, or an error in its place, does the copy from last time open instead. The app's files
 // are fingerprinted (?v=…, see functions/pigeon/_middleware.js) and never
 // change, so those come from the copy whenever it has them. Nothing from the
 // API is ever kept here: messages stay sealed in the app's own storage.
@@ -44,8 +44,11 @@ async function page(e, r) {
     const copy = res.clone(), c = await caches.open(SHELL);
     await c.put(PAGE, copy.clone()); await prune(c, await copy.text());
   }).catch(() => {}));
+  // (an answer that isn't the page, a server's error page say, is no better than none: last time's copy opens instead,
+  // if there is one. A redirect is the page's own, followed as it says)
+  const good = net.then((res) => (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400) || (res.ok && (res.headers.get("Content-Type") || "").includes("text/html")) ? res : Promise.reject(new Error("not the page"))));
   try {
-    return await Promise.race([net, new Promise((_, no) => setTimeout(() => no(new Error("slow")), WAIT))]);
+    return await Promise.race([good, new Promise((_, no) => setTimeout(() => no(new Error("slow")), WAIT))]);
   } catch (_) {
     const kept = await caches.match(PAGE).catch(() => null);
     if (kept) return kept;

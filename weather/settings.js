@@ -3,7 +3,7 @@
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
 import { FACES, PITCHES, MAX_ZONES, zoneSaid, facesName } from "./solar.js";
-import { $, accountPage, adopt, afterFrame, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, standalone, STATES, swap, syncNotify, toAccount, toAccountSignIn, toast, windows } from "./app.js";
+import { $, accountPage, adopt, afterFrame, asksBack, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, standalone, STATES, swap, syncNotify, toAccount, toAccountSignIn, toast, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
 import { glyph } from "./icons.js";
@@ -68,7 +68,9 @@ function drawSolar() {
       h("span", { class: "act-icon", svg: glyph("sun", 18) }),
       h("span", { class: "act-txt" }, h("b", {}, z.name), h("span", { class: "act-lim" }, `${zoneSaid(z)} · ${zoneWhere(z)}`)),
       h("span", { class: "act-chev", svg: glyph("chevron", 14) })))));
-  $("zone-add").hidden = s.zones.length >= MAX_ZONES || !S.places.some((p) => !p.gps);
+  // (with only My Location saved, a zone's put where that is now: said under the button, so it's not a surprise)
+  $("zone-add").hidden = s.zones.length >= MAX_ZONES;
+  $("zone-here").hidden = s.zones.length >= MAX_ZONES || S.places.some((p) => !p.gps);
 }
 function solarRead() {
   const form = $("settings-form"), was = S.settings.solar;
@@ -84,11 +86,13 @@ function solarSaved(was) {
   if (sunSig(sun) === was) return;
   (sun.on && sun.alert && !n.endpoint && !canShow() ? allowed() : Promise.resolve([true])).then(([go]) => { if (go && (notifying(n) || n.endpoint)) syncNotify().catch(() => {}); });
 }
+// (at the place shown, or another saved place; with only My Location saved, where that is now, and kept there: panels
+// don't move with you)
 function newZone(open = true) {
-  const s = S.settings.solar, p = (place() && !place().gps ? place() : null) || S.places.find((x) => !x.gps), was = sunSig(s);
+  const s = S.settings.solar, p = (place() && !place().gps ? place() : null) || S.places.find((x) => !x.gps) || S.places.find((x) => x.gps), was = sunSig(s);
   if (!p || s.zones.length >= MAX_ZONES) return;
   const names = new Set(s.zones.map((z) => z.name)), name = ["Roof", "Second roof", "Third roof", "Garage", "Shed", "Zone 6"].find((x) => !names.has(x)) || "Zone";
-  s.zones.push({ id: `z${Date.now().toString(36)}`, name, lat: p.lat, lon: p.lon, place: p.name || "", faces: "S", pitch: 35, kw: null });
+  s.zones.push({ id: `z${Date.now().toString(36)}`, name, lat: p.lat, lon: p.lon, place: p.gps && p.name === "My Location" ? "" : p.name || "", faces: "S", pitch: 35, kw: null });
   if (open) { s.on = true; solarSaved(was); editZone(s.zones.length - 1); }
 }
 function editZone(i) {
@@ -463,7 +467,7 @@ export async function openAccount(open) {
   S.pullNext = true;
   try {
     const { code } = await A.accountLink();
-    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather", ...(typeof open === "string" ? { open } : {}) })}`;
+    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather", ...(typeof open === "string" ? { open } : {}), ...asksBack(open) })}`;
     if (w && !w.closed) w.location.href = url; else location.href = url;
   } catch (e) { w?.close(); toast("Couldn’t open your account just now. Try again."); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
 }

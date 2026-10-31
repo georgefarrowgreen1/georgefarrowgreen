@@ -186,8 +186,13 @@ const userPrefs = async (env, id) => {
   const u = await (await db(env)).prepare("SELECT id, email, notify_email, email_at, notify_prefs FROM pg_users WHERE id = ?").bind(id).first();
   return u ? { u, p: prefsOf(u) } : null;
 };
+// Held by quiet hours (a friend request, one accepted, being added to a group: none of them comes with a pigeon, so
+// nothing else would bring them up again): kept, and told once quiet hours end, if it still stands (heldTick)
+const hold = async (env, uid, kind, about, by = null) =>
+  (await db(env)).prepare("INSERT OR REPLACE INTO pg_held (user_id, kind, about, by_id, at) VALUES (?, ?, ?, ?, ?)").bind(uid, kind, about, by, Date.now()).run();
 export async function friendRequested(env, origin, from, toId) {
-  const r = await userPrefs(env, toId); if (!r || !r.p.requests || isQuiet(r.p)) return;
+  const r = await userPrefs(env, toId); if (!r || !r.p.requests) return;
+  if (isQuiet(r.p)) return hold(env, toId, "request", from.id);
   await pushTo(env, toId, { title: r.p.names ? "Friend request" : "Chat", body: r.p.names ? `${firstName(from.name)} (@${from.handle}) wants to be friends on Chat.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
   if (r.u.notify_email && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
     await notifyEmail(env, origin, r.u, r.p.names ? `${firstName(from.name)} wants to be friends on Chat` : "You have a new friend request on Chat", {
@@ -199,7 +204,8 @@ export async function friendRequested(env, origin, from, toId) {
     }).catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
-  const r = await userPrefs(env, toId); if (!r || !r.p.accepted || isQuiet(r.p)) return;
+  const r = await userPrefs(env, toId); if (!r || !r.p.accepted) return;
+  if (isQuiet(r.p)) return hold(env, toId, "accepted", by.id);
   await pushTo(env, toId, { title: r.p.names ? "New friend" : "Chat", body: r.p.names ? `${firstName(by.name)} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
 }
 // The person you sent a pigeon to moved, so it changed course.
@@ -242,7 +248,8 @@ function etaText(ms) { const all = Math.max(1, Math.round(ms / MIN)), h = Math.f
 const isMuted = async (env, gid, uid) => !!(await (await db(env)).prepare("SELECT muted FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).first())?.muted;
 export async function groupAdded(env, by, ids, g) {
   for (const id of ids) {
-    const r = await userPrefs(env, id); if (!r || !r.p.requests || isQuiet(r.p)) continue;
+    const r = await userPrefs(env, id); if (!r || !r.p.requests) continue;
+    if (isQuiet(r.p)) { await hold(env, id, "added", g.id, by.id); continue; }
     await pushTo(env, id, { title: r.p.names ? g.name : "Chat", body: r.p.names ? `${firstName(by.name)} added you to the group.` : "You were added to a group.", tag: "group-" + g.id, url: `/pigeon/#open=${g.id}` });
   }
 }
@@ -273,6 +280,31 @@ export async function groupRerouted(env, senderId, to, gid, deliverAt) {
   const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "Chat",
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + gid, url: `/pigeon/#open=${gid}` });
+}
+// What quiet hours held (hold), told now they've ended: each once (claimed as it's taken), and only if it still stands,
+// a request still waiting, still friends, still in the group (said as it would have been, with whatever they've chosen
+// since: off now, it's not said at all). Still quiet: it waits; three days on, it goes untold.
+export async function heldTick(env, D, t, origin) {
+  let told = 0;
+  await D.prepare("DELETE FROM pg_held WHERE at < ?").bind(t - LOOKBACK).run();
+  const { results } = await allRows(D, `SELECT h.user_id, h.kind, h.about, h.by_id, h.at, u.notify_prefs FROM pg_held h JOIN pg_users u ON u.id = h.user_id WHERE h.at >= ?1`, [t - LOOKBACK], "h", "at");
+  for (const h of results) {
+    if (isQuiet(prefsOf(h), t)) continue;
+    const c = await D.prepare("DELETE FROM pg_held WHERE user_id = ? AND kind = ? AND about = ? AND at = ?").bind(h.user_id, h.kind, h.about, h.at).run();
+    if (!c.meta.changes) continue;
+    if (h.kind === "request") {
+      const from = await D.prepare("SELECT u.id, u.name, u.handle FROM pg_links l JOIN pg_users u ON u.id = l.a WHERE l.a = ? AND l.b = ? AND l.status = 'pending'").bind(h.about, h.user_id).first();
+      if (from) { await friendRequested(env, origin, from, h.user_id); told++; }
+    } else if (h.kind === "accepted") {
+      const by = await D.prepare("SELECT id, name FROM pg_users WHERE id = ?").bind(h.about).first();
+      if (by && (await pals(D, by.id, h.user_id))) { await friendAccepted(env, by, h.user_id); told++; }
+    } else if (h.kind === "added") {
+      const g = await D.prepare("SELECT g.id, g.name FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? WHERE g.id = ?").bind(h.user_id, h.about).first();
+      const by = h.by_id && await D.prepare("SELECT id, name FROM pg_users WHERE id = ?").bind(h.by_id).first();
+      if (g && by) { await groupAdded(env, by, [h.user_id], g); told++; }
+    }
+  }
+  return told;
 }
 // Group pigeons that landed or were lost since the last tick.
 // Every row a query matches, a page at a time (up to 5,000), in the order of `key` (the column its
@@ -589,7 +621,7 @@ async function blurOld(D, t) {
   await D.batch([
     D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('blur_at', ?)").bind(String(t)),
     // (what its way said, round storms, sheltering, a ship, is kept first, for the flight log and its line later)
-    D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, ${keptWay("legs")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
+    D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, ${keptWay("legs")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?1 AND sent_at < ?1`).bind(t - BLUR_AFTER),      // (sent before it landed: so by pg_msgs_sent)
     D.prepare(`UPDATE pg_gdeliv SET ${["to_lat", "to_lon"].map(half).join(", ")}, ${keptWay("legs")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
     D.prepare(`UPDATE pg_gmsgs SET ${["from_lat", "from_lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND sent_at < ?`).bind(t - BLUR_AFTER - 8 * DAY),
     D.prepare(`UPDATE pg_near SET ${["lat", "lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND at < ?`).bind(t - BLUR_AFTER),
@@ -667,6 +699,8 @@ export async function tick(env, origin) {
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
   }
+  // friend requests and the like that quiet hours held, now they've ended for whoever they're for
+  await heldTick(env, D, t, origin).catch((e) => logError(env, "pigeon held", e));
   // scheduled pigeons that have just taken off: now their recipient can hear about them
   const { results: off } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.deliver_at, m.pigeon, u.name FROM pg_msgs m JOIN pg_users u ON u.id = m.sender
     WHERE m.sched = 1 AND m.sent_at <= ?1 LIMIT 200`).bind(t).all();
@@ -809,7 +843,25 @@ export async function maybeTick(env, origin) {
   const D = await db(env);
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('tick', '0')").run();
   const r = await D.prepare("UPDATE pg_meta SET v = ?1 WHERE k = 'tick' AND CAST(v AS INTEGER) < ?2").bind(String(t), t - MIN).run();
-  if (r.meta.changes) await tick(env, origin);
+  if (r.meta.changes) await oneTick(D, () => tick(env, origin));
+}
+// One tick at a time, whoever asks for it (the site's traffic, above, or the schedulers: notify-tick, from workers/ticker
+// and GitHub's), so two never do the same work side by side: a lease, given back at the end, that lapses by itself if a
+// tick dies part way (one traffic asked for is cut off 30 s or so after its request). wait: how long to wait for one
+// already running to finish, to run after it; past that (or with none), { busy: true } and nothing run
+const LEASE = 60e3;
+export async function oneTick(D, run, wait = 0) {
+  await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('tick_run', '0')").run();
+  const until = Date.now() + wait;
+  let mine;
+  for (;;) {
+    const t = Date.now(); mine = String(t + LEASE);
+    if ((await D.prepare("UPDATE pg_meta SET v = ?1 WHERE k = 'tick_run' AND CAST(v AS INTEGER) < ?2").bind(mine, t).run()).meta.changes) break;
+    if (t >= until) return { busy: true };
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  try { return await run(); }
+  finally { await D.prepare("UPDATE pg_meta SET v = '0' WHERE k = 'tick_run' AND v = ?").bind(mine).run().catch(() => {}); }
 }
 
 export function tickAuthOk(request, env, secret = env.PIGEON_TICK_SECRET) {

@@ -14,19 +14,13 @@
 // their middle; sleep: their total (a plain number under 24 is hours, under 1,440 minutes, else seconds). The day is
 // today where you are (Cloudflare's guess of your time zone), unless it says { day: "YYYY-MM-DD" }.
 import { HttpError, hex, sha256, limit, randomToken, readCapped, clientNet } from "./_pigeon.js";
-import { fitdb } from "./_fitness.js";
+import { tablesOnce } from "./_fitness.js";
 
-async function tables(env) {
-  const D = await fitdb(env);
-  if (!tables.done) {
-    await D.batch([
-      D.prepare("CREATE TABLE IF NOT EXISTS fx_health_key (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, added INTEGER NOT NULL, last INTEGER, said TEXT)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS fx_health (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, rhr INTEGER, sleep INTEGER, at INTEGER NOT NULL, PRIMARY KEY (user_id, day))"),
-    ]);
-    tables.done = true;
-  }
-  return D;
-}
+// (made once for each change to them, as Fitness's own are: functions/_fitness.js tablesOnce)
+const tables = (env) => tablesOnce(env, "health", (D) => D.batch([
+  D.prepare("CREATE TABLE IF NOT EXISTS fx_health_key (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, added INTEGER NOT NULL, last INTEGER, said TEXT)"),
+  D.prepare("CREATE TABLE IF NOT EXISTS fx_health (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, rhr INTEGER, sleep INTEGER, at INTEGER NOT NULL, PRIMARY KEY (user_id, day))"),
+]));
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

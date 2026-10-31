@@ -19,12 +19,15 @@ export const SPORTS = ["ride", "run", "swim", "walk", "strength", "row", "other"
 const TYPES = ["fit", "gpx", "tcx"];
 export const fileKey = (userId, id) => `fitness/${userId}/${id}`;
 
-let ready = null;
+let ready = null, made = new Map();
 export async function fitdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
   if (!ready) ready = (async () => {
-    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips)
-    if ((await env.DB.prepare("SELECT v FROM fx_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips;
+    // the same look saying which of the other parts' tables are made too: tablesOnce)
+    const { results } = (await env.DB.prepare("SELECT k, v FROM fx_meta WHERE k LIKE 'schema%'").all().catch(() => null)) || {};
+    made = new Map((results || []).map((r) => [r.k, r.v]));
+    if (made.get("schema_fp") === SCHEMA_FP) return;
     await setup(env);
     await env.DB.prepare("INSERT OR REPLACE INTO fx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
   })().catch((e) => { ready = null; throw e; });
@@ -46,7 +49,24 @@ async function setup(env) {
   // (when each last changed: added, renamed, its figures or its file; so a phone asks for only what's changed since)
   await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN changed INTEGER").run().catch(() => {});
 }
-const SCHEMA_FP = (() => { let h = 2166136261; for (const c of setup.toString()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "f" + h.toString(36); })();
+const fingerprint = (text) => { let h = 2166136261; for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "f" + h.toString(36); };
+const SCHEMA_FP = fingerprint(setup.toString());
+// Another part's tables (Garmin's, Strava's, Apple Health's, the morning notification's), made as its make(D) makes them
+// (each step safe to run again), once for each change to make, as setup's are: whether they're made known from fitdb's
+// one look, so a new copy of the server makes no trips for them at all. → the database
+const sure = new Set();
+export async function tablesOnce(env, name, make) {
+  const D = await fitdb(env), k = `schema_${name}`;
+  if (sure.has(k)) return D;
+  const fp = fingerprint(make.toString());
+  if (made.get(k) !== fp) {
+    await make(D);
+    await D.prepare("INSERT OR REPLACE INTO fx_meta (k, v) VALUES (?, ?)").bind(k, fp).run();
+    made.set(k, fp);
+  }
+  sure.add(k);
+  return D;
+}
 
 // ---- what's kept, made safe ----
 const text = (v, n) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").trim().slice(0, n);
@@ -200,21 +220,29 @@ export async function olderActs(env, userId, start, id) {
     .bind(userId, start, id, PAGE + 1).all();
   return { acts: results.slice(0, PAGE).map(rowOut), more: results.length > PAGE };
 }
-// One kept, its file first (so a row never points at nothing). The same activity sent again (the same id): kept once.
+// One kept, its file first (so a row never points at nothing). The same activity sent again (the same id), or the same
+// ride from somewhere else (one that started within a minute of it: from Garmin and from Strava, or uploaded too, by
+// two devices at once, say): kept once.
 export async function addActivity(env, userId, meta, u8) {
   if (!meta.type || !fileIs(meta.type, await headOf(u8))) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
   if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
   const D = await fitdb(env);
   await limit(env, `fxup:${userId}`, 600, 3600e3);
-  const had = await D.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, MAX(id = ?2) AS dup FROM fx_acts WHERE user_id = ?1").bind(userId, meta.id).first();
-  if (had?.dup) return { kept: false, already: true };
+  const had = await D.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, MAX(id = ?2) AS dup, MAX(start > ?3 - 60000 AND start < ?3 + 60000) AS near FROM fx_acts WHERE user_id = ?1").bind(userId, meta.id, meta.start).first();
+  if (had?.dup || had?.near) return { kept: false, already: true };
   if (had?.n >= MAX_ACTS) throw new HttpError(413, `You can keep ${MAX_ACTS.toLocaleString("en-GB")} activities. Delete some old ones first.`);
   if ((had?.bytes || 0) + u8.length > MAX_STORE) throw new HttpError(413, "Your activities have used all the space there is (2 GB). Delete some old ones first.");
   if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
   await env.BIO_R2.put(fileKey(userId, meta.id), u8, { httpMetadata: { contentType: "application/octet-stream" } });
   const now = Date.now();
-  await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added, gz, changed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), now, isGz(u8) ? 1 : 0, now).run();
+  // (and only where the same ride hasn't been kept meanwhile, by another device at the same moment: else its file goes again)
+  const r = await D.prepare(`INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, device, file, type, size, sum, added, gz, changed)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?12 WHERE NOT EXISTS (SELECT 1 FROM fx_acts WHERE user_id = ?1 AND start > ?3 - 60000 AND start < ?3 + 60000)
+    ON CONFLICT(user_id, id) DO NOTHING`).bind(userId, meta.id, meta.start, meta.sport, meta.indoor ? 1 : 0, meta.name, meta.device, meta.file, meta.type, u8.length, JSON.stringify(meta.sum), now, isGz(u8) ? 1 : 0).run();
+  if (!r.meta?.changes) {
+    if (!(await D.prepare("SELECT 1 FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, meta.id).first())) await env.BIO_R2.delete(fileKey(userId, meta.id));
+    return { kept: false, already: true };
+  }
   return { kept: true };
 }
 // One kept before, its file made smaller by the phone (written as FIT, and gzipped): the same activity, in less space

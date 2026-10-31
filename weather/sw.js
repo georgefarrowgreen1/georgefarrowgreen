@@ -6,7 +6,7 @@
 // which change far less often, are kept apart, across versions (LIBS: renamed when they're updated). The forecast
 // itself is kept by the page (data.js), never here. And its notifications: rain alerts and the morning briefing
 // (functions/_wxpush.js).
-const CACHE = "wx-1.57", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
+const CACHE = "wx-1.58", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
 // (the sky's colour at its top as it last was, kept by the page (app.js sky), written into the page as it's given here, as
 // its theme-color: an iPhone tints the strip behind its status bar with the page's theme-color as it arrives, and takes
 // no notice of it changed after; kept apart, across versions)
@@ -17,7 +17,7 @@ const SHELL = ["./", "./early.js", "./styles.css", "./boot.js", "./app.js", "./d
 // .tools/wxshell.mjs, checked by the tests. As it's installed, every file fetched is checked against them, so a phone
 // only ever keeps a whole version: straight after a release, a server can hand out a mix of the old and the new for a
 // moment, and kept, that mix would stay (an old radar.js in a new page, say) until the next.
-const SUMS = {"./early.js":"aIR2yuW+YNGHkxqxb5qJ4gjQZ0ww5DQqn9MZHeFtSJs=","./styles.css":"g5IYN9/+NGwpz/w5IXpuodPBv7Mgr+nKsdYU5JIxumg=","./boot.js":"0625VwnuhklBncp/LM1Z8ocwHyUTSNSrB/NYFrKDeBM=","./app.js":"HEs3mzzdG0txL5OC8kj/kGS7JcxoMls4/KdezC1BpB8=","./detail.js":"lQEnK9c46hLwcO7+7sGSlFOEcYoqLi2gmCvVLw042C0=","./settings.js":"OxMAD8D+iT0DZKgfntPbFqUzKOT0DCFX2IimfROECv8=","./data.js":"t49LF6OEvLsgUODiBhbHeM7tqDWLhTA3zJdJyUTESR4=","./insights.js":"hJpUqqlkMOqd/3c16ZC9UbSnNU1UAdzTNMM48JFDa9M=","./format.js":"jn8oG8NB6xCRakbYdd80Tt++uLxVF2avsEIHiSZDsL4=","./codes.js":"dllq/dnHuCOWsS6RTwkqDkR4kYsp1Cf3vHCz7RjoxMA=","./climate.js":"OYnesUonPix6ndrjmBSQSqTaDFbolSKe1DDOQXu+l9w=","./sky.js":"RecpRXnB4LaQS+csAbFTHoWZEbi+XIdwa/ON2rw1lhw=","./charts.js":"nEK1NyGq2Qhqp5ueWa8dCzt2yfxJMjnzzOyRyig2V3o=","./icons.js":"iwZSfC5VFOSu0wxLQieTw0clm89qjIj16sZzN2H38qg=","./skill.js":"AvTdjV+ohqX93OosCGx1DbaSU7ULOWMaEGcFmjctvEM=","./radar.js":"ZakgzkHt8LlT1j6QhhD82jPShxOq8uEgTvKU6R6B2OU=","./rainmap.js":"AbdC5/JghsAuJIWgKlhwtl+putW40xbw521LbZJ28Ak=","./radarmix.js":"JsUhL+kUJd9FygODYT6ksTcmbzkIrS4uX7V4+wNP0Rs=","./radarwork.js":"SWTcX26JnER0wRubKmKdd6X+UOPh0eG63ZAFaCLIK18=","./mapgl.js":"3l52ye80HjGC59dF8T3JZzICpG4ABzKZJNvDbU3aMB4=","./mapstyle.js":"l98jKbYlemzdupyKkH+kAX650NA7KRzOsC59n2or4i4=","./mapleaf.js":"aaAQrqrGkzpbzGU+Lm909B8IULi7pl6cSoZ6C2+8HhY=","./official.js":"klGkZyNJCWbPf3CJtoZhtrYdXyJmOnMEODO8NQ4/kec=","./agree.js":"8podGSY7JNNt3pgnF+nSsfRnOFaZETUxE6Pwny0eGMs=","./solar.js":"/HqTx8LIQm2x79Wx4sWPDv5rjr7LmD6H8NhZRVeKaGs=","./account.js":"IwTKk2/3H9sLANipo5N0v0sKoTlU+3NB91/xhQkclCs=","./manifest.webmanifest":"9HNM4pGFRMMXh2W2fTLh9y+sv0KqeaPpbO46fSbH1UQ=","./icon.svg":"Mfwc5OH4F6BLd/7oUJGzE93BUHpdA9pP8ngJdHx/4GE=","./icon-192.png":"XB9hcjlwHuXlvCewcQrfsEaciriz+kH8TaL/9PN19eE="};
+const SUMS = {"./early.js":"aIR2yuW+YNGHkxqxb5qJ4gjQZ0ww5DQqn9MZHeFtSJs=","./styles.css":"nAiXCcOc31UJ2VxX+truGmCy9gKFgt/rxUZL5qeN9L4=","./boot.js":"0625VwnuhklBncp/LM1Z8ocwHyUTSNSrB/NYFrKDeBM=","./app.js":"33htf9VwGmteinDw3okXZeN/dOz4m3Tq3wpyOzGd+20=","./detail.js":"wc8d6B7ha9M3DPa8jBoJYeXUL8g61RI8AhmG61RhfLs=","./settings.js":"8jW/isbii8V0Gn3cFpy1CtCWQOv1xaEUA075m519gBs=","./data.js":"gx6CaYsHn4cHqmoo3MN7Tmg+mbiBM0FPGt3JhLnVLA8=","./insights.js":"hJpUqqlkMOqd/3c16ZC9UbSnNU1UAdzTNMM48JFDa9M=","./format.js":"jn8oG8NB6xCRakbYdd80Tt++uLxVF2avsEIHiSZDsL4=","./codes.js":"dllq/dnHuCOWsS6RTwkqDkR4kYsp1Cf3vHCz7RjoxMA=","./climate.js":"OYnesUonPix6ndrjmBSQSqTaDFbolSKe1DDOQXu+l9w=","./sky.js":"RecpRXnB4LaQS+csAbFTHoWZEbi+XIdwa/ON2rw1lhw=","./charts.js":"LUF185TLhoyMskrQhHp7p8iaW2qBGn7IQVvYKZb2kKc=","./icons.js":"iwZSfC5VFOSu0wxLQieTw0clm89qjIj16sZzN2H38qg=","./skill.js":"gkAM68aJWQi1UFM2T07Q3SV5lwxyUf+CkCN2PRJBXfI=","./radar.js":"1dqXnq0Tk4Fk1kZiWd/67fDzMNnrQEqTcOHNzkYJsH4=","./rainmap.js":"AbdC5/JghsAuJIWgKlhwtl+putW40xbw521LbZJ28Ak=","./radarmix.js":"oQbg1m7vmQZtUHrU9ltZHUgEVcBB+A01unX+FJMGYjs=","./radarwork.js":"SWTcX26JnER0wRubKmKdd6X+UOPh0eG63ZAFaCLIK18=","./mapgl.js":"3l52ye80HjGC59dF8T3JZzICpG4ABzKZJNvDbU3aMB4=","./mapstyle.js":"l98jKbYlemzdupyKkH+kAX650NA7KRzOsC59n2or4i4=","./mapleaf.js":"aaAQrqrGkzpbzGU+Lm909B8IULi7pl6cSoZ6C2+8HhY=","./official.js":"klGkZyNJCWbPf3CJtoZhtrYdXyJmOnMEODO8NQ4/kec=","./agree.js":"axi1t0IPY9qi2texIqP/4OnyU7gzD2/dOZfJ40jDi4I=","./solar.js":"/HqTx8LIQm2x79Wx4sWPDv5rjr7LmD6H8NhZRVeKaGs=","./account.js":"IwTKk2/3H9sLANipo5N0v0sKoTlU+3NB91/xhQkclCs=","./manifest.webmanifest":"9HNM4pGFRMMXh2W2fTLh9y+sv0KqeaPpbO46fSbH1UQ=","./icon.svg":"Mfwc5OH4F6BLd/7oUJGzE93BUHpdA9pP8ngJdHx/4GE=","./icon-192.png":"XB9hcjlwHuXlvCewcQrfsEaciriz+kH8TaL/9PN19eE="};
 const sum = async (buf) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))));
 // (all of it or none: a version that couldn't all be fetched whole, on a poor connection or mid-release say, isn't
 // started, so the last whole one carries on, offline too, and it's tried again next time)
@@ -26,14 +26,20 @@ const sum = async (buf) => btoa(String.fromCharCode(...new Uint8Array(await cryp
 self.addEventListener("message", (e) => { if (e.data?.ifl === "renew") e.ports[0]?.postMessage({ ifl: "renewed" }); });
 self.addEventListener("install", (e) => {
   e.waitUntil((async () => {
-    const got = await Promise.all(SHELL.map(async (u) => {
-      // (checked with the server, not fetched afresh: a file the page has just been sent comes back as "the same", not a
-      // second time; each is still checked against its fingerprint below)
-      const res = await fetch(new Request(u, { cache: "no-cache" }));
+    // (each file as the browser has it already, if it does, not even checked with the server: the page has just been
+    // sent most of them, and a version before had many the same; only one that isn't this version's, by its
+    // fingerprint (the page: by its version), or isn't to hand, is fetched, checked with the server first; and one
+    // with no fingerprint always is)
+    const take = async (u, cache) => {
+      const res = await fetch(new Request(u, { cache }));
       if (!res.ok) throw new Error(`${u}: ${res.status}`);
       const body = await res.clone().arrayBuffer();
       const whole = u === "./" ? new TextDecoder().decode(body).includes(`name="app-version" content="${CACHE}"`) : !SUMS[u] || (await sum(body)) === SUMS[u];
-      if (!whole) throw new Error(`${u} isn't ${CACHE}'s`);
+      return whole ? res : null;
+    };
+    const got = await Promise.all(SHELL.map(async (u) => {
+      const res = (u === "./" || SUMS[u] ? await take(u, "force-cache").catch(() => null) : null) || (await take(u, "no-cache"));
+      if (!res) throw new Error(`${u} isn't ${CACHE}'s`);
       return [u, res];
     }));
     const c = await caches.open(CACHE);
@@ -73,10 +79,12 @@ async function tinted(res) {
 }
 
 // a notification: { title, body, tag, url }
+// (one taking the place of another with its tag, still showing, comes with its sound all the same: rain on its way, a
+// warning raised to amber)
 self.addEventListener("push", (e) => {
   let n = {};
   try { n = e.data ? e.data.json() : {}; } catch (_) { n = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(n.title || "Weather", { body: n.body || "", tag: n.tag || undefined, renotify: n.tag === "rain", icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }));
+  e.waitUntil(self.registration.showNotification(n.title || "Weather", { body: n.body || "", tag: n.tag || undefined, renotify: n.tag === "rain" || /^warn:/.test(n.tag || ""), icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }));
 });
 // a tap opens the app on the place the notification was about (or brings an open copy forward)
 self.addEventListener("notificationclick", (e) => {

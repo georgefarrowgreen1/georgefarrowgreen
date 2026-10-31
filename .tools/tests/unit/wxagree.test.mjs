@@ -105,5 +105,9 @@ test("now: raining as the next four hours say (the radar's, where it leads), so 
   // without the next four hours: the forecast's own now, as it was
   wx.minutely = [];
   assert.equal(oneRain(wx, at).current.code, 63);
+  // a forecast kept from hours ago (opened offline): not its weather now as it was then, but this hour's as forecast
+  // (the page's, where there's no weather now: insights.js hourAt)
+  assert.equal(oneRain(wx, at + 50 * 60e3).current.code, 63, "read 50 minutes ago: still now");
+  assert.equal(oneRain(wx, at + 3 * H).current, null, "read three hours ago: not now");
 });
 const at16 = (wx) => wx.hourly.find((h) => h.t === DAY0 + 16 * H);

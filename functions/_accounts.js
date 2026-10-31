@@ -48,6 +48,7 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_events WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_handoff WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_handback WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_held WHERE user_id = ?1 OR about = ?1 OR by_id = ?1").bind(id),
     D.prepare("DELETE FROM pg_vanish WHERE a = ?1 OR b = ?1").bind(id),
     // their handle is held for 30 days, for no one, so no one can pose as them to their friends (and the ones they had
     // lately stay held as long as they were going to be, for no one too)

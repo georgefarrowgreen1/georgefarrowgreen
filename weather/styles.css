@@ -1233,6 +1233,9 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 :is(.place-card, .acct-chip)[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } :is(.place-card, .acct-chip)[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } :is(.place-card, .acct-chip)[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
 @media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: opacity var(--dur-fast), filter var(--dur-fast); } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
+/* (finding you: its arrow turning as the bar's does, app.js locate) */
+#use-location.busy .g { animation: spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { #use-location.busy .g { animation: none; } #use-location.busy { opacity: 0.6; } }
 /* searching, the results take the list's place (as iOS's search does): the list fading out of their way, and back in
    as the search is cleared */
 .pl-list { transition: opacity var(--dur-fast) var(--ease); transition: opacity var(--dur-fast) var(--ease), display var(--dur-fast) allow-discrete; }
@@ -2078,6 +2081,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+/* (what it says, read out from here: always there, unseen, and taking no room on any app's page) */
+.ifm-say { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
 
 /* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
    under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the

@@ -58,17 +58,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -121,13 +127,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -181,33 +187,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -228,6 +256,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -294,20 +323,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));

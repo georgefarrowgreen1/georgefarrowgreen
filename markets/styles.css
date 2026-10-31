@@ -113,6 +113,8 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 /* ---- Today: the number, on the sky itself ---- */
 .hero { padding: 26px 24px 0; display: grid; gap: 6px; }
 .eyebrow { font-size: 13px; font-weight: 500; color: var(--text-3); display: flex; align-items: center; gap: 7px; }
+/* (the header's line: its words cut with an ellipsis, never just clipped, where even the shorter ones don't fit) */
+.eyebrow > .said { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live { width: 6px; height: 6px; border-radius: 50%; background: var(--up); animation: live 2.4s ease-in-out infinite; flex: none; }
 .live.shut { background: var(--text-3); animation: none; }
 @keyframes live { 50% { opacity: 0.25; } }
@@ -120,6 +122,7 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .big .p { color: var(--text-2); font-size: 34px; letter-spacing: -0.6px; }
 .delta { font-size: 17px; font-weight: 500; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .delta .muted { color: var(--text-3); font-size: 15px; }
+.leftout { font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .pchart { display: block; width: 100%; height: 150px; margin-top: 14px; overflow: visible; }
 /* (read along with a finger; its ranges under it) */
 .pbox { position: relative; margin-top: 14px; touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: opacity 0.3s; }
@@ -185,6 +188,10 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item.buy:active { opacity: 1; }
 .del { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--ctl); color: var(--text-3); font-size: 13px; font-weight: 600; transition: background-color 0.2s, color 0.2s; }
 .del.sure { background: var(--down); color: var(--tint-ink); }
+/* one in Change Order: its name, and Move Up and Move Down (dimmed at the top and foot) */
+.item.ord { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 0; } .item.ord:active { opacity: 1; }
+.mv { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--ctl); color: var(--text-2); }
+.mv:active { background: var(--press); } .mv[aria-disabled="true"] { opacity: 0.35; }
 .field input[type="date"] { color-scheme: inherit; font-family: inherit; -webkit-appearance: none; appearance: none; min-height: 1.5em; }
 /* (Safari's day sits to the left like everything else's, and an empty one keeps its height) */
 .field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
@@ -217,8 +224,10 @@ button.fact { width: 100%; text-align: left; }
 .ilegend i.est { background: var(--up-soft); box-shadow: inset 0 0 0 1.5px var(--up); }
 .ichips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .ichip { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--ctl); color: var(--text-2); white-space: nowrap; }
-.ichip.up { background: var(--up-soft); color: var(--up); }
-.ichip.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+/* (a chip's words on its own colour's tint: that colour taken a fifth of the way to the text's, so they read at 4.5:1 or
+   better on any of the page's backgrounds, light or dark) */
+.ichip.up { background: var(--up-soft); color: color-mix(in srgb, var(--up) 80%, var(--text)); }
+.ichip.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: color-mix(in srgb, var(--warn) 80%, var(--text)); }
 .stats.flush { padding: 8px 0 0; }
 .irow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 6px; }
 .irow b { font: 600 17px var(--font-d); letter-spacing: -0.2px; }
@@ -377,8 +386,9 @@ button.nghead:active { opacity: 0.6; }
 .nstory.read .story b { color: var(--text-2); font-weight: 500; }
 .nchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
 .nchip { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--ctl); color: var(--text-2); white-space: nowrap; }
-.nchip.up-t { background: var(--up-soft); color: var(--up); }
-.nchip.down-t { background: var(--down-soft); color: var(--down); }
+/* (their words a fifth of the way to the text's, as .ichip's) */
+.nchip.up-t { background: var(--up-soft); color: color-mix(in srgb, var(--up) 80%, var(--text)); }
+.nchip.down-t { background: var(--down-soft); color: color-mix(in srgb, var(--down) 80%, var(--text)); }
 .nchip.via { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-3); }
 .nchip.more { background: color-mix(in srgb, var(--ift-tint) 15%, transparent); color: var(--tint-text); }
 /* a story, in Markets: its picture; headline; what it says; what it means for you; more on it; its page a tap away */
@@ -500,6 +510,10 @@ body.sheet-up .sheet { transform: none; }
 .fact p .nx { color: var(--text-3); }
 /* what you have of it, up top: three figures in a row, and a line under them */
 .ystats { margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+/* (too narrow for three across with their pence, as on any phone: what it's worth across the top, its day and since
+   you bought side by side under it) */
+#yours { container-type: inline-size; }
+@container (max-width: 429px) { .ystats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ystat:first-child { grid-column: 1 / -1; } }
 .ystat { min-width: 0; padding: 12px 12px 11px; border-radius: 18px; background: var(--ctl); display: grid; gap: 1px; }
 .ystat small { font-size: 12.5px; color: var(--text-3); }
 .ystat b { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -637,7 +651,9 @@ body.sheet-up .sheet { transform: none; }
 /* ==== the desk: Markets on a big screen (desk.js) — panes side by side, dense, read with the pointer and the keys ==== */
 body.desk-on .page { max-width: none; padding: 0; }
 body.desk-on .tabbar { display: none; }
-.desk { height: 100svh; min-height: 640px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 14px 20px 10px; font-size: 13px; }
+.desk { height: 100svh; min-height: 640px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; font-size: 13px;
+  /* (on an iPad's Home Screen, clear of its status bar and home indicator, and of the camera held across) */
+  padding: max(14px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
 .desk .live { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--up); } .desk .live.shut { background: var(--text-3); }
 .dtop { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .dme { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #8b7cff, #5b4bd6); color: #fff; font-weight: 600; font-size: 15px; }
@@ -653,7 +669,8 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .tick:first-child { border-left: 0; }
 .tick span { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3); }
 .tick b { font-size: 15px; font-weight: 600; } .tick i { font-style: normal; font-size: 12.5px; font-weight: 600; }
-.dgrid { display: grid; grid-template-columns: minmax(380px, 31%) minmax(0, 1fr) minmax(300px, 24%); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+/* (the portfolio never narrower than its five columns need, as on a 1280-wide laptop: the chart gives way) */
+.dgrid { display: grid; grid-template-columns: minmax(430px, 31%) minmax(0, 1fr) minmax(300px, 24%); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
 .dcol { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; scrollbar-width: none; }
 .dpane { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 12px 14px; border-radius: 14px; background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
 .dpane.port { overflow: auto; scrollbar-width: thin; }
@@ -703,7 +720,7 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .dseg button[aria-pressed="true"] { background: var(--thumb); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
 .dtog { border: 1px solid var(--line); } .dtog[aria-pressed="true"] { border-color: transparent; background: var(--ctl); color: var(--text); } .dtog:disabled { opacity: 0.4; cursor: default; }
 .dchartw { position: relative; flex: none; height: max(300px, calc(100svh - 540px)); }
-.dchart { position: absolute; inset: 0; cursor: crosshair; transition: opacity 0.25s; }
+.dchart { position: absolute; inset: 0; cursor: crosshair; transition: opacity 0.25s; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .dchart.loading { opacity: 0.45; }
 .dchart svg { display: block; overflow: visible; }
 .dchart .grid { stroke: var(--line); stroke-width: 1; }
@@ -735,8 +752,16 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 /* on the right: the heat map, the year's risk, the news, the dividends coming */
 .heat { position: relative; height: 206px; margin-top: 2px; }
 .tile { position: absolute; box-sizing: border-box; display: grid; align-content: start; justify-items: start; gap: 2px; padding: 9px 10px; border-radius: 9px; overflow: hidden; text-align: left; transition: filter 0.15s; }
-.tile:hover { filter: brightness(1.12); } .tile b { font-size: 11.5px; font-weight: 700; letter-spacing: 0.1px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tile span { font-size: 11.5px; font-weight: 500; opacity: 0.85; }
+.tile:hover { filter: brightness(1.12); } .tile b { font-size: 11.5px; font-weight: 700; letter-spacing: 0.1px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tile span { font-size: 11.5px; font-weight: 500; }
+/* (a strong colour in the dark takes dark words: desk.js tileOf) */
+.tile.ink { color: #04120c; }
 .tile.sm { padding: 8px 6px; } .tile.sm b, .tile.sm span { font-size: 10.5px; }
+/* (one too narrow for its words across: them in a line up it, read from the foot (turned on the words, not the tile: not
+   every browser keeps a button's own writing-mode, and one that didn't would turn them upside down); one too low: in a
+   line across) */
+.tile.along { display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: 8px 4px; }
+.tile.along b { writing-mode: vertical-rl; transform: rotate(180deg); max-width: none; max-height: 100%; }
+.tile.low { align-content: center; padding-block: 2px; }
 .risk { display: grid; }
 .rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding: 7px 0; border-top: 0.5px solid var(--line); align-items: baseline; }
 .rrow:first-child, .ryear + .rrow { border-top: 0; }
@@ -744,6 +769,7 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .rcell { display: grid; gap: 1px; padding: 10px 0 2px; min-width: 0; } .rcell:nth-child(even) { padding-left: 14px; border-left: 0.5px solid var(--line); }
 .rcell:nth-child(n+3) { border-top: 0.5px solid var(--line); margin-top: 8px; }
+button.rcell { width: 100%; } button.rcell[aria-expanded="true"] > span { white-space: normal; }
 .rcell small { font-size: 11px; color: var(--text-3); } .rcell b { font-size: 16px; font-weight: 650; letter-spacing: -0.2px; white-space: nowrap; } .rcell > span { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ryear div { display: grid; } .ryear span { font-size: 11.5px; color: var(--text-3); } .ryear b { font-size: 18px; font-weight: 650; letter-spacing: -0.3px; } .rrow span { color: var(--text-2); } .rrow b { font-size: 14px; font-weight: 600; } .rrow small { grid-column: 1 / -1; font-size: 11px; color: var(--text-3); }
 .dnews { overflow: auto; scrollbar-width: thin; min-height: 0; }
@@ -871,7 +897,7 @@ a.dbtn { text-decoration: none; }
 /* the World screen */
 .wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
 .wcol { overflow: auto; scrollbar-width: thin; }
-.wt td.wn b { max-width: 160px; } .wt th:first-child { text-align: left; }
+.wt td.wn b { max-width: 160px; } .wt th:first-child { text-align: left; } .wt td.wn button { display: block; border-radius: 6px; }
 .wt td { padding: 6px; } .wt tbody tr:hover { background: var(--press); }
 .odot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: 0.5; } .odot.on { background: var(--up); opacity: 1; }
 .fxm { width: 100%; border-collapse: separate; border-spacing: 3px; font-variant-numeric: tabular-nums; font-size: 12.5px; }
@@ -1038,6 +1064,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+/* (what it says, read out from here: always there, unseen, and taking no room on any app's page) */
+.ifm-say { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
 
 /* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
    under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the

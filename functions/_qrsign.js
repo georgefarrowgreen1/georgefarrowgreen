@@ -9,7 +9,9 @@
 //     computer's tab keeps for it (poll), which never leaves that tab: a code seen over a shoulder, or a photo of the
 //     screen, signs nothing in anywhere else.
 //   - Only a phone that's just shown it's you can look at a code or answer it, and never one handed over from an app and
-//     kept to the account's page: so a phone picked up for a moment, or a sign-in taken from one, can't make more.
+//     kept to the account's page: so a phone picked up for a moment, or a sign-in taken from one, can't make more. And
+//     its yes holds only while its own sign-in does: signed out, or ended by a new password, before the computer takes
+//     it, and nothing's signed in.
 //   - The number's shown on the computer only once a phone has looked, and the phone picks it from three (or types it,
 //     for a computer that looks to be in another country, or where that can't be told); a wrong number ends it, as does
 //     Don't sign in. One phone's account only, once it's looked. A computer seen by someone else, who scanned its code
@@ -23,6 +25,14 @@
 import { HttpError, db, hex, sha256, randomToken, limit, clientIp, clientNet, deviceOf, placeOf, safeEqual, requireFresh } from "./_pigeon.js";
 
 const TTL = 2 * 60e3, CODE = /^[A-Za-z0-9_-]{32}$/, WORD = /^[A-Za-z0-9_-]{43}$/;
+// (the phone's sign-in its yes came from, kept with the code (session): a column added after the table, here as it's
+// first wanted)
+let made = false;
+async function ready(env) {
+  const D = await db(env);
+  if (!made) { await D.prepare("ALTER TABLE pg_qrsign ADD COLUMN session TEXT").run().catch(() => {}); made = true; }
+  return D;
+}
 const GONE = "That code has run out. The computer makes a new one by itself: scan that instead.";
 // (looking at a code, or answering one: only from a phone that's just shown it's you, and not one handed over from an app)
 const shownIt = (u) => { if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth"); requireFresh(u); };
@@ -81,10 +91,11 @@ export async function qrRefuse(env, request, b) {
 // (the computer, once it's said yes to whose account it is) the account to sign in, { u, phone }: the code used up as it's
 // taken, so only once
 export async function qrTake(env, request, b) {
-  const D = await db(env), r = await ownRow(env, request, D, b);
+  const D = await ready(env), r = await ownRow(env, request, D, b);
   if (!r || r.state !== "yes" || r.expires < Date.now()) return { state: "gone" };
   const took = await D.prepare("DELETE FROM pg_qrsign WHERE hash = ? AND state = 'yes' AND expires >= ?").bind(r.hash, Date.now()).run();
-  const u = took.meta?.changes ? await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(r.user_id).first() : null;
+  // (while the phone's sign-in that said yes is still on)
+  const u = took.meta?.changes && r.session ? await D.prepare("SELECT u.* FROM pg_users u JOIN pg_sessions s ON s.user_id = u.id WHERE u.id = ? AND s.hash = ?").bind(r.user_id, r.session).first() : null;
   return u && !u.delete_at ? { u, phone: r.phone } : { state: "gone" };
 }
 // (the phone, signed in, just shown it's you) the computer that's asking, for you to see: { label, place, far, picks } (far:
@@ -107,10 +118,10 @@ export async function qrLook(env, request, u, code) {
 export async function qrAnswer(env, request, u, code, num) {
   if (num != null) shownIt(u);
   await limit(env, "qranswer:" + u.id, 30, 15 * 60e3);
-  const D = await db(env), r = await rowOf(D, code);
+  const D = await ready(env), r = await rowOf(D, code);
   if (!r || r.expires < Date.now() || r.state !== "seen" || r.user_id !== u.id) throw new HttpError(410, GONE);
   const yes = num != null && Number(num) === r.num;
-  const took = await D.prepare("UPDATE pg_qrsign SET state = ? WHERE hash = ? AND state = 'seen' AND user_id = ? AND expires >= ?").bind(yes ? "yes" : "no", r.hash, u.id, Date.now()).run();
+  const took = await D.prepare("UPDATE pg_qrsign SET state = ?, session = ? WHERE hash = ? AND state = 'seen' AND user_id = ? AND expires >= ?").bind(yes ? "yes" : "no", u.sessionHash || null, r.hash, u.id, Date.now()).run();
   if (!took.meta?.changes) throw new HttpError(410, GONE);
   if (num != null && !yes) throw new HttpError(400, "That isn’t the number on the computer, so it hasn’t been signed in. If you didn’t ask to sign in there, there’s nothing else to do.", "mismatch");
   return { ok: yes, label: r.label };

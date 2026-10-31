@@ -20,7 +20,7 @@
 
 import * as A from "./account.js";
 import * as C from "./charts.js";
-import { marked as markDivs, health, project, taxYearOf, csv } from "./income.js";
+import { marked as markDivs, health, project, taxYearOf, csv, yearDivs, yearOn } from "./income.js";
 import { sameStory, storiesOf } from "./stories.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
@@ -84,17 +84,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -147,13 +153,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -207,33 +213,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -254,6 +282,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -320,20 +349,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
@@ -386,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.85";
-const NEWS = "Pinching no longer zooms the page: it stays the app's own size (maps and photos still pinch)";
+const BUILD = "1.86";
+const NEWS = "Old prices say when they're from, a price in pence is caught before it's saved, stories open in Markets' own reader, and Try Again wherever something can't load";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -431,7 +468,7 @@ function h(sel, attrs = {}, ...kids) {
   return e;
 }
 // (InFlite's glyphs, and Markets's own few)
-const GLYPHS_MK = { check: '<path d="m5 12.5 4.5 4.5L19 7"/>' };
+const GLYPHS_MK = { check: '<path d="m5 12.5 4.5 4.5L19 7"/>', up: '<path d="m6 15 6-6 6 6"/>', down: '<path d="m6 9 6 6 6-6"/>' };
 const icon = (name, size = 18, w = 2.2) => { const s = C.el("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": w, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }); s.innerHTML = GLYPHS_MK[name] || IFL.glyph(name).replace(/^<svg[^>]*>|<\/svg>$/g, ""); return s; };
 
 // ---- saying numbers ----
@@ -451,6 +488,21 @@ const TRUST_PICKS = [["SMT.L", "Scottish Mortgage"], ["FCIT.L", "F&C"], ["CTY.L"
 const digits = (v) => (v >= 10000 ? 0 : v >= 1000 ? 1 : v < 1 ? 4 : 2);
 // (London's under a pound, in pence, as it's quoted there)
 const priceSaid = (q, v = q?.price) => (v == null ? "–" : isIndex(q) ? fmt(v, v >= 1000 ? 1 : 2) : q.cur === "GBP" && Math.abs(v) < 1 ? `${fmt(v * 100, 2)}p` : money(v, q.cur, q.type === "CRYPTOCURRENCY" && v >= 1000 ? 0 : digits(v) === 1 ? 2 : digits(v)));
+// (and its day's change likewise: in pence beside a price in pence)
+const chgSaid = (q, v = q.chg) => (q.cur === "GBP" && !isIndex(q) && Math.abs(q.price) < 1 ? `${v >= 0 ? "+" : "−"}${fmt(Math.abs(v) * 100, 2)}p` : signed(v, q.cur, q.price < 1 ? 4 : 2));
+// A price typed in, in its own currency: London's in pounds, or in pence as its prices are quoted and contract notes
+// give them ("52p"). → the number (in pounds), null where nothing's typed, NaN where it isn't one
+function priceIn(s, q) {
+  const t = s.replace(/[,£$€\s]/g, "");
+  if (t === "") return null;
+  return q?.cur === "GBP" && /^[\d.]+p$/i.test(t) ? Number(t.slice(0, -1)) / 100 : Number(t);
+}
+// (pence typed as pounds, by the look of it: twenty times or more today's price, and in reason as pence) → what it may
+// have meant, said ("52p"), to ask; else null
+function penceMeant(c, q, typed) {
+  if (q?.cur !== "GBP" || !q.price || c == null || !Number.isFinite(c) || /p\s*$/i.test(typed) || c < q.price * 20 || c / 100 > q.price * 5) return null;
+  return `${+c.toFixed(4)}p`;
+}
 const nameOf = (sym) => S.list.find((x) => x.symbol === sym)?.name || INDEX_NAMES[sym] || S.q[sym]?.name || sym;
 const plainSym = (s) => s.replace(/\.L$/, "").replace(/^\^/, "");
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? "now" : m < 60 ? `${m} min` : m < 48 * 60 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
@@ -466,6 +518,9 @@ const dayOf = (x) => { const q = S.q[x.symbol]; return q?.price != null && q.pre
 const divsOf = (x) => { const p = S.paid?.v?.[x.symbol], r = rate(S.q[x.symbol]?.cur); return p && r != null ? p.paid * r : null; };
 // what one cost you, in pounds
 const paidFor = (x) => x.cost * x.qty * rate(S.q[x.symbol].cur);
+// what you own that isn't in your total just now (no price for it: one that's stopped trading, or none in pounds), said
+const unpriced = () => S.list.filter((x) => x.qty > 0 && valueOf(x) == null);
+const leftOutSaid = (xs = unpriced()) => (xs.length ? `${and2(xs.map((x) => x.name))} ${xs.length === 1 ? "isn't" : "aren't"} in this total: no price for ${xs.length === 1 ? "it" : "them"} just now.` : "");
 // (gain: in price; divs: the dividends on top, from those with a day to count from; back: the two together, on what you paid)
 function totals() {
   const o = owned(), value = o.reduce((a, x) => a + valueOf(x), 0), day = o.reduce((a, x) => a + (dayOf(x) || 0), 0);
@@ -480,8 +535,9 @@ function byAccount(o = owned()) {
     return { key, name, o: xs, value: xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
   return out.filter((a) => a.o.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
 }
-// Your income: each dividend each holding paid over the last year, for what you own now, expected again a year on, in
-// the month it went ex-dividend; one-offs (specials) said apart, and not expected again. { months: the next twelve, from
+// Your income: each dividend each holding paid over the last year (a year of its paying, by how often it pays: yearDivs),
+// for what you own now, expected again a year on, in the month it went ex-dividend; one-offs (specials) said apart,
+// and not expected again. { months: the next twelve, from
 // this one ({ d, total, items }), events (to come, soonest first), payers (largest first, with each one's yield and how
 // many it pays a year), total (a year's), none (what you own that's paid nothing over the year), specials ({ x, v, at }) }
 function income() {
@@ -490,8 +546,8 @@ function income() {
   for (const x of owned()) {
     const yr = S.years[x.symbol], q = S.q[x.symbol];
     if (!yr) continue;
-    // (only the last year's: one older isn't next year's to expect)
-    const last = (yr.divs || []).filter((d) => d.t * 1000 >= now - 365 * 864e5);
+    // (only a year's: one older isn't next year's to expect; from the years it's paid, where they're here)
+    const last = yearDivs(divHistory(x.symbol), now / 1000);
     // (one-offs told from the years it's paid, where they're here; else from its last year's)
     const one = new Set(markDivs(divHistory(x.symbol)).filter((d) => d.special).map((d) => d.t));
     let year = 0, n = 0;
@@ -568,6 +624,10 @@ function growthOf(I) {
   return w ? Math.max(-0.05, Math.min(0.1, g / w)) : null;
 }
 const monthSaid = (d, long = false) => d.toLocaleDateString("en-GB", { month: long ? "long" : "short" });
+// (a dividend to come, its day ("1 Oct") or month ("October"): with its year where that's this month's a year on, so it
+// isn't read as a day that's been: income.js yearOn)
+const aroundDay = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(yearOn(d) ? { year: "numeric" } : {}) });
+const aroundMonth = (d) => `${monthSaid(d, true)}${yearOn(d) ? ` ${d.getFullYear()}` : ""}`;
 // a year of it, a bar a month (the chosen one bright). o: { add: twelve more, drawn on top apart (what a buy would add),
 // est (m) → true where it's still to come (drawn outlined) }
 function incomeBars(I, chosen, onPick, tall = 120, o = {}) {
@@ -612,10 +672,39 @@ function marketSaid() {
   const now = Date.now() / 1000, say = (sym, where) => {
     const q = S.q[sym], o = q?.open;
     if (!o) return null;
-    if (now >= o.start && now < o.end) { const m = Math.round((o.end - now) / 60), hrs = Math.floor(m / 60); return { open: true, text: `${where} open · closes in ${hrs ? `${hrs}h ` : ""}${m % 60}m` }; }
+    if (now >= o.start && now < o.end) { const m = Math.round((o.end - now) / 60), hrs = Math.floor(m / 60), left = `${hrs ? `${hrs}h ` : ""}${m % 60}m`; return { open: true, text: `${where} open · closes in ${left}`, short: `${where} · ${left} left` }; }
     return null;
   };
   return say("^FTSE", "London") || say("^GSPC", "New York") || { open: false, text: "Markets closed" };
+}
+// How old the prices are, where they're old: not got for a few minutes (this phone's copy, offline, or Markets's prices
+// not answering), said as from when they were; or given by Markets from before, its source not answering (stale), said
+// as delayed. null while they're fresh
+const clock = (t) => { const d = new Date(t); return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }); };
+function oldSaid() {
+  // (not in the moment the app's opening, its account's answer on the way: this phone's copy would be said as old, then
+  // not, on nearly every open; S.opening, till when)
+  if (Date.now() < (S.opening || 0)) return null;
+  if (S.pricesAt && Date.now() - S.pricesAt > 150e3) return `Prices from ${clock(S.pricesAt)}`;
+  return [...INDICES, ...owned().map((x) => x.symbol)].some((s) => S.q[s]?.stale) ? "Prices delayed" : null;
+}
+// what's said along the top: the prices' age where they're old (the dot grey), else the markets, open or shut
+function lineSaid() { const old = oldSaid(); return old ? { open: false, text: old } : marketSaid(); }
+// (and when the prices were got, for the desk's foot, while they're fresh: once they're old, the line beside it says so)
+const pricesAtSaid = () => (oldSaid() ? "" : `Prices at ${clock(S.pricesAt || Date.now())}`);
+// said again where it shows, as the prices come in or don't
+function sayLine() {
+  const line = $(".mhead .ifh-line .eyebrow");
+  if (line) lineIn(line, lineSaid());
+  dispatchEvent(new Event("mk:said"));
+}
+// (its dot and its words; in fewer words where the header's too narrow for them all, an iPhone SE's: "London · 2h 5m
+// left", so the time's never what's cut)
+function lineIn(line, said) {
+  const words = h("span.said", { text: said.text });
+  line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), words);
+  if (said.short) requestAnimationFrame(() => { if (words.scrollWidth > words.clientWidth + 1) words.textContent = said.short; });
+  return line;
 }
 
 // ---- what's worth knowing ----
@@ -663,7 +752,8 @@ function insights() {
   if (iy && tracksIsa() && iy.left > 0 && iy.days <= 56) out.push({ rank: 2.6, kick: "Your ISA", c: "var(--up)", open: () => openSheet(isaView), h: `${money(iy.left, "GBP", 0)} of your ISA allowance left`,
     p: `It goes on 5 April, ${plural(iy.days, "day")} from now, and what isn't used doesn't carry over to the next tax year.`, viz: () => allowBar(iy.used) });
   // since you bought
-  if (T.back != null && T.costed.length) out.push({ rank: 1, kick: "Since you bought", c: T.back >= 0 ? "var(--up)" : "var(--down)", h: `${T.back >= 0 ? "Up" : "Down"} ${money(Math.abs(T.back), "GBP", 0)} on what you paid`,
+  // (opening Holdings, each one's figure there how it's done since you bought it)
+  if (T.back != null && T.costed.length) out.push({ rank: 1, kick: "Since you bought", c: T.back >= 0 ? "var(--up)" : "var(--down)", open: () => { S.fig = "back"; go("holdings"); }, h: `${T.back >= 0 ? "Up" : "Down"} ${money(Math.abs(T.back), "GBP", 0)} on what you paid`,
     p: `${pct(T.backPct, 1)} across ${plural(T.costed.length, "holding")} you've said what you paid for${T.divs >= 0.5 ? `, ${money(T.divs, "GBP", 0)} of it in dividends` : ""}.` });
   if (!out.length && list.length) {
     const big = [...list].sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0], q = S.q[big.symbol];
@@ -684,7 +774,7 @@ function sparkCard(sym) {
 
 // ---- the screens ----
 function head(title) {
-  const said = marketSaid(), line = h("span.eyebrow", { style: "font-size:15px" }, h("i.live" + (said.open ? "" : ".shut")), said.text);
+  const line = lineIn(h("span.eyebrow", { style: "font-size:15px" }), lineSaid());
   return IFL.header({ title, me: meFace(), onMe: youMenu, cls: "mhead", lineNode: line,
     acts: [{ icon: "search", label: "Find and add", onclick: () => openSheet(searchView) }] });
 }
@@ -692,22 +782,28 @@ const meFace = () => (S.me?.photoAt ? h("img", { src: A.photoUrl(S.me.photoAt), 
 
 // On a big screen (an iPad across, a Mac): the desk, everything at once (desk.js, fetched only there)
 const DESK = matchMedia("(min-width: 1100px)");
-let deskMod = null;
+// (the desk's module once it's in; and what was on it before an update, put back as it's first drawn)
+let deskMod = null, deskApi = null, deskWas = null;
 function render(animate = true) {
   if (!S.me) return;
   document.body.classList.remove("out");
-  if (DESK.matches && S.list.length) {
+  // (once it's failed, never asked for again here: drawn again from its failure, it'd be asked again, round and round)
+  if (DESK.matches && S.list.length && !DESK.failed) {
     deskMod ??= import("./desk.js").catch(() => null);
     deskMod.then((m) => {
-      // (if it couldn't be fetched, the phone's layout instead)
-      if (!m) { DESK.failed = true; render(animate); return; }
+      // (if it couldn't be fetched, the phone's layout instead; and where that's because a new version's files have come
+      // in under this one (its worker's renewed them, and the new desk.js asks this app.js for what it hasn't got), the
+      // new version put in now, unless you're in the middle of something: it opens on the desk)
+      if (!m) { if (DESK.failed) return; DESK.failed = true; render(animate); if (IFL.updateReady() && calm()) IFL.update(); return; }
       if (!DESK.matches) return;
+      deskApi = m;
+      if (deskWas) { m.deskBack(deskWas); deskWas = null; }
       document.body.classList.add("desk-on");
-      main.replaceChildren(m.deskView(animate));
+      keepFocus(() => main.replaceChildren(m.deskView(animate)));
       main.removeAttribute("aria-busy");
       document.title = "Markets";
     });
-    if (!DESK.failed) return;
+    return;
   }
   document.body.classList.remove("desk-on");
   tabsEl.style.setProperty("--tab", ["today", "holdings", "news"].indexOf(S.tab));
@@ -715,10 +811,26 @@ function render(animate = true) {
   const body = S.tab === "holdings" ? holdingsView() : S.tab === "news" ? newsView() : todayView();
   const view = h("section.view", {}, body);
   if (!animate) view.style.animation = "none";
-  main.replaceChildren(head({ today: "Markets", holdings: "Holdings", news: "News" }[S.tab]), view);
+  keepFocus(() => main.replaceChildren(head({ today: "Markets", holdings: "Holdings", news: "News" }[S.tab]), view));
   main.removeAttribute("aria-busy");
   document.title = { today: "Markets", holdings: "Holdings · Markets", news: "News · Markets" }[S.tab];
   requestAnimationFrame(() => { IFL.settle(window); afterDraw(animate); });
+}
+// Something drawn again under you, your place kept: what had the keyboard (or VoiceOver) has it again, found by its id
+// or its data-k (or, where that's gone, the control it came from: "m:comp:SPY", then "m:comp"), with what was typed in
+// it and where in it
+function keepFocus(redo) {
+  const a = document.activeElement, id = a?.id || null, k = a?.dataset?.k || null, v = a?.tagName === "INPUT" ? a.value : null;
+  let s = null, e = null;
+  try { s = a?.selectionStart ?? null; e = a?.selectionEnd ?? null; } catch (_) {}
+  redo();
+  if (!a || a.isConnected || (!id && !k)) return;
+  let n = id ? document.getElementById(id) : null;
+  for (let key = k; !n && key; key = key.includes(":") ? key.slice(0, key.lastIndexOf(":")) : "") n = document.querySelector(`[data-k="${CSS.escape(key)}"]`);
+  if (!n) return;
+  if (v && n.tagName === "INPUT" && !n.value) n.value = v;
+  n.focus({ preventScroll: true });
+  if (s != null && n.tagName === "INPUT") try { n.setSelectionRange(s, e); } catch (_) {}
 }
 // (once drawn: the lines drawn in, as they come into view)
 function afterDraw(animate) {
@@ -734,7 +846,8 @@ function todayView() {
     parts.push(h("div.hero", {},
       h("span.eyebrow", { text: "Your portfolio" }),
       h("span.big.num", { id: "pv" }, `£${a}`, h("span.p", { text: "." + b })),
-      h("span.delta.num", {}, h("span", { id: "pd", class: tone(T.day), text: signed(T.day) }), h("span", { id: "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { id: "ps", text: "today" }))));
+      h("span.delta.num", {}, h("span", { id: "pd", class: tone(T.day), text: signed(T.day) }), h("span", { id: "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { id: "ps", text: "today" })),
+      leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null));
     parts.push(portfolioBox());
   } else {
     const up = S.list.filter((x) => (S.q[x.symbol]?.chgPct || 0) > 0).length;
@@ -791,7 +904,9 @@ function portfolioBox() {
   const seg = h("div.seg.pseg", { role: "group", "aria-label": "Your portfolio over" }, h("span.sl"), PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: label })));
   S.prange = "1d";
   if (kept !== "1d") requestAnimationFrame(() => { const b = seg.querySelector(`[data-r="${kept}"]`); if (b) seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; show(kept); });
-  let seq = 0;
+  // (the range drawn: where another can't be, it stays, pressed again, and today's goes on being kept fresh: refresh)
+  let seq = 0, drawn = "1d";
+  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
   const show = async (r) => {
     const n = ++seq;
     S.prange = r;
@@ -799,7 +914,8 @@ function portfolioBox() {
     const s = r === "1d" ? daySeries() : await rangeSeries(r);
     if (n !== seq || !box.isConnected) return;
     box.classList.remove("loading");
-    if (!s) { toast("Couldn't draw that just now.", true); return; }
+    if (!s) { S.prange = drawn; press(drawn); toast("Couldn't draw that just now. Try again in a moment.", true); return; }
+    drawn = r;
     const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
     const up = s.vals.at(-1) >= s.base, line = svg.querySelector("path[data-draw]"), fill = svg.querySelectorAll("path")[0];
     svg.querySelectorAll("stop").forEach((x) => x.setAttribute("stop-color", up ? "#5fe0a6" : "#ff8a80"));
@@ -825,8 +941,7 @@ function portfolioBox() {
   seg.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-r]");
     if (!b || b.getAttribute("aria-pressed") === "true") return;
-    seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`;
-    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    press(b.dataset.r);
     show(b.dataset.r);
   });
   return [box, seg];
@@ -874,10 +989,14 @@ function portfolioChart() {
 }
 function itemRow(x, i, mode, open = (s) => openStock(s)) {
   const q = S.q[x.symbol];
-  if (!q) return h("div.item", {}, h("span", {}, h("b", { text: x.name }), h("small", { text: "Price not available just now" })));
+  // (one with no price, still yours to open, move, change or remove: one that's stopped trading, as when it's been taken over)
+  if (!q) return h("button.item.rise", { type: "button", vars: { i: String(i) }, "data-sym": x.symbol, onclick: () => open(x.symbol) },
+    h("span", {}, h("b", { text: x.name }), h("small", { text: "Price not available just now" })));
   const own = x.qty > 0, sp = C.el("svg", { viewBox: "0 0 64 26", "aria-hidden": "true" });
   sp.append(C.el("path", { d: C.spark(q.spark, 64, 26, q.prev), fill: "none", stroke: (q.chgPct || 0) >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 1.6, "stroke-linecap": "round", "data-draw": String(0.15 + i * 0.05) }));
-  const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
+  // (yours, but not in pounds yet, its currency's rate not in: nothing said as £0.00, and it's said as left out (figOf))
+  const out = own && valueOf(x) == null;
+  const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: out ? "–" : money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: out ? "–" : signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
   return h("button.item.rise", { type: "button", vars: { i: String(i) }, "data-sym": x.symbol, onclick: () => open(x.symbol) },
     h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "") : "",
       mode === "day" && !own ? "Following" : mode === "value" && !own ? [plainSym(x.symbol), q.ex].filter(Boolean).join(" · ") : h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
@@ -886,6 +1005,7 @@ function itemRow(x, i, mode, open = (s) => openStock(s)) {
 // under a holding's worth: today's change, or (switched) how it's done since you bought, with its dividends
 function figOf(x) {
   const q = S.q[x.symbol];
+  if (valueOf(x) == null) return h("small.flat-t", { text: "Not in total" });
   if (S.fig !== "back") return h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) });
   if (x.cost == null || !x.cost) return h("small", { class: "num flat-t", text: "–" });
   const paid = paidFor(x), g = valueOf(x) - paid + (divsOf(x) || 0);
@@ -920,7 +1040,7 @@ function holdingsView() {
     parts.push(movable(h("div.list.sortable", { id: "following" }, fol.map((x, i) => itemRow(x, i, "value")))));
   }
   parts.push(h("div.links", {}, h("button", { type: "button", onclick: () => openSheet(searchView), text: "Find and Add" })));
-  if (S.list.length > 1) parts.push(h("p.hint.center", { style: "margin-top:4px", text: "Press and hold one to move it." }));
+  if (S.list.length > 1) parts.push(h("p.hint.center", { style: "margin-top:4px" }, "Press and hold one to move it, or ", h("button.inline", { type: "button", onclick: () => openSheet(orderView), text: "move them a step at a time" }), "."));
   if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
   return parts;
 }
@@ -938,7 +1058,8 @@ function mixSlices(T, by) {
     return Object.entries(kinds).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ n: KINDS_SAID[k] || "Other", v, c: MIX_KINDS[k] || MIX[5] }));
   }
   if (by === "account") return byAccount(T.o).map((a) => ({ n: a.name, v: a.value, c: MIX_ACCTS[a.key] || MIX[5], key: a.key }));
-  const all = [...T.o].sort((a, b) => valueOf(b) - valueOf(a)), top = all.slice(0, 5), rest = all.slice(5).reduce((a, x) => a + valueOf(x), 0);
+  // (the biggest five and the rest together; six, each its own: one on its own is no "everything else")
+  const all = [...T.o].sort((a, b) => valueOf(b) - valueOf(a)), n = all.length === 6 ? 6 : 5, top = all.slice(0, n), rest = all.slice(n).reduce((a, x) => a + valueOf(x), 0);
   return [...top.map((x, i) => ({ n: x.name, v: valueOf(x), c: MIX[i], sym: x.symbol })), ...(rest > 0 ? [{ n: "Everything else", v: rest, c: MIX[5] }] : [])];
 }
 const bigMoney = (v) => (v >= 1e6 ? `£${fmt(v / 1e6, 2)}m` : money(v, "GBP", 0));
@@ -989,6 +1110,7 @@ function mixPart(T) {
 function statsPart(T) {
   const I = T.back == null ? income() : null, stat = (label, v, cls, sub) => h("div.stat", {}, h("small", { text: label }), h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub }));
   const notes = [];
+  if (leftOutSaid()) notes.push(`${leftOutSaid()} `);
   if (T.back != null && T.costed.length < T.o.length) notes.push(`Since you bought is from the ${T.costed.length} of your ${T.o.length} holdings you've said what you paid for. `);
   if (T.undated.length === 1) notes.push("Say when you bought ", h("button.inline", { type: "button", onclick: () => openSheet(editView, T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you.");
   else if (T.undated.length) notes.push("Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you.");
@@ -1062,6 +1184,32 @@ function movable(list) {
   return list;
 }
 
+// Your list's order, a step at a time: each one's Move Up and Move Down, for where pressing and holding isn't the way
+// (VoiceOver, Switch Control, a keyboard). Each change kept with your account as it's made, in turn (the last one's
+// answer taken as the list); one at the top or foot can't go further, but keeps the keyboard where it is
+const ORDER = { q: Promise.resolve(), n: 0 };
+function orderView() {
+  const own = S.list.filter((x) => x.qty > 0), fol = S.list.filter((x) => !(x.qty > 0));
+  const move = (group, i, by) => {
+    const j = i + by;
+    if (j < 0 || j >= group.length) return;
+    [group[i], group[j]] = [group[j], group[i]];
+    S.list = [...own, ...fol];
+    // (drawn again where it was, not back at its top, the one moved kept in sight)
+    const y = sbody.scrollTop;
+    drawSheet(); render(false);
+    sbody.scrollTop = y; if (sbody.contains(document.activeElement)) document.activeElement.scrollIntoView({ block: "nearest" });
+    $("#sheet-say").textContent = `${group[j].name}: ${j + 1} of ${group.length}`;
+    const n = ++ORDER.n, syms = S.list.map((x) => x.symbol);
+    ORDER.q = ORDER.q.then(() => A.order(syms)).then((r) => { if (n === ORDER.n) { S.list = r.holdings; render(false); } }, (e) => { toast(e.message, true); });
+  };
+  const rows = (group, label) => (group.length > 1 ? [h("h3.slabel", { text: label }), h("div.list.flush", {}, group.map((x, i) => h("div.item.ord", {},
+    h("span", {}, h("b", { text: x.name }), h("small", { text: plainSym(x.symbol) })),
+    h("button.mv", { type: "button", "data-k": `up:${x.symbol}`, "aria-label": `Move ${x.name} up`, "aria-disabled": String(i === 0), onclick: () => move(group, i, -1) }, icon("up", 18, 2.4)),
+    h("button.mv", { type: "button", "data-k": `down:${x.symbol}`, "aria-label": `Move ${x.name} down`, "aria-disabled": String(i === group.length - 1), onclick: () => move(group, i, 1) }, icon("down", 18, 2.4)))))] : []);
+  return [h("div.shead", {}, h("span"), h("h2", { text: "Change Order" }), closeBtn()), ...rows(own, "Your holdings"), ...rows(fol, "Following")];
+}
+
 // Your accounts: each one's worth and day; and the ISA's allowance, what's left of it this tax year
 function accountsPart(T) {
   const accts = byAccount(T.o), tagged = accts.some((a) => a.key), iy = isaYear();
@@ -1081,7 +1229,7 @@ function incomePart() {
   if (!I.total) return [];
   const next = I.events[0];
   return [h("h3.label", {}, "Income"), h("div.list", {}, h("button.item.two.rise", { type: "button", onclick: () => openSheet(incomeView) },
-    h("span", {}, h("b", { text: "Dividends" }), h("small", { text: next ? `Next: about ${money(next.v, "GBP", 0)} in ${monthSaid(next.at, true)}, from ${next.x.name}` : `From ${plural(I.payers.length, "holding")}` })),
+    h("span", {}, h("b", { text: "Dividends" }), h("small", { text: next ? `Next: about ${money(next.v, "GBP", 0)} in ${aroundMonth(next.at)}, from ${next.x.name}` : `From ${plural(I.payers.length, "holding")}` })),
     h("span.r", {}, h("b.num", { text: money(I.total, "GBP", 0) }), h("small", { text: "a year" })),
     h("div.mini", {}, incomeBars(I, -1, null, 26))))];
 }
@@ -1093,10 +1241,12 @@ function incomeView() {
   if (!incomeView.asked && owned().some((x) => !S.years[x.symbol]?.divs)) { incomeView.asked = true; loadYears().then(() => { if (Sheet.stack.at(-1)?.[0] === incomeView) drawSheet(); }); }
   loadIncome();
   const mode = S.imode, have = !!S.inc;
-  const sw = h("div.per.imode", { role: "group", "aria-label": "Show" }, [["coming", "Coming"], ["received", "Received"], ["tax", "Tax year"]].map(([k, label]) => h("button", { type: "button", "aria-pressed": String(mode === k), text: label,
+  const sw = h("div.per.imode", { role: "group", "aria-label": "Show" }, [["coming", "Coming"], ["received", "Received"], ["tax", "Tax year"]].map(([k, label]) => h("button", { type: "button", "data-k": `im:${k}`, "aria-pressed": String(mode === k), text: label,
     onclick: () => { if (S.imode !== k) { S.imode = k; drawSheet(); } } })));
   const top = [h("div.shead", {}, h("small", { text: "Income" }), closeBtn()), sw];
-  if (mode !== "coming" && !have) return [...top, h("p.hint", { style: "margin-top:18px", text: "Counting what's been paid…" })];
+  if (mode !== "coming" && !have) return [...top, loadIncome.failed && !loadIncome.busy
+    ? h("p.hint", { style: "margin-top:18px" }, "Couldn't count what's been paid just now. ", h("button.inline", { type: "button", "data-k": "inc:again", onclick: () => { loadIncome(true); drawSheet(); }, text: "Try Again" }))
+    : h("p.hint", { style: "margin-top:18px", text: "Counting what's been paid…" })];
   const R = mode === "received" ? received() : null, T = have ? taxMonths(I) : null, M = mode === "coming" ? I : mode === "received" ? R : T;
   const total = mode === "coming" ? I.total : mode === "received" ? R.total : T.paid + T.coming;
   // (the month first shown: the next with anything coming; the last that paid; this one)
@@ -1105,12 +1255,14 @@ function incomeView() {
   const dayMon = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const row = (e) => e.done || mode === "received"
     ? h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Went ex-dividend ${dayMon(e.at)} · ${fmt(e.qty, e.qty % 1 ? 2 : 0)} ${e.qty === 1 ? "share" : "shares"}${e.special ? " · a one-off" : ""}` })), h("span.r", {}, h("b.num", { text: money(e.v) })))
-    : h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Goes ex-dividend around ${dayMon(e.at)}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` })));
+    : h("button.item.two.rise", { type: "button", onclick: () => pushSheet(stockView, e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Goes ex-dividend around ${aroundDay(e.at)}` })), h("span.r", {}, h("b.num", { text: `about ${money(e.v)}` })));
   const pick = (i) => {
     chosen = i;
     bars.querySelectorAll(".ib").forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
     const m = M.months[i], past = mode === "received" || (mode === "tax" && m.paid >= m.total - 0.005 && m.total > 0);
-    say.replaceChildren(m.total > 0 ? `${past ? "" : "About "}${money(m.total, "GBP", 0)} in ${monthSaid(m.d, true)}${mode === "coming" ? "" : ` ${m.d.getFullYear()}`}` : `Nothing ${mode === "received" ? "paid" : "expected"} in ${monthSaid(m.d, true)}`,
+    // (this month's, where all that's in it is next year's: said as next year's)
+    const later = mode === "coming" && m.items.length && m.items.every((e) => yearOn(e.at));
+    say.replaceChildren(m.total > 0 ? `${past ? "" : "About "}${money(m.total, "GBP", 0)} in ${monthSaid(m.d, true)}${mode === "coming" ? (later ? ` ${m.items[0].at.getFullYear()}` : "") : ` ${m.d.getFullYear()}`}` : `Nothing ${mode === "received" ? "paid" : "expected"} in ${monthSaid(m.d, true)}`,
       h("small", { text: m.total > 0 ? `From ${and2([...new Set(m.items.map((e) => e.x.name))])}` : "Tap another month" }));
     month.replaceChildren(h("div.list.flush", {}, m.items.slice().sort((a, b) => b.v - a.v).map((e, k) => { const r = row(e); r.style.setProperty("--i", String(k)); return r; })));
   };
@@ -1234,8 +1386,8 @@ function whatIf(q, y) {
   const box = h("div.whatif", { id: "whatif" }), r = rate(q.cur), one = new Set(markDivs(y.divs).filter((d) => d.special).map((d) => d.t)), now = new Date(), y0 = now.getFullYear(), m0 = now.getMonth();
   const draw = () => {
     const shares = S.buyAmt / (q.price * r), add = Array(12).fill(0), I = income();
-    for (const d of y.divs) {
-      if (one.has(d.t) || d.t * 1000 < now - 365 * 864e5) continue;
+    for (const d of yearDivs(y.divs, now / 1000)) {
+      if (one.has(d.t)) continue;
       const at = new Date(d.t * 1000); at.setFullYear(at.getFullYear() + 1);
       let k = (at.getFullYear() - y0) * 12 + at.getMonth() - m0; if (k >= 12) k -= 12;
       add[Math.max(0, k)] += d.amount * shares * r;
@@ -1257,8 +1409,8 @@ function vsQuick() {
   const b = S.years[BENCHES[0][0]], o = owned().filter((x) => S.years[x.symbol]?.first);
   if (!b?.first || !o.length) return null;
   let a0 = 0, a1 = 0;
-  for (const x of o) { const y = S.years[x.symbol], k = x.qty * rate(S.q[x.symbol].cur); a0 += y.first * k; a1 += (y.last + y.div12) * k; }
-  return { you: (a1 / a0 - 1) * 100, bench: ((b.last + b.div12) / b.first - 1) * 100, name: BENCHES[0][1] };
+  for (const x of o) { const y = S.years[x.symbol], k = x.qty * rate(S.q[x.symbol].cur); a0 += y.first * k; a1 += (y.last + (y.got12 ?? y.div12)) * k; }
+  return { you: (a1 / a0 - 1) * 100, bench: ((b.last + (b.got12 ?? b.div12)) / b.first - 1) * 100, name: BENCHES[0][1] };
 }
 // Your year against the market, in a row
 function vsPart() {
@@ -1415,7 +1567,7 @@ function newsBrief() {
   }
   const ev = income().events[0];
   if (ev) out.push((ev.at - now) / 864e5 <= 14 ? `Coming up: about ${money(ev.v, "GBP", 0)} from ${ev.x.name}, around ${ev.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.`
-    : `Your next dividend: about ${money(ev.v, "GBP", 0)} from ${ev.x.name}, in ${monthSaid(ev.at, true)}.`);
+    : `Your next dividend: about ${money(ev.v, "GBP", 0)} from ${ev.x.name}, in ${aroundMonth(ev.at)}.`);
   return out;
 }
 const newsHidden = () => new Set(store.get("newsHide", []));
@@ -1449,6 +1601,9 @@ function newsBadge() {
   b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n);
   b.closest(".tab").setAttribute("aria-label", n ? `News, ${plural(n, "new story", "new stories")}` : "News");
 }
+// A story's link, opened in Markets: over the sheet that's up (a holding's page: Back comes back to it), else on its
+// own; a click held for a new tab, as one
+const readsIn = (n) => (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return markRead(n); e.preventDefault(); (Sheet.stack.length ? pushSheet : openSheet)(storyView, n); };
 function storyRow(n, ctx, fresh, read, more = 0) {
   const chips = [];
   if (n.topic) { const iq = S.q[TOPIC_INDEX[n.topic]]; chips.push(h("span.nchip.via", { text: `${TOPIC_NAME[n.topic]}${iq?.chgPct != null ? ` ${pct(iq.chgPct, 1)}` : ""}` })); }
@@ -1460,7 +1615,7 @@ function storyRow(n, ctx, fresh, read, more = 0) {
   const cls = ["div.nstory", fresh && !read ? "fresh" : "", read ? "read" : ""].filter(Boolean).join(".");
   return h(cls, { "data-key": newsKey(n) },
     // (opened in Markets; a click held for a new tab, as one)
-    h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return markRead(n); e.preventDefault(); openSheet(storyView, n); } },
+    h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
       h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title }), chips.length ? h("span.nchips", {}, chips.slice(0, 4)) : null),
     h("button.nmore", { type: "button", "aria-label": `More: ${n.title}`, onclick: () => storyMenu(n) }, h("span", { "aria-hidden": "true" }, h("i"), h("i"), h("i"))));
 }
@@ -1470,9 +1625,9 @@ function storyRow(n, ctx, fresh, read, more = 0) {
 function storyView(n) {
   markRead(n);
   const pic = h("div.rpic", { hidden: true }), sum = h("div.rsum", {}, h("p.rwait", { text: "Getting what it says…" }));
-  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
+  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link, n.k), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
   if (n.pic) show(n.pic);
-  A.story(n.link).then(({ story: p }) => {
+  A.story(n.link, n.k).then(({ story: p }) => {
     if (!sum.isConnected) return;
     sum.replaceChildren(...(p?.summary ? [h("h4.rlab", { text: `From ${p.site || n.src}` }), h("p.rtext", { text: p.summary })]
       : [h("p.rnone", { text: `${n.src} doesn't say more than its headline here.` })]));
@@ -1547,7 +1702,7 @@ function newsView() {
   if (!kinds.includes(S.nfilter)) S.nfilter = "all";
   const shown = groups.filter((g) => S.nfilter === "all" || g.kind === S.nfilter), fresh = newsNew().length;
   if (kinds.length > 1) parts.push(h("div.nfilter", { role: "group", "aria-label": "Show" }, [["all", "All"], ["holdings", "Holdings"], ["following", "Following"], ["markets", "Markets"]].filter(([k]) => k === "all" || kinds.includes(k))
-    .map(([k, label]) => h("button", { type: "button", "aria-pressed": String(S.nfilter === k), text: label, onclick: () => { if (S.nfilter !== k) { S.nfilter = k; render(false); } } }))));
+    .map(([k, label]) => h("button", { type: "button", "data-k": `nf:${k}`, "aria-pressed": String(S.nfilter === k), text: label, onclick: () => { if (S.nfilter !== k) { S.nfilter = k; render(false); } } }))));
   if (fresh) parts.push(h("p.nnew", { text: `${plural(fresh, "new story", "new stories")} since you last looked` }));
   if (!shown.length) parts.push(h("p.foot", { style: "padding-top:12px", text: "No stories about your list just now." }));
   shown.forEach((g, gi) => {
@@ -1608,7 +1763,7 @@ function pushSheet(view, ...args) { Sheet.stack.push([view, args]); drawSheet();
 function backSheet() { Sheet.stack.pop(); if (!Sheet.stack.length) return closeSheet(); drawSheet(); }
 function drawSheet() {
   const [view, args] = Sheet.stack.at(-1);
-  sbody.replaceChildren(...[view(...args)].flat(9).filter(Boolean));
+  keepFocus(() => sbody.replaceChildren(...[view(...args)].flat(9).filter(Boolean)));
   sbody.querySelectorAll("h2, .sname").forEach((e) => e.setAttribute("tabindex", "-1"));
   sbody.scrollTop = 0;
 }
@@ -1641,10 +1796,12 @@ function openStock(sym, o = {}) { openSheet(stockView, sym, o); }
 function stockView(sym, o = {}) {
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
   if (!q) {
-    const head = [h("div.shead", {}, backBtn(), h("small", { text: plainSym(sym) }), closeBtn()), h("div.sname", { text: o.name || sym })];
+    const head = [h("div.shead", {}, backBtn(), h("small", { text: plainSym(sym) }), closeBtn()), h("div.sname", { text: o.name || held?.name || sym })];
     // (asked for once: where there's no price for it, that's said, with a way to ask again)
+    // (and one of yours kept yours to change or take off: one that's stopped trading never has a price again)
     if (stockView.failed.has(sym)) return [...head, h("p.why", { text: "Couldn't get its price just now." }, h("small", { text: "The markets' data may be busy, or it may not be traded any more." })),
-      h("div.btns", {}, h("button.btn.press.wide", { type: "button", onclick: () => { stockView.failed.delete(sym); drawSheet(); } }, "Try Again"))];
+      h("div.btns", {}, h("button.btn.press.wide", { type: "button", onclick: () => { stockView.failed.delete(sym); drawSheet(); } }, "Try Again")),
+      held ? h("div.links", {}, h("button", { type: "button", onclick: () => pushSheet(editView, sym), text: held.qty > 0 ? "Edit Holding" : "Add What You Own" }), removeBtn(sym, held)) : null];
     const here = () => Sheet.stack.at(-1)?.[1]?.[0] === sym;
     A.quotes([sym]).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (!r.quotes[sym]) stockView.failed.add(sym); if (here()) drawSheet(); },
       () => { stockView.failed.add(sym); if (here()) drawSheet(); });
@@ -1658,7 +1815,7 @@ function stockView(sym, o = {}) {
     h("div.shead", {}, backBtn(), h("small", { text: [plainSym(sym), q.ex, ["trust", "fund"].includes(kindOf(q)) ? KIND_SAID[kindOf(q)] : null].filter(Boolean).join(" · ") }), closeBtn()),
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
-    h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
+    h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
     held?.qty > 0 && valueOf(held) != null ? yoursPart(sym, held, q) : null,
     box, seg, why, h("div", { id: "snews" }), facts(sym, held, q),
     held ? h("div", { id: "buys" }) : null,
@@ -1686,18 +1843,25 @@ function yoursPart(sym, held, q) {
         : stat("Since bought", h("button.inline", { type: "button", onclick: () => pushSheet(editView, sym), text: "Add cost" }), h("span", { text: "to see it" }))),
     h("p.ynote", { text: [held.account ? `In your ${ACCOUNT_NAME[held.account]}` : null, held.cost != null ? `${held.buys > 1 ? "average" : "paid"} ${priceSaid(q, held.cost)} a share` : null, dv >= 0.5 ? `${money(dv, "GBP", 0)} of dividends counted` : null].filter(Boolean).join(" · ") }));
 }
+// An alert set (p: how much a move in a day, 0 for none), and said: this phone asked to allow notifications first,
+// where it hasn't, and where they can't be turned on here, why said with it (not lost under "You'll hear…")
+async function alertSet(sym, p) {
+  let why = null;
+  if (p && !S.pushOn) await turnOnHere((m) => { why = m; });
+  const r = await A.setAlert(sym, !!p, p || 3), name = S.list.find((x) => x.symbol === sym)?.name || nameOf(sym);
+  S.list = r.holdings;
+  if (!p) return toast("Alert off");
+  if (S.alertsOff) return toast(`You'll hear when ${name} moves ${p}% in a day (alerts are off in your account)`);
+  if (why) return toast(`Alert set. ${why}`, true);
+  toast(`You'll hear when ${name} moves ${p}% in a day${!S.pushOn ? " (notifications are off on this phone)" : ""}`);
+}
 // Alert Me: how much a move in a day is worth hearing about (or off)
 function alertView(sym) {
   const held = S.list.find((x) => x.symbol === sym), name = held?.name || nameOf(sym), cur = held?.alert || null;
   const pick = async (p, btn) => {
     btn.disabled = true;
-    try {
-      if (p && !S.pushOn) await turnOnHere();
-      const r = await A.setAlert(sym, !!p, p || 3);
-      S.list = r.holdings;
-      toast(p ? `You'll hear when ${name} moves ${p}% in a day${S.alertsOff ? " (alerts are off in your account)" : !S.pushOn ? " (notifications are off on this phone)" : ""}` : "Alert off");
-      backSheet(); render(false);
-    } catch (e) { toast(e.message, true); btn.disabled = false; }
+    try { await alertSet(sym, p); backSheet(); render(false); }
+    catch (e) { toast(e.message, true); btn.disabled = false; }
   };
   return [h("div.shead", {}, backBtn(), h("h2", { text: "Alert Me" }), closeBtn()),
     h("p.why", { style: "margin-top:14px" }, `When ${name} moves this much in a day, up or down:`),
@@ -1713,7 +1877,7 @@ function facts(sym, held, q) {
   if (hi && lo && hi > lo) { const at = (q.price - lo) / (hi - lo); rows.push(h("div.fact", {}, h("span", { text: "52-week range" }), h("b", { text: at >= 0.9 ? "Near its high" : at <= 0.1 ? "Near its low" : at >= 0.5 ? "In the upper half" : "In the lower half" }), h("i.num", { text: y?.yr != null ? `${pct(y.yr, 1)} on a year ago` : "" }), ...range52(q, lo, hi, at))); }
   if (y?.div12 > 0 && q.price) { const nx = held?.qty > 0 ? income().events.find((e) => e.x.symbol === sym) : null;
     rows.push(h("div.fact", {}, h("span", { text: "Dividends" }), h("b.num", { text: `${priceSaid(q, y.div12)} a share a year` }), h("i.num", { text: `yield ${fmt((y.div12 / q.price) * 100, 1)}%` }),
-      held?.qty > 0 && rate(q.cur) != null ? h("p", {}, `About ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} a year to you`, nx ? h("span.nx", { text: ` · next about ${money(nx.v, "GBP", nx.v >= 100 ? 0 : 2)}, around ${nx.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` }) : null) : null)); }
+      held?.qty > 0 && rate(q.cur) != null ? h("p", {}, `About ${money(y.div12 * held.qty * rate(q.cur), "GBP", 0)} a year to you`, nx ? h("span.nx", { text: ` · next about ${money(nx.v, "GBP", nx.v >= 100 ? 0 : 2)}, around ${aroundDay(nx.at)}` }) : null) : null)); }
   if (y?.div12 > 0 && q.price && rate(q.cur) != null && !isIndex(q) && y.divs?.length) rows.push(whatIf(q, y));
   if (kindOf(q) === "trust") rows.push(h("details.more", {}, h("summary", {}, h("b", { text: "What's an investment trust?" }), icon("chev", 16, 2.4)),
     h("p", { text: "A company that invests in many others. You buy its shares like any other, and it spreads your money across what it holds. Its share price can sit above or below what those holdings are worth: a premium, or a discount." })));
@@ -1725,10 +1889,12 @@ async function drawBuys(sym) {
   const el = $("#buys");
   if (!el) return;
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
-  let b = null;
-  if (held?.buys) { try { b = await A.buys(sym); } catch (_) { return; } }
+  let b = null, failed = false;
+  if (held?.buys) { try { b = await A.buys(sym); } catch (_) { failed = true; } }
   if (!el.isConnected) return;
   const add = h("button", { type: "button", onclick: () => pushSheet(buyView, sym), text: held?.buys ? "Add a Buy or Sale" : held?.qty > 0 ? "Record Your Buys" : "Record a Buy" });
+  // (ones that couldn't come: said, with Try Again, and one more can still be added)
+  if (failed) { el.replaceChildren(h("h3.slabel", {}, "Buys and sales"), h("p.hint", {}, "Couldn't get your buys and sales just now. ", h("button.inline", { type: "button", onclick: () => drawBuys(sym), text: "Try Again" })), h("div.links", { style: "margin-top:14px" }, add)); return; }
   if (!b?.buys?.length) { el.replaceChildren(h("div.links", { style: "margin-top:20px" }, add)); return; }
   const when = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const row = (x, i) => {
@@ -1760,11 +1926,22 @@ function buyView(sym) {
   const qty = h("input", { type: "text", inputmode: "decimal", id: "mk-bqty", placeholder: "0", "aria-label": "How many" });
   const price = h("input", { type: "text", inputmode: "decimal", id: "mk-bprice", value: q?.price != null ? String(+q.price.toFixed(q.price < 1 ? 4 : 2)) : "", "aria-label": "Price each" });
   const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-bsave" }, "Save Buy");
+  // (a price in pence typed as pounds, by the look of it: asked about under it, and once more on saving)
+  let sure = false;
+  const echo = h("p.echo", { id: "mk-becho", "aria-live": "polite" });
+  const tell = () => {
+    const p = penceMeant(priceIn(price.value, q), q, price.value);
+    sure = false;
+    echo.replaceChildren(p ? h("button.inline", { type: "button", onclick: () => { price.value = p; tell(); price.focus(); }, text: `Did you mean ${p}?` }) : "");
+  };
+  price.addEventListener("input", tell);
   save.onclick = async () => {
     const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
-    const n = num(qty.value), p = num(price.value), at = day.value ? Date.parse(day.value + "T12:00:00Z") : Date.now();
+    const n = num(qty.value), p = priceIn(price.value, q), at = day.value ? Date.parse(day.value + "T12:00:00Z") : Date.now();
     if (!n || !Number.isFinite(n) || n <= 0) return toast("How many should be a number.", true);
     if (p != null && (!Number.isFinite(p) || p < 0)) return toast("The price should be a number.", true);
+    const pp = penceMeant(p, q, price.value);
+    if (pp && !sure) { sure = true; return toast(`Did you mean ${pp}? Save again to keep ${money(p, q.cur)} a share.`, true); }
     save.disabled = true;
     try {
       const r = await A.addBuy({ symbol: sym, qty: n, price: p, at, sold });
@@ -1778,13 +1955,13 @@ function buyView(sym) {
     h("div.form", {}, kind,
       h("label", { for: "mk-day", text: "On" }), h("div.field", {}, day),
       h("label", { for: "mk-bqty", text: "How many shares" }), h("div.field", {}, qty),
-      h("label", { for: "mk-bprice", text: `Price each${cs ? "" : ` (${q?.cur || ""})`}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, price)),
+      h("label", { for: "mk-bprice", text: `Price each${cs || !q?.cur ? "" : ` (${q.cur})`}${q?.cur === "GBP" ? ", in pounds or as pence (52p)" : ""}` }), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, price), echo),
     h("p.hint", { text: held?.qty > 0 && !held?.buys ? `Your ${fmt(held.qty, held.qty % 1 ? 2 : 0)} shares${held.cost != null ? ` at ${priceSaid(q, held.cost)}` : ""} are kept as your first buy, and this one's added to them. How many you own and what they cost on average are worked out from them all from now on.` : "How many you own and what they cost on average are worked out from all your buys and sales: a sale takes shares out at the average." }), save];
 }
 
 // Why it's moving: the day's story about it, where it's moved enough for one to matter; else how it's done against its market
 async function whyMoving(sym, el) {
-  const q = S.q[sym], m = S.q[MARKET_OF[q.ex]], said = (text, small, link) => el.replaceChildren(link ? h("a", { href: link, target: "_blank", rel: "noopener", text }) : text, small ? h("small", { text: small }) : null);
+  const q = S.q[sym], m = S.q[MARKET_OF[q.ex]], said = (text, small, n) => el.replaceChildren(n ? h("a", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n), text }) : text, small ? h("small", { text: small }) : null);
   if (isIndex(q) || q.type === "CRYPTOCURRENCY" || q.type === "CURRENCY") {
     const big = q.symbol === "^FTSE" || q.symbol === "^GSPC" ? S.list.filter((x) => MARKET_OF[S.q[x.symbol]?.ex] === sym && S.q[x.symbol]?.chgPct != null).sort((a, b) => Math.abs(S.q[b.symbol].chgPct) - Math.abs(S.q[a.symbol].chgPct))[0] : null;
     return said(`${INDEX_NAMES[sym] || q.name} is ${Math.abs(q.chgPct || 0) < 0.05 ? "flat" : `${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}%`} today.${big ? ` Of yours here, ${big.name} has moved most, ${pct(S.q[big.symbol].chgPct, 1)}.` : ""}`, "From the day's prices");
@@ -1798,10 +1975,10 @@ async function whyMoving(sym, el) {
   if (!el.isConnected) return;
   // (the latest few about it, under what's said)
   const list = $("#snews");
-  if (list && about.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, about.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener" },
+  if (list && about.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, about.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
     h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title })))));
   const move = q.chgPct || 0, vsMarket = m?.chgPct != null ? ` The ${INDEX_NAMES[MARKET_OF[q.ex]]} is ${m.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(m.chgPct), 1)}%.` : "";
-  if (story && Math.abs(move) >= 1) return said(story.title, `${story.src} · ${ago(story.at)}`, story.link);
+  if (story && Math.abs(move) >= 1) return said(story.title, `${story.src} · ${ago(story.at)}`, story);
   if (Math.abs(move) < 1) return said(`A quiet day for it, moving with the market.${vsMarket}`, story ? `Latest: ${story.title.slice(0, 90)}${story.title.length > 90 ? "…" : ""}` : "No news about it today");
   return said(`No news about it today, so it's ${m && Math.sign(m.chgPct) === Math.sign(move) ? "moving with the market" : "moving on its own"}.${vsMarket}`, "From the day's prices and news");
 }
@@ -1815,7 +1992,10 @@ async function stockChart(sym, box, seg) {
   svg.append(base, fill, line); box.append(svg);
   const axis = h("div.axis.num"), now = h("i.nowdot"), blabel = h("span.blabel.num");
   box.append(now, blabel); box.after(axis);
-  let shown = null, raw = null, range = "1d", seq = 0;
+  // (drawn: the range shown. One that can't be drawn leaves it as it was, pressed again, so it can be asked for again)
+  let shown = null, raw = null, range = "1d", drawn = "1d", seq = 0;
+  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
+  const back = (n, why) => { if (n !== seq) return; range = drawn; box.dataset.range = drawn; press(drawn); if (why) toast(why, true); };
   const show = async (r, first) => {
     const n = ++seq;
     range = r; box.dataset.range = r;
@@ -1823,10 +2003,11 @@ async function stockChart(sym, box, seg) {
     box.classList.add("loading");
     const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 60e3 : 600e3);
     let c = fresh ? kept.c : null;
-    if (!c) { try { c = await A.chart(sym, r); S.charts.set(key, { at: Date.now(), c }); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else { if (n === seq) toast(e.message, true); return; } } }
+    if (!c) { try { c = await A.chart(sym, r); S.charts.set(key, { at: Date.now(), c }); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else return back(n, e.message); } }
     if (n !== seq || !box.isConnected) return;
     box.classList.remove("loading");
-    if (!c.c.length) return;
+    if (!c.c.length) return back(n, shown ? "Nothing to draw for that just now." : null);
+    drawn = r;
     const q = S.q[sym], w = W(), session = r === "1d" && q.open && c.t.length ? q.open : null;
     const vals = [...c.c], ts = [...c.t];
     // (today's line to now: the price as it is, at the end)
@@ -1857,7 +2038,7 @@ async function stockChart(sym, box, seg) {
     blabel.style.top = `${Math.max(0, baseY - 20)}px`;
     // what's said over it: the change over the range
     const ch = vals.at(-1) - b, chp = (vals.at(-1) / b - 1) * 100, rp = $("#rpct"), rs = $("#rsaid");
-    if (rp && rs) { rp.className = `num ${tone(chp)}`; rp.textContent = isIndex(q) ? pct(chp) : `${signed(ch, q.cur, q.price < 1 ? 4 : 2)} (${pct(chp)})`; rs.textContent = RANGES.find((x) => x[0] === r)[2]; }
+    if (rp && rs) { rp.className = `num ${tone(chp)}`; rp.textContent = isIndex(q) ? pct(chp) : `${chgSaid(q, ch)} (${pct(chp)})`; rs.textContent = RANGES.find((x) => x[0] === r)[2]; }
   };
   C.scrubber(box, (x) => {
     if (!raw) return null;
@@ -1873,9 +2054,7 @@ async function stockChart(sym, box, seg) {
   seg.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-r]");
     if (!b || b.dataset.r === range) return;
-    const i = [...seg.querySelectorAll("button")].indexOf(b);
-    seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`;
-    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    press(b.dataset.r);
     show(b.dataset.r);
   });
   // (the phone turned, or the window resized: drawn again at the new width)
@@ -1981,19 +2160,23 @@ function editView(sym, o = {}) {
   // (when you bought it: for the dividends it's paid you since)
   const today = new Date().toLocaleDateString("en-CA");
   const since = h("input", { type: "date", id: "mk-since", max: today, value: held?.since ? new Date(held.since).toISOString().slice(0, 10) : "", "aria-label": "When you bought" });
-  // (what you paid: for each, or in total, as your broker may say it; and what that comes to, said under it as you type)
+  // (what you paid: for each, or in total, as your broker may say it; and what that comes to, said under it as you type,
+  // asking where it looks like pence typed as pounds)
   const num = (s) => (s.trim() === "" ? null : Number(s.replace(/[,£$€\s]/g, "")));
   const curMoney = (v) => (cs ? money(v, q.cur) : `${fmt(v)} ${q?.cur || ""}`.trim());
-  let per = "each";
+  let per = "each", sure = false;
   const echo = h("p.echo", { id: "mk-echo", "aria-live": "polite" });
+  const meant = () => (per === "each" ? penceMeant(priceIn(cost.value, q), q, cost.value) : null);
   const tell = () => {
-    const n = num(qty.value) ?? 0, c = num(cost.value);
-    echo.textContent = c == null || !Number.isFinite(c) || !(n > 0) ? "" : per === "each" ? `${curMoney(c * n)} in all, for ${fmt(n, n % 1 ? 2 : 0)} shares` : `${curMoney(c / n)} each`;
+    const n = num(qty.value) ?? 0, c = priceIn(cost.value, q), p = meant();
+    sure = false;
+    echo.replaceChildren(c == null || !Number.isFinite(c) || !(n > 0) ? "" : per === "each" ? `${curMoney(c * n)} in all, for ${fmt(n, n % 1 ? 2 : 0)} shares` : `${curMoney(c / n)} each`,
+      p ? h("button.inline", { type: "button", style: "margin-left:6px", onclick: () => { cost.value = p; tell(); cost.focus(); }, text: `Did you mean ${p}?` }) : "");
   };
   const perSeg = h("div.per", { role: "group", "aria-label": "What you paid is" }, [["each", "Each"], ["total", "In total"]].map(([k, label]) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === per), text: label,
     onclick: () => {
       if (k === per) return;
-      const n = num(qty.value) ?? 0, c = num(cost.value);
+      const n = num(qty.value) ?? 0, c = priceIn(cost.value, q);
       if (c != null && Number.isFinite(c) && n > 0) cost.value = String(k === "total" ? +(c * n).toFixed(2) : +(c / n).toFixed(4));
       per = k;
       perSeg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === per)));
@@ -2008,10 +2191,13 @@ function editView(sym, o = {}) {
     onclick: (e) => { acct = acct === k ? null : k; choice.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.a === acct))); } })));
   const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-save" }, held ? "Save" : "Add to Your List");
   save.onclick = async () => {
-    const n = num(qty.value) ?? 0, c0 = num(cost.value), t = since.value ? Date.parse(since.value + "T12:00:00Z") : null;
+    const n = num(qty.value) ?? 0, c0 = priceIn(cost.value, q), t = since.value ? Date.parse(since.value + "T12:00:00Z") : null;
     if (!Number.isFinite(n) || n < 0) return toast("How many you own should be a number.", true);
     if (c0 != null && (!Number.isFinite(c0) || c0 < 0)) return toast("What you paid should be a number.", true);
     if (c0 != null && per === "total" && !(n > 0)) return toast("Say how many shares you own, to work out what each cost.", true);
+    // (pounds that look like pence: asked once, kept as typed if it's saved again)
+    const p = meant();
+    if (p && !sure) { sure = true; return toast(`Did you mean ${p}? Save again to keep ${curMoney(c0)} a share.`, true); }
     const c = c0 != null && per === "total" ? +(c0 / n).toPrecision(10) : c0;
     if (t != null && (!Number.isFinite(t) || t > Date.now() + 864e5)) return toast("Choose the day you bought it, as on a calendar.", true);
     save.disabled = true;
@@ -2028,14 +2214,14 @@ function editView(sym, o = {}) {
   };
   if (held?.buys) return [h("div.shead", {}, backBtn(), h("h2", { text: name }), closeBtn()),
     h("div.form", {}, h("label", { text: "Held in" }), choice),
-    h("p.hint", { text: `How many you own (${fmt(held.qty, held.qty % 1 ? 2 : 0)}) and what each cost${held.cost != null ? ` (${priceSaid(q, held.cost)} on average)` : ""} come from your buys and sales, on its page.` }), save];
+    h("p.hint", { text: `How many you own (${fmt(held.qty, held.qty % 1 ? 2 : 0)}) and what each cost${held.cost != null ? ` (${q ? priceSaid(q, held.cost) : fmt(held.cost)} on average)` : ""} come from your buys and sales, on its page.` }), save];
   return [h("div.shead", {}, backBtn(), h("h2", { text: held ? name : `Add ${name}` }), closeBtn()),
     h("div.form", {},
       h("label", { for: "mk-qty", text: "Shares you own" }), h("div.field", {}, qty),
-      h("div.lrow", {}, h("label", { for: "mk-cost", text: `What you paid${cs ? "" : ` (${q?.cur || ""})`}` }), perSeg), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost), echo,
+      h("div.lrow", {}, h("label", { for: "mk-cost", text: `What you paid${cs || !q?.cur ? "" : ` (${q.cur})`}` }), perSeg), h("div.field", {}, cs ? h("span.unit", { text: cs }) : null, cost), echo,
       h("label", { for: "mk-since", text: "When you bought" }), h("div.field", {}, since),
       h("label", { text: "Held in" }), choice),
-    h("p.hint", { text: "Leave shares at 0 to just follow it. The rest is optional, for how you've done since you bought (dividends included) and each account's total. Bought at different times? Record each buy on its page instead." }), save];
+    h("p.hint", { text: `Leave shares at 0 to just follow it. The rest is optional, for how you've done since you bought (dividends included) and each account's total.${q?.cur === "GBP" ? " A price in pence? Type it as 52p." : ""} Bought at different times? Record each buy on its page instead.` }), save];
 }
 // Remove: a second tap to be sure, saying what goes with it (its buys and sales, its alert)
 function removeBtn(sym, held) {
@@ -2065,22 +2251,24 @@ async function checkPush() {
   } catch (_) { S.pushOn = false; }
 }
 const b64key = (k) => { const raw = atob(k.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((k.length + 3) % 4)); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); };
-// turned on here (from a tap: a phone asks only then) → whether it's on
-async function turnOnHere() {
+// turned on here (from a tap: a phone asks only then) → whether it's on; where it can't be, why's said (say: how,
+// a toast unless the caller says it along with its own word)
+async function turnOnHere(say = (m) => toast(m, true)) {
   if (!pushable()) {
-    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(matchMedia("(display-mode: standalone)").matches || navigator.standalone);
-    toast(ios ? "Add Markets to your Home Screen first (Share, then Add to Home Screen) to get alerts there." : "This browser can’t show notifications.", true);
+    // (an iPad's Safari says it's a Mac: told by its touch)
+    const ios = (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)) && !(matchMedia("(display-mode: standalone)").matches || navigator.standalone);
+    say(ios ? "Add Markets to your Home Screen first (Share, then Add to Home Screen) to get alerts there." : "This browser can’t show notifications.");
     return false;
   }
   try {
     const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-    if (perm !== "granted") { toast("Notifications aren’t allowed for Markets. Turn them on in this browser’s settings.", true); return false; }
+    if (perm !== "granted") { say("Notifications aren’t allowed for Markets. Turn them on in this browser’s settings."); return false; }
     const reg = await navigator.serviceWorker.ready, { key } = await A.pushKey();
     const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64key(key) }));
     await A.pushOn(sub.toJSON());
     S.pushOn = true;
     return true;
-  } catch (e) { toast(e.message || "Couldn’t turn on alerts here just now.", true); return false; }
+  } catch (e) { say(e.message || "Couldn’t turn on alerts here just now."); return false; }
 }
 // ---- sending one to a friend, in Chat ----
 function sendInChat(sym, name = nameOf(sym)) {
@@ -2126,23 +2314,29 @@ function wrapSwitch() {
     sw.setAttribute("aria-checked", String(on)); sw.disabled = true;
     try {
       S.wrap = (await A.setWrap(on)).wrap;
-      if (on && !S.pushOn) await turnOnHere();
-      toast(on ? (S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone") : "Evening wrap off");
+      let why = null;
+      if (on && !S.pushOn) await turnOnHere((m) => { why = m; });
+      toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
     } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
   };
   return sw;
 }
+// (asks=1: its Notifications folder, with them off here, whose Turn On comes back to #notify, which asks)
 async function openAccount(open) {
   const page = A.accountPage();
   if (!page) return toast("Your account is at account.inflite.ai");
-  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "markets", ...(typeof open === "string" ? { open } : {}) })}`); }
+  const asks = open === "notify-markets" && !S.pushOn ? { asks: "1" } : {};
+  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "markets", ...(typeof open === "string" ? { open } : {}), ...asks })}`); }
   catch (e) { if (e.status === 401) return signedOut(); toast(e.message, true); }
 }
 
 // ---- signed out: the way in ----
-function welcome(note = null) {
+// (again: where who's signed in couldn't be asked (offline, or Markets not answering) and nothing's kept here to show,
+// Try Again in place of Sign in, as you may well be signed in)
+function welcome(note = null, again = null) {
   S.me = null;
   document.body.classList.add("out");
+  document.body.classList.remove("desk-on");
   const page = A.accountPage(), W = 1200, Hh = 520;
   const walk = (seed, drift, n = 60) => { let s = seed, v = 0; const out = []; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; v += (s / 233280 - 0.5) * 3 + drift; out.push(v); } return out; };
   const line = (vals, top, span) => C.smooth(C.place(vals, W, span, { pad: 0 }).pts.map(([x, y]) => [x, y + top]));
@@ -2156,9 +2350,10 @@ function welcome(note = null) {
       h("p.ifl-tagline", { text: "Your money, said simply" })),
     h("div.ifl-cta", {}, note && h("p.said", { role: "status", text: note }),
       page && h("p.ifl-brand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
-      h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
-      !page && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
-      page && h("p.ifl-new", {}, "New here? ", h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
+      again ? h("button.btn.go.ifl-go.press", { type: "button", id: "try-again", onclick: again }, "Try Again")
+        : h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
+      !page && !again && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
+      page && !again && h("p.ifl-new", {}, "New here? ", h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Markets";
 }
@@ -2172,12 +2367,14 @@ async function toAccountSignIn(e, mode = "signin") {
     location.assign(`${page}#${new URLSearchParams({ [mode]: "markets", ask, back: `${location.origin}/` })}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
+// Back from signing in: its code swapped for the sign-in. → { m (the account, as GET me gives it) } or, where it
+// couldn't be (too old, or the answer lost), { why }
 async function signedBack(code) {
   const k = store.get("signin");
   store.del("signin");
-  if (!k || Date.now() - k.at > 30 * 60e3) { A.handback(code, "").catch(() => {}); toast("That sign-in was started somewhere else. Sign in again here.", true); return null; }
-  try { const m = await A.handback(code, k.word); toast(`Signed in as ${String(m.name).trim().split(/\s+/)[0]}`); return m; }
-  catch (e) { toast(e.message, true); return null; }
+  if (!k || Date.now() - k.at > 30 * 60e3) { A.handback(code, "").catch(() => {}); return { why: "That sign-in was started somewhere else. Sign in again here." }; }
+  try { return { m: await A.handback(code, k.word) }; }
+  catch (e) { return { why: e.message }; }
 }
 async function signOutHere() {
   closeSheet();
@@ -2186,7 +2383,15 @@ async function signOutHere() {
   signedOut();
   A.outVia("markets");
 }
-function signedOut() { store.del("last"); store.del("years"); S.list = []; S.years = {}; S.isa = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear(); closeSheet(); welcome(); }
+function signedOut() { forget(); closeSheet(); welcome(); }
+// What this phone keeps of you (your portfolio's copy and its years, what you've searched for, read and hidden, your
+// income plan), let go: signed out here, or anywhere else (Sign Out Other Devices, a new password, another app), as
+// the account's answer or a price refresh then says; or another account signed in
+function forget() {
+  for (const k of ["last", "years", "recent", "newsRead", "newsHide", "newsSeen", "plan"]) store.del(k);
+  S.list = []; S.years = {}; S.yearsAt = 0; S.isa = null; S.paid = null; S.inc = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear();
+  S.goal = 100; S.add = 0; S.reinvest = true; loadIncome.failed = 0;
+}
 
 // ---- signed in: your list and its prices ----
 function take(m) {
@@ -2214,26 +2419,33 @@ async function loadPaid(force = false) {
   if (f && top?.[0] === stockView) { const sym = top[1][0], held = S.list.find((x) => x.symbol === sym); f.replaceWith(facts(sym, held, S.q[sym])); if (held?.qty > 0 && valueOf(held) != null) $("#yours")?.replaceWith(yoursPart(sym, held, S.q[sym])); }
 }
 // your income's history (each holding's dividends over the years, and each that's paid you), for the Income sheet:
-// kept ten minutes, and asked again once what you own has changed (S.inc emptied)
+// kept ten minutes, and asked again once what you own has changed (S.inc emptied). One that couldn't come is said
+// (loadIncome.failed), and not asked for again by itself for a minute: Try Again asks at once
 async function loadIncome(force = false) {
-  if (loadIncome.busy || (!force && S.inc && Date.now() - S.inc.at < 600e3) || !owned().length) return;
-  loadIncome.busy = true;
-  try { S.inc = { at: Date.now(), v: (await A.income()).income }; } catch (_) { return; } finally { loadIncome.busy = false; }
+  if (loadIncome.busy || (!force && ((S.inc && Date.now() - S.inc.at < 600e3) || Date.now() - (loadIncome.failed || 0) < 60e3)) || !owned().length) return;
+  loadIncome.busy = true; loadIncome.failed = 0;
+  try { S.inc = { at: Date.now(), v: (await A.income()).income }; } catch (_) { loadIncome.failed = Date.now(); } finally { loadIncome.busy = false; }
   if (Sheet.stack.at(-1)?.[0] === incomeView) drawSheet();
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
 const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");
 // Prices again: every half a minute while the app's open and in front, each change flashed where it shows
 async function refresh(force = false) {
-  if (!S.me || (!force && document.hidden)) return;
+  // (one at a time: a slow answer isn't asked for again over itself; one that's needed now, after a change, still is)
+  if (!S.me || (!force && (document.hidden || refresh.busy))) return;
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol)])];
+  refresh.busy = true;
   try {
-    const was = { ...S.q }, wasT = totals(), r = await A.quotes(syms);
+    const was = { ...S.q }, wasT = totals(), wasOut = unpriced().map((x) => x.symbol).join(), r = await A.quotes(syms);
     Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates);
-    store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
+    // (when they came, by this phone's clock, as their age is told by it: never the server's, a few minutes apart from it)
+    S.pricesAt = Date.now();
+    store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
     if (force) return;
-    const said = marketSaid(), line = $(".mhead .ifh-line .eyebrow");
-    if (line) line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), said.text);
+    sayLine();
+    // (one of yours now in your total that wasn't (its price, or its currency's rate, come in), or the other way: all
+    // said again, behind)
+    if (unpriced().map((x) => x.symbol).join() !== wasOut && S.tab !== "news" && calm()) { render(false); return; }
     for (const s of syms) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
     dispatchEvent(new Event("mk:prices"));
     const T = totals(), pv = $("#pv");
@@ -2252,7 +2464,11 @@ async function refresh(force = false) {
         portfolioChart.pts = pts;
       }
     }
-  } catch (_) { /* offline a moment: tried again in half a minute */ }
+  } catch (e) {
+    // (signed out somewhere else meanwhile; else offline a moment, tried again in half a minute, the prices said as old
+    // once they are)
+    if (e.status === 401) signedOut(); else sayLine();
+  } finally { refresh.busy = false; }
 }
 // one symbol's numbers, wherever they show, said afresh and flashed up or down
 function paint(sym, up) {
@@ -2262,8 +2478,8 @@ function paint(sym, up) {
   document.querySelectorAll(`[data-pct="${CSS.escape(sym)}"]`).forEach((el) => {
     // (a stock's page showing a longer range than today says its change over that, not today's)
     if (el.id === "rpct" && ($("#cb")?.dataset.range || "1d") !== "1d") return;
-    el.textContent = el.id === "rpct" && q.chg != null && !isIndex(q) ? `${signed(q.chg, q.cur, q.price < 1 ? 4 : 2)} (${pct(q.chgPct)})` : pct(q.chgPct); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(q.chgPct)); });
-  if (held?.qty > 0) {
+    el.textContent = el.id === "rpct" && q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(q.chgPct)); });
+  if (held?.qty > 0 && valueOf(held) != null) {
     document.querySelectorAll(`[data-val="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = money(valueOf(held)); flash(el); });
     document.querySelectorAll(`[data-dg="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = el.tagName === "I" ? `${signed(dayOf(held))} today` : signed(dayOf(held)); });
   }
@@ -2281,13 +2497,18 @@ function toast(msg, bad = false) {
   toastEl.textContent = msg; toastEl.classList.toggle("bad", !!bad); toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), bad ? 4200 : 2400); }
 
 // ---- starting ----
+let pointed = 0;
 async function start() {
   drawTabs();
   IFL.built("markets", BUILD, NEWS);
   IFL.watch(window);
-  // (a new version put in by itself, the same in every app: never with a sheet up or a list being reordered; the tab
-  // you were on, and how far down, kept for it: back there below)
-  IFL.updates({ app: "markets", build: BUILD, busy: () => !calm(), save: () => (S.me ? { tab: S.tab, y: Math.round(scrollY) } : null) });
+  // (a new version put in by itself, the same in every app: never with a sheet up or a list being reordered, nor on the
+  // desk while the pointer's been moving over it in the last minute (reading a chart presses nothing); the tab you
+  // were on, how far down, and what was on the desk (its screen, the one chosen, its chart's range and studies), kept
+  // for it: back there below)
+  addEventListener("pointermove", () => { pointed = Date.now(); }, { passive: true });
+  IFL.updates({ app: "markets", build: BUILD, busy: () => !calm() || (document.body.classList.contains("desk-on") && Date.now() - pointed < 60e3),
+    save: () => (S.me ? { tab: S.tab, y: Math.round(scrollY), desk: document.body.classList.contains("desk-on") ? deskApi?.deskSaved() ?? null : null } : null) });
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
     navigator.serviceWorker.addEventListener("message", (e) => {
@@ -2300,24 +2521,42 @@ async function start() {
   const deep = /(?:^#|&)s=([^&]+)/.exec(location.hash)?.[1];
   const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
   if (code || deep) history.replaceState(null, "", location.pathname);
-  let m = null;
-  if (code) { m = await signedBack(code); document.documentElement.classList.remove("arriving"); }
-  else {
-    // (drawn at once from this phone's copy, while the account's is asked for)
-    const last = store.get("last");
-    if (last?.me) { take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0; render(); }
-    try { m = await A.me(); }
-    catch (e) { if (S.me) { toast(e.message, true); live(); return; } return welcome(e.message); }
-  }
-  if (!m?.signedIn) return welcome();
-  const same = S.me?.id === m.id;
-  take(m);
-  // (just updated: the tab you were on, and how far down)
+  // (just updated: the tab you were on, how far down, and on the desk what was on it)
   const was = IFL.here("markets");
   if (was?.tab && ["today", "holdings", "news"].includes(was.tab)) S.tab = was.tab;
+  deskWas = was?.desk || null;
+  let m = null, why = null;
+  if (code) { ({ m = null, why = null } = await signedBack(code)); document.documentElement.classList.remove("arriving"); }
+  // (and where a sign-in couldn't be handed back, who's signed in asked all the same: the browser may well be, its
+  // sign-in being the site's own)
+  if (!m) {
+    // (drawn at once from this phone's copy, while the account's is asked for: its prices said as from when it was kept)
+    const last = code ? null : store.get("last");
+    if (last?.me) {
+      take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
+      // (said as old only if the account's slow to answer: oldSaid)
+      S.opening = Date.now() + 4000; setTimeout(() => { if (S.opening) { S.opening = 0; sayLine(); } }, 4100);
+      render();
+    }
+    try { m = await A.me(); }
+    catch (e) {
+      if (S.me) { S.opening = 0; toast(e.message, true); sayLine(); live(); return; }
+      // (offline, or Markets not answering, and nothing here to show: never taken for signed out. Asked again once the
+      // network's back, or on Try Again)
+      if (e.offline || e.status >= 500) { addEventListener("online", () => location.reload(), { once: true }); return welcome(e.message, () => location.reload()); }
+      return welcome(e.message);
+    }
+  }
+  if (code) toast(m?.signedIn ? `Signed in as ${String(m.name).trim().split(/\s+/)[0]}` : why || "That sign-in didn't finish. Sign in again here.", !m?.signedIn);
+  // (signed out since, wherever it was: what this phone kept of you goes with it)
+  if (!m?.signedIn) return m ? signedOut() : welcome();
+  const same = S.me?.id === m.id;
+  if (S.me && !same) forget();
+  take(m);
+  S.pricesAt = Date.now(); S.opening = 0;
   render(!same);
   if (was?.y) requestAnimationFrame(() => scrollTo(0, was.y));
-  store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: Date.now() });
+  store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
   checkPush();
   loadYears();
   loadPaid();
@@ -2367,6 +2606,6 @@ start();
 
 // ---- for the desk (desk.js): what it shares with the rest ----
 DESK.addEventListener("change", () => render(false));
-export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
-  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries,
-  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, storyView };
+export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, chgSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, unpriced, leftOutSaid, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
+  aroundDay, INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, alertSet, toast, ago, dayKey, rangeSeries, marketSaid, lineSaid, pricesAtSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries,
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, storyView, IFL, keepFocus };

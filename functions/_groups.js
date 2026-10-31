@@ -11,16 +11,16 @@ import { newStamps } from "./_passport.js";
 import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
 import { vanishOk } from "./_vanish.js";
-import { isOnce, serveOnce, drawMystery, MYSTERY,
+import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HttpError, json, chatJson, body, readCapped, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
+  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsAlong } from "./_weather.js";
 import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, riskOf, ceilingFor } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
-import { claimBird } from "./_birds.js";
+import { claimBird, freeBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
 import { endOf, spaceFlight, spaceKinds, isSpace } from "./_moon.js";
 
@@ -402,13 +402,7 @@ async function send({ request, env, waitUntil }) {
   const kind = mystery ? drawMystery() : Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
   if (!mystery && PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
   const from = mystery ? "mystery" : PIGEONS[kind].max ? kind : null;
-  if (from) {                 // one special pigeon covers the whole group
-    const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
-    if (l.count <= 0) throw new HttpError(409, `No ${from} pigeons left.`);
-    const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
-    const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
-    if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
-  }
+  if (from && loft(u, from, t).count <= 0) throw new HttpError(409, `No ${from} pigeons left.`);
   const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1), style = styleOf(meta.route);
   // no pigeon to anyone you've blocked, or who has blocked you (from a group made before the block)
   const cut = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
@@ -443,24 +437,44 @@ async function send({ request, env, waitUntil }) {
     return { to: r.id, km, at, lostAt, r, w, wx, legs };
   }));
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
-  await D.batch([
-    claimId(D, id, "g", t),
-    D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin, style)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
-      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t), style),
-    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs, moon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs, d.moon ?? null)),
-  ]);
-  if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
-  if (g.vanish) await D.prepare("UPDATE pg_gmsgs SET vanish = ? WHERE id = ?").bind(g.vanish, id).run();
-  // one of your named pigeons leads: it flies the longest route
+  // one special pigeon covers the whole group: taken from your loft only now its ways are planned, just before it's written
+  if (from) {
+    const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
+    const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
+    const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
+    if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
+  }
+  // Written whole, in one go (its disappearing timer, the named pigeon leading it, whether a photo is view-once), with
+  // its photo; anything short of that, and it's as if it never was: its rows and id gone, its named pigeon free, the
+  // pigeon back in your loft (and trying again sends it, rather than finding it "already sent" with nothing in it)
+  // (one of your named pigeons leads: it flies the longest route)
   const lead = dels.filter((d) => d.r.lat != null && !d.moon).sort((a, b) => b.km - a.km)[0];
-  const bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
-  if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, bird.wear, id).run();
+  let bird = null, written = false;
+  try {
+    bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
+    await D.batch([
+      claimId(D, id, "g", t),
+      D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin, style,
+        vanish, mystery, once, bird, bird_name, bird_rank, bird_to, bird_wear)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
+        photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t), style,
+        g.vanish || null, mystery ? 1 : null, photo ? (meta.once === false ? 0 : 1) : null,
+        bird?.id ?? null, bird?.name ?? null, bird?.rank ?? null, bird ? lead.to : null, bird?.wear ?? null),
+      ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs, moon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs, d.moon ?? null)),
+    ]);
+    written = true;
+    if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
+  } catch (e) {
+    const say = (what) => (x) => console.error(what, x && x.message);
+    if (written) await D.batch([D.prepare("DELETE FROM pg_gdeliv WHERE msg_id = ?").bind(id), D.prepare("DELETE FROM pg_gmsgs WHERE id = ?").bind(id), D.prepare("DELETE FROM pg_ids WHERE id = ?").bind(id)]).catch(say("pigeon undo"));
+    if (bird) await freeBird(D, bird.id, t)?.catch(say("pigeon undo bird"));
+    if (from) await refundLoft(D, u.id, from, t).catch(say("pigeon refund"));
+    if (!written && String(e).includes("UNIQUE")) throw new HttpError(409, "That message was already sent.");
+    throw e;
+  }
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
-  if (mystery) await D.prepare("UPDATE pg_gmsgs SET mystery = 1 WHERE id = ?").bind(id).run();
-  if (photo) await D.prepare("UPDATE pg_gmsgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
@@ -479,12 +493,13 @@ async function recall({ request, env }) {
   if (!flying) throw new HttpError(409, "Too late: those pigeons have already landed.");
   await spendSwift(D, u, t);
   const r = await D.prepare(`UPDATE pg_gdeliv SET lost_at = ?1, recalled = 1, notified_at = ?1 WHERE msg_id = ?2 AND deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)`).bind(t, id).run();
-  if (!r.meta.changes) throw new HttpError(409, "Too late: those pigeons have already landed.");
+  // (all landed in the moment between: the swift one never went after them, so it's back in its loft)
+  if (!r.meta.changes) { await refundLoft(D, u.id, "swift", t).catch((e) => console.error("pigeon refund", e && e.message)); throw new HttpError(409, "Too late: those pigeons have already landed."); }
   await dropFly(D, id, t);
   const landed = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ? AND deliver_at <= ? AND lost_at IS NULL LIMIT 1").bind(id, t).first();
   if (!landed) {
     await D.prepare("UPDATE pg_gmsgs SET body = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END WHERE id = ?").bind(id).run();
-    if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(groupPhotoKey(id));
+    if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(groupPhotoKey(id)).catch((e) => console.error("pigeon photo", e && e.message));    // (else swept up later)
   }
   const fresh = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [fresh], await friendIds(D, u.id), t))[0] });
@@ -506,16 +521,18 @@ async function getPhoto({ request, env }, id) {
   const d = m && m.sender !== u.id ? await D.prepare("SELECT * FROM pg_gdeliv WHERE msg_id = ? AND user_id = ?").bind(id, u.id).first() : null;
   if (!m || (m.sender !== u.id && !d)) throw new HttpError(404, "No such photo.");
   if (!(await D.prepare("SELECT 1 FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(m.group_id, u.id).first())) throw new HttpError(404, "No such photo.");
-  if (m.photo !== 1 || t >= m.expires_at) throw new HttpError(410, "This photo has flown away.");
+  if (m.photo !== 1 || t >= m.expires_at) throw new HttpError(410, d?.viewed_at && isOnce(m) ? "You’ve already opened this photo." : "This photo has flown away.");
   if (d && lostBy(d, t)) throw new HttpError(410, "This photo was lost with its pigeon.");
   if (d && t < d.deliver_at) throw new HttpError(425, "This photo is still in flight.");
-  // view once: each member downloads it once, its sender never again; gone once no one else still may
+  // view once: each member downloads it once (asked again within a few minutes, as that one didn't arrive:
+  // ONCE_AGAIN), its sender never again; its time up a few minutes after no one else still may
   if (isOnce(m) && !(m.once == null && !d)) {
     if (!d) throw new HttpError(403, "A view-once photo can only be opened by who it was sent to.");
     const c = await D.prepare("UPDATE pg_gdeliv SET viewed_at = ? WHERE msg_id = ? AND user_id = ? AND viewed_at IS NULL").bind(t, id, u.id).run();
-    if (!c.meta.changes) throw new HttpError(410, "You’ve already opened this photo.");
+    if (!c.meta.changes && !(d.viewed_at && t - d.viewed_at < ONCE_AGAIN)) throw new HttpError(410, "You’ve already opened this photo.");
     const left = await D.prepare("SELECT COUNT(*) AS n FROM pg_gdeliv WHERE msg_id = ? AND viewed_at IS NULL AND (lost_at IS NULL OR lost_at > ?)").bind(id, t).first();
-    return serveOnce(env, groupPhotoKey(id), left.n > 0);
+    if (!left.n) await D.prepare("UPDATE pg_gmsgs SET expires_at = MIN(expires_at, ?) WHERE id = ?").bind(t + ONCE_AGAIN, id).run();
+    return serveOnce(env, groupPhotoKey(id));
   }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(groupPhotoKey(id)));
   if (!obj) throw new HttpError(410, "This photo has flown away.");

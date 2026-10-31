@@ -1,5 +1,5 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, extrasDue, searchPlaces, nameOf, store, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
+import { load, due, extrasDue, searchPlaces, nameOf, store, keepSafe, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
@@ -76,17 +76,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -139,13 +145,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -199,33 +205,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -246,6 +274,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -312,20 +341,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
@@ -469,10 +506,14 @@ function notifyOf(n) {
   const places = n.places.map((x) => { const p = spot(x); return p && (x.rain || x.warn) ? { ...p, rain: !!x.rain, warn: !!x.warn } : null; }).filter(Boolean).slice(0, A.MAX_NOTIFY);
   return { places, brief: n.brief && typeof n.brief === "object" ? spot(n.brief) : null, briefAt: at, email, ...keep };
 }
+// (your settings and places: room made for them if the phone's storage is full (data.js keepSafe); if there's still
+// none, said, once, rather than lost without a word the next time it's opened)
+let toldFull = false;
+const sayIfFull = (ok) => { if (!ok && !toldFull) { toldFull = true; toast("Couldn't save that: this device's storage for websites is full."); } };
 // (kept, and signed in, sent to the account soon after: inStepSoon)
-const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; inStepSoon(); };
+const saveSettings = () => { sayIfFull(keepSafe("wx:settings", S.settings)); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; inStepSoon(); };
 const place = () => S.places[S.cur] || null;
-const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur", S.cur); inStepSoon(); };
+const savePlaces = () => { sayIfFull(keepSafe("wx:places", S.places) && keepSafe("wx:cur", S.cur)); inStepSoon(); };
 
 /* ---------- start ---------- */
 async function start() {
@@ -550,6 +591,7 @@ async function start() {
   // down you were, kept for it, the place you were on being kept anyway)
   IFL.updates({ app: "weather", build: BUILD, busy: () => !!document.querySelector("dialog[open]") || $("radar").classList.contains("radar-big"), save: () => ({ y: Math.round(scrollY) }) });
   const was = IFL.here("weather"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 700);
+  reopen();
   if (signedIn) signedBack(signedIn); else pull();
 }
 function addPlace(p, makeCurrent = true) {
@@ -620,9 +662,10 @@ async function go(force = false, fresh = null) {
   } catch (e) {
     if (my === seq) {
       S.error = e;
-      // (the forecast service busy, or not answering: asked again by itself in a while, half a minute then a minute)
-      clearTimeout(S.again);
-      if ((e.status === 429 || e.status >= 500) && (S.tries = (S.tries || 0) + 1) <= 4) S.again = setTimeout(() => { const q = place(); if (q && cell(q.lat, q.lon) === cell(p.lat, p.lon) && !S.wx) go(); }, S.tries > 1 ? 60e3 : 30e3);
+      // (the forecast service busy, or not answering: asked again by itself in a while, half a minute then a minute, a
+      // few times; S.again while it's to be, so the page says so only then: render)
+      clearTimeout(S.again); S.again = 0;
+      if ((e.status === 429 || e.status >= 500) && (S.tries = (S.tries || 0) + 1) <= 4) S.again = setTimeout(() => { S.again = 0; const q = place(); if (q && cell(q.lat, q.lon) === cell(p.lat, p.lon) && !S.wx) go(); }, S.tries > 1 ? 60e3 : 30e3);
       render();
     }
   } finally {
@@ -889,9 +932,15 @@ function prepare(q, only = false) {
   if (kept && had.f === S.f && had.rain === rain && had.min === min) return had.v;
   const base = kept ? had.base : keptWx(q);
   if (!base || runOut(base)) return null;
-  const wx = shaped(base, rain), v = heroView(wx, nowWall(wx.place.offset));
-  ready.set(id, { at: k.at, f: S.f, min, base, v, rain });
+  const wx = shaped(base, rain), now = nowWall(wx.place.offset), v = heroView(wx, now);
+  ready.set(id, { at: k.at, f: S.f, min, base, v, rain, tick: byMinute(wx, now) });
   return v;
+}
+// (whether a place's page says anything by the minute, as the page's own minute's tick redraws it: the next hours' rain,
+// while it's falling or on its way (nowcast), or the Sun's "In 25 min", in the hour before it rises or sets)
+function byMinute(wx, now) {
+  const nc = I.nowcast(wx, now, S.f), d = I.dayOf(wx, now);
+  return (!!nc && (nc.now || nc.startsAt - now <= 2 * HOUR)) || [d?.sunrise, d?.sunset].some((t) => t && t > now && t - now <= HOUR);
 }
 // (something new for a place beside the one shown: what's ready of it, and its whole page, made again when it's idle)
 const news = new Map();
@@ -922,10 +971,14 @@ function drawPage(el, q, i, only) {
 // cards drawn by the page's own drawing, each part as it draws itself but aimed at the copy (R, which $ looks in), with
 // the place's forecast as kept and as a place is first shown (go: nothing open or folded out, the view it calls for),
 // nothing moving and no chart drawing in; its ids then put by (data-pid), so the page's own are still the page's. Kept
-// for each place while it's the same forecast, the same minute, the same page (pages): drawn again each minute, as the
-// page's own "in 20 minutes" and its charts' Now are (the minute's tick), so it says what it will when it's landed on
+// for each place while it's the same forecast, the same page (pages), and the same hour, or where it says anything by
+// the minute (byMinute) the same minute: drawn again each minute then, as the page's own "in 20 minutes" is (the
+// minute's tick), so it says what it will when it's landed on; and not otherwise, for nothing anyone would see
 const pages = new Map();
-const pageKey = (q) => { const k = peek(q), id = cell(q.lat, q.lon); return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor(Date.now() / 60e3), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]); };
+const pageKey = (q) => {
+  const k = peek(q), id = cell(q.lat, q.lon), every = ready.get(id)?.tick === false ? HOUR : 60e3;
+  return k && JSON.stringify([k.at, news.get(id) || 0, rainOf(id)?.said, Math.floor((Date.now() + k.offset * 1000) / every), S.f.units, S.settings.layout, S.settings.tune, innerWidth, S.modeChosen && S.mode]);
+};
 const putIds = (root) => { for (const x of root.querySelectorAll("[id]")) { x.dataset.pid = x.id; x.removeAttribute("id"); } };
 // (the page's cards as they are, copied: without the placeholders, the map (there's one only: a picture of it as it was
 // last shown for that place, id, if it's been), or anything about to move)
@@ -973,6 +1026,9 @@ function placePages(a, b, va, vb) {
     const now = id ? h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })) : null;
     now?.style.setProperty("--c", $("pager").style.getPropertyValue("--c") || "0");
     pv.replaceChildren(...(id ? [now, ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
+    // (a page put back that was off the page meanwhile, a few places away: what's still to move in it watched for again,
+    // as motion lets go of what's off the page)
+    if (e && seen && !calm.matches) for (const x of pv.querySelectorAll(".pre")) seen.observe(x);
   }
   keepNear(pages); keepNear(stills);
 }
@@ -1151,10 +1207,11 @@ function readyNearby(soon = false) {
   if (pagerBusy() || S.loading) { nearbySoon(soon); return; }
   // (a picture of the map as it is, for this place's page as it's shown beside the next one's: not as it's landed on,
   // the map still on its way to it; and taken again only once the map's been drawn again since, mapgl.js still, so not
-  // for each of the minute's passes, a page beside drawn in each, with nothing on it changed; a lone place's too, for
-  // its page beside the next one added)
-  const here = place();
-  if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still().then((u) => { if (u && place() === here) stills.set(cell(here.lat, here.lon), u); }, () => {});
+  // for each of the minute's passes, a page beside drawn in each, with nothing on it changed, nor while the map's moving
+  // by itself (playing, the wind flowing: radar.js still) once there's one; a lone place's too, for its page beside the
+  // next one added)
+  const here = place(), hid = here && cell(here.lat, here.lon);
+  if (here && !soon && onePage() && S.wx && S.radar?.still) S.radar.still(stills.has(hid)).then((u) => { if (u && place() === here) stills.set(hid, u); }, () => {});
   const list = nearby().filter(Boolean);
   for (const q of list) prepare(q);
   layoutPager(false, true);
@@ -1166,14 +1223,23 @@ function readyNearby(soon = false) {
   }
   for (const q of list) {
     const id = cell(q.lat, q.lon);
-    // (the radar's say on its next hours, as the page asks for its own: radarRain; not with the phone saving data)
-    if (!rainOf(id) && !navigator.connection?.saveData && !asking.has(id)) {
+    // (the radar's say on its next hours, as the page asks for its own: radarRain; not with the phone saving data; asked
+    // again a little before it's out of date, so the page beside isn't drawn again without it meanwhile, and drawn
+    // again only if what it says has changed)
+    const r0 = rains.get(id);
+    if (!(r0 && Date.now() - r0.asked < 4 * 60e3) && !navigator.connection?.saveData && !asking.has(id)) {
       asking.add(id);
-      rainAt(q.lat, q.lon).catch(() => null).then((r) => { asking.delete(id); rains.set(id, { ...r, id, asked: Date.now(), said: r ? JSON.stringify([r.at, r.steps]) : "" }); renewed(id); nearbySoon(); });
+      rainAt(q.lat, q.lon).catch(() => null).then((r) => {
+        asking.delete(id);
+        const said = r ? JSON.stringify([r.at, r.steps]) : "", was = rainOf(id)?.said;
+        rains.set(id, { ...r, id, asked: Date.now(), said });
+        if (said !== was) renewed(id);
+        nearbySoon();
+      });
     }
     // (its forecast and the rest, how the models have done there and its climate: data.js load's quiet)
     // (one place at a time)
-    if (nearbyLoading || !(due(q) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
+    if (nearbyLoading || !(due(q, Date.now(), null, true) || extrasDue(q)) || Date.now() - (fetchedAt.get(id) || 0) < 2 * 60e3) continue;
     fetchedAt.set(id, Date.now()); nearbyLoading = true;
     load(q, () => {}, { quiet: true }).then(() => { glances.delete(id); renewed(id); }, () => {}).finally(() => { nearbyLoading = false; nearbySoon(); });
   }
@@ -1245,6 +1311,26 @@ function cardSwipe() {
   main.addEventListener("touchend", lift, { passive: true });
   main.addEventListener("touchcancel", lift, { passive: true });
 }
+// A mouse's wheel, which only goes up and down, moves the hours and the days along too (they've no scroll bar to drag),
+// while there's further to go, and the page after that; not a trackpad's, which goes sideways itself, so a trackpad's
+// scrolling down over them is still the page's. Which it is, told as each turn of the wheel starts: a wheel's notches
+// are lines, or 120 each. And not a turn begun over the page, as the page scrolls one of them in under the pointer: the
+// page carries on, as the browser keeps a turn to what it began in (pageWheel), till the wheel's let rest a moment.
+const withMouse = matchMedia("(hover: hover) and (pointer: fine)");
+let pageWheel = -1e9;
+addEventListener("wheel", (e) => { if (!e.target.closest?.(".strip, .day-strip")) pageWheel = e.timeStamp; }, { passive: true, capture: true });
+function wheelAlong(el) {
+  let last = -1e9, wheel = false;
+  el.addEventListener("wheel", (e) => {
+    if (e.timeStamp - last > 250) wheel = e.timeStamp - pageWheel > 250 && (e.deltaMode !== 0 || (e.deltaX === 0 && e.wheelDeltaY !== 0 && e.wheelDeltaY % 120 === 0));
+    last = e.timeStamp;
+    if (!wheel || !withMouse.matches || e.shiftKey || e.ctrlKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    const by = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? el.clientWidth : 1), end = el.scrollWidth - el.clientWidth;
+    if (by < 0 ? el.scrollLeft <= 0 : el.scrollLeft >= end - 1) return;
+    e.preventDefault();
+    el.scrollLeft += by;
+  }, { passive: false });
+}
 // The page turning to another place, once S.cur is on it (update draws it): this page carried off the way it's going as
 // the next one comes in beside it (a view transition, of just what's on screen; where there aren't any, one goes and
 // then the other comes), the sky and the bar crossfading meanwhile, as long as the page takes (styles.css :root.turning).
@@ -1313,7 +1399,8 @@ function render() {
     const busy = S.error && (S.error.status === 429 || S.error.status >= 500);
     // (from loading to its error and back, as it tries again: the words changing where they are, not snapping)
     swap($("now-cond"), S.error ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…", !!before);
-    swap($("now-hl"), S.error ? (busy ? "Trying again in a moment…" : "You may be offline, or the forecast service didn’t answer.") : "", !!before);
+    // (said to be trying again only while it is: once it's stopped trying by itself, the button under it is the way)
+    swap($("now-hl"), S.error ? (busy ? (S.again ? "Trying again in a moment…" : "Try again in a few minutes.") : "You may be offline, or the forecast service didn’t answer.") : "", !!before);
     $("brief").textContent = ""; delete $("brief").dataset.said;
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("hourly-strip")._sig = $("insights")._sig = null;
@@ -1995,7 +2082,7 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
     const pts = hrs.map((x) => { const e = ens.get(x.t); return { t: x.t, v: t(x.temp), lo: e ? t(x.temp + e.p10 - e.p50) : null, hi: e ? t(x.temp + e.p90 - e.p50) : null, x }; });
     const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
     timeChart(host, { ...common, kind: "line", color: COLOR.temp, points: pts,
-      y: { fmt: (v) => f.deg(v) },
+      y: { fmt: (v) => f.deg(v), unit: 1 },
       marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.temp) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.temp) }] : [])],
       summary: `Temperature, hour by hour: from ${f.temp(lo.x.temp)} to ${f.temp(hi.x.temp)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.temp), label(p.x.code, p.x.isDay)], [f.temp(p.x.feels), "feels like"], ...(p.lo != null ? [[Math.round(p.lo) < 0 ? `${f.deg(p.lo)} to ${f.deg(p.hi)}` : `${Math.round(p.lo)}–${f.deg(p.hi)}`, "could be"]] : [])] }),
@@ -2016,7 +2103,7 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
     const pts = hrs.map((x) => ({ t: x.t, v: wn(x.wind), lo: wn(x.wind), hi: wn(Math.max(x.gust ?? x.wind, x.wind)), x }));
     const top = hrs.reduce((a, b) => ((b.gust ?? 0) > (a.gust ?? 0) ? b : a));
     timeChart(host, { ...common, kind: "line", color: COLOR.wind, points: pts,
-      y: { min: 0, fmt: (v) => String(Math.round(v)) },
+      y: { min: 0, fmt: (v) => String(Math.round(v)), unit: 1 },
       marks: [{ t: top.t, v: wn(top.gust ?? top.wind), text: `gusts ${f.wind(top.gust)}` }],
       summary: `Wind in ${f.windUnit}, hour by hour, with gusts up to ${f.wind(top.gust)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.wind(p.x.wind), `from the ${compassWord(p.x.dir ?? 0)}`], [f.wind(p.x.gust), "gusts"]] }),
@@ -2036,7 +2123,7 @@ function showMode(mode) {
 // until one's chosen, the view the weather calls for (as iOS's Weather picks): rain if it's raining or due within the
 // hour, wind if it's blowing a gale, else temperature
 function viewFor(wx, now) {
-  const nc = I.nowcast(wx, now, S.f), c = wx.current || {};
+  const nc = I.nowcast(wx, now, S.f), c = wx.current || I.hourAt(wx, now) || {};
   return nc && (nc.now || nc.startsAt - now <= HOUR) ? "rain" : (c.gust ?? 0) >= 62 ? "wind" : "temp";
 }
 
@@ -2046,7 +2133,7 @@ function daily(wx, now) {
   $("daily-n").textContent = `${days.length}-day`;
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
-  const curT = wx.current?.temp;
+  const curT = (wx.current || I.hourAt(wx, now))?.temp;
   // (in the rain and wind views, each day's hours drawn small: the wind on one scale for all the days)
   const mode = S.mode, hoursOf = (d) => I.hoursBetween(wx, d.date + HOUR, d.date + DAY + HOUR), gTop = Math.max(50, ...days.map((d) => d.gustMax ?? 0));
   $("days").className = `days v-${mode}`;
@@ -2415,7 +2502,8 @@ const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCa
 /* ---------- places ---------- */
 // (My Location's position, to three decimal places: locate, and start for one kept from before)
 const r3 = (v) => Math.round(v * 1e3) / 1e3;
-// (after: a sheet going, that the page waits for before it turns to where you are)
+// (after: what's done once it's found, before the page turns to where you are: Places closed, say → a promise kept once
+// it has; not before, so where it can't be found, its search is still there)
 async function locate(quiet = false, after = null) {
   if (!navigator.geolocation) { if (!quiet) toast("Location isn't available in this browser."); return false; }
   const btn = $("locate-btn"); btn.classList.add("busy");
@@ -2423,7 +2511,7 @@ async function locate(quiet = false, after = null) {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
     // (to three decimal places, about 100 m, from here on: all a forecast needs, the hills and valleys in it included,
     // and nothing nearer than that sent anywhere, or kept)
-    const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps);
+    const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps), gone = after ? after() : Promise.resolve();
     // (hardly moved since last time, under a kilometre: the name it had, rather than asking again)
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
     // (found quietly, as it's opened: the place being looked at stays the one looked at; and still in the same square
@@ -2441,7 +2529,7 @@ async function locate(quiet = false, after = null) {
     const as = was || (same ? before : null);
     // (and on show, the page turning to it, if it wasn't: it's the first of the places)
     const i = addPlace({ name: as?.name || "My Location", region: as?.region || "", lat, lon, gps: true }, false), here = S.places[i];
-    if (mine && !same) (after || Promise.resolve()).then(() => turnTo(S.places.indexOf(here)));
+    if (mine && !same) gone.then(() => turnTo(S.places.indexOf(here)));
     else { if (mine) { S.cur = i; savePlaces(); } showPlace(); }
     // (its name looked up meanwhile, the forecast not kept waiting for it)
     if (was) named(was.name);
@@ -2835,8 +2923,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.57";
-const NEWS = "Pinching no longer zooms the page: it stays the app's own size (maps and photos still pinch)";
+const BUILD = "1.58";
+const NEWS = "Warnings no longer drop off when a source is slow, each place and hazard gets its own warning, and the 16 days' bars always draw in";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -2884,10 +2972,10 @@ function toAccount(open) {
   const page = accountPage();
   if (!page) return openSettings();
   open = typeof open === "string" ? open : null;
-  if (standalone()) return (SE() ? Promise.resolve(SE()) : settingsJs()).then((m) => m.openAccount(open), () => toast("Couldn’t open your account just now. Try again."));
+  if (standalone()) return (SE() ? Promise.resolve(SE()) : settingsJs("here")).then((m) => m.openAccount(open), () => toast("Couldn’t open your account just now. Try again."));
   // (and in step with it again as soon as you're back here: what's changed there taken up)
   S.pullNext = true;
-  const a = h("a", { href: `${page}#${new URLSearchParams({ from: "weather", ...(open ? { open } : {}) })}`, target: "_blank", rel: "noopener" });
+  const a = h("a", { href: `${page}#${new URLSearchParams({ from: "weather", ...(open ? { open } : {}), ...asksBack(open) })}`, target: "_blank", rel: "noopener" });
   document.body.append(a); a.click(); a.remove();
 }
 // Signing out here (the foot of Settings): of the site's account in this browser; this device keeps its places and
@@ -3329,9 +3417,10 @@ const seen = typeof IntersectionObserver === "function" && new IntersectionObser
 function motion(key, ...els) {
   if (!seen || calm.matches || !S.wx) return;
   const here = cell(S.wx.place.lat, S.wx.place.lon), k = `${here}:${key}`, old = drawn.get(k);
-  // (what was drawn before, here or at another place, no longer watched for: it's off the page)
+  // (what was drawn before here no longer watched for, nor what's gone from the page at another place; but another
+  // place's still on it, its whole page beside this one (drawWhole), is, and this one's while that's being drawn)
   old?.forEach((o) => seen.unobserve(o));
-  for (const [x, list] of drawn) if (!x.startsWith(`${here}:`)) list.forEach((o) => seen.unobserve(o));
+  for (const [x, list] of drawn) if (x !== k) for (const o of list) if (!o.isConnected) seen.unobserve(o);
   drawn.set(k, els);
   els.forEach((e, i) => {
     const o = old?.[i];
@@ -3346,14 +3435,58 @@ function motion(key, ...els) {
 // (detail.js), and Settings (settings.js). DE() and SE(): the one that's come, if it has (what would only be drawn in
 // it, not yet open, needn't be)
 // (a new version in since this page opened: its module would be the new version's, in the old page, so the page starts
-// again on the new one instead)
-const later = (get) => { let p = null, m = null; return [() => (p ||= newApp ? (location.reload(), new Promise(() => {})) : get().then((x) => (m = x), (e) => { p = null; throw e; })), () => m]; };
+// again on the new one instead, where it was, with what was asked for (ask: "detail:wind", "day:2026-11-02",
+// "settings:look") opened there: restart; one only fetched ahead, not asked for, waits for that)
+const later = (get) => {
+  let p = null, m = null;
+  const load = (ask) => {
+    if (p) return p;
+    if (newApp) { if (ask) restart(ask); return new Promise(() => {}); }
+    return (p = get().then((x) => (m = x), (e) => { p = null; throw e; }));
+  };
+  return [load, () => m];
+};
 const [detailJs, DE] = later(() => import("./detail.js")), [settingsJs, SE] = later(() => import("./settings.js"));
-const openDetail = (kind) => detailJs().then((m) => m.openDetail(kind)).catch(() => {});
-const openDay = (key) => detailJs().then((m) => m.openDay(key)).catch(() => {});
+const openDetail = (kind) => detailJs(`detail:${kind}`).then((m) => m.openDetail(kind)).catch(() => {});
+const openDay = (key) => detailJs(`day:${key}`).then((m) => m.openDay(key)).catch(() => {});
+// Started again on the new version (later): how far down the page was, and what was asked for, kept a moment for it, as
+// the updater keeps where you are (IFL.updates); then, once the page is drawn on it, scrolled back to and opened (reopen)
+const AGAIN = "wx:again";
+function restart(ask) {
+  try { sessionStorage.setItem(AGAIN, JSON.stringify({ ask, y: Math.round(scrollY), t: Date.now() })); } catch (_) {}
+  location.reload();
+}
+function reopen() {
+  let k = null;
+  try { k = JSON.parse(sessionStorage.getItem(AGAIN) || "null"); sessionStorage.removeItem(AGAIN); } catch (_) {}
+  if (!k || typeof k.ask !== "string" || Date.now() - k.t > 60e3) return;
+  const at = k.ask.indexOf(":"), what = at < 0 ? k.ask : k.ask.slice(0, at), arg = at < 0 ? "" : k.ask.slice(at + 1);
+  // (a few seconds at most for the page's forecast, as kept, to be drawn: a day or a tile opens from it)
+  let n = 0;
+  const open = () => {
+    if (!S.wx && n++ < 20) { setTimeout(open, 250); return; }
+    if (k.y) scrollTo(0, k.y);
+    if (what === "detail" && S.wx) openDetail(arg);
+    else if (what === "day" && S.wx) openDay(arg);
+    else if (what === "settings") openSettings(arg || undefined);
+  };
+  setTimeout(open, 300);
+}
 // Settings, at its list (or at one of its folders)
 // (this device among the account's that Weather tells: allowed here, and one of them)
 const notifyHere = () => canShow() && hereToo();
+// (its Notifications folder opened with them off here: asks=1, so the account's Turn On closes that window and comes
+// back, and they're asked for once Weather's in sight again, within a quarter of an hour; Not Now lets them be)
+let ASK_BACK = 0;
+function asksBack(open) {
+  if (open !== "notify-weather" || notifyHere()) return {};
+  ASK_BACK = Date.now(); return { asks: "1" };
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !ASK_BACK) return;
+  const fresh = Date.now() - ASK_BACK < 15 * 60e3; ASK_BACK = 0;
+  if (fresh && !notifyHere()) setTimeout(askNotify, 400);
+});
 // Notifications on this device, in one tap (from the account's Notifications page, #notify; signed out, its own folder)
 function askNotify() {
   ASK_NOTIFY = false;
@@ -3370,7 +3503,7 @@ function askNotify() {
 function openSettings(page) {
   // (signed in, what Weather tells you is set in your account: its Notifications page, at Weather)
   if (page === "notify" && S.acct && !S.noAcct) return toAccount("notify-weather");
-  return settingsJs().then((m) => { if (page) m.openAt(page); else { m.drawSettings(); m.setHome(); openSheet($("settings")); } }).catch(() => {});
+  return settingsJs(`settings:${page || ""}`).then((m) => { if (page) m.openAt(page); else { m.drawSettings(); m.setHome(); openSheet($("settings")); } }).catch(() => {});
 }
 
 /* ---------- sheets ---------- */
@@ -3506,9 +3639,17 @@ function wire() {
   sideSwipe($("detail"), $("detail-body"), (d) => { const kinds = DE()?.detailKinds() || [], i = kinds.indexOf(S.detailKind); return (d > 0 && i <= 0) || (d < 0 && i >= kinds.length - 1); }, (n, quiet) => DE()?.stepDetail(n, quiet));
   pager();
   cardSwipe();
+  wheelAlong($("hourly-strip")); wheelAlong($("day-strip"));
   pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
-  $("use-location").addEventListener("click", () => locate(false, closeSheet($("places"))));
+  // (Places left open, its location button turning, until you've been found: then closed, and the page turned to you;
+  // not found, it's still there to search instead, as the word under the bar says)
+  $("use-location").addEventListener("click", (e) => {
+    const row = e.currentTarget;
+    if (row.classList.contains("busy")) return;
+    row.classList.add("busy");
+    locate(false, () => closeSheet($("places"))).finally(() => stopSpin(row));
+  });
   $("search").addEventListener("input", onSearch);
   $("search-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -3532,7 +3673,8 @@ function wire() {
   $("refresh-btn").addEventListener("click", () => go(true));
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
-  $("retry-btn").addEventListener("click", () => { retried = true; go(true); });
+  // (and, pressed, the few tries by itself begun again, should it still not answer)
+  $("retry-btn").addEventListener("click", () => { retried = true; S.tries = 0; go(true); });
   // temperature, rain or wind: the 48 hours' chart and the days alike, from either switch (and once chosen, kept:
   // otherwise as the weather has it, viewFor)
   const drawMode = () => { if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); daily(S.wx, now); } };
@@ -3618,7 +3760,7 @@ function wire() {
 start();
 
 // (for what's fetched when it's wanted: detail.js, settings.js)
-export { $, accountPage, adopt, afterFrame, airName, balance, calm, canShow, CARDS, COLOR, drawHourChart, EASE_IN,
+export { $, accountPage, adopt, asksBack, afterFrame, airName, balance, calm, canShow, CARDS, COLOR, drawHourChart, EASE_IN,
   EASE_OUT, easeHeight, ghost, GLIDE, go, h, hereToo, mine, nightsOf, nkey, notifying, notifySaved, notifyWhy,
   openSheet, PERSON, place, redraw, refreshDevices, retitle, S, saveSettings, sheetDays, signedOut, signOutHere,
   slideIn, standalone, STATES, swap, syncNotify, T, TILES, toAccount, toAccountSignIn, toast, uvName, windows };

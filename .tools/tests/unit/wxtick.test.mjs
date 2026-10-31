@@ -26,6 +26,18 @@ test("the places a tick looks at: briefings due first, then the rest in a differ
   assert.ok(late([...seen]) > 150, `within a few ticks, nearly every later one (${late([...seen])} of 200)`);
 });
 
+// A place with only warnings or panels on is looked at once a night too, as 03:00 comes there (its clock as last known:
+// the first ten minutes, two ticks at most), so the forecast says its clock again: right after the clocks change in
+// spring and autumn
+test("the places a tick looks at: those with only warnings or panels, once a night, so their clock's kept right when it changes", () => {
+  const row = (id, o) => ({ id, lat: 51.5, lon: 0, rain: 0, brief: 0, warn: 0, solar: null, ...o });
+  // 03:05 there, by its clock as kept (UTC−8:55 at noon UTC); 03:30; 02:00; and noon
+  const at = (off) => ({ tz_off: Math.round(off * 3600) });
+  const subs = [row("warn-3", { warn: 1, ...at(-8 - 55 / 60) }), row("sun-3", { solar: "{}", ...at(-8 - 55 / 60) }), row("warn-330", { warn: 1, ...at(-8.5) }), row("warn-2", { warn: 1, ...at(-10) }),
+    row("warn-12", { warn: 1, ...at(0) }), row("rain-3", { rain: 1, ...at(-8 - 55 / 60) }), row("none-3", { ...at(-8 - 55 / 60) })];
+  assert.deepEqual(toLook(subs, NOON, Infinity).map((s) => s.id).sort(), ["sun-3", "warn-3"], "warnings or panels alone, at 03:05 there; not later in the hour, at 02:00 or noon, nor rain alerts alone, in their quiet hours");
+});
+
 test("Open-Meteo's allowance: all that's kept at first, then 8,000 a day between the ticks however often they come", () => {
   assert.equal(allowance(null, NOON), 500);
   assert.equal(allowance({ n: 0, at: NOON }, NOON), 0, "spent, and asked again at once: nothing");
@@ -80,6 +92,8 @@ test("official warnings: each place asked once, a few at a time, at most 150 a t
     assert.equal((await warningsFor(subs, second, clock)).size, 20, "begun as the tick began: 20 seconds");
     assert.equal((await warningsFor(subs, second, clock - 15e3)).size, 10, "begun 15 seconds in: 10 seconds of their own");
     assert.equal((await warningsFor(subs, second, clock - 4e3)).size, 16, "begun 4 seconds in: the rest of the tick's 20");
+    // (and none begun after the tick's own end: the one the site's traffic starts, with its 30 seconds in all)
+    assert.equal((await warningsFor(subs, second, clock - 15e3, 150, Math.random, clock + 6e3)).size, 6, "the tick ending 6 seconds on: 6 seconds, not 10");
   } finally { Date.now = real; }
   assert.equal((await warningsFor([{ lat: 9, lon: 0, warn: 1, tz_off: 0 }], look, Date.now())).get("9,0"), null, "not to be had: null (nothing's taken as told)");
 });

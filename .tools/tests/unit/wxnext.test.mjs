@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeFormat, keyOf } from "../../../weather/format.js";
-import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, TUNE_DAYS, steady, daysSaid, saidBefore, localSkill, refine } from "../../../weather/skill.js";
+import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, zoneOffset, TUNE_DAYS, steady, daysSaid, saidBefore, localSkill, refine } from "../../../weather/skill.js";
 import { activityScore, ACTIVITIES, windows, limitsText, likely, dryChance, insights, confidence } from "../../../weather/insights.js";
 import { shapeEnsemble } from "../../../weather/data.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../../../weather/alerts.js";
@@ -108,6 +108,20 @@ test("airport reports → whole days only, in local time", () => {
   assert.equal(days["2026-10-17"].tmax, 17); assert.equal(days["2026-10-17"].tmin, 3);
   // today isn't over: left out
   assert.deepEqual(Object.keys(obsDays(reports, 3600, Date.UTC(2026, 9, 18, 12))), ["2026-10-17"]);
+});
+test("airport reports either side of the clocks going back each go in the hour they were there", () => {
+  // London, 23 to 26 October 2026 (back an hour at 01:00 UTC on the 25th): each report's temperature its hour by the clock there
+  const london = zoneOffset("Europe/London"), reports = [];
+  assert.equal(london(Date.UTC(2026, 9, 24, 12)), 3600); assert.equal(london(Date.UTC(2026, 9, 26, 12)), 0);
+  assert.equal(zoneOffset("Nowhere/Atlantis"), null); assert.equal(zoneOffset(undefined), null);
+  for (let t = Date.UTC(2026, 9, 22, 23); t < Date.UTC(2026, 9, 27); t += H) reports.push({ obsTime: t / 1000, temp: new Date(t + london(t) * 1000).getUTCHours() });
+  const days = obsDays(reports, london, Date.UTC(2026, 9, 27, 12));
+  assert.deepEqual(Object.keys(days), ["2026-10-23", "2026-10-24", "2026-10-25", "2026-10-26"]);
+  for (const d of Object.values(days)) assert.deepEqual(d.hours.map((x) => x[0]), Array.from({ length: 24 }, (_, h) => h));
+  // (the day of the change has 25 hours: one o'clock twice)
+  assert.equal(days["2026-10-25"].n, 25);
+  // with the offset after the change for all of it, the days before it would be an hour out
+  assert.equal(obsDays(reports, 0, Date.UTC(2026, 9, 27, 12))["2026-10-24"].hours[12][0], 13);
 });
 
 /* ---------- more than the highs and lows ---------- */
@@ -366,5 +380,32 @@ test("what's due when the app's opened: the forecast after 10 minutes, warnings 
     assert.equal(due(here, at), true, "the forecast 11 minutes old");
     kept({ forecast: { at: at - 60e3 } });
     assert.equal(due(here, at), false, "what never came isn't counted (it's asked for with the next forecast)");
+    // a place beside the one shown: what changes with the models' runs (the ensembles, 143 runs of them) only after six hours
+    kept({ forecast: { at: at - 60e3 }, warnings: { at: at - 60e3 }, ensemble: { at: at - 2 * 3600e3 }, models: { at: at - 2 * 3600e3 } });
+    assert.equal(due(here, at), true, "the ensembles two hours old, for the place shown");
+    assert.equal(due(here, at, null, true), false, "but not for one beside it");
+    kept({ forecast: { at: at - 60e3 }, warnings: { at: at - 60e3 }, ensemble: { at: at - 6.1 * 3600e3 } });
+    assert.equal(due(here, at, null, true), true, "six hours on, beside it too");
+    kept({ forecast: { at: at - 11 * 60e3 }, ensemble: { at: at - 60e3 } });
+    assert.equal(due(here, at, null, true), true, "and its forecast as often as the place shown's");
+  } finally { globalThis.localStorage = had; }
+});
+test("your settings and places are kept when the phone's storage is full: other places' forecasts, then climates, make room", async () => {
+  const { keepSafe } = await import("../../../weather/data.js");
+  const mem = new Map(), had = globalThis.localStorage, ROOM = 2000;
+  const used = () => [...mem].reduce((a, [k, v]) => a + k.length + v.length, 0);
+  // (as the browser's own: its keys listed as its own, Object.keys(localStorage), and a write past its room refused)
+  const api = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), removeItem: (k) => mem.delete(k),
+    setItem: (k, v) => { const was = mem.get(k); mem.set(k, String(v)); if (used() > ROOM) { was == null ? mem.delete(k) : mem.set(k, was); throw new Error("QuotaExceededError"); } } };
+  globalThis.localStorage = new Proxy(api, { ownKeys: () => [...mem.keys()], getOwnPropertyDescriptor: (_, k) => (mem.has(k) ? { value: mem.get(k), enumerable: true, configurable: true } : undefined) });
+  try {
+    const big = "x".repeat(500);
+    for (const [i, id] of ["wx:1.0,1.0", "wx:2.0,2.0"].entries()) mem.set(id, JSON.stringify({ forecast: { at: i + 1, j: big } }));
+    mem.set("clim2:1.0,1.0", JSON.stringify({ at: 1, data: big + big }));
+    assert.equal(keepSafe("wx:settings", { glass: "clear", pad: big }), true);
+    assert.ok(mem.has("wx:settings") && !mem.has("wx:1.0,1.0"), "the oldest place's forecast went first");
+    assert.equal(keepSafe("wx:places", [{ name: "Cromer", pad: big + big }]), true);
+    assert.ok(!mem.has("clim2:1.0,1.0"), "then the climates");
+    assert.equal(keepSafe("wx:places", [{ pad: big.repeat(5) }]), false, "no room at all: said so");
   } finally { globalThis.localStorage = had; }
 });

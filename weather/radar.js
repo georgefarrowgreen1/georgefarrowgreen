@@ -340,7 +340,7 @@ function keptTile(base, c, shown, gone, warm = false) {
       // (no more than KEEP: the oldest let go, those of another zoom first, never those the minutes between are drawing)
       for (const other of [true, false]) for (const [k, x] of kept) {
         if (kept.size <= KEEP) break;
-        if (x.done && !(x.pin && !x.pin.aborted) && (!other || !k.includes(`|${keptZ}|`))) kept.delete(k);
+        if (x.done && !inUse(x) && (!other || !k.includes(`|${keptZ}|`))) unkeep(k, x);
       }
       return box;
     }, drop);
@@ -351,6 +351,15 @@ function keptTile(base, c, shown, gone, warm = false) {
   return e.p;
 }
 const keptNow = (base, z, x, y) => kept.get(`${base}|${z}|${x}|${y}`);
+// (one the minutes between are drawing from; and one let go, its picture with it, not left for the browser to get to)
+const inUse = (x) => !!x.pin && !x.pin.aborted;
+const unkeep = (k, x) => { x.bmp?.close?.(); kept.delete(k); };
+// The radar put away (radar's putAway): the tiles' readings, and every frame's tile kept but those on the map now, let go,
+// some tens of megabytes, so a phone short of memory is no likelier to close the app; worked out again as they're wanted
+function letGo() {
+  codes.clear();
+  for (const [k, x] of kept) if (x.done && !inUse(x)) unkeep(k, x);
+}
 
 // RainViewer's list of frames, kept a few minutes (the card and the next hours' words both ask for it)
 let frameList = null;
@@ -627,7 +636,9 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // still arrows instead (arrows)
   const flowCv = document.createElement("canvas"); flowCv.className = "wind-flow"; flowCv.setAttribute("aria-hidden", "true"); flowCv.hidden = true;
   const fx2 = flowCv.getContext("2d");
-  let specks = [], flowRaf = 0, flowPrev = 0, flowDue = 0, inSight = true;
+  let specks = [], flowRaf = 0, flowRest = 0, flowPrev = 0, flowDue = 0, inSight = true;
+  // (started, unless it's going already, or held under a sheet and looking again in a moment)
+  const flowGo = () => { if (!flowRaf && !flowRest) { flowPrev = flowDue = 0; flowRaf = requestAnimationFrame(flowStep); } };
   const sizeFlow = () => {
     // (drawn into the vector map, at one pixel to the screen's point: it's sent to the graphics chip every picture, and
     // its specks are soft anyway)
@@ -656,7 +667,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     while (specks.length < many) specks.push(speck(w, h));
     specks.length = many;
     for (const p of specks) { speck(w, h, p); p.age = Math.random() * p.life; }
-    if (!flowRaf) { flowPrev = flowDue = 0; flowRaf = requestAnimationFrame(flowStep); }
+    flowGo();
   }
   // (as the map moves under them: the trails cleared, the specks carried on where they are)
   function flowMoved() {
@@ -666,14 +677,15 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (!vw || vw.w !== w || vw.h !== h) return flowRestart();
     vw = viewNow(); fx2.clearRect(0, 0, w, h); intoMap();
     for (const p of specks) p.n = 0;
-    if (!flowRaf) { flowPrev = flowDue = 0; flowRaf = requestAnimationFrame(flowStep); }
+    flowGo();
   }
   function flowStep(ts) {
     flowRaf = 0;
     if (!flowing() || calm || !inSight) return;
+    // (held under a sheet, as the radar is: unseen, and each picture would have the sheet's glass blurred afresh; looked
+    // at again a few times a second, not every frame, so the screen isn't kept busy for nothing)
+    if (document.body.classList.contains("sheet-up")) { flowPrev = flowDue = 0; flowRest = setTimeout(() => { flowRest = 0; flowGo(); }, 300); return; }
     flowRaf = requestAnimationFrame(flowStep);
-    // (held under a sheet, as the radar is: unseen, and each picture would have the sheet's glass blurred afresh)
-    if (document.body.classList.contains("sheet-up")) { flowPrev = flowDue = 0; return; }
     // (about 24 pictures a second, however fast the screen: each once its time's come, the next a 24th of a second after
     // that one was due, so they keep to it on average)
     if (flowDue && ts < flowDue - 6) return;
@@ -1474,9 +1486,17 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   addEventListener("scroll", () => near.observe(card), { once: true, passive: true });
   // (in sight, as the page comes to rest: the map made then; scrolled on past it meanwhile, it waits to be seen again)
   let inView = false;
+  // (put away, the app in the background or the card out of sight for a minute: what's kept of the radar let go, letGo,
+  // and the graphics chip's copies of its frames; the frames for the view worked out afresh as it's next drawn)
+  // (and back in sight, drawn again where it was, which has them worked out again meanwhile, ready to play)
+  let awayT = 0, away = false;
+  const putAway = () => { clearTimeout(awayT); letGo(); gl?.drop?.(); warmed = ""; away = true; };
+  const back = () => { if (away && inView && map && !playing) { away = false; show(at); } };
+  document.addEventListener("visibilitychange", () => (document.visibilityState === "hidden" ? putAway() : back()));
   const io = new IntersectionObserver((es) => {
     const vis = es.some((x) => x.isIntersecting);
     inView = vis; inSight = vis;
+    clearTimeout(awayT); if (!vis) awayT = setTimeout(putAway, 60e3); else back();
     if (vis && kind === "wind") flowRestart();
     if (vis && !starting) starting = new Promise((ok) => whenStill(() => { if (inView) ok(start()); else { starting = null; ok(); } }));
     else if (vis && map && Date.now() - fetched > 10 * 60e3) load().catch(() => {});
@@ -1511,8 +1531,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       }
     },
     note(text) { line(q(".radar-note"), text || ""); },
-    // a picture of the map as it is (a data URL), where its map can give one; else null
-    still() { return map?.still ? map.still() : Promise.resolve(null); },
+    // a picture of the map as it is (a data URL), where its map can give one; else null. had: there's one already, so
+    // not while it's moving by itself, playing or the wind flowing (it's drawn afresh every frame, so it'd be taken
+    // again each time asked, for a picture that's only a moment of it anyway)
+    still(had = false) { return map?.still && !(had && (playing || flowRaf)) ? map.still() : Promise.resolve(null); },
     // the other saved places: [{ name, lat, lon, temp ("12°"), colour, go() }]
     others(list) { others = list || []; drawOthers(); },
     // official warnings with their areas: [{ id, title, colour (yellow, amber, orange, red), onset, expires, open, rings }]

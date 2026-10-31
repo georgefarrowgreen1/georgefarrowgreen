@@ -5,14 +5,16 @@
 const NS = "http://www.w3.org/2000/svg";
 const HOUR = 3600e3;
 
-function niceStep(range, want) {
-  const raw = range / Math.max(1, want), p = 10 ** Math.floor(Math.log10(raw || 1)), n = raw / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+// (unit: the finest step the labels show, 1 for whole numbers: never finer than that, nor a step they'd round off,
+// so 0, 0.5 and 1 aren't labelled 0, 1 and 1, nor 2.5 as 3)
+function niceStep(range, want, unit = 0) {
+  const raw = range / Math.max(1, want), p = 10 ** Math.floor(Math.log10(raw || 1)), n = raw / p, whole = (v) => !unit || Math.abs(v / unit - Math.round(v / unit)) < 1e-6;
+  return Math.max(unit, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 && whole(2.5 * p) ? 2.5 : n <= 5 ? 5 : 10) * p);
 }
-export function niceScale(lo, hi, want = 3, pad = 0) {
+export function niceScale(lo, hi, want = 3, pad = 0, unit = 0) {
   if (!(hi > lo)) { lo -= 1; hi += 1; }
   lo -= pad; hi += pad;
-  const step = niceStep(hi - lo, want), a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, ticks = [];
+  const step = niceStep(hi - lo, want, unit), a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, ticks = [];
   for (let v = a; v <= b + step / 1e6; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   return { lo: a, hi: b, ticks };
 }
@@ -33,8 +35,9 @@ function colPath(x, y, w, h, r = 4) {
  *   kind      "line" | "columns"
  *   points    [{ t, v, lo?, hi? }]   (lo/hi: a shaded range around the line)
  *   color     the series' colour
- *   y         { min?, max?, ticks?, fmt(v), inside? }   (fixed ends, or worked out from the data; inside: each
- *             label names the band under its line, in the chart at the end, rather than beside it)
+ *   y         { min?, max?, ticks?, fmt(v), unit?, inside? }   (fixed ends, or worked out from the data; unit: the
+ *             finest step fmt shows, 1 for whole numbers, so no two ticks read the same; inside: each label names the
+ *             band under its line, in the chart at the end, rather than beside it)
  *   x         { hour(t), day(t), step }          (labels for hours and for the start of each day)
  *   now       a time to mark "Now"
  *   nights    [[from, to]]              (shaded softly)
@@ -169,7 +172,7 @@ function draw(host, fresh = false, fade = false) {
   const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * iw;
   const vals = pts.flatMap((p) => [p.v, p.lo, p.hi]).filter((v) => v != null);
   const ys = o.y?.ticks ? { lo: o.y.min ?? Math.min(...o.y.ticks), hi: o.y.max ?? Math.max(...o.y.ticks), ticks: o.y.ticks }
-    : niceScale(o.y?.min ?? Math.min(...vals), o.y?.max ?? Math.max(...vals), Hh < 130 ? 2 : 3);
+    : niceScale(o.y?.min ?? Math.min(...vals), o.y?.max ?? Math.max(...vals), Hh < 130 ? 2 : 3, 0, o.y?.unit);
   if (o.y?.min != null) ys.lo = o.y.min;
   if (o.y?.max != null) ys.hi = Math.max(o.y.max, ...(o.y?.grow ? vals : []));
   const Y = (v) => T + ih - ((v - ys.lo) / Math.max(1e-9, ys.hi - ys.lo)) * ih;

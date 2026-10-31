@@ -7,7 +7,8 @@
 //      this browser has), then on to the other site
 //   2. issue, on the site you're signed in to: a code, good once for two minutes, made for that note; back again
 //   3. finish, on the first site again: the code, and the note it was made for, from this same browser: a sign-in
-//      here (a sign-in of its own, as it was shown to be you no more freshly than the one it came from), and on to `to`
+//      here (a sign-in of its own, as it was shown to be you no more freshly than the one it came from, and only while
+//      that one lasts), and on to `to`
 //
 // So a page elsewhere can't sign your browser in to its own account with a code of its own (it can't set the note), nor
 // take a code made for you (it only ever goes to the site's own address), nor send you anywhere off the two sites.
@@ -87,8 +88,9 @@ export async function hop(request, env, step) {
     const D = await ready(env);
     const row = await D.prepare("DELETE FROM pg_hops WHERE hash = ? RETURNING *").bind(hex(await sha256(code))).first();
     if (!row || !note || row.expires_at < Date.now() || row.note !== hex(await sha256(note))) return go(to, clear);
-    // (the account it came from, still there and not being deleted)
-    const ok = await D.prepare("SELECT 1 FROM pg_users WHERE id = ? AND delete_at IS NULL").bind(row.user_id).first();
+    // (the account it came from, still there and not being deleted, and the sign-in it came from still on: one signed
+    // out, or ended by a new password, in the moments since, carries nothing)
+    const ok = await D.prepare("SELECT 1 FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ? AND s.user_id = ? AND u.delete_at IS NULL").bind(row.session, row.user_id).first();
     if (!ok) return go(to, clear);
     const token = await issueSession(env, row.user_id, request, row.auth_at || 0);
     const hash = hex(await sha256(token));

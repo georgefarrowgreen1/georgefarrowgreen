@@ -52,9 +52,10 @@ export function closest(m, n, from = -Infinity) {
   return { at, lat: Math.round(lat * 1e4) / 1e4, lon: Math.round(lon * 1e4) / 1e4, km: Math.round(km * 10) / 10, kind: overtake ? "overtake" : "pass", lead: overtake ? (va >= vb ? m.id : n.id) : null };
 }
 
-// The pigeons a pigeon could meet: in the air at the same time, sharing someone
+// The pigeons a pigeon could meet: in the air at the same time, sharing someone (each its way only, not its words)
+const WAY = "id, sender, recipient, sent_at, deliver_at, lost_at, legs, from_lat, from_lon, to_lat, to_lon";
 async function meetable(D, m, start, end) {
-  return (await D.prepare(`SELECT * FROM pg_msgs WHERE id != ?1 AND (sender IN (?2, ?3) OR recipient IN (?2, ?3))
+  return (await D.prepare(`SELECT ${WAY} FROM pg_msgs WHERE id != ?1 AND (sender IN (?2, ?3) OR recipient IN (?2, ?3))
     AND deliver_at > ?4 AND sent_at < ?5 AND (lost_at IS NULL OR lost_at > ?4) AND from_lat IS NOT NULL AND to_lat IS NOT NULL LIMIT 300`)
     .bind(m.id, m.sender, m.recipient, start, end).all()).results;
 }
@@ -105,15 +106,18 @@ export function together(m, n) {
 }
 // A pigeon just off: any it flies together with, both made quicker for that stretch
 // (their times on from then squeezed, with a point each where they meet and part: "f")
+// (m as it is now: read again only once it's been made quicker, or tried to be, so not once for every pigeon it could meet)
 export async function flockUp(D, m) {
   if (!m || m.from_lat == null || m.to_lat == null) return 0;
-  let n = 0;
+  let n = 0, me = m;
   for (const o of await meetable(D, m, m.sent_at, endOf(m))) {
-    const me = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(m.id).first(), w = me && together(me, o);
+    const w = together(me, o);
     if (!w) continue;
     const [a, b] = m.id < o.id ? [m.id, o.id] : [o.id, m.id];
     if (await D.prepare("SELECT 1 FROM pg_near WHERE a = ? AND b = ?").bind(a, b).first()) continue;
-    if (!(await quicken(D, me, w)) || !(await quicken(D, o, w))) continue;
+    const ok = (await quicken(D, me, w)) && (await quicken(D, o, w));
+    if (!(me = await D.prepare(`SELECT ${WAY} FROM pg_msgs WHERE id = ?`).bind(m.id).first())) break;
+    if (!ok) continue;
     await D.prepare(`INSERT OR REPLACE INTO pg_near (a, b, at, lat, lon, km, place, kind, lead, told, coarse) VALUES (?, ?, ?, ?, ?, ?, ?, 'flock', NULL, NULL, NULL)`)
       .bind(a, b, w.start, w.lat, w.lon, w.km, placeName(w.lat, w.lon)).run();
     n++;

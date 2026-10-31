@@ -5,10 +5,10 @@
 // yellow fading out over a blue. WebGL 1, so it runs on the phones Leaflet's map is for too; where there's none (or
 // it's lost), radar.js draws the minutes between itself.
 //
-// glMix() → null, or { canvas, atlas(id, x0, y0, nx, ny), draw(W, H, parts, fade), ok() }: an atlas is a frame's tiles
-// side by side over a range of the map's (x0, y0: its first tile; nx × ny of them), each put in as it comes
-// (atlas.put(tx, ty, vals), atlas.has(tx, ty)); parts: [{ atlas, ox, oy (its first tile's place on the canvas, px),
-// sx, sy (how far it's moved, px), w (its share) }], one or two.
+// glMix() → null, or { canvas, atlas(id, x0, y0, nx, ny), draw(W, H, parts, fade), drop(), ok() }: an atlas is a
+// frame's tiles side by side over a range of the map's (x0, y0: its first tile; nx × ny of them), each put in as it
+// comes (atlas.put(tx, ty, vals), atlas.has(tx, ty)); parts: [{ atlas, ox, oy (its first tile's place on the canvas,
+// px), sx, sy (how far it's moved, px), w (its share) }], one or two; drop(): the atlases let go.
 
 import { palette } from "./rainmap.js";
 
@@ -96,6 +96,8 @@ export function glMix(soft) {
       for (const [k, x] of atlases) { if (atlases.size <= 4) break; gl.deleteTexture(x.tex); atlases.delete(k); }
       return t;
     },
+    // (the radar put away: the atlases let go, made again as they're next wanted)
+    drop() { for (const x of atlases.values()) gl.deleteTexture(x.tex); atlases.clear(); },
     draw(W, H, parts, fade = 1) {
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       gl.viewport(0, 0, W, H);

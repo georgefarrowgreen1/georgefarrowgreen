@@ -7,23 +7,22 @@
 // time zone), the days' words ({ "2026-10-26": { title, body } }, a week or so ahead), and the last day it was sent.
 import { HttpError, limit, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
-import { fitdb } from "./_fitness.js";
+import { tablesOnce } from "./_fitness.js";
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const LATE = 3 * 60;   // (a tick missed by more than three hours: that day's left unsaid, not sent mid-morning)
 
-async function tables(env) {
-  const D = await fitdb(env);
-  if (!tables.done) {
-    await D.prepare(`CREATE TABLE IF NOT EXISTS fx_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL,
-      tz TEXT NOT NULL, days TEXT NOT NULL DEFAULT '{}', sent TEXT, added INTEGER NOT NULL)`).run();
-    await D.prepare("CREATE INDEX IF NOT EXISTS fx_push_user ON fx_push (user_id)").run();
-    // (the account's own choice, from its Notifications page: on or off, and the time, for every phone it's on)
-    await D.prepare("CREATE TABLE IF NOT EXISTS fx_morning (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, at INTEGER)").run();
-    tables.done = true;
-  }
-  return D;
-}
+// (made once for each change to them, as Fitness's own are: functions/_fitness.js tablesOnce)
+const tables = (env) => tablesOnce(env, "push", async (D) => {
+  await D.prepare(`CREATE TABLE IF NOT EXISTS fx_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL,
+    tz TEXT NOT NULL, days TEXT NOT NULL DEFAULT '{}', sent TEXT, added INTEGER NOT NULL)`).run();
+  await D.prepare("CREATE INDEX IF NOT EXISTS fx_push_user ON fx_push (user_id)").run();
+  // (the account's own choice, from its Notifications page: on or off, and the time, for every phone it's on)
+  await D.prepare("CREATE TABLE IF NOT EXISTS fx_morning (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, at INTEGER)").run();
+  // (the sign-in each phone turned it on with, as Markets' phones have theirs: signed out there (from Signed-in
+  // devices, a new password, an account being deleted), and it's sent no more)
+  await D.prepare("ALTER TABLE fx_push ADD COLUMN session TEXT").run().catch(() => {});
+});
 export const pushKey = async (env) => (await vapid(env)).pub;
 
 // a phone's keys, as the push standard has them: a P-256 public key (65 bytes, uncompressed) and a 16-byte secret
@@ -50,8 +49,9 @@ function cleanDays(d) {
   return out;
 }
 
-// Turned on (or its time changed, or its words sent again) on this phone: { sub, at, tz, days }
-export async function setMorning(env, userId, b) {
+// Turned on (or its time changed, or its words sent again) on this phone: { sub, at, tz, days }, with the sign-in it's
+// sent with (session: its hash)
+export async function setMorning(env, userId, b, session = null) {
   const sub = b?.sub, keys = await keysOk(sub);
   if (!sub || !pushEndpointOk(sub.endpoint) || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
   // (the time's the account's, where it's chosen one on its Notifications page; else the phone's, as it was)
@@ -61,9 +61,9 @@ export async function setMorning(env, userId, b) {
   if (!tzOk(b.tz)) throw new HttpError(400, "Bad request.");
   const D = await tables(env);
   await limit(env, `fxpush:${userId}`, 120, 3600e3);
-  await D.prepare(`INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, days, sent, added) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)
-    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7`)
-    .bind(sub.endpoint, userId, keys.p256dh, keys.auth, at, b.tz, JSON.stringify(cleanDays(b.days)), Date.now()).run();
+  await D.prepare(`INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, days, sent, added, session) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)
+    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7, session = ?9`)
+    .bind(sub.endpoint, userId, keys.p256dh, keys.auth, at, b.tz, JSON.stringify(cleanDays(b.days)), Date.now(), session).run();
   // (ten phones an account at most: the oldest goes as an eleventh comes)
   await D.prepare("DELETE FROM fx_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM fx_push WHERE user_id = ?1 ORDER BY added DESC LIMIT ?2)").bind(userId, PHONES).run();
   return { on: true, at };
@@ -89,12 +89,12 @@ export async function setMorningFor(env, userId, b) {
 // Turned off on this phone (or the phone's gone)
 // The browser renewed a phone's subscription by itself (sw.js, pushsubscriptionchange): its morning notification moves
 // to the new one, time, place and words as they were. Only a phone of the signed-in account's.
-export async function moveMorning(env, userId, b) {
+export async function moveMorning(env, userId, b, session = null) {
   const sub = b?.sub, keys = await keysOk(sub), was = String(b?.was || "");
   if (!sub || !pushEndpointOk(sub.endpoint) || !keys || !was || was.length > 1000) throw new HttpError(400, "Bad request.");
   const D = await tables(env);
-  const r = await D.prepare("UPDATE fx_push SET endpoint = ?1, p256dh = ?2, auth = ?3 WHERE endpoint = ?4 AND user_id = ?5 AND NOT EXISTS (SELECT 1 FROM fx_push WHERE endpoint = ?1)")
-    .bind(sub.endpoint, keys.p256dh, keys.auth, was, userId).run();
+  const r = await D.prepare("UPDATE fx_push SET endpoint = ?1, p256dh = ?2, auth = ?3, session = COALESCE(?6, session) WHERE endpoint = ?4 AND user_id = ?5 AND NOT EXISTS (SELECT 1 FROM fx_push WHERE endpoint = ?1)")
+    .bind(sub.endpoint, keys.p256dh, keys.auth, was, userId, session).run();
   return { moved: !!r.meta?.changes };
 }
 export async function stopMorning(env, userId, endpoint) {
@@ -111,6 +111,12 @@ function localNow(tz, t) {
 const PHONES = 10, PER_TICK = 200;
 export async function morningTick(env, t = Date.now()) {
   const D = await tables(env);
+  // (phones whose sign-in has gone, signed out there or from another device, and those of accounts being deleted:
+  // forgotten first, as Markets' are; one turned on before the sign-in was kept with it stays, till it's turned on again)
+  await D.batch([
+    D.prepare("DELETE FROM fx_push WHERE session IS NOT NULL AND session NOT IN (SELECT hash FROM pg_sessions)"),
+    D.prepare("DELETE FROM fx_push WHERE user_id IN (SELECT id FROM pg_users WHERE delete_at IS NOT NULL)"),
+  ]).catch(() => {});
   // (not those whose account has turned it off on its Notifications page)
   const { results } = await D.prepare("SELECT p.endpoint, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
   let sent = 0;

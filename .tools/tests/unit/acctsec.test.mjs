@@ -2,16 +2,21 @@
 // memory, standing in for D1, with the site's schema): a reset link's server key stays the same however often the link's
 // opened; a sign-in an app handed over to a browser signed in to nothing is the account page's alone until it's shown
 // it's you; guessing a password from many networks at once holds the account back, but not on a device that's signed
-// in to it before (or made it, or changed its password or email there), for each account it has, while its password is
-// the one it was given with; a new password's kept as checked against data breaches only if the check got an answer;
-// and a new account's said to have been sent its confirm link only if it went (not if Resend refused it or didn't
-// answer in time).
+// in to it before (or made it, or changed its password or email there, on the account's page, which counts on the
+// sign-in page too), for each account it has, while its password is the one it was given with; a new password's kept as
+// checked against data breaches only if the check got an answer; a new account's said to have been sent its confirm
+// link only if it went (not if Resend refused it or didn't answer in time); a sign-in carried to the other site, or
+// given a computer by a phone, only while the sign-in it came from is still on; an account being deleted kept from the
+// sign-in page too; an app opening the account's page takes in a window it handed over before, never a sign-in made
+// there; and the account's Quiet Hours said with it, for its page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession } from '../../../functions/_pigeon.js';
 import { passwordUser, cookieUser, withKnown } from '../../../functions/_account.js';
 import { onRequest as accountApi } from '../../../functions/api/account/[[path]].js';
+import { hop } from '../../../functions/_hop.js';
+import { qrStart, qrLook, qrAnswer, qrTake } from '../../../functions/_qrsign.js';
 import { E2E } from '../../../pigeon/crypto.js';
 
 // D1, as much of it as the server uses: prepare, bind, first, all, run, and batch (all or nothing)
@@ -221,4 +226,100 @@ test('an account made here: said to have been sent its confirm link only if it w
     }
     assert.ok(limit > 0 && limit < 30000, 'given up on before the page gives up on the reply (30 seconds)');
   } finally { globalThis.fetch = real; AbortSignal.timeout = timeout; }
+});
+
+// (a site of its own, over https as the real one is: the account's page and the sign-in page beside it)
+const SITE_ENV = { ...env, APPS_SITE: 'ifl.test', ACCOUNT_HOST: 'account.ifl.test', AUTH_HOST: 'auth.ifl.test' };
+const onSite = (host, path, data, cookie, ip = '198.51.100.70') => new Request(`https://${host}/api/account/${path}`, { method: 'POST',
+  headers: { Origin: `https://${host}`, 'CF-Connecting-IP': ip, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(data) });
+
+test('a password changed on the account’s page: the word it’s given counts on the sign-in page, where passwords are signed in with', async () => {
+  const u = await account('abe', 'a long test password'), site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hex(await sha256(await issueSession(env, u.id, req('/api/account/me'))))).run();
+  const later = [], request = onSite('account.ifl.test', 'password', { oldProof: proofOf('a long test password'), salt: E2E.newSalt(), proof: proofOf('a newer password'), vault: 'w'.repeat(40) }, `__Secure-account=${site}`);
+  const res = await accountApi({ request, env: SITE_ENV, params: { path: ['password'] }, waitUntil: (p) => later.push(p) });
+  await Promise.allSettled(later);
+  assert.equal(res.status, 200, await res.clone().text());
+  const set = res.headers.getSetCookie().find((c) => c.startsWith('__Secure-known-'));
+  assert.match(set || '', /; Path=\/; Domain=ifl\.test; HttpOnly; SameSite=Lax; Secure; /, 'the whole site’s, so the sign-in page has it too');
+  const word = set.split(';')[0], now = await D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(u.id).first();
+  await heldBack(now);
+  const signIn = (cookie, ip) => passwordUser(SITE_ENV, onSite('auth.ifl.test', 'signin/password', {}, cookie, ip), { email: u.email, proof: proofOf('a newer password') });
+  assert.equal((await signIn(word, '198.51.100.71')).id, u.id, 'on the sign-in page: known, and in');
+  // (one from before, the sign-in page's alone, still counts there while its password's the one it was given with)
+  assert.equal((await signIn(word.replace(/^__Secure-/, '__Host-'), '198.51.100.72')).id, u.id);
+  await assert.rejects(signIn('', '198.51.100.73'), { status: 429, message: /for this account/ }, 'a device without it: held back');
+});
+
+test('a sign-in carried to the other site only while the one it came from is still on', async () => {
+  const HOP = { ...env, ACCOUNT_SITE: 'gfg.test', APPS_SITE: 'ifl.test' }, to = 'http://weather.ifl.test/';
+  const u = await account('bea', 'a long test password');
+  const carry = async (signOutFirst) => {
+    const site = b64url(crypto.getRandomValues(new Uint8Array(32))), from = hex(await sha256(await issueSession(env, u.id, req('/api/me'))));
+    await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), from).run();
+    const note = b64url(crypto.getRandomValues(new Uint8Array(24)));
+    const issued = await hop(new Request(`http://gfg.test/api/hop/issue?n=${hex(await sha256(note))}&to=${encodeURIComponent(to)}`, { headers: { Cookie: `account=${site}` } }), HOP, 'issue');
+    const code = new URL(issued.headers.get('Location')).searchParams.get('c');
+    assert.ok(code, 'a code, made for the note');
+    // (the home page's sign-in signed out, or ended by a new password, in the moments before the browser gets there)
+    if (signOutFirst) await D.prepare('DELETE FROM pg_sessions WHERE hash = ?').bind(from).run();
+    const done = await hop(new Request(`http://account.ifl.test/api/hop/finish?c=${code}&to=${encodeURIComponent(to)}`, { headers: { Cookie: `hop=${note}` } }), HOP, 'finish');
+    assert.equal(done.headers.get('Location'), to);
+    return done.headers.getSetCookie().some((c) => /^account=[A-Za-z0-9_-]{20,}/.test(c));
+  };
+  assert.equal(await carry(false), true, 'still on: signed in there');
+  assert.equal(await carry(true), false, 'signed out since: nothing carried');
+});
+
+test('a computer signed in by a phone only while the phone’s own sign-in that said yes is still on', async () => {
+  const u = await account('cal', 'a long test password'), computer = req('/api/account/signin/qr', { ip: '198.51.100.80' });
+  const scanned = async () => {
+    const phone = await cookieUser(req('/api/account/qr/look', { cookie: await signedInHere(u) }), env), c = await qrStart(env, computer);
+    await qrLook(env, req('/api/account/qr/look'), phone, c.code);
+    const { num } = await D.prepare('SELECT num FROM pg_qrsign WHERE hash = ?').bind(hex(await sha256(c.code))).first();
+    assert.equal((await qrAnswer(env, req('/api/account/qr/answer'), phone, c.code, num)).ok, true);
+    return { ...c, phone };
+  };
+  const a = await scanned();
+  assert.equal((await qrTake(env, computer, a)).u?.id, u.id, 'the phone still signed in: the computer’s in');
+  const b = await scanned();
+  await D.prepare('DELETE FROM pg_sessions WHERE hash = ?').bind(b.phone.sessionHash).run();
+  assert.deepEqual(await qrTake(env, computer, b), { state: 'gone' }, 'the phone signed out since: nothing');
+});
+
+test('an account being deleted can be kept from the sign-in page, as it says it can be when an app’s waiting', async () => {
+  const u = await account('dot', 'a long test password'), cookie = await signedInHere(u), AUTH_ENV = { ...env, ACCOUNT_HOST: 'account.localhost', AUTH_HOST: 'auth.localhost' };
+  await D.prepare('UPDATE pg_users SET delete_at = ?, delete_code = ? WHERE id = ?').bind(Date.now() + 7 * 86400e3, 'x', u.id).run();
+  const at = async (path) => {
+    const host = 'http://auth.localhost:8788', request = new Request(`${host}/api/account/${path}`, { method: 'POST', headers: { Origin: host, 'CF-Connecting-IP': '198.51.100.90', Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' });
+    return accountApi({ request, env: AUTH_ENV, params: { path: path.split('/') }, waitUntil: () => {} });
+  };
+  assert.equal((await at('export')).status, 404, 'the account’s own things: not answered there');
+  const kept = await at('delete/cancel');
+  assert.equal(kept.status, 200, await kept.clone().text());
+  assert.equal((await D.prepare('SELECT delete_at FROM pg_users WHERE id = ?').bind(u.id).first()).delete_at, null, 'kept');
+});
+
+test('an app opening the account’s page takes in a window it handed over before, never a sign-in made there', async () => {
+  const u = await account('eve', 'a long test password');
+  const app = hex(await sha256(await issueSession(env, u.id, req('/api/weather/me'))));
+  const open = async (authAt) => {
+    const site = b64url(crypto.getRandomValues(new Uint8Array(32))), hash = hex(await sha256(await issueSession(env, u.id, req('/api/account/me'), authAt)));
+    await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hash).run();
+    const code = b64url(crypto.getRandomValues(new Uint8Array(24)));
+    await D.prepare('INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)').bind(hex(await sha256(code)), u.id, app, Date.now() + 60e3).run();
+    const res = await onPage('handoff', { code }, { cookie: `account=${site}` });
+    assert.equal(res.status, 200, await res.clone().text());
+    return (await D.prepare('SELECT parent FROM pg_sessions WHERE hash = ?').bind(hash).first()).parent;
+  };
+  assert.equal(await open(Date.now()), null, 'signed in to with a password or passkey: the browser’s own, listed by itself');
+  assert.equal(await open(0), app, 'one an app handed over before this was kept (never shown it’s you): part of that app’s now');
+});
+
+test('the account as its page is given it: Quiet Hours said, for the row in Preferences before Notifications is opened', async () => {
+  const u = await account('fay', 'a long test password'), cookie = await signedInHere(u);
+  const me = async () => (await accountApi({ request: req('/api/account/me', { cookie }), env: PAGE_ENV, params: { path: ['me'] }, waitUntil: () => {} })).json();
+  assert.deepEqual((await me()).prefs.quiet, { on: false, from: 22, to: 7 }, 'off, as it starts');
+  await D.prepare('UPDATE pg_users SET notify_prefs = ? WHERE id = ?').bind(JSON.stringify({ quiet: true, quietFrom: 23, quietTo: 6 }), u.id).run();
+  assert.deepEqual((await me()).prefs.quiet, { on: true, from: 23, to: 6 });
 });

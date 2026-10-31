@@ -38,21 +38,27 @@ function birdView(b, t, flight) {
     lastAt: b.last_at ?? null, wear: b.wear || null, createdAt: b.created_at, retiredAt: b.retired_at ?? null, lostAt: b.lost_at ?? null, lostPlace: b.lost_place ?? null,
   };
 }
-// Its flights not yet settled: in the air (or booked), as their pigeons fly now
-async function inFlight(D, uid) {
-  const { results } = await D.prepare(`SELECT bird, sent_at AS off, deliver_at AS land FROM pg_msgs WHERE sender = ?1 AND bird IS NOT NULL AND bird_done IS NULL
-    UNION ALL SELECT m.bird, m.sent_at, d.deliver_at FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = m.bird_to
-    WHERE m.sender = ?1 AND m.bird IS NOT NULL AND m.bird_done IS NULL`).bind(uid).all();
-  return new Map(results.map((r) => [r.bird, r]));
-}
-// Your pigeons and your Hall of Fame (settling any that have landed first)
-export async function birdsFor(D, uid, t) {
-  if (!(await D.prepare("SELECT 1 FROM pg_birds WHERE owner = ? LIMIT 1").bind(uid).first())) return { birds: [], hall: [] };
-  await settleBirds(D, t, uid);
-  const { results } = await D.prepare("SELECT * FROM pg_birds WHERE owner = ? ORDER BY created_at").bind(uid).all();
-  const fl = await inFlight(D, uid);
-  const all = results.map((b) => birdView(b, t, fl.get(b.id)));
+// Its flights not yet settled: in the air (or booked), as their pigeons fly now (found from your pigeons, five at most,
+// each only ever carrying your pigeons: so nothing to look through for someone with none)
+const flightsQ = (D, uid) => D.prepare(`SELECT m.bird, m.sent_at AS off, m.deliver_at AS land, m.lost_at AS lost FROM pg_birds b
+    JOIN pg_msgs m ON m.bird = b.id AND m.bird_done IS NULL WHERE b.owner = ?1
+  UNION ALL SELECT m.bird, m.sent_at, d.deliver_at, d.lost_at FROM pg_birds b JOIN pg_gmsgs m ON m.bird = b.id AND m.bird_done IS NULL
+    JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = m.bird_to WHERE b.owner = ?1`).bind(uid);
+// Your pigeons and your Hall of Fame: the two questions (a sync asks them in its own one trip: functions/api/pigeon),
+// then what they say, a flight that has ended since settled first (the tick settles them too, but not to the minute)
+export const birdQs = (D, uid) => [D.prepare("SELECT * FROM pg_birds WHERE owner = ? ORDER BY created_at").bind(uid), flightsQ(D, uid)];
+export async function birdsFrom(D, uid, t, [birds, flights]) {
+  if (!birds.length) return { birds: [], hall: [] };
+  if (flights.some((f) => f.land <= t || (f.lost != null && f.lost <= t))) {
+    await settleBirds(D, t, uid);
+    [birds, flights] = (await D.batch(birdQs(D, uid))).map((r) => r.results);
+  }
+  const fl = new Map(flights.map((r) => [r.bird, r]));
+  const all = birds.map((b) => birdView(b, t, fl.get(b.id)));
   return { birds: all.filter((b) => b.state !== "lost" && b.state !== "retired"), hall: all.filter((b) => b.state === "lost" || b.state === "retired").sort((a, b) => (b.retiredAt || b.lostAt) - (a.retiredAt || a.lostAt)) };
+}
+export async function birdsFor(D, uid, t) {
+  return birdsFrom(D, uid, t, (await D.batch(birdQs(D, uid))).map((r) => r.results));
 }
 
 // The pigeon you asked to carry this one, if it can fly now; it's busy until

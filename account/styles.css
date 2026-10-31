@@ -13,6 +13,7 @@
   --glass: rgba(34, 40, 66, 0.5); --glass-strong: rgba(28, 33, 56, 0.86); --glass-ctl: rgba(255, 255, 255, 0.1);
   --line: rgba(255, 255, 255, 0.1); --press: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
   --tint: #5aa9ff; --tint-deep: #2a6ae6; --tint-text: #8cc2ff; --danger: #ff6a5f; --good: #4fdc8e; --good-text: #4fdc8e; --warn: #ffbd4a;
+  --danger-deep: #cc3226;   /* (red with white words on it, as --tint-deep is blue: --danger, as words, is too light under them) */
   --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.08), inset 0 0 22px rgba(255, 255, 255, 0.03);
   --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 22px 44px -18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.16);
   --blur: blur(28px) saturate(180%);
@@ -50,7 +51,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --danger-deep: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -72,7 +73,7 @@
     --text: #0d1020; --text-2: rgba(20, 24, 44, 0.66); --text-3: rgba(20, 24, 44, 0.62);
     --glass: rgba(255, 255, 255, 0.58); --glass-strong: rgba(250, 251, 255, 0.9); --glass-ctl: rgba(20, 30, 60, 0.06);
     --line: rgba(20, 24, 44, 0.09); --press: rgba(20, 24, 44, 0.05); --field: rgba(20, 30, 60, 0.06);
-    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
+    --tint: #2f7af0; --tint-deep: #1f5fd8; --tint-text: #1f63d6; --danger: #d12a1f; --danger-deep: #d12a1f; --good: #1f9d55; --good-text: #167a42; --warn: #945600;
     --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 0.5px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3);
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
@@ -263,11 +264,11 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
-  color: #fff; background: linear-gradient(180deg, #5aa2ff, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
+  color: #fff; background: linear-gradient(180deg, #2d70ea, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
   transition: transform var(--dur-release) var(--spring), opacity var(--dur-fast), filter var(--dur-fast), width var(--dur-base) var(--glide); }
 .btn:active { transform: scale(0.97); transition-duration: var(--dur-press); }
 .btn.quiet { color: var(--text); background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line); }
-.btn.danger { background: linear-gradient(180deg, #ff7b70, var(--danger)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--danger); }
+.btn.danger { background: linear-gradient(180deg, #d93a2f, var(--danger-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--danger-deep); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 /* (a sign-in's button at work: a circle, turning; then a tick drawn in it, in green: app.js working) */
 .btn.working { width: 52px !important; padding: 0; justify-self: center; }
@@ -293,7 +294,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .mark.logo img { display: block; width: 100%; height: 100%; }
 @keyframes float { 50% { transform: translateY(-5px); } }
 .welcome h1 { margin: 0; font: 700 32px/1.1 var(--font-d); letter-spacing: 0.3px; }
-.welcome p { margin: 0 0 8px; color: var(--text-2); font-size: 16px; line-height: 1.45; max-width: 34ch; }
+.welcome p { margin: 0 0 8px; color: var(--text-2); font-size: 16px; line-height: 1.45; max-width: 34ch; overflow-wrap: break-word; }
 .signin { width: 100%; max-width: 420px; display: grid; gap: 12px; margin-top: 14px; padding: 18px; border-radius: var(--r-hero); }
 .form { display: grid; gap: 10px; }
 .form[hidden] { display: none; }
@@ -369,6 +370,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .vor { align-self: stretch; display: grid; grid-template-rows: 1fr auto 1fr; justify-items: center; gap: 10px; color: var(--text-3); font-size: 13px; }
 .vor::before, .vor::after { content: ""; width: 0.5px; background: var(--line); }
 .qrc { display: grid; justify-items: center; align-content: center; gap: 12px; padding: 22px 22px 20px; border-radius: var(--r-hero); text-align: center; }
+.qrc.alone { width: 100%; max-width: 420px; margin-top: 14px; }   /* (in the card's place, asked for: as wide as it) */
 .qrc h2 { margin: 0; font: 600 17px/1.2 var(--font-d); }
 .qrc p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; max-width: 24ch; }
 .qrc p b { color: var(--text); }
@@ -440,7 +442,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   box-shadow: 0 0 12px 2px rgba(126, 162, 255, 0.55); animation: sweep 2.4s var(--ease) infinite alternate; }
 @keyframes sweep { to { top: 80%; } }
 .sheet-body > p.scan-said { margin: 0 8px; text-align: center; font-weight: 500; color: var(--text); }
-.sheet-body > p.scan-said.bad { color: var(--bad, #ff6b5e); }
+.sheet-body > p.scan-said.bad { color: var(--danger); }
 .scan-how { margin: 0 8px; padding: 0 0 0 20px; display: grid; gap: 6px; font-size: 14px; line-height: 1.4; color: var(--text-2); }
 .scan-how b { color: var(--text); font-weight: 600; }
 .sheet-body > p.qrpick-said { margin: 4px 0 -4px; text-align: center; font-weight: 600; color: var(--text); }
@@ -482,9 +484,13 @@ dialog.sheet.dragging { transition: none; }
 /* (shown with a browser's bars on a phone, html.inbrowser from app.js: in its browser, or opened from an app, which an
    iPhone shows in that app's window with a browser's bars added. Where the page's foot is drawn under the bottom bar,
    a sheet set at it had its last rows out of reach, so there a sheet is the whole screen: from under the top bar
-   (--top), its rows scrolling, with room at their end to come clear of the bottom bar, however tall it is) */
-html.inbrowser dialog.sheet { inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding-top: var(--top); border-radius: 0; }
-html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
+   (--top), its rows scrolling, with room at their end to come clear of the bottom bar, however tall it is. Only at a
+   phone's size, either way round: an iPad's browser has its bars at the top, and a sheet the width of its screen had
+   rows, a photo and a QR code bigger than the screen) */
+@media (max-width: 699px), (max-height: 499px) {
+  html.inbrowser dialog.sheet { inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding-top: var(--top); border-radius: 0; }
+  html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
+}
 .grab { flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--text-3); opacity: 0.6; margin: 8px auto 0; }
 .sheet-head { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 14px 6px; }
 .sheet-head h2 { margin: 0; font: 600 17px/1.2 var(--font); text-align: center; grid-column: 2; }
@@ -573,7 +579,7 @@ html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-ins
 .banner .ic, .pending .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
 .banner .tx, .pending .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .banner .tx b, .pending .tx b { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
-.banner .tx small, .pending .tx small { font-size: 13.5px; line-height: 1.35; color: var(--text-2); }
+.banner .tx small, .pending .tx small { font-size: 13.5px; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 .pending { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px; }
 
 /* (in its sheet, opened from Sign-in and security: the ring and how it stands, then each check as a list) */
@@ -650,7 +656,7 @@ html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-ins
 .welcome .new a { color: var(--tint-text); text-decoration: none; font-weight: 500; }
 .grab, .sheet-head { touch-action: none; }
 .sheet-head .link.back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; margin-left: -6px; }
-.mini.sure { color: #fff; background: var(--danger); }
+.mini.sure { color: #fff; background: var(--danger-deep); }
 .row .mini .spin { width: 14px; height: 14px; }
 .mini:has(.spin) { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; }
 .row.current { background: color-mix(in srgb, var(--tint) 7%, transparent); }
@@ -749,7 +755,7 @@ a.btn { text-decoration: none; }
 .swipe.dragging > .row { transition: none; }
 .swipe.open .row .mini, .swipe.dragging .row .mini { opacity: 0; transition: opacity 0.2s; }
 .swipe-act { position: absolute; inset: 0 0 0 auto; width: calc(-1 * var(--dx)); overflow: hidden; border: 0; display: grid; place-items: center; padding: 0;
-  color: #fff; background: var(--danger); font: 600 15px/1 var(--font); white-space: nowrap; transition: width var(--dur-base) var(--glide), opacity var(--dur-fast); }
+  color: #fff; background: var(--danger-deep); font: 600 15px/1 var(--font); white-space: nowrap; transition: width var(--dur-base) var(--glide), opacity var(--dur-fast); }
 .swipe-act:active { opacity: 0.75; transition-duration: var(--dur-press); }
 .swipe.dragging .swipe-act { transition: none; }
 .swipe-act .spin { width: 16px; height: 16px; }
@@ -781,9 +787,11 @@ a.btn { text-decoration: none; }
 .row .val .mini { display: inline-flex; align-items: center; min-height: 30px; margin: 0; }
 
 /* ---- InFlite's header, the same in every app (its copy at the foot): the account page's colours, from the very top,
-   under the status bar, across the page ---- */
+   under the status bar, across the page (out over main's sides by as much as they're padded, the notch's room in
+   landscape among it, so its own padding, the same, keeps it in line with the cards) ---- */
 .ifh.ahead { --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: var(--tint-text); --ifh-band: var(--glass-strong); --ifh-glass: var(--glass-ctl);
-  --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 14px; margin-top: calc(-1 * (var(--top) + 28px)); margin-left: -16px; margin-right: -16px; }
+  --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 14px; margin-top: calc(-1 * (var(--top) + 28px));
+  margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px))); }
 .ifh.ahead .ifh-me .avatar { display: grid; place-items: center; }
 .ifh.ahead .ifh-acts .backapp { height: 38px; padding: 0 12px 0 8px; gap: 4px; display: inline-flex; align-items: center; color: var(--tint-text); font-weight: 600; font-size: 15px; }
 body:has(.ifh) .status { display: none; }
@@ -865,7 +873,7 @@ label.row:active { background-color: var(--press); }
 .adm-meter .mbar i { display: block; height: 100%; border-radius: 3px; background: var(--tint); }
 .adm-meter .mv { color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Admin's figures: a count of what's new, as a badge; three tiles at the top of its folder; what needs you, in amber */
-.count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #fff; background: linear-gradient(180deg, #4b95ff, var(--tint-deep)); font-variant-numeric: tabular-nums; }
+.count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #fff; background: linear-gradient(180deg, #2d70ea, var(--tint-deep)); font-variant-numeric: tabular-nums; }
 .adm-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .adm-tile { display: grid; gap: 3px; align-content: start; padding: 13px 13px 12px; border-radius: 18px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
 .adm-tile b { font: 700 25px/1.05 var(--font-d); font-variant-numeric: tabular-nums; }
@@ -1189,6 +1197,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+/* (what it says, read out from here: always there, unseen, and taking no room on any app's page) */
+.ifm-say { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
 
 /* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
    under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the

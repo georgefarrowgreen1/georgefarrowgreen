@@ -407,7 +407,7 @@ const openDelete = async () => { await openRow(L, 'Your Data'); await L.p.click(
 const delete1 = async () => {
   await openDelete();
   await L.p.fill('#sheet .at input', 'rowan_h'); await L.p.click('#sheet form .btn'); await confirmIfAsked(L, PW2);
-  await waitText(L, /Sign in with a passkey/, 'main', 30000);
+  await waitText(L, /will be deleted/, 'main', 30000);
 };
 await openDelete();
 ok(await L.p.$eval('#sheet form .btn', (e) => e.disabled), 'Delete waits for the handle to be typed');

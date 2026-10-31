@@ -96,15 +96,18 @@ export async function saltFor(env, request, email) {
   return u ? u.salt : (fake[16] < 32 ? "" : "a2:") + b64url(fake.slice(0, 16));
 }
 // A device that's signed in to an account on its page before (its password or a passkey) keeps a word saying so: a
-// cookie of the page's own address alone, one for each account (named by its email's hash, so signing in to another
-// account on the same device doesn't take its place), good only for that account and its password as they are now (the
-// email's hash, an id of the device's own, and a MAC of both with the account's id and when its password was set, under
-// the server's secret: once the password's changed or reset, or the account's gone, every word given before counts for
-// nothing). Its wrong passwords count against it alone, not the account as a whole.
+// cookie for the whole site, as the sign-in's own is, one for each account (named by its email's hash, so signing in to
+// another account on the same device doesn't take its place), good only for that account and its password as they are
+// now (the email's hash, an id of the device's own, and a MAC of both with the account's id and when its password was
+// set, under the server's secret: once the password's changed or reset, or the account's gone, every word given before
+// counts for nothing). Its wrong passwords count against it alone, not the account as a whole. (The whole site's, so a
+// word given on the account's page, as the password or email's changed there, is the sign-in page's too, where
+// passwords are signed in with. One from before, the sign-in page's alone (__Host-: old), still counts there till then.)
 const emailKey = async (email) => hex(await sha256(email)).slice(0, 32);
 function knownOf(request, env, em) {
-  const secure = cookieOf(request, env).name.startsWith("__Secure-");
-  return { name: `${secure ? "__Host-known" : "known"}-${em.slice(0, 8)}`, attrs: `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
+  const site = siteName(new URL(request.url).hostname, env), secure = cookieOf(request, env).name.startsWith("__Secure-"), tail = `known-${em.slice(0, 8)}`;
+  return { name: !secure ? tail : site ? `__Secure-${tail}` : `__Host-${tail}`, old: secure && site ? `__Host-${tail}` : null,
+    attrs: `Path=/${site ? `; Domain=${site}` : ""}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
 }
 async function knownMac(env, em, id, u) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(await serverSecret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -119,10 +122,10 @@ export async function withKnown(res, request, env, u) {
 }
 // (the device's id, if the browser has the word for the account u, whose email's hash is em; else null)
 async function knownHere(request, env, em, u) {
-  const { name } = knownOf(request, env, em);
+  const { name, old } = knownOf(request, env, em);
   for (const part of (request.headers.get("Cookie") || "").split(";")) {
-    const i = part.indexOf("=");
-    if (i < 0 || part.slice(0, i).trim() !== name) continue;
+    const i = part.indexOf("="), k = i < 0 ? "" : part.slice(0, i).trim();
+    if (k !== name && k !== old) continue;
     const [e, id, mac] = part.slice(i + 1).trim().split(".");
     if (e === em && /^[A-Za-z0-9_-]{16}$/.test(id || "") && safeEqual(mac || "", await knownMac(env, em, id, u))) return id;
   }

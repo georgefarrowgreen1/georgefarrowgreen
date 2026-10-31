@@ -121,7 +121,9 @@ export function route(s, zoneAt, W = 340, metric = true) {
   for (let i = 0; i < s.t.length; i++) if (s.lat[i] != null && s.lon[i] != null) pts.push(i);
   const lat0 = s.lat[pts[0]], k = Math.cos((lat0 * Math.PI) / 180);
   const xs = pts.map((i) => s.lon[i] * k), ys = pts.map((i) => -s.lat[i]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  // (by a loop, not Math.min(...xs): a day's ride at a point a second is more points than a call can be handed)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let j = 0; j < xs.length; j++) { minX = Math.min(minX, xs[j]); maxX = Math.max(maxX, xs[j]); minY = Math.min(minY, ys[j]); maxY = Math.max(maxY, ys[j]); }
   const sc = Math.min((W - P * 2) / (maxX - minX || 1e-6), (H - P * 2) / (maxY - minY || 1e-6));
   const ox = (W - (maxX - minX) * sc) / 2, oy = (H - (maxY - minY) * sc) / 2;
   const X = (j) => ox + (xs[j] - minX) * sc, Y = (j) => oy + (ys[j] - minY) * sc;

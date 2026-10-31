@@ -6,7 +6,8 @@
 // wx_obs) as they're seen, and the record grows to six weeks the more the app
 // is used near that airport. weather/skill.js does the comparing, on the phone.
 //
-// Each day is the airport's own (its UTC offset, from Open-Meteo), whoever
+// Each day is the airport's own (its time zone's, from Open-Meteo: each report
+// in the hour it was there, before the clocks changed as after), whoever
 // asks; and only reports just fetched from the Aviation Weather Center are
 // written (the same reports again would change nothing), a day kept already only
 // where they have more of its reports, or as many but not the same (an answer's
@@ -15,7 +16,7 @@
 //
 // AWC_URL, WXAPP_URL: tests only.
 
-import { obsDays } from "../weather/skill.js";
+import { obsDays, zoneOffset } from "../weather/skill.js";
 import { wxdb } from "./_wxpush.js";
 
 const UA = { "User-Agent": "georgefarrowgreen-weather/1.0 (+https://weather.inflite.ai)", Accept: "application/json" };
@@ -35,13 +36,17 @@ async function cachedJSON(url, ttl) {
   if (cache) await cache.put(key, new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttl}` } }));
   return { data: text ? JSON.parse(text) : [], fresh: true };
 }
-// the airport's own clock (seconds from UTC), so each day's high and low is for its own day
-async function offsetAt(env, st) {
+// the airport's own clock (seconds from UTC at a moment, ms), so each day's high and low is for its own day, and each
+// report's in its own hour: its time zone's, summer time and all (two weeks' reports can have the clocks changing in
+// them), or failing that its offset now
+async function clockAt(env, st) {
   try {
     const { data } = await cachedJSON(`${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?latitude=${st.lat.toFixed(2)}&longitude=${st.lon.toFixed(2)}&daily=weather_code&forecast_days=1&timezone=auto`, 6 * 3600);
-    if (Number.isFinite(data?.utc_offset_seconds)) return data.utc_offset_seconds;
+    const zone = zoneOffset(data?.timezone);
+    if (zone) return zone;
+    if (Number.isFinite(data?.utc_offset_seconds)) return () => data.utc_offset_seconds;
   } catch (e) { console.error("weather obs: clock", e && e.message); }
-  return Math.round(st.lon / 15) * 3600;                    // (the Sun's, near enough)
+  return () => Math.round(st.lon / 15) * 3600;              // (the Sun's, near enough)
 }
 
 // a day's hours as kept (24 of [temp, dew, wind, gust] or null), or null if they're not, or not as they should be
@@ -65,7 +70,7 @@ export async function obsFor(env, lat, lon) {
     try {
       const { data, fresh } = await cachedJSON(`${base}/api/data/metar?ids=${encodeURIComponent(st.id)}&format=json&hours=360`, 3600);
       if (fresh) {
-        const rows = Object.entries(obsDays(data, await offsetAt(env, st)));
+        const rows = Object.entries(obsDays(data, await clockAt(env, st)));
         if (rows.length) await D.batch(rows.map(([day, x]) => D.prepare(`INSERT INTO wx_obs (station, day, tmax, tmin, n, hours) VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(station, day) DO UPDATE SET tmax = excluded.tmax, tmin = excluded.tmin, n = excluded.n, hours = excluded.hours
           WHERE excluded.n > wx_obs.n OR (excluded.n = wx_obs.n AND excluded.hours IS NOT wx_obs.hours)`).bind(st.id, day, x.tmax, x.tmin, x.n, JSON.stringify(x.hours))));

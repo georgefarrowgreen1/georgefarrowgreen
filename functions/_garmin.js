@@ -11,7 +11,7 @@
 // which clears it. Nothing here reads a file: the phone does that, as with every upload.
 import { HttpError, limit, hex, sha256 } from "./_pigeon.js";
 import { lockVault, openVault } from "./_atrest.js";
-import { fitdb, MAX_FILE, MAX_STORE } from "./_fitness.js";
+import { tablesOnce, MAX_FILE, MAX_STORE } from "./_fitness.js";
 
 const API = "https://personal.connectapi.garmin.com";
 const TOKEN = "/personalapitoken-service/personal-api/personal-api-key/token";
@@ -25,29 +25,28 @@ export const newKey = (userId, id) => `fitness/${userId}/garmin/${id}`;
 const base = (env) => (env.GARMIN_API || API).replace(/\/$/, "");
 const owner = (userId) => "fitness/garmin|" + userId;
 
-async function tables(env) {
-  const D = await fitdb(env);
-  if (!tables.done) {
-    await D.batch([
-      D.prepare(`CREATE TABLE IF NOT EXISTS fx_garmin (user_id TEXT PRIMARY KEY, apikey TEXT NOT NULL, token TEXT, token_exp INTEGER, since INTEGER, seen TEXT,
-        last INTEGER, ok INTEGER NOT NULL DEFAULT 1, said TEXT, added INTEGER NOT NULL)`),
-      D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_last ON fx_garmin (ok, last)"),
-      D.prepare(`CREATE TABLE IF NOT EXISTS fx_garmin_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
-    ]);
-    // (each waiting file's size, counted with your activities' against the space there is: a table made before it had none)
-    await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN size INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
-    // (your nights, as Garmin has them: fx_well; and when they were last asked for)
-    await D.prepare(`CREATE TABLE IF NOT EXISTS fx_well (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, hrv_lo REAL, hrv_hi REAL, rhr INTEGER, sleep INTEGER, score INTEGER, PRIMARY KEY (user_id, day))`).run();
-    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN well_at INTEGER").run().catch(() => {});
-    // (and all your history, asked for: being walked through, oldest first, from since)
-    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN back INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
-    // (whose Garmin it is, as a hash: one Garmin account, one Fitness account)
-    await D.prepare("ALTER TABLE fx_garmin ADD COLUMN who TEXT").run().catch(() => {});
-    await D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_who ON fx_garmin (who)").run().catch(() => {});
-    tables.done = true;
-  }
-  return D;
-}
+// (made once for each change to them, as Fitness's own are: functions/_fitness.js tablesOnce)
+const tables = (env) => tablesOnce(env, "garmin", async (D) => {
+  await D.batch([
+    D.prepare(`CREATE TABLE IF NOT EXISTS fx_garmin (user_id TEXT PRIMARY KEY, apikey TEXT NOT NULL, token TEXT, token_exp INTEGER, since INTEGER, seen TEXT,
+      last INTEGER, ok INTEGER NOT NULL DEFAULT 1, said TEXT, added INTEGER NOT NULL)`),
+    D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_last ON fx_garmin (ok, last)"),
+    D.prepare(`CREATE TABLE IF NOT EXISTS fx_garmin_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
+  ]);
+  // (each waiting file's size, counted with your activities' against the space there is: a table made before it had none)
+  await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN size INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  // (your nights, as Garmin has them: fx_well; and when they were last asked for)
+  await D.prepare(`CREATE TABLE IF NOT EXISTS fx_well (user_id TEXT NOT NULL, day TEXT NOT NULL, hrv REAL, hrv_lo REAL, hrv_hi REAL, rhr INTEGER, sleep INTEGER, score INTEGER, PRIMARY KEY (user_id, day))`).run();
+  await D.prepare("ALTER TABLE fx_garmin ADD COLUMN well_at INTEGER").run().catch(() => {});
+  // (and all your history, asked for: being walked through, oldest first, from since)
+  await D.prepare("ALTER TABLE fx_garmin ADD COLUMN back INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  // (whose Garmin it is, as a hash: one Garmin account, one Fitness account)
+  await D.prepare("ALTER TABLE fx_garmin ADD COLUMN who TEXT").run().catch(() => {});
+  await D.prepare("CREATE INDEX IF NOT EXISTS fx_garmin_who ON fx_garmin (who)").run().catch(() => {});
+  // (the files Garmin hasn't handed over when asked, how many times and since when: { id: [tries, first] }, so one that
+  // never comes is passed over in the end, not asked for first, and failed on, every time)
+  await D.prepare("ALTER TABLE fx_garmin ADD COLUMN missed TEXT").run().catch(() => {});
+});
 
 // ---- asking Garmin ----
 const garminSaid = (status) => Object.assign(new Error(`Garmin said ${status}`), { status });
@@ -183,12 +182,23 @@ export async function fetchNew(env, userId, { force = false } = {}) {
     let since = back || g.back ? at : g.since || 0;
     // (the space you've used: your activities, and the files waiting)
     const used = await D.prepare("SELECT (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) + (SELECT COALESCE(SUM(size), 0) FROM fx_garmin_new WHERE user_id = ?1) AS b").bind(userId).first();
-    let room = MAX_STORE - (used?.b || 0);
+    let room = MAX_STORE - (used?.b || 0), stuck = false;
+    const missed = (() => { try { return JSON.parse(g.missed || "{}") || {}; } catch (_) { return {}; } })();
     for (const a of found.slice(0, MOST)) {
       let bytes;
       try { bytes = await get(env, token, FILE(a.id), true); }
-      // (one with no file, a manual entry; or too big to keep: passed over)
-      catch (e) { if (e.status === 404 || e.status === "too big") { seen.add(a.id); continue; } throw e; }
+      catch (e) {
+        // (one with no file, a manual entry; or too big to keep: passed over)
+        if (e.status === 404 || e.status === "too big") { seen.add(a.id); continue; }
+        // (the key, or Garmin's limits: nothing to do with this one)
+        if (e.status === 401 || e.status === 403 || e.status === 429) throw e;
+        // (its file not handed over (Garmin's error, or too slow): asked no more this time, what's come so far kept; and
+        // one that's failed three times, over a day or more, passed over, so it can't hold up every one after it for good,
+        // while an hour or two of Garmin being down loses nothing)
+        const [n, first] = missed[a.id] || [0, now];
+        if (n + 1 >= 3 && now - first >= 86400e3) { delete missed[a.id]; seen.add(a.id); continue; }
+        missed[a.id] = [n + 1, first]; stuck = true; break;
+      }
       if (bytes.length > room) return fail("full");
       room -= bytes.length;
       if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
@@ -198,11 +208,13 @@ export async function fetchNew(env, userId, { force = false } = {}) {
       if (Number.isFinite(a.start)) since = Math.max(since, a.start);
     }
     // (all your history: done once a window comes up empty at now, or the last of it is fetched)
-    if (back && found.length <= MOST && since >= now - 86400e3 * 2) back = false;
-    await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = NULL, back = ?4 WHERE user_id = ?1").bind(userId, JSON.stringify([...seen].filter((x) => /^\d+$/.test(x)).slice(-SEEN)), since || g.since, back ? 1 : 0).run();
+    if (back && !stuck && found.length <= MOST && since >= now - 86400e3 * 2) back = false;
+    for (const id of Object.keys(missed)) if (!found.some((a) => a.id === id)) delete missed[id];
+    await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = ?5, back = ?4, missed = ?6 WHERE user_id = ?1")
+      .bind(userId, JSON.stringify([...seen].filter((x) => /^\d+$/.test(x)).slice(-SEEN)), since || g.since, back ? 1 : 0, stuck ? "unreachable" : null, Object.keys(missed).length ? JSON.stringify(missed) : null).run();
     // (and your nights: every few hours, the last few days; two months the first time)
     if (!g.well_at || now - g.well_at > WELL_EVERY) await wellness(env, D, userId, token, g.well_at ? now - 4 * 86400e3 : now - 60 * 86400e3, now).catch((e) => console.error("garmin well", e.status, e.message));
-    return { ...(await garminOf(env, userId)), more: found.length > MOST || back };
+    return { ...(await garminOf(env, userId)), more: !stuck && (found.length > MOST || back) };
   } catch (e) {
     if (e instanceof HttpError) throw e;
     return fail("unreachable");
@@ -282,11 +294,18 @@ export async function done(env, userId, id) {
   await D.prepare("DELETE FROM fx_garmin_new WHERE user_id = ? AND id = ?").bind(userId, id).run();
   if (env.BIO_R2) await env.BIO_R2.delete(newKey(userId, id));
 }
-// The scheduler's turn: the accounts asked about longest ago, a couple at a time (each ask is a few dozen requests)
+// The scheduler's turn, every 5 minutes: the accounts asked about longest ago, as many as are due (so each is asked
+// every 15 minutes, however many there are) up to six, two at a time (each ask is a few dozen requests), none begun
+// once 25 seconds have gone (the scheduler waits 55); and where they're falling behind even so, said in the log
+const TICK_MOST = 6, TICK_TIME = 25e3;
 export async function garminTick(env) {
   const D = await tables(env), t = Date.now();
-  const { results } = await D.prepare("SELECT user_id FROM fx_garmin WHERE ok = 1 AND (last IS NULL OR last < ?) ORDER BY last LIMIT 2").bind(t - EVERY).all();
-  const out = [];
-  for (const r of results) out.push(await fetchNew(env, r.user_id).then((g) => g.waiting?.length || 0, () => -1));
-  return { asked: results.length, waiting: out };
+  const { results } = await D.prepare("SELECT user_id, last FROM fx_garmin WHERE ok = 1 AND (last IS NULL OR last < ?) ORDER BY last LIMIT ?").bind(t - EVERY, TICK_MOST).all();
+  // (the longest waiting that's been asked before: a new one, never asked, comes first)
+  const late = results.find((r) => r.last)?.last;
+  if (late && t - late > 2 * EVERY) console.warn(`Garmin: falling behind, one last asked ${Math.round((t - late) / 60e3)} minutes ago`);
+  const out = [], queue = [...results];
+  const ask = async () => { for (let r; Date.now() - t < TICK_TIME && (r = queue.shift());) out.push(await fetchNew(env, r.user_id).then((g) => g.waiting?.length || 0, () => -1)); };
+  await Promise.all([ask(), ask()]);
+  return { asked: out.length, waiting: out };
 }

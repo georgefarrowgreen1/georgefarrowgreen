@@ -16,14 +16,14 @@ export const ACCOUNT_HOST = "account.inflite.ai";
 // set up there: a page left open, Strava's hook, the Health shortcut: functions/_middleware.js movedOn)
 export const isAccount = (url, env) => (env.ACCOUNT_HOST || ACCOUNT_HOST).split(",").includes(url.hostname) || oldApp(url.hostname, env) === "account";
 // The sign-in page, at auth.inflite.ai: every way into the account (signing in, with a passkey, a password or your
-// phone; making one; a new password; Continue as, for an app) and out of it (signing out) happens there, and only
-// there, for every app on the site; account.inflite.ai is the account once you're in. One address that ever asks for a
-// password, so it's the one to look for; a page that asks for nothing else, with nothing on it from anyone else (no
-// photos but your own, no other site's API, no camera); and the passwords' word that this device has signed in before
-// is its own (functions/_account.js withKnown). The same files as the account's page, which knows which it is by its
-// address (account/app.js AUTH), and the sign-in half of its API (functions/api/account AUTH_ROUTES). The site's
-// sign-in cookie is the whole site's (inflite.ai), so signed in here is signed in there. (AUTH_HOST in the
-// environment: tests.)
+// phone; making one; a new password; Continue as, for an app) happens there, and only there, for every app on the
+// site, and the way out of it ends there (signed out, said so); account.inflite.ai is the account once you're in. One
+// address that ever asks for a password, so it's the one to look for; a page that asks for nothing else, with nothing
+// on it from anyone else (no photos but your own, no other site's API, no camera). The same files as the account's
+// page, which knows which it is by its address (account/app.js AUTH), and the sign-in half of its API (functions/api/
+// account AUTH_ROUTES). The site's sign-in cookie is the whole site's (inflite.ai), so signed in here is signed in
+// there; and so is the passwords' word that this device has signed in before, so one given there, as the password's
+// changed, counts here (functions/_account.js withKnown). (AUTH_HOST in the environment: tests.)
 export const AUTH_HOST = "auth.inflite.ai";
 export const isAuth = (url, env) => (env.AUTH_HOST || AUTH_HOST).split(",").includes(url.hostname);
 

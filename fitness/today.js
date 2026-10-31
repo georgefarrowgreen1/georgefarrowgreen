@@ -62,14 +62,17 @@ function stepDay(k) {
   const lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13), d = addDays(S.dayAt ?? TODAY, k);
   if (d >= lo && d <= hi && (rhythmOn() || myPlan())) lookAt(d);
 }
-// what's on a day: Rhythm's (or the plan's) session, as changed; null for rest
-const idOn = (d) => { const id = plannedOn(d); return id ?? null; };
+// when Rhythm (or the plan) began: a day before it wasn't planned, so it's neither a session nor missed (todaycalc.js
+// dayKindOf), though Rhythm works its week out from the Monday
+const beganOn = () => (rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity);
+// what's on a day: Rhythm's (or the plan's) session, as changed; null for rest, or a day before it began
+const idOn = (d) => { const id = d >= beganOn() ? plannedOn(d) : null; return id ?? null; };
 // a ride's colour by how hard it is (todaycalc.js), a run's or swim's the tint
 const toneOfW = (w) => (!w || w.sport !== "ride" ? "tint" : TC.toneOfIF(measure(w, paceFor(w.sport)).iF));
 // The day strip: the week, a day each (its date, and a ring: ridden, to come in its colour, missed, or rest); a tap
 // looks at it. The weeks either side, and both weeks as a list, a tap away.
 function dayStrip(sel) {
-  const mon = mondayOf(sel), began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const mon = mondayOf(sel), began = beganOn();
   const thisMon = mondayOf(TODAY), which = mon === thisMon ? "This week" : mon > thisMon ? "Next week" : "Last week";
   const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
   const step = (k) => { const to = addDays(sel, 7 * k); lookAt(mondayOf(to) === thisMon ? TODAY : mondayOf(to) > thisMon ? (to < TODAY ? TODAY : to) : to); };
@@ -97,8 +100,7 @@ const dragDone = () => { document.body.classList.remove("day-drag"); if (redraw.
 // (and should a drag end without saying so, the next click or key ends it)
 for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { if (document.body.classList.contains("day-drag")) dragDone(); }, true);
 function weekGrid(sel) {
-  const thisMon = mondayOf(TODAY), first = mondayOf(sel) < thisMon ? addDays(thisMon, -7) : thisMon;
-  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const thisMon = mondayOf(TODAY), first = mondayOf(sel) < thisMon ? addDays(thisMon, -7) : thisMon, began = beganOn();
   const ahead = new Set((rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY));
   const movable = (d) => rhythmOn() && d >= TODAY && !actsOn(d).length && !!idOn(d) && idOn(d) !== "event";
   const cell = (d) => {
@@ -153,8 +155,8 @@ const weekSum = (ds) => { const p = ds.reduce((a, d) => { const id = idOn(d), w 
 // A day that isn't today: ridden (as Today has it), missed, rest, or what's planned, with its shape, why, and ways to
 // change it
 function dayCard(day) {
-  const id = idOn(day), w = id && id !== "event" ? wkById(id) : null, did = actsOn(day), past = day < TODAY, rd = rhythmOn() ? rhDay(day) : null;
-  if (did.length) return sessionCard(w, id, did);
+  const id = idOn(day), w = id && id !== "event" ? wkById(id) : null, did = actsOn(day), past = day < TODAY, rd = rhythmOn() && day >= beganOn() ? rhDay(day) : null;
+  if (did.length) return sessionCard(w, id, did, day);
   if (unplanned(day)) return h("div.card.hero.glass.session.rest", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "Not planned yet"), "Planned nearer the time", null),
     h("p.about", { text: "Rhythm plans each day a week ahead, from what you’ve ridden and how you feel by then. Look again nearer the day." }));
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), past ? "Rested" : "Rest day");
@@ -270,8 +272,8 @@ const nextUp = (date, w) => h("button.next-up", { type: "button", onclick: () =>
   h("span.tx", {}, h("small", { text: `Next · ${dayName(date)}` }), h("b", { text: w.name }), h("small", { text: metaOf(w) })),
   h("span.mini", {}, C.profile(w, { mini: true, ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, its shape` })), h("span.chev", {}, icon("chev", 15, 2.6)));
 
-function sessionCard(w, id, done) {
-  // done: on its map, against what was planned (where it was the same sport)
+function sessionCard(w, id, done, day = TODAY) {
+  // done: on its map, against what was planned (where it was the same sport); another day's, said as that day's
   if (done.length) {
     const a = done[0], s = sumOf(a), pl = w && w.sport === a.sport ? w : null, pt = pl ? Math.round(measure(pl, paceFor(pl.sport)).tss) : null;
     const fig = (k, v, u) => h("div", {}, h("small", { text: k }), h("b", {}, v, u && h("u", { text: u })));
@@ -280,8 +282,8 @@ function sessionCard(w, id, done) {
     const bar = (k, v, max, cls) => h("div.vs-row", {}, h("small", { text: k }), h("span.vs-bar", {}, h("i." + cls, { vars: { width: Math.min(100, (v / max) * 100) + "%" } })), h("b", { text: String(v) }));
     const rec = newBest(a), ef = pl ? effortsNow(a) : null;
     return h("div.card.hero.glass.session.done", {},
-      doneMap(a),
-      heroTop(h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done · as planned" : "Done today"), pl ? pl.name : a.name, null),
+      doneMap(a, day),
+      heroTop(h("span.sport.ok", {}, h("i.s-" + a.sport, {}, icon("check", 14, 3)), pl ? "Done · as planned" : day === TODAY ? "Done today" : "Done"), pl ? pl.name : a.name, null),
       s && h("div.hero-figs", {}, fig("Time", hmOf(s.moving)), s.dist ? fig("Distance", dist(s.dist)) : fig("Stress", s.tss != null ? String(s.tss) : "–"), third),
       on && h("div.vs", {}, h("div.vs-head", {}, h("small", { text: "Training stress" }), h("small.ok", { text: on })),
         bar("Planned", pt, Math.max(pt, s.tss) * 1.08, "plan"), bar("Ridden", s.tss, Math.max(pt, s.tss) * 1.08, "done")),
@@ -374,11 +376,16 @@ function whyToday(why, w) {
 }
 // today's ride on its map (kept between redraws, so the map isn't made again each time the page is)
 let todayMap = null;
-function doneMap(a) {
+function doneMap(a, day = TODAY) {
   if (!(sumOf(a)?.route || a.sample) || (mapsAlways() && !M.able())) return null;
-  if (todayMap?.id === a.id) return todayMap.el;
+  // (one whose file couldn't be had, offline say: no map, rather than an empty box, till you're back online)
+  if (todayMap?.id === a.id && todayMap.failed) return null;
+  // (unless its map was let go meanwhile, with the screen away and a sheet closed: map.js sweep; its name as the day it's
+  // now looked at from has it, today's ride being yesterday's once the day's moved on)
+  const label = `${day === TODAY ? "Today" : dayName(day)}’s route: open the ride`;
+  if (todayMap?.id === a.id && !M.lost(todayMap.el)) { todayMap.el.setAttribute("aria-label", label); return todayMap.el; }
   todayMap?.g?.remove();
-  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": "Today’s route: open the ride", onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }, onclick: () => openAct(a) }, mapsAlways() ? mapCredit() : null);
+  const el = h("div.done-map", { role: "button", tabindex: "0", "aria-label": label, onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }, onclick: () => openAct(a) }, mapsAlways() ? mapCredit() : null);
   todayMap = { id: a.id, el, g: null };
   (async () => {
     const x = await load(a);
@@ -388,9 +395,10 @@ function doneMap(a) {
     if (!mapsAlways()) { el.classList.add("drawn"); el.replaceChildren(C.route(x.s, zoneAt, cardW(), U.metric).el); return; }
     const g = await M.routeMap(el, { ...routeOf(x.s, zoneAt), light: lightNow() });
     if (todayMap?.el === el) todayMap.g = g; else g.remove();
-  })().catch(() => el.remove());
+  })().catch(() => { el.remove(); if (todayMap?.el === el) todayMap = { id: a.id, failed: true }; });
   return el;
 }
+addEventListener("online", () => { if (todayMap?.failed) { todayMap = null; if (S.me) redraw(); } });
 // The efforts of a ride against the session it was for (fitness/efforts.js): the session planned on its day, of its
 // sport (rides, with power); kept once worked out, the file read for it once, and the page drawn again when it's said
 const sessionOf = (a) => { if (a.sport !== "ride") return null; const id = a.workout || plannedOn(startOfDay(a.start)), w = id && id !== "event" ? wkById(id) : null; return w?.sport === "ride" ? w : null; };
@@ -454,7 +462,7 @@ function didCard(a) {
 // The week: hours ridden of what's planned, and how it's balanced, easy against hard (the strip has its days)
 function weekCard() {
   const mon = mondayOf(TODAY), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
-  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const began = beganOn();
   const wOn = (d) => { const id = d >= began ? plannedOn(d) : null; return id && id !== "event" ? wkById(id) : null; };
   const rode = (d) => actsOn(d).reduce((a, x) => a + (sumOf(x)?.moving || 0), 0);
   // (the week's whole time: what's planned from when the plan began, and what you rode before it)
@@ -519,7 +527,7 @@ function morningCard(w) {
 function reviewCard() {
   if ((new Date(TODAY).getDay() + 6) % 7 !== 6 || !S.summed) return null;
   const mon = mondayOf(TODAY), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
-  const began = rhythmOn() ? startOfDay(S.rhythm.at ?? S.rhythm.start ?? 0) : myPlan() ? planStart() : Infinity;
+  const began = beganOn();
   const planned = days.filter((d) => { const id = d >= began ? plannedOn(d) : null; return id && id !== "event"; });
   const done = days.filter((d) => actsOn(d).length), acts = days.flatMap((d) => actsOn(d));
   const secs = acts.reduce((t, a) => t + (sumOf(a)?.moving || 0), 0), planSecs = planned.reduce((t, d) => { const w = wkById(plannedOn(d)); return t + (w ? measure(w, paceFor(w.sport)).secs : 0); }, 0);

@@ -9,3 +9,8 @@ compatibility_date = "2026-09-01"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+# (its log kept, where Cloudflare's dashboard shows it (Workers Logs): a job that's failing, its secret out of step or its
+# route broken, is said there, and its run marked as failed (index.js), not only to a `wrangler tail` that's watching)
+[observability]
+enabled = true

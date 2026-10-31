@@ -5,7 +5,7 @@ import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
 import { download, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
-import { shareView, mapsAlways, wide, mainW } from "./app.js";
+import { shareView, mapsAlways, wide, mainW, stravaView, stopped } from "./app.js";
 import * as SH from "./share.js";
 
 // ---- Activities ----
@@ -26,6 +26,8 @@ function activitiesView() {
   if (S.bringing) out.push(bringingCard());
   // none yet: Garmin, or files
   if (!S.acts.length) return S.bringing ? out : [...out, ...firstUpload()];
+  // (Garmin or Strava stopped: new rides aren't coming in, said where they'd show, a tap from putting it right)
+  if (stopped()) out.push(stoppedRow());
   if (wide()) return [...out, ...actsWide(list, sports, at)];
   // the last four weeks, at a glance
   const since = addDays(TODAY, -27), recent = S.acts.filter((a) => a.start >= since);
@@ -81,7 +83,8 @@ const opening = new Set(), unopened = new Set();
 function paneOf(a) {
   if (!a) return h("p.foot.none", { text: "Nothing to show." });
   const key = [a.id, a.name, P().ftp, P().lthr, U.metric, lightNow(), paneW()].join("|");
-  if (paneHeld?.key === key) return paneHeld.el;
+  // (unless its map was let go meanwhile, with the screen away and a sheet closed: map.js sweep)
+  if (paneHeld?.key === key && !M.lost(paneHeld.el)) return paneHeld.el;
   if (!full(a)) {
     const top = (said) => h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }), h("div.sub", { text: said }));
     if (unopened.has(a.id)) return h("div.a-pane-in", {}, top("Its file couldn’t be opened just now."));
@@ -153,6 +156,13 @@ function firstUpload() {
       gets("bolt", "green", "Your best power", "5 seconds to an hour, and an FTP to try"))),
   ];
 }
+// Garmin or Strava stopped (its key expired or deleted, or Strava's let Fitness go): a row to put it right
+function stoppedRow() {
+  const g = stopped() === "Garmin";
+  return section(null, h("div.group.glass", {}, row({ tile: g ? h("span.ic.brand.garmin", {}, icon("device", 18, 2)) : h("span.ic.brand.strava", {}, icon("wave", 18, 2.2)),
+    title: `${g ? "Garmin" : "Strava"} has stopped sending your rides`, sub: g ? "Your key has stopped working: add a new one" : "Strava’s stopped letting Fitness in: connect again",
+    onclick: () => openSheet(g ? garminView : stravaView) })));
+}
 // Garmin's six months, coming in: how many so far, and how far back it goes
 function bringingCard() {
   const all = S.bringing.all, at = S.bringing.at > Date.UTC(2000, 0, 2) ? S.bringing.at : null;
@@ -171,7 +181,7 @@ function uploadFilesView() {
       h("button.btn", { type: "button", onclick: () => { chooseFiles(); closeSheet(); } }, "Choose files")),
     section("Where to find them", h("div.group", {},
       where("W", "blue", "Wahoo", "In the Wahoo app: an activity, then Share › Download .fit"),
-      where("S", "amber", "Strava", S.strava?.ready === false ? "On strava.com: an activity, then ⋯ › Export Original" : "Connect it in You › Strava, and they come in by themselves"),
+      where("S", "amber", "Strava", S.strava?.ready === false ? "On strava.com: an activity, then ⋯ › Export Original" : "Connect it in Devices, from your photo, and they come in by themselves"),
       where("Z", "indigo", "Zwift", "Documents › Zwift › Activities, on the computer you ride on"))),
     !S.garmin?.on && h("div.note-garmin", {}, h("span.ic.brand.garmin", {}, icon("device", 15, 2.2)),
       h("span", {}, "On Garmin? ", h("button.link", { type: "button", onclick: () => pushSheet(garminView) }, "Connect it instead"), ", and skip the files.")),
@@ -208,7 +218,7 @@ async function routes() {
     for (const a of S.own.filter((x) => (!sumOf(x)?.route && !none.has(x.id)) || !(sumOf(x)?.xv >= XV)).slice(0, 40)) {
       if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
       try {
-        const x = await load(a), r = sumOf(a)?.route ? null : F.routeShape(x.s), figs = { ...staying(x), ...effortFigs(a, x), ...(r ? { route: r } : {}) };
+        const x = await load(a, false), r = sumOf(a)?.route ? null : F.routeShape(x.s), figs = { ...staying(x), ...effortFigs(a, x), ...(r ? { route: r } : {}) };
         if (!r && !sumOf(a)?.route) none.add(a.id);
         await A.addFigures(a.id, figs);
         a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
@@ -340,7 +350,7 @@ function zoneBars(secs, labels, cls) {
   const bars = secs.map((v, i) => {
     const fill = h("i.bg-" + cls[i]);
     requestAnimationFrame(() => requestAnimationFrame(() => fill.style.setProperty("width", `${(v / max) * 100}%`)));
-    return h("div.zrow", { title: labels[i] }, h("span", { text: `Z${i + 1}` }), h("span.zbar", { "aria-label": `${labels[i]}: ${dur(v)}, ${pct(v / total)}` }, fill), h("span.zv", { text: v >= 60 ? `${dur(v)}` : v ? "<1 min" : "–" }));
+    return h("div.zrow", { title: labels[i] }, h("span", { text: `Z${i + 1}` }), h("span.zbar", { role: "img", "aria-label": `${labels[i]}: ${dur(v)}, ${pct(v / total)}` }, fill), h("span.zv", { text: v >= 60 ? `${dur(v)}` : v ? "<1 min" : "–" }));
   });
   return h("div.zones", {}, bars);
 }

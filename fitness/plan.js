@@ -294,7 +294,7 @@ function rhythmSetup({ first = false, at = null, onboard = null } = {}) {
   const needLevel = R.sparse(S.own.map((a) => ({ start: a.start })), TODAY);
   const STEPS = onboard ? ["rides", "days", needLevel && "level", "aim", "extras", "preview"].filter(Boolean)
     : [first && "garmin", "days", needLevel && "level", !editing && "numbers", "style", "goal", "event", "preview"].filter(Boolean);
-  const dots = (k) => { const n = STEPS.indexOf(k) + 1; return h("div.rh-dots", { "aria-label": `Step ${n} of ${STEPS.length}` }, STEPS.map((_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : "")))); };
+  const dots = (k) => { const n = STEPS.indexOf(k) + 1; return h("div.rh-dots", { role: "img", "aria-label": `Step ${n} of ${STEPS.length}` }, STEPS.map((_, i) => h("i" + (i + 1 === n ? ".now" : i + 1 < n ? ".done" : "")))); };
   const top = (k, title, sub) => [dots(k), h("div.sheet-top", {}, h("h1", { text: title }), sub && h("div.sub", { text: sub }))];
   const next = (label, view) => h("button.btn.rh-next", { type: "button", onclick: () => pushSheet(view) }, label);
   // 1. When you ride: a bar a day, dragged up to how long you have (to 6 hours, by quarter hours); or a day tapped, and
@@ -349,7 +349,7 @@ function rhythmSetup({ first = false, at = null, onboard = null } = {}) {
   // 1c. Your numbers: every target's set from them (worked out from your rides till you set them)
   const numbersStep = () => ({ title: "Rhythm", right: cancel(), body: [...top("numbers", "Your numbers", "Every target in your plan is set from these. Not sure? Leave them: Fitness works them out from your rides, and keeps them up to date."),
     h("div.group", {}, stepper("FTP", "ftp", (v) => `${v} W`, 5, 80, 500), stepper("Weight", "weight", (v) => weight(v), 0.5, 35, 150), stepper("Max heart rate", "maxHr", (v) => `${v} bpm`, 1, 120, 230)),
-    h("p.rh-note", { text: "Threshold heart rate and paces follow from these. Change any of them in You." }),
+    h("p.rh-note", { text: "Threshold heart rate and paces follow from these. Change any of them in Settings, from your photo." }),
     next("Next", style)] });
   // 2. How you like to ride, and a run and a swim
   const pic = (bars) => h("span.rh-pic", { "aria-hidden": "true" }, bars.map(([v, z]) => h("i.bg-" + z, { vars: { "--h": v + "%" } })));
@@ -437,9 +437,9 @@ function rhythmSetup({ first = false, at = null, onboard = null } = {}) {
     return { title: editing ? "Your week" : "Rhythm", right: cancel(), body: [...top("preview", editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
       h("div.group", {}, ds.map(rowOf)),
       h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard days", String(hard.length)], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
-      onboard && h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), S.own.length ? ", worked out from your rides. " : ", a starting guess till your rides say. ", "Every zone and target follows it; change it in You.")),
+      onboard && h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), S.own.length ? ", worked out from your rides. " : ", a starting guess till your rides say. ", "Every zone and target follows it; change it in Settings, from your photo.")),
       h("button.btn.rh-next", { type: "button", onclick: start }, onboard ? "Start training" : editing ? "Save" : "Start Rhythm"),
-      h("p.rh-note", { text: "Change your week any time in Plan" })] };
+      h("p.rh-note", { text: "Change your week any time from Your week, on Today" })] };
   };
   if (onboard) return { days, preview, dots };
   // (straight to your event, from Today's Riding towards: then on to the next seven days, and saved)
@@ -537,7 +537,12 @@ function workoutView(w) {
       card(null, "Steps", h("div.steps", {}, steps)),
       w.sport !== "strength" && h("button.btn", { type: "button", onclick: () => download(w) }, icon("download", 19, 2.2), "Download"),
       mine && h("div.group", {},
-        h("button.row.action.danger", { type: "button", onclick: () => { S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw(); } }, "Delete workout")),
+        // (asked twice, as an activity is: a workout can't be brought in again once it's gone)
+        h("button.row.action.danger", { type: "button", onclick: (e) => {
+          const b = e.currentTarget;
+          if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Delete it, for good"; return; }
+          S.mine = S.mine.filter((x) => x.id !== w.id); keep("workouts"); closeSheet(); toast("Workout deleted"); redraw();
+        } }, "Delete workout")),
     ],
   };
 }

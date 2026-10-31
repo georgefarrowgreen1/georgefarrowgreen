@@ -58,7 +58,7 @@ export async function dataPdf(data, { did, units }) {
   const L = f.left, Wd = f.width;
 
   // ---- the top: what this is, when, and whose ----
-  pdf.text(f.p, L, 64, "GEORGEFARROWGREEN.COM ACCOUNT", { size: 8, bold: true, color: ACCENT, spacing: 1.1 });
+  pdf.text(f.p, L, 64, "INFLITE ACCOUNT", { size: 8, bold: true, color: ACCENT, spacing: 1.1 });
   pdf.text(f.p, L, 96, "Your data", { size: 30, bold: true, color: INK });
   pdf.text(f.p, L, 116, `Downloaded ${at.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} at ${at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, { size: 10, color: INK3 });
   const cy = 136, ch = 96;

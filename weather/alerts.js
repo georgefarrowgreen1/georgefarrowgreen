@@ -81,7 +81,9 @@ export function warningAlert(list, told, now, real, f, offset = 0, name = "") {
   const head = raised && badge ? `Raised to ${colourOf(w)}: ${title.replace(/^\w/, (c) => c.toLowerCase())}` : named;
   const more = fresh.length > 1 ? ` (and ${fresh.length - 1} more)` : "";
   const body = `${name ? `${name}: ` : ""}${w.issuer} · ${spanOf(w, now, f, offset)}.${w.headline ? ` ${w.headline}` : ""}${more}`;
-  return { alert: { title: head, body: body.length > 240 ? `${body.slice(0, 239).replace(/\s+\S*$/, "")}…` : body, tag: "warn" }, told: next, fresh };
+  // (tagged by what it's of, so a warning of something else doesn't take its place among the notifications, and one
+  // raised does; and by the place too, where it's sent: functions/_wxpush.js warnNotify)
+  return { alert: { title: head, body: body.length > 240 ? `${body.slice(0, 239).replace(/\s+\S*$/, "")}…` : body, tag: `warn:${glyphOf(w)}` }, told: next, fresh };
 }
 
 /* ---------- as emails ---------- */

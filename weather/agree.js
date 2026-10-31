@@ -52,8 +52,10 @@ export function oneRain(wx, now) {
   }
   // now: raining as the next four hours say (insights.js nowcast: this quarter hour wet, or the next one with rain
   // falling now), and as heavily (its kind of weather the forecast's, if it has it wet), else not, so the top of the page
-  // says what the card under it does: not "Light Rain" over a card reading 1.2 mm an hour, moderate
-  let current = wx.current;
+  // says what the card under it does: not "Light Rain" over a card reading 1.2 mm an hour, moderate. And only while it's
+  // the weather lately: a forecast kept from hours ago (opened offline, say) has the weather as it was then, and the
+  // forecast for this hour says now better (the page takes that, insights.js hourAt, where there's no weather now)
+  let current = wx.current && now - wx.current.t < HOUR ? wx.current : null;
   const left = qs.filter((q) => q.t + QUARTER > now);
   if (current && left.length >= 4) {
     const wet = (q) => (q?.precip || 0) >= 0.05, raining = wet(left[0]) || ((current.precip || 0) > 0.05 && wet(left[1]));

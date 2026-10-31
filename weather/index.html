@@ -24,7 +24,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-1.57" />
+  <meta name="app-version" content="wx-1.58" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -36,6 +36,7 @@
   <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
   <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
   <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
+  <link rel="modulepreload" href="./solar.js" /><link rel="modulepreload" href="./account.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
   <!-- (the account's page, where Sign in goes: ready to open the moment it's tapped) -->
   <link rel="preconnect" href="https://account.inflite.ai" />
@@ -305,6 +306,7 @@
           <h3 class="grp-head">Zones</h3>
           <ul class="grp acts-list" id="zones-list"></ul>
           <ul class="grp"><li><button class="zone-add" type="button" id="zone-add">Add a zone</button></li></ul>
+          <p class="grp-foot" id="zone-here" hidden>With only My Location saved, a new zone goes where you are now, and stays there.</p>
           <p class="grp-foot">A zone is a set of panels facing one way: an east roof and a west roof are two. A card when the sun’s coming out on them: when, and how long for. Nothing on grey days. Up to 6 zones.</p>
           <ul class="grp">
             <li><label class="switch"><input type="checkbox" name="solarAlert" /> Tell me when the sun’s coming out</label></li>

@@ -20,12 +20,14 @@ const round = (v, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** 
 // ---- activities ----
 // a new activity, from samples taken at times `t` (seconds from `start`, which is ms since 1970)
 function activity({ sport = null, indoor = false, start, name, device, file, t, lat, lon, ele, hr, cad, pwr, spd, dist, laps = [] }) {
-  // (samples without a time, or out of order, are left out; and the rest of a file from a jump of more than six hours on,
-  // as a device that lost power mid-write leaves a last sample dated years away)
+  // (samples without a time, or out of order, are left out; and the rest of a file from a jump of more than a day on, as
+  // a device that lost power mid-write leaves a last sample dated years away: a night's stop on a ride of a few days,
+  // recorded as one, is kept. What's left out is said, by how many samples: cut)
   const keep = [];
+  let cut = 0;
   for (let i = 0, last = -Infinity; i < t.length; i++) {
     if (t[i] == null || t[i] <= last || t[i] < 0) continue;
-    if (keep.length && t[i] - last > 6 * 3600) break;
+    if (keep.length && t[i] - last > 86400) { cut = t.length - i; break; }
     keep.push(i); last = t[i];
   }
   if (keep.length < 2) throw new Error("That file has too few samples to be a ride.");
@@ -56,7 +58,7 @@ function activity({ sport = null, indoor = false, start, name, device, file, t, 
   // (a file that doesn't say what it was: worked out from how it went, and said to be a guess)
   const guessed = !sport;
   if (guessed) sport = guessSport(s);
-  return { id: `a${start}`, sport, guessed, indoor: indoor || !s.lat, start, name: name || defaultName(sport, start, indoor || !s.lat), device: device || null, file: file || null, s, laps };
+  return { id: `a${start}`, sport, guessed, indoor: indoor || !s.lat, start, name: name || defaultName(sport, start, indoor || !s.lat), device: device || null, file: file || null, s, laps, ...(cut ? { cut } : {}) };
 }
 // What an activity was, from its samples alone: power or a cyclist's cadence is a ride; otherwise by its moving speed
 // (a run from about 7 km/h to 20, a walk under it, a ride over it); nothing to go by, a ride
@@ -152,7 +154,10 @@ export function routeShape(s) {
   for (let i = 0; i < s.lat.length; i++) if (s.lat[i] != null && s.lon[i] != null) pts.push([s.lon[i], s.lat[i]]);
   if (pts.length < 10) return null;
   const k = Math.cos((pts.reduce((a, p) => a + p[1], 0) / pts.length) * Math.PI / 180), xs = pts.map((p) => p[0] * k), ys = pts.map((p) => p[1]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), span = Math.max(x1 - x0, y1 - y0);
+  // (by a loop, not Math.min(...xs): a day's ride at a point a second is more points than a call can be handed)
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let j = 0; j < xs.length; j++) { x0 = Math.min(x0, xs[j]); x1 = Math.max(x1, xs[j]); y0 = Math.min(y0, ys[j]); y1 = Math.max(y1, ys[j]); }
+  const span = Math.max(x1 - x0, y1 - y0);
   if (span < 0.002) return null;
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, n = Math.min(48, pts.length), out = [];
   for (let j = 0; j < n; j++) { const i = Math.round((j / (n - 1)) * (pts.length - 1)); out.push(Math.round(50 + ((xs[i] - cx) / span) * 88), Math.round(50 - ((ys[i] - cy) / span) * 88)); }
@@ -482,33 +487,40 @@ async function readFile(name, bytes) {
 }
 
 // ---- zip ----
-// A zip of files, stored as they are (FIT files barely shrink): for several files at once, and for "Export everything"
-export function zip(files) {
+// A zip of files, stored as they are (FIT files barely shrink): for several files at once, and for "Export everything".
+// An entry: { name, data } (bytes, or a string), or { name, blob, crc, size }, a file already handed to the browser as
+// it came, its check and length worked out then (zipBlob: a long history never in the page twice)
+function zipParts(files) {
   const enc = new TextEncoder(), parts = [], central = [];
   let off = 0;
   const now = new Date(), dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
   const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
   for (const f of files) {
-    const name = enc.encode(f.name), data = typeof f.data === "string" ? enc.encode(f.data) : f.data, crc = crc32(data);
+    const name = enc.encode(f.name), data = f.blob || (typeof f.data === "string" ? enc.encode(f.data) : f.data);
+    const crc = f.blob ? f.crc : crc32(data), size = f.blob ? f.size : data.length;
     const h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
-    h.setUint16(10, dosTime, true); h.setUint16(12, dosDate, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true);
+    h.setUint16(10, dosTime, true); h.setUint16(12, dosDate, true); h.setUint32(14, crc, true); h.setUint32(18, size, true); h.setUint32(22, size, true);
     h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
     const c = new DataView(new ArrayBuffer(46));
     c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
-    c.setUint16(12, dosTime, true); c.setUint16(14, dosDate, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+    c.setUint16(12, dosTime, true); c.setUint16(14, dosDate, true); c.setUint32(16, crc, true); c.setUint32(20, size, true); c.setUint32(24, size, true);
     c.setUint16(28, name.length, true); c.setUint32(42, off, true);
     parts.push(new Uint8Array(h.buffer), name, data);
     central.push(new Uint8Array(c.buffer), name);
-    off += 30 + name.length + data.length;
+    off += 30 + name.length + size;
   }
   const cdSize = central.reduce((a, p) => a + p.length, 0), end = new DataView(new ArrayBuffer(22));
   end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
-  const all = [...parts, ...central, new Uint8Array(end.buffer)], out = new Uint8Array(all.reduce((a, p) => a + p.length, 0));
+  return [...parts, ...central, new Uint8Array(end.buffer)];
+}
+export function zip(files) {
+  const all = zipParts(files), out = new Uint8Array(all.reduce((a, p) => a + p.length, 0));
   let p = 0;
   for (const x of all) { out.set(x, p); p += x.length; }
   return out;
 }
+export const zipBlob = (files) => new Blob(zipParts(files), { type: "application/zip" });
 // The files in a zip: stored, or deflated (unpacked by the browser's own DecompressionStream)
 export async function unzip(u8) {
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = [];

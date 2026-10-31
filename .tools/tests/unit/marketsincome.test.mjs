@@ -1,9 +1,9 @@
-// Markets' income, worked out (markets/income.js): one-off dividends told from the usual, how dependable a payer has been,
-// what a year's income could come to, the UK's tax year, a spreadsheet that's safe to open; and what the evening wrap
+// Markets' income, worked out (markets/income.js): one-off dividends told from the usual, a year of a payer's dividends
+// to expect again, how dependable a payer has been, what a year's income could come to, the UK's tax year, a spreadsheet that's safe to open; and what the evening wrap
 // says about dividends (functions/_markets.js wrapIncome).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { marked, health, project, taxYearOf, csv } from "../../../markets/income.js";
+import { marked, health, project, taxYearOf, csv, yearDivs, yearOn } from "../../../markets/income.js";
 import { wrapIncome } from "../../../functions/_markets.js";
 
 const DAY = 86400, at = (iso) => Date.parse(iso) / 1000;
@@ -18,6 +18,30 @@ test("a one-off is told from the usual: a payout many times the rest, not a fina
   const quarterly = divs([["2024-01-05", 10], ["2024-04-05", 10], ["2024-07-05", 10], ["2024-10-05", 10], ["2024-12-20", 30], ["2025-01-05", 10.5], ["2025-04-05", 10.5]]);
   assert.equal(marked(quarterly).filter((d) => d.special).length, 1, "a quarterly payer's extra, three times the rest");
   assert.deepEqual(marked(divs([["2025-04-01", 4], ["2025-10-01", 40]])).map((d) => d.special), [false, false], "two alone: too few to say what's usual");
+});
+
+test("a year of a payer's dividends, by how often it pays: not missed when it's late, nor counted twice when it's early", () => {
+  const days = (list) => list.map((d) => new Date(d.t * 1000).toISOString().slice(0, 10));
+  // (once a year, its day moving from 3 October to 9 October: between the two, it's still a payer)
+  const annual = divs([["2022-10-05", 20], ["2023-10-04", 21], ["2024-10-02", 22], ["2025-10-03", 23]]);
+  assert.deepEqual(days(yearDivs(annual, at("2026-10-06"))), ["2025-10-03"], "a year and three days on, its payment's still the year's");
+  assert.deepEqual(days(yearDivs(annual, at("2027-01-10"))), [], "a payment over a year and two months gone: it's stopped");
+  // (four a year, and this year's coming a little earlier: five in the last 365 days, four of them the year's)
+  const early = divs([["2024-11-20", 5], ["2025-02-20", 5], ["2025-05-20", 5], ["2025-08-20", 5], ["2025-11-01", 5.2], ["2026-01-30", 5.2], ["2026-04-30", 5.2], ["2026-07-30", 5.2], ["2026-10-28", 5.2]]);
+  const e = yearDivs(early, at("2026-10-30"));
+  assert.deepEqual(days(e), ["2026-01-30", "2026-04-30", "2026-07-30", "2026-10-28"]);
+  // (and a little later: three in the last 365 days, and the fourth just before them)
+  const late = divs([["2024-10-01", 5], ["2025-01-02", 5], ["2025-04-01", 5], ["2025-07-01", 5], ["2025-10-27", 5], ["2026-01-28", 5], ["2026-04-28", 5], ["2026-07-28", 5]]);
+  assert.equal(yearDivs(late, at("2026-10-30")).length, 4, "the one 368 days ago counts: the next is due any day");
+  // (an interim and a final, unevenly apart: two a year, never four)
+  const halves = divs([["2023-05-10", 20], ["2023-08-10", 10], ["2024-05-10", 21], ["2024-08-10", 10.5], ["2025-05-10", 22], ["2025-08-10", 11]]);
+  assert.deepEqual(days(yearDivs(halves, at("2025-12-01"))), ["2025-05-10", "2025-08-10"]);
+  assert.deepEqual(days(yearDivs(halves, at("2026-05-20"))), ["2025-05-10", "2025-08-10"], "the interim ten days later than last year's: still the year's");
+  assert.deepEqual(days(yearDivs(halves, at("2026-09-01"))), ["2025-08-10"], "no interim this year, last year's gone over a year and two months");
+  // (a one-off in the year: beside the usual, said apart by income())
+  const special = divs([["2024-04-01", 10], ["2024-10-01", 20], ["2025-04-01", 10], ["2025-05-14", 60], ["2025-10-01", 21]]);
+  assert.deepEqual(days(yearDivs(special, at("2025-11-01"))), ["2025-04-01", "2025-05-14", "2025-10-01"]);
+  assert.deepEqual(yearDivs([], at("2026-10-30")), []);
 });
 
 test("how dependable a payer has been: raised, held, cut, and five years' growth", () => {
@@ -60,6 +84,14 @@ test("the UK's tax year: 6 April to 5 April, by London's days", () => {
   const ty = taxYearOf(Date.parse("2027-01-15T12:00:00Z"));
   assert.equal(ty.start, 2026); assert.equal(new Date(ty.from).toISOString(), "2026-04-05T23:00:00.000Z"); assert.equal(new Date(ty.to).toISOString(), "2027-04-05T23:00:00.000Z");
   assert.equal(taxYearOf(Date.parse("2000-01-01T00:00:00Z")).name, "1999–00");
+});
+
+test("a dividend to come a year on from this month: said with its year, so its day isn't read as one that's been", () => {
+  const now = new Date(2026, 9, 31);
+  assert.equal(yearOn(new Date(2027, 9, 1), now), true, "on 31 October, last 1 October's expected again: 1 Oct 2027");
+  assert.equal(yearOn(new Date(2027, 8, 30), now), false, "next September: no year needed");
+  assert.equal(yearOn(new Date(2026, 10, 20), now), false);
+  assert.equal(yearOn(new Date(2027, 0, 5), new Date(2026, 0, 31)), true, "January's a year on, from January");
 });
 
 test("a spreadsheet that opens safely: quoted where it must be, and no formulas from names", () => {

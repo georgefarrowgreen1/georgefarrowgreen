@@ -43,7 +43,7 @@ import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick,
 import { pushKey, setMorning, moveMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
-import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick } from "../../_strava.js";
+import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick, stravaShare } from "../../_strava.js";
 import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
@@ -193,7 +193,10 @@ const ROUTES = {
   "POST strava/fetch": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
-    if (b.force) await limit(env, `fxstravanow:${u.id}`, 120, 3600e3);
+    if (b.force) await limit(env, `fxstravanow:${u.id}`, 30, 3600e3);
+    // (Strava's allowance is the whole app's, not each person's: asks made now take no more than their share of it
+    // (functions/_strava.js stravaShare); past that, the scheduler's turns carry on, and the app's told Strava's busy)
+    if (b.force === true && !(await stravaShare(env))) return json({ ...(await fetchStrava(env, u.id)), said: "busy" });
     return json(await fetchStrava(env, u.id, { force: b.force === true }));
   },
   "POST strava/all": async ({ request, env }) => {
@@ -239,12 +242,12 @@ const ROUTES = {
   "POST push": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    return json(await setMorning(env, u.id, await body(request, 16 * 1024)));
+    return json(await setMorning(env, u.id, await body(request, 16 * 1024), u.sessionHash || null));
   },
   "POST push-move": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    return json(await moveMorning(env, u.id, await body(request, 8 * 1024)));
+    return json(await moveMorning(env, u.id, await body(request, 8 * 1024), u.sessionHash || null));
   },
   "DELETE push": async ({ request, env }) => {
     sameOrigin(request);

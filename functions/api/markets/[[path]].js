@@ -4,7 +4,9 @@
 //   GET    /api/markets/quotes?s=A,B  prices again (as the app keeps them fresh, each a minute old at most)
 //   GET    /api/markets/chart?s=A&r=1d|5d|1mo|1y|5y   a chart over a range
 //   GET    /api/markets/years?s=A,B   each one's year: its week, its dividends, its high and low (for what's worth knowing)
-//   GET    /api/markets/news?s=A,B    the news about them, newest first
+//   GET    /api/markets/news?s=A,B    the news about them, newest first (each story with its key, k: to read it by)
+//   GET    /api/markets/story?u=&k=   a story's preview, from its page (one the news gave, with its key)
+//   GET    /api/markets/pic?u=&s=&k=  a story's picture, passed through
 //   GET    /api/markets/search?q=     things to add, by name or symbol
 //   PUT    /api/markets/holding       added or changed: { symbol, name?, qty?, cost?, account? } → your list
 //   DELETE /api/markets/holding?s=A   taken off your list → your list
@@ -30,13 +32,16 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, picture } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../_markets.js";
 
+// (prices for a request that's waiting: by eight seconds, what's kept given for any the source is slow with, so a slow
+// source is never taken for no connection)
+const ANSWER_BY = 8000;
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
-  const list = await holdings(env, u.id);
-  const q = await quotes(env, [...INDICES, ...list.map((h) => h.symbol)]);
-  const fx = await rates(env, Object.values(q).map((x) => x.cur));
+  const list = await holdings(env, u.id), by = Date.now() + ANSWER_BY;
+  const q = await quotes(env, [...INDICES, ...list.map((h) => h.symbol)], by);
+  const fx = await rates(env, Object.values(q).map((x) => x.cur), by);
   const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first(), wrap = await D.prepare("SELECT off FROM mk_wrap WHERE user_id = ?").bind(u.id).first();
   return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, wrap: !wrap?.off, isa: await isaOf(env, u.id), at: Date.now(),
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
@@ -60,8 +65,8 @@ const ROUTES = {
   "GET quotes": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mkquotes:${u.id}`, 600, 3600e3);
-    const q = await quotes(env, symbolsOf(request, 64));
-    return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur)), at: Date.now() }, 20);
+    const by = Date.now() + ANSWER_BY, q = await quotes(env, symbolsOf(request, 64), by);
+    return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur), by), at: Date.now() }, 20);
   },
   "GET chart": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -76,35 +81,37 @@ const ROUTES = {
     const u = await signedIn(request, env);
     await limit(env, `mkyears:${u.id}`, 120, 3600e3);
     const list = symbolsOf(request, 64), out = {};
-    for (let i = 0; i < list.length; i += 6) (await Promise.all(list.slice(i, i + 6).map((s) => yearOf(env, s)))).forEach((y, j) => { if (y) out[list[i + j]] = y; });
+    (await fewAtATime(list, (s) => yearOf(env, s))).forEach((y, i) => { if (y) out[list[i]] = y; });
     return shared({ years: out }, 600);
   },
   "GET news": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mknews:${u.id}`, 240, 3600e3);
-    // (m=0: only what's about these, not the markets' too)
-    return shared(await news(env, symbolsOf(request, 12), { markets: new URL(request.url).searchParams.get("m") !== "0" }), 120);
+    // (m=0: only what's about these, not the markets' too; each story with its key, to read it by: storyKey)
+    const r = await news(env, symbolsOf(request, 12), { markets: new URL(request.url).searchParams.get("m") !== "0" });
+    return shared({ ...r, news: await Promise.all(r.news.map(async (n) => ({ ...n, k: await storyKey(env, n.link) }))) }, 120);
   },
   "GET search": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mksearch:${u.id}`, 300, 3600e3);
     return shared({ results: await search(env, new URL(request.url).searchParams.get("q")) }, 600);
   },
-  // a story's preview, from its page (its title, summary and picture, as it gives them for link previews)
+  // a story's preview, from its page (its title, summary and picture, as it gives them for link previews): only one
+  // the news gave, with its key (k)
   "GET story": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mkstory:${u.id}`, 300, 3600e3);
-    const link = new URL(request.url).searchParams.get("u") || "";
-    if (!/^https?:\/\//.test(link) || link.length > 2048) throw new HttpError(400, "Bad request.");
+    const p = new URL(request.url).searchParams, link = p.get("u") || "";
+    if (!/^https?:\/\//.test(link) || link.length > 2048 || !(await storyKeyOk(env, link, p.get("k")))) throw new HttpError(400, "Bad request.");
     return json({ story: await story(env, link) });
   },
-  // its picture, passed through: one of the search's own, or the one its preview gave
+  // its picture, passed through: one of the search's own, or the one its preview gave (its story's key with it, k)
   "GET pic": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await limit(env, `mkpic:${u.id}`, 900, 3600e3);
     const p = new URL(request.url).searchParams, src = p.get("u") || "", link = p.get("s") || "";
     if (!/^https?:\/\//.test(src) || src.length > 2048 || link.length > 2048) throw new HttpError(400, "Bad request.");
-    const pic = await picture(env, src, link);
+    const pic = await picture(env, src, link && (await storyKeyOk(env, link, p.get("k"))) ? link : "");
     if (!pic) return new Response(null, { status: 404, headers: { "Cache-Control": "private, max-age=3600" } });
     return new Response(pic.body, { headers: { "Content-Type": pic.type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Cross-Origin-Resource-Policy": "same-origin" } });
   },
@@ -195,7 +202,10 @@ const ROUTES = {
   "GET alerts": async ({ request, env }) => json(await alertsOf(env, (await signedIn(request, env)).id)),
   "POST tick": async ({ request, env }) => {
     tickAuthOk(request, env);
-    const a = await alertTick(env), w = await wrapTick(env).catch((e) => ({ wraps: 0, error: String(e?.message || e) }));
+    // (the wraps have their turn even where the alerts' fails: that failure's the answer then, once they've had it)
+    let failed = null;
+    const a = await alertTick(env).catch((e) => { failed = e; return { alerts: 0, sent: 0 }; }), w = await wrapTick(env).catch((e) => ({ wraps: 0, error: String(e?.message || e) }));
+    if (failed) throw failed;
     return json({ ...a, ...w });
   },
   // Signed in on the account's page, for Markets (functions/_handback.js): as Fitness's
@@ -225,7 +235,9 @@ export async function onRequest(ctx) {
   // (only at Markets's own address; the scheduler's turn at the site's own, as the other apps' are)
   const tick = parts[0] === "tick" && url.hostname === "georgefarrowgreen.pages.dev";
   if (!route || !(isMarkets(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
-  try { return await route(ctx); }
+  // (what's fetched for everyone is written down for the other copies of the server after the answer's gone: its
+  // waitUntil, carried with the environment for functions/_markets.js cached())
+  try { return await route(ctx.waitUntil ? { ...ctx, env: { ...ctx.env, waitUntil: (p) => ctx.waitUntil(p) } } : ctx); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
     await logError(ctx.env, "markets api", e);

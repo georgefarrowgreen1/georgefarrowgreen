@@ -134,6 +134,12 @@ export async function sweepFiles(env, D, t, page = 500) {
 // When someone was last about: the app checking in, or any of their sign-ins being used (or signing up)
 const lastOf = (u) => `MAX(COALESCE(${u}.seen_at, 0), COALESCE(${u}.created_at, 0), COALESCE((SELECT MAX(s.seen_at) FROM pg_sessions s WHERE s.user_id = ${u}.id), 0))`;
 const LAST = lastOf("u");
+// Due to go: a year unused, warned a full week ago (the date its email gave is that day's, so never before it), and not
+// back since
+export async function idleDue(D, t, n = 1) {
+  return (await D.prepare(`SELECT u.id, u.handle FROM pg_users u WHERE u.warned_at IS NOT NULL AND u.warned_at <= ?1 AND ${LAST} < ?2 AND ${LAST} < u.warned_at LIMIT ?3`)
+    .bind(t - WARN_MS, t - IDLE_MS, n).all()).results;
+}
 export async function idleAccounts(env, D, t, origin) {
   let warned = 0, deleted = 0;
   // a week to go: an email, once
@@ -157,9 +163,7 @@ export async function idleAccounts(env, D, t, origin) {
       warned++;
     }
   }
-  // a year, and warned at least six days ago without coming back since
-  const { results: idle } = await D.prepare(`SELECT u.id, u.handle FROM pg_users u WHERE u.warned_at IS NOT NULL AND u.warned_at < ?1 AND ${LAST} < ?2 AND ${LAST} < u.warned_at LIMIT 1`)
-    .bind(t - WARN_MS + DAY, t - IDLE_MS).all();
+  const idle = await idleDue(D, t);
   for (const u of idle) { await removeAccount(env, u.id); await adminLog(env, "idle-deleted", u.id, `@${u.handle}`).catch(() => {}); deleted++; }
   // back in time: the warning is forgotten, so a later year away warns again
   await D.prepare(`UPDATE pg_users SET warned_at = NULL WHERE warned_at IS NOT NULL AND ${lastOf("pg_users")} > warned_at`).run().catch(() => {});

@@ -1424,7 +1424,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     const w1 = await tick(), w2 = await tick();
     warnExtra = true;
     const w3 = await tick(), w4 = await tick();
-    const sent = (await mine(third)).filter((n) => n.tag === 'warn');
+    const sent = (await mine(third)).filter((n) => /^warn:/.test(n.tag || ''));
     ok(hello?.body === 'Official warnings for London.' && w1.warn === 0 && w2.warn === 0 && w3.warn === 1 && w4.warn === 0 && sent.length === 1 && sent[0].title === 'Amber wind warning' && /^London: Met Office · Until (tomorrow )?\d\d:\d\d\. Gusts of 60 to 70 mph are likely\.$/.test(sent[0].body),
       'official warnings: none for those in force as they\'re turned on, then one newly issued, once', `${hello?.body} | ${[w1, w2, w3, w4].map((t) => t.warn).join(',')} | ${sent.map((n) => `${n.title} — ${n.body}`).join(' / ')}`);
     warnExtra = false;

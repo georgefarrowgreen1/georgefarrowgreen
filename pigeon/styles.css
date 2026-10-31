@@ -21,7 +21,7 @@
   --fill-2:rgba(20,30,60,.12);
   --label:#000000;
   --label-2:rgba(20,24,44,.66);      /* (4.5:1 or better on every background) */
-  --label-3:rgba(20,24,44,.3);
+  --label-3:rgba(20,24,44,.3);       /* (for chevrons, icons and lines: too faint for words, which take --label-2) */
   --sep:rgba(20,24,44,.1);
   --tint:#0068e8;                      /* a touch deeper than iOS blue, so white text on it and it as text both read */
   --on-tint:#ffffff;
@@ -325,6 +325,8 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .b{position:relative;max-width:76%;margin-top:2px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in);color:var(--label);font-size:calc(17px * var(--ts, 1));line-height:calc(22px * var(--ts, 1));align-self:flex-start;overflow-wrap:anywhere}
 .b.me{align-self:flex-end;background:linear-gradient(180deg,color-mix(in srgb,var(--tint-fill) 96%,#fff),var(--tint-fill));color:#fff}
 .b.gap-top{margin-top:10px}
+/* a web address in a message: tapped, it opens in the browser */
+.lnk{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;-webkit-touch-callout:none}
 .b.pic{padding:0;background:none;overflow:hidden;border-radius:22px;width:68%}
 .b.pic img,.b.pic .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:22px;background:var(--fill);cursor:zoom-in}
 .b.pic img.arrive,.av img.arrive{animation:fade .3s ease both}
@@ -495,9 +497,11 @@ html.kbup .compose{padding-bottom:6px}
 .reqrow.inc{flex-wrap:wrap;row-gap:10px}
 .reqrow.inc .acts{flex-basis:100%;padding-left:48px}
 .reqrow.inc .acts .btn{flex:1}
-.viewer{position:absolute;inset:0;z-index:30;background:#000;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:16px;cursor:zoom-out}
+.viewer{position:absolute;inset:0;z-index:30;background:#000;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:16px;cursor:zoom-out;overflow:hidden;touch-action:none}
 .viewer img{max-width:100%;max-height:80%;border-radius:6px}
 .viewer p{color:rgba(255,255,255,.6);font-size:13px;margin:0;text-align:center}
+/* enlarged (pinched, or tapped twice: app.js pinchZoom), the photo has the screen to itself */
+.viewer.zoomed p{opacity:0;transition:opacity .2s}
 
 /* ---------- glass menus ---------- */
 .menu-scrim{position:absolute;inset:0;z-index:40}
@@ -514,6 +518,7 @@ html.kbup .compose{padding-bottom:6px}
 .asheet .grp{display:flex;flex-direction:column;gap:8px;padding:18px 14px 14px;border-radius:34px;background:var(--glass-strong)}
 .asheet .msg{padding:0 8px 6px;text-align:center;font-size:13px;line-height:18px;color:var(--label-2)}
 .asheet .msg b{display:block;color:var(--label);font-size:17px;line-height:22px;font-weight:600;margin-bottom:4px}
+.asheet .msg:focus{outline:none}
 .asheet .ab,.asheet .cancel{display:block;width:100%;min-height:52px;border:0;border-radius:999px;font-size:17px;font-weight:600}
 .asheet .ab{background:color-mix(in srgb,var(--tint) 15%,transparent);color:var(--tint-on)}
 .asheet .ab.destructive{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red-on)}
@@ -1268,8 +1273,9 @@ svg.fillico{fill:currentColor;stroke:none}
 .lockin .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .lockin .btn .ico{font-size:20px}
 .lockin .link{border:0;background:none;color:var(--tint);font:inherit;font-size:15px;padding:8px;cursor:pointer}
-/* leaving the app with the lock on: blurred for the app switcher's snapshot */
-.veiled .view,.veiled .compose,.veiled .layer{filter:blur(18px);transition:none}
+/* leaving the app with the lock on: blurred for the app switcher's snapshot (a menu too, each part where it is: a chat's
+   row lifted under its menu shows its name and last message) */
+.veiled .view,.veiled .compose,.veiled .layer,.veiled .poplayer>*{filter:blur(18px);transition:none}
 /* search inside chats */
 .sres:empty{display:none}
 .sres{margin-bottom:10px}
@@ -1675,7 +1681,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 .pmtile > small{font-size:9.5px;font-weight:700;letter-spacing:.6px;color:var(--label-2)}
 .pmtile.unknown .pmseal{--pm:var(--label-3);box-shadow:inset 0 0 0 1.5px var(--label-3);transform:none}
 .pmtile.unknown .pmseal b{font-size:20px;color:var(--label-3)}
-.pmtile.unknown > b,.pmtile.unknown > small{color:var(--label-3)}
+.pmtile.unknown > b,.pmtile.unknown > small{color:var(--label-2)}
 .pmtile,.pmark{transition:transform .35s var(--snappy)}
 .pmtile:active,.pmark:active{transform:scale(.96)}
 /* feathers: the balance, the shop, and accessories on named pigeons */
@@ -1735,7 +1741,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 .b.once.done .ft{margin-left:2px}
 .b.once.live:active{transform:scale(.97)}
 .b.once + .b.ocap{margin-top:3px}
-.oview{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:#000;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;animation:fade .2s ease}
+.oview{position:absolute;inset:0;z-index:60;display:grid;place-items:center;overflow:hidden;background:#000;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;animation:fade .2s ease}
 .oview.out{animation:ofadeout .2s ease forwards}
 .oview canvas{max-width:100%;max-height:100%;pointer-events:none;opacity:0;transition:opacity .18s}
 .oview.on canvas{opacity:1}
@@ -1752,6 +1758,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 .welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
 /* the welcome: night, a pigeon crossing, very few words */
 html.night,html.night body,html.night .app{background:#03050c}
+html.night .rotate{color:#e9eeff}              /* (turned sideways on the welcome: its words on the night, not in the day's black) */
 html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
 html.night .view{background:transparent}
 .nightsky{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
@@ -1876,7 +1883,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .lcol{display:flex;flex-direction:column;align-items:center;min-width:0;padding:0 4px;text-align:center}
 .lcol .pg{font-size:19px;margin-bottom:5px}
 .lcol b{font-size:22px;line-height:26px;font-weight:700;font-variant-numeric:tabular-nums}
-.lcol.none b{color:var(--label-3)}
+.lcol.none b{color:var(--label-2)}
 .lcol .lname{max-width:100%;font-size:13px;line-height:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lcol .lname i{font-style:normal;font-weight:500;color:var(--label-2)}
 .lcol .lnext{max-width:100%;font-size:12px;line-height:16px;color:var(--tint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
@@ -1961,7 +1968,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .fctl li:not(:last-child)::before{content:"";position:absolute;left:66.5px;top:14px;bottom:-14px;border-left:3px dotted var(--label-3)}
 .fctl li.flown:not(:last-child)::before{border-left:3px solid var(--tint)}
 .fcat{display:flex;flex-direction:column;font-size:13px;line-height:1.2;color:var(--label-2);font-variant-numeric:tabular-nums;padding-top:2px;white-space:nowrap}
-.fcat small{font-size:11px;font-weight:500;color:var(--label-3)}
+.fcat small{font-size:11px;font-weight:500;color:var(--label-2)}
 .fctl .now .fcat{font-weight:700;color:var(--tint)}
 .fcdot{position:relative;z-index:1;justify-self:center;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--cell);border:2px solid var(--label-3);color:var(--label-2);box-sizing:border-box}
 .fcdot .ico{font-size:12px}
@@ -2155,7 +2162,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .b.gone,.b.gone.me{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 10px;background:none;box-shadow:inset 0 0 0 1px var(--sep);color:var(--label-2);font-size:calc(14px * var(--ts, 1));line-height:calc(20px * var(--ts, 1))}
 .b.gone .gonel{display:inline-flex;align-items:center;gap:6px}
 .b.gone .gonel .ico{font-size:15px;flex:none;color:var(--label-3)}
-.b.gone .ft,.b.gone.me .ft{float:none;margin:0 -2px 0 0;color:var(--label-3)}
+.b.gone .ft,.b.gone.me .ft{float:none;margin:0 -2px 0 0;color:var(--label-2)}
 .b.gone .ft svg{opacity:.8}
 .b.gone + .b.ocap{margin-top:3px}
 /* view once: a lighter button to open it, and yours in the air laid out like any pigeon in the air */
@@ -2772,6 +2779,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-note-tx { display: grid; line-height: 1.2; }
 .ifm-note-tx b { font-size: 16px; font-weight: 600; }
 .ifm-note-tx small { font-size: 13.5px; color: var(--ifm-text-2); font-variant-numeric: tabular-nums; }
+/* (what it says, read out from here: always there, unseen, and taking no room on any app's page) */
+.ifm-say { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
 
 /* InFlite's header, the same in every app (.tools/inflite/menu.js header): your photo · the screen's name, large, its line
    under it · the actions in one capsule. Each app gives it its colours (--ifh-ink, --ifh-ink-2, --ifh-tint, --ifh-band: the

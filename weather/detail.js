@@ -51,7 +51,7 @@ export function openDetail(kind, dir = 0) {
     const t = T(), pts = hrs.map((x) => { const fl = x.feels ?? x.temp; return { t: x.t, v: t(fl), lo: t(Math.min(fl, x.temp)), hi: t(Math.max(fl, x.temp)), x }; });
     const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
     kids.push(section("Next 48 hours"), chart, h("p", { class: "chart-note" }, "Shaded: the difference from the actual temperature."));
-    draw = plot(hrs, { kind: "line", color: COLOR.temp, bandColor: "#b8c6dc", points: pts, y: { fmt: (v) => f.deg(v) },
+    draw = plot(hrs, { kind: "line", color: COLOR.temp, bandColor: "#b8c6dc", points: pts, y: { fmt: (v) => f.deg(v), unit: 1 },
       marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.feels) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.feels) }] : [])],
       summary: `Feels like, hour by hour: from ${f.temp(lo.x.feels)} to ${f.temp(hi.x.feels)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.feels), "feels like"], [f.temp(p.x.temp), "actual"], [f.wind(p.x.wind), "wind"]] }),
@@ -77,7 +77,7 @@ export function openDetail(kind, dir = 0) {
     const span = I.hoursBetween(wx, now - DAY, now + 2 * DAY), inch = f.units.precip === "in", amt = (mm) => (inch ? mm / 25.4 : mm);
     const pts = span.map((x) => ({ t: x.t, v: amt(x.precip || 0), x })), wet = span.reduce((a, x) => ((x.precip || 0) > (a.precip || 0) ? x : a), span[0]);
     kids.push(section("The last 24 hours and the next 48"), chart);
-    draw = plot(span, { kind: "columns", color: COLOR.rain, points: pts, y: { min: 0, fmt: (v) => (inch ? v.toFixed(2) : String(Math.round(v * 10) / 10)) },
+    draw = plot(span, { kind: "columns", color: COLOR.rain, points: pts, y: { min: 0, fmt: (v) => (inch ? v.toFixed(2) : String(Math.round(v * 10) / 10)), unit: inch ? 0.01 : 0.1 },
       marks: wet && (wet.precip || 0) >= 0.3 ? [{ t: wet.t, v: amt(wet.precip), text: f.precip(wet.precip) }] : [],
       summary: `Rain each hour, from a day ago to two days ahead${wet && (wet.precip || 0) >= 0.1 ? `; the wettest hour ${when(wet.t)}, ${f.precip(wet.precip)}` : ": little or none"}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.precip(p.x.precip), p.t < now ? "fell" : "expected"], ...(p.t >= now && p.x.pop != null ? [[`${Math.round(p.x.pop)}%`, "chance"]] : [])] }),
@@ -87,14 +87,15 @@ export function openDetail(kind, dir = 0) {
     const conv = (p) => (u === "inhg" ? p * 0.02953 : u === "mmhg" ? p * 0.750062 : p), pts = span.map((x) => ({ t: x.t, v: conv(x.pressure), x }));
     const first = span[0], last = span[span.length - 1];
     kids.push(section("The last 24 hours and the next 48"), chart);
-    draw = plot(span, { kind: "line", color: "#9B8CF2", points: pts, y: { fmt: (v) => (u === "inhg" ? v.toFixed(2) : String(Math.round(v))) },
+    draw = plot(span, { kind: "line", color: "#9B8CF2", points: pts, y: { fmt: (v) => (u === "inhg" ? v.toFixed(2) : String(Math.round(v))), unit: u === "inhg" ? 0.01 : 1 },
       summary: first && last ? `Pressure from ${f.pressure(first.pressure)} a day ago to ${f.pressure(last.pressure)} two days ahead.` : "Pressure, hour by hour.",
       tip: (p) => ({ title: when(p.t), rows: [[f.pressure(p.x.pressure), "pressure"]] }),
       table: { head: ["Time", "Pressure"], rows: pts.map((p) => [when(p.t), f.pressure(p.x.pressure)]) } });
   } else if (kind === "visibility") {
     const mi = f.units.wind === "mph", far = (m) => (mi ? m / 1609.34 : m / 1000), pts = hrs.filter((x) => x.vis != null).map((x) => ({ t: x.t, v: far(x.vis), x }));
     kids.push(section("Next 48 hours"), chart);
-    draw = plot(hrs, { kind: "line", color: "#7FB8D9", points: pts, y: { min: 0, fmt: (v) => `${Math.round(v)}` },
+    // (to a tenth in fog, where it's under a mile or a kilometre)
+    draw = plot(hrs, { kind: "line", color: "#7FB8D9", points: pts, y: { min: 0, fmt: (v) => String(Math.round(v * 10) / 10), unit: 0.1 },
       summary: `Visibility in ${mi ? "miles" : "kilometres"}, hour by hour.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.dist(p.x.vis), "visibility"]] }),
       table: { head: ["Time", "Visibility"], rows: pts.map((p) => [when(p.t), f.dist(p.x.vis)]) } });
@@ -103,7 +104,7 @@ export function openDetail(kind, dir = 0) {
     const span = I.hoursBetween(wx, dayStart(now), dayStart(now) + 2 * DAY), pts = span.map((x) => ({ t: x.t, v: x.uv ?? 0, x }));
     const peaks = [0, 1].map((k) => span.filter((x) => x.t >= dayStart(now) + k * DAY && x.t < dayStart(now) + (k + 1) * DAY).reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null)).filter((x) => x && x.uv >= 1);
     kids.push(section("Today and tomorrow"), chart);
-    draw = plot(span, { kind: "columns", color: "#E0A100", points: pts, y: { min: 0, max: Math.max(8, Math.ceil(Math.max(...pts.map((p) => p.v)))), fmt: (v) => String(Math.round(v)) },
+    draw = plot(span, { kind: "columns", color: "#E0A100", points: pts, y: { min: 0, max: Math.max(8, Math.ceil(Math.max(...pts.map((p) => p.v)))), fmt: (v) => String(Math.round(v)), unit: 1 },
       marks: peaks.map((x) => ({ t: x.t, v: x.uv, text: String(Math.round(x.uv)) })),
       summary: `UV index, hour by hour, today and tomorrow.${peaks.length ? ` Peaks: ${peaks.map((x) => `${Math.round(x.uv)} at ${f.time(x.t)} ${f.day(x.t, now).toLowerCase()}`).join("; ")}.` : " Low throughout."}`,
       tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), uvName(p.v).toLowerCase()]] }),
@@ -112,7 +113,7 @@ export function openDetail(kind, dir = 0) {
     const span = (wx.air?.hourly || []).filter((x) => x.t >= now - HOUR && x.t < now + 2 * DAY && x.eaqi != null), pts = span.map((x) => ({ t: x.t, v: x.eaqi, x }));
     if (pts.length > 3) {
       kids.push(section("Next 48 hours"), chart);
-      draw = plot(hrs, { kind: "line", color: "#5FC08A", points: pts, y: { min: 0, fmt: (v) => String(Math.round(v)) },
+      draw = plot(hrs, { kind: "line", color: "#5FC08A", points: pts, y: { min: 0, fmt: (v) => String(Math.round(v)), unit: 1 },
         summary: `Air quality (the European index), hour by hour, between ${Math.round(Math.min(...pts.map((p) => p.v)))} and ${Math.round(Math.max(...pts.map((p) => p.v)))}.`,
         tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), airName(p.v).toLowerCase()], ...(p.x.pm25 != null ? [[`${Math.round(p.x.pm25)} µg/m³`, "fine particles"]] : [])] }),
         table: { head: ["Time", "Index", "Fine particles"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v)), p.x.pm25 != null ? `${Math.round(p.x.pm25)} µg/m³` : "–"]) } });
@@ -129,7 +130,7 @@ export function openDetail(kind, dir = 0) {
     if (tp.length > 6) {
       const lo = Math.min(...tp.map((p) => p.v)), hi = Math.max(...tp.map((p) => p.v)), r = Math.max(0.3, hi - lo);
       kids.push(section(`Tide, next 48 hours (${unit})`), chart);
-      draws.push(plot(hrs, { kind: "line", color: "#5AC8FA", points: tp, y: { min: lo - r * 0.2, max: hi + r * 0.35, fmt },
+      draws.push(plot(hrs, { kind: "line", color: "#5AC8FA", points: tp, y: { min: lo - r * 0.2, max: hi + r * 0.35, fmt, unit: feet ? 1 : 0.1 },
         marks: turns.map((x) => ({ t: x.t, v: ht(x.h), text: f.time(x.t) })),
         summary: turns.length ? `The tide over the next two days: ${turns.map(say1).join("; ")}.` : "The tide over the next two days.",
         tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.tide), "tide"]] }),
@@ -141,7 +142,7 @@ export function openDetail(kind, dir = 0) {
     if (wp.length > 6) {
       const top = wp.reduce((a, p) => (p.v > a.v ? p : a));
       kids.push(section(`Waves, next 48 hours (${unit})`), chart2);
-      draws.push(plot(hrs, { kind: "line", color: "#4C9BE8", points: wp, y: { min: 0, fmt },
+      draws.push(plot(hrs, { kind: "line", color: "#4C9BE8", points: wp, y: { min: 0, fmt, unit: feet ? 1 : 0.1 },
         marks: [{ t: top.t, v: top.v, text: f.height(top.x.wave) }],
         summary: `Wave height, hour by hour: highest ${f.height(top.x.wave)} ${when(top.t)}.`,
         tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.wave), "waves"], ...(p.x.period != null ? [[`${Math.round(p.x.period)} s`, "apart"]] : []), ...(p.x.waveDir != null ? [[compassWord(p.x.waveDir), "from"]] : [])] }),

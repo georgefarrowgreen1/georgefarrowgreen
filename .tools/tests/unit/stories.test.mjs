@@ -21,6 +21,24 @@ test("different stories stay apart, even written alike", () => {
   assert.ok(sameStory(st("Apple unveils its new iPhone at September event", ["AAPL"]), st("Apple shares slip after iPhone event disappoints", ["AAPL"])), "one company, one event");
 });
 
+test("one market, different stories: its index and where it is aren't a story in common", () => {
+  assert.equal(sameStory(st("FTSE 100 closes higher as housebuilders gain"), st("FTSE 100 closes lower as banks drag")), false, "the index, and a word");
+  assert.equal(sameStory(st("S&P 500 hits record high on tech rally"), st("Nasdaq slips as S&P 500 retreats from record")), false, "the index, and record");
+  assert.equal(sameStory(st("FTSE 100 live: London stocks rise after Bank of England rate decision"), st("FTSE 100 live: London stocks fall after US jobs data")), false, "five in common, three of them the market");
+  assert.equal(sameStory(st("Dow Jones today: stocks rise as tech rallies"), st("Dow Jones today: stocks fall on inflation fears")), false);
+  assert.equal(sameStory(st("FTSE 100 rises as miners rally on China hopes"), st("FTSE 100 falls as miners slump on China worries")), false, "the same things in it, gone opposite ways");
+  assert.ok(sameStory(st("S&P 500 falls as chipmakers slide on a weaker outlook", ["^GSPC"]), st("Chipmakers slide, dragging the S&P 500 lower", ["^GSPC"])), "one market's story, told twice");
+  assert.ok(sameStory(st("Rolls-Royce raises profit guidance as engine flying hours recover"), st("Rolls-Royce lifts profit guidance on recovering engine flying hours")), "one company, one story");
+});
+
+test("stories gathered under their lead, never one story to the next", () => {
+  // (b is a's story, and c is b's, but c isn't a's: c stands apart, as the reader's More on This would have it)
+  const a = st("Tesco profit jumps as grocery sales climb", ["TSCO.L"]), b = st("Tesco profit jumps on strong Christmas sales", ["TSCO.L"]), c = st("Strong Christmas sales lift Sainsbury and Tesco shares", ["SBRY.L", "TSCO.L"]);
+  assert.ok(sameStory(a, b) && sameStory(b, c) && !sameStory(a, c));
+  const g = storiesOf([a, b, c]);
+  assert.equal(g.length, 2); assert.deepEqual(g[0].more, [b]); assert.equal(g[1].lead, c);
+});
+
 test("a headline's words: what it's about, endings off, the small words out", () => {
   assert.deepEqual([...words("Okta Joins the S&P 500 as Shares Jump")], ["okta", "join", "s&p", "500", "share", "jump"]);
   assert.deepEqual(storiesOf([]), []);

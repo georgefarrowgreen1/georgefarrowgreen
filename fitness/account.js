@@ -12,12 +12,20 @@ async function call(path, { method = "GET", body, form, raw = false, wait = 3000
   try {
     r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: form || (body ? JSON.stringify(body) : undefined),
       credentials: "same-origin", signal: AbortSignal.timeout(wait) });
-  } catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
+  } catch (e) { throw failed(e); }
   return answer(r, raw);
 }
+// (no answer: offline; or, the network there, none in time, the server slow rather than you offline, and said so.
+// Either's tried again later, as offline is: slow says which)
+function failed(e) {
+  const slow = (e?.name === "TimeoutError" || e?.name === "AbortError") && navigator.onLine !== false;
+  return Object.assign(new Error(slow ? "Fitness is taking too long to answer. Try again in a moment." : "You’re offline. Try again when you’re back online."), { offline: true, slow });
+}
 async function answer(r, raw = false) {
-  if (raw && r.ok) return new Uint8Array(await r.arrayBuffer());
-  const j = await r.json().catch(() => ({}));
+  // (cut off part way, by the time given running out or the network going: no answer, not an empty one, which would
+  // read as signed out)
+  if (raw && r.ok) return new Uint8Array(await r.arrayBuffer().catch((e) => { throw failed(e); }));
+  const j = await r.json().catch((e) => { if (r.ok && e?.name !== "SyntaxError") throw failed(e); return {}; });
   if (!r.ok && r.status !== 409) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status });
   return { status: r.status, ...j };
 }
@@ -27,7 +35,8 @@ async function answer(r, raw = false) {
 export function me(since = null) {
   const s = since ? Math.round(since) : null, early = globalThis.fxEarly;
   globalThis.fxEarly = null;
-  if (early && early.since === s) return early.got.then((r) => answer(r), () => call(s ? `me?since=${s}` : "me"));
+  // (asked again where that had no answer, or one cut off: not where the account answered with an error)
+  if (early && early.since === s) return early.got.then((r) => answer(r)).catch((e) => (e?.status ? Promise.reject(e) : call(s ? `me?since=${s}` : "me")));
   return call(s ? `me?since=${s}` : "me");
 }
 // the activities older than one you have (its start and id), a page at a time → { acts, more }

@@ -6,6 +6,7 @@ import { PLACES, nearestPlace, snapToMile, snapTo } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
+import { linkParts, linksIn } from "./links.js";
 import { ABOUT, BODIES, EARTH_R, MOON_R, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf, lookTo, moonLook, marsLook, sunLook, orbitWhere, ORBIT, distAt } from "./moon.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
@@ -69,17 +70,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -132,13 +139,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -192,33 +199,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -239,6 +268,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -305,20 +335,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
@@ -376,8 +414,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.61";            // shown in InFlite's menu
-const APP_NEWS = "Pinching no longer zooms the page: it stays the app's own size (maps and photos still pinch)";       // (said once it's in)
+const APP_VERSION = "1.62";            // shown in InFlite's menu
+const APP_NEWS = "Drafts survive updates, links open with a tap, photos zoom with a pinch, slow photos try again instead of showing as expired, and an iPad with a trackpad opens Chat";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -462,6 +500,9 @@ const NEW_HOME = (() => {
 })();
 const HERE = () => `${location.host}${location.pathname.replace(/\/(index\.html)?$/, "").replace(/\/+$/, "")}`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// What's written, as it's shown: its lines kept, and its web addresses links that open outside Chat, in the browser
+// (pigeon/links.js: only ever a web page)
+const linked = (t) => linkParts(t).map((x) => (x.href ? `<a class="lnk" href="${esc(x.href)}" target="_blank" rel="noopener noreferrer" data-act="link">${esc(x.text)}</a>` : esc(x.text))).join("").replace(/\n/g, "<br>");
 
 /* ---------------- this phone's storage (IndexedDB) ----------------
    Holds the session token and the private key as a non-extractable CryptoKey:
@@ -517,6 +558,9 @@ function xhrFetch(url, { method, headers, body, size, onProgress }) {
     x.send(body);
   });
 }
+// A change to your settings sent (and when it's answered): a sync already on its way says what they were before it, so
+// it's no reason to change them back (sync)
+let meTurn = 0, meOut = 0;
 async function api(path, { method = "GET", body, form, raw, blob, size, onProgress } = {}) {
   const headers = {};
   if (S.token) headers.Authorization = "Bearer " + S.token;
@@ -526,9 +570,13 @@ async function api(path, { method = "GET", body, form, raw, blob, size, onProgre
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
   let r;
   // nothing waits forever on a weak signal: a reply that hasn't come in 25 s (a minute for anything carrying a file) is treated as no signal
-  const quit = !onProgress && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(payload instanceof Blob || payload instanceof FormData ? 90000 : 25000) : undefined;
+  // (a photo, GIF or voice pigeon fetched, raw, two minutes: the time covers reading it too, and a big GIF on a weak signal takes a while)
+  const quit = !onProgress && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(payload instanceof Blob || payload instanceof FormData ? 90000 : raw ? 120000 : 25000) : undefined;
+  const mine = path === "me" && method === "PATCH";
+  if (mine) { meTurn++; meOut++; }
   try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, size, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload, signal: quit }); }
   catch (_) { S.offline = true; renderOffline(); throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); }
+  finally { if (mine) { meTurn++; meOut--; } }
   if (S.offline) { S.offline = false; renderOffline(); }
   if (raw && r.ok) return r;
   // a page that isn't ours (a café's sign-in screen, a proxy) answering in our place isn't success
@@ -536,7 +584,7 @@ async function api(path, { method = "GET", body, form, raw, blob, size, onProgre
   let data = {};
   try { data = await r.json(); } catch (_) {}
   // only a sign-in that has ended signs you out (not a wrong password on a "confirm it's you")
-  if (r.status === 401 && S.token && data.field === "session") { await forget(); go("welcome"); }
+  if (r.status === 401 && S.token && data.field === "session") { await forget(true); go("welcome"); announce("You’ve been signed out, as this sign-in was ended on another device or by a new password."); }
   // a reply with no message of ours came from somewhere in between: say which, so it can be traced
   if (!r.ok) throw Object.assign(new Error(data.error || `Something went wrong (error ${r.status}). Try again.`), { status: r.status, field: data.field });
   return data;
@@ -729,15 +777,19 @@ async function loadBitmap(blob) {
   }
 }
 // Downscale to 1600px and re-encode as JPEG. This also strips the photo's location metadata.
+// (the full-size picture, 48 MB or so for a 12 MP photo, and the canvas let go of as soon as they're done with, not
+// whenever they're collected: a few photos in a row mustn't have iOS close the app for its memory)
 async function prepImage(blob) {
-  const bmp = await loadBitmap(blob);
-  const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement("canvas");
-  c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-  const out = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
-  if (!out) throw new Error("That photo couldn’t be prepared.");
-  return { bytes: new Uint8Array(await out.arrayBuffer()), w: c.width, h: c.height, preview: URL.createObjectURL(out) };
+  const bmp = await loadBitmap(blob), c = document.createElement("canvas");
+  try {
+    const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    const out = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+    if (!out) throw new Error("That photo couldn’t be prepared.");
+    return { bytes: new Uint8Array(await out.arrayBuffer()), w: c.width, h: c.height, preview: URL.createObjectURL(out) };
+  } finally { bmp.close?.(); c.width = c.height = 0; }
 }
 
 /* ---------------- map ---------------- */
@@ -2207,7 +2259,7 @@ function mapGestures(cv) {
 // server: safety numbers and "Your Encryption Key" are built from it, so a
 // server that showed friends a different key for you couldn't hide it.
 async function useKeys(token, me, privJwk) {
-  S.token = token; S.me = me;
+  S.token = token; S.me = me; S.ended = null;
   S.secretJwk = privJwk;                          // memory only: lets a new passkey lock its own copy
   S.priv = await E2E.importPriv(privJwk);
   S.myPub = { kty: "EC", crv: "P-256", x: privJwk.x, y: privJwk.y };
@@ -2219,24 +2271,29 @@ async function useKeys(token, me, privJwk) {
   const saved = await idb.set("session", { token, me, priv: S.priv, pub: S.myPub });
   if (saved === null) console.warn("Chat: couldn’t save the session on this phone; you’ll sign in again next time.");
 }
-async function forget() {
+// (ended: the server ended this sign-in, from another phone or with a new password, rather than you signing out here.
+// Pigeons still waiting for signal, and what you'd started writing, stay on this phone, sealed as they are, for when
+// you're back in as you (afterSignIn), and the welcome says why you're there)
+async function forget(ended) {
+  if (ended && S.me) S.ended ||= { waiting: S.outbox.filter((o) => !o.err).length };
   S.photos.forEach((u) => URL.revokeObjectURL(u));
   S.avatars?.forEach((u) => { if (u) URL.revokeObjectURL(u); });
-  clearTimeout(cacheTimer);
+  clearTimeout(cacheTimer); clearTimeout(draftsTimer);
   // nothing of this account carries on into the next one: sound, the mic, location, drafts, searches, news
   try { S.player?.pause(); } catch (_) {}
   if (rec) recStop(false);
   stopLocWatch(); airEl = null;
   try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem("inflight-badges"); localStorage.removeItem("inflight-pushsub"); localStorage.removeItem(OPENED_KEY); } catch (_) {}
   openedFor = null;
-  if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {});
+  if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {});
+    if (!ended) { await idb.del("outbox:" + S.me.id).catch(() => {}); await idb.del("drafts:" + S.me.id).catch(() => {}); themeDone(); }
     if (await idb.get("pinsup:" + S.me.id).catch(() => null)) { await idb.del("pins:" + S.me.id).catch(() => {}); await idb.del("pinsup:" + S.me.id).catch(() => {}); } }
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
-  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
+  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, keyBad: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, drafts: new Map(), gevents: new Map(),
     avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
-    syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0, resumable: null });
+    syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0, resumable: null, pinsWait: null });
   clearAttach();
   await idb.del("session");
 }
@@ -2726,6 +2783,7 @@ async function applySync(d) {
       S.seenLanded.add(f.last.id);                 // (one landing in front of you comes down on screen: playKeyed)
       if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
         toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
+      else if (S.started && f.last.from === f.id && !f.last.readAt) announce(landedSay(first(f.name), f.last.id));     // (in it: comes down on screen, and said)
     }
   }
   for (const g of S.groups) {
@@ -2739,9 +2797,12 @@ async function applySync(d) {
       S.seenLanded.add(l.id);
       if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
         toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
+      else if (S.started && !l.readAt) announce(landedSay(first(member(g, l.from)?.name || "someone"), l.id));
     }
   }
 }
+// (what's said of one landing in the chat you're in: who from, and its words, as they're on screen)
+const landedSay = (who, id) => { const t = (S.plain.get(id)?.t || "").trim(); return `A pigeon from ${who} just landed${t ? `: ${t.length > 280 ? t.slice(0, 280) + "…" : t}` : "."}`; };
 // something set off, landed or was called back: the In the air strip catches up now, not 20 s later
 function skiesFollow() {
   const sig = [...S.friends, ...S.groups].map((x) => (x.last ? `${x.last.id}:${x.last.flying ? 1 : 0}${x.last.lost ? "l" : ""}` : "")).join(",");
@@ -2754,9 +2815,13 @@ async function sync() {
   if (syncing) return syncing;
   syncing = (async () => {
     try {
-      const tok = S.token, d = await api("sync");
+      if (S.pinsWait) { await S.pinsWait; if (!S.token) return; }      // (the keys trusted before, still being fetched at the start: first)
+      const tok = S.token, turn = meTurn, d = await api("sync");
       if (S.token !== tok) return;                // signed out (or in as someone else) meanwhile: not theirs to show
       if (!Number.isFinite(d.now) || !d.me || !Array.isArray(d.friends)) throw new Error("A sync came back incomplete.");
+      // (a setting changed here while it was asked, or still being saved: what it says of you is from before, and this
+      // phone's are newer, Appearance, Pigeon Death and the rest; the next sync has them as saved)
+      if (S.me && (turn !== meTurn || meOut) && d.me.id === S.me.id) d.me = { ...d.me, ...S.me };
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
       const caught = S.pinsUnread && await pinsCatchUp();      // (trusted keys it couldn't fetch at the start: now, before it trusts any shown here)
@@ -2770,6 +2835,8 @@ async function sync() {
       S.syncSig = sig; S.onSig = onSig; S.seenSig = seen; S.syncFails = 0; S.lastSync = Date.now();
       if (!same) { S.raw = d; await applySync(d); skiesFollow(); }
       else if (seenMoved) { S.raw = d; for (const f of d.friends) { const o = S.friends.find((x) => x.id === f.id); if (o) o.seenAt = f.seenAt; } }
+      // (an Appearance this phone couldn't save to your account yet goes again with any sync, not only one bringing news: syncTheme)
+      if (same && themeWaits() && !themeSaving) saveTheme(theme());
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
@@ -2788,13 +2855,15 @@ async function sync() {
   return syncing;
 }
 function friend(id) { return S.friends.find((f) => f.id === id); }
-// The server should show everyone the key this phone holds. If it ever says otherwise, say so.
+// The server should show everyone the key this phone holds. If it ever says otherwise, say so: on Messages and in every
+// chat for as long as it does (myKeyWarn), and once as it's found (if it can be: nothing shows over the lock)
 function checkMyKey(me) {
-  if (!S.myPub || !me?.pub || keyId(me.pub) === keyId(S.myPub)) return;
-  if (S.keyWarned) return;
+  S.keyBad = !!(S.myPub && me?.pub && keyId(me.pub) !== keyId(S.myPub));
+  if (!S.keyBad || S.keyWarned || S.locked) return;
   S.keyWarned = true;
   toast("<b>Your security key doesn’t match</b><br>The server is showing a different key for you than the one on this phone. Don’t send anything private, and sign out and back in.");
 }
+const myKeyWarn = () => (S.keyBad ? `<div class="warn strong" data-key="warn:me"><span><b>Your security key doesn’t match.</b> The server is showing a different key for you than the one on this phone. Don’t send anything private, and sign out and back in.</span><button class="btn small" data-act="signout">Sign Out</button></div>` : "");
 // First key seen for a friend is remembered on this phone; a later change is flagged.
 // Keys this phone trusted before are kept too, so scrolls sealed with them stay readable
 // after a friend resets. Only keys this phone has seen are ever tried: a key named by the
@@ -3033,11 +3102,11 @@ async function loadChat(fid) {
   const d = await api((g ? "group-messages?id=" : "messages?with=") + encodeURIComponent(fid) + (tag ? "&tag=" + encodeURIComponent(tag) : ""));
   if (S.token !== tok) return;                     // signed out meanwhile
   S.skew = d.now - Date.now();
-  if (d.same) { if (S.msgs.has(fid) && tags.get(fid) === d.tag) return; tags.delete(fid); return loadChat(fid); }
+  if (d.same) { if (S.msgs.has(fid) && tags.get(fid) === d.tag) return fetchMedia(fid); tags.delete(fid); return loadChat(fid); }
   if (d.tag) tags.set(fid, d.tag); else tags.delete(fid);
   // the same as last time: nothing to open, draw or save again
   const sig = JSON.stringify({ ...d, now: 0 }), sigs = (S.chatSigs ||= new Map());
-  if (sigs.get(fid) === sig && S.msgs.has(fid)) return;
+  if (sigs.get(fid) === sig && S.msgs.has(fid)) return fetchMedia(fid);
   sigs.set(fid, sig); S.chatChanged = true;
   S.chatRaw.delete(fid); S.chatRaw.set(fid, d); cacheSave();
   await applyChat(fid, d, true);
@@ -3078,12 +3147,9 @@ async function applyChat(fid, d, live) {
   if (!live) S.chatTags?.delete(fid);              // (what's shown now isn't the copy the server last named: loadChat)
   S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn && { ...d.turn, at: d.now || 0 }); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
   if (g) { S.gevents.set(fid, d.events || []); if (live) (S.geventsLive ||= new Set()).add(fid); }
-  for (const m of d.messages) {
-    const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
-    if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (live && m.photo === 1 && (p?.p || p?.v) && !onceP(p) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
-  }
+  for (const m of d.messages) if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
   if (!live) return;
+  fetchMedia(fid);
   const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
   if (!S.locked && S.view === "chat" && S.chat === fid && document.visibilityState === "visible" && d.messages.some(unread)) {     // (only a chat you're looking at is read)
     api(g ? "group-read" : "read", { method: "POST", body: g ? { id: fid } : { with: fid } }).catch(() => {});
@@ -3124,6 +3190,32 @@ async function cacheLoad() {
   S.fromCache = true;
   return true;
 }
+/* ---------- drafts: what you'd started writing, kept on this phone ----------
+   Each chat's draft, and what's in the box of the one that's open, sealed with your own key (as the keys you've trusted
+   are: never kept as words), so they outlast an update putting itself in, or iOS closing the app while it's away.
+   Deleted on sign out (not when a sign-in is ended from elsewhere: forget). */
+const draftsMeta = () => ({ type: "draft", id: "drafts", from: S.me.id, to: S.me.id });
+let draftsTimer = 0;
+const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(draftsSave, 800); };
+async function draftsSave() {
+  clearTimeout(draftsTimer);
+  if (!S.me || !S.priv || !S.myPub) return;
+  const me = S.me.id, d = new Map(S.drafts);
+  // (the open chat's as it is in the box; not words going up with a photo or a voice pigeon)
+  if (S.view === "chat" && S.chat && $ta) { const v = $ta.value; if (v.trim() && !(S.busy && S.sending && S.sendingTo === S.chat)) d.set(S.chat, v); else d.delete(S.chat); }
+  try {
+    const ct = d.size ? await E2E.seal(await pairFor(S.myPub), draftsMeta(), { d: [...d] }) : null;
+    if (S.me?.id !== me) return;                   // (signed out meanwhile: nothing of theirs kept)
+    if (ct) await idb.set("drafts:" + me, ct); else await idb.del("drafts:" + me);
+  } catch (_) {}
+}
+async function draftsLoad() {
+  try {
+    const ct = await idb.get("drafts:" + S.me.id); if (!ct) return;
+    const o = await E2E.open(await pairFor(S.myPub), draftsMeta(), ct);
+    for (const [id, v] of Array.isArray(o?.d) ? o.d : []) if (typeof id === "string" && typeof v === "string" && v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
+  } catch (_) {}                                   // (one this key can't open: as if there were none)
+}
 // A stopover's line is sealed between the friend it stopped with and the recipient.
 async function openNote(id, from, to, ct) {
   if (S.notes.has(id)) return;
@@ -3156,18 +3248,27 @@ const openedOnce = (id) => opened().has(id);
 function saveOpened() { try { localStorage.setItem(OPENED_KEY, JSON.stringify({ uid: S.me.id, ids: [...S.viewedOnce].slice(-500) })); } catch (_) {} }
 // past its time it's gone, even before the server has tidied it away
 const picGone = (m) => m.photo === 2 || S.photoGone.has(m.id) || (m.expiresAt != null && now() >= m.expiresAt);
+// A view-once photo whose download didn't arrive (no signal, cut off, the server busy) may still have been counted as
+// opened by the server, which says so with the next sync: it lets who it was for ask again for a few minutes after the
+// first ask (functions/_pigeon.js ONCE_AGAIN), so till then it's still there to tap here (not quite all of them: the
+// asking takes a moment too)
+const ONCE_RETRY = 4 * MIN, onceMissed = new Map();
+const onceAgain = (m) => onceMissed.has(m.id) && now() - (m.viewedAt || onceMissed.get(m.id)) < ONCE_RETRY;
 async function viewOnce(id) {
   const fid = S.chat, g = group(fid), m = (S.msgs.get(fid) || []).find((x) => x.id === id), p = S.plain.get(id);
-  if (!m || !onceP(p) || onceOpen || m.viewedAt || opened().has(id) || picGone(m)) return;
+  if (!m || !onceP(p) || onceOpen || picGone(m)) return;
+  if ((m.viewedAt || opened().has(id)) && !onceAgain(m)) { if (onceMissed.delete(id)) render(); return; }     // (its few minutes are up)
+  onceMissed.delete(id);
   haptic("tick");
   const el = document.createElement("div");
   el.className = "oview"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Photo, view once");
   el.innerHTML = `<canvas aria-hidden="true"></canvas><div class="obar"><span class="oring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/></svg></span><span class="otext">Opening…</span><button type="button" class="oclose" aria-label="Close">${I.x}</button></div>`;
   root().append(el);
   const state = onceOpen = { el, timer: 0, bmp: null };
+  backStep();
   // closed, it fades away (the photo with it) and is wiped as it goes; leaving the app wipes it there and then
   const close = (atOnce) => {
-    if (onceOpen !== state) return; onceOpen = null;
+    if (onceOpen !== state) return; onceOpen = null; backStep();
     clearTimeout(state.timer); document.removeEventListener("visibilitychange", hide);
     const wipe = () => { const cv = $("canvas", el); if (cv) { cv.width = cv.height = 0; } state.bmp?.close?.(); state.bmp = null; };
     if (atOnce === true) wipe();
@@ -3176,6 +3277,7 @@ async function viewOnce(id) {
   const hide = () => { if (document.visibilityState !== "visible") close(true); };
   document.addEventListener("visibilitychange", hide);
   el.addEventListener("click", () => close());
+  pinchZoom(el, $("canvas", el), () => close());       // (it can be enlarged in its time, as any photo)
   // counted as opened now (no second go), unless it never arrives
   m.viewedAtServer = !!m.viewedAt; m.viewedAt = m.viewedAt || now(); opened().add(id); saveOpened(); render();
   let plain, got = false;
@@ -3186,7 +3288,7 @@ async function viewOnce(id) {
   } catch (e) {
     close();
     // no signal, or the server never answered: it wasn't handed over, so it can still be opened later
-    if (!got && (e.offline || !e.status || e.status >= 500)) { opened().delete(id); saveOpened(); if (m.viewedAt && !m.viewedAtServer) delete m.viewedAt; render(); return toast(esc(e.offline ? "You’re offline. The photo is still there to open once you’re back." : "Couldn’t open the photo just now. Try again in a moment.")); }
+    if (!got && (e.offline || !e.status || e.status >= 500)) { onceMissed.set(id, now()); opened().delete(id); saveOpened(); if (m.viewedAt && !m.viewedAtServer) delete m.viewedAt; render(); return toast(esc(e.offline ? "You’re offline. The photo is still there to open once you’re back." : "Couldn’t open the photo just now. Try again in a moment.")); }
     if (e.status === 410) toast(esc(e.message || "This photo has already been opened."));
     else toast(esc(e.message || "Couldn’t open this photo."));
     return;
@@ -3197,7 +3299,10 @@ async function viewOnce(id) {
   if (!state.bmp || onceOpen !== state) return close();
   const cv = $("canvas", el), dpr = Math.min(3, devicePixelRatio || 1), W = el.clientWidth, H = el.clientHeight;
   const k = Math.min(W / state.bmp.width, H / state.bmp.height), w = Math.round(state.bmp.width * k), h = Math.round(state.bmp.height * k);
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+  // (drawn with every pixel it has, at most 1,600 across, so it's still sharp enlarged: pinchZoom. Never more than 16
+  // million, though, the most iOS will draw on one canvas, from a phone that sent one bigger than Chat makes them)
+  const q = Math.max(dpr, Math.min(state.bmp.width / w, Math.sqrt(16e6 / (w * h))));
+  cv.width = Math.round(w * q); cv.height = Math.round(h * q); cv.style.width = `${w}px`; cv.style.height = `${h}px`;
   cv.getContext("2d").drawImage(state.bmp, 0, 0, cv.width, cv.height);
   state.bmp.close?.(); state.bmp = null;
   el.classList.add("on"); $(".otext", el).textContent = "View once";
@@ -3206,17 +3311,29 @@ async function viewOnce(id) {
 }
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
+  let got = false;
   try {
-    const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
-    const plain = p.v ? await E2E.openPhoto(m.id, p.v, await r.arrayBuffer(), "voice") : await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
+    const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true }), bytes = await r.arrayBuffer();
+    got = true;
+    const plain = p.v ? await E2E.openPhoto(m.id, p.v, bytes, "voice") : await E2E.openPhoto(m.id, p.p, bytes);
     S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); bornAt.set(S.photos.get(m.id), Date.now());
     trimPhotos(fid);
   } catch (e) {
     S.photos.delete(m.id);
-    // gone, or it can't be opened on this phone: don't fetch it again every time (no signal: it will be)
-    if (e.status === 410 || (!e.offline && !(e.status >= 500))) S.photoGone.add(m.id);
+    // gone, or it can't be opened on this phone: don't fetch it again every time (no signal, the server busy, or a
+    // download cut off or too slow: it will be, next time the chat is looked at: fetchMedia)
+    if (got || !passing(e)) S.photoGone.add(m.id);
   }
   if (S.view === "chat" && S.chat === fid) render();
+}
+const passing = (e) => e.offline || !e.status || e.status >= 500 || [408, 425, 429].includes(e.status);
+// the photos, GIFs and voice pigeons a chat should have and doesn't yet (none on its way, none gone): fetched
+function fetchMedia(fid) {
+  const g = group(fid);
+  for (const m of S.msgs.get(fid) || []) {
+    const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
+    if (m.photo === 1 && (p?.p || p?.v) && !onceP(p) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
+  }
 }
 // opened photos and voice notes are kept for the chats you've been in, up to a point: the oldest from other chats go first
 function trimPhotos(fid) {
@@ -3574,15 +3691,16 @@ function sheetDrag() {
   };
   $layer.addEventListener("touchend", () => end(false)); $layer.addEventListener("touchcancel", () => end(true));
 }
-// the photo: swipe it away, up or down
+// the photo: swipe it away, up or down (not while it's enlarged, nor once a second finger comes: that's pinchZoom's)
 function viewerDrag() {
   let st = null;
   $layer.addEventListener("touchstart", (e) => {
     const v = e.target.closest?.(".viewer"); st = null;
-    if (v && e.touches.length === 1 && !zoomed()) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
+    if (v && e.touches.length === 1 && !zoomed() && !v.classList.contains("zoomed")) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
   }, { passive: true });
   $layer.addEventListener("touchmove", (e) => {
     if (!st) return;
+    if (e.touches.length > 1) { if (st.dir) unstyle(st.img, st.v); st.v.style.backgroundColor = ""; st = null; return; }
     const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
     if (!st.dir) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; if (Math.abs(dx) > Math.abs(dy)) { st = null; return; } st.dir = "y"; st.img.style.transition = st.v.style.transition = "none"; }
     e.preventDefault(); speed(st, t.clientX, t.clientY); st.dy = dy;
@@ -3604,6 +3722,98 @@ function viewerDrag() {
       settle([[s2.img, "translateY(0)"]], f.ease, f.ms, () => { unstyle(s2.img, s2.v); });
     }
   });
+}
+// Pinch to zoom, built into a photo (the page itself never zooms: lockPage). Two fingers enlarge it about the point
+// between them and move it as they go; a double tap zooms in on that spot, or back out; enlarged, one finger moves it
+// round, and let go it settles back inside the screen's edges. A single tap brings it back to size, and at its size is
+// the photo's own (tap: it closes), a moment later, once it's clearly not the first of two. box: what's touched; el: what's enlarged (laid out where it is,
+// unmoved, as offsetLeft and offsetTop give it)
+const ZOOM_MAX = 4, ZOOM_TAP = 2.5;
+function pinchZoom(box, el, tap) {
+  let s = 1, x = 0, y = 0, g = null, last = null, tapTimer = 0;
+  const put = (ms) => {
+    const one = s === 1 && !x && !y;
+    el.style.transition = ms ? `transform ${STILL.matches ? 0 : ms}ms var(--ease-out)` : "none";
+    if (!one) el.style.transformOrigin = "0 0";
+    el.style.transform = one ? "" : `translate(${x}px, ${y}px) scale(${s})`;
+    box.classList.toggle("zoomed", s > 1);
+    // (back as it was: its own origin again once it's there, for the swipe that sends it away)
+    if (one) setTimeout(() => { if (s === 1 && !x && !y) el.style.transformOrigin = el.style.transition = ""; }, ms || 0);
+  };
+  // (where it is on the screen unenlarged, and the room there is)
+  const base = () => { const r = box.getBoundingClientRect(); return { l: r.left + el.offsetLeft, t: r.top + el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, r }; };
+  // scaled to k, the point (cx, cy) on the screen staying where it is (from b, where it was laid out)
+  const about = (b, k, cx, cy, from = { s, x, y }) => { const px = (cx - b.l - from.x) / from.s, py = (cy - b.t - from.y) / from.s; s = k; x = cx - b.l - k * px; y = cy - b.t - k * py; };
+  // back within bounds: no smaller than it was, no bigger than ZOOM_MAX (about cx, cy: the screen's middle, unsaid), filling
+  // the screen where it's bigger than it and centred where it isn't
+  const fit = (b, cx = b.r.left + b.r.width / 2, cy = b.r.top + b.r.height / 2) => {
+    if (s <= 1) { s = 1; x = y = 0; return; }
+    if (s > ZOOM_MAX) about(b, ZOOM_MAX, cx, cy);
+    const W = b.w * s, H = b.h * s, r = b.r;
+    x = W <= r.width ? r.left + (r.width - W) / 2 - b.l : Math.min(r.left - b.l, Math.max(r.right - W - b.l, x));
+    y = H <= r.height ? r.top + (r.height - H) / 2 - b.t : Math.min(r.top - b.t, Math.max(r.bottom - H - b.t, y));
+  };
+  const mid = (a, c) => [(a.clientX + c.clientX) / 2, (a.clientY + c.clientY) / 2];
+  box.addEventListener("touchstart", (e) => {
+    if (e.target.closest("button")) { g = null; return; }          // (its own buttons are only buttons)
+    if (e.touches.length >= 2) {
+      clearTimeout(tapTimer); last = null;
+      const [a, c] = e.touches, [fx, fy] = mid(a, c);
+      g = { two: true, d: Math.max(1, Math.hypot(a.clientX - c.clientX, a.clientY - c.clientY)), from: { s, x, y }, fx, fy, lx: fx, ly: fy, b: base() };
+      el.style.transition = "none";
+    } else if (e.touches.length === 1 && !g) {
+      const t = e.touches[0];
+      g = { two: false, sx: t.clientX, sy: t.clientY, from: { s, x, y }, moved: false, at: performance.now() };
+    }
+  }, { passive: true });
+  box.addEventListener("touchmove", (e) => {
+    if (!g) return;
+    if (g.two) {
+      if (e.touches.length < 2) return;
+      e.preventDefault();
+      const [a, c] = e.touches, [fx, fy] = mid(a, c), d = Math.hypot(a.clientX - c.clientX, a.clientY - c.clientY);
+      // (a little past either end while it's held, eased back as it's let go)
+      const k = Math.min(ZOOM_MAX * 1.25, Math.max(0.7, (g.from.s * d) / g.d));
+      about(g.b, k, g.fx, g.fy, g.from); x += fx - g.fx; y += fy - g.fy; g.lx = fx; g.ly = fy;
+      put(0);
+      return;
+    }
+    const t = e.touches[0], dx = t.clientX - g.sx, dy = t.clientY - g.sy;
+    if (!g.moved && Math.hypot(dx, dy) < 8) return;
+    g.moved = true;
+    if (s <= 1) return;                                             // (unenlarged, a swipe is viewerDrag's: away it goes)
+    e.preventDefault();
+    x = g.from.x + dx; y = g.from.y + dy; put(0);
+  }, { passive: false });
+  const end = (e) => {
+    if (!g) return;
+    if (g.two) {
+      if (e.touches.length >= 2) return;
+      const b = base(); fit(b, g.lx, g.ly); put(260); g = null;
+      return;
+    }
+    if (e.touches.length) return;
+    const one = g; g = null;
+    if (one.moved || performance.now() - one.at > 400) { if (s > 1) { fit(base()); put(260); } return; }
+    // a tap: no click of the phone's own, as what it does is decided here
+    if (e.cancelable) e.preventDefault();
+    const t = e.changedTouches[0];
+    if (last && performance.now() - last.at < 300 && Math.hypot(t.clientX - last.x, t.clientY - last.y) < 40) {
+      clearTimeout(tapTimer); last = null;
+      const b = base();
+      if (s > 1) { s = 1; x = y = 0; } else { about(b, ZOOM_TAP, t.clientX, t.clientY); fit(b, t.clientX, t.clientY); }
+      haptic("tick"); put(300);
+      return;
+    }
+    // (enlarged, a tap brings it back to size first; at its size, it's the photo's own)
+    last = { at: performance.now(), x: t.clientX, y: t.clientY };
+    clearTimeout(tapTimer); tapTimer = setTimeout(() => {
+      last = null;
+      if (s > 1) { s = 1; x = y = 0; put(300); } else if (box.isConnected && !box.classList.contains("closing")) tap();
+    }, 300);
+  };
+  box.addEventListener("touchend", end, { passive: false });
+  box.addEventListener("touchcancel", (e) => { if (g) { g = null; fit(base()); put(260); } }, { passive: true });
 }
 // a banner: flick it up and it goes
 function toastSwipe() {
@@ -3644,12 +3854,40 @@ function navGestures() {
   // Escape: the menu or question first, then the sheet, then back
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
-    if (onceOpen) { onceOpen.el.click(); return; }   // a view-once photo closes first
-    if ($pop.firstElementChild) { closePop(); return; }
-    if (S.sheet) { closeTop(); return; }
-    if (inField(document.activeElement)) { document.activeElement.blur(); return; }
-    $(".nb-left .nbtn.back", $view)?.click();
+    stepBack(true);
   });
+  // …and Android's Back, the gesture or the button, the same (backStep)
+  addEventListener("popstate", () => {
+    if (!ANDROID) return;
+    if (unwinding) { unwinding = false; return backStep(); }
+    // (Back lands where the step was kept from; a link opened in place, #open=… say, moves history too, and isn't Back:
+    // what it opens is its own to say, hashchange)
+    if (location.href !== backFrom) return;
+    stepBack(false); backStep();
+  });
+}
+function stepBack(key) {
+  if (!key && IFL.isOpen()) { IFL.close(); return; }     // (InFlite's menu answers Escape itself)
+  if (onceOpen) { onceOpen.el.click(); return; }   // a view-once photo closes first
+  if ($pop.firstElementChild) { closePop(); return; }
+  if (S.sheet) { closeTop(); return; }
+  if (key && inField(document.activeElement)) { document.activeElement.blur(); return; }     // (Android's Back puts the keyboard away itself)
+  $(".nb-left .nbtn.back", $view)?.click();
+}
+// Android's Back goes back through the page's history, and Chat's screens aren't pages: so while there's something to step
+// back from (a menu, a sheet, a photo, a chat), one step of history is kept for it, which Back takes (popstate, as
+// Escape); still more to close, it's kept again; nothing left, it's taken away, so Back from Messages leaves Chat as it
+// should. (Each page's own steps only: one left from before a reload isn't this page's to take back)
+const ANDROID = /Android/.test(navigator.userAgent), BACK_STEP = Math.random().toString(36).slice(2);
+let unwinding = false, backFrom = null;
+function backStep() {
+  if (!ANDROID || unwinding || !$view) return;
+  const ours = history.state?.chatBack === BACK_STEP;
+  const want = !S.locked && !!(IFL.isOpen() || onceOpen || $pop.querySelector(".menu-pop:not(.closing), .asheet:not(.closing)") || S.sheet || $(".nb-left .nbtn.back", $view));
+  try {
+    if (want && !ours) { backFrom = location.href; history.pushState({ chatBack: BACK_STEP }, ""); }
+    else if (!want && ours) { unwinding = true; history.back(); }
+  } catch (_) { unwinding = false; }
 }
 function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
@@ -3756,8 +3994,9 @@ function mount() {
 
     <div class="layer"></div>
     <div class="poplayer"></div>
-    <div class="toasts" role="status" aria-live="polite"></div>`;
-  $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
+    <div class="toasts" role="status" aria-live="polite"></div>
+    <div class="sr said" role="status"></div>`;
+  $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg"); $said = $(".said");
   pressFeedback($compose); composeTouch();
   // (once played, a badge's bounce and the highlight's squish are done: the bar coming back doesn't replay them)
   $tabbar.addEventListener("animationend", (e) => { if (e.target.classList.contains("badge")) e.target.classList.remove("new"); if (e.animationName === "squish") e.target.classList.remove("moving"); });
@@ -3773,7 +4012,7 @@ function mount() {
   root().addEventListener("change", onChange);
   root().addEventListener("submit", onSubmit);
   root().addEventListener("input", onInput);
-  $ta.addEventListener("input", () => { fitTa(); renderCompose(); });
+  $ta.addEventListener("input", () => { fitTa(); renderCompose(); draftsSoon(); });
   // With the keyboard up the home bar is hidden, so drop its spacing and sit the
   // message box right on the keyboard. Touch screens only: there's no keyboard to clear otherwise.
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
@@ -3816,7 +4055,8 @@ function fitScreen() {
 // it, and the page is put back at the top whenever iOS nudges it; the message
 // box then sits right on the keyboard and everything above stays in view.
 function fitKeyboard() {
-  const vv = window.visualViewport; if (!vv || !matchMedia("(pointer: coarse)").matches) return;
+  // (any pointer that's a finger: an iPad with a trackpad says its own pointer is a fine one, and its keyboard can come off)
+  const vv = window.visualViewport; if (!vv || !matchMedia("(any-pointer: coarse)").matches) return;
   const doc = document.documentElement;
   let raf = 0, was = false;
   const fit = () => {
@@ -3870,7 +4110,7 @@ function go(view, chat) {
   }
   const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
   // what you'd typed stays with its chat, for when you come back (not words going up with a photo or a voice pigeon)
-  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
+  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); draftsSoon(); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
   if (!same) newPill(false);
   S.chatWas = S.chat;
@@ -3884,6 +4124,7 @@ function go(view, chat) {
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
   if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
+  backStep();
   if (!same && !S.sheet && !AUTH_VIEWS.has(view)) focusTitle();
   if (backTop != null) { $view.scrollTop = backTop; S.under = null; }   // back where you were
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
@@ -4206,7 +4447,9 @@ function youMenu(at) {
     rows: phoneRows(),
     account: () => (page ? openAccount(null) : go("account")),
     signOut: () => doAct("signout"),
+    onClose: () => backStep(),
   });
+  backStep();
 }
 // (an act of the app's, as a tap on a row with it would be)
 const doAct = (name, id) => onClick1({ preventDefault() {} }, { dataset: { act: name, ...(id != null ? { id: String(id) } : {}) }, closest: () => null, getAttribute: () => null });
@@ -4350,7 +4593,7 @@ function vMessages() {
         <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
   return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    ${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
+    ${myKeyWarn()}${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     ${seasonCard()}<div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : kTag(empty, "empty")}`;
@@ -4634,32 +4877,34 @@ function bubble(f, m, gapTop, g) {
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
   const jumbo = !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
-  const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
+  const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : linked(p.t);
   // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : "";
   const up = mine && m.flying, foot = footHtml(m, mine, g);
   // in the air (one to one): the way so far, then when it lands
   const tail = up && !g ? `<span class="frow">${m.waiting ? "" : airTrack(m)}${foot}</span>` : foot;
   const cls = `${mine ? " me" : ""}${up ? ` up k-${k}` : ""}${m.waiting ? " waiting" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}`;
+  // who it's from, for VoiceOver (on screen, which side it's on, and its colour, say so): first in what it reads out
+  const by = `<span class="sr">${mine ? "You" : esc(first(f.name))}: </span>`;
   let html;
   if (p.v) {
     const gone = m.photo === 2 || S.photoGone.has(m.id);
-    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${kk(gone ? st + ":gone" : st)}${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
+    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${kk(gone ? st + ":gone" : st)}${tapAct}>${by}${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
   } else if (onceP(p)) {
     // view once: a pill to tap (theirs), what became of it (yours), the words below
     const gone = picGone(m), seen = (m.flock || []).filter((x) => x.viewedAt).length;
-    const opened = mine ? (g ? seen > 0 : !!m.viewedAt) : !!(m.viewedAt || openedOnce(m.id));
+    const opened = mine ? (g ? seen > 0 : !!m.viewedAt) : !!(m.viewedAt || openedOnce(m.id)) && !onceAgain(m);
     const label = mine ? (g && seen ? `Opened by ${seen}` : opened ? "Opened" : gone ? "Photo expired" : "Photo") : opened ? "Opened" : gone ? "Photo expired" : "View photo";
     const can = !mine && !opened && !gone && !m.flying && !m.lost;
     const words = p.t || quote;
-    html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)} data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
-      : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)}${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
-    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${quote}${text}${tail}</div>`;
+    html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)} data-act="viewonce" data-id="${esc(m.id)}" aria-label="${esc(first(f.name))}: View photo, once">${I.once}<b>${label}</b></button>`
+      : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)}${tapAct}>${by}${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${by}${quote}${text}${tail}</div>`;
   } else if (p.p && picGone(m)) {
     // gone: a quiet outline of where it was, the time beside it; its words (if any) in their own bubble below
     const words = p.t || quote;
-    html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${kk(st + ":gone")}${tapAct}><span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
-    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${quote}${text}${tail}</div>`;
+    html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${kk(st + ":gone")}${tapAct}>${by}<span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${by}${quote}${text}${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
@@ -4670,7 +4915,7 @@ function bubble(f, m, gapTop, g) {
     else photo = `<div class="ph wait"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
     html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
-  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${quote}${text}${tail}</div>`;
+  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${by}${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote" data-key="vn:${esc(m.id)}"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
@@ -4699,7 +4944,7 @@ function stopCard(f, m) {
   if (m.lost) return `<div class="lostnote${fresh}"${kk("lost")}>${I.skull}<span>${esc(first(f.name))}’s pigeon to ${toName} was lost on the way.</span></div>`;
   const t = now(), state = t < m.viaAt ? `Stopping with you on its way to ${toName} · here in <span data-eta="${esc(m.viaAt)}"></span>`
     : t < m.viaOff ? `Resting with you on its way to ${toName} · flies on in <span data-eta="${esc(m.viaOff)}"></span>` : `Stopped with you, then flew on to ${toName}`;
-  const text = p && !p.bad ? `<p class="stext">${esc(p.t).replace(/\n/g, "<br>")}${p.ph ? `<span class="hid">${I.photo} A photo only ${toName} can see</span>` : ""}</p>` : p?.bad ? `<p class="stext bad-scroll">This message couldn’t be opened on this phone.</p>` : "";
+  const text = p && !p.bad ? `<p class="stext">${linked(p.t)}${p.ph ? `<span class="hid">${I.photo} A photo only ${toName} can see</span>` : ""}</p>` : p?.bad ? `<p class="stext bad-scroll">This message couldn’t be opened on this phone.</p>` : "";
   const line = S.notes.get(m.id);
   const add = line != null ? `<p class="smine"><b>You added</b>${esc(line)}</p>` : m.resting && to ? `<button type="button" class="btn small" data-act="vianote" data-id="${esc(m.id)}">${I.compose}Add a Line for ${toName}</button>` : "";
   return `<div class="stopcard${fresh}" data-mid="${esc(m.id)}"${kk(`${t < m.viaAt ? "a" : t < m.viaOff ? "r" : "d"}${line != null ? "+" : ""}`)}><span class="st1">${pgm(m)}<span>${state}</span></span>${text}${add}</div>`;
@@ -5338,8 +5583,11 @@ function openReactMenu(anchor, id) {
   const cur = mineNow && reactOf(mineNow), m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
   const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   const words = m && S.plain.get(id)?.t;
+  // (each web address in it, to open: also what VoiceOver reaches them by, as a bubble's links are part of its button)
+  const links = typeof words === "string" ? linksIn(words).slice(0, 3) : [];
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
     ...(typeof words === "string" && words.trim() ? [{ label: "Copy", icon: I.copy, act: "copymsg", id }] : []),
+    ...links.map((u) => ({ label: "Open Link", sub: new URL(u).hostname.replace(/^www\./, ""), icon: I.globe, act: "openlink", id: u })),
     ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])]);
   if (m) {
     const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
@@ -5566,7 +5814,7 @@ function vGroupChat(g) {
   const changed = others(g).filter((p) => p.keyChanged);
   const gh = (g.ghosts || []).map((id) => member(g, id)).filter(Boolean);
   const ghostWarn = gh.length ? `<div class="warn" data-key="warn:g"><span>${gh.map((p) => esc(first(p.name))).join(" and ")} ${gh.length > 1 ? "are" : "is"} now in this group, but no one was seen adding them. If that’s unexpected, don’t send anything private and check with the group.</span></div>` : "";
-  const warn = ghostWarn + (changed.length ? `<div class="warn" data-key="warn:k"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "");
+  const warn = myKeyWarn() + ghostWarn + (changed.length ? `<div class="warn" data-key="warn:k"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "");
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
@@ -5606,7 +5854,7 @@ function vChat() {
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${myKeyWarn()}${warn}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -5622,6 +5870,7 @@ function vAuth() {
           <div class="wlogo ifl-logo"><span class="appicon" aria-hidden="true">${I.bird}</span></div>
           <h1 class="wtitle ifl-title" aria-label="Chat">${[..."Chat"].map((c) => `<span aria-hidden="true">${c}</span>`).join("")}</h1>
           <p class="whisper ifl-tagline">Letters carried by pigeon</p>
+          ${S.ended ? `<p class="winvite">You’ve been signed out, as this sign-in was ended on another device or by a new password.${S.ended.waiting ? ` Sign in again and ${S.ended.waiting === 1 ? "the pigeon" : `the ${S.ended.waiting} pigeons`} waiting for signal will still go.` : ""}</p>` : ""}
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
@@ -5759,7 +6008,7 @@ function landHint(c, k) {
    +, then the message with its pigeon at the start (tap it for How It Flies)
    and when it would land as the hint, then send. A line above it only when
    something stops it flying. */
-let planSoon = 0, planFor = "";
+let planSoon = 0, planFor = "", saidErr = "";
 function renderCompose() {
   const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || group(S.chat)) && !!S.me;
   $compose.hidden = !show; if (!show) { composeH = 0; return; }
@@ -5784,6 +6033,8 @@ function renderCompose() {
   if (S.err) stop = S.err;
   note.hidden = !stop; note.className = "note stop";
   if (note.textContent !== stop) note.textContent = stop;
+  if (S.err && S.err !== saidErr) announce(S.err);       // (what went wrong is said once; the rest, why it can't go yet, is only shown)
+  saidErr = S.err;
   // its pigeon, at the start of the message: the named one carrying it, or its kind
   // (a moment after a chat opens, the planner's times, so the hint says what How It Flies will)
   const planKey = !g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP) ? f.id + ":" + kind : "";
@@ -5825,10 +6076,10 @@ function renderCompose() {
   a.hidden = !S.attach;
   if (S.attach?.voice && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<span class="vthumb">${I.mic}</span><span class="ainfo"><b>Voice · ${fmtClip(S.attach.ms)}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove voice pigeon">${I.x}</button>`;
+    a.innerHTML = `<span class="vthumb">${I.mic}</span><span class="ainfo"><b>Voice · ${fmtClip(S.attach.ms)}</b><span class="atext">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove voice pigeon">${I.x}</button>`;
   } else if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
+    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
   composeGlide();
@@ -6139,6 +6390,7 @@ function syncInert() {
   $view.inert = $tabbar.inert = sheet || pop;
   $compose.inert = sheet || (pop && !$compose.contains(document.activeElement));
   $layer.inert = pop;
+  backStep();                    // (Android's Back: a step of history for each, while there's anything to close)
 }
 // (going back to a page you came from inside a sheet: How It Flies doesn't play itself in again)
 let sheetBack = false;
@@ -6829,9 +7081,13 @@ function drawSheet(refresh) {
         <div class="gfoot">They can’t send you friend requests or pigeons, or see your picture or where you are. They aren’t told.</div>`
         : `<p class="empty"><b>No one blocked</b>Block someone from their friend request or their contact info. They aren’t told.</p>`, { left: { label: "Back", act: "securitysheet" } });
       return;
-    case "view":
-      $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
+    case "view": {
+      // (drawn once: redrawn as the chat behind it changes, it would start again, enlarged or not)
+      if ($(".viewer:not(.closing)", $layer)?.dataset.photo === s.id) return;
+      $layer.innerHTML = `<div class="viewer" data-act="close" data-photo="${esc(s.id)}" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Pinch to zoom, tap to close.</p></div>`;
+      const v = $(".viewer", $layer); pinchZoom(v, $("img", v), () => { if (S.sheet?.type === "view") closeTop(); });
       return;
+    }
     case "moved": {
       // Chat's new address, from its old one: in a browser it's one tap (the sign-in comes
       // too, pigeon/handover.js); a Home Screen app has its own storage, so it's a few steps
@@ -8100,22 +8356,25 @@ function openMenu(anchor, items) {
 }
 function openActions({ title, message, actions }) {
   clearTimeout(popTimer);
-  $pop.innerHTML = `<div class="scrim" data-act="closepop"></div><div class="asheet" role="dialog" aria-label="${esc(title || "Confirm")}">
-    <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
+  $pop.innerHTML = `<div class="scrim" data-act="closepop"></div><div class="asheet" role="dialog" aria-modal="true" aria-label="${esc(title || "Confirm")}">
+    <div class="grp">${title || message ? `<div class="msg" tabindex="-1">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
       `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
     <button class="cancel" data-act="closepop">Cancel</button></div>`;
-  popOpened($(".asheet .ab", $pop)); syncInert();
+  popOpened($(".asheet .ab", $pop), $(".asheet .msg", $pop)); syncInert();
 }
 let popTimer = 0, popFrom = null, keyAt = -1e9;
 // For a keyboard or VoiceOver: a menu or question opened with Enter or Space starts on its first choice, Up and Down
-// (Home, End) move through them, and once it's closed (Escape, or a choice made) focus goes back to what opened it
+// (Home, End) move through them, and once it's closed (Escape, or a choice made) focus goes back to what opened it.
+// Opened with a tap (VoiceOver's double tap is one), focus goes to it all the same, to the question first if it asks
+// one, as what's behind is out of reach now: only the message box keeps it, so the keyboard stays up under a menu
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") keyAt = performance.now(); }, true);
 document.addEventListener("pointerdown", () => { keyAt = -1e9; }, true);
-function popOpened(first) {
+function popOpened(first, lead) {
   const a = document.activeElement;
   if (a && a !== document.body && !$pop.contains(a)) popFrom = a;
   if (!$pop._keys) { $pop._keys = 1; $pop.addEventListener("keydown", popKeys); }
   if (performance.now() - keyAt < 600) first?.focus({ preventScroll: true });
+  else if (!inField(a)) (lead || first)?.focus({ preventScroll: true });
 }
 function popKeys(e) {
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
@@ -8149,6 +8408,14 @@ function toast(html, btn, fn) {
   else $toast.insertAdjacentHTML("beforeend", `<div class="toast">${inner}</div>`);
   S.toastFn = fn;
   clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, btn ? 5000 : 3500);
+}
+// Said to VoiceOver (and the like), with nothing shown: the stages of a send, a pigeon landing in the chat you're in, why
+// one couldn't go. (Emptied first, so the same words twice are said twice; nothing's said over the lock)
+let $said = null, saidTimer = 0;
+function announce(words) {
+  if (!$said || S.locked) return;
+  clearTimeout(saidTimer); $said.textContent = "";
+  saidTimer = setTimeout(() => { $said.textContent = words; }, 80);
 }
 function hideToast() {
   const t = $(".toast:not(.out)", $toast); if (!t) return;
@@ -8394,6 +8661,8 @@ async function onClick1(e, t) {
     case "skyopen": S.sheet = null; renderSheet(); return go("chat", id);
     case "airopen": haptic("tick"); S.mapNext = t.dataset.m; return go("chat", id);
     case "msgmenu": return openReactMenu(t, id);
+    case "link": return;                 // (a link in a message: the browser opens it, and the message's menu doesn't)
+    case "openlink": { const u = linksIn(id)[0]; if (u) window.open(u, "_blank", "noopener,noreferrer"); return; }
     case "react": return sendReact(id, t.dataset.e);
     case "reply": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id), p = m && S.plain.get(id); if (!p) return;
@@ -8721,8 +8990,10 @@ async function onClick1(e, t) {
       const night = dusk();
       try {
         await pushDisable(true);
-        api("logout", { method: "POST" }).catch(() => {});
-        await night.dark;                                                  // (dark now: what's under it can go)
+        // (signed out on the server before the sign-in page, given a few seconds, so that page needn't ask again)
+        const out = api("logout", { method: "POST" }).catch(() => {});
+        await night.dark;
+        await Promise.race([out, new Promise((r) => setTimeout(r, 4000))]);                                                  // (dark now: what's under it can go)
         await forget(); S.navQuiet = true; go("welcome");                  // (under the night: no change of screen of its own)
       } finally { night.done(); }
       // (and on to the sign-in page, which says so and offers the way back; none locally)
@@ -8814,12 +9085,17 @@ async function saveFix(force) {
 // Your account's page, opened signed in as you: a code good once, for a minute, handed over in the address's # (the
 // page swaps it for a sign-in of its own, in whichever browser it opens in, and takes it out of the address). The window's
 // opened at once, from the tap (a phone won't open one later), and sent on when the code's back.
+// (its Notifications folder, with them off here and askable: asks=1, so the account's Turn On closes that window and
+// comes back, and they're asked for once Chat's in sight again, within a quarter of an hour; Not Now lets them be)
+let ASK_BACK = 0;
 async function openAccount(open) {
   const page = accountPage(); if (!page) return;
   const w = window.open("", "_blank");
+  const asks = open === "notify-inflight" && pushState() === "off" ? { asks: "1" } : {};
+  if (asks.asks) ASK_BACK = Date.now();
   try {
     const { code } = await api("account-link", { method: "POST" });
-    const url = `${page}#${new URLSearchParams({ handoff: code, from: "inflight", ...(open ? { open } : {}) })}`;
+    const url = `${page}#${new URLSearchParams({ handoff: code, from: "inflight", ...(open ? { open } : {}), ...asks })}`;
     if (w && !w.closed) w.location.href = url; else location.href = url;
   } catch (err) { w?.close(); toast(esc(err.message)); }
 }
@@ -8945,7 +9221,8 @@ async function submitForm(e, form, kind) {
   }
 }
 // Sign-up's last steps: the passkey offer (where it works), then your first screen
-function onbNext() { if (passkeysSupported()) go("pkoffer"); else finishOnboarding(); }
+// (not to an account that has one already, added on the account's page as you signed in, say)
+function onbNext() { if (passkeysSupported() && !S.passkeys?.length) go("pkoffer"); else finishOnboarding(); }
 function finishOnboarding() {
   S.started = true;                               // a brand new account: nothing to wait for
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }   // came from a friend's link
@@ -8953,6 +9230,8 @@ function finishOnboarding() {
 }
 async function afterSignIn() {
   await sync();
+  // (back in after a sign-in of yours here was ended: what was waiting to go goes, and your drafts are back: forget)
+  await outboxLoad(); await draftsLoad(); outboxFlush();
   refreshPush(); autoLocate();
   if (ASK_NOTIFY) setTimeout(askNotify, 600);
   if (S.me.lat == null && !S.me.moon) return go("locpick");
@@ -9093,11 +9372,15 @@ function showUpload(stage, f = 0) {
   a.classList.toggle("uploading", !!stage);
   a.classList.toggle("sealing", stage === "seal");
   if (!stage) { upAnim?.stop(); upAnim = null; bar.style.transform = "scaleX(0)"; txt.textContent = attachText(); return; }
-  if (stage === "seal") { txt.textContent = "Encrypting…"; return; }
-  if (!upAnim) upAnim = smoothProgress((x) => {
-    bar.style.transform = `scaleX(${x})`;
-    txt.textContent = x >= 1 ? "Finishing up…" : `Sending… ${Math.floor(x * 100)}%`;
-  });
+  // (said as each stage starts: the percentage as it climbs is only shown)
+  if (stage === "seal") { txt.textContent = "Encrypting…"; announce("Encrypting…"); return; }
+  if (!upAnim) {
+    announce("Sending…");
+    upAnim = smoothProgress((x) => {
+      bar.style.transform = `scaleX(${x})`;
+      txt.textContent = x >= 1 ? "Finishing up…" : `Sending… ${Math.floor(x * 100)}%`;
+    });
+  }
   upAnim.set(f);
 }
 /* ---------- the app lock ----------
@@ -9132,7 +9415,7 @@ function drawLock() {
 }
 async function unlock() {
   if (S.unlocking) return; S.unlocking = true;
-  try { await lockCheck(); S.locked = false; haptic("success"); drawLock(); render(); sync(); }
+  try { await lockCheck(); S.locked = false; haptic("success"); drawLock(); render(); backStep(); sync(); }      // (Android's Back: the chat you're back in has its step again)
   catch (_) { toast("Couldn’t unlock. Try again."); }
   finally { S.unlocking = false; }
 }
@@ -9141,7 +9424,13 @@ document.addEventListener("visibilitychange", () => {
   const lp = lockPrefs(); if (!lp) return;
   if (document.visibilityState === "hidden") { hiddenAt = Date.now(); root()?.classList.add("veiled"); return; }
   root()?.classList.remove("veiled");
-  if (!S.locked && hiddenAt && Date.now() - hiddenAt >= (lp.after || 0)) { S.locked = true; closePop(); S.sheet = null; render(); }
+  if (!S.locked && hiddenAt && Date.now() - hiddenAt >= (lp.after || 0)) {
+    // (and nothing left over the lock, or showing through it as it goes: a chat's menu with its row lifted, InFlite's
+    // menu, a banner)
+    S.locked = true; closePop(); $pop.innerHTML = ""; IFL.close(true);
+    clearTimeout(toastTimer); $toast.innerHTML = ""; S.toastFn = null;
+    S.sheet = null; render();
+  }
 });
 
 /* ---------- voice pigeons ----------
@@ -9291,6 +9580,10 @@ async function outboxRetry(o) {
   o.meta = { ...o.meta, keys };
 }
 let flushing = null;
+// (a photo, GIF or voice pigeon whose upload was cut off, signal or not: tried again less often each time, from 30 s up to
+// 10 minutes apart, rather than started afresh with every sync on an uplink too slow for it; Try Again, or the phone
+// coming back online, tries straight away)
+let outRest = { n: 0, until: 0 };
 async function outboxFlush(force) {
   if (!S.me || !S.outbox.length || flushing) return flushing;
   if (navigator.onLine === false && !force) return;
@@ -9298,15 +9591,20 @@ async function outboxFlush(force) {
     let sent = 0;
     for (const o of [...S.outbox]) {
       if (o.err && !force) continue;
+      if (!S.outbox.some((x) => x.id === o.id)) continue;      // (deleted while the one before it went: it doesn't go)
+      if (o.blob && !force && Date.now() < outRest.until) break;
       try {
         if (o.blob) {
           const form = new FormData();
           form.append("meta", JSON.stringify(o.meta));
           form.append("photo", new Blob([o.blob], { type: "application/octet-stream" }), "photo.bin");
-          await api(o.path, { method: "POST", form });
+          // (as one sent there and then goes: given longer the bigger it is, not a fixed minute and a half: xhrFetch)
+          await api(o.path, { method: "POST", form, size: o.blob.size ?? o.blob.byteLength, onProgress: () => {} });
+          outRest = { n: 0, until: 0 };
         } else await api(o.path, { method: "POST", body: o.meta });
         sent++;
       } catch (e) {
+        if (e.offline && o.blob) { outRest.n++; outRest.until = Date.now() + Math.min(10 * MIN, 15e3 * 2 ** outRest.n); }
         if (e.offline) break;                                   // still no signal: try again later
         // a hiccup (the server busy, too many at once): it stays waiting and goes next time; only a real "no" stops it
         if (!e.status || e.status >= 500 || e.status === 408 || e.status === 429) break;
@@ -9319,12 +9617,12 @@ async function outboxFlush(force) {
   })();
   try { await flushing; } finally { flushing = null; }
 }
-window.addEventListener("online", () => { S.offline = false; renderOffline(); outboxFlush(); sync(); });
+window.addEventListener("online", () => { S.offline = false; renderOffline(); outRest.until = 0; outboxFlush(); sync(); });
 window.addEventListener("offline", () => { S.offline = true; renderOffline(); });
 // yours on its way to the server: an outline at the foot of the chat, "Sending…", until it takes off (send)
 // (in its shape once it's in the air, to a friend: its track there from the start, "Sending…" where it'll say when it lands,
 // so the bubble doesn't change its size as it goes up)
-const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${esc(p.t).replace(/\n/g, "<br>")}${group(p.to) ? `<span class="ft">Sending…</span>` : `<span class="frow"><span class="trk" aria-hidden="true"><i></i><b class="cb">${I.bird}</b></span><span class="ft">Sending…</span></span>`}</div>`;
+const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${linked(p.t)}${group(p.to) ? `<span class="ft">Sending…</span>` : `<span class="frow"><span class="trk" aria-hidden="true"><i></i><b class="cb">${I.bird}</b></span><span class="ft">Sending…</span></span>`}</div>`;
 // What you've sent rises out of the box into its place by itself. It's added to the chat as it is, rather than the chat
 // being drawn again (on a phone that took a frame or several, with the bubble already moving: and three times over, as
 // it went up and its answer and the sync came back); the chat is at its foot at once, and the bubble starts from the box.
@@ -9345,7 +9643,7 @@ function outboxBubbles(chat) {
   return S.outbox.filter((o) => o.to === chat).map((o) => {
     const p = S.plain.get(o.id) || { t: "" }, ph = S.photos.get(o.id);
     const pic = p.v ? voiceHtml(o.id, p.v, true) : p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
-    return `<div class="b me pending${o.err ? " failed" : ""}" data-key="m:${esc(o.id)}" data-sig="wait${o.err ? "!" : ""}" data-mid="${esc(o.id)}">${pic}${esc(p.t || "").replace(/\n/g, "<br>")}</div>
+    return `<div class="b me pending${o.err ? " failed" : ""}" data-key="m:${esc(o.id)}" data-sig="wait${o.err ? "!" : ""}" data-mid="${esc(o.id)}">${pic}${linked(p.t || "")}</div>
       <div class="meta me" data-key="mt:${esc(o.id)}" data-sig="${o.err ? "!" : ""}"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
   }).join("") + (S.pending?.to === chat ? pendingBubble(S.pending) : "");
 }
@@ -9364,12 +9662,13 @@ async function send() {
   const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
   if (!att) {
     S.pending = { id, to, t: text, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
-    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id);
+    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id); draftsSoon();
   }
   const tidy = () => {
     if (!att) return;              // (words alone left the box as they went up: what's in it now is the next one)
     if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null;
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
+    draftsSoon();
   };
   try {
     const mc = !group(to) && moonChat(friend(to)), sc = !mc && schedFor(to), vi = !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now)
@@ -9412,7 +9711,7 @@ async function send() {
       if (rt) S.replyTo = null;
       if (sc) S.sched = null; if (vi) S.via = null; S.noShip = null;
       S.pick = null; S.stick = true; showUpload(null);
-      haptic("tick"); render();
+      haptic("tick"); render(); announce("You’re offline. Your pigeon will wait for signal.");
     };
     if (navigator.onLine === false) { await queue(); S.busy = false; renderCompose(); return; }
     let r;
@@ -9445,6 +9744,7 @@ async function send() {
     S.plain.set(id, payload);
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
     tidy(); S.stick = true; S.pending = null;
+    if (att) announce("Sent.");
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     if (att) S.fresh.set(r.message.id, Date.now());        // (words were up already: they just take off)
     loadSkies();                      // it's in the air now: ready for the strip on Messages
@@ -9461,6 +9761,7 @@ async function send() {
       S.pending = null;
       if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); }
       else { const d = S.drafts.get(to); S.drafts.set(to, d?.trim() ? `${raw}\n${d}` : raw); }     // (with anything typed after, kept as its draft)
+      draftsSoon();
       if (rt && !S.replyTo) S.replyTo = rt;
       if (here()) render();
     }
@@ -9497,8 +9798,25 @@ function setTheme(t) {
   keepTheme(t);
   if (S.me) {
     S.me.appearance = t;
-    api("me", { method: "PATCH", body: { appearance: t } }).catch(() => toast("Couldn’t save that to your account. It’s set on this phone for now."));
+    saveTheme(t, true);
   }
+}
+// One that couldn't be saved to your account yet (no signal, say) waits on this phone, marked as whose it is, and goes
+// again with each sync until it's saved, rather than the account's old one being taken back (syncTheme)
+const THEME_WAIT = "inflight-theme-wait";
+const themeWaits = () => { try { return !!S.me && localStorage.getItem(THEME_WAIT) === S.me.id; } catch (_) { return false; } };
+const themeDone = () => { try { localStorage.removeItem(THEME_WAIT); } catch (_) {} };
+let themeSaving = null;
+function saveTheme(t, say) {
+  try { localStorage.setItem(THEME_WAIT, S.me.id); } catch (_) {}
+  const p = themeSaving = api("me", { method: "PATCH", body: { appearance: t } })
+    .then(() => { if (theme() === t) themeDone(); })          // (another chosen since: that one's own save clears it)
+    .catch((e) => {
+      // (one the account turned down stays as the account has it; anything else goes again)
+      if (e.status && e.status < 500 && ![408, 429].includes(e.status)) { themeDone(); if (say) toast(esc(e.message)); }
+      else if (say) toast("Couldn’t save that to your account just now. It’s set on this phone, and Chat will save it to your account as soon as it can.");
+    })
+    .finally(() => { if (themeSaving === p) themeSaving = null; });
 }
 function keepTheme(t) {
   try { localStorage.setItem("inflight-theme", t); } catch (_) { /* this visit only */ }
@@ -9510,6 +9828,8 @@ function keepTheme(t) {
 function syncTheme() {
   if (!S.me) return;
   const mine = S.me.appearance;
+  // (one chosen here that the account hasn't had yet: this phone's stands, and goes again)
+  if (themeWaits()) { if (!themeSaving) saveTheme(theme()); return; }
   if (THEMES.includes(mine)) { if (mine !== theme()) themeFade(() => { keepTheme(mine); if (S.view === "account" || S.sheet?.type === "appearance") { render(); renderSheet(); } }); }
   else if (!S.themeSent && chosenTheme()) { S.themeSent = true; api("me", { method: "PATCH", body: { appearance: theme() } }).then((r) => { S.me = r.me; }).catch(() => {}); }
 }
@@ -9565,6 +9885,11 @@ async function pushEnable() {
   } catch (err) { console.warn("push", err); toast("Couldn’t turn on notifications on this phone."); }
   finally { S.pushBusy = false; render(); if (S.sheet?.type === "notifications") renderSheet(); }
 }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !ASK_BACK) return;
+  const fresh = Date.now() - ASK_BACK < 15 * 60e3; ASK_BACK = 0;
+  if (fresh && pushState() === "off" && S.me) setTimeout(askNotify, 400);
+});
 // Notifications on this phone, in one tap (from the account's Notifications page, #notify): asked as Chat's ready
 function askNotify() {
   const ps = pushState();
@@ -9616,7 +9941,8 @@ async function offerNotify() {
   const ps = pushState();
   if (ps === "off") toast("Want to hear when the reply lands?", "Notify Me", () => pushEnable());
   else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
-  else if (ps === "homescreen") toast("Add Chat to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
+  // (How: the steps, there and then; the Account tab has none to show where Chat has an account page)
+  else if (ps === "homescreen") toast("Add Chat to your Home Screen to get notified when the reply lands.", "How", () => toast("Tap Share, then Add to Home Screen, and open Chat from there."));
 }
 async function openFlightLog(at) {
   const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
@@ -9769,8 +10095,9 @@ async function start() {
     if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
-    const had = Object.keys(S.pins).length; await restorePins();
-    if (had && !S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
+    // (none on the phone yet, a friendless account say: the copy on the server is asked for once the screen's up, below)
+    const had = Object.keys(S.pins).length;
+    if (had) { await restorePins(); if (!S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins(); }      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
@@ -9785,7 +10112,11 @@ async function start() {
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
     await outboxLoad();
+    await draftsLoad();
     render();
+    // (nothing trusted on this phone yet: the copy on the server, fetched now, and waited for by any sync before it
+    // trusts a key it shows, not by what's drawn above)
+    if (!had) S.pinsWait = restorePins().catch(() => {}).finally(() => { S.pinsWait = null; });
     arrival?.away();                               // (and the account's page's sky it came in under clears to it)
     // (the app is up by now: anything below going wrong mustn't stop the polling and the rest)
     try {
@@ -9829,7 +10160,7 @@ async function start() {
   }, POLL_MS);
   window.addEventListener("online", () => { S.syncFails = 0; sync(); });
   setInterval(() => { if (document.visibilityState === "visible") autoLocate(); }, AUTO_EVERY);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); autoLocate(); } else { stopLocWatch(); if (rec) recStop(false); } });     // (a recording stops when you leave the app)
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); autoLocate(); } else { stopLocWatch(); if (rec) recStop(false); draftsSave(); } });     // (a recording stops when you leave the app; what's in the box is kept)
 }
 
 /* ---------------- updates ----------------

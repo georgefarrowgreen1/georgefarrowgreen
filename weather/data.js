@@ -250,11 +250,32 @@ export async function fetchWarnings(lat, lon) {
   if (!r.ok) throw new Error(`warnings ${r.status}`);
   return r.json();
 }
+// The warnings as they're kept: as the server has them now, and where one of its sources didn't answer (missing: the
+// Environment Agency's came, MeteoAlarm's didn't), those last had from that source too while they're in force, rather
+// than taken as over (was: the answer kept before; real time)
+export function keptWarnings(j, was, now = Date.now()) {
+  const gone = Array.isArray(j?.missing) ? j.missing : [], had = Array.isArray(was?.warnings) ? was.warnings : [];
+  if (!gone.length || !had.length || !Array.isArray(j.warnings)) return j;
+  const ids = new Set(j.warnings.map((w) => w.id)), keep = had.filter((w) => gone.includes(w.src) && !ids.has(w.id) && !(Date.parse(w.expires) <= now));
+  return keep.length ? { ...j, warnings: [...j.warnings, ...keep].sort((a, b) => b.level - a.level || Date.parse(a.onset || 0) - Date.parse(b.onset || 0)) } : j;
+}
 
 // Search for a place by name
 export async function searchPlaces(name) {
   const j = await getJSON(`${API.geocode}?${qs({ name, count: 8, language: "en", format: "json" })}`, 8000);
-  return (j.results || []).map((r) => ({ name: r.name, region: [r.admin1, r.country].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), country: r.country_code, lat: r.latitude, lon: r.longitude }));
+  return placesFound(j.results);
+}
+// The places a search found, each with its region: its state (or the like) and country; and where two of the same name
+// would read the same (Richmond, England, United Kingdom, twice over), its county too, and if that's the same, the
+// district in it (Open-Meteo's admin2 and admin3), so they can be told apart
+const regionAt = (r, n) => [r.admin3, r.admin2].slice(2 - n).filter((x) => x && x !== r.name).concat(r.admin1, r.country).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", ");
+export function placesFound(results) {
+  const list = (Array.isArray(results) ? results : []).map((r) => ({ r, n: 0 }));
+  for (let n = 1; n <= 2; n++) {
+    const said = list.map(({ r, n: m }) => `${r.name}|${regionAt(r, m)}`);
+    list.forEach((x, i) => { if (said.some((s, k) => k !== i && s === said[i])) x.n = n; });
+  }
+  return list.map(({ r, n }) => ({ name: r.name, region: regionAt(r, n), country: r.country_code, lat: r.latitude, lon: r.longitude }));
 }
 // A name for where a phone is (BigDataCloud's free lookup, made for exactly this)
 // A place's name from its position: BigDataCloud, or if that doesn't answer (or a blocker stops it),
@@ -301,12 +322,20 @@ export function peek(place) {
   const c = keptRaw(cell(place.lat, place.lon))?.forecast, j = c?.j;
   if (!j?.current) return null;
   // (and its day's high and low, and its clock: for the list of places)
-  const offset = j.utc_offset_seconds || 0, k = j.daily?.time?.indexOf(new Date(Date.now() + offset * 1000).toISOString().slice(0, 10)) ?? -1;
-  return { temp: j.current.temperature_2m, code: j.current.weather_code, isDay: j.current.is_day === 1, at: c.at, offset,
+  const offset = j.utc_offset_seconds || 0, wall = Date.now() + offset * 1000, k = j.daily?.time?.indexOf(new Date(wall).toISOString().slice(0, 10)) ?? -1;
+  // (its weather now as it was read, if that was lately; else this hour's, as forecast, as the page has it: agree.js)
+  const hr = wall - parseWall(j.current.time) < HOUR ? -1 : j.hourly?.time?.indexOf(`${new Date(wall).toISOString().slice(0, 13)}:00`) ?? -1;
+  const now = hr >= 0 && j.hourly.temperature_2m?.[hr] != null ? { temp: j.hourly.temperature_2m[hr], code: j.hourly.weather_code?.[hr], isDay: j.hourly.is_day?.[hr] === 1 }
+    : { temp: j.current.temperature_2m, code: j.current.weather_code, isDay: j.current.is_day === 1 };
+  return { ...now, at: c.at, offset,
     hi: k >= 0 ? j.daily.temperature_2m_max?.[k] ?? null : null, lo: k >= 0 ? j.daily.temperature_2m_min?.[k] ?? null : null };
 }
 // how long each kind is good for
 const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, marine: 60 * 60e3, warnings: 5 * 60e3 };
+// (and for a place beside the one shown, readied to swipe to: what changes only with each model run, a few times a day,
+// and is much the most to ask for (the ensembles alone are 143 runs), asked for again after six hours, not each hour;
+// it's asked for afresh as the place is shown)
+const BESIDE = { ...TTL, models: 6 * 3600e3, ensemble: 6 * 3600e3, air: 6 * 3600e3, marine: 6 * 3600e3 };
 
 // What's failed to come lately, and when (by place and kind): not asked for again for a while (up to 10 minutes, less
 // for what's kept for less), so a service that's down isn't asked every minute, the page drawn again each time. The
@@ -316,11 +345,11 @@ const resting = (id, k, now = Date.now()) => k !== "forecast" && now - (failed.g
 
 // Whether a place's kept forecast, or anything else kept with it, is past its time: what load() would ask for again
 // (what failed to come isn't counted: it's asked for again with the next forecast)
-// (only: just these kinds)
-export function due(place, now = Date.now(), only = null) {
-  const id = cell(place.lat, place.lon), kept = keptRaw(id);
+// (only: just these kinds; beside: for a place beside the one shown, as load's quiet asks for it)
+export function due(place, now = Date.now(), only = null, beside = false) {
+  const id = cell(place.lat, place.lon), kept = keptRaw(id), life = beside ? BESIDE : TTL;
   if (!kept?.forecast || now - kept.forecast.at >= TTL.forecast) return true;
-  return Object.keys(TTL).some((k) => (!only || only.includes(k)) && kept[k] && now - kept[k].at >= TTL[k] && !resting(id, k, now));
+  return Object.keys(TTL).some((k) => (!only || only.includes(k)) && kept[k] && now - kept[k].at >= life[k] && !resting(id, k, now));
 }
 export const hasKept = (place) => !!keptRaw(cell(place.lat, place.lon))?.forecast;
 // A place's forecast as it's kept, without asking the network for anything: for the places either side of the one
@@ -346,15 +375,17 @@ function buildWx(raw, place) {
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can. quiet: a place beside the one
-// shown, readied to swipe to (app.js pager): all of it, how the models have done there and its climate too (only its
-// forecast and warnings with the phone saving data)
+// shown, readied to swipe to (app.js pager): all of it, how the models have done there and its climate too, though
+// what changes only with the models' runs not as often (BESIDE); only its forecast and warnings with the phone saving
+// data
 export async function load(place, onUpdate, { force = false, quiet = false } = {}) {
   const id = cell(place.lat, place.lon), key = `wx:${id}`, kept = keptRaw(id) || {};
   const raw = { ...kept };
   // (an ensemble summary from before the ensembles were pooled is asked for again)
   // (asked for again, refreshed by hand say: the forecast and the warnings, which change by the minute; not the rest, kept
   // an hour, which change with each model run, a few times a day, and are a lot to ask for again)
-  const fresh = (k) => !(force && (k === "forecast" || k === "warnings")) && kept[k] && Date.now() - kept[k].at < TTL[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
+  const life = quiet ? BESIDE : TTL;
+  const fresh = (k) => !(force && (k === "forecast" || k === "warnings")) && kept[k] && Date.now() - kept[k].at < life[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
   const wait = (k) => fresh(k) || (!force && resting(id, k));
   const build = () => (raw.forecast ? buildWx(raw, place) : null);
   // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
@@ -364,8 +395,11 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
     // (and a fault in drawing it never keeps the new one from being asked for)
     if (wx) try { onUpdate(wx, { partial: true, stale: !fresh("forecast") }); } catch (e) { console.error(e); }
   }
+  // (kept in memory as each piece comes; written to storage, the whole record each time, as the forecast comes (what the
+  // page opens with next time), and once more when the rest is all in, not as each piece of it comes)
+  let unsaved = false;
   const save = () => {
-    keptMemo.set(id, raw);
+    unsaved = false;
     if (store.set(key, raw)) return;
     pruneCache(key);
     if (store.set(key, raw)) return;
@@ -374,23 +408,26 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
     store.set(key, raw);
   };
   const get = async (k, fn) => {
-    // (beside the one shown, all of it as it'd be asked for if it were shown, so it's drawn there as it will be; but with
-    // the phone saving data, just the forecast and the warnings)
+    // (beside the one shown, all of it as it'd be asked for if it were shown, so it's drawn there as it will be, though
+    // what changes with the models' runs less often (BESIDE); and with the phone saving data, just the forecast and the
+    // warnings)
     if (wait(k) || (quiet && saving() && k !== "forecast" && k !== "warnings")) return;
     try {
       const j = await fn(place.lat, place.lon);
       // the ensembles are big (143 runs): only their summary is kept
-      raw[k] = k === "ensemble" ? { at: Date.now(), s: shapeEnsemble(j) } : { at: Date.now(), j };
+      raw[k] = k === "ensemble" ? { at: Date.now(), s: shapeEnsemble(j) } : { at: Date.now(), j: k === "warnings" ? keptWarnings(j, raw.warnings?.j) : j };
       failed.delete(`${id}|${k}`);
     }
     catch (e) { failed.set(`${id}|${k}`, Date.now()); if (k === "forecast") throw e; return; }
+    keptMemo.set(id, raw); unsaved = true;
+    if (k === "forecast") save();
     // (drawn outside the asking: a fault in drawing it isn't taken for the network failing, nor asked again for nothing)
-    save();
     if (!quiet) try { onUpdate(build(), { partial: k !== "forecast", stale: false }); } catch (e) { console.error(e); }
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);
-  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("marine", fetchMarine), get("warnings", fetchWarnings)]);
+  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("marine", fetchMarine), get("warnings", fetchWarnings)])
+    .then(() => { if (unsaved) save(); });
   try { await main; } catch (e) { if (!raw.forecast) throw e; if (!quiet) onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
   // (and, beside the one shown, how the models have done there and its climate, so it's drawn there as it will be when
@@ -402,6 +439,15 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
   // how the models have done here, twice a day per place, in the background too
   if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); }).catch((e) => console.error(e));
   return build();
+}
+// What mustn't be lost (your places, your settings): written, and where the phone's storage is full, room made for it
+// first, other places' forecasts going and then the climates (all asked for again as they're wanted) → whether it's kept
+export function keepSafe(k, v) {
+  if (store.set(k, v)) return true;
+  pruneCache(null);
+  if (store.set(k, v)) return true;
+  try { for (const o of Object.keys(localStorage)) if (o.startsWith("clim2:") || o.startsWith("climf:")) store.del(o); } catch (_) {}
+  return store.set(k, v);
 }
 // keep only the newest few places' forecasts when the phone's storage fills (only forecasts: not your places, your
 // settings or anything else kept under wx:)

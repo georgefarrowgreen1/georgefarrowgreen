@@ -248,18 +248,21 @@ export function refine(wx, local, now) {
   return { ...wx, hourly, daily, refined: local };
 }
 
-// METAR reports → daily highs and lows, in local time (offset in seconds), and each hour of the day's temperature, dew
-// point and wind (their means, km/h) and strongest gust (km/h; null where none was reported, as there's none in calm
-// air): { "YYYY-MM-DD": { tmax, tmin, n, hours: [[temp, dew, wind, gust] | null] × 24 } }
-// Only days with enough reports to have caught the warmest and coldest of it.
+// METAR reports → daily highs and lows, in local time, and each hour of the day's temperature, dew point and wind (their
+// means, km/h) and strongest gust (km/h; null where none was reported, as there's none in calm air):
+// { "YYYY-MM-DD": { tmax, tmin, n, hours: [[temp, dew, wind, gust] | null] × 24 } }
+// Only days with enough reports to have caught the warmest and coldest of it. offset: seconds from UTC, or the offset in
+// force at a moment (ms → seconds: zoneOffset), so a fortnight's reports either side of the clocks changing each go in
+// the hour they were there, as Open-Meteo's past forecasts have them, not all an hour out on one side.
 const KT = 1.852, r1 = (v) => Math.round(v * 10) / 10;
-export function obsDays(reports, offsetSec, now = Date.now()) {
-  const days = {}, today = new Date(now + offsetSec * 1000).toISOString().slice(0, 10), fin = (v) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+export function obsDays(reports, offset, now = Date.now()) {
+  const off = typeof offset === "function" ? offset : () => offset;
+  const days = {}, today = new Date(now + off(now) * 1000).toISOString().slice(0, 10), fin = (v) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
   for (const r of reports || []) {
     const t = typeof r.obsTime === "number" ? r.obsTime * 1000 : Date.parse(r.reportTime);
     const v = fin(r.temp);
     if (!Number.isFinite(t) || v == null) continue;
-    const local = new Date(t + offsetSec * 1000), d = local.toISOString().slice(0, 10), hr = local.getUTCHours();
+    const local = new Date(t + off(t) * 1000), d = local.toISOString().slice(0, 10), hr = local.getUTCHours();
     if (d >= today) continue;            // not over yet
     const x = days[d] || (days[d] = { tmax: -99, tmin: 99, n: 0, by: [] });
     x.tmax = Math.max(x.tmax, v); x.tmin = Math.min(x.tmin, v); x.n++;
@@ -276,4 +279,15 @@ export function obsDays(reports, offsetSec, now = Date.now()) {
     out[d] = { tmax: x.tmax, tmin: x.tmin, n: x.n, hours: Array.from({ length: 24 }, (_, h) => { const b = x.by[h]; return b ? [r1(b.t / b.n), b.dn ? r1(b.d / b.dn) : null, b.wn ? r1(b.w / b.wn) : null, b.g != null ? r1(b.g) : null] : null; }) };
   }
   return out;
+}
+// A time zone's offset from UTC at a moment (ms → seconds), summer time and all, for obsDays; null for one that isn't
+// known ("Europe/London": 3600 in August, 0 in December)
+export function zoneOffset(tz) {
+  if (typeof tz !== "string" || !tz) return null;
+  let fmt;
+  try { fmt = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (_) { return null; }
+  return (t) => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(t / 60e3) * 60e3) / 1000;
+  };
 }

@@ -217,45 +217,66 @@ async function outlineAt(base, id) {
 }
 // the floods for a place: those listed within 15 km of it (the API's own reckoning), then only those whose area it's
 // in or within 3 km of
-async function floodsAt(env, lat, lon) {
+async function floodsAt(env, lat, lon, asking = null) {
   const base = env.EA_URL || "https://environment.data.gov.uk";
-  const near = await shaped(`${base}/flood-monitoring/id/floods?lat=${lat.toFixed(2)}&long=${lon.toFixed(2)}&dist=15`, shapeEa);
+  const near = await shaped(`${base}/flood-monitoring/id/floods?lat=${lat.toFixed(2)}&long=${lon.toFixed(2)}&dist=15`, shapeEa, TTL, asking);
   const kept = await Promise.all(near.slice(0, 12).map((w) => outlineAt(base, w.floodArea).then((rings) => (kmFrom(lat, lon, rings) <= EA_NEAR_KM ? rings : null), () => null)));
   return near.slice(0, 12).map((w, i) => kept[i] && { ...w, polys: kept[i] }).filter(Boolean);
 }
 
-// a feed, shaped: from the cache, or asked for and kept for TTL (an answer that it's outside its map: none, kept too)
-async function shaped(url, shape, ttl = TTL) {
+// a feed, shaped: from the cache, or asked for and kept for TTL (an answer that it's outside its map: none, kept too).
+// One that's failed kept as failed for a minute (DOWN), so each that asks meanwhile isn't kept waiting its 10 seconds
+// while it's down; and asked for once, however many of a tick's places ask for it at the same time (asking: what one
+// request has asked for, warningsAt's). Not shared between requests: one can't safely wait on another's fetch, which
+// goes with it if it's cut off (a phone closing the app), leaving the one waiting with no answer at all
+const DOWN = 60;
+function shaped(url, shape, ttl = TTL, asking = null) {
+  if (!asking) return shapedNow(url, shape, ttl);
+  if (!asking.has(url)) asking.set(url, shapedNow(url, shape, ttl));
+  return asking.get(url);
+}
+async function shapedNow(url, shape, ttl) {
   const cache = ttl > 0 && typeof caches !== "undefined" && caches.default ? caches.default : null;
-  const key = new Request(`${url}${url.includes("?") ? "&" : "?"}shaped=3`);
-  if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
-  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
-  if (!r.ok && r.status !== 400 && r.status !== 404) throw new Error(`${new URL(url).hostname} ${r.status}`);
-  const out = r.ok ? shape(await r.json()) : [];
-  if (cache) await cache.put(key, new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttl}` } })).catch(() => {});
-  return out;
+  const key = new Request(`${url}${url.includes("?") ? "&" : "?"}shaped=3`), host = new URL(url).hostname;
+  const keep = (v, s) => cache?.put(key, new Response(JSON.stringify(v), { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${s}` } })).catch(() => {});
+  if (cache) {
+    const hit = await cache.match(key).catch(() => null), j = hit && await hit.json().catch(() => null);
+    if (Array.isArray(j)) return j;
+    if (j?.down) throw new Error(`${host} down a moment ago`);
+  }
+  try {
+    const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
+    if (!r.ok && r.status !== 400 && r.status !== 404) throw new Error(`${host} ${r.status}`);
+    const out = r.ok ? shape(await r.json()) : [];
+    await keep(out, ttl);
+    return out;
+  } catch (e) { await keep({ down: true }, Math.min(DOWN, ttl)); throw e; }
 }
 
 // { warnings: [...] } for a place, worst first, then soonest (each with its areas, made light, where it has them: for the
-// map). If every source it asked
-// failed, an error (502), so a phone keeps the warnings it had rather than being told there are none
-export async function warningsAt(env, lat, lon, now = Date.now()) {
+// map; and the source it came from, src). If every source it asked failed, an error (502), so a phone keeps the warnings
+// it had rather than being told there are none; if some did, which (missing), so it keeps those it had from them
+// (weather/data.js), and the rest are as they are now. asking: a Map shared by the calls of one request (a tick's), so
+// a feed several of its places are in is asked for once (shaped)
+export async function warningsAt(env, lat, lon, now = Date.now(), asking = null) {
   const ma = env.METEOALARM_URL || "https://feeds.meteoalarm.org", nws = env.NWS_URL || "https://api.weather.gov";
   const ttl = env.WARN_TTL != null && env.WARN_TTL !== "" ? Number(env.WARN_TTL) : TTL;
   const feeds = [...new Set(FEEDS.filter(([, b]) => inBox(lat, lon, b)).map(([slug]) => slug))];
-  const asks = feeds.map((slug) => shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j, now), ttl)
+  // ([src, its warnings or null if it failed])
+  const asks = feeds.map((slug) => [`meteoalarm:${slug}`, shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j, now), ttl, asking)
     .then((list) => list.filter((w) => w.polys.some((p) => inside(lat, lon, p))))
-    .catch((e) => { console.error("weather warnings:", slug, e && e.message); return null; }));
+    .catch((e) => { console.error("weather warnings:", slug, e && e.message); return null; })]);
   if (NWS_BOXES.some((b) => inBox(lat, lon, b))) {
-    asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now), ttl)
-      .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; }));
+    asks.push(["nws", shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now), ttl, asking)
+      .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; })]);
   }
-  if (inBox(lat, lon, EA_BOX)) asks.push(floodsAt(env, lat, lon).catch((e) => { console.error("weather warnings: floods", e && e.message); return null; }));
-  const got = await Promise.all(asks);
+  if (inBox(lat, lon, EA_BOX)) asks.push(["floods", floodsAt(env, lat, lon, asking).catch((e) => { console.error("weather warnings: floods", e && e.message); return null; })]);
+  const got = await Promise.all(asks.map(([, p]) => p));
   if (got.length && got.every((x) => x === null)) throw new HttpError(502, "Warnings aren't available right now.");
+  const missing = asks.filter((_, i) => got[i] === null).map(([src]) => src);
   // (and a warning issued twice over, under two names, once: as NVE's floods can be)
   const seen = new Set(), warnings = [];
-  for (const w of got.filter(Boolean).flat()) {
+  for (const w of got.flatMap((list, i) => (list || []).map((x) => ({ ...x, src: asks[i][0] })))) {
     const same = `${w.issuer}|${w.event}|${w.level}|${w.onset}|${w.expires}|${w.area}`;
     if (Date.parse(w.expires) <= now || seen.has(w.id) || seen.has(same)) continue;
     seen.add(w.id); seen.add(same);
@@ -265,5 +286,5 @@ export async function warningsAt(env, lat, lon, now = Date.now()) {
     warnings.push(rest.open ? { ...rest, checked: new Date(now).toISOString() } : rest);
   }
   warnings.sort((a, b) => b.level - a.level || Date.parse(a.onset || 0) - Date.parse(b.onset || 0));
-  return { warnings };
+  return missing.length ? { warnings, missing } : { warnings };
 }

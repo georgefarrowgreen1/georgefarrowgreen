@@ -160,7 +160,9 @@ async function view(env, u) {
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
-    prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
+    // (and Quiet Hours, every app's, for the row that says them, before Notifications has been opened)
+    prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null,
+      quiet: ((n) => ({ on: !!n.quiet, from: n.quietFrom, to: n.quietTo }))(prefsOf(u)) },
     // (the emails each app sends: the account's, about signing in and its security, always; Chat's, as it has them;
     // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
     emails: { inflight: !!u.notify_email, weather: weatherMail(wx.data?.notify) },
@@ -355,8 +357,9 @@ const ROUTES = {
     if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
     if (now?.id === row.user_id) {
       // (a sign-in here only ever used on this page, as an app's account page from before this was kept is: part of that
-      // app's from now on, the last one it opened replaced)
-      if (!now.parent && now.sessionHash !== row.session && now.sessionApps.join() === "account" && !now.sessionHome) {
+      // app's from now on, the last one it opened replaced. Only one that was handed over, which never showed it's you:
+      // one signed in to here with a password or passkey is the browser's own, and stays listed by itself)
+      if (!now.parent && !now.authAt && now.sessionHash !== row.session && now.sessionApps.join() === "account" && !now.sessionHome) {
         await D.batch([D.prepare("UPDATE pg_sessions SET parent = ? WHERE hash = ?").bind(row.session, now.sessionHash),
           D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, now.sessionHash)]);
         now.parent = row.session;
@@ -987,7 +990,8 @@ for (const [k, fn] of Object.entries(ADMIN_ROUTES)) {
 
 // The sign-in page's half (auth.<site>: functions/_acctapp.js): signing in, a computer signed in by phone, making an
 // account, a new password, handing a sign-in back to an app, and signing out; who's signed in, and what a sign-in
-// needs on the way (a passkey made, Chat's key, the password checked against breaches). Nothing else is answered there.
+// needs on the way (a passkey made, Chat's key, the password checked against breaches, an account being deleted kept,
+// as it says so there when an app's waiting). Nothing else is answered there.
 // The first of them (AUTH_ONLY) are answered only there, wherever the site has it: so the account's page never takes
 // a password to sign in with, or makes a sign-in. (Locally, with no such address, the account's page does both.)
 const AUTH_ONLY = new Set(["POST signin/salt", "POST signin/password", "POST signin/passkey", "POST signin/qr", "POST signin/qr/wait", "POST signin/qr/refuse",
@@ -995,7 +999,7 @@ const AUTH_ONLY = new Set(["POST signin/salt", "POST signin/password", "POST sig
 // (a computer's code, said yes or no to by a phone: at either, as the phone's camera opens the sign-in page, and the
 // account's page has a scanner of its own)
 const AUTH_ROUTES = new Set([...AUTH_ONLY, "POST qr/look", "POST qr/answer", "POST signin/options", "POST signout", "GET me", "GET me/photo", "GET handle", "POST reauth", "POST password/vault",
-  "POST password/upgrade", "POST password/checked", "GET pwned", "POST passkeys/options", "POST passkeys", "POST passkeys/vault"]);
+  "POST delete/cancel", "POST password/upgrade", "POST password/checked", "GET pwned", "POST passkeys/options", "POST passkeys", "POST passkeys/vault"]);
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []), key = `${ctx.request.method} ${parts.join("/")}`, route = ROUTES[key];

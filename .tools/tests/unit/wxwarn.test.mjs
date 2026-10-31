@@ -99,6 +99,39 @@ test("warnings for a place: from the feeds that cover it, worst first, each with
   } finally { globalThis.fetch = real; }
 });
 
+// One of a place's sources down (England: MeteoAlarm's feed answers, the Environment Agency's doesn't): what the others
+// say, each warning with its source, and which didn't answer, so the phone keeps what it had from that one; and a feed
+// asked for by several of a tick's places at once, asked for once
+test("one source down: the rest as they are, and which didn't answer, so the phone keeps what it had from it", async () => {
+  const { keptWarnings } = await import("../../../weather/data.js");
+  const real = globalThis.fetch, asked = [];
+  globalThis.fetch = async (url) => {
+    const u = new URL(url);
+    asked.push(u.pathname);
+    await new Promise((ok) => setTimeout(ok, 10));
+    if (u.pathname === "/api/v1/warnings/feeds-united-kingdom") return new Response(JSON.stringify(ukFeed(NOW)), { status: 200 });
+    return new Response("", { status: 503 });
+  };
+  try {
+    const env = { METEOALARM_URL: "http://ma.test", NWS_URL: "http://nws.test", EA_URL: "http://ea.test" };
+    const tick = new Map(), [london, bristol] = await Promise.all([warningsAt(env, 51.51, -0.13, NOW, tick), warningsAt(env, 51.45, -2.59, NOW, tick)]);
+    assert.deepEqual(london.warnings.map((w) => w.id), ["ldn-storm", "ldn-rain"]);
+    assert.ok(london.warnings.every((w) => w.src === "meteoalarm:united-kingdom"));
+    assert.deepEqual(london.missing, ["floods"]); assert.deepEqual(bristol.missing, ["floods"]);
+    assert.equal(asked.filter((p) => p === "/api/v1/warnings/feeds-united-kingdom").length, 1, "the feed asked for once for both");
+    // (but not between requests: each a phone's, which can't wait on another's fetch)
+    await Promise.all([warningsAt(env, 51.51, -0.13, NOW), warningsAt(env, 51.45, -2.59, NOW)]);
+    assert.equal(asked.filter((p) => p === "/api/v1/warnings/feeds-united-kingdom").length, 3, "each phone's asks for it (the cache, where there is one, answering)");
+    // the phone: what it had from the floods kept (while in force), what it had from MeteoAlarm as MeteoAlarm says now
+    const flood = { id: "ea-x-2", src: "floods", level: 3, event: "Flood warning", onset: new Date(NOW - H).toISOString(), expires: null, open: true, checked: new Date(NOW - H).toISOString() };
+    const was = { warnings: [flood, { id: "ldn-old", src: "meteoalarm:united-kingdom", level: 2, onset: new Date(NOW - 2 * H).toISOString(), expires: new Date(NOW + H).toISOString() },
+      { id: "ea-over", src: "floods", level: 2, onset: new Date(NOW - 9 * H).toISOString(), expires: new Date(NOW - H).toISOString() }] };
+    const kept = keptWarnings(london, was, NOW);
+    assert.deepEqual(kept.warnings.map((w) => w.id), ["ea-x-2", "ldn-storm", "ldn-rain"], "the flood warning kept, among the rest worst first, then soonest; not MeteoAlarm's old one, nor one that's over");
+    assert.equal(keptWarnings({ warnings: london.warnings }, was, NOW).warnings.length, 2, "all of them answering: as they say");
+  } finally { globalThis.fetch = real; }
+});
+
 test("how the app says them: colour, title, badge, when, icon", () => {
   const [rain, storm, wind] = shapeMeteoalarm(ukFeed(NOW), NOW);
   assert.equal(colourOf(rain), "yellow"); assert.equal(colourOf(storm), "amber");
@@ -150,7 +183,7 @@ test("warning notifications: new or raised, once each, yellow not overnight", as
   // raised to amber (a new warning of the same, replacing it): told, as raised
   let told = r.told;
   r = warningAlert([w("b", 3, "Amber wind warning")], told, day, day, f, 0, "London");
-  assert.equal(r.alert.title, "Raised to amber: wind warning"); assert.equal(r.alert.tag, "warn");
+  assert.equal(r.alert.title, "Raised to amber: wind warning"); assert.equal(r.alert.tag, "warn:wind", "tagged by what it's of: a raise takes the yellow one's place");
   assert.match(r.alert.body, /^London: Met Office · Until 21:00\. Gusts of 50 to 60 mph\.$/);
   // and back down to yellow, or the amber reissued: not news
   told = r.told;
@@ -159,6 +192,7 @@ test("warning notifications: new or raised, once each, yellow not overnight", as
   // something new besides: the worst said, and how many more
   r = warningAlert([w("b", 3, "Amber wind warning"), w("d", 2, "Yellow rain warning", { type: 10 }), w("e", 4, "Red snow warning", { type: 2 })], told, day, day, f, 0, "London");
   assert.equal(r.alert.title, "Red snow warning"); assert.match(r.alert.body, /\(and 1 more\)$/);
+  assert.equal(r.alert.tag, "warn:ice", "and something else, alongside the wind one, not in its place");
   // overnight: a new yellow one waits for the morning (not taken as told), an amber one doesn't wait
   const quiet = warningAlert([w("f", 2, "Yellow fog warning", { type: 4, expires: iso(night + 12 * H) })], {}, night, night, f, 0, "");
   assert.equal(quiet.alert, null); assert.equal(quiet.told.f, undefined, "left to tell in the morning");

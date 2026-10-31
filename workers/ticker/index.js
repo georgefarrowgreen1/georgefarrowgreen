@@ -6,19 +6,25 @@
 const SITE = "https://georgefarrowgreen.pages.dev";
 
 export default {
-  async scheduled(event, env, ctx) {
+  async scheduled(event, env) {
+    // (each job: null once it's gone, else its path, having said why in the log (wrangler.toml's [observability]))
     const ask = async (path, secret) => {
-      if (!secret) return console.error(path, "no secret set");
+      if (!secret) { console.error(path, "no secret set"); return path; }
       try {
         const r = await fetch(SITE + path, { method: "POST", headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(55000) });
-        if (!r.ok) console.error(path, r.status, (await r.text()).slice(0, 200));
+        if (r.ok) return null;
+        console.error(path, r.status, (await r.text()).slice(0, 200));
       } catch (e) { console.error(path, e && e.message); }
+      return path;
     };
-    ctx.waitUntil(Promise.all([
+    const failed = (await Promise.all([
       ask("/api/pigeon/notify-tick", env.INFLIGHT_TICK_SECRET),
       ask("/api/weather/tick", env.WEATHER_TICK_SECRET || env.INFLIGHT_TICK_SECRET),
       ask("/api/fitness/garmin-tick", env.INFLIGHT_TICK_SECRET),   // (Fitness's Garmin Connect accounts: what's new)
       ask("/api/markets/tick", env.INFLIGHT_TICK_SECRET),   // (Markets's price alerts)
-    ]));
+    ])).filter(Boolean);
+    // (the run itself marked as failed, if any job did: so it's seen in the Worker's own list of its runs and its errors
+    // in Cloudflare's dashboard, not only in its log)
+    if (failed.length) throw new Error(`Not done: ${failed.join(", ")}`);
   },
 };

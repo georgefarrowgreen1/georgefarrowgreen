@@ -59,8 +59,8 @@ ok(l1?.email === 'rowan@example.com' && l1.name === 'Rowan Hale' && l1.handle ==
 ok(await signOut(A), 'signing out: dusk over the sky');
 await A.p.waitForSelector('main .signin.remembered', { timeout: 10000 }).catch(() => {});
 const r1 = await text(A);
-ok(/Welcome back, Rowan/.test(r1) && /@rowan/.test(r1) && /Not you\? Use another account/.test(r1) && !(await A.p.$('main .signin input[name=email]')),
-  'signed out: "Welcome back, Rowan", no email to type, and Not you?', r1.slice(0, 160));
+ok(/Welcome back, Rowan/.test(r1) && /@rowan/.test(r1) && /Forget rowan@example\.com on this device/.test(r1) && !(await A.p.$('main .signin input[name=email]')),
+  'signed out: "Welcome back, Rowan", no email to type, and Forget … on this device', r1.slice(0, 160));
 await shot(A, '01-remembered');
 // the password field: its eye, and Caps Lock said before a password typed in capitals is wrong
 await A.p.fill('main .signin input[name=password]', 'wrong one entirely');

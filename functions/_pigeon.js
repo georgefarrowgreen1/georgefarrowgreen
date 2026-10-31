@@ -409,6 +409,14 @@ const MIGRATIONS = [
   // it's said (label, place, and its country's code, cc); once a phone's looked, whose it is and which phone; and where
   // it's got to
   "CREATE TABLE IF NOT EXISTS pg_qrsign (hash TEXT PRIMARY KEY, poll TEXT NOT NULL, num INTEGER NOT NULL, picks TEXT NOT NULL, label TEXT, place TEXT, cc TEXT, user_id TEXT, phone TEXT, state TEXT NOT NULL, expires INTEGER NOT NULL)",
+  // what quiet hours held back that no pigeon carries, to be told once they end (functions/_notify.js heldTick), if it
+  // still stands then: a friend request (about: who asked), one accepted (who accepted), being added to a group (the
+  // group; by: who added you). Not kept past three days
+  "CREATE TABLE IF NOT EXISTS pg_held (user_id TEXT NOT NULL, kind TEXT NOT NULL, about TEXT NOT NULL, by_id TEXT, at INTEGER NOT NULL, PRIMARY KEY (user_id, kind, about))",
+  "CREATE INDEX IF NOT EXISTS pg_held_at ON pg_held(at)",
+  // messages by when they left: what's a month old found without reading every message there is, words and all (functions/
+  // _retention.js keepMonth, every 10 minutes; functions/_notify.js blurOld, hourly)
+  "CREATE INDEX IF NOT EXISTS pg_msgs_sent ON pg_msgs(sent_at)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -695,6 +703,19 @@ export async function spendSwift(D, u, t) {
   const r = await D.prepare("UPDATE pg_users SET swift = ?, swift_at = ? WHERE id = ? AND swift IS ? AND swift_at IS ?").bind(n, at, u.id, u.swift, u.swift_at).run();
   if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
 }
+// A pigeon that never took off (or a swift one that never went after one) goes back in its loft: kind, the loft it
+// came from ("mystery" for a mystery pigeon's own)
+export async function refundLoft(D, uid, kind, t) {
+  const p = kind === "mystery" ? MYSTERY : PIGEONS[kind] || LUNAR_LOFTS[kind];
+  for (let i = 0; p?.max && i < 3; i++) {
+    const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(uid).first(), l = loft(me, kind, t);
+    if (l.count >= p.max) break;                    // a full loft: it's just home (no more than a day's worth, ever)
+    // one more in the loft; a full loft stops hatching, so its clock restarts from now
+    const at = l.count + 1 >= p.max ? t : l.at + l.hatched * p.every;
+    const ok = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(l.count + 1, at, uid, me[p.col], me[p.atCol]).run();
+    if (ok.meta.changes) break;
+  }
+}
 
 // The weather's part in a flight: how much later (or earlier) it lands, and the
 // worst of it on the way. Small changes aren't worth a word.
@@ -723,15 +744,16 @@ export function cheerView(row, me) {
 }
 // On a message: its named pigeon and rank (as it took off); to its sender also
 // which of theirs it is, and the rank it reached if it went up on landing.
-// View-once photos: the one download, then gone. Read whole (so it can go from
-// storage before it's even sent), then deleted from R2 unless anyone may still view it.
+// View-once photos: the one download, then gone. Once no one else may still view it, its time is up a few minutes
+// later (ONCE_AGAIN: its expires_at brought forward), when it's served as gone and the sweep deletes it (sweepPhotos).
+// Until then, a download that didn't arrive (a weak signal, the app sent away part way) can be asked for again by who
+// it was for: rather than deleted as it was sent, and that one try the only one.
 export const isOnce = (m) => m.photo && m.once !== 0;
-export async function serveOnce(env, key, keep) {
+export const ONCE_AGAIN = 5 * MIN;            // (time for one that timed out, two minutes on a weak signal, and another try)
+export async function serveOnce(env, key) {
   const obj = env.BIO_R2 && (await env.BIO_R2.get(key));
   if (!obj) throw new HttpError(410, "This photo has flown away.");
-  const buf = await obj.arrayBuffer();
-  if (!keep) await env.BIO_R2.delete(key).catch(() => {});
-  return new Response(buf, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+  return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
 export const birdOn = (m, me) => (m.bird_name ? { bird: { name: m.bird_name, rank: m.bird_rank, wear: m.bird_wear || null, ...(me === m.sender ? { id: m.bird, up: m.bird_up || null } : {}) } } : {});
 // What one phone may see of a message. An inbound scroll's ciphertext stays

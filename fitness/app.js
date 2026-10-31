@@ -94,17 +94,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -157,13 +163,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -217,33 +223,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -264,6 +292,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -330,20 +359,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
@@ -407,7 +444,7 @@ const store = {
   set(k, v) { try { localStorage.setItem("fitness:" + k, JSON.stringify(v)); } catch (_) {} },
 };
 // each activity's file as this device last fetched it (IndexedDB), so a ride opened again doesn't come over the network
-// again: by account and activity, and cleared on signing out
+// again: by account and activity, the last few used (keepFile), and cleared on signing out
 const idb = (() => {
   let p = null;
   const open = () => (p ||= new Promise((res, rej) => {
@@ -419,10 +456,30 @@ const idb = (() => {
     const db = await open();
     return new Promise((res, rej) => { const t = db.transaction("files", mode), q = fn(t.objectStore("files")); t.oncomplete = () => res(q.result); t.onerror = () => rej(t.error); });
   };
-  return { get: (k) => run("readonly", (s) => s.get(k)), put: (k, v) => run("readwrite", (s) => s.put(v, k)), del: (k) => run("readwrite", (s) => s.delete(k)), clear: () => run("readwrite", (s) => s.clear()) };
+  return { get: (k) => run("readonly", (s) => s.get(k)), put: (k, v) => run("readwrite", (s) => s.put(v, k)), del: (k) => run("readwrite", (s) => s.delete(k)), clear: () => run("readwrite", (s) => s.clear()),
+    keys: () => run("readonly", (s) => s.getAllKeys()) };
 })();
+// Only the 50 files last used are kept here, the one longest unused let go as another comes, so a long history brought
+// in doesn't fill the phone (each is the account's too, and fetched again should it be opened). Which were used last is
+// kept beside them (fitness:files); a file used, and with bytes, kept: keepFile.
+const FILES = 50, filesUsed = () => store.get("files", null) || [];
+function keepFile(k, bytes = null) {
+  const list = filesUsed().filter((x) => x !== k).concat(k), gone = list.splice(0, Math.max(0, list.length - FILES));
+  store.set("files", list);
+  if (bytes) idb.put(k, bytes).catch(() => {});
+  for (const x of gone) idb.del(x).catch(() => {});
+}
+// (and once a session, what's here squared with that: files kept before there was a limit, or not in the list, counted
+// the longest unused)
+async function tidyFiles() {
+  const keys = (await idb.keys().catch(() => [])).filter((k) => typeof k === "string" && k !== "me:last"), have = new Set(keys), list = filesUsed();
+  const all = [...keys.filter((k) => !list.includes(k)), ...list.filter((k) => have.has(k))], gone = all.splice(0, Math.max(0, all.length - FILES));
+  store.set("files", all);
+  for (const k of gone) idb.del(k).catch(() => {});
+}
 
-const TODAY = startOfDay(Date.now());
+// (today: moved on as a new day comes, the app left open past midnight or brought back the next morning: newDay)
+let TODAY = startOfDay(Date.now());
 const D = demo(Date.now());
 // Your record (kept with the account: adopt), your own activities (S.own, their rows from the account), and the example
 // rides, shown only if you turn them on (You › Example rides). The plan's the one you chose (and when it starts), or with
@@ -504,11 +561,17 @@ function setNumber(k, v) {
 // device had. Where another device has changed it meanwhile, the two are put together (each part this device changed
 // its own, the days and workouts joined) and sent again.
 let saveT = null;
-function keep(...parts) { changed(); if (!S.me) return; for (const x of parts) S.dirty.add(x); clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
+// (not saved yet: offline, or the account slow to answer, said as which, account.js)
+const notSaved = (e) => (e?.slow ? "Fitness is slow to answer: your changes will be saved in a moment" : "You’re offline: your changes will be saved when you’re back");
+function keep(...parts) { changed(); if (!S.me) return; for (const x of parts) S.dirty.add(x); inStep.said = false; clearTimeout(saveT); saveT = setTimeout(inStep, 700); morningRefresh(); }
 async function inStep() {
   if (!S.me || !S.dirty.size || inStep.busy) return;
-  // (nothing kept till the account's said who's signed in: the copy on the screen may be another's)
-  if (!background.done) { clearTimeout(saveT); saveT = setTimeout(inStep, 700); return; }
+  // (nothing kept till the account's said who's signed in: the copy on the screen may be another's; opened offline from
+  // it, said so, once a change)
+  if (!background.done) {
+    if (S.offline && !inStep.said) { inStep.said = true; toast(notSaved(S.offline), true); }
+    clearTimeout(saveT); saveT = setTimeout(inStep, 700); return;
+  }
   inStep.busy = true;
   const dirty = new Set(S.dirty); S.dirty.clear();
   let again = 700;
@@ -524,7 +587,7 @@ async function inStep() {
   } catch (e) {
     for (const x of dirty) S.dirty.add(x);
     if (e.status === 401) { inStep.busy = false; return signedOutHere(true); }
-    toast(e.offline ? "You’re offline: your changes will be saved when you’re back" : e.message, true);
+    toast(e.offline ? notSaved(e) : e.message, true);
     again = e.offline ? 15000 : 30000;
   } finally { inStep.busy = false; }
   // (changes made while that was on its way, or that didn't go: next)
@@ -546,13 +609,14 @@ const rhythmOn = () => !!S.rhythm && !S.chosen;
 let rhCache = null;
 function rh() {
   if (!rhythmOn()) return null;
-  // (worked out again only when something it goes on has changed: the count covers the rides and their figures)
-  // (and the wet days ahead, from the weather where you ride, and your nights, from Garmin)
-  const wet = wetAhead(), well = wellByDay();
-  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}|${JSON.stringify(S.rhythm)}|${JSON.stringify(S.feel)}|${JSON.stringify(S.swaps)}|${JSON.stringify(wet)}|${wellSource().length}:${JSON.stringify(wellSource().at(-1) || "")}`;
-  if (rhCache?.key !== key) {
+  // (worked out again only when something it goes on has changed: the count covers the rides and their figures, and
+  // your week, check-ins and swaps, all changed through keep or adopt; the weather where you ride, for the wet days
+  // ahead, and your nights, from Garmin or Apple Health, each a new answer when it changes. Asked for many times a
+  // page, so it's known without working anything out.)
+  const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}`, from = [S.wx, S.garmin, S.health];
+  if (rhCache?.key !== key || rhCache.from.some((x, i) => x !== from[i])) {
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, indoor: !!a.indoor, sum: sumOf(a) }));
-    rhCache = { key, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet, well }) };
+    rhCache = { key, from, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet: wetAhead(), well: wellByDay() }) };
   }
   return rhCache.v;
 }
@@ -645,10 +709,12 @@ function readOff(name, bytes) {
   return new Promise((ok, no) => { readerWait.set(id, { ok, no }); readerW.postMessage({ id, name, bytes: u8, profile: P() }, [u8.buffer]); })
     .catch((e) => (e.worker ? F.readAny(name, bytes) : Promise.reject(e)));
 }
-async function load(a) {
+// (keep: false, read only for what's worked out from it, as activities.js routes reads old ones a few at a time: not
+// kept here, nor counted as used)
+async function load(a, keep = true) {
   if (full(a)) return full(a);
-  let bytes = await idb.get(fileKey(a)).catch(() => null);
-  if (!bytes) { bytes = await A.fileOf(a.id); idb.put(fileKey(a), bytes).catch(() => {}); }
+  const here = await idb.get(fileKey(a)).catch(() => null), bytes = here || await A.fileOf(a.id);
+  if (keep) keepFile(fileKey(a), here ? null : bytes);
   const r = await readOff(a.file || `activity.${a.type}`, bytes);
   // (a file of several parts, a triathlon's: the part that's this one, by when it started)
   const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
@@ -763,14 +829,30 @@ function render(fresh = false) {
   main.replaceChildren(screen);
   main.removeAttribute("aria-busy");
   requestAnimationFrame(() => IFL.settle(window));
-  document.title = { today: "Fitness", plan: "Plan · Fitness", workouts: "Workouts · Fitness", activities: "Activities · Fitness" }[S.tab];
+  document.title = { activities: "Activities · Fitness", progress: "Progress · Fitness" }[S.tab] || "Fitness";
 }
 // drawn again in place (what changed behind the scenes), keeping where you'd scrolled to; a sheet that's up stays as it
 // is unless it's asked for too (what's in it is drawn afresh, charts and all)
 function redraw(sheetToo = false) {
   // (not while a session's being dragged to another day: the drag would end; drawn once it's dropped, today.js)
   if (document.body.classList.contains("day-drag")) { redraw.later = true; return; }
-  const y = scrollY; render(false); scrollTo(0, y); if (sheetToo && sheetEl.open && Sheet.redraw) Sheet.redraw(); }
+  const y = scrollY, f = focusOf(main); render(false); scrollTo(0, y); refocus(main, f); if (sheetToo && sheetEl.open && Sheet.redraw) Sheet.redraw(); }
+// Where the focus was, as a redraw puts new controls where the old ones were: found again in what's drawn (by its id, or
+// its kind, label and words, and which of those it was), so a keyboard or VoiceOver carries on from the button that was
+// pressed rather than starting again at the top
+const focusSig = (el) => el.getAttribute("aria-label") || el.textContent.trim();
+function focusOf(root) {
+  const a = document.activeElement;
+  if (!a || a === root || a === document.body || !root.contains(a)) return null;
+  const s = focusSig(a);
+  return { id: a.id || null, tag: a.tagName, s, i: [...root.querySelectorAll(a.tagName)].filter((el) => focusSig(el) === s).indexOf(a) };
+}
+function refocus(root, f) {
+  const now = document.activeElement;
+  if (!f || (now && now !== root && now !== document.body && root.contains(now))) return;
+  const el = (f.id && document.getElementById(f.id)) || [...root.querySelectorAll(f.tag)].filter((x) => focusSig(x) === f.s)[f.i];
+  if (el && root.contains(el)) el.focus({ preventScroll: true });
+}
 // (InFlite's header, the same in every app: your photo, the screen's name with its line under it, its buttons in one
 // capsule; compact as it's scrolled)
 function head(title, sub, ...right) {
@@ -783,8 +865,8 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.58";
-const NEWS = "Pinching no longer zooms the page: it stays the app's own size (maps and photos still pinch)";
+const BUILD = "1.59";
+const NEWS = "Today moves on by itself overnight, a ride from both Garmin and Strava is kept once, and days before your plan began aren't marked missed";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -794,7 +876,7 @@ function youMenu(at) {
       { key: "notify", icon: "bell", color: "red", label: "Notifications", value: morningOf() ? "On" : "Off here", warn: !morningOf(), open: () => openAccount("notify-fitness") },
       { icon: "ruler", color: "blue", label: "Distances", value: U.metric ? "km" : "miles", open: () => openAccount("fitness") },
       // (where your rides come from: the first that's on, and how many more; set up on the account's page)
-      { icon: "watch", color: "teal", label: "Devices", value: devicesSaid(), open: () => openAccount("fitness") },
+      { icon: "watch", color: "teal", label: "Devices", value: devicesSaid(), warn: !!stopped(), open: () => openAccount("fitness") },
       { icon: "upload", color: "indigo", label: "Upload Files", open: () => openSheet(uploadFilesView) },
       "-",
       { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
@@ -802,7 +884,9 @@ function youMenu(at) {
     account: openAccount, signOut: () => signOutHere(),
   });
 }
-const devicesSaid = () => { const on = [S.garmin?.on && "Garmin", S.strava?.on && "Strava", S.health?.on && "Apple Health"].filter(Boolean); return on.length ? on[0] + (on.length > 1 ? ` +${on.length - 1}` : "") : "None"; };
+const devicesSaid = () => { if (stopped()) return `${stopped()}: reconnect`; const on = [S.garmin?.on && "Garmin", S.strava?.on && "Strava", S.health?.on && "Apple Health"].filter(Boolean); return on.length ? on[0] + (on.length > 1 ? ` +${on.length - 1}` : "") : "None"; };
+// (one that's stopped bringing your rides in: Garmin's key expired or deleted, or Strava's let Fitness go)
+const stopped = () => (S.garmin?.on && !S.garmin.ok ? "Garmin" : S.strava?.on && !S.strava.ok ? "Strava" : null);
 // you, as the account has you: your photo, or your initial
 const face = () => (S.me?.photoAt ? h("img", { src: A.photoUrl(S.me.photoAt), alt: "", width: 44, height: 44 }) : (S.me?.name || "Y").trim().slice(0, 1).toUpperCase());
 const section = (title, ...kids) => h("section.section", {}, title && h("h3", {}, title), ...kids);
@@ -880,11 +964,13 @@ function settingsView() {
     ],
   };
 }
-// Your account's page, opened signed in as you (a code good once, for a minute), with the way back here
+// Your account's page, opened signed in as you (a code good once, for a minute), with the way back here (asks=1: its
+// Notifications folder, with them off here, whose Turn On comes back to #notify, which asks)
 async function openAccount(open) {
   const page = A.accountPage();
   if (!page) return toast("Your account is at account.inflite.ai");
-  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness", ...(typeof open === "string" ? { open } : {}) })}`); }
+  const asks = open === "notify-fitness" && !morningOf() ? { asks: "1" } : {};
+  try { const { code } = await A.accountLink(); location.assign(`${page}#${new URLSearchParams({ handoff: code, from: "fitness", ...(typeof open === "string" ? { open } : {}), ...asks })}`); }
   catch (e) { if (e.status === 401) return signedOutHere(); toast(e.message, true); }
 }
 // (a number's note: worked out from your rides, or a starting guess, until you set it yourself)
@@ -1062,8 +1148,10 @@ function uploadView(got) {
       if (a.name === was || named) { a.name = named ? `${named[1]} ${word(now)}` : defaultFor(a); name.textContent = a.name; }
       tile.className = "tile s-" + now; tile.replaceChildren(sportIcon(now, 20)); said.textContent = "Chosen by you"; said.hidden = false;
     } }, SPORT_NAMES.map(([v, l]) => h("option", { value: v, selected: a.sport === v, text: l })));
+    // (a file that jumps on more than a day partway (a device's clock gone wrong): what came after, left out, and said)
+    const cut = a.cut ? h("small.said", { text: "Its file jumps on more than a day partway: what came after was left out" }) : null;
     return h("div.row.up" + (a.guessed ? ".guess" : ""), {}, tile,
-      h("span.tx", {}, name, h("small", { text: [`${dayShort(a.start)}, ${timeOf(a.start)}`, sum.dist > 100 ? dist(sum.dist) : null, hm(sum.moving)].filter(Boolean).join(" · ") }), said),
+      h("span.tx", {}, name, h("small", { text: [`${dayShort(a.start)}, ${timeOf(a.start)}`, sum.dist > 100 ? dist(sum.dist) : null, hm(sum.moving)].filter(Boolean).join(" · ") }), said, cut),
       h("label.pick", {}, pick, icon("chev", 14, 2.6)));
   });
   const go = h("button.btn", { type: "button", onclick: () => upload(got, go) }, icon("upload", 19, 2.2), n ? `Upload ${plural(n, "activity", "activities")}` : `Save ${plural(nw, "workout")}`);
@@ -1099,8 +1187,7 @@ async function squash() {
       if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
       squash.tried.add(a.id);
       try {
-        let bytes = await idb.get(fileKey(a)).catch(() => null);
-        if (!bytes) bytes = await A.fileOf(a.id);
+        const here = await idb.get(fileKey(a)).catch(() => null), bytes = here || await A.fileOf(a.id);
         const r = await readOff(a.file || `activity.${a.type}`, bytes), parts = r.activities;
         const x = parts.find((y) => Math.abs(y.start - a.start) < 2000) || (parts.length === 1 ? parts[0] : null);
         if (!x) continue;
@@ -1109,12 +1196,18 @@ async function squash() {
         if (a.size && gz.length >= a.size) continue;
         const got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, gz);
         Object.assign(a, { gz: true, type: k.type, file: k.name, size: got.size });
-        idb.put(fileKey(a), k.bytes).catch(() => {});
+        // (this phone's copy, where it had one, as the account has it now; none kept that wasn't)
+        if (here) idb.put(fileKey(a), k.bytes).catch(() => {});
       } catch (e) { if (e.status === 401 || e.offline) break; }
     }
   } finally { squash.busy = false; }
 }
 squash.tried = new Set();
+// One you have already, by when it started (within a minute): kept, or on its way to the account now (from Garmin,
+// Strava or an upload, which can all be at it at once: each start's claimed before it's sent, so the same ride from two
+// of them is kept once)
+const upping = new Set();
+const near = (start) => S.own.some((x) => Math.abs(x.start - start) < 60e3) || [...upping].some((t) => Math.abs(t - start) < 60e3);
 // Each activity kept with your account (its file as it came, and its figures as worked out here), one at a time, the
 // sheet saying how far it's got
 async function upload(got, btn) {
@@ -1122,26 +1215,34 @@ async function upload(got, btn) {
   const done = [], failed = [];
   for (const [i, a] of got.acts.entries()) {
     btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
-    const sum = figuresOf(a), k = keptFile(a, sum, a.parts || 1), meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
+    // (come in meanwhile, from Garmin or Strava: here already)
+    if (near(a.start)) continue;
+    let sum, k, meta;
+    upping.add(a.start);
     try {
+      sum = figuresOf(a); k = keptFile(a, sum, a.parts || 1);
+      meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
       const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
       if (r.already) continue;
     } catch (e) {
       if (e.status === 401) return signedOutHere();
-      failed.push(`${a.name}: ${e.message}`); continue;
-    }
+      failed.push({ a, said: `${a.name}: ${e.message}` }); continue;
+    } finally { upping.delete(a.start); }
     const entry = { ...meta, gz: A.canGzip(), sample: false };
     S.own.push(entry); S.sums.set(entry.id, sum); done.push(entry);
     remember(entry.id, Object.assign(a, { id: entry.id }));
-    idb.put(fileKey(entry), k.bytes).catch(() => {});
+    keepFile(fileKey(entry), k.bytes);
   }
   if (got.workouts.length) { S.mine.unshift(...got.workouts); keep("workouts"); }
   setActs(); estimate();
-  if (failed.length) { btn.disabled = false; btn.lastChild.textContent = "Try again"; got.acts = got.acts.filter((a) => failed.some((f) => f.startsWith(a.name + ":"))); toast(failed[0], true, 6000); redraw(); return; }
+  // (Try again: only those that didn't go, themselves, not every one that shares a name with one)
+  if (failed.length) { btn.disabled = false; btn.lastChild.textContent = "Try again"; got.acts = failed.map((f) => f.a); toast(failed[0].said, true, 6000); redraw(); return; }
   await closeSheet();
   if (done.length) { S.tab !== "activities" && go("activities"); S.actSport = "all"; }
   redraw();
-  toast([done.length && plural(done.length, "activity", "activities"), got.workouts.length && plural(got.workouts.length, "workout")].filter(Boolean).join(" and ") + " added");
+  // (none new after all: here already, from Garmin or Strava, or kept on another device meanwhile)
+  const added = [done.length && plural(done.length, "activity", "activities"), got.workouts.length && plural(got.workouts.length, "workout")].filter(Boolean).join(" and ");
+  toast(added ? `${added} added` : "Here already");
   if (done.length === 1 && !got.workouts.length) openAct(done[0]);
 }
 
@@ -1164,11 +1265,19 @@ const SRC = {
     read: async (w, bytes) => (await readOff(`strava-${w.id}.tcx`, await A.gunzip(bytes))).activities.map((a) => Object.assign(a, { ...(w.sport && w.sport !== "other" ? { sport: w.sport } : {}), indoor: !!w.indoor || a.indoor, device: w.device || "Strava" })) },
 };
 const fromGarmin = (o) => fromSource("garmin", o);
+// (Garmin's files are zips, and Strava's gzipped: unpacked by the browser, which Safari before 16.4 can't do)
+const canUnpack = () => { try { new DecompressionStream("deflate-raw"); return true; } catch (_) { return false; } };
 async function fromSource(src, { quiet = false } = {}) {
   const c = SRC[src], waiting = c.state()?.waiting || [];
   if (!waiting.length || fromSource[src]) return 0;
+  // (a browser that can't unpack them leaves them waiting, for a phone or computer that can, rather than taking each for
+  // a file with nothing in it)
+  if (!canUnpack()) {
+    if (!fromSource.told) { fromSource.told = true; toast(`Your activities from ${c.label} are waiting: this browser can’t open them. Update it (iOS 16.4 or later), or open Fitness on another device.`, true, 8000); }
+    return 0;
+  }
   fromSource[src] = true;
-  const added = [];
+  const added = [], left = [];
   try {
     for (const w of waiting) {
       let acts;
@@ -1176,15 +1285,30 @@ async function fromSource(src, { quiet = false } = {}) {
       catch (e) { if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
       let kept = 0;
       for (const [k, a] of acts.entries()) {
-        // (one you have already: the same ride, uploaded, or from the other)
-        if (S.own.some((x) => Math.abs(x.start - a.start) < 60e3)) continue;
+        // (one you have already, or on its way: the same ride, uploaded, or from the other)
+        if (near(a.start)) continue;
         if (w.name && acts.length === 1) a.name = w.name;
-        const sum = figuresOf(a), f = keptFile(a, sum, acts.length), meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
-        try { await A.upload(meta, f.name, await A.gzip(f.bytes)); } catch (e) { if (e.status === 401) return signedOutHere(true); kept = -1; break; }
+        let sum, f, meta, r;
+        upping.add(a.start);
+        try {
+          sum = figuresOf(a); f = keptFile(a, sum, acts.length);
+          meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
+          r = await A.upload(meta, f.name, await A.gzip(f.bytes));
+        } catch (e) {
+          if (e.status === 401) return signedOutHere(true);
+          // (one the account won't take as it is (its date can't be right, say), or that couldn't be worked out here: left
+          // out, and said, so it doesn't hold up every one after it; anything else (offline, the server busy, your space
+          // used up) and it waits for next time)
+          if (e.status === 400 || (!e.status && !e.offline)) { left.push(`${a.name}, from ${c.label}: ${e.message}`); continue; }
+          kept = -1; break;
+        } finally { upping.delete(a.start); }
+        // (the account has it already: the same ride, from the other, kept on another device meanwhile)
+        if (r.already) continue;
         const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
         remember(entry.id, Object.assign(a, { id: entry.id }));
-        idb.put(fileKey(entry), f.bytes).catch(() => {});
+        // (not while your history's brought in, a batch at a time: hundreds of files, each fetched again if it's opened)
+        if (!S.bringing) keepFile(fileKey(entry), f.bytes);
       }
       if (kept < 0) break;
       // (nothing in it to keep: one you have already, or one with nothing Fitness can read)
@@ -1193,6 +1317,7 @@ async function fromSource(src, { quiet = false } = {}) {
     }
   } finally { fromSource[src] = false; }
   if (added.length) { setActs(); estimate(); redraw(); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from ${c.label}` : `${plural(added.length, "activity", "activities")} from ${c.label}`); }
+  else if (left.length) toast(left[0], true, 6000);
   return added.length;
 }
 const R_ALL = Date.UTC(2000, 0, 2);
@@ -1218,10 +1343,19 @@ async function bringIn({ all = false, src = "garmin" } = {}) {
     // (Strava's asked first: nothing's fetched as it's connected, as Garmin's is)
     if (src === "strava" && !all) { try { c.set(await c.fetch(all)); } catch (_) {} }
     n = await more();
-    for (let i = 0; i < (all ? 400 : 16) && (c.state().more || (all && c.state().back)); i++) { try { c.set(await c.fetch(all)); } catch (_) { break; } n += await more(); }
+    for (let i = 0; i < (all ? 400 : 16) && (c.state().more || (all && c.state().back)); i++) {
+      const was = c.state().backAt;
+      try { c.set(await c.fetch(all)); } catch (_) { break; }
+      const k = await more(); n += k;
+      // (no further than an answer that says why not (busy, didn't answer, your space used up), or one that moved nothing
+      // on: asked again now, it would only ask Garmin or Strava over and over. The server carries on by itself)
+      const g = c.state();
+      if (g.said || !g.ok || !canUnpack() || (!k && !g.more && g.backAt === was)) break;
+    }
   } finally { bringIn.busy = false; }
   S.bringing = null; redraw(); estimate();
-  toast(all ? (n ? `${plural(n, "activity", "activities")} from your ${c.label} history` : `Your ${c.label} history is all here`) : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : `Connected to ${src === "garmin" ? "Garmin Connect" : "Strava"}`);
+  const going = all && c.state()?.back;
+  toast(all ? (going ? `${n ? `${plural(n, "activity", "activities")} from your ${c.label} history so far. ` : ""}The rest come in by themselves` : n ? `${plural(n, "activity", "activities")} from your ${c.label} history` : `Your ${c.label} history is all here`) : n ? `Connected: ${plural(n, "activity", "activities")} from the last six months` : `Connected to ${src === "garmin" ? "Garmin Connect" : "Strava"}`);
   return n;
 }
 // ---- the first use: a welcome, the whole screen, over the sky (once for an account, on whichever phone) ----
@@ -1294,7 +1428,7 @@ function onboarding(at = null) {
       try { if (morningOf()) await morningOffHere(); else { const [hh, mm] = time.value.split(":").map(Number); await morningOn(hh * 60 + mm); } } catch (e) { toast(e.message, true); }
       Sheet.redraw(); } });
     return { title: "", right: skipTo(V.preview), body: [V.dots("extras"),
-      h("div.sheet-top", {}, h("h1", { text: "Your mornings" }), h("div.sub", { text: "Two extras that make each day’s plan fit you better. Both optional, both easy to add later in You." })),
+      h("div.sheet-top", {}, h("h1", { text: "Your mornings" }), h("div.sub", { text: "Two extras that make each day’s plan fit you better. Both optional, both easy to add later from your photo." })),
       S.garmin?.on ? h("div.card.onb-note", {}, h("b", { text: "Your nights: already on" }), h("small", { text: "Your Garmin’s HRV, resting heart rate and sleep come in with your rides, so a poor night eases your day." }))
         : h("div.group", {}, row({ tile: h("span.ic.brand.health", {}, icon("heart", 18, 2.2)), title: "Your nights", sub: S.health?.on ? "On, from your Apple Watch" : "HRV, resting heart rate and sleep from your Apple Watch, so a poor night eases your day", onclick: () => { healthView.key = null; pushSheet(healthView); } })),
       canPush() && h("div.group", {}, h("div.row.plain", {}, h("span.ic.blue", {}, icon("today", 16, 2.2)), h("span.tx", {}, h("b", { text: "Morning reminder" }), h("small", { text: "Today’s session, or a rest day, as a notification" })), sw),
@@ -1360,7 +1494,8 @@ function garminView() {
 // ---- Apple Health, by a Shortcut (functions/_health.js): Health stays on the phone, so a personal automation in
 // Shortcuts sends last night's HRV, resting heart rate and sleep here each morning, with a key of your own. Rhythm reads
 // them as it reads Garmin's (rhythm.js nightOf). The key's in the address the Shortcut sends to, so that's all there is
-// to copy; shown once, as it's made, with the five steps to make the Shortcut; made again, the old one stops working ----
+// to copy; shown as it's made, and till the Shortcut's first morning comes, with the six steps to make the Shortcut (which
+// can be seen again any time without it); made again, the old one stops working ----
 const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
 // Every device your files came from, most used first: a folder of them, a tap from You
 function devicesView() {
@@ -1463,19 +1598,30 @@ function healthSaid() {
 }
 // (what the Shortcut sent, in words)
 const nightSaid = (n) => [n.hrv != null && `HRV ${n.hrv} ms`, n.rhr != null && `resting heart rate ${n.rhr}`, n.sleep != null && `${Math.floor(n.sleep / 3600)} h ${Math.round((n.sleep % 3600) / 60)} min asleep`].filter(Boolean).join(", ");
+// (the key, as it's made: kept on this phone till the Shortcut's first morning comes, so going to Shortcuts to make it,
+// and Fitness opened afresh on the way back, doesn't lose its address; a week at most, and never another account's)
+// (not known yet, drawn from the copy kept here before the account's answered, or offline: left as it is)
+function heldKey() {
+  const k = store.get("hk", null);
+  if (!k || !S.health) return null;
+  if (k.id === S.me?.id && S.health.on && !S.health.last && Date.now() - k.at < 7 * 86400e3) return k.key;
+  store.set("hk", null);
+  return null;
+}
 function healthView() {
-  const x = S.health, key = healthView.key;
+  const x = S.health, key = healthView.key || heldKey();
   const copy = (text, what) => h("button.pill.small", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast(`${what} copied`), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy");
   const make = async (btn) => {
     btn.disabled = true; btn.textContent = "Making your key…";
-    try { const r = await A.healthKey(); healthView.key = r.key; S.health = { ...r, key: undefined }; }
+    try { const r = await A.healthKey(); healthView.key = r.key; S.health = { ...r, key: undefined }; store.set("hk", { id: S.me?.id, key: r.key, at: Date.now() }); }
     catch (e) { btn.disabled = false; btn.textContent = "Try again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
     Sheet.redraw();
   };
   const step = (n, title, sub) => h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: String(n) })), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })));
+  // (the steps, to see again any time; the address only while it's to hand)
   const steps = () => [
-    section("Your address", h("div.hk-box", {}, h("code.hk-key", { text: healthUrl(key) }), copy(healthUrl(key), "Address")),
-      h("p.foot", { text: "Yours alone, and shown this once: copy it now. It can only send your nights to Fitness, nothing more. Lost it? Make a new one here." })),
+    key && section("Your address", h("div.hk-box", {}, h("code.hk-key", { text: healthUrl(key) }), copy(healthUrl(key), "Address")),
+      h("p.foot", { text: "Yours alone, and shown till the Shortcut’s first morning: copy it now. It can only send your nights to Fitness, nothing more. Lost it? Make a new one here." })),
     section("Make the Shortcut", h("div.group", {},
       step(1, "Shortcuts, then Automation, then New Automation", "Time of Day, 07:30, Daily, Run Immediately. Then New Blank Automation."),
       step(2, "Find Health Samples: Heart Rate Variability", "Start Date is in the last 12 hours."),
@@ -1496,7 +1642,7 @@ function healthView() {
   const off = async (e) => {
     const b = e.currentTarget;
     if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Turn off Apple Health"; sure.hidden = false; return; }
-    try { S.health = await A.healthOff(); healthView.key = null; } catch (e) { return toast(e.message, true); }
+    try { S.health = await A.healthOff(); healthView.key = null; store.set("hk", null); } catch (e) { return toast(e.message, true); }
     sheetBack(); redraw(); toast("Apple Health off");
   };
   const check = async (btn) => {
@@ -1512,8 +1658,11 @@ function healthView() {
       row({ icon: "today", tint: "blue", title: "Last sent", value: x.last ? ago(x.last) : "Not yet", chev: false }),
       row({ icon: "calendar", tint: "green", title: "Nights", value: String(x.well?.length || 0), chev: false })),
     key ? steps() : null,
-    !key && x?.on && again,
-    !key && section(null, h("div.group", {}, h("button.row.action", { type: "button", onclick: (e) => make(e.currentTarget) }, "Make a new key, and see the steps again"))),
+    x?.on && again,
+    // (the steps again, without a new key: the address in your Shortcut keeps working)
+    !key && section(null, h("div.group", {}, h("button.row.action", { type: "button", onclick: () => pushSheet(() => ({ title: "The Shortcut", body: steps() })) }, "See the Steps Again"),
+      h("button.row.action", { type: "button", onclick: (e) => make(e.currentTarget) }, "Make a New Key")),
+      h("p.foot", { text: "A new key’s address replaces the one in your Shortcut: paste it into step 5 again." })),
     section(null, h("p.foot", { text: "Your Apple Watch measures HRV its own way (SDNN, where Garmin’s is RMSSD), so Rhythm reads it against its own usual range, and never mixes it with Garmin’s. With both, it goes by whichever has more of this month’s nights." })),
     section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: off }, "Turn off")), sure),
   ] };
@@ -1531,14 +1680,16 @@ function pushWhy() {
 }
 const morningOf = () => store.get("morning", null);
 const clockOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+// (each day's as the plan you're on has it, Rhythm's or an event's: a day it has nothing for, nothing said)
 function morningDays() {
   const out = {};
   for (let i = 0; i < 8; i++) {
-    const d = addDays(TODAY, i), r = rhDay(d);
-    if (!r) continue;
+    const d = addDays(TODAY, i), id = plannedOn(d);
+    if (id === undefined) continue;
     // (Rhythm's reason, where the day's its; one you changed says nothing more)
-    const swapped = S.swaps[d] !== undefined, id = swapped ? S.swaps[d] : r.id, w = id ? wkById(id) : null, why = swapped ? "" : r.why || "";
-    out[dayStamp(d)] = w ? { title: `Today: ${w.name}`, body: `${dur(measure(w, paceFor(w.sport)).secs)}, ${!swapped && r.hard ? "a hard day" : w.kind.toLowerCase()}. ${why}`.trim() }
+    const r = rhDay(d), swapped = S.swaps[d] !== undefined, w = id && id !== "event" ? wkById(id) : null, why = swapped ? "" : r?.why || "";
+    out[dayStamp(d)] = id === "event" ? { title: "Event day", body: `${plan()?.name || "Your event"}. Enjoy it.` }
+      : w ? { title: `Today: ${w.name}`, body: `${dur(measure(w, paceFor(w.sport)).secs)}, ${!swapped && r?.hard ? "a hard day" : w.kind.toLowerCase()}. ${why}`.trim() }
       : { title: "Rest day", body: `Rest, and let it sink in. ${why}`.trim() };
   }
   return out;
@@ -1573,11 +1724,12 @@ async function morningOffHere() {
   store.set("morning", null);
   try { await A.morningOff(m?.endpoint); (await morningSub(false))?.unsubscribe(); } catch (_) {}
 }
-// (the week's words sent again, a moment after anything that changes them)
+// (the week's words sent again, a moment after anything that changes them: another plan chosen too, so the last one's
+// words don't go on being sent)
 function morningRefresh() {
   if (!background.done) return;   // (as inStep: not for a copy that may be another's)
   const m = morningOf();
-  if (!m || !S.me || !rhythmOn() || !canPush()) return;
+  if (!m || !S.me || !canPush()) return;
   clearTimeout(morningRefresh.t);
   morningRefresh.t = setTimeout(async () => {
     try { const sub = await morningSub(false); if (!sub) return store.set("morning", null); await A.morning({ sub: sub.toJSON(), at: m.at, tz: tz(), days: morningDays() }); } catch (_) {}
@@ -1637,6 +1789,10 @@ function drawSheet(dir = null) {
     h("h2", { id: "sheet-title", text: v.title || "" }),
     v.right || h("button.ifs-btn.done.r", { type: "button", onclick: closeSheet, "aria-label": "Close" }, icon("x", 18, 2.4)));
   sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), headEl, bodyEl);
+  // (named by its bar's title; a page with none there, the first use's, by its own heading, so it isn't read out unnamed)
+  const named = v.title ? null : bodyEl.querySelector("h1");
+  if (named) named.id = "sheet-name";
+  sheetEl.setAttribute("aria-labelledby", named ? "sheet-name" : "sheet-title");
   drag(headEl);
   // (as iOS's large titles: where the sheet's own title says what its bar does, the bar's comes in only as that one
   // scrolls away; and once anything has gone under the bar, an edge, the content fading under it)
@@ -1645,7 +1801,11 @@ function drawSheet(dir = null) {
   // (measured once it's open: it's drawn just before)
   sheetEl.classList.toggle("lt", lt); sheetEl.classList.remove("past", "edge"); requestAnimationFrame(edges);
   bodyEl.addEventListener("scroll", edges, { passive: true });
-  Sheet.redraw = () => { const top = bodyEl.scrollTop; drawSheet(); sheetEl.querySelector(".sheet-body").scrollTop = top; };
+  Sheet.redraw = () => { const top = bodyEl.scrollTop, f = focusOf(sheetEl); drawSheet(); sheetEl.querySelector(".sheet-body").scrollTop = top; refocus(sheetEl, f); };
+  // (a page on, or back: the focus to its title, so a screen reader reads where it's got to, not the top of the sheet)
+  const title = bodyEl.querySelector(".sheet-top h1") || headEl.querySelector("h2");
+  title.tabIndex = -1;
+  if (dir && sheetEl.open) title.focus({ preventScroll: true });
 }
 async function closeSheet() {
   if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
@@ -1936,6 +2096,7 @@ function background(m) {
   older();
   setTimeout(squash, 4000);
   setTimeout(routes, 6000);
+  setTimeout(tidyFiles, 8000);
   morningRefresh();
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
@@ -1958,15 +2119,39 @@ async function pull() {
   pull.busy = true;
   try {
     const m = await fetchMe();
+    // (the copy kept here, opened offline, found to be another account's: opened afresh, as it would have been online)
+    if (m.signedIn && m.id !== S.me.id && !background.done) return location.reload();
     if (!m.signedIn || m.id !== S.me.id) return signedOutHere(true);
     takeUp(m);
   } catch (_) {} finally { pull.busy = false; }
 }
-addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.me && Date.now() - S.pulledAt > 60e3) pull(); if (document.visibilityState === "visible" && S.me) askToday(); });
+// A new day: the app left open past midnight, or brought back the next morning (a Home Screen app is brought back, not
+// opened again), so today moves on, and everything that goes by it is worked out afresh (once(), Rhythm), the screen
+// drawn again, and the morning's words sent again for the days from it. → whether it was
+function newDay() {
+  const t = startOfDay(Date.now());
+  if (t === TODAY) return false;
+  TODAY = t; changed(); S.dayAt = null;
+  if (S.me) { redraw(); morningRefresh(); }
+  return true;
+}
+// (on the screen at midnight: looked at each minute)
+setInterval(() => { if (document.visibilityState === "visible") newDay(); }, 60e3);
+addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  newDay();
+  if (S.me && Date.now() - S.pulledAt > 60e3) pull();
+  if (S.me) askToday();
+});
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
-// (nothing copied or dragged out of the app, but what you type: a field's own text; and Today's sessions, dragged from day to day)
-const inField = (t) => t instanceof Element && !!t.closest("input, textarea, select");
-for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!inField(e.target) && !(ev === "dragstart" && e.target.closest?.(".gday[draggable]"))) e.preventDefault(); });
+// (nothing copied or dragged out of the app, but what you type: a field's own text; Apple Health's address, made to be
+// pasted elsewhere (.hk-key, held to select it where Copy can't reach the clipboard); and Today's sessions, dragged from
+// day to day)
+const inField = (t) => t instanceof Element && !!t.closest("input, textarea, select, .hk-key");
+// (a copy's target being the page, as often as not, where what's selected isn't a field: where the selection starts, too)
+const selectedIn = () => { const n = getSelection()?.anchorNode; return n?.nodeType === 1 ? n : n?.parentElement; };
+const copyable = (e) => inField(e.target) || (e.type !== "dragstart" && inField(selectedIn()));
+for (const ev of ["copy", "cut", "dragstart"]) addEventListener(ev, (e) => { if (!copyable(e) && !(ev === "dragstart" && e.target.closest?.(".gday[draggable]"))) e.preventDefault(); });
 addEventListener("contextmenu", (e) => { if (!inField(e.target)) e.preventDefault(); });
 
 // ---- always the latest version: put in by itself, the same in every app (InFlite's menu: IFL.updates), never with a
@@ -1983,15 +2168,18 @@ IFL.watch(window);
 // Signing out, here (everywhere on the site, in this browser), or found to be signed out (elsewhere): this device's
 // copies of your files go too
 async function signOutHere(already = false) {
-  // (this phone's morning reminder goes with the sign-in)
+  // (this phone's morning reminder goes with the sign-in: found signed out, here only, the account's server forgetting it
+  // with the sign-in, functions/_fitpush.js)
   if (already !== true && morningOf()) await morningOffHere();
+  else if (morningOf()) { store.set("morning", null); morningSub(false).then((s) => s?.unsubscribe()).catch(() => {}); }
+  store.set("hk", null);
   if (already !== true) { try { await A.signOut(); } catch (e) { if (e.status !== 401) return toast(e.message, true); } }
   if (sheetEl.open) await closeSheet();
   // (signing out yourself: the page goes and the morning comes back; found out, it's just the welcome)
   const d = already !== true && S.me ? dusk() : null;
   if (d) await d.dark;
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
-  store.set("meAt", null); const cleared = idb.clear().catch(() => {});
+  store.set("meAt", null); store.set("files", null); const cleared = idb.clear().catch(() => {});
   welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
   d?.done();
   // (on to the sign-in page once this phone's copies of your files are gone, not before: leaving would stop that)
@@ -2031,10 +2219,21 @@ const signedOutHere = () => signOutHere(true);
     }
   } catch (e) {
     arv?.away();
-    if (early) return;   // (offline: what was here last stays)
-    // (offline: it opens by itself once the network's back, rather than waiting to be closed and opened again)
-    if (e.offline) addEventListener("online", () => location.reload(), { once: true });
-    return welcome(e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
+    // (offline: what was here last stays, said so; and once the network's back (or a moment later, should the phone not
+    // say), what's changed since is taken up as if it had opened then, and your changes meanwhile saved: pull)
+    if (early) {
+      S.offline = e.offline ? e : null;
+      if (S.offline) toast(notSaved(e), true, 5000);
+      const again = () => { if (!background.done && document.visibilityState === "visible") pull(); };
+      addEventListener("online", again);
+      const t = setInterval(() => (background.done ? clearInterval(t) : again()), 30e3);
+      return;
+    }
+    // (offline: it opens by itself once the network's back, rather than waiting to be closed and opened again; the
+    // account only slow to answer, not offline: tried again a little later, or as it's brought back)
+    if (e.slow) { const again = () => { if (document.visibilityState === "visible") location.reload(); }; setTimeout(again, 30e3); document.addEventListener("visibilitychange", again); }
+    else if (e.offline) addEventListener("online", () => location.reload(), { once: true });
+    return welcome(e.slow ? "Fitness is taking too long to answer. It’ll try again in a moment." : e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
   }
   if (!m.signedIn) { arv?.away(); return early ? signOutHere(true) : welcome(); }
   if (early && m.id !== early.id) return location.reload();
@@ -2049,5 +2248,5 @@ const signedOutHere = () => signOutHere(true);
 export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
-export { stravaView, healthView };
+export { stravaView, healthView, stopped };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };

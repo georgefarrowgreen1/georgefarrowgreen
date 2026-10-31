@@ -99,14 +99,15 @@ const SCREENS = [
   ['chat', CHAT + '/', null, '#screen, .welcome, .hdr'],
   ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', null, '.day-row'],
   ['fitness', FIT + '/', null, 'main, .empty, .ifh'],
-  ['markets-today', MKT + '/', null, '#pv'],
-  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(1600); }, '#pv'],
-  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await p.waitForTimeout(1600); }, '#pv'],
-  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1800); }, '#pv'],
-  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Dividends")').first().click(); await p.waitForTimeout(1600); }, '#pv'],
-  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Your year")').first().click(); await p.waitForTimeout(3000); }, '#pv'],
-  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForTimeout(900); }, '#pv'],
-  ['markets-menu', MKT + '/', async (p) => { await p.click('.ifh-me, .ifl-me, [aria-label="You"], .ifh button.me').catch(() => {}); await p.waitForTimeout(900); }, '#pv'],
+  // (from 1100px wide Markets is its desk, markets/desk.js: today's screen is the desk there, and the phone's tabs aren't)
+  ['markets-today', MKT + '/', null, '#pv, .desk'],
+  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
+  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
+  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1800); }, '#pv', { phone: true }],
+  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Dividends")').first().click(); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
+  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Your year")').first().click(); await p.waitForTimeout(3000); }, '#pv', { phone: true }],
+  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForTimeout(900); }, '#pv', { phone: true }],
+  ['markets-menu', MKT + '/', async (p) => { await p.click('.ifh-me, .ifl-me, [aria-label="You"], .ifh button.me').catch(() => {}); await p.waitForTimeout(900); }, '#pv', { phone: true }],
   ['mail', MAIL + '/?demo', null, 'body', { mail: true }],
 ];
 let mailUp = false;
@@ -115,6 +116,7 @@ try { mailUp = (await fetch(MAIL + '/')).ok; } catch (_) {}
 async function look(ctx, size, scheme, [name, url, act, sel, o = {}]) {
   if (o.mail && !mailUp) return;
   const [sz, w, h, kind] = size;
+  if (o.phone && w >= 1100) return;
   const c = o.fresh ? await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk', userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', colorScheme: scheme, serviceWorkers: 'block' }) : null;
   const p = await (c || ctx).newPage();
   await p.setViewportSize({ width: w, height: h });
@@ -177,7 +179,8 @@ for (const kind of ['phone', 'tablet', 'desk']) {
 }
 const save = () => writeFileSync(`${out}/sitewide.json`, JSON.stringify(report, null, 1));
 // (LOADS_ONLY=1: just each app's first load)
-for (const size of process.env.LOADS_ONLY ? [] : SIZES) {
+// (SIZES_FROM=laptop: from that size on, as when a run's been cut short)
+for (const size of process.env.LOADS_ONLY ? [] : SIZES.slice(Math.max(0, SIZES.findIndex((s) => s[0] === process.env.SIZES_FROM)))) {
   const kind = size[3];
   await b.close().catch(() => {}); b = await launch();
   for (const scheme of LIGHT.has(size[0]) ? ['dark', 'light'] : ['dark']) {

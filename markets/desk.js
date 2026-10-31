@@ -14,9 +14,9 @@
 // ADD Tesco, HELP (and the words it took before: vs FTSE, vs off, alert NVDA 5, news). Keys: / or ⌘K the command line,
 // ↑ ↓ the holdings, 1–5 the range, K candles, L log, A averages, B bands, V volume, R RSI, M MACD, C against the market,
 // W world, P portfolio, N news (j k through it, o to open one, s to send it), ? help.
-import { S, h, A, $, icon, fmt, money, signed, pct, tone, priceSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
-  INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, toast, ago, dayKey, rangeSeries, marketSaid, whyMoving, sendInChat, meFace, youMenu, daySeries,
-  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID } from "./app.js";
+import { S, h, A, $, icon, fmt, money, signed, pct, tone, priceSaid, chgSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, unpriced, leftOutSaid, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
+  aroundDay, INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, alertSet, toast, ago, dayKey, rangeSeries, lineSaid, pricesAtSaid, whyMoving, sendInChat, meFace, youMenu, daySeries,
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, IFL, keepFocus } from "./app.js";
 
 const D = { screen: "port", view: "chart", sel: null, range: "1y", sort: { k: "value", dir: -1 }, type: "line", log: false, ma: true, bb: false, vol: true, rsi: false, macd: false, vs: null, menu: null, news: null, risk: null , nlist: "all", nsel: null };
 const VS = [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]];
@@ -72,6 +72,12 @@ const FN = [
 const ALIAS = { VS: "COMP", COMPARE: "COMP", ALERT: "ALRT", NEWS: "N" };
 const fnOf = (w) => { const k = w.toUpperCase(); return FN.find(([c]) => c === (ALIAS[k] || k)); };
 
+// What's on the desk (its screen, the one chosen, how its chart's drawn, the story chosen), kept as the app updates
+// itself and put back as it opens again (app.js: IFL.updates' save(), and IFL.here())
+const KEPT = ["screen", "view", "sel", "range", "sort", "type", "log", "ma", "bb", "vol", "rsi", "macd", "vs", "nlist", "nsel"];
+export const deskSaved = () => Object.fromEntries(KEPT.map((k) => [k, D[k]]));
+export function deskBack(o) { for (const k of KEPT) if (o?.[k] !== undefined && (D[k] == null || o[k] == null || typeof o[k] === typeof D[k])) D[k] = o[k]; }
+
 export function deskView() {
   const own = owned();
   if (!D.sel || !S.q[D.sel]) D.sel = ([...own].sort((a, b) => valueOf(b) - valueOf(a))[0] || S.list[0])?.symbol;
@@ -80,7 +86,7 @@ export function deskView() {
   keys.on();
   return root;
 }
-const redraw = () => { const d = $(".desk"); if (d) d.replaceWith(deskView()); };
+const redraw = () => { const d = $(".desk"); if (d) keepFocus(() => d.replaceWith(deskView())); };
 
 // ---- along the top: you, the two screens, the command line (suggesting as you type), the markets ----
 function topBar() {
@@ -97,6 +103,9 @@ function topBar() {
   input.addEventListener("input", () => { items = suggest(input.value); at = 0; draw(); });
   input.addEventListener("focus", () => { items = suggest(input.value); at = 0; draw(); });
   input.addEventListener("blur", () => setTimeout(close, 120));
+  // (a command done: the command line emptied and let go; the one there now, as one that redrew the desk has put what
+  // was typed in the new one (keepFocus), and this one's gone)
+  const done = (ok) => { if (!ok) return; const c = $("#dcmd") || input, s = $("#dsug"); c.value = ""; c.blur(); if (s) s.hidden = true; };
   input.addEventListener("keydown", (e) => {
     if (["Escape", "Enter", "ArrowDown", "ArrowUp", "Tab"].includes(e.key)) e.stopPropagation();
     if (e.key === "Escape") { input.value = ""; close(); input.blur(); return; }
@@ -106,16 +115,16 @@ function topBar() {
       e.preventDefault();
       const v = input.value.trim();
       // (what's typed, if it says a function; else the suggestion chosen)
-      if (v && v.split(/\s+/).some((w) => fnOf(w))) { close(); command(v).then((ok) => { if (ok) { input.value = ""; input.blur(); } }); return; }
+      if (v && v.split(/\s+/).some((w) => fnOf(w))) { close(); command(v).then(done); return; }
       if (items[at]) return pick(at);
-      if (v) command(v).then((ok) => { if (ok) { input.value = ""; input.blur(); } });
+      if (v) command(v).then(done);
     }
   });
   const tape = h("div.tape", {}, INDICES.filter((s) => S.q[s]).map((s) => { const q = S.q[s];
     return h("button.tick", { type: "button", onclick: () => go(s) }, h("span", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("i", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); }));
   const me = h("button.dme", { type: "button", "aria-label": "You, your apps and settings", onclick: (e) => youMenu(e.currentTarget) }, meFace());
   const tabs = h("div.dtabs", { role: "tablist" }, [["port", "Portfolio", "P"], ["news", "News", "N"], ["world", "World", "W"]].map(([k, label, key]) =>
-    h("button", { type: "button", role: "tab", "aria-selected": String(D.screen === k), title: `${label} (${key})`, onclick: () => { if (D.screen !== k) { D.screen = k; redraw(); } }, text: label })));
+    h("button", { type: "button", role: "tab", "data-k": `scr:${k}`, "aria-selected": String(D.screen === k), title: `${label} (${key})`, onclick: () => { if (D.screen !== k) { D.screen = k; redraw(); } }, text: label })));
   return h("div.dtop", {}, me, h("b.dbrand", { text: "Markets" }), tabs, h("div.dcmdw", {}, h("label.dcmd", {}, h("span.prompt", { text: "›" }), input, h("kbd", { text: "/" })), sug), tape,
     h("button.dme.act", { type: "button", "aria-label": "Find and add", onclick: () => openSheet(searchView) }, icon("search", 17, 2.4)));
 }
@@ -162,7 +171,8 @@ async function run(code, sym, arg) {
     const p = Number(arg);
     if (!S.list.some((x) => x.symbol === sym)) { toast("Add it to your list first, to hear about it.", true); return false; }
     if (!Number.isFinite(p) || p < 0.5 || p > 50) { pushSheet(alertView, sym); return true; }
-    try { const r = await A.setAlert(sym, true, p); S.list = r.holdings; toast(`You'll hear when ${nameOf(sym)} moves ${p}% in a day`); return true; } catch (e) { toast(e.message, true); return false; }
+    // (as Alert Me does: this computer asked to allow notifications, and where they can't be, why said)
+    try { await alertSet(sym, p); return true; } catch (e) { toast(e.message, true); return false; }
   }
   if (code === "COMP" && /^(off|none|clear)$/i.test(arg || "")) { D.vs = null; D.view = "chart"; await go(sym); return true; }
   if (code === "COMP") { const other = arg ? await resolve(arg) : null; if (arg && !other) { toast(`Couldn't find “${arg}” to compare with.`, true); return false; } D.vs = other; D.view = "chart"; await go(sym); return true; }
@@ -191,19 +201,23 @@ async function command(v) {
   if (before && !sym) { toast(`Nothing found for “${before}”`, true); return false; }
   return run(code, sym, after);
 }
-// every function and key, over the desk
+// every function and key, over the desk: the keyboard taken to its Close (and kept there, the one thing in it to press),
+// and given back where it was as it closes
 function help() {
   if ($(".dhelp")) return;
-  const esc = (e) => { if (e.key === "Escape") close(); };
-  const close = () => { box.remove(); removeEventListener("keydown", esc, true); };
-  const box = h("div.dhelp", { role: "dialog", "aria-label": "Functions and keys", onclick: (e) => { if (e.target === box) close(); } },
-    h("div.dhelpc", {}, h("div.dhead", {}, h("h2", { text: "Functions" }), h("button.dbtn", { type: "button", onclick: close, text: "Close" })),
+  const was = document.activeElement;
+  const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } else if (e.key === "Tab") { e.preventDefault(); e.stopPropagation(); shut.focus(); } };
+  const close = () => { box.remove(); removeEventListener("keydown", esc, true); (was?.isConnected ? was : $("#dcmd"))?.focus?.({ preventScroll: true }); };
+  const shut = h("button.dbtn", { type: "button", onclick: close, text: "Close" });
+  const box = h("div.dhelp", { role: "dialog", "aria-modal": "true", "aria-label": "Functions and keys", onclick: (e) => { if (e.target === box) close(); } },
+    h("div.dhelpc", {}, h("div.dhead", {}, h("h2", { text: "Functions" }), shut),
       h("div.hgrid", {}, FN.map(([c, n, d, needs]) => h("div", {}, h("b.fn", { text: c }), h("span", {}, h("strong", { text: n }), ` · ${d}`), h("small", { text: needs ? `e.g. RR ${c}` : c })))),
       h("div.dhead", { style: "margin-top:16px" }, h("h2", { text: "Keys" })),
       h("div.hkeys", {}, [["/ or ⌘K", "the command line"], ["↑ ↓", "your holdings"], ["1–5", "range"], ["K", "candles"], ["L", "log scale"], ["A", "averages"], ["B", "Bollinger bands"], ["V", "volume"], ["R", "RSI"], ["M", "MACD"], ["C", "vs the market"], ["W · P", "World · Portfolio"], ["Enter", "its page"]]
         .map(([k, s]) => h("span", {}, h("kbd", { text: k }), s)))));
   addEventListener("keydown", esc, true);
   $(".desk")?.append(box);
+  shut.focus({ preventScroll: true });
 }
 
 // ---- the portfolio: its totals; every holding, sortable; what you follow ----
@@ -215,16 +229,18 @@ function portPane() {
     h("div.pv", {}, h("small", { text: "Your portfolio" }), h("b.num", { id: "dpv", text: money(T.value) }), (() => { const ds = daySeries(); return ds ? spark(ds.vals, 120, 24, ds.base) : null; })()),
     h("div", {}, h("small", { text: "Today" }), h("b", { class: `num ${tone(T.day)}`, id: "dpd", text: `${signed(T.day)}` }), h("i", { class: `num ${tone(T.day)}`, id: "dpp", text: pct(T.dayPct) })),
     T.back != null ? h("div", {}, h("small", { text: "Since bought" }), h("b", { class: `num ${tone(T.back)}`, text: signed(T.back, "GBP", 0) }), h("i", { class: `num ${tone(T.back)}`, text: pct(T.backPct, 1) })) : null);
-  const own = owned(), fol = S.list.filter((x) => !(x.qty > 0));
+  // (and yours with no price just now, said apart, each still opened from here to change or remove)
+  const own = owned(), fol = S.list.filter((x) => !(x.qty > 0)), none = unpriced();
   return h("div.dpane.port", {}, h("div.dhead", {}, h("h2", { text: "Portfolio" }), h("button.dbtn", { type: "button", onclick: () => openSheet(searchView) }, icon("plus", 14, 2.6), "Add")),
     sum, own.length ? holdTable(own, T) : null,
+    none.length ? [h("h3.dsub", { text: "Not in your total" }), followTable(none), h("p.dempty", { text: leftOutSaid(none) })] : null,
     fol.length ? [h("h3.dsub", { text: "Following" }), followTable(fol)] : null);
 }
 function holdTable(own, T) {
   const val = { name: (x) => x.name.toLowerCase(), spark: (x) => S.q[x.symbol].chgPct ?? 0, day: (x) => S.q[x.symbol].chgPct ?? 0, value: valueOf, back: (x) => backOf(x) ?? -1e9 };
   const { k, dir } = D.sort, rows = [...own].sort((a, b) => { const p = val[k](a), q = val[k](b); return (p < q ? -1 : p > q ? 1 : 0) * dir; });
   const th = COLS.map(([key, label]) => key === "spark" ? h("th", { "aria-hidden": "true" }) : h("th", { scope: "col", title: key === "back" ? "Since you bought, with dividends" : key === "value" ? "Value, and its share of your money" : null, "aria-sort": key === k ? (dir > 0 ? "ascending" : "descending") : null },
-    h("button", { type: "button", onclick: () => { D.sort = { k: key, dir: key === k ? -dir : key === "name" ? 1 : -1 }; $(".port")?.replaceWith(portPane()); } }, label, key === k ? h("span.ar", { text: dir > 0 ? "▲" : "▼" }) : null)));
+    h("button", { type: "button", "data-k": `sort:${key}`, onclick: () => { D.sort = { k: key, dir: key === k ? -dir : key === "name" ? 1 : -1 }; keepFocus(() => $(".port")?.replaceWith(portPane())); } }, label, key === k ? h("span.ar", { text: dir > 0 ? "▲" : "▼" }) : null)));
   return h("table.dt", { id: "dhold" }, h("thead", {}, h("tr", {}, th)), h("tbody", {}, rows.map((x) => {
     const q = S.q[x.symbol], b = backOf(x), w = (valueOf(x) / T.value) * 100;
     return h("tr", { "data-sym": x.symbol, class: x.symbol === D.sel ? "on" : null, tabindex: "-1", onclick: () => choose(x.symbol) },
@@ -237,7 +253,7 @@ function holdTable(own, T) {
 }
 function followTable(fol) {
   return h("table.dt.small", {}, h("tbody", {}, fol.map((x) => { const q = S.q[x.symbol];
-    return h("tr", { "data-sym": x.symbol, class: x.symbol === D.sel ? "on" : null, onclick: () => choose(x.symbol) },
+    return h("tr", { "data-sym": x.symbol, class: x.symbol === D.sel ? "on" : null, onclick: () => (q ? choose(x.symbol) : openSheet(stockView, x.symbol)) },
       h("td", {}, h("b", { text: x.name }), h("small", { text: [plainSym(x.symbol), q?.ex].filter(Boolean).join(" · ") })),
       h("td.sp", {}, q ? spark(q.spark, 52, 20, q.prev) : null), h("td.num", { "data-px": x.symbol, text: q ? priceSaid(q) : "–" }), h("td", { class: `num ${tone(q?.chgPct)}`, "data-pct": x.symbol, text: q ? pct(q.chgPct) : "" })); })));
 }
@@ -249,35 +265,35 @@ function choose(sym) {
 }
 
 // ---- the one chosen: its chart (or prices, dividends, news), its figures, why it's moving ----
-function redrawInst() { $(".inst")?.replaceWith(instPane()); }
+function redrawInst() { keepFocus(() => $(".inst")?.replaceWith(instPane())); }
 const STUDIES = [["ma", "Averages", "50- and 200-day", "A"], ["bb", "Bollinger bands", "20-day, 2 deviations", "B"], ["vol", "Volume", "", "V"], ["rsi", "RSI", "14-day", "R"], ["macd", "MACD", "12, 26, 9", "M"], ["log", "Log scale", "", "L"]];
 function instPane() {
   const sym = D.sel, q = S.q[sym], x = S.list.find((y) => y.symbol === sym);
   if (!q) return h("div.dpane.inst", {}, h("p.dempty", { text: "Choose one on the left." }));
   const name = x?.name || worldName(sym) || q.name;
   const views = h("div.ivtabs", { role: "tablist" }, [["chart", "Chart", "GP"], ["hp", "Prices", "HP"], ["dvd", "Dividends", "DVD"], ["news", "News", "N"]].map(([k, label, code]) =>
-    h("button", { type: "button", role: "tab", "aria-selected": String(D.view === k), onclick: () => { D.view = k; redrawInst(); } }, label, h("small", { text: code }))));
+    h("button", { type: "button", role: "tab", "data-k": `v:${k}`, "aria-selected": String(D.view === k), onclick: () => { D.view = k; redrawInst(); } }, label, h("small", { text: code }))));
   const acts = x ? [
     h("button.dbtn", { type: "button", onclick: () => pushSheet(alertView, sym) }, icon("bell", 14, 2.4), x.alert ? `±${fmt(x.alert, 0)}%` : "Alert"),
     h("button.dbtn", { type: "button", onclick: () => sendInChat(sym) }, icon("send", 14, 2.4), "Send"),
     h("button.dbtn", { type: "button", onclick: () => openSheet(editView, sym) }, icon("pen", 14, 2.4), "Edit")]
     : [h("button.dbtn.go", { type: "button", onclick: () => openSheet(editView, sym, { name }) }, icon("plus", 14, 2.6), "Add")];
   const headr = h("div.ihead", {}, h("div", {}, h("small", { text: [plainSym(sym), q.ex, KIND_SAID[kindOf(q)]].filter(Boolean).join(" · ") }), h("h2", { text: name }),
-    h("div.iprice", {}, h("b.num", { "data-px": sym, text: isRate(sym) ? `${fmt(yieldOf(q.price), 3)}%` : priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, id: "dchg", text: `${q.chg != null && !isRate(sym) ? signed(q.chg, q.cur, q.price < 1 ? 4 : 2) + " " : ""}(${pct(q.chgPct)})` }), h("span.muted", { id: "dchgsaid", text: "today" }))),
+    h("div.iprice", {}, h("b.num", { "data-px": sym, text: isRate(sym) ? `${fmt(yieldOf(q.price), 3)}%` : priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, id: "dchg", text: `${q.chg != null && !isRate(sym) ? chgSaid(q) + " " : ""}(${pct(q.chgPct)})` }), h("span.muted", { id: "dchgsaid", text: "today" }))),
     h("div.iacts", {}, acts));
   const body = D.view === "hp" ? historyView(sym, q) : D.view === "dvd" ? divView(sym, q, x) : D.view === "news" ? symNews(sym) : chartView(sym, q, x);
   return h("div.dpane.inst", {}, headr, views, body);
 }
 function chartView(sym, q, x) {
-  const seg = h("div.dseg", { role: "group", "aria-label": "Range" }, RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(r === D.range), title: `${label} (${i + 1})`, onclick: () => { D.range = r; redrawInst(); }, text: label })));
-  const type = h("div.dseg", { role: "group", "aria-label": "Chart" }, [["line", "Line"], ["candle", "Candles"]].map(([k, label]) => h("button", { type: "button", "aria-pressed": String(D.type === k), title: k === "candle" ? "Candles (K)" : "Line (K)", onclick: () => { D.type = k; redrawInst(); }, text: label })));
-  const menuBtn = (k, label) => h("button.dtog.menu", { type: "button", "aria-expanded": String(D.menu === k), onclick: (e) => { e.stopPropagation(); D.menu = D.menu === k ? null : k; redrawInst(); } }, label, h("span.car", { text: "▾" }));
+  const seg = h("div.dseg", { role: "group", "aria-label": "Range" }, RANGES.map(([r, label], i) => h("button", { type: "button", "data-k": `r:${r}`, "aria-pressed": String(r === D.range), title: `${label} (${i + 1})`, onclick: () => { D.range = r; redrawInst(); }, text: label })));
+  const type = h("div.dseg", { role: "group", "aria-label": "Chart" }, [["line", "Line"], ["candle", "Candles"]].map(([k, label]) => h("button", { type: "button", "data-k": `t:${k}`, "aria-pressed": String(D.type === k), title: k === "candle" ? "Candles (K)" : "Line (K)", onclick: () => { D.type = k; redrawInst(); }, text: label })));
+  const menuBtn = (k, label) => h("button.dtog.menu", { type: "button", "data-k": `m:${k}`, "aria-expanded": String(D.menu === k), onclick: (e) => { e.stopPropagation(); D.menu = D.menu === k ? null : k; redrawInst(); } }, label, h("span.car", { text: "▾" }));
   const on = STUDIES.filter(([k]) => D[k]).length;
   const tools = h("div.dtools", {}, seg, type, h("span.dsp"), menuBtn("studies", `Studies${on ? ` · ${on}` : ""}`), menuBtn("comp", D.vs ? `vs ${worldName(D.vs) || nameOf(D.vs)}` : "Compare"));
-  if (D.menu === "studies") tools.append(h("div.dmenu", { role: "menu" }, STUDIES.map(([k, label, sub, key]) => h("button", { type: "button", role: "menuitemcheckbox", "aria-checked": String(!!D[k]), onclick: (e) => { e.stopPropagation(); D[k] = !D[k]; redrawInst(); } },
+  if (D.menu === "studies") tools.append(h("div.dmenu", { role: "menu" }, STUDIES.map(([k, label, sub, key]) => h("button", { type: "button", role: "menuitemcheckbox", "data-k": `m:studies:${k}`, "aria-checked": String(!!D[k]), onclick: (e) => { e.stopPropagation(); D[k] = !D[k]; redrawInst(); } },
     h("i.chk"), h("span", {}, label, sub ? h("small", { text: ` ${sub}` }) : null), h("kbd", { text: key })))));
   if (D.menu === "comp") tools.append(h("div.dmenu.r", { role: "menu" }, [...VS, ...S.list.filter((y) => y.symbol !== sym).slice(0, 5).map((y) => [y.symbol, y.name])].map(([s, n]) =>
-    h("button", { type: "button", role: "menuitemradio", "aria-checked": String(D.vs === s), onclick: (e) => { e.stopPropagation(); D.vs = D.vs === s ? null : s; D.menu = null; redrawInst(); } }, h("i.chk"), h("span", { text: n }))),
+    h("button", { type: "button", role: "menuitemradio", "data-k": `m:comp:${s}`, "aria-checked": String(D.vs === s), onclick: (e) => { e.stopPropagation(); D.vs = D.vs === s ? null : s; D.menu = null; redrawInst(); } }, h("i.chk"), h("span", { text: n }))),
     D.vs ? h("button", { type: "button", onclick: (e) => { e.stopPropagation(); D.vs = null; D.menu = null; redrawInst(); } }, h("i"), h("span", { text: "Clear" })) : null, h("p", { text: "Or type: RR COMP SHEL" })));
   const subs = (D.vol ? 54 : 0) + (D.rsi ? 72 : 0) + (D.macd ? 72 : 0);
   const box = h("div.dchart", { id: "dchart" }), tip = h("div.dtip.num", { id: "dtip" }), legend = h("div.dlegend", { id: "dlegend" });
@@ -289,7 +305,7 @@ function chartView(sym, q, x) {
 // its prices, day by day (newest first), and a way to keep them
 function historyView(sym, q) {
   const r = D.range === "1d" || D.range === "5d" ? "1mo" : D.range, body = h("div.hp", {}, h("p.dempty", { text: "Getting its prices…" }));
-  const seg = h("div.dseg", { role: "group", "aria-label": "Range" }, RANGES.slice(2).map(([rr, label]) => h("button", { type: "button", "aria-pressed": String(rr === r), onclick: () => { D.range = rr; redrawInst(); }, text: label })));
+  const seg = h("div.dseg", { role: "group", "aria-label": "Range" }, RANGES.slice(2).map(([rr, label]) => h("button", { type: "button", "data-k": `r:${rr}`, "aria-pressed": String(rr === r), onclick: () => { D.range = rr; redrawInst(); }, text: label })));
   const dl = h("button.dbtn", { type: "button", disabled: true }, icon("plus", 13, 2.6), "Download (CSV)");
   chartOf(sym, r).then((c) => {
     if (!body.isConnected) return;
@@ -354,7 +370,7 @@ function figures(sym, x, q) {
     cell("Yours", money(valueOf(x)), `${fmt(x.qty, x.qty % 1 ? 2 : 0)} shares · ${fmt((valueOf(x) / T.value) * 100, 1)}% of your money`);
     cell("Today", signed(dayOf(x) || 0), pct(q.chgPct), tone(q.chgPct));
     if (b != null) cell("Since bought", pct(b, 1), divsOf(x) >= 0.5 ? `with ${money(divsOf(x), "GBP", 0)} of dividends` : `on ${priceSaid(q, x.cost)} a share`, tone(b));
-    if (nx) cell("Next dividend", `about ${money(nx.v, "GBP", 0)}`, `around ${nx.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`);
+    if (nx) cell("Next dividend", `about ${money(nx.v, "GBP", 0)}`, `around ${aroundDay(nx.at)}`);
   }
   return cells.length ? h("div.figs", {}, cells) : null;
 }
@@ -490,7 +506,7 @@ async function drawChart(box, sym) {
   legend.replaceChildren(...[h("span", {}, h("i", { style: `background:${col}` }), `${x0name(sym)}${candle ? ` · ${per === "week" ? "weekly " : per === "month" ? "monthly " : ""}candles` : ""}${logs ? " · log" : ""}`), ...mas.map(([, label], i) => h("span", {}, h("i.ma" + i), label)),
     bb ? h("span", {}, h("i.bbi"), "Bollinger 20, 2") : null, bs ? h("span", {}, h("i.vsi"), x0name(D.vs)) : null].filter(Boolean));
   const said = $("#dchg"), rs = $("#dchgsaid");
-  if (said && r !== "1d") { said.className = `num ${tone(chg)}`; said.textContent = rel || rate10 ? `${rate10 && !rel ? `${chg >= 0 ? "+" : "−"}${fmt(Math.abs(chg) * 100, 0)}bp` : pct(chg)}` : `${signed(chg, q.cur, q.price < 1 ? 4 : 2)} (${pct((chg / base) * 100)})`; rs.textContent = RANGES.find((x) => x[0] === r)[2]; }
+  if (said && r !== "1d") { said.className = `num ${tone(chg)}`; said.textContent = rel || rate10 ? `${rate10 && !rel ? `${chg >= 0 ? "+" : "−"}${fmt(Math.abs(chg) * 100, 0)}bp` : pct(chg)}` : `${chgSaid(q, chg)} (${pct((chg / base) * 100)})`; rs.textContent = RANGES.find((x) => x[0] === r)[2]; }
   const read = (px, py) => {
     let k = 0, best = Infinity; t.forEach((tt, i) => { const d = Math.abs(X(tt) - px); if (d < best) { best = d; k = i; } });
     const ck = cs ? cs[cOf[k]] : null, xx = ck ? ck.x : X(t[k]), yy = Y(ck ? ck.c : ys[k]); cross.setAttribute("x1", xx); cross.setAttribute("x2", xx); hline.setAttribute("y1", yy); hline.setAttribute("y2", yy); dot.setAttribute("cx", xx); dot.setAttribute("cy", yy); dot.style.fill = col;
@@ -507,8 +523,14 @@ async function drawChart(box, sym) {
       ...[ck && per ? ck.v : vol?.[k]].filter(Boolean).map((x) => h("span.mut", { text: `vol ${x >= 1e6 ? fmt(x / 1e6, 1) + "m" : fmt(x / 1e3, 0) + "k"}` }))].filter(Boolean));
     box.classList.add("reading");
   };
-  box.onpointermove = (e) => { const rr = box.getBoundingClientRect(); read(Math.max(0, Math.min(W - R, e.clientX - rr.left)), e.clientY - rr.top); };
-  box.onpointerleave = () => { box.classList.remove("reading"); tip.replaceChildren(); };
+  // (read as a pointer moves over it; by touch (an iPad's), from where a finger's put down and as it's drawn along, till
+  // it's lifted, as the phone's charts are read: charts.js scrubber)
+  const at = (e) => { const rr = box.getBoundingClientRect(); read(Math.max(0, Math.min(W - R, e.clientX - rr.left)), e.clientY - rr.top); };
+  const off = () => { box.classList.remove("reading"); tip.replaceChildren(); };
+  box.onpointerdown = (e) => { at(e); if (e.pointerType !== "mouse") try { box.setPointerCapture(e.pointerId); } catch (_) {} };
+  box.onpointermove = (e) => { if (e.pointerType === "mouse" || box.hasPointerCapture?.(e.pointerId)) at(e); };
+  box.onpointerup = (e) => { if (e.pointerType !== "mouse") off(); };
+  box.onpointerleave = off; box.onpointercancel = off;
   const ro = new ResizeObserver(() => { if (!box.isConnected) return ro.disconnect(); if (Math.abs((box.clientWidth || 0) - W) > 4 || Math.abs((box.clientHeight || 0) - H) > 4) { ro.disconnect(); drawChart(box, sym); } });
   ro.observe(box);
 }
@@ -522,10 +544,12 @@ function worldGrid() {
     h("div.dpane.wcol", {}, h("div.dhead", {}, h("h2", { text: "Equity indices" }), h("small", { text: "WEI" })), ...WORLD.eq.map(([region, list]) => [h("h3.dsub", { text: region }), wTable(list)])),
     h("div.dpane.wcol", { id: "dfx" }, h("div.dhead", {}, h("h2", { text: "Currencies" }), h("small", { text: "FXC" })), wTable(WORLD.fx, { fx: true }), h("h3.dsub", { text: "Each against the others" }), fxMatrix(), h("h3.dsub", { text: "Crypto" }), wTable(WORLD.crypto)),
     h("div.dpane.wcol", {}, h("div.dhead", {}, h("h2", { text: "Commodities" })), wTable(WORLD.cmd), h("h3.dsub", { text: "US Treasury yields" }), wTable(WORLD.rates, { rate: true })));
-  if (want.length) A.quotes(want.slice(0, 64)).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (D.screen === "world" && grid.isConnected) grid.replaceWith(worldGrid()); }, () => {});
+  if (want.length) A.quotes(want.slice(0, 64)).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (D.screen === "world" && grid.isConnected) keepFocus(() => grid.replaceWith(worldGrid())); }, () => {});
   return grid;
 }
-// a market's row: its name, last, the day's change (in points, or basis points for a yield) and %, its day drawn, open or shut
+// a market's row: its name, last, the day's change (in points, or basis points for a yield) and %, its day drawn, open or
+// shut. A click anywhere on it opens its chart; its name's a button, so the keyboard and VoiceOver can too (its press
+// is the row's click)
 function wTable(list, o = {}) {
   const now = Date.now() / 1000;
   return h("table.dt.wt", {}, h("thead", {}, h("tr", {}, ["", "Last", "Change", "%", "", ""].map((s, i) => h("th", { scope: "col", class: i === 0 ? "wn" : null }, s ? h("button", { type: "button", tabindex: "-1", text: s }) : null)))),
@@ -534,7 +558,7 @@ function wTable(list, o = {}) {
       const last = o.rate ? `${fmt(yieldOf(q.price), 3)}%` : o.fx ? fmt(q.price, q.price >= 100 ? 2 : 4) : priceSaid(q), ch = q.chg ?? 0;
       const chs = o.rate ? `${ch >= 0 ? "+" : "−"}${fmt(Math.abs(yieldOf(q.price) - yieldOf(q.prev)) * 100, 1)}bp` : o.fx ? `${ch >= 0 ? "+" : "−"}${fmt(Math.abs(ch), q.price >= 100 ? 2 : 4)}` : `${ch >= 0 ? "+" : "−"}${fmt(Math.abs(ch), Math.abs(ch) >= 100 ? 1 : 2)}`;
       const open = q.open && now >= q.open.start && now < q.open.end;
-      return h("tr", { "data-sym": sym, onclick: () => run("GP", sym), title: `${name}: open its chart` }, h("td.wn", {}, h("b", { text: name }), h("small", { text: plainSym(sym) })), h("td.num", {}, h("b", { "data-px": sym, text: last })),
+      return h("tr", { "data-sym": sym, onclick: () => run("GP", sym), title: `${name}: open its chart` }, h("td.wn", {}, h("button", { type: "button", "data-k": `w:${sym}`, "aria-label": `${name}: open its chart` }, h("b", { text: name }), h("small", { text: plainSym(sym) }))), h("td.num", {}, h("b", { "data-px": sym, text: last })),
         h("td", { class: `num ${tone(q.chgPct)}`, text: chs }), h("td", { class: `num ${tone(q.chgPct)}`, "data-pct": sym, text: pct(q.chgPct) }), h("td.sp", {}, spark(q.spark, 48, 18, q.prev)), h("td", {}, h("i", { class: `odot ${open ? "on" : ""}`, title: open ? "Open" : "Shut" })));
     })));
 }
@@ -560,17 +584,30 @@ function heatPane() {
     h("span.hkey", { "aria-hidden": "true" }, h("small", { text: "−3%" }), h("i"), h("small", { text: "+3%" }))), box);
 }
 const GAP = 6;
+// A tile's colour for a day's move (stronger as it nears 3%), and its words legible on it (4.5:1 or better): in the dark,
+// a strong colour takes dark words, and none is left where neither light nor dark words would read; in the light, the
+// colour's never so strong that the dark words don't. → { mix (% of green or red), ink (dark words) }
+function tileOf(p) {
+  const mix = Math.round(14 + Math.min(1, Math.abs(p) / 3) * 72), th = document.documentElement.dataset.theme;
+  if (!(th ? th === "dark" : matchMedia("(prefers-color-scheme: dark)").matches)) return { mix: Math.min(mix, 72), ink: false };
+  const [light, dark] = p >= 0 ? [40, 52] : [50, 64];
+  return mix <= light ? { mix, ink: false } : { mix: Math.max(mix, dark), ink: true };
+}
 function drawHeat(box, o, T) {
   const W = (box.clientWidth || 300) + GAP, H = (box.clientHeight || 190) + GAP;
   const items = o.map((x) => ({ x, v: valueOf(x) })).filter((i) => i.v > 0).sort((a, b) => b.v - a.v);
-  box.replaceChildren(...squarify(items, -GAP / 2, -GAP / 2, W, H).map(({ it, x, y, w, h: hh }) => {
-    const p = S.q[it.x.symbol].chgPct || 0, k = Math.min(1, Math.abs(p) / 3), mix = Math.round(14 + k * 72);
-    // (a narrow one, its words smaller, so they still fit)
-    return h("button.tile" + (w < 76 ? ".sm" : ""), { type: "button", title: `${it.x.name}: ${money(it.v, "GBP", 0)}, ${pct(p)} today`, onclick: () => choose(it.x.symbol),
+  // (drawn again with each price: the tile that had the keyboard has it again)
+  keepFocus(() => box.replaceChildren(...squarify(items, -GAP / 2, -GAP / 2, W, H).map(({ it, x, y, w, h: hh }) => {
+    const p = S.q[it.x.symbol].chgPct || 0, { mix, ink } = tileOf(p), said = `${it.x.name}: ${money(it.v, "GBP", 0)}, ${pct(p)} today`;
+    // (its symbol over its move where there's room, smaller on a narrow one; on one too narrow for that but tall, the
+    // two in a line up it; on a low one, in a line across; and on one too small for any, none, its label saying it all)
+    const iw = w - GAP, ih = hh - GAP, how = iw >= 46 && ih >= 40 ? "" : iw >= 20 && ih >= 56 ? ".along" : iw >= 40 && ih >= 20 ? ".low" : null;
+    const one = () => h("b", {}, plainSym(it.x.symbol), " ", h("span.num", { text: pct(p, 1) }));
+    return h("button.tile" + (how ?? "") + (w < 76 ? ".sm" : "") + (ink ? ".ink" : ""), { type: "button", "data-k": `heat:${it.x.symbol}`, title: said, "aria-label": said, onclick: () => choose(it.x.symbol),
       // (each set in from its neighbours by half the gap, all round)
-      style: `left:${x + GAP / 2}px;top:${y + GAP / 2}px;width:${w - GAP}px;height:${hh - GAP}px;background-color:color-mix(in srgb, ${p >= 0 ? "var(--up)" : "var(--down)"} ${mix}%, var(--ctl))` },
-      w > 40 && hh > 40 ? [h("b", { text: plainSym(it.x.symbol) }), h("span.num", { text: pct(p, 1) })] : null);
-  }));
+      style: `left:${x + GAP / 2}px;top:${y + GAP / 2}px;width:${iw}px;height:${ih}px;background-color:color-mix(in srgb, ${p >= 0 ? "var(--up)" : "var(--down)"} ${mix}%, var(--ctl))` },
+      how === "" ? [h("b", { text: plainSym(it.x.symbol) }), h("span.num", { text: pct(p, 1) })] : how ? one() : null);
+  })));
 }
 // a squarified tree map: each item a rectangle as near square as it can be, in rows along the shorter side
 function squarify(items, x, y, w, hgt) {
@@ -615,7 +652,14 @@ async function drawRisk(body) {
   }
   if (!body.isConnected) return;
   const R = D.risk, day = (t) => new Date(t * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  const cell = (label, v, sub, cls, tip) => h("div.rcell", { title: tip }, h("small", { text: label }), h("b", { class: `num ${cls || ""}` }, v), sub ? h("span", { text: sub }) : null);
+  // (each with a word on what it means: on its title, for a pointer that rests on it, and in place of its line once it's
+  // tapped, as a finger can't rest; tapped again, its line back)
+  const cell = (label, v, sub, cls, tip) => {
+    if (!tip) return h("div.rcell", {}, h("small", { text: label }), h("b", { class: `num ${cls || ""}` }, v), sub ? h("span", { text: sub }) : null);
+    const line = h("span", { text: sub });
+    return h("button.rcell", { type: "button", title: tip, "aria-expanded": "false", onclick: (e) => { const on = e.currentTarget.getAttribute("aria-expanded") !== "true"; e.currentTarget.setAttribute("aria-expanded", String(on)); line.textContent = on ? tip : sub; } },
+      h("small", { text: label }), h("b", { class: `num ${cls || ""}` }, v), line);
+  };
   body.replaceChildren(
     h("div.ryear", {}, h("div", {}, h("span", { text: "Your year" }), h("b", { class: `num ${tone(R.yr)}`, text: pct(R.yr, 1) })), spark(R.line, 150, 34)),
     h("div.rgrid", {},
@@ -684,7 +728,7 @@ function morningNote(all, topics) {
     h("div", {}, h("h3", { text: "Your movers, and why" }), movers.length ? movers.map((x) => { const q = S.q[x.symbol], w = why(x), tp = topics[x.symbol];
       return h("button.nmv", { type: "button", onclick: () => { D.nlist = x.symbol; redraw(); } }, h("i", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct, 1) }), h("b", { text: x.name }),
         h("span", { text: w ? w.title : tp ? `Invests in ${TOPIC_SAID[tp]}` : "No story about it today" })); }) : h("p.sub", { text: "Nothing you own yet." })),
-    h("div", {}, h("h3", { text: "Coming up" }), ev.length ? ev.map((e) => h("p.sub", {}, h("b", { text: `About ${money(e.v, "GBP", 0)}` }), ` from ${e.x.name}, around ${e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`))
+    h("div", {}, h("h3", { text: "Coming up" }), ev.length ? ev.map((e) => h("p.sub", {}, h("b", { text: `About ${money(e.v, "GBP", 0)}` }), ` from ${e.x.name}, around ${aroundDay(e.at)}`))
       : h("p.sub", { text: "No dividends expected soon." })));
 }
 function listCol(lists, all) {
@@ -728,9 +772,9 @@ function storyCol() {
 // what a story says (its page's own summary for link previews), and its picture, both through Markets
 function preview(n) {
   const box = h("div.npre", {}, h("p.dempty", { text: "Getting what it says…" })), pic = h("div.npic", { hidden: true });
-  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
+  const show = (src) => pic.replaceChildren(h("img", { alt: "", src: A.picUrl(src, n.link, n.k), decoding: "async", onload: () => { pic.hidden = false; }, onerror: () => pic.remove() }));
   if (n.pic) show(n.pic);
-  A.story(n.link).then(({ story: p }) => {
+  A.story(n.link, n.k).then(({ story: p }) => {
     if (!box.isConnected) return;
     box.replaceChildren(...(p?.summary ? [h("p.npsum", { text: p.summary }), h("small", { text: `From ${p.site || n.src}'s page` })] : [h("p.dempty", { text: `${n.src} doesn't say more than its headline here.` })]));
     if (!n.pic && p?.image) show(p.image);
@@ -773,12 +817,12 @@ function comingPane() {
   const ev = income().events.slice(0, 5);
   if (!ev.length) return null;
   return h("div.dpane", {}, h("div.dhead", {}, h("h2", { text: "Dividends" }), h("small", { text: "coming up" })), h("div.dcome", {}, ev.map((e) => h("button", { type: "button", onclick: () => choose(e.x.symbol) },
-    h("span", { text: e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) }), h("b", { text: e.x.name }), h("i.num", { text: `about ${money(e.v, "GBP", 0)}` })))));
+    h("span", { text: aroundDay(e.at) }), h("b", { text: e.x.name }), h("i.num", { text: `about ${money(e.v, "GBP", 0)}` })))));
 }
 // ---- along the bottom: the markets, open or shut; the keys ----
 function statusBar() {
-  const said = marketSaid();
-  return h("div.dstat", {}, h("span", {}, h("i.live" + (said.open ? "" : ".shut")), said.text), h("span", { id: "dupd", text: `Prices at ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` }),
+  const said = lineSaid();
+  return h("div.dstat", {}, h("span", { id: "dline" }, h("i.live" + (said.open ? "" : ".shut")), said.text), h("span", { id: "dupd", text: pricesAtSaid() }),
     h("span.keys", {}, ...[["/", "command"], ["↑↓", "holdings"], ["1–5", "range"], ["K", "candles"], ["R", "RSI"], ["M", "MACD"], ["W", "world"], ["N", "news"], ["?", "help"]].map(([k, s]) => h("span", {}, h("kbd", { text: k }), s))));
 }
 
@@ -789,7 +833,7 @@ const keys = {
     if (this.ready) return; this.ready = true;
     addEventListener("click", () => { if (D.menu) { D.menu = null; redrawInst(); } });
     addEventListener("keydown", (e) => {
-      if (!document.body.classList.contains("desk-on") || document.body.classList.contains("sheet-up") || $(".dhelp")) return;
+      if (e.defaultPrevented || !document.body.classList.contains("desk-on") || document.body.classList.contains("sheet-up") || $(".dhelp, .amenu, .ifa-layer") || IFL.isOpen()) return;
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
       if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (!typing && e.key === "/")) { e.preventDefault(); $("#dcmd")?.focus(); return; }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -815,16 +859,23 @@ const keys = {
       if (flip) { D[flip] = !D[flip]; D.view = "chart"; redrawInst(); return; }
       if (k === "k") { D.type = D.type === "candle" ? "line" : "candle"; D.view = "chart"; redrawInst(); return; }
       if (k === "c") { const i = VS.findIndex((x) => x[0] === D.vs); D.vs = i < 0 ? VS[0][0] : i === VS.length - 1 ? null : VS[i + 1][0]; redrawInst(); return; }
-      if (e.key === "Enter" && D.sel) { openSheet(stockView, D.sel); }
+      // (Enter on a button, a link or a choice is that one's own, never its page as well)
+      if (e.key === "Enter" && D.sel && !e.target.closest?.("button, a, input, select, textarea, summary, [role=option], [role=tab], [tabindex='0']")) openSheet(stockView, D.sel);
     });
     addEventListener("mk:prices", () => {
       if (!document.body.classList.contains("desk-on")) return;
       const T = totals(), pv = $("#dpv"), pd = $("#dpd"), pp = $("#dpp"), up = $("#dupd");
       if (pv) pv.textContent = money(T.value);
       if (pd) { pd.textContent = signed(T.day); pd.className = `num ${tone(T.day)}`; pp.textContent = pct(T.dayPct); pp.className = `num ${tone(T.day)}`; }
-      if (up) up.textContent = `Prices at ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+      if (up) up.textContent = pricesAtSaid();
       const hb = $("#dheat"); if (hb) drawHeat(hb, owned(), T);
-      if (D.screen === "world" && !$(".dcmdw:focus-within")) $(".wgrid")?.replaceWith(worldGrid());
+      if (D.screen === "world" && !$(".dcmdw:focus-within")) keepFocus(() => $(".wgrid")?.replaceWith(worldGrid()));
+    });
+    // (the prices' age, or the markets, along the foot: said again as prices come in or don't)
+    addEventListener("mk:said", () => {
+      const line = $("#dline"), up = $("#dupd"), said = lineSaid();
+      if (line) line.replaceChildren(h("i.live" + (said.open ? "" : ".shut")), said.text);
+      if (up) up.textContent = pricesAtSaid();
     });
   },
 };

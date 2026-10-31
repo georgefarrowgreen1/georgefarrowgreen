@@ -9,11 +9,12 @@
    the stamps), so the Flight Log and the passport still count it.
 
    One to one: gone once the friend has read it and the time has passed. In a
-   group: once everyone it flew to has read it (or it was lost), after the last
-   of them read it. Where read receipts are off (either friend's, or anyone's in
-   the group: they go both ways), the time counts from landing instead (or from
-   when they were turned off, for one that landed before), so its going says
-   nothing of when, or whether, it was read. */
+   group: once everyone it flew to has read it (or it was lost, or they've left
+   the group, where they can't read it any more), after the last of them read it
+   (or after it landed, if none of them did). Where read receipts are off (either
+   friend's, or anyone's in the group: they go both ways), the time counts from
+   landing instead (or from when they were turned off, for one that landed
+   before), so its going says nothing of when, or whether, it was read. */
 import { json, db, requireUser, body, HttpError, DAY } from "./_pigeon.js";
 
 export const VANISH = [DAY, 7 * DAY, 30 * DAY];
@@ -67,7 +68,8 @@ export async function vanishSweep(env) {
       D.prepare(`DELETE FROM pg_reacts WHERE msg_id IN (${q})`).bind(...ids),
     ]);
   }
-  // groups: everyone it flew to has read it (or it was lost), and the time has passed since the last of them did
+  // groups: everyone it flew to has read it (or it was lost, or they've left), and the time has passed since the last of
+  // them did (no one read it before leaving: since the last of its pigeons landed)
   // (with the sender's or anyone's read receipts off: since the last of its pigeons landed, or was lost, or since the
   // last of them turned theirs off if that was later)
   const { results: gs } = await D.prepare(`SELECT m.id, m.photo FROM pg_gmsgs m WHERE m.vanish IS NOT NULL AND m.gone_at IS NULL AND (CASE
@@ -76,8 +78,9 @@ export async function vanishSweep(env) {
         THEN MAX((SELECT MAX(COALESCE(d.lost_at, d.deliver_at)) FROM pg_gdeliv d WHERE d.msg_id = m.id),
           (SELECT MAX(COALESCE(x.no_receipts_at, 0)) FROM pg_users x WHERE x.no_receipts = 1
             AND x.id IN (SELECT m.sender UNION ALL SELECT d.user_id FROM pg_gdeliv d WHERE d.msg_id = m.id)))
-      WHEN NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.read_at IS NULL AND d.lost_at IS NULL)
-        THEN (SELECT MAX(COALESCE(d.read_at, d.lost_at)) FROM pg_gdeliv d WHERE d.msg_id = m.id)
+      WHEN NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.read_at IS NULL AND d.lost_at IS NULL
+          AND EXISTS (SELECT 1 FROM pg_group_members gm WHERE gm.group_id = m.group_id AND gm.user_id = d.user_id))
+        THEN (SELECT COALESCE(MAX(COALESCE(d.read_at, d.lost_at)), MAX(d.deliver_at)) FROM pg_gdeliv d WHERE d.msg_id = m.id)
       END) + m.vanish <= ?1 LIMIT 90`).bind(t).all();
   if (gs.length) {
     const photos = gs.filter((m) => m.photo === 1).map((m) => `pigeon-g/${m.id}`);

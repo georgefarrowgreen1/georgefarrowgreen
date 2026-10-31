@@ -14,7 +14,7 @@
 // whose Authorization Callback Domain is fitness.inflite.ai. STRAVA_API stands in for Strava in tests.
 import { HttpError, limit, hex, sha256, serverSecret } from "./_pigeon.js";
 import { lockVault, openVault } from "./_atrest.js";
-import { fitdb, MAX_STORE } from "./_fitness.js";
+import { fitdb, tablesOnce, MAX_STORE } from "./_fitness.js";
 
 const SITE = "https://www.strava.com";
 const base = (env) => (env.STRAVA_API || SITE).replace(/\/$/, "");
@@ -27,23 +27,21 @@ export const sNewKey = (userId, id) => `fitness/${userId}/strava/${id}`;
 const owner = (userId) => "fitness/strava|" + userId;
 const SCOPE = "read,activity:read_all";
 
-async function tables(env) {
-  const D = await fitdb(env);
-  if (!tables.done) {
-    await D.batch([
-      D.prepare(`CREATE TABLE IF NOT EXISTS fx_strava (user_id TEXT PRIMARY KEY, athlete INTEGER NOT NULL, access TEXT NOT NULL, refresh TEXT NOT NULL, exp INTEGER NOT NULL,
-        since INTEGER, seen TEXT, last INTEGER, due INTEGER NOT NULL DEFAULT 0, back INTEGER NOT NULL DEFAULT 0, back_at INTEGER, ok INTEGER NOT NULL DEFAULT 1, said TEXT, added INTEGER NOT NULL)`),
-      D.prepare("CREATE UNIQUE INDEX IF NOT EXISTS fx_strava_athlete ON fx_strava (athlete)"),
-      D.prepare("CREATE INDEX IF NOT EXISTS fx_strava_due ON fx_strava (ok, due, last)"),
-      D.prepare(`CREATE TABLE IF NOT EXISTS fx_strava_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, sport TEXT, indoor INTEGER NOT NULL DEFAULT 0,
-        device TEXT, size INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
-    ]);
-    // (whose Strava it is, by name, so the app can say)
-    await D.prepare("ALTER TABLE fx_strava ADD COLUMN name TEXT").run().catch(() => {});
-    tables.done = true;
-  }
-  return D;
-}
+// (made once for each change to them, as Fitness's own are: functions/_fitness.js tablesOnce)
+const tables = (env) => tablesOnce(env, "strava", async (D) => {
+  await D.batch([
+    D.prepare(`CREATE TABLE IF NOT EXISTS fx_strava (user_id TEXT PRIMARY KEY, athlete INTEGER NOT NULL, access TEXT NOT NULL, refresh TEXT NOT NULL, exp INTEGER NOT NULL,
+      since INTEGER, seen TEXT, last INTEGER, due INTEGER NOT NULL DEFAULT 0, back INTEGER NOT NULL DEFAULT 0, back_at INTEGER, ok INTEGER NOT NULL DEFAULT 1, said TEXT, added INTEGER NOT NULL)`),
+    D.prepare("CREATE UNIQUE INDEX IF NOT EXISTS fx_strava_athlete ON fx_strava (athlete)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS fx_strava_due ON fx_strava (ok, due, last)"),
+    D.prepare(`CREATE TABLE IF NOT EXISTS fx_strava_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, sport TEXT, indoor INTEGER NOT NULL DEFAULT 0,
+      device TEXT, size INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`),
+  ]);
+  // (whose Strava it is, by name, so the app can say)
+  await D.prepare("ALTER TABLE fx_strava ADD COLUMN name TEXT").run().catch(() => {});
+  // (the activities whose streams Strava hasn't handed over when asked, how many times and since when: as Garmin's)
+  await D.prepare("ALTER TABLE fx_strava ADD COLUMN missed TEXT").run().catch(() => {});
+});
 
 // ---- the way in: to Strava's page, and back, the state signed so the answer's only taken for the one who asked ----
 async function hmacKey(env) {
@@ -179,12 +177,21 @@ export async function fetchStrava(env, userId, { force = false } = {}) {
     // back, newest first, so where it's got to moves back only past those fetched
     found.sort((a, b) => (back ? -1 : 1) * (Date.parse(a.start_date) - Date.parse(b.start_date)));
     const used = await D.prepare("SELECT (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) + (SELECT COALESCE(SUM(size), 0) FROM fx_strava_new WHERE user_id = ?1) AS b").bind(userId).first();
-    let room = MAX_STORE - (used?.b || 0), since = g.since || 0;
+    let room = MAX_STORE - (used?.b || 0), since = g.since || 0, stuck = false;
+    const missed = (() => { try { return JSON.parse(g.missed || "{}") || {}; } catch (_) { return {}; } })();
     for (const a of found.slice(0, MOST)) {
       const id = String(a.id), start = Date.parse(a.start_date);
       let st;
       try { st = await get(env, token, `/activities/${id}/streams?keys=time,latlng,altitude,distance,heartrate,cadence,watts,velocity_smooth&key_by_type=true`); }
-      catch (e) { if (e.status === 404) { seen.add(id); continue; } throw e; }
+      catch (e) {
+        if (e.status === 404) { seen.add(id); continue; }
+        if (e.status === 401 || e.status === 429) throw e;
+        // (its streams not handed over: asked no more this time, what's come so far kept; and one that's failed three
+        // times, over a day or more, passed over, so it can't hold up every one after it for good, as Garmin's)
+        const [n, first] = missed[id] || [0, now];
+        if (n + 1 >= 3 && now - first >= 86400e3) { delete missed[id]; seen.add(id); continue; }
+        missed[id] = [n + 1, first]; stuck = true; break;
+      }
       if (!st?.time?.data?.length) { seen.add(id); continue; }   // (nothing recorded: an entry made by hand)
       const bytes = await gzip(tcxOf(a, st));
       if (bytes.length > room) return fail("full");
@@ -197,12 +204,13 @@ export async function fetchStrava(env, userId, { force = false } = {}) {
       if (!back && Number.isFinite(start)) since = Math.max(since, start);
       if (back && Number.isFinite(start)) backAt = Math.min(backAt, start);
     }
-    const more = found.length > MOST;
+    const more = found.length > MOST || stuck;
     // (going back, the whole page done: on past its oldest, those already here too)
     if (back && !more && pageEnd != null) backAt = Math.min(backAt, pageEnd);
-    await D.prepare("UPDATE fx_strava SET seen = ?2, since = ?3, ok = 1, said = NULL, back = ?4, back_at = ?5, due = ?6 WHERE user_id = ?1")
-      .bind(userId, JSON.stringify([...seen].slice(-SEEN)), since || g.since, back ? 1 : 0, back ? backAt : null, more ? 1 : 0).run();
-    return { ...(await stravaOf(env, userId)), more: more || back };
+    for (const id of Object.keys(missed)) if (!found.some((a) => String(a.id) === id)) delete missed[id];
+    await D.prepare("UPDATE fx_strava SET seen = ?2, since = ?3, ok = 1, said = ?7, back = ?4, back_at = ?5, due = ?6, missed = ?8 WHERE user_id = ?1")
+      .bind(userId, JSON.stringify([...seen].slice(-SEEN)), since || g.since, back ? 1 : 0, back ? backAt : null, more && !stuck ? 1 : 0, stuck ? "unreachable" : null, Object.keys(missed).length ? JSON.stringify(missed) : null).run();
+    return { ...(await stravaOf(env, userId)), more: !stuck && (more || back) };
   } catch (e) {
     if (e instanceof HttpError) throw e;
     if (e.status === 429) return fail("busy");
@@ -210,6 +218,11 @@ export async function fetchStrava(env, userId, { force = false } = {}) {
     return fail("unreachable");
   }
 }
+// An ask made now (the app's, not the scheduler's: all your history coming in, or Check now), whether there's room for
+// it in the app's share of Strava's allowance. Each can be a dozen of Strava's (three pages of the list and ten
+// activities' streams), so those take no more than about half a quarter hour's and less than half a day's, the rest kept
+// for the scheduler's turns and everyone's new rides as Strava says they're there. → true where there is
+export const stravaShare = (env) => limit(env, "fxstravanow", 6, 15 * 60e3).then(() => limit(env, "fxstravaday", 60, 86400e3)).then(() => true, () => false);
 // all your history: walked back from now, a page at a time, as the app asks and the scheduler's turns meanwhile
 export async function stravaAll(env, userId) {
   const D = await tables(env);

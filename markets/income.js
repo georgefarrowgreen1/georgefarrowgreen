@@ -16,6 +16,19 @@ export function marked(divs) {
   });
 }
 
+// A year of a payer's dividends, to expect again: its last year's, counted by how often it pays rather than by the
+// calendar, so one paid a few days later this year than last isn't missed, nor one paid earlier counted twice. How often
+// is from its regular payments (specials aside) over the last three years, however unevenly spaced (an interim and a
+// final); its last that many are taken, as far back as a year and a little (half the time between them, two months at
+// most: one that's stopped paying isn't expected to pay again), with its specials of the last year beside them.
+// divs: [{ t (seconds), amount }], oldest first; now (seconds) → the same, a year's, oldest first
+export function yearDivs(divs, now = Date.now() / 1000) {
+  const all = marked(divs.filter((d) => d.t <= now)), regular = all.filter((d) => !d.special), recent = regular.filter((d) => d.t > now - 3 * YEAR);
+  const gap = recent.length > 1 ? (recent.at(-1).t - recent[0].t) / (recent.length - 1) : YEAR, n = Math.max(1, Math.min(12, Math.round(YEAR / gap)));
+  const from = now - YEAR - Math.min(gap / 2, 61 * 86400), keep = new Set([...regular.slice(-n).filter((d) => d.t >= from), ...all.filter((d) => d.special && d.t >= now - YEAR)].map((d) => d.t));
+  return divs.filter((d) => keep.has(d.t) && d.t <= now);
+}
+
 // How dependable a payer has been, from its regular dividends (specials aside) in each whole calendar year it's paid:
 // { raised (years running it's paid more than the year before), held (years running it's paid no less), cut (the last
 // year it paid less, within the last six; else null), growth (a year, over five: the last two years against the two five
@@ -72,6 +85,10 @@ function offset(t) {
     .formatToParts(new Date(t)).map((x) => [x.type, x.value]));
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - t;
 }
+
+// A dividend to come, a year on from this month (one gone this month already, expected again next year: app.js income
+// puts it in this month's place): said with its year, so its day isn't read as one that's been (d, now: Dates, the phone's own)
+export const yearOn = (d, now = new Date()) => (d.getFullYear() - now.getFullYear()) * 12 + d.getMonth() - now.getMonth() >= 12;
 
 // Rows as a spreadsheet (CSV): each cell quoted where it has to be, and text that a spreadsheet would take for a formula
 // (=, +, -, @ first) made plain text

@@ -39,8 +39,11 @@ function gradient(coords, colours) {
 
 // Every map made: one whose place has left the page (another activity picked, a sheet closed, the screen drawn again)
 // is let go, its WebGL context with it, before the next is made, and when sweep() is asked (a browser keeps only so many)
+// (and its place marked, so a screen that keeps what it drew, to put back as it was (Activities' pane, Today's ride),
+// knows to draw it afresh: lost)
 const live = new Set();
-export function sweep() { for (const g of live) if (!g.el.isConnected) g.remove(); }
+export function sweep() { for (const g of live) if (!g.el.isConnected) { g.remove(); g.el.dataset.mapGone = ""; } }
+export const lost = (el) => !!el && (el.matches("[data-map-gone]") || !!el.querySelector("[data-map-gone]"));
 
 // The map in `el`: coords [[lon, lat], ...]; colours, one a point (or none: the app's blue); light: the day style;
 // explore: the map can be moved and zoomed (else the page scrolls past it). → { at([lon, lat] | null), remove() }

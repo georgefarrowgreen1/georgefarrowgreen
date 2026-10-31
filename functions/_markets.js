@@ -20,8 +20,9 @@
 // mk_wrap:     the evening wrap (how your day went, once your markets have closed): off, and the last day it was sent.
 // mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
-import { HttpError, db, fromB64url } from "./_pigeon.js";
+import { HttpError, db, fromB64url, b64url, safeEqual, serverSecret } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
+import { yearDivs } from "../markets/income.js";
 
 const MIN = 60e3, HOUR = 60 * MIN;
 export const MAX_HOLDINGS = 60;
@@ -71,31 +72,42 @@ async function fetchJson(env, path) {
 }
 
 // Kept: in this copy of the server, and in the database for every other; fresh for `ttl`, and an old one given rather
-// than nothing where the source can't be reached (said as such: stale)
+// than nothing where the source can't be reached (said as such: stale). While it can't be (down, or turning requests
+// away), it isn't asked again on every request, which only keeps it so: the old one's given for a minute without
+// asking, or where there's none, the failure for a few seconds. kept: what's kept only, never asked for (a request
+// that's waited long enough: quotes)
 const memory = new Map();
+const remember = (key, m) => { memory.set(key, m); if (memory.size > 2000) memory.delete(memory.keys().next().value); };
+const staleOf = (v) => (v == null ? null : Array.isArray(v) ? v : { ...v, stale: true });
 // (MARKETS_TTL in the environment: how long each is kept, as a part of its usual time; tests, 0, so a price they move is seen at once)
-async function cached(env, key, ttl0, make) {
+async function cached(env, key, ttl0, make, { kept = false } = {}) {
   const ttl = env.MARKETS_TTL != null ? ttl0 * Number(env.MARKETS_TTL) : ttl0, t = Date.now(), m = memory.get(key);
-  if (m && t - m.at < ttl) return m.v;
+  if (m && t < (m.until ?? m.at + ttl)) { if (m.fail) throw m.fail; return m.until ? staleOf(m.v) : m.v; }
   const D = await mkdb(env);
-  const row = m ? null : await D.prepare("SELECT at, v FROM mk_cache WHERE k = ?").bind(key).first().catch(() => null);
-  let old = m || (row ? { at: row.at, v: JSON.parse(row.v) } : null);
-  if (old && t - old.at < ttl) { memory.set(key, old); return old.v; }
+  // (from the database where this copy has none, or only one given while the source was down: another may have it since)
+  const row = m && !m.until ? null : await D.prepare("SELECT at, v FROM mk_cache WHERE k = ?").bind(key).first().catch(() => null);
+  const saved = row ? { at: row.at, v: JSON.parse(row.v) } : null, mine = m && !m.fail ? m : null;
+  const old = saved && !(mine?.at > saved.at) ? saved : mine;
+  if (old && t - old.at < ttl) { remember(key, { at: old.at, v: old.v }); return old.v; }
+  if (kept) return old ? staleOf(old.v) : null;
   try {
     const v = await make();
+    // (kept for the other copies: written after the answer's gone, where the request lets it (env.waitUntil, the
+    // route's), so no answer waits on the database)
+    const keep = (at, json) => { const w = D.prepare("INSERT OR REPLACE INTO mk_cache (k, at, v) VALUES (?, ?, ?)").bind(key, at, json).run().catch(() => {}); return env.waitUntil ? env.waitUntil(w) : w; };
     if (v == null) {
       // (nothing there: kept as nothing for an hour at most, so it isn't asked for again on every request)
       const at = t - Math.max(0, ttl - HOUR);
-      memory.set(key, { at, v: null });
-      await D.prepare("INSERT OR REPLACE INTO mk_cache (k, at, v) VALUES (?, ?, ?)").bind(key, at, "null").run().catch(() => {});
+      remember(key, { at, v: null });
+      await keep(at, "null");
       return null;
     }
-    memory.set(key, { at: t, v });
-    if (memory.size > 2000) memory.delete(memory.keys().next().value);
-    await D.prepare("INSERT OR REPLACE INTO mk_cache (k, at, v) VALUES (?, ?, ?)").bind(key, t, JSON.stringify(v)).run().catch(() => {});
+    remember(key, { at: t, v });
+    await keep(t, JSON.stringify(v));
     return v;
   } catch (e) {
-    if (old) return old.v == null ? null : Array.isArray(old.v) ? old.v : { ...old.v, stale: true };
+    remember(key, old ? { at: old.at, v: old.v, until: t + Math.min(MIN, ttl) } : { fail: e, until: t + Math.min(15e3, ttl) });
+    if (old) return staleOf(old.v);
     throw e;
   }
 }
@@ -165,39 +177,58 @@ export function readChart(j, symbol) {
     time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, t, c, v, o, h, l, divs,
   };
 }
-// a symbol's chart over a range (1d: every five minutes; 5d: every half hour; 1mo, 1y: daily; 5y: weekly)
-export async function chart(env, symbol, range = "1d") {
+// a symbol's chart over a range (1d: every five minutes; 5d: every half hour; 1mo, 1y: daily; 5y: weekly). opt: cached's
+export async function chart(env, symbol, range = "1d", opt) {
   const R = RANGES[range] || RANGES["1d"];
   return cached(env, `c:${symbol}:${R.range}`, R.ttl, async () => {
     const j = await fetchJson(env, `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${R.range}&interval=${R.interval}&includePrePost=false${R.range === "1y" ? "&events=div" : ""}`);
     return readChart(j, symbol);
-  });
+  }, opt);
 }
 // the quote: the day's chart, without its points, plus a few of them for a sparkline
-export async function quote(env, symbol) {
-  const q = await chart(env, symbol, "1d");
+export async function quote(env, symbol, opt) {
+  const q = await chart(env, symbol, "1d", opt);
   if (!q) return null;
   const { t, c, v, o, h, l, divs, ...rest } = q, step = Math.max(1, Math.ceil(c.length / 48));
   const spark = c.filter((_, i) => i % step === 0 || i === c.length - 1), sparkT = t.filter((_, i) => i % step === 0 || i === t.length - 1);
   return { ...rest, chg: rest.price != null && rest.prev ? rest.price - rest.prev : null, chgPct: rest.price != null && rest.prev ? (rest.price / rest.prev - 1) * 100 : null, spark, sparkT };
 }
-// several at once, six at a time
-export async function quotes(env, symbols) {
-  const out = {}, list = [...new Set(symbols)];
-  for (let i = 0; i < list.length; i += 6) {
-    const got = await Promise.all(list.slice(i, i + 6).map((s) => quote(env, s).catch(() => null)));
-    got.forEach((q, j) => { if (q) out[list[i + j]] = q; });
-  }
+// one quote by a time (by, ms): where the source is slow to answer, what's kept is given in its place (said as stale),
+// and the answer, once it comes, kept for the next; past it, what's kept, without asking
+function quoteBy(env, s, by = Infinity) {
+  const kept = () => quote(env, s, { kept: true }).catch(() => null), left = by - Date.now();
+  if (left <= 0) return kept();
+  if (!Number.isFinite(left)) return quote(env, s).catch(() => null);
+  let timer;
+  const late = new Promise((ok) => { timer = setTimeout(ok, left); }).then(kept);
+  // (carried on past the answer, where the request lets it (env.waitUntil), or it'd be cut off with it, and not kept)
+  const fresh = quote(env, s).catch(() => null).finally(() => clearTimeout(timer));
+  env.waitUntil?.(fresh);
+  return Promise.race([fresh, late]);
+}
+// Each of a list through f, a few at a time (six, gentle on the source): the next started as each one's done, not in
+// rounds that each wait for their slowest. → what each gave, in the list's order
+export async function fewAtATime(list, f, n = 6) {
+  const out = new Array(list.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (next < list.length) { const i = next++; out[i] = await f(list[i], i); } }));
   return out;
 }
-// A year of a holding, for what's worth knowing: its week, its dividends over the year (each, and all together), and its
-// year's high and low
+// several at once, six at a time (by: a time to answer by, for a request that's waiting: quoteBy)
+export async function quotes(env, symbols, by = Infinity) {
+  const out = {}, list = [...new Set(symbols)];
+  (await fewAtATime(list, (s) => quoteBy(env, s, by))).forEach((q, i) => { if (q) out[list[i]] = q; });
+  return out;
+}
+// A year of a holding, for what's worth knowing: its week, a year of its dividends to expect again (each, and all
+// together: by how often it pays, from its history, markets/income.js yearDivs), what it paid over its chart's year (got12,
+// for the year's return), and its year's high and low. (An index, crypto or a currency pays none: its history's not asked for)
 export async function yearOf(env, symbol) {
-  const y = await chart(env, symbol, "1y").catch(() => null);
+  const [y, hist] = await Promise.all([chart(env, symbol, "1y").catch(() => null), /^\^|=X$|-(USD|GBP|EUR)$/.test(symbol) ? null : dividends(env, symbol).catch(() => null)]);
   if (!y || !y.c.length) return null;
-  const c = y.c, wk = c.length > 5 ? (c.at(-1) / c[c.length - 6] - 1) * 100 : null, yearAgo = Date.now() / 1000 - 365 * 86400;
-  const divs = y.divs.filter((d) => d.t >= yearAgo);
-  return { wk, div12: divs.reduce((a, d) => a + d.amount, 0), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100,
+  const c = y.c, wk = c.length > 5 ? (c.at(-1) / c[c.length - 6] - 1) * 100 : null, sum = (a) => a.reduce((s, d) => s + d.amount, 0);
+  const divs = yearDivs(hist?.length ? hist : y.divs), got = y.divs.filter((d) => d.t >= y.t[0]);
+  return { wk, div12: sum(divs), got12: sum(got), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100,
     first: c[0], last: c.at(-1) };
 }
 // A symbol's dividends, as far back as they go (for what it's paid you since you bought): [{ t, amount }], kept a day
@@ -207,11 +238,11 @@ export async function dividends(env, symbol) {
     return readChart(j, symbol)?.divs || null;
   });
 }
-// What a currency's worth in pounds, today (GBP: 1)
-export async function rates(env, curs) {
+// What a currency's worth in pounds, today (GBP: 1; by: as quotes)
+export async function rates(env, curs, by = Infinity) {
   const out = { GBP: 1 };
   await Promise.all([...new Set(curs)].filter((c) => c && c !== "GBP" && /^[A-Z]{3}$/.test(c)).map(async (c) => {
-    const q = await quote(env, `${c}GBP=X`).catch(() => null);
+    const q = await quoteBy(env, `${c}GBP=X`, by);
     if (q?.price) out[c] = q.price;
   }));
   return out;
@@ -327,43 +358,85 @@ export function readPreview(html, url) {
 // (a page Markets will ask for: https, a name and no number for its address, no port or sign-in in it)
 const PAGE_UA = "Mozilla/5.0 (compatible; InFliteMarkets/1.0; link preview; +https://inflite.ai)";
 const okPage = (u) => u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") && /\.[a-z]{2,}$/i.test(u.hostname) && !/^[\d.]+$/.test(u.hostname);
+// A page or a picture asked for, its redirects followed by hand, each address on the way checked as the first was (so
+// one can't lead Markets somewhere it wouldn't go): a few at most, all within six seconds. → { r, end (where it ended) }, or null
+async function fetchPage(u, headers) {
+  const signal = AbortSignal.timeout(6000);
+  for (let hop = 0, at = u; hop < 5; hop++) {
+    const r = await fetch(at.href, { headers, redirect: "manual", signal }).catch(() => null);
+    if (!r || r.status < 300 || r.status > 399) return r && { r, end: at };
+    r.body?.cancel().catch(() => {});
+    try { at = new URL(r.headers.get("Location") || "", at); } catch (_) { return null; }
+    if (!okPage(at)) return null;
+  }
+  return null;
+}
 // (MARKETS_PAGE in the environment: another address to ask for pages and pictures at, a test's stand-in)
 async function readPage(env, link) {
   let u; try { u = new URL(link); } catch (_) { return null; }
-  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null;
+  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null, headers = { "User-Agent": PAGE_UA, Accept: "text/html,application/xhtml+xml" };
   if (!hook && !okPage(u)) return null;
-  const r = await fetch(hook ? `${hook}/page?u=${encodeURIComponent(u.href)}` : u.href, { headers: { "User-Agent": PAGE_UA, Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(6000) }).catch(() => null);
+  const got = hook ? { r: await fetch(`${hook}/page?u=${encodeURIComponent(u.href)}`, { headers, signal: AbortSignal.timeout(6000) }).catch(() => null), end: u } : await fetchPage(u, headers);
+  const r = got?.r, end = got?.end;
   if (!r?.ok || !/html/i.test(r.headers.get("Content-Type") || "")) { r?.body?.cancel().catch(() => {}); return null; }
-  let end = u;
-  try { if (!hook && r.url) end = new URL(r.url); } catch (_) {}
   // (a consent page, not the story: nothing to say)
-  if (!hook && (!okPage(end) || /(^|\.)consent\.|\/guce\//i.test(end.hostname + end.pathname))) { r.body?.cancel().catch(() => {}); return null; }
-  // (the head's enough: read no further than it, and never more than 400 KB)
+  if (!hook && /(^|\.)consent\.|\/guce\//i.test(end.hostname + end.pathname)) { r.body?.cancel().catch(() => {}); return null; }
+  // (the head's enough: read no further than it, and never more than 400 KB; a page that stalls part way, its six
+  // seconds up, read for what came, and where that says nothing, nothing, kept as such for an hour, not asked again)
   const reader = r.body.getReader(), dec = new TextDecoder();
-  let html = "";
-  while (html.length < 400000) { const { done, value } = await reader.read(); if (done) break; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; }
+  let html = "", cut = false;
+  try { while (html.length < 400000) { const { done, value } = await reader.read(); if (done) break; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; } }
+  catch (_) { cut = true; }
   reader.cancel().catch(() => {});
-  return readPreview(html, end.href);
+  const p = readPreview(html, end.href);
+  return cut && !p.title && !p.summary ? null : p;
 }
 // a story's preview: read once a day for everyone (nothing found, kept as nothing for an hour)
 export async function story(env, link) {
   return cached(env, `st:${String(link).slice(0, 500)}`, 24 * HOUR, () => readPage(env, link));
 }
+// A story's key: given with each story Markets's news gives (the news route), and asked for with its link to read its
+// page or pass its picture, so the only pages Markets reads are those its own news named, never any address sent to it
+let storyMac = null;
+export async function storyKey(env, link) {
+  const enc = new TextEncoder();
+  storyMac ||= serverSecret(env).then((s) => crypto.subtle.importKey("raw", enc.encode(s), { name: "HMAC", hash: "SHA-256" }, false, ["sign"])).catch((e) => { storyMac = null; throw e; });
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", await storyMac, enc.encode(`markets-story|${link}`)))).slice(0, 32);
+}
+export const storyKeyOk = async (env, link, key) => typeof key === "string" && key.length === 32 && safeEqual(key, await storyKey(env, link));
 // A story's picture, passed through (so your phone asks nothing of the publisher's site): one of the search's own
-// pictures (Yahoo's), or the one a story's preview gave. → { body, type } or null
-const PIC_HOSTS = /(^|\.)(yimg\.com|zenfs\.com)$/i;
+// pictures (Yahoo's), or the one a story's preview gave (link: that story's, only where its key's been checked). Kept a
+// day at the edge (by its address, once it's been checked as above), so it's fetched once for everyone near; and never
+// read past 3 MB (one that says it's bigger, not read at all). → { body, type } or null
+const PIC_HOSTS = /(^|\.)(yimg\.com|zenfs\.com)$/i, PIC_MAX = 3e6;
 export async function picture(env, src, link) {
   let u; try { u = new URL(src); } catch (_) { return null; }
-  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null;
+  const hook = env.MARKETS_PAGE ? String(env.MARKETS_PAGE).replace(/\/$/, "") : null, headers = { "User-Agent": PAGE_UA, Accept: "image/avif,image/webp,image/png,image/jpeg,image/*" };
   if (!hook) {
     if (!okPage(u)) return null;
     if (!PIC_HOSTS.test(u.hostname)) { const p = link ? await story(env, link).catch(() => null) : null; if (p?.image !== u.href) return null; }
   }
-  const r = await fetch(hook ? `${hook}/pic?u=${encodeURIComponent(u.href)}` : u.href, { headers: { "User-Agent": PAGE_UA, Accept: "image/avif,image/webp,image/png,image/jpeg,image/*" }, signal: AbortSignal.timeout(6000) }).catch(() => null);
+  // (a test's stand-in: never kept)
+  const edge = !hook && globalThis.caches?.default, key = edge && new Request(`https://markets-pic.inflite.ai/?u=${encodeURIComponent(u.href)}`);
+  const hit = edge && (await edge.match(key).catch(() => null));
+  if (hit) return { body: await hit.arrayBuffer(), type: hit.headers.get("Content-Type") };
+  const r = hook ? await fetch(`${hook}/pic?u=${encodeURIComponent(u.href)}`, { headers, signal: AbortSignal.timeout(6000) }).catch(() => null) : (await fetchPage(u, headers))?.r;
   const type = (r?.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
-  if (!r?.ok || !/^image\/(jpeg|png|webp|gif|avif)$/.test(type)) { r?.body?.cancel().catch(() => {}); return null; }
-  const body = await r.arrayBuffer();
-  return body.byteLength > 3e6 ? null : { body, type };
+  if (!r?.ok || !r.body || !/^image\/(jpeg|png|webp|gif|avif)$/.test(type) || Number(r.headers.get("Content-Length")) > PIC_MAX) { r?.body?.cancel().catch(() => {}); return null; }
+  const reader = r.body.getReader(), parts = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if ((size += value.byteLength) > PIC_MAX) { reader.cancel().catch(() => {}); return null; }
+      parts.push(value);
+    }
+  } catch (_) { return null; }
+  const body = new Uint8Array(size);
+  parts.reduce((at, b) => (body.set(b, at), at + b.byteLength), 0);
+  if (edge) await edge.put(key, new Response(body, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400" } })).catch(() => {});
+  return { body: body.buffer, type };
 }
 
 // The markets everyone sees: London, New York, Bitcoin (and the pound, for adding up what's in dollars)
@@ -472,13 +545,13 @@ function hadBefore(x, ex) {
 // dividends), from (the day counted from, ms) } }, for those with a day to count from
 export async function paidOf(env, userId) {
   const out = {}, todo = (await withBuys(env, userId)).filter((x) => x.buys.length || x.since);
-  for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(async (x) => {
+  await fewAtATime(todo, async (x) => {
     const divs = await dividends(env, x.symbol).catch(() => null);
     if (!divs) return;
     let paid = 0, n = 0;
     for (const d of divs) { const had = hadBefore(x, isoDay(d.t * 1000)); if (had > 1e-9) { paid += d.amount * had; n++; } }
     out[x.symbol] = { paid: +paid.toFixed(4), n, from: x.buys.length ? x.buys[0].at : x.since };
-  }));
+  });
   return out;
 }
 // Your income's history, for the Income sheet: for each holding you own (and each you've sold all of), its dividends
@@ -487,18 +560,43 @@ export async function paidOf(env, userId) {
 // qty }], from (the day counted from, ms; null with none to count from, and nothing got) } }
 export async function incomeOf(env, userId) {
   const out = {}, xs = await withBuys(env, userId, { sold: true }), since = Date.now() / 1000 - 8 * 366 * 86400;
-  for (let i = 0; i < xs.length; i += 6) await Promise.all(xs.slice(i, i + 6).map(async (x) => {
+  await fewAtATime(xs, async (x) => {
     const divs = await dividends(env, x.symbol).catch(() => null);
     if (!divs) return;
     const from = x.buys.length ? x.buys[0].at : x.since || null, got = [];
     if (from) for (const d of divs) { const had = hadBefore(x, isoDay(d.t * 1000)); if (had > 1e-9) got.push({ t: d.t, amount: d.amount, qty: +had.toFixed(6) }); }
     out[x.symbol] = { divs: divs.filter((d) => d.t >= since), got, from };
-  }));
+  });
   return out;
 }
-// A buy or a sale: { symbol, qty (how many), price (each, in its own currency), at (the day, ms), sold? }. The first,
-// for a holding that already says how many you own, keeps those as where it started (on the day it was bought, where
-// that's said, else the day it was added)
+// Each sale in a holding's buys and sales (oldest first) that takes out more than you had on its day, in order: [{ b
+// (the sale), had (what you had then) }]; and how many short they come, all told (short)
+export function oversold(buys) {
+  let had = 0, short = 0;
+  const out = [];
+  for (const b of buys) {
+    if (b.qty < 0 && -b.qty > had + 1e-9) { out.push({ b, had: +had.toFixed(6) }); short += -b.qty - had; }
+    had = Math.max(0, had + b.qty);
+  }
+  return Object.assign(out, { short });
+}
+// A new buy or sale, among a holding's (buys: those kept, oldest first; held: the holding, { qty, cost, since, added };
+// add: the new one, { qty (less than nothing for a sale), price, at }). The first, for a holding that already says how
+// many you own, keeps those as where it started (start): on the day they were bought, where that's said, else the day
+// it was added (a sale before then moving them back to its own day, so there were some to sell). And a sale's checked
+// against what you had on its day, and so's every sale after it: → { start (or null), short (the first sale that would
+// now take out more than you had, { b, had }, or null) }. (A shortfall there before, from before they were checked,
+// is no reason to refuse another: only one that's more)
+export function planBuy(buys, held, add) {
+  const start = !buys.length && held.qty > 0 ? { qty: held.qty, price: held.cost ?? null, at: add.qty < 0 ? Math.min(held.since ?? held.added, add.at) : held.since ?? held.added } : null;
+  const was = [...buys, ...(start ? [start] : [])];
+  // (in day order: one on the same day as another comes after it, as they're kept)
+  const now = [...was, add].sort((a, b) => a.at - b.at), before = oversold(was), after = oversold(now);
+  return { start, short: after.short > before.short + 1e-9 ? after.find((s) => !before.some((o) => o.b === s.b)) || after[0] : null };
+}
+const daySaid = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
+const many = (n) => +Number(n).toFixed(6);
+// A buy or a sale: { symbol, qty (how many), price (each, in its own currency), at (the day, ms), sold? } (planBuy)
 export async function addBuy(env, userId, b) {
   const D = await mkdb(env), symbol = cleanSymbol(b.symbol), n = Number(b.qty), price = b.price == null || b.price === "" ? null : Number(b.price), at = Number(b.at) || Date.now();
   if (!Number.isFinite(n) || n <= 0 || n > 1e9) throw new HttpError(400, "How many should be a number.");
@@ -507,19 +605,25 @@ export async function addBuy(env, userId, b) {
   const held = await D.prepare("SELECT qty, cost, added, since, (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = ?1 AND b.symbol = ?2) AS buys FROM mk_holdings WHERE user_id = ?1 AND symbol = ?2").bind(userId, symbol).first();
   if (!held) throw new HttpError(404, "Add it to your list first.");
   if ((held.buys || 0) >= 500) throw new HttpError(400, "That's as many as one holding can keep.");
-  const t = Date.now(), add = [];
-  if (!held.buys && held.qty > 0) add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, held.qty, held.cost, Math.min(held.since ?? held.added, at), t));
-  if (b.sold) {
-    const now = pooled([...(await buysOf(env, userId, symbol)).buys, ...(!held.buys && held.qty > 0 ? [{ qty: held.qty, price: held.cost }] : [])]);
-    if (n > now.qty + 1e-9) throw new HttpError(400, `You own ${now.qty} of these, so can't have sold ${n}.`);
-  }
-  add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, b.sold ? -n : n, price, at, t));
+  const t = Date.now(), add = [], entry = { qty: b.sold ? -n : n, price, at };
+  const kept = held.buys ? (await buysOf(env, userId, symbol)).buys : [], { start, short } = planBuy(kept, held, entry);
+  // (a sale of more than you had: said against what you own, or, where there's been a buy or sale since its day, what you had then)
+  if (short?.b === entry) throw new HttpError(400, kept.some((x) => x.at > at) ? `You had ${short.had} of these on ${daySaid(at)}, so can't have sold ${many(n)} then.` : `You own ${short.had} of these, so can't have sold ${many(n)}.`);
+  if (short) throw new HttpError(400, `That leaves too few for the ${many(-short.b.qty)} you sold on ${daySaid(short.b.at)}.`);
+  if (start) add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, start.qty, start.price, start.at, t));
+  add.push(D.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, symbol, entry.qty, price, at, t));
   await D.batch(add);
   return repool(env, userId, symbol);
 }
+// one taken off (never one a later sale needs: that sale would then have sold more than you had)
 export async function dropBuy(env, userId, id) {
   const D = await mkdb(env), r = await D.prepare("SELECT symbol FROM mk_buys WHERE id = ? AND user_id = ?").bind(Number(id) || 0, userId).first();
   if (!r) throw new HttpError(404, "That one's gone already.");
+  const { buys } = await buysOf(env, userId, r.symbol), before = oversold(buys), after = oversold(buys.filter((x) => x.id !== Number(id)));
+  if (after.short > before.short + 1e-9) {
+    const s = after.find((x) => !before.some((o) => o.b === x.b)) || after[0];
+    throw new HttpError(400, `The ${many(-s.b.qty)} you sold on ${daySaid(s.b.at)} needs these. Take that sale off first.`);
+  }
   await D.prepare("DELETE FROM mk_buys WHERE id = ? AND user_id = ?").bind(Number(id), userId).run();
   return repool(env, userId, r.symbol);
 }
@@ -654,20 +758,30 @@ export async function alertTick(env, t = Date.now()) {
     WHERE a.user_id NOT IN (SELECT user_id FROM mk_off) AND a.user_id IN (SELECT user_id FROM mk_push)`).all();
   if (!results.length) return { alerts: 0, sent: 0 };
   const q = await quotes(env, results.map((r) => r.symbol));
-  let sent = 0;
-  for (const r of results) {
+  // (those due: moved as far as asked today, not said yet today, and not in their Quiet Hours)
+  const due = results.filter((r) => {
     const x = q[r.symbol];
-    if (!x || x.chgPct == null || Math.abs(x.chgPct) < r.pct || !x.time || t / 1000 - x.time > 6 * 3600) continue;
-    const day = dayIn(x.tz, x.time * 1000);
-    if (r.fired === day || isQuiet(prefsOf({ notify_prefs: r.notify_prefs }), t)) continue;
+    if (!x || x.chgPct == null || Math.abs(x.chgPct) < r.pct || !x.time || t / 1000 - x.time > 6 * 3600) return false;
+    return r.fired !== dayIn(x.tz, x.time * 1000) && !isQuiet(prefsOf({ notify_prefs: r.notify_prefs }), t);
+  });
+  // (why, where a story from the last day says: the newest about each, asked for once a symbol, six at a time, before
+  // any's claimed, so no claim waits on a story)
+  const whys = new Map(), syms = [...new Set(due.map((r) => r.symbol))];
+  for (let i = 0; i < syms.length; i += 6) await Promise.all(syms.slice(i, i + 6).map(async (s) => {
+    whys.set(s, (await news(env, [s], { markets: false }).catch(() => null))?.news.find((n) => (n.for === s || n.tickers.includes(s)) && t - n.at < 24 * 3600e3));
+  }));
+  // (six at a time: each claimed as it's sent (so no other turn says it too), and let go again where no phone was told,
+  // to be tried on the next turn)
+  let sent = 0;
+  for (let i = 0; i < due.length; i += 6) (await Promise.all(due.slice(i, i + 6).map(async (r) => {
+    const x = q[r.symbol], day = dayIn(x.tz, x.time * 1000), up = x.chgPct >= 0, why = whys.get(r.symbol);
     const claim = await D.prepare("UPDATE mk_alerts SET fired = ?3 WHERE user_id = ?1 AND symbol = ?2 AND (fired IS NULL OR fired != ?3)").bind(r.user_id, r.symbol, day).run();
-    if (!claim.meta?.changes) continue;
-    const up = x.chgPct >= 0;
-    // (why, where a story from the last day says: the newest about it)
-    const why = (await news(env, [r.symbol], { markets: false }).catch(() => null))?.news.find((n) => (n.for === r.symbol || n.tickers.includes(r.symbol)) && t - n.at < 24 * 3600e3);
+    if (!claim.meta?.changes) return 0;
     const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`, body: `${money(x.price, x.cur)} now. ${why ? `${why.title.replace(/[.!?]$/, "")}.` : "Tap to see why."}`, tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
-    sent += await tell(env, D, r.user_id, note);
-  }
+    const told = await tell(env, D, r.user_id, note).catch(() => 0);
+    if (!told) await D.prepare("UPDATE mk_alerts SET fired = ?4 WHERE user_id = ?1 AND symbol = ?2 AND fired = ?3").bind(r.user_id, r.symbol, day, r.fired ?? null).run().catch(() => {});
+    return told;
+  }))).forEach((n) => { sent += n; });
   return { alerts: results.length, sent };
 }
 
@@ -692,16 +806,16 @@ export async function wrapTick(env, t = Date.now()) {
     // (what traded today, by its own market's day; crypto never closes, so isn't waited for)
     const traded = held.filter((r) => r.x.kind !== "crypto" && r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t));
     if (!traded.length || traded.some((r) => r.x.open && r.x.open.end > t / 1000) || isQuiet(prefsOf({ notify_prefs: u.prefs }), t)) continue;
-    const day = (r) => (r.x.price - r.x.prev) * r.qty * fx[r.x.cur], value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = held.reduce((a, r) => a + day(r), 0);
-    const by = [...held].sort((a, b) => day(b) - day(a)), top = by[0], low = by.at(-1), pctDay = value - total ? (total / (value - total)) * 100 : 0;
+    const { value, total, pct: pctDay, top, low, shut, day } = wrapFigures(held, fx, t);
     const claim = await D.prepare("INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2 WHERE mk_wrap.sent IS NULL OR mk_wrap.sent != ?2").bind(userId, today).run();
     if (!claim.meta?.changes) continue;
     const pounds = (v) => money(Math.abs(v), "GBP"), flat = Math.abs(total) < 1;
     const note = {
       title: flat ? "A flat day" : `${total >= 0 ? "Up" : "Down"} ${pounds(total)} today`,
-      body: flat ? `Your portfolio closed at ${pounds(value)}, little changed.`
+      body: (flat ? `Your portfolio closed at ${pounds(value)}, little changed.`
         : `Your portfolio is ${total >= 0 ? "up" : "down"} ${Math.abs(pctDay).toFixed(1)}% at ${pounds(value)}. ` + (total >= 0
-          ? `${top.name} did most of the work, adding ${pounds(day(top))}.` : `${low.name} took away most, ${pounds(day(low))}.`),
+          ? `${top.name} did most of the work, adding ${pounds(day(top))}.` : `${low.name} took away most, ${pounds(day(low))}.`))
+        + (shut.length ? ` ${andSaid(shut)} ${shut.length > 1 ? "were" : "was"} shut today.` : ""),
       tag: "mk-wrap", url: "./", ttl: 6 * 3600,
     };
     // (and what's to know about dividends: one gone ex-dividend today, and on a month's first weekday, last month's)
@@ -711,6 +825,20 @@ export async function wrapTick(env, t = Date.now()) {
     wraps++;
   }
   return { wraps };
+}
+
+// The evening wrap's figures (held: what you own, [{ name, qty, x: its quote }], each priced; fx: a currency's worth in
+// pounds): what it's all worth, and the day's change and who did most of it from what traded today (and crypto, which
+// never shuts), so a market shut for its holiday (New York's Thanksgiving, London's Easter Monday) adds nothing, its last
+// move being another day's. → { value, total, pct, top, low, day (one's change today, in pounds), shut (the markets shut
+// today, as people say them: only where nothing you own there traded, one that didn't (suspended, say) not its market's) }
+const PLACE = { Nasdaq: "New York", NYSE: "New York", "NYSE American": "New York", "NYSE Arca": "New York" };
+const andSaid = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
+export function wrapFigures(held, fx, t = Date.now()) {
+  const on = (r) => r.x.kind === "crypto" || (!!r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t)), today = held.filter(on), place = (r) => PLACE[r.x.ex] || r.x.ex;
+  const day = (r) => (on(r) ? (r.x.price - r.x.prev) * r.qty * fx[r.x.cur] : 0), by = [...today].sort((a, b) => day(b) - day(a));
+  const value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = today.reduce((a, r) => a + day(r), 0), open = new Set(today.map(place));
+  return { value, total, pct: value - total ? (total / (value - total)) * 100 : 0, top: by[0], low: by.at(-1), day, shut: [...new Set(held.filter((r) => !on(r)).map(place))].filter((p) => p && !open.has(p)) };
 }
 
 // What the evening wrap says about dividends (inc: incomeOf's; held: what you own, [{ symbol, name, x: its quote }]; fx:

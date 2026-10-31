@@ -1,4 +1,4 @@
-// Your georgefarrowgreen.com account, on its own page: the one account every app on the site signs in with
+// Your InFlite account, on its own page: the one account every app on the site signs in with
 // (functions/_account.js), in one place. Signed out: signing in, with a passkey or your email and password. Signed in:
 // your profile (photo, name, handle), your apps, and sign-in and security (your password, passkeys and signed-in
 // devices), signing out, and deleting the account. Each opens in a sheet that comes up from below; what could hurt if
@@ -85,17 +85,23 @@ const IFL = (() => {
   };
 
   // the same short note in every app
+  // (read out from a place that's always there, unseen, as the home page's toast is: a note only just put in the page
+  // with its words already in it often isn't read out at all)
+  const sayEl = el("p", "ifm-say"); sayEl.setAttribute("role", "status"); sayEl.setAttribute("aria-live", "polite");
+  document.body?.append(sayEl);
   let noteEl = null, noteT = 0;
   function note(app, title, sub) {
     noteEl?.remove();
     clearTimeout(noteT);
     const img = el("img", "ifm-note-ic"); img.src = iconUrl(app); img.alt = "";
     noteEl = el("div", "ifm-note", img, el("span", "ifm-note-tx", el("b", "", title), sub ? el("small", "", sub) : null));
-    noteEl.setAttribute("role", "status");
     document.body.append(noteEl);
-    requestAnimationFrame(() => requestAnimationFrame(() => noteEl?.classList.add("on")));
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
     const n = noteEl;
-    noteT = setTimeout(() => { n.classList.remove("on"); setTimeout(() => n.remove(), 400); }, 3600);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (noteEl !== n) return; n.classList.add("on"); sayEl.textContent = sub ? `${title}. ${sub}` : title; }));
+    // (what it said emptied as it goes, so the same words next time are a change, and read out again)
+    noteT = setTimeout(() => { n.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => n.remove(), 400); }, 3600);
   }
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
@@ -148,13 +154,13 @@ const IFL = (() => {
   // or come back to it and not touched it yet (before you'd notice); else once you've left it be for a minute, never
   // while you're typing, in a sheet or a menu, or the app says it's busy (sending, recording, uploading). One that must
   // go in (min: a fix that can't wait) goes in at the first moment you're not busy. Meanwhile the menu's foot has Update
-  // instead of its green dot. Before it loads, where you are is kept (the app's save()) and it opens there again (here()),
-  // and the new version's files are fetched afresh first, past any copy the app or the browser keeps, so it's never a
-  // mix of the old and the new; once for each new version, so a copy that's still the old one mid-release isn't loaded
-  // over and over.
+  // instead of its green dot. The new version's files are fetched afresh first, past any copy the app or the browser
+  // keeps, so it's never a mix of the old and the new (and if you start on something meanwhile, it waits again); then
+  // where you are is kept (the app's save()) and it opens there again (here()); once for each new version, so a copy
+  // that's still the old one mid-release isn't loaded over and over.
   // o: { app, build, url (default "version"), field (in its answer, default "build"), busy() → true while it's not to
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
-  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, at: 0, back: Date.now(), touch: 0, going: false, told: "" };
+  const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
   // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
@@ -208,33 +214,55 @@ const IFL = (() => {
   async function apply(asked) {
     const r = U.ready;
     if (!r || U.going) return;
-    const key = `ifl-upd:${U.app}`;
+    // (its files already fetched afresh, the last time it was about to go in: U.fresh, below)
+    const key = `ifl-upd:${U.app}`, got = U.fresh === r.build;
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (!asked && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
+      if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
       sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
     U.going = true;
     close(true);
+    if (!got) {
+      const t = U.touch;
+      if (!(await afresh())) {
+        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
+        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
+        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
+        // app's (Mail's are fetched by the page, U.files))
+        U.going = false;
+        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
+        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        return;
+      }
+      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
+      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+    }
+    // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
-    await afresh();
     location.reload();
   }
   // the new version's files, fetched afresh before it loads: a service worker of the app's own for each version (as
   // Weather's) installed with all of them; one that keeps one version's files (Markets', Fitness') asked to fetch them
-  // again; and without one, the page and its files asked of the network past the browser's own copy
+  // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
+  // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
       if (reg) {
+        const was = reg.active;
         await Promise.race([reg.update().catch(() => {}), wait(6000)]);
-        if (reg.installing || reg.waiting) await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+        if (reg.installing || reg.waiting) {
+          await Promise.race([new Promise((ok) => sw.addEventListener("controllerchange", ok, { once: true })), wait(10000)]);
+          if (reg.active === was) return false;
+        }
         const c = sw.controller;
         if (c) await Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]);
       }
       if (U.files) await Promise.race([Promise.all(U.files.map((u) => fetch(u, { cache: "reload", credentials: "same-origin" }).catch(() => null))), wait(4000)]);
     } catch (_) {}
+    return true;
   }
   // where you were as it updated (save()), as the new version opens: once, and only if moments ago; else null
   function here(app) {
@@ -255,6 +283,7 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.visualViewport?.removeEventListener("resize", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -321,20 +350,28 @@ const IFL = (() => {
       }
     };
     document.addEventListener("keydown", key, true);
-    // (the page behind out of reach while it's open: a screen reader stays in the menu)
-    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT");
+    // (the page behind out of reach while it's open: a screen reader stays in the menu. Not the notes' place, so one
+    // said meanwhile (a new version's ready) is still read out)
+    const behind = [...document.body.children].filter((c) => !c.inert && c.tagName !== "SCRIPT" && c !== sayEl);
     behind.forEach((c) => { c.inert = true; });
     document.body.append(layer);
-    // (under your photo, from where it grows; over it, if your photo's low on the screen)
-    const r = anchor.getBoundingClientRect(), H = window.innerHeight, W = window.innerWidth;
+    // (under your photo, from where it grows; over it, if your photo's low on the screen. Under it, no taller than the
+    // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
+    // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
+    // field, which left it short, or the phone turned)
+    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
+    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
     const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
     const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
     const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
+    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    fit();
+    window.visualViewport?.addEventListener("resize", fit);
     pop.style.top = `${top}px`;
     pop.style.left = `${left}px`;
     pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, behind, onClose: o.onClose, redraw: (list) => {
+    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
@@ -397,8 +434,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.63";
-const NEWS = "Pinching no longer zooms the page; and opened from an app, its settings fill the screen, every row in reach";
+const BUILD = "1.64";
+const NEWS = "Sign in with your phone in any size of window, Fitness's export is quicker, buttons are easier to read, and Try Again where settings couldn't load";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -441,17 +478,18 @@ const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   // (opened from an app in a browser, which needs no hand-over, as the browser's signed in here too: #from=<app>, for the
   // way back, and open=, the part to open; a code only from an app with a sign-in of its own, as on an iPhone's Home
-  // Screen)
+  // Screen. asks=1: the app asks to turn its notifications on itself once it's back in sight, so its folder's Turn On goes
+  // back to it, ntHead)
   if (!code) {
     const from = p.get("from");
     if (!APPS[from] || from === "home") return null;
     history.replaceState(null, "", location.pathname + location.search);
     try { sessionStorage.setItem("acct-from", from); } catch (_) {}
-    return { code: null, open: p.get("open") };
+    return { code: null, open: p.get("open"), asks: p.get("asks") === "1" };
   }
   history.replaceState(null, "", location.pathname + location.search);
   if (APPS[p.get("from")]) try { sessionStorage.setItem("acct-from", p.get("from")); } catch (_) {}
-  return { code, open: p.get("open") };
+  return { code, open: p.get("open"), asks: p.get("asks") === "1" };
 })();
 // (opened from the site's home page, which needs no hand-over, as the browser's signed in to both or neither: #from=home,
 // for the way back)
@@ -491,7 +529,8 @@ const SIGN_FOR = (() => {
 })();
 S.signFor = SIGN_FOR;
 // Signing out, on the sign-in page: from an app, once it's signed out there (#signout=<app>, and back: where to), or the
-// account's page (#signout=account). The site's sign-in ended here too, should it still be on; then where to next.
+// account's page (#signout=account), once it's signed out there too. Then where to next; or, should the site's sign-in
+// still be on, asked first (outPage), so a link from anywhere can't sign you out of every app.
 const OUT = (() => {
   const m = AUTH?.here && /^#signout=(account|inflight|weather|fitness|markets|mail|home)(&|$)/.exec(ARRIVED);
   if (!m) return null;
@@ -543,14 +582,14 @@ const OPENS = { profile: () => profileView, inflight: () => inflightView, fitnes
   notify: () => notifyView, "notify-inflight": () => chatNotifyView, "notify-weather": () => weatherNotifyView, "notify-fitness": () => fitnessNotifyView, "notify-markets": () => marketsNotifyView, "notify-mail": () => mailNotifyView };
 const opens = () => OPENS[HANDOFF?.open]?.() || null;
 // back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
-// page's place, so Back from it doesn't come here again)
-function backToApp() {
+// page's place, so Back from it doesn't come here again; hash: what it's to open at, where it's opened here)
+function backToApp(hash) {
   if (S.signFor) return leaveFor(S.signFor.app === "home" ? homeVia(S.signFor.back) : S.signFor.back);
   const from = fromApp(), app = APPS[from] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
   if (from === "home") return location.replace(homeVia(siteUrl(app.sub)));
   try { window.close(); } catch (_) {}
-  setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
+  setTimeout(() => { location.href = siteUrl(app.sub) + (typeof hash === "string" ? hash : ""); }, 250);
 }
 const backPill = () => h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name);
 const backButton = (r) => fromApp() && r(backPill());
@@ -792,7 +831,8 @@ async function load() {
     try {
       const [now, who] = await Promise.all([mine, post("handoff/who", { code: HANDOFF.code })]);
       if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
-      else if (now.signedIn) { S.me = now; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
+      // (signed in here as another: said, and the way to that one kept, signing out here first: refusedBanner)
+      else if (now.signedIn) { S.me = now; S.refused = { who, open: HANDOFF.open }; HANDOFF.open = null; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
       else { S.me = now; S.handoff = who; }
     } catch (e) {
       // (whose code it was not known: what it was to open isn't opened for whoever's signed in here; said here, before
@@ -808,16 +848,16 @@ async function load() {
       h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
   }
   if (S.me.prefs) theme(S.me.prefs.appearance);
-  // (the way out: the site's sign-in ended, if it's still on, and where next said)
+  // (the way out: where next said, or, the site's sign-in still on, whether to end it asked first)
   // (from the account's page: straight to signing in again, as it was there; from an app, where next)
   if (OUT) {
-    if (S.me.signedIn) { try { await post("signout"); } catch (_) {} duskFall(); }
-    S.me = { signedIn: false };
-    if (OUT.app === "account") S.said = { text: "Signed out." }; else S.out = OUT;
+    if (S.me.signedIn) S.out = { ...OUT, ask: true };
+    // (signed out there just now: dusk falls here, where it's seen, as the page there's gone as it began)
+    else if (OUT.app === "account") { S.said = { text: "Signed out." }; S.left = true; duskFall(); } else S.out = OUT;
   }
   // (each page its own: signed in, the sign-in page has nothing more to ask, unless a computer's code or an app's waiting,
   // and it's on to your account; signed out, the account's page is on to the sign-in page)
-  if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && S.gate !== "join") return location.replace(`${AUTH.account}/`);
+  if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && !S.out && S.gate !== "join") return location.replace(`${AUTH.account}/`);
   if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said && !S.stay) return location.replace(`${AUTH.auth}/`);
   // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
   if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
@@ -892,8 +932,8 @@ function render() {
   const rise = !S.settled; S.settled = true;
   const was = rise ? null : where(), risers = [];
   const r = (el) => { if (rise && el) risers.push(el); return el; };
-  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : AUTH?.here ? authHome(r) : signedIn(r))
-    : S.out ? outPage(r) : AUTH && !AUTH.here && !S.handoff ? awayPage(r) : signedOut(r)).filter(Boolean));
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.out?.ask ? outPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : AUTH?.here ? authHome(r) : signedIn(r))
+    : S.gone ? gonePage(r) : S.out ? outPage(r) : AUTH && !AUTH.here && !S.handoff ? awayPage(r) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
   document.title = AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
@@ -971,7 +1011,7 @@ function keyOf(el) {
   return el.closest("[data-k]")?.dataset.k || el.getAttribute("aria-label") || (el.tagName === "INPUT" && (el.name || el.closest("label")?.textContent)) || el.textContent.trim().slice(0, 80) || null;
 }
 function refocus(root, key, sel) {
-  const el = key === "#title" ? $("#sheet-title", sheetEl) : [...root.querySelectorAll("button, a[href], input, [tabindex]")].find((x) => !x.closest(".going, [inert]") && keyOf(x) === key);
+  const el = key === "#title" ? $("#sheet-title", sheetEl) : [...root.querySelectorAll("button, a[href], input, select, [tabindex]")].find((x) => !x.closest(".going, [inert]") && keyOf(x) === key);
   el?.focus({ preventScroll: true });
   if (el && sel) try { el.setSelectionRange(...sel); } catch (_) {}
 }
@@ -1044,6 +1084,7 @@ function signedIn(r) {
     m.admin && app("mail", "Mail", MAIL_ICON, "The site’s inbox", "Yours alone, as admin")))));
   const top = [
     r(sec("card", posterCard(m))),
+    S.refused && r(sec("refused", refusedBanner(m))),
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
     pw.leaked && r(sec("leak", leakBanner())),
   ];
@@ -1060,7 +1101,7 @@ function signedIn(r) {
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "moon", tint: "grey", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
-    row({ icon: "bell", tint: "red", title: "Notifications", value: ntSaid(NT), onclick: () => openSheet(notifyView) })))));
+    row({ icon: "bell", tint: "red", title: "Notifications", value: ntSaid(m.prefs), onclick: () => openSheet(notifyView) })))));
   // (signing out is in InFlite's menu, at its foot, as in every app)
   const ending = [
     // (the site's admin, for the linked account only, at the foot: the top's about you and your apps;
@@ -1088,7 +1129,9 @@ function youMenu(at, m) {
       { icon: "key", color: "indigo", label: "Passkeys", value: String(m.passkeys?.length || "Add one"), open: () => openSheet(passkeysView) },
     ],
     account: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }),
-    signOut: (!fromApp() || fromApp() === "home") ? () => signOut(at) : null,
+    // (not on a page an app opened, as that's the app's to sign out of; unless it's the browser's own sign-in here, as
+    // another account, that the app's was refused over)
+    signOut: (!fromApp() || fromApp() === "home") ? () => signOut() : S.refused ? () => signOut(null, takeRefused) : null,
   });
 }
 // Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
@@ -1421,6 +1464,25 @@ function banner(m) {
       h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: sent ? `We sent a link to ${m.email}. Open it to confirm.` : "So password resets and security notes reach you. We’ll send a link to it." })),
       h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, sent ? "Send again" : "Send link"));
 }
+// Opened from an app for its account while this browser's signed in to another here (S.refused): the way to the app's,
+// signing out here first, said up top, where it can't be missed (the menu's Sign Out isn't there for a page an app opened)
+function refusedBanner(m) {
+  const w = S.refused.who, app = APPS[fromApp()]?.name;
+  return h("section.banner.warn.glass", {}, h("span.ic.amber", {}, icon("signout", 19)),
+    h("span.tx", {}, h("b", { text: `Signed in here as @${m.handle}` }), h("small", { text: `${app ? `${app} is signed in as @${w.handle}. ` : ""}Sign out here to use @${w.handle} instead.` })),
+    h("button.mini.go", { type: "button", onclick: (e) => signOut(e.currentTarget, takeRefused) }, "Sign Out"));
+}
+// (signed out for it: carrying on as the app's account, asked first as ever (handoffPage), while the app's code is still
+// good; run out, on to the sign-in page as any sign-out here is)
+async function takeRefused() {
+  const k = S.refused; S.refused = null;
+  const who = k && await post("handoff/who", { code: HANDOFF.code }).catch(() => null);
+  if (!who) return false;
+  HANDOFF.open = k.open; S.me = { signedIn: false }; S.handoff = who;
+  duskFall();
+  anew(() => { S.settled = false; render(); scrollTo(0, 0); });
+  return true;
+}
 // Your password found in a data breach: said up top, as it's the one check that can't wait
 function leakBanner() {
   // (no live role on these: the page is drawn again with every change, and each time it would be read out again)
@@ -1493,6 +1555,18 @@ function deleting(r) {
       h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign Out")))),
   ];
 }
+// Deleting it asked for here (S.gone): signed out everywhere, and when it goes, and how to keep it till then (signing
+// in; or the email's link, sent only to an address that's been confirmed)
+function gonePage(r) {
+  const g = S.gone, on = new Date(g.at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const signIn = () => (AUTH ? location.assign(`${AUTH.auth}/`) : anew(() => { S.gone = null; S.settled = false; render(); scrollTo(0, 0); }));
+  return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
+    r(h("h1", { text: "Your account will be deleted" })),
+    r(h("p", { text: `On ${on}, with everything kept with it, in every app on InFlite. It’s signed out everywhere now.` })),
+    r(h("p", { text: `Changed your mind? Sign in before then to keep it${g.email ? `, or use the link we’re emailing to ${g.email}` : ""}.` })),
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: signIn }, icon("signin", 20, 1.9), "Sign In to Keep It"))))];
+}
 // The email's link to keep it (#keep=): kept once that's tapped, not as the link's opened. (A link that won't work is
 // put away, said why; offline, or the server not answering, it stays, to try again.)
 function keepPage(r) {
@@ -1547,6 +1621,8 @@ function signedOut(r) {
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
   // (a phone that scanned a computer's code, signed out here: signed in here first, then on to the computer)
   const qrFirst = mode === "signin" && !!QR_IN.code;
+  // (on a computer whose window's too narrow for the code beside the card: the code, asked for, in its place)
+  const qrAsk = mode === "signin" && !QR_IN.code && !QR_WIDE.matches && QR_ASK.matches;
   const head = { signin: qrFirst ? ["Sign in on this phone first", "Then you’ll be asked about the computer that showed the code."] : [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
       : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on InFlite. Once it’s made, you’re straight back in ${to}.` : "One account for every app on InFlite, made here and used everywhere."],
@@ -1563,9 +1639,11 @@ function signedOut(r) {
       // (the apps it's for, each by its icon, in a row that fits a phone)
       : h("div.leadrow", {}, h("p.lead", { text: "One sign-in for every app" }),
         h("div.approw", {}, [["inflight", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"]].map(([k, n]) => h("span", {}, h("img", { src: `/apps/${k}.png`, alt: "" }), n))))),
-    r(((card) => (mode === "signin" && QR_WIDE.matches && !QR_IN.code ? h("div.signpair", {}, card, h("div.vor", {}, h("span", { text: "or" })), qrCard()) : card))(
+    r(qrAsk && S.qrAsk ? qrCard("alone") : ((card) => (mode === "signin" && QR_WIDE.matches && !QR_IN.code ? h("div.signpair", {}, card, h("div.vor", {}, h("span", { text: "or" })), qrCard()) : card))(
       mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard())),
-    r(mode === "signin" ? (last ? notYouLine() : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
+    qrAsk && r(h("p.foot.new", {}, h("button.link", { type: "button", id: "qrask", onclick: () => { S.qrAsk = !S.qrAsk; if (S.qrAsk) stopAutofill(); anew(() => { render(); $("#qrask")?.focus({ preventScroll: true }); }); } },
+      S.qrAsk ? "Use a password or passkey instead" : "Sign in with your phone"))),
+    r(mode === "signin" ? (last ? (S.left ? forgetLine(last) : notYouLine()) : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
@@ -1588,6 +1666,22 @@ function authHome(r) {
 // app (where Sign in brings you back here), and this browser's memory of you let go, if you'd like
 function outPage(r) {
   const o = S.out, name = APPS[o.app]?.name, last = lastHere(), said = h("p.said", { role: "status" });
+  // (still signed in, as an app or the account's page signs you out before sending you here: a link from somewhere
+  // else, asked about first. Staying, back where it came from)
+  if (o.ask) {
+    const go = h("button.btn.danger", { type: "button", onclick: async () => {
+      try { await busy(go, "Signing out…", () => post("signout")); } catch (e) { if (!e.offline) return toast(e.message, true); }
+      S.me = { signedIn: false };
+      duskFall();
+      anew(() => { S.out = o.app === "account" ? null : { app: o.app, back: o.back }; if (!S.out) { S.said = { text: "Signed out." }; S.left = true; } S.settled = false; render(); scrollTo(0, 0); });
+    } }, "Sign Out");
+    const stay = h("button.btn.quiet", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, "Stay Signed In");
+    return [h("div.welcome", {},
+      r(h("div", {}, h("div.mark", {}, icon("signout", 44, 1.8)))),
+      r(h("h1", { text: "Sign out of InFlite?" })),
+      r(h("p", { text: `Of every app on InFlite, in this browser. You’re signed in as @${S.me.handle}.` })),
+      r(h("div.signin.glass", {}, go, stay)))];
+  }
   const back = h("button.btn", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, `Back to ${name}`);
   const drop = last && h("button.link", { type: "button", onclick: (e) => { forget(); e.currentTarget.remove(); say(said, `This browser has forgotten ${last.email}.`); } }, `Forget ${last.email} on this device`);
   return [h("div.welcome", {},
@@ -1596,10 +1690,10 @@ function outPage(r) {
     r(h("p", { text: "Of every app on InFlite, in this browser." })),
     r(h("div.signin.glass", {}, back, drop, said)))];
 }
-// The account's page, signed out, with a word to say first (an email confirmed by its link): signing in's on the
-// sign-in page
+// The account's page, signed out, with a word to say first (an email confirmed by its link, or an app's hand-over that
+// didn't work): signing in's on the sign-in page, and, opened from an app, the way back to it
 function awayPage(r) {
-  return [h("div.welcome", {},
+  return [backButton(r), h("div.welcome", {},
     r(h("div", {}, logo())),
     r(h("h1", { text: "Your account" })),
     r(h("p", { text: "One account for every app on InFlite." })),
@@ -1614,7 +1708,7 @@ function handoffPage(r) {
       S.handoff = null; welcome(m, null, opens());
     } catch (err) { anew(() => { S.handoff = null; S.settled = false; render(); }); toast(err.message, true, 4000); }
   } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
-  return [h("div.welcome", {},
+  return [backButton(r), h("div.welcome", {},
     r(h("div", {}, logo())),
     r(h("h1", { text: w.name })),
     r(h("p", { text: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?` })),
@@ -1798,26 +1892,42 @@ function rememberedCard(l) {
 function notYouLine() {
   return h("p.foot.new", {}, "Not you? ", h("button.link.notyou", { type: "button", onclick: () => { forget(); stopAutofill(); anew(() => { S.settled = false; render(); }); } }, "Use another account"));
 }
+// (just signed out here, as on a computer that isn't yours: the same, said as what it does, as an app's way out says it)
+function forgetLine(l) {
+  return h("p.foot.new", {}, h("button.link.notyou", { type: "button", onclick: () => { forget(); stopAutofill(); S.left = false; anew(() => { S.settled = false; render(); toast(`This browser has forgotten ${l.email}.`); }); } },
+    `Forget ${l.email} on this device`));
+}
 // Signed out on a computer: a QR code, to scan with a phone that's signed in (functions/_qrsign.js), beside the usual
 // way. A new one every two minutes, five in a row at most before it waits to be asked for another (a page left open
 // doesn't keep making them); asked after every two and a half seconds while it's in view, and every second and a half
 // once a phone's looked, with the number to tap there; once the phone's said yes, whose account it is, to continue as
 // (or not: someone else who saw the code may have scanned it), and then signed in here, as with a password (though not
 // as having just shown it's you). Something gone wrong is tried again later each time, and after four, left to be asked.
-const QR_WIDE = matchMedia("(min-width: 960px)");
-QR_WIDE.addEventListener("change", () => { if (S.me && !S.me.signedIn) render(); });
+// (Narrower, on a computer (QR_ASK), the code's there when asked for, in the card's place: as a phone's Sign in on a
+// computer sends you here for it)
+const QR_WIDE = matchMedia("(min-width: 960px)"), QR_ASK = matchMedia("(hover: hover) and (pointer: fine)");
+for (const q of [QR_WIDE, QR_ASK]) q.addEventListener("change", () => { if (S.me && !S.me.signedIn) render(); });
 const QRS = { code: null, poll: null, until: 0, state: "waiting", num: null, phone: null, who: null, note: null, err: null, t: 0, made: 0, fails: 0 };
-function qrCard() {
-  const card = h("div.qrc.glass", { id: "qrc", "aria-live": "polite" });
+function qrCard(alone) {
+  const card = h("div.qrc.glass" + (alone ? ".alone" : ""), { id: "qrc" });
   drawQr(card);
   clearTimeout(QRS.t); QRS.t = setTimeout(qrTick, QRS.code ? 600 : 0);
   return card;
+}
+// What the card shows, put in (kids), and what's changed said to a screen reader in a word (word), in a line of its
+// own that stays: not the whole card read out again with each new code, as one live card was
+function qrPut(card, word, ...kids) {
+  let say = card.querySelector(":scope > .qrsay");
+  for (const k of [...card.children]) if (k !== say) k.remove();
+  if (!say) card.prepend(say = h("p.vh.qrsay", { role: "status" }));
+  card.append(...kids.filter(Boolean));
+  if ((word || "") !== say.textContent) say.textContent = word || "";
 }
 function drawQr(card = $("#qrc")) {
   if (!card) return;
   const phone = String(QRS.phone || "").split(" · ")[0] || "phone";
   // (a phone's looked: the number to tap there, with a ring that breathes while it waits)
-  if (QRS.state === "seen") return card.replaceChildren(
+  if (QRS.state === "seen") return qrPut(card, `Check your ${phone}. Tap ${QRS.num} there to sign in here.`,
     h("h2", { text: `Check your ${phone}` }),
     h("div.qrnum", { "aria-label": `The number: ${QRS.num}` }, h("b", { text: String(QRS.num) })),
     h("p", {}, "Tap ", h("b", { text: String(QRS.num) }), " there to sign in here."),
@@ -1826,15 +1936,15 @@ function drawQr(card = $("#qrc")) {
   // (said yes to on the phone: whose account, before taking it)
   if (QRS.state === "ready") {
     const go = h("button.btn", { type: "button", onclick: () => qrTake(go) }, "Continue");
-    return card.replaceChildren(h("div.qrwho", {}, h("span.av", { text: String(QRS.who.name || "?").trim()[0]?.toUpperCase() || "?" })),
+    return qrPut(card, `Continue as ${String(QRS.who.name).trim()}?`, h("div.qrwho", {}, h("span.av", { text: String(QRS.who.name || "?").trim()[0]?.toUpperCase() || "?" })),
       h("h2", { text: `Continue as ${String(QRS.who.name).trim()}?` }), h("p.qrwhom", {}, h("b", { text: `@${QRS.who.handle}` }), h("span", { text: QRS.who.email })), go,
       h("button.link", { type: "button", onclick: () => qrAnew("Not signed in. This is a new code.") }, "That’s not me"));
   }
-  if (QRS.state === "done") return card.replaceChildren(h("div.qrdone", {}, icon("check", 34, 2.6)), h("h2", { text: "Signed in" }),
+  if (QRS.state === "done") return qrPut(card, "Signed in.", h("div.qrdone", {}, icon("check", 34, 2.6)), h("h2", { text: "Signed in" }),
     h("p.qrwait", {}, h("span.spin.sm"), S.signFor && S.signFor.app !== "home" ? `Opening ${APPS[S.signFor.app].name}` : "Opening your account"));
   // (five in a row gone unscanned: resting, till it's asked for again)
-  if (QRS.state === "rest") return card.replaceChildren(h("h2", { text: "Sign in with your phone" }),
-    QRS.err ? h("p.said", { role: "alert", text: QRS.err }) : null,
+  if (QRS.state === "rest") return qrPut(card, QRS.err || "Codes stop after ten minutes unused.", h("h2", { text: "Sign in with your phone" }),
+    QRS.err ? h("p.said", { text: QRS.err }) : null,
     h("div.qrbox.rest", {}, h("button.btn.quiet", { type: "button", onclick: () => { Object.assign(QRS, { state: "waiting", made: 0, fails: 0, err: null }); drawQr(); qrTick(); } }, icon("qr", 19, 2), "Show a code")),
     QRS.err ? null : h("p", { text: "Codes stop after ten minutes unused." }));
   const link = QRS.code ? `${location.origin}/#qr=${QRS.code}` : "";
@@ -1842,12 +1952,12 @@ function drawQr(card = $("#qrc")) {
   const qr = h("div.qrbox", { "data-link": link }, QRS.code ? null : h("span.spin"));
   if (QRS.code) import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: "A QR code to sign in here with your phone" }); qr.append(h("span.qrlogo", { "aria-hidden": "true" }, h("img", { src: "/inflite.svg?v=1", alt: "" }))); },
     () => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here." })));
-  card.replaceChildren(...[
+  qrPut(card, QRS.err || QRS.note,
     h("h2", { text: "Sign in with your phone" }),
-    QRS.err || QRS.note ? h("p.said", { role: "alert", text: QRS.err || QRS.note }) : null,
+    QRS.err || QRS.note ? h("p.said", { text: QRS.err || QRS.note }) : null,
     qr, h("div.qrtime", { "aria-hidden": "true", title: "A new code comes by itself" }, qrBar()),
     h("ol.qrsteps", {}, h("li", {}, "Open the camera on a phone that’s signed in"), h("li", {}, "Point it at this code"), h("li", {}, "Tap the number you’ll see here")),
-    h("p.qrhint", {}, "Or, in your account on the phone: ", h("b", { text: "Sign-in and Security" }), " › ", h("b", { text: "Sign in on a computer" }))].filter(Boolean));
+    h("p.qrhint", {}, "Or, in your account on the phone: ", h("b", { text: "Sign-in and Security" }), " › ", h("b", { text: "Sign in on a computer" })));
 }
 // (the time the code has left, running down: set on the element itself, as the page allows no style attributes)
 function qrBar() { const i = h("i"); if (QRS.code) i.style.animationDuration = `${Math.max(1, QRS.until - Date.now())}ms`; else i.style.animation = "none"; return i; }
@@ -1891,8 +2001,8 @@ async function qrTake(btn) {
     Object.assign(QRS, { code: null, state: "done" }); drawQr(); qrSignedIn(m);
   } catch (e) { Object.assign(QRS, { code: null, state: "waiting", who: null, note: e.message }); drawQr(); qrTick(); }
 }
+// (not remembered here, as a computer signed in by phone may well not be yours: no name to greet the next person with)
 async function qrSignedIn(m) {
-  remember(m, "phone");
   await new Promise((ok) => setTimeout(ok, 700));                                 // (Signed in, seen a moment)
   if (S.signFor && !m.deleting) return handBack(m, {}, null);
   welcome(m, `Signed in with your ${String(QRS.phone || "phone").split(" · ")[0]}.`, null, "phone");
@@ -2197,7 +2307,7 @@ async function withPassword(email, emailIn, pw, go, said) {
   } catch (err) { say(said, err.message, err.field === "email" ? emailIn : pw); }
 }
 // Who signed in here last (in this browser only): their name, handle and email, and how (with a passkey: which), so that
-// coming back is a tap. Forgotten with Not you?
+// coming back is a tap. Forgotten with Not you? (Forget, once you've signed out here)
 const LAST = "acct:last";
 function lastHere() { try { const l = JSON.parse(localStorage.getItem(LAST) || "null"); return l?.email && l.name ? l : null; } catch (_) { return null; } }
 function remember(m, way, id) {
@@ -2284,11 +2394,15 @@ function nudgeView() {
 async function checkQuietly(pw, proof) {
   try { const n = await leakedCount(pw); if (n === null) return; S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
 }
-async function signOut(btn) {
-  if (AUTH && !AUTH.here) { duskFall(); return location.assign(`${AUTH.auth}/#signout=account`); }
-  try { await busy(btn, "Signing out…", () => post("signout")); }
+async function signOut(btn, next) {
+  // (from InFlite's menu, with no button of its own to turn: just done)
+  try { await (btn ? busy(btn, "Signing out…", () => post("signout")) : post("signout")); }
   catch (e) { if (!e.offline) return toast(e.message, true); }
-  S.me = { signedIn: false };
+  // (signed out for something to follow, that's taken it from here: takeRefused)
+  if (next && await next()) return;
+  // (on the account's page: then on to the sign-in page, signed out already, which says so)
+  if (AUTH && !AUTH.here) { duskFall(); return location.assign(`${AUTH.auth}/#signout=account`); }
+  S.me = { signedIn: false }; S.left = true;
   duskFall();
   anew(() => { S.settled = false; render(); scrollTo(0, 0); toast("Signed out."); });
 }
@@ -2343,6 +2457,18 @@ async function busy(btn, label, fn) {
     btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
     if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
   }
+}
+// A switch or a list held while its change is kept (disabled, so it isn't changed again meanwhile): let go by what this
+// gives back, once the sheet's been drawn again (if it is), with the focus it had put back, as being held loses it: on
+// it, or on the one drawn in its place, found by its id
+function hold(input) {
+  const had = document.activeElement === input;
+  input.disabled = true;
+  return () => {
+    input.disabled = false;
+    const el = input.isConnected ? input : input.id && document.getElementById(input.id);
+    if (had && el && (!document.activeElement || document.activeElement === document.body)) el.focus({ preventScroll: true });
+  };
 }
 // A sign-in's button while it works: drawn in to a circle, turning (what it's doing said to a screen reader); and, once
 // it's done (ticked), a tick drawn in it, in green. As it was, if it fails. (No drawing in, with Reduce Motion: the circle.)
@@ -3139,7 +3265,7 @@ function devicesView() {
   const rows = m.devices.map((d) => {
     const name = d.app ? { inflight: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
-      d.app ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
+      d.app && APP_MARK[name] ? h("span.ic.app-ic", {}, photo(APP_MARK[name], { width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
       h("span.tx", {}, h("b", {}, name, d.current && h("span.tag", { text: thisOne(d) })),
         h(d.stale ? "small.warn" : "small", { text: [d.kind !== me?.kind && d.kind !== name && d.kind, where(d.place),
@@ -3156,7 +3282,8 @@ function devicesView() {
     (stale.length > 0 || others.length > 1) && h("div.group", {},
       stale.length > 0 && h("button.row.action", { type: "button", onclick: (e) => end(e.currentTarget, { stale: true }, rows.filter((r) => r.dataset.stale).map((r) => r.dataset.id)) },
         `Sign out ${stale.length} unused device${stale.length > 1 ? "s" : ""}`),
-      others.length > 1 && h("button.row.action.danger", { type: "button", onclick: (e) => end(e.currentTarget, { others: true }, rows.filter((r) => !r.classList.contains("current")).map((r) => r.dataset.id)) }, "Sign out of all other devices")),
+      // (every other one, each to be signed in again: tapped twice, as one is)
+      others.length > 1 && twice("Sign out of all other devices", "Sign out all of them? Tap again", (b) => end(b, { others: true }, rows.filter((r) => !r.classList.contains("current")).map((r) => r.dataset.id)), "button.row.action.danger")),
     h("p.said", { role: "alert" })] };
 }
 const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) / (30.44 * 86400e3))); return n >= 24 ? `${Math.floor(n / 12)} years` : `${n} months`; };
@@ -3166,7 +3293,7 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 let ADM = null, admComing = null;
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
@@ -3195,7 +3322,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Mail: MAIL_ICON, Account: "/icon.svg?v=2" };
+const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Markets: "/apps/markets.png", Mail: MAIL_ICON, Account: "/icon.svg?v=2" };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -3387,6 +3514,11 @@ function unitsView() {
   ] };
 }
 
+// What a sheet couldn't fetch, said, with Try Again (drop: what's kept of it let go, so it's asked afresh as the sheet's
+// drawn again); and asked afresh by itself once the device is back online (below, unfail)
+const failed = (text, drop) => h("div.group", {}, h("div.empty", { text }),
+  h("button.row.action", { type: "button", onclick: () => { drop(); redraw(); } }, "Try Again"));
+
 // ---- Notifications, every app's, in one place (functions/api/account notify): Quiet Hours, every app keeps to; and a
 // folder for each app, with everything it can tell you, and how (a notification, an email). The apps keep none of it:
 // each one's menu has a Notifications row that opens its folder here. Turning notifications on on a device is the one
@@ -3402,7 +3534,7 @@ function ntFetch() {
   if (!NT || Date.now() - ntAt > 5000) {
     ntAt = Date.now();
     const s = ++ntSeq, who = S.me.id;
-    call("notify").then((r) => { if (who === S.me?.id && s === ntSeq) { NT = r; if (onNt()) redraw(); } },
+    call("notify").then((r) => { if (who === S.me?.id && s === ntSeq) { NT = r; quietKept(); if (onNt()) redraw(); } },
       (e) => { if (who === S.me?.id && !NT) { NT = { error: e.message }; if (onNt()) redraw(); } });
   }
   return NT;
@@ -3410,16 +3542,24 @@ function ntFetch() {
 const ntWait = (title, left) => {
   const n = ntFetch();
   if (!n) return { title, left, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
-  if (n.error) return { title, left, body: [h("div.group", {}, h("div.empty", { text: n.error }))] };
+  if (n.error) return { title, left, body: [failed(n.error, () => { NT = null; })] };
   return null;
 };
 // a change, kept as it's made (put back, and why, if it can't be)
 async function ntChange(input, patch) {
-  if (input) input.disabled = true;
+  const letGo = input && hold(input);
   ntSeq++;
-  try { NT = await call("notify", { method: "PATCH", body: patch }); }
+  try { NT = await call("notify", { method: "PATCH", body: patch }); quietKept(); }
   catch (e) { if (input?.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
-  finally { if (input) input.disabled = false; if (onNt()) redraw(); }
+  finally { if (onNt()) redraw(); letGo?.(); }
+}
+// (Quiet Hours as Preferences says them, kept in step with what's here: that row drawn again once they've changed)
+function quietKept() {
+  const q = NT?.quiet, m = S.me;
+  if (!q || !m?.prefs || ntFor !== m.id) return;
+  const now = { on: !!q.on, from: q.from, to: q.to };
+  if (JSON.stringify(now) === JSON.stringify(m.prefs.quiet || null)) return;
+  m.prefs.quiet = now; patch();
 }
 const ntSwitch = (id, on, patch, disabled = false) => {
   const el = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on, disabled });
@@ -3435,8 +3575,11 @@ const appRow = (id, title, sub, onclick) => h("button.row.app-row", { type: "but
   h("img.ic-img", { src: appImg(id), alt: "" }), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), h("span.chev", {}, icon("chev", 16, 2.4)));
 // (a folder's head: the app, and how many devices it can tell you on; none, the way to turn it on there)
 const devicesSaid = (n) => (n ? `On ${n === 1 ? "1 device" : `${n} devices`}` : "Not on any device yet");
+// (opened from that app, which asks once it's back in sight: back to it, not a second copy of it opened here)
 const ntHead = (id, name, on) => [h("div.app-head.set", {}, h("img", { src: appImg(id), alt: "", width: 64, height: 64 }), h("b", { text: name }), h("span", { text: devicesSaid(on) })),
-  !on && h("a.pill.open-in", { href: siteUrl(APPS[id].sub) + "#notify" }, `Turn On in ${name}`, icon("open", 15, 2.6))];
+  !on && (fromApp() === id && HANDOFF?.asks && HANDOFF.open === `notify-${id}`
+    ? h("button.pill.open-in", { type: "button", onclick: () => backToApp("#notify") }, `Turn On in ${name}`, icon("open", 15, 2.6))
+    : h("a.pill.open-in", { href: siteUrl(APPS[id].sub) + "#notify" }, `Turn On in ${name}`, icon("open", 15, 2.6)))];
 // (opened from the app itself: the way back to it)
 const ntBack = (id) => (fromApp() === id && HANDOFF?.open === `notify-${id}` ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), APPS[id].name) : null);
 const and2 = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
@@ -3571,7 +3714,7 @@ function mailNotifyView() {
   if (MAILN.error) return { title: "Mail", left: back, body: [...ntHead("mail", "Mail", 0).slice(0, 1), h("div.group", {}, h("div.empty", { text: `${MAILN.error} Open Mail, then come back.` })), h("a.pill.open-in", { href: siteUrl(APPS.mail.sub) }, "Open Mail", icon("open", 15, 2.6))] };
   const sw = (a) => {
     const el = h("input.switch", { type: "checkbox", role: "switch", id: `nt-m-${a.email}`, name: a.email, checked: a.notify });
-    el.onchange = async () => { el.disabled = true; try { MAILN = await ask({ method: "PATCH", body: JSON.stringify({ email: a.email, notify: el.checked }) }); } catch (e) { el.checked = !el.checked; toast(e.message, true); } finally { el.disabled = false; redraw(); } };
+    el.onchange = async () => { const letGo = hold(el); try { MAILN = await ask({ method: "PATCH", body: JSON.stringify({ email: a.email, notify: el.checked }) }); } catch (e) { el.checked = !el.checked; toast(e.message, true); } finally { redraw(); letGo(); } };
     return el;
   };
   return { title: "Mail", quiet: true, left: back, body: [
@@ -3615,15 +3758,15 @@ function ifParts(title) {
   const back = title === "Chat" && HANDOFF?.open === "inflight" && fromApp() === "inflight"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Chat") : null;
   if (!IF) return { wait: { title, left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] } };
-  if (IF.error) return { wait: { title, left: back, body: [h("div.group", {}, h("div.empty", { text: IF.error }))] } };
+  if (IF.error) return { wait: { title, left: back, body: [failed(IF.error, () => { IF = null; })] } };
   const said = h("p.said", { role: "alert" });
   // a change, as it's made: kept, and what's kept shown (the switch put back, or the hour drawn again as it's kept, and
   // why, if it can't be)
   const change = async (input, patch, after) => {
-    input.disabled = true; ifSeq++; ifBusy++;
+    const letGo = hold(input); ifSeq++; ifBusy++;
     try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
     catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (onIf()) redraw(); toast(e.message, true); }
-    finally { ifBusy--; input.disabled = false; ifCaughtUp(); }
+    finally { ifBusy--; ifCaughtUp(); letGo(); }
   };
   const input = (key, on, patch, { after, disabled } = {}) => {
     const el = h("input.switch", { type: "checkbox", role: "switch", id: `if-${key}`, name: key, checked: !!on, disabled: !!disabled });
@@ -3703,13 +3846,13 @@ function weatherSetView() {
   const back = HANDOFF?.open === "weather" && fromApp() === "weather"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Weather") : null;
   if (!WXS) return { title: "Weather", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
-  if (WXS.error) return { title: "Weather", left: back, body: [h("div.group", {}, h("div.empty", { text: WXS.error }))] };
+  if (WXS.error) return { title: "Weather", left: back, body: [failed(WXS.error, () => { WXS = null; })] };
   // a change, kept as it's made (put back, and why, if it can't be)
   const change = async (input, patch) => {
-    input.disabled = true;
+    const letGo = hold(input);
     try { WXS = await call("weather", { method: "PATCH", body: patch }); }
     catch (e) { if (input.type === "checkbox") input.checked = !input.checked; toast(e.message, true); }
-    finally { input.disabled = false; if (Sheet.stack.at(-1) === weatherSetView) redraw(); }
+    finally { if (Sheet.stack.at(-1) === weatherSetView) redraw(); letGo(); }
   };
   const sw = (id, on, patch) => {
     const input = h("input.switch", { type: "checkbox", role: "switch", id, name: id, checked: !!on });
@@ -3752,7 +3895,7 @@ function fitnessSetView() {
   const back = HANDOFF?.open === "fitness" && fromApp() === "fitness"
     ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), "Fitness") : null;
   if (!FX) return { title: "Fitness", left: back, body: [h("div.empty", { "aria-busy": "true" }, h("span.spin"))] };
-  if (FX.error) return { title: "Fitness", left: back, body: [h("div.group", {}, h("div.empty", { text: FX.error }))] };
+  if (FX.error) return { title: "Fitness", left: back, body: [failed(FX.error, () => { FX = null; })] };
   const said = h("p.said", { role: "alert" });
   // a change, kept as it's made (put back, and why, if it can't be)
   const change = async (patch, undo) => {
@@ -3763,7 +3906,7 @@ function fitnessSetView() {
   // (none chosen yet: the app goes by the phone's region, as it says)
   const here = /-(US|LR|MM)\b/i.test(navigator.language || "") ? "imperial" : "metric";
   const ask = h("input.switch", { type: "checkbox", role: "switch", id: "fx-ask", name: "ask", checked: FX.ask });
-  ask.onchange = async () => { ask.disabled = true; await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); ask.disabled = false; };
+  ask.onchange = async () => { const letGo = hold(ask); await change({ ask: ask.checked }, () => { ask.checked = !ask.checked; }); letGo(); };
   const fx = (k) => FX[k] || {};
   return { title: "Fitness", quiet: true, left: back, body: [
     setHead("fitness", "Fitness"),
@@ -3892,33 +4035,57 @@ function fxDevicesView() {
     h("div.group", {}, (FX.devices || []).map(([d, n]) => fxStat(d, n === 1 ? "1 file" : `${n} files`)))] };
 }
 // Everything, as files: each activity as it came, and your workouts as FIT (and ZWO, for a ride), drawn with the app's
-// own code (formats.js, shared with it)
+// own code (formats.js, shared with it). (A whole history's files, a few at a time; one that won't come, tried again,
+// then left out and said, not the lot given up for it. Offline, or signed out, it stops.)
 async function exportFitness(btn, said) {
+  let missed = 0;
+  say(said, "");
   try {
     const file = await busy(btn, "Gathering…", async () => {
-      const [x, F] = await Promise.all([call("fitness/export"), import("./formats.js")]), files = [], seen = new Set();
+      const [x, F] = await Promise.all([call("fitness/export"), import("./formats.js")]), files = [], seen = new Set(), got = [], lost = new Set();
       const unzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] === 0x8b ? new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()) : u8);
+      const one = async (a) => {
+        for (let tries = 1; ; tries++) {
+          let r = null;
+          try { r = await fetch(`${API}/fitness/file?id=${encodeURIComponent(a.id)}`, { credentials: "same-origin", signal: AbortSignal.timeout(30000) }); }
+          catch (_) { if (!navigator.onLine) throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
+          if (r?.ok) { try { return await unzip(new Uint8Array(await r.arrayBuffer())); } catch (_) { r = null; } }
+          if (r?.status === 401) throw new Error((await r.json().catch(() => ({}))).error || "Sign in again to export.");
+          // (gone since the list was made, or twice not come: left out)
+          if (r?.status === 404 || tries === 2) return null;
+          await new Promise((ok) => setTimeout(ok, 1000));
+        }
+      };
+      let next = 0, done = 0;
+      const lbl = btn.querySelector("span:not(.spin)");
+      await Promise.all(Array.from({ length: Math.min(4, x.acts.length) }, async () => {
+        try { while (next < x.acts.length) { const i = next++; got[i] = await one(x.acts[i]); if (lbl) lbl.textContent = `Gathering ${++done} of ${x.acts.length}…`; } }
+        catch (e) { next = x.acts.length; throw e; }
+      }));
       for (const [i, a] of x.acts.entries()) {
-        const lbl = btn.querySelector("span:not(.spin)"); if (lbl) lbl.textContent = `Gathering ${i + 1} of ${x.acts.length}…`;
-        const r = await fetch(`${API}/fitness/file?id=${encodeURIComponent(a.id)}`, { credentials: "same-origin" });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "One of your files couldn’t be fetched. Try again.");
-        const bytes = await unzip(new Uint8Array(await r.arrayBuffer()));
+        const bytes = got[i]; got[i] = null;
+        if (!bytes) { lost.add(a.file || a.id); continue; }
         // (a file of several parts, kept once)
         if (seen.has(a.file + bytes.length)) continue;
-        seen.add(a.file + bytes.length);
-        files.push({ name: `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`, data: bytes });
+        seen.add(a.file + bytes.length); seen.add(a.file);
+        files.push({ name: `activities/${F.fileName(`${new Date(a.start).toISOString().slice(0, 10)} ${a.name}`, a.type || "fit")}`, blob: new Blob([bytes]), crc: F.crc32(bytes), size: bytes.length });
       }
+      // (a part that didn't come, of a file that did through another part, isn't missing)
+      missed = [...lost].filter((f) => !seen.has(f)).length;
+      if (x.acts.length && !files.length) throw new Error("Your files couldn’t be fetched. Try again in a moment.");
       for (const w of x.workouts) {
         files.push({ name: `workouts/${F.fileName(w.name, "fit")}`, data: F.fitFromWorkout(w, { pace: w.sport === "run" ? x.pace.run : w.sport === "swim" ? x.pace.swim : 4 }) });
         if (w.sport === "ride") files.push({ name: `workouts/${F.fileName(w.name, "zwo")}`, data: F.zwoFromWorkout(w) });
       }
-      return files.length ? new Blob([F.zip(files)], { type: "application/zip" }) : null;
+      // (each activity's file handed to the browser as it came, and the zip made of them where they are, not copied whole)
+      return files.length ? F.zipBlob(files.splice(0)) : null;
     });
     if (!file) return toast("Nothing to export yet: add an activity in Fitness first.");
     const a = h("a", { href: URL.createObjectURL(file), download: "Fitness export.zip" });
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     toast("Your Fitness files are downloading.");
+    if (missed) say(said, `${missed === 1 ? "One file" : `${missed} files`} couldn’t be fetched, so ${missed === 1 ? "it isn’t" : "they aren’t"} in it. Export again to try for ${missed === 1 ? "it" : "them"}.`);
   } catch (e) { if (!e.quiet) say(said, e.message); }
 }
 
@@ -3966,6 +4133,8 @@ function deleteView() {
       const confirm = sure.value.trim();
       try {
         const r = await freshly(() => busy(go, "Deleting…", () => post("delete", { confirm })));
+        // (said on the page it leaves, gonePage, not just in a word that's gone in a moment)
+        S.gone = { at: r.deleteAt, email: m.emailOk ? m.email : null };
         S.me = { signedIn: false }; forget();
         anew(() => { S.settled = false; render(); scrollTo(0, 0); });
         toast(`Your account will be deleted on ${new Date(r.deleteAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.`, false, 6000);
@@ -3995,6 +4164,19 @@ async function refresh() {
 }
 document.addEventListener("visibilitychange", refresh);
 addEventListener("focus", refresh);
+// (back online: what a sheet couldn't fetch let go, and the sheet that's up drawn again, asking for it afresh, if it's
+// the one that said so: any other's left as it is, as drawing it again would lose what's being typed in it)
+function unfail() {
+  const top = Sheet.stack.at(-1);
+  let here = false;
+  if (NT?.error) { NT = null; here ||= onNt(); }
+  if (IF?.error) { IF = null; here ||= onIf(); }
+  if (WXS?.error) { WXS = null; here ||= top === weatherSetView; }
+  if (FX?.error) { FX = null; here ||= top === fitnessSetView; }
+  if (MAILN?.error) { MAILN = null; here ||= top === mailNotifyView; }
+  if (here) redraw();
+}
+addEventListener("online", unfail);
 setInterval(refresh, 5 * 60000);      // (and on coming back to the page: a look every minute redid the account's figures for nothing)
 
 // ---- glass behind the status bar, once the page has scrolled under it ----
