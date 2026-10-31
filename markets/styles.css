@@ -140,17 +140,20 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .label button::after, .del::after, .seg button::after { content: ""; position: absolute; inset: -12px -10px; }
 .del { position: relative; }
 
-/* one insight at a time */
-.cards { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px 4px; scroll-padding: 0 24px; scrollbar-width: none; }
+/* one insight at a time (the strip out to the screen's edges where they're beyond the column's, as on a tablet, so the next
+   card peeks in from the edge rather than stopping short of it; each still coming to rest 24px in from the column's edge.
+   In vw alone, so it's the same with a scroll bar beside the page, as on a PC) */
+.cards { --bleed: max(0px, 50vw - var(--col) / 2); display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: calc(0px - var(--bleed));
+  padding: 0 calc(var(--bleed) + 24px) 4px; scroll-padding: 0 calc(var(--bleed) + 24px); scrollbar-width: none; }
 .cards::-webkit-scrollbar { display: none; }
 .card { flex: none; width: calc(100% - 8px); scroll-snap-align: start; border-radius: 30px; padding: 22px 22px 20px; display: grid; gap: 10px; align-content: start; }
 .card .kick { font-size: 13px; font-weight: 600; color: var(--c); }
 .card h4 { margin: 0; font: 600 23px/1.22 var(--font-d); letter-spacing: -0.3px; text-wrap: balance; }
 .card p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
-.dots { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+.dots { display: flex; justify-content: center; margin-top: 14px; }
 .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width 0.45s var(--ease-spring), background 0.3s; }
 .dots i.on { width: 18px; background: var(--text-2); }
-.dots button { padding: 14px 3px; margin: -6px 0; }
+.dots button { padding: 14px 9px; margin: -6px 0; }     /* (each a 24px target, the next 24px along) */
 .dots button i { display: block; }
 @media (hover: hover) { .dots button { cursor: pointer; } .dots button:hover i:not(.on) { background: var(--text-3); } }
 .vbar { display: grid; gap: 8px; margin-top: 6px; }
@@ -175,8 +178,10 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item svg { width: 64px; height: 26px; overflow: visible; }
 .item .r { text-align: right; min-width: 0; }
 .item .r b, .item .r small { font-weight: 500; }
-/* (a row with no sparkline: an account, the ISA's allowance) */
+/* (a row with no sparkline: an account, the ISA's allowance; its second line whole, over two lines if it must, as
+   there's only a short figure beside it) */
 .item.two { grid-template-columns: minmax(0, 1fr) auto; }
+.item.two small { white-space: normal; text-wrap: balance; }
 .list.flush { padding: 0; }
 /* moving one: it lifts and follows the finger, the others part for it, smoothly */
 .sortable .item { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform 0.28s var(--ease-out), opacity 0.2s; }
@@ -204,7 +209,8 @@ button.fact { width: 100%; text-align: left; }
 .ichart { margin-top: 26px; }
 .ibars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; align-items: end; }
 .ib { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; min-width: 0; }
-.ichart .ib { min-height: 150px; }
+.ichart .ibars { gap: 0; }
+.ichart .ib { min-height: 150px; padding: 0 2.5px; }     /* (the gap between bars inside each, so the whole column's a target) */
 .ib i { display: block; border-radius: 5px; background: var(--up); opacity: 0.4; transform-origin: bottom; animation: bar-up 0.9s var(--ease-out) backwards; animation-delay: calc(var(--k, 0) * 45ms + 120ms); transition: opacity 0.25s; }
 .ib i.none { background: var(--ctl); opacity: 1; }
 .ib[aria-pressed="true"] i { opacity: 1; }
@@ -309,7 +315,7 @@ button.fact { width: 100%; text-align: left; }
 .mkeys { width: 100%; margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; }
 .mkey { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; margin: 0 -10px; border-radius: 12px; font-size: 14px; color: var(--text-2); transition: background-color 0.25s; }
 .mkey i { width: 9px; height: 9px; border-radius: 50%; }
-.mkey span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mkey span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }     /* (a long name over two lines, not cut) */
 .mkey b { font-weight: 500; color: var(--text); }
 .mkey[aria-pressed="true"] { background: var(--ctl); color: var(--text); }
 /* (one column on a small phone, so the names are whole) */
@@ -390,7 +396,7 @@ button.nghead:active { opacity: 0.6; }
 .nchip.up-t { background: var(--up-soft); color: color-mix(in srgb, var(--up) 80%, var(--text)); }
 .nchip.down-t { background: var(--down-soft); color: color-mix(in srgb, var(--down) 80%, var(--text)); }
 .nchip.via { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-3); }
-.nchip.more { background: color-mix(in srgb, var(--ift-tint) 15%, transparent); color: var(--tint-text); }
+.nchip.more { background: color-mix(in srgb, var(--ift-tint) 15%, transparent); color: color-mix(in srgb, var(--tint-text) 80%, var(--text)); }
 /* a story, in Markets: its picture; headline; what it says; what it means for you; more on it; its page a tap away */
 .rpic { margin-top: 12px; overflow: hidden; border-radius: 18px; background: var(--field); aspect-ratio: 16 / 9; animation: fade 0.4s var(--ease-out); }
 .rpic img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -420,7 +426,7 @@ button.nghead:active { opacity: 0.6; }
 .nmore:active, .nmore:hover { background: var(--ctl); }
 .story.ghost .m { width: 38%; height: 12px; border-radius: 4px; background: var(--ctl); }
 .story.ghost b { height: 40px; border-radius: 8px; background: var(--ctl); animation: pulse 1.6s ease-in-out infinite; }
-.tabn { position: absolute; top: 8px; right: calc(50% - 40px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--blue); color: #fff; font: 700 10.5px/17px var(--font); text-align: center; pointer-events: none; }
+.tabn { position: absolute; top: 8px; left: calc(50% + 22px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--blue); color: #fff; font: 700 10.5px/17px var(--font); text-align: center; pointer-events: none; }
 .tabn[hidden] { display: none; }
 .amenu { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--dim); animation: fade 0.25s var(--ease-out); transition: opacity 0.25s; }
 .amenu.closing { opacity: 0; }
@@ -492,7 +498,7 @@ body.sheet-up .sheet { transform: none; }
 .vsbox .mkline { stroke: var(--text-3); stroke-width: 1.6; stroke-dasharray: 4 5; }
 .vslegend { display: flex; gap: 18px; margin-top: 10px; font-size: 13.5px; color: var(--text-2); }
 .vslegend span { display: inline-flex; align-items: center; gap: 7px; }
-.vslegend b { font-weight: 500; }
+.vslegend b { font-size: inherit; font-weight: 500; }     /* (the market's name the size of You's, not .mk's figures') */
 .vslegend i { width: 16px; height: 2.5px; border-radius: 2px; }
 .vslegend .you i { background: var(--up); }
 .vslegend .mk i { background: repeating-linear-gradient(90deg, var(--text-3) 0 4px, transparent 4px 7px); }
@@ -548,6 +554,8 @@ body.sheet-up .sheet { transform: none; }
 /* search, and the forms */
 .field { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 0 16px; border-radius: 16px; background: var(--field); margin-top: 14px; }
 .field input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; }
+/* (no room kept for the search's clear button while there's nothing to clear, so its hint's whole on a small phone) */
+.field input:placeholder-shown::-webkit-search-cancel-button { display: none; }
 .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
 .field svg { flex: none; color: var(--text-3); }
 .results { margin-top: 10px; }
@@ -579,7 +587,7 @@ body.sheet-up .sheet { transform: none; }
 /* a row to browse: cards across, each with its price today */
 .brow { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 24px; margin: 4px -24px 0; padding: 4px 24px 10px; scrollbar-width: none; }
 .brow::-webkit-scrollbar { display: none; }
-.bcard { position: relative; flex: none; width: 148px; scroll-snap-align: start; display: grid; align-content: start; gap: 2px; padding: 14px 14px 13px; border-radius: 22px; }
+.bcard { position: relative; flex: none; width: 160px; scroll-snap-align: start; display: grid; align-content: start; gap: 2px; padding: 14px 14px 13px; border-radius: 22px; }
 .bcard b { padding-right: 34px; min-height: 2.6em; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bcard small { font-size: 12.5px; color: var(--text-3); }
 .bcard .bp { margin-top: 12px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
@@ -664,7 +672,7 @@ body.desk-on .tabbar { display: none; }
 .dcmd .prompt { font: 600 18px/1 var(--font-d); color: var(--tint-text); }
 .dcmd input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 14.5px; }
 kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); background: var(--ctl); font: 600 11px/1 var(--font); color: var(--text-2); }
-.tape { flex: 1; display: flex; gap: 0; justify-content: flex-end; min-width: 0; overflow: hidden; }
+.tape { flex: 1 0 auto; display: flex; gap: 0; justify-content: flex-end; min-width: 0; overflow: hidden; }     /* (never narrower than its markets: the command line gives way) */
 .tick { display: grid; grid-template-columns: auto auto; gap: 0 8px; align-items: baseline; padding: 0 16px; border-left: 0.5px solid var(--line); text-align: left; white-space: nowrap; }
 .tick:first-child { border-left: 0; }
 .tick span { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3); }
@@ -705,12 +713,16 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .dt .wt { display: inline-block; width: 34px; height: 4px; margin-right: 6px; border-radius: 2px; background: var(--line); vertical-align: middle; overflow: hidden; }
 .dt .wt i { display: block; height: 100%; background: var(--m1); }
 .dt.small td { padding: 6px; }
+/* (what you follow: its name given all the room its three figures leave, cut only where it must be) */
+.dt.small td:first-child { width: 100%; max-width: 0; } .dt.small td b { max-width: none; }
 /* the one chosen */
-.dpane.inst { overflow: auto; scrollbar-width: thin; }
+.dpane.inst { overflow: auto; scrollbar-width: thin; container-type: inline-size; }
 .ihead { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .ihead small { font-size: 12px; color: var(--text-3); }
 .ihead h2 { margin: 2px 0 0; font: 600 22px/1.15 var(--font-d); letter-spacing: -0.4px; }
-.iprice { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+/* (its price, its change and over when: each kept whole, the change going under the price where they don't fit beside it) */
+.iprice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 4px; }
+.iprice > * { white-space: nowrap; }
 .iprice b { font: 600 30px/1 var(--font-d); letter-spacing: -0.8px; } .iprice span { font-size: 14px; font-weight: 600; } .iprice .muted { color: var(--text-3); font-weight: 500; }
 .iacts { display: flex; gap: 6px; flex: none; }
 .dtools { display: flex; align-items: center; gap: 6px; margin: 14px 0 6px; flex-wrap: wrap; }
@@ -746,8 +758,11 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .dlegend span { display: inline-flex; align-items: center; gap: 6px; } .dlegend i { width: 12px; height: 2.5px; border-radius: 2px; }
 .dlegend i.ma0 { background: var(--warn); } .dlegend i.ma1 { background: var(--violet); } .dlegend i.vsi { background: var(--blue); }
 .figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 18px; margin-top: 12px; border-top: 0.5px solid var(--line); }
-.fig { display: grid; gap: 1px; padding: 9px 0; border-bottom: 0.5px solid var(--line); min-width: 0; }
-.fig small { font-size: 11px; color: var(--text-3); } .fig b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fig span { font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (two across where the pane's too narrow for four, as on a laptop up to 1600 wide, so a range's top isn't cut off: four
+   need about 640) */
+@container (max-width: 640px) { .figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fig { display: grid; gap: 1px; align-content: start; padding: 9px 0; border-bottom: 0.5px solid var(--line); min-width: 0; }
+.fig small { font-size: 11px; color: var(--text-3); } .fig b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fig span { font-size: 11.5px; color: var(--text-2); text-wrap: pretty; }     /* (the line under a figure over two, not cut) */
 .dwhy { margin: 14px 0 0; font: 500 15px/1.45 var(--font-d); } .dwhy small { display: block; margin-top: 4px; font: 500 12px var(--font); color: var(--text-3); } .dwhy a { color: inherit; }
 /* on the right: the heat map, the year's risk, the news, the dividends coming */
 .heat { position: relative; height: 206px; margin-top: 2px; }
@@ -905,6 +920,8 @@ a.dbtn { text-decoration: none; }
 .fxm td { padding: 8px 4px; border-radius: 6px; background: var(--ctl); text-align: center; }
 .fxm td.self { color: var(--text-3); background: none; }
 .fxm td.fup { background: color-mix(in srgb, var(--up) 22%, var(--ctl)); } .fxm td.fdn { background: color-mix(in srgb, var(--down) 22%, var(--ctl)); }
+/* (on a laptop, too narrow for the three markets along the top beside the command line: the first two, as on an iPad) */
+@media (max-width: 1439px) { .tape .tick:nth-child(n+3) { display: none; } }
 /* (an iPad held across: two columns, the heat map, risk, news and dividends in a grid under them; the page scrolls) */
 @media (max-width: 1279px) {
   .desk { height: auto; min-height: 0; }
@@ -914,7 +931,7 @@ a.dbtn { text-decoration: none; }
   .dcol > .dpane.grow { min-height: 0; max-height: 420px; }
   .wgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; } .wcol { max-height: none; }
   /* (the command line takes what the two markets leave, so neither's cut off) */
-  .dcmdw { flex: 1 1 auto; min-width: 200px; } .tape { flex: none; } .tape .tick:nth-child(n+3) { display: none; }
+  .dcmdw { flex: 1 1 auto; min-width: 200px; } .tape { flex: none; }
   .dchartw { height: 340px; } .dt td b { max-width: 150px; } .dt .cp { display: none; }
 }
 

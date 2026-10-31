@@ -94,8 +94,9 @@ const G = {
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 6 6 0 0 1 11.4 1.4A3.8 3.8 0 0 1 17 18z"/>',
   calendar: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/>',
-  sunset: '<path d="M3 18h18M6 14a6 6 0 0 1 12 0"/><path d="M12 3v4M9.5 5.5L12 3l2.5 2.5"/>',
-  sunrise: '<path d="M3 18h18M6 14a6 6 0 0 1 12 0"/><path d="M12 8V3M9.5 5.5L12 8l2.5-2.5"/>',
+  // (the sun going down: its arrow pointing down to it; coming up, up from it)
+  sunset: '<path d="M3 18h18M6 14a6 6 0 0 1 12 0"/><path d="M12 3v4M9.5 4.5L12 7l2.5-2.5"/>',
+  sunrise: '<path d="M3 18h18M6 14a6 6 0 0 1 12 0"/><path d="M12 3v4M9.5 5.5L12 3l2.5 2.5"/>',
   moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/>',
   stars: '<path d="M9 3l1.5 3.5L14 8l-3.5 1.5L9 13l-1.5-3.5L4 8l3.5-1.5zM17 12l.9 2.1L20 15l-2.1.9L17 18l-.9-2.1L14 15l2.1-.9z"/>',
   run: '<circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2v5M7 11l3-3 4 1 2 4 3 1M11 15l-1-4"/>',

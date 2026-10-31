@@ -184,9 +184,11 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
   transition: --s1 1s var(--ease), --s2 1s var(--ease), --s3 1s var(--ease), --s4 1s var(--ease), --p2 1s var(--ease), --p3 1s var(--ease), --glow 1s var(--ease), --glow-2 1s var(--ease); }
 /* (on a phone or a tablet, the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at its
    foot (app.js SKY_FOOT), so the page carries on under the bar: with a layer fixed down to the foot of the screen, Safari
-   fills under its bar solid) */
+   fills under its bar solid. Its colours laid out over at least an upright phone's sky: on a shorter screen the weather
+   now's small words would otherwise be on its paler part, nearer the foot) */
 @media (hover: none) {
-  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
+  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent);
+    background-size: 100% max(100%, 720px); }
 }
 /* light in the sky for the glass to catch: a glow where the sun or moon would be */
 .sky::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
@@ -431,6 +433,9 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   .top .place { min-height: 40px; padding-top: 4px; padding-bottom: 4px; }
   .top .icon-btn { width: 40px; height: 40px; }
   html { scroll-padding-top: 60px; }
+  /* (the sky down to the foot of the screen, Safari's bar being at the top on a phone on its side: on so short a screen,
+     the weather now's small words would otherwise be over the sky's fade into its palest colour) */
+  .sky { bottom: 0; height: auto; -webkit-mask-image: none; mask-image: none; }
 }
 
 /* the radar with no rain about, or the layer chosen still being fetched: said on the map, at its top in the middle, in a
@@ -453,11 +458,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* (positioned: words on their way out are laid over where they were, app.js fadeOff) */
 .hero, .pg-page, .pv-hero { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
 /* (on the palest day skies, where the sun's glow and the clouds lighten the top: a soft shade behind the forecast's words,
-   so the small ones read; none at night, or where the sky's deep enough already) */
+   so the small ones read; none at night, or where the sky's deep enough already. Kept to the weather's own box, gone by
+   its top, foot and right and faded in at its left: the scroller it's in cuts off anything past it, which would show as
+   a box's straight edges) */
 :is(.hero, .pg-page) { isolation: isolate; }
 body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) :is(.hero, .pg-page)::before {
-  content: ""; position: absolute; z-index: -1; inset: -6% 0 -10%; pointer-events: none;
-  background: radial-gradient(ellipse 70% 62% at 32% 50%, rgba(6, 18, 44, 0.26), rgba(6, 18, 44, 0.12) 55%, transparent 78%); }
+  content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 70% 64% at 32% 50%, rgba(6, 18, 44, 0.26), rgba(6, 18, 44, 0.14) 60%, transparent 78%);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
 /* (positioned: a temperature on its way out is laid over the new one, at its start: app.js roll) */
 .hero-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
@@ -553,7 +561,9 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
    sky's few parts: they do nothing till the page moves, and switching them on as a finger lands (on a pull to refresh,
    say) would have the whole page restyled just then. Where that can't be had, app.js does the same as it scrolls.
    Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
-.sky-alt { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); }
+/* (its colours laid out as the sky under it has them, so once landed it's that sky exactly: on a short touch screen, over
+   more than the screen's height) */
+.sky-alt { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); background-size: inherit; }
 /* (its clouds, stars, rain or snow with it, over this sky's own, as it comes in; there only while it's swiped: nothing of
    them kept moving out of sight) */
 .sky-alt > * { transition: none !important; }
@@ -669,7 +679,10 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 999px; scroll-snap-align: start; }
 .hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
 .hour.now .h-time { color: #fff; }
-.hour .h-temp { font-size: 17px; font-weight: 600; }
+/* (the icons' row and the temperatures' line each a set height: sunrise and sunset's smaller glyph and word sit in the
+   middle of them, level with the hours either side) */
+.hour .h-icon { height: 30px; display: grid; place-items: center; }
+.hour .h-temp { font-size: 17px; font-weight: 600; line-height: 24px; }
 .hour .h-pop { font-size: 12px; color: var(--rain-text); font-weight: 650; min-height: 16px; }
 .hour.sunev .h-temp { font-size: 13px; font-weight: 600; color: var(--text-2); }
 .chart-note { font-size: 12.5px; color: var(--text-3); margin: 4px 0 0; }
@@ -1007,7 +1020,9 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .compass .tick { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1; }
 .compass text { fill: var(--text-3); font-size: 9px; font-weight: 700; }
 .compass .needle { fill: #fff; }
-.wind-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+/* (a figure with its picture beside it: the figure right under the title, where every other tile's is, so a row's
+   figures line up) */
+.wind-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
 /* a tile that opens: its title a button over all of it, a little chevron to say so; it gives under a finger */
 .tile.opens { cursor: pointer; transition: transform var(--dur-release) var(--spring), filter 0.25s, background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 .tile.opens:active { transform: scale(0.97); filter: brightness(1.12); transition-duration: var(--dur-press); }
@@ -1496,6 +1511,9 @@ a.acct-btn { text-decoration: none; }
 .radar-time .rt-rel { display: block; font-size: 13px; color: var(--ink-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the legend: the radar's colours as one bar, light to extreme, and snow's beside it (radar.js: --stops, --at) */
 .radar-legend { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0 0; font-size: 11.5px; color: var(--text-2); }
+/* (its room kept till radar.js has come to draw it, as the card comes near: its bar, the gap and its words; so the
+   card's as tall before as after, and nothing under it moves, nor the copy of the page beside it: app.js radarLater) */
+.radar-legend:empty { min-height: calc(8px + 4px + 16px); }
 .rl-title { display: none; }
 .rl-rain { flex: 1; min-width: 0; }
 .rl-bar { display: block; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--stops)); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
@@ -1690,6 +1708,8 @@ body.no-scroll { overflow: hidden; }
 .radar-chip { display: none !important; }
 /* on the day map, the controls on it in light glass, their ink dark, as Apple's */
 .radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
+/* (and so till radar.js has come and said which, as the card comes near: data-layer, light-map; app.js radarLater) */
+@media (prefers-color-scheme: light) { .radar:not([data-layer]) .radar-map { background: #f2f1ee; } }
 .radar.light-map .map-zoom, .radar.light-map :is(.radar-centre, .map-layers), .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
   background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
 .radar.light-map .map-zoom button { color: #1c1c1e; }

@@ -398,6 +398,11 @@ const rows = await p.locator('.day-row').evaluateAll((rs) => rs.map((r) => Math.
 ok(new Set(rows).size === 1, 'the 16 days, every row the same height (rain chance or not)', [...new Set(rows)].join(', '));
 await p.screenshot({ path: `${out}/wx-top.png` });
 await p.screenshot({ path: `${out}/wx-full.png`, fullPage: true });
+// (Chromium takes the whole page by stretching the phone's screen for a moment, and puts it back without its touch
+// screen: from then on its pointer is a mouse's to the page, CSS and code alike, and navigator.maxTouchPoints 0; so the
+// finger's put back, and the rest is still tried as a phone)
+const phone = await ctx.newCDPSession(p), finger = (on) => phone.send('Emulation.setTouchEmulationEnabled', on ? { enabled: true, maxTouchPoints: 1 } : { enabled: false });
+await finger(true);
 // a day, in full: the six models side by side
 await p.locator('.day-row').nth(4).evaluate((e) => e.click());      // (the page redraws as the last of the forecast arrives)
 await p.waitForSelector('#day[open]');
@@ -803,6 +808,15 @@ ok(closedFocus.on && !closedFocus.foot && closedFocus.pv, 'focus on its × again
   ok(inCard !== 'none' && opened && await touch() === 'none', 'on a phone: the page scrolls past the map; a tap opens it full screen, where it takes the finger', `${inCard} → ${await touch()}`);
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).catch(() => {});
+  // and a mouse come meanwhile (an iPad's trackpad): the map dragged in the card itself, its zoom buttons there, no "Tap
+  // to explore"; gone again, as it was
+  const card = () => p.evaluate(() => ({ touch: getComputedStyle(document.querySelector('#radar .maplibregl-canvas')).touchAction, hint: document.querySelector('#radar .radar-hint').hidden, zoom: getComputedStyle(document.querySelector('#radar .map-zoom')).display !== 'none' }));
+  await finger(false); await p.waitForTimeout(300);
+  const mouse = await card();
+  await finger(true); await p.waitForTimeout(300);
+  const again = await card();
+  ok(mouse.touch === 'none' && mouse.hint && mouse.zoom && again.touch !== 'none' && !again.hint && !again.zoom,
+    'a mouse come (an iPad\'s trackpad): the map dragged in the card, its zoom buttons there; gone, the page scrolls past it again, "Tap to explore" back', JSON.stringify([mouse, again]));
 }
 // with no rain on the radar to follow, the next two hours come from the models instead, inside a box
 {

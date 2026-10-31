@@ -574,10 +574,13 @@ dialog.sheet.dragging { transition: none; }
 .row.action.sure { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .row.info { min-height: 50px; }
 .row.info .tx b { font-size: 16px; }
-.banner { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: -12px 0 26px; border-radius: var(--r-group); }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; margin: -12px 0 26px; border-radius: var(--r-group); container-type: inline-size; }
 .banner.warn { box-shadow: var(--edge), var(--lift), inset 0 0 0 1px color-mix(in srgb, var(--warn) 35%, transparent); }
 .banner .ic, .pending .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
 .banner .tx, .pending .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+/* (on a narrow phone, its button goes under what it says, at the right, rather than squeezing that into a column a
+   word wide; by the banner's width, not the button's, so it stays put as the button says it's busy) */
+@container (max-width: 319px) { .banner .tx { flex-basis: calc(100% - 48px); } .banner > .mini { margin-left: auto; } }
 .banner .tx b, .pending .tx b { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .banner .tx small, .pending .tx small { font-size: 13.5px; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 .pending { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px; }
@@ -803,6 +806,8 @@ body:has(.ifh) .status { display: none; }
 .app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
 .app-k img { width: 18px; height: 18px; border-radius: 5px; }
 .app-k.apart { margin-top: 40px; }
+/* (8px over what it heads, as a section's heading is on the page: the sheet's gap, less 8) */
+.sheet-body > .app-k { margin-bottom: -8px; }
 .switch { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 51px; height: 31px; margin: 0; border-radius: 999px; cursor: pointer;
   background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color 0.3s, opacity var(--dur-fast); }
 .switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;

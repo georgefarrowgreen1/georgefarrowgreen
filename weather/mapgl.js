@@ -289,9 +289,10 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
     },
     zoomBy(d) { map.easeTo({ zoom: Math.round(map.getZoom()) + d, duration: calm ? 0 : 300 }); },
     zoomTo(z) { map.easeTo({ zoom: z - 1, duration: calm ? 0 : 600 }); },
-    // full screen: dragged and pinched, and zoomed with a wheel
-    explore(yes) {
-      if (touch) for (const h of [map.dragPan, map.touchZoomRotate]) yes ? h.enable() : h.disable();
+    // full screen: dragged and pinched, and zoomed with a wheel; in the card, with a finger (touch: as it is now, which
+    // can have changed since the map was made), left for the page to scroll past
+    explore(yes, touch) {
+      for (const h of [map.dragPan, map.touchZoomRotate]) yes || !touch ? h.enable() : h.disable();
       yes ? map.scrollZoom.enable() : map.scrollZoom.disable();
     },
     resize() { map.resize(); },

@@ -124,8 +124,9 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
     view(la, lo, smooth = false) { map.setView([la, lo], zoom, { animate: smooth && !calm }); },
     zoomBy(d) { d > 0 ? map.zoomIn() : map.zoomOut(); },
     zoomTo(z) { map.setZoom(z); },
-    explore(yes) {
-      if (touch) yes ? map.dragging.enable() : map.dragging.disable();
+    // (touch: as it is now, which can have changed since the map was made: mapgl.js explore)
+    explore(yes, touch) {
+      yes || !touch ? map.dragging.enable() : map.dragging.disable();
       yes ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
     },
     // (measured, then drawn to its new edges: measured mid-way through growing, it can leave gaps)

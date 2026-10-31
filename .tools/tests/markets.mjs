@@ -153,7 +153,7 @@ ok(/^\$\d+\.\d\d · \d+ \w+ \d\d$/.test(await text(p, '#sheet .scrub-tip')), 're
 await p.screenshot({ path: `${out}/5-chart.png` });
 await p.waitForFunction(() => !/Finding out why/.test(document.querySelector('#why')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
 ok(/move after the morning's update/.test(await text(p, '#why')) && /Reuters/.test(await text(p, '#why small')), "why it's moving: the day's story about it", await text(p, '#why'));
-ok(await p.locator('#snews a.story').count() >= 1 && /Reuters · /.test(await text(p, '#snews a.story')), 'and the latest news about it, under that', await text(p, '#snews'));
+ok(await p.locator('#snews a.story').count() >= 1 && /Bloomberg · /.test(await text(p, '#snews a.story')) && !/move after the morning's update/.test(await text(p, '#snews')), "and the latest news about it, under that, without the day's story again", await text(p, '#snews'));
 
 // ---- 6. An alert, from the scheduler, once ----
 await p.click('#alert'); await p.waitForSelector('.choice.amt', { timeout: 10000 }); await settle(p, 600);

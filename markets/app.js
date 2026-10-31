@@ -423,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.87";
-const NEWS = "Turning on the Evening Wrap asks for notifications straight away, a late dividend says it's due, and the line at the top fits again when you turn your phone";
+const BUILD = "1.88";
+const NEWS = "Tidier screens: names and figures are no longer cut short (Holdings, Income, Find and Add, the computer layout), the News count sits clear of its tab, the Worth Knowing cards run to the edge on an iPad, and a stock's story isn't listed twice";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1979,12 +1979,12 @@ async function whyMoving(sym, el) {
     story = about.find((n) => Date.now() - n.at < 36 * 3600e3) || null;
   } catch (_) {}
   if (!el.isConnected) return;
-  // (the latest few about it, under what's said)
-  const list = $("#snews");
-  if (list && about.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, about.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
-    h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title })))));
+  // (the latest few about it, under what's said: not the one said, where it's the day's story)
   const move = q.chgPct || 0, vsMarket = m?.chgPct != null ? ` The ${INDEX_NAMES[MARKET_OF[q.ex]]} is ${m.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(m.chgPct), 1)}%.` : "";
-  if (story && Math.abs(move) >= 1) return said(story.title, `${story.src} · ${ago(story.at)}`, story);
+  const shown = story && Math.abs(move) >= 1 ? story : null, rest = about.filter((n) => n !== shown), list = el.parentNode?.querySelector("#snews");
+  if (list && rest.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, rest.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
+    h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title })))));
+  if (shown) return said(shown.title, `${shown.src} · ${ago(shown.at)}`, shown);
   if (Math.abs(move) < 1) return said(`A quiet day for it, moving with the market.${vsMarket}`, story ? `Latest: ${story.title.slice(0, 90)}${story.title.length > 90 ? "…" : ""}` : "No news about it today");
   return said(`No news about it today, so it's ${m && Math.sign(m.chgPct) === Math.sign(move) ? "moving with the market" : "moving on its own"}.${vsMarket}`, "From the day's prices and news");
 }
@@ -2104,7 +2104,7 @@ const addBtn = (sym, name) => { const have = S.list.some((x) => x.symbol === sym
   b.onclick = (e) => { e.stopPropagation(); follow(sym, name, b); }; return b; };
 const dayOfQ = (sym) => { const q = S.q[sym]; return q?.price != null ? [h("b.num", { text: priceSaid(q) }), h("small", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct) })] : [h("b.num.dimmed", { text: "–" })]; };
 function searchView() {
-  const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund, trust or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
+  const input = h("input", { type: "search", id: "mk-q", placeholder: "Company, fund or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
   const open = (sym, name) => { recent.add(sym, name); pushSheet(stockView, sym, { name }); };
   // one result: its name (what's typed, bold), what it is, its price and day, and a + to follow it
   const row = (x, q) => h("div.res", { "data-sym": x.symbol },

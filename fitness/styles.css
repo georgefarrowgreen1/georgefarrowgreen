@@ -1670,6 +1670,22 @@ dialog.sheet.full[open] { animation: onb-in 0.6s var(--ease-out); }
 .onb-course .road { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; opacity: 0.6; }
 .onb-course .ridden { fill: none; stroke: #ff7a4f; stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 30 700; animation: onb-ride 5s var(--ease-glide) 0.3s infinite alternate; filter: drop-shadow(0 4px 10px rgba(255, 122, 79, 0.5)); }
 @keyframes onb-ride { to { stroke-dasharray: 360 700; } }
+/* (where the column's narrower than the screen, the course fades in and out of the sky, its glow with it, rather than
+   stopping on the column's edge) */
+@media (min-width: 561px) { .onb-course { -webkit-mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent); mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent); } }
+/* (the welcome in the middle of the screen, not at its top with the rest empty; from the top, scrolling, where it's
+   taller than the screen. The steps after it stay at the top) */
+dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
+/* (a short screen: no course, the title a little smaller, so Get started is in sight without scrolling) */
+@media (max-height: 660px) { .onb-course { display: none; } .onb-title { font-size: 30px; } }
+/* (a phone on its side: side by side, as signing in is, the name on the left, the points and Get started on the right;
+   the wider column kept clear of the notch, which it reaches on the smaller phones) */
+@media (max-height: 500px) and (orientation: landscape) {
+  dialog.sheet.full .sheet-body:has(> .onb-hero) { max-width: 760px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 32px;
+    padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+  dialog.sheet.full:has(.onb-hero) .sheet-head { max-width: 760px; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+  .onb-hero { grid-row: span 2; align-self: center; }
+}
 .onb-points { list-style: none; margin: 0; padding: 0 4px; display: grid; gap: 14px; }
 .onb-points li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: center; }
 .onb-points .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; }

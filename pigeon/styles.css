@@ -145,6 +145,8 @@ html.night .sky{visibility:hidden}
   html,body{background:var(--sky-top)}
   .page{justify-content:center;padding:16px}
   .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep);transform:translateZ(0)}
+  /* (on the night, the day's dark rim can't be seen, the page and the panel the same black: a light one, all the way round) */
+  html.night .app{box-shadow:0 30px 80px -30px rgba(0,0,0,.6),0 0 0 1px rgba(160,190,255,.16)}
 }
 .rotate{display:none}
 /* a computer: no app, just a page saying so (with a code to open it on a phone) */
