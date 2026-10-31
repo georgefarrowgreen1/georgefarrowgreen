@@ -1686,6 +1686,25 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
   dialog.sheet.full:has(.onb-hero) .sheet-head { max-width: 760px; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
   .onb-hero { grid-row: span 2; align-self: center; }
 }
+/* (the smallest phones on their side, an SE's height or Safari's bars taking it: Get started under the name, where
+   there's room, as the points fill the right; the mark and the name a little smaller, and no room kept for the handle,
+   only enough over Skip for its focus ring) */
+@media (max-height: 340px) and (orientation: landscape) {
+  dialog.sheet.full .grab { display: none; }
+  dialog.sheet.full .sheet-head { padding-top: 15px; }
+  .onb-hero { grid-row: 1; grid-column: 1; align-self: end; gap: 12px; padding-top: 0; }
+  .onb-logo { width: 48px; height: 48px; border-radius: 14px; }
+  .onb-title { font-size: 28px; }
+  .onb-hero ~ .rh-next { grid-row: 2; grid-column: 1; align-self: start; margin-top: 0; }
+  .onb-points { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+}
+/* (and the first SE upright in Safari, with its bars: the name without the mark over it, and the handle as above) */
+@media (max-height: 540px) and (orientation: portrait) {
+  dialog.sheet.full .grab { display: none; }
+  dialog.sheet.full .sheet-head { padding-top: 15px; }
+  .onb-logo { display: none; }
+  .onb-hero { padding-top: 0; }
+}
 .onb-points { list-style: none; margin: 0; padding: 0 4px; display: grid; gap: 14px; }
 .onb-points li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: center; }
 .onb-points .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; }

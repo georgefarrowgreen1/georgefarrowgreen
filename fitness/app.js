@@ -870,8 +870,8 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.61";
-const NEWS = "The welcome sits in the middle of the screen, fits small phones and phones on their side, and its orange course fades into the sky on bigger screens";
+const BUILD = "1.62";
+const NEWS = "The welcome fits the smallest phones without scrolling, upright or on their side, with Get Started always in view";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

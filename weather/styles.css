@@ -190,9 +190,10 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
   .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent);
     background-size: 100% max(100%, 720px); }
 }
-/* light in the sky for the glass to catch: a glow where the sun or moon would be */
-.sky::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
-.sky::after { content: ""; position: absolute; inset: auto auto -30% -25%; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow-2, rgba(120, 160, 255, 0.12)), transparent 60%); pointer-events: none; }
+/* light in the sky for the glass to catch: a glow where the sun or moon would be (and in the next place's sky as it's
+   swiped in, its own: .sky-alt) */
+:is(.sky, .sky-alt)::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
+:is(.sky, .sky-alt)::after { content: ""; position: absolute; inset: auto auto -30% -25%; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow-2, rgba(120, 160, 255, 0.12)), transparent 60%); pointer-events: none; }
 /* (what shows past the page's ends as it's pulled: the sky's top, app.js sky, eased with it) */
 html { background: #2a3546; transition: background-color 1s var(--ease); }
 body { background: transparent; }
@@ -395,9 +396,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   main > .col-a { grid-row: 2; grid-column: 1; }
   main > .col-b { grid-row: 3; grid-column: 1; }
   /* (each from the top of the weather now, its own over its cards, a gap between as the page has; the scroller's own
-     pages either side left empty here) */
-  .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; pointer-events: none; }
-  .pv-hero { flex: none; transform-origin: calc(-1 * var(--pad)) 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
+     pages either side left empty here. Out to the screen's edges, as the scroller is, its weather now laid out as the
+     hero is in it: so the shade behind its words is the hero's to the pixel, not cut off a margin in from the edge) */
+  .pv { grid-row: 1 / span 2; grid-column: 1; display: flex; flex-direction: column; gap: inherit; align-self: stretch; min-width: 0; contain: size layout paint; pointer-events: none;
+    margin-inline: calc(-1 * var(--pad)); padding-inline: var(--pad); }
+  .pv > .pv-hero { flex: none; margin-inline: calc(-1 * var(--pad)); padding-inline: calc(var(--pad) + 4px); transform-origin: 0 0; opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
   .pager > .pg-page { visibility: hidden; }
   .pv-prev { translate: -100vw 0; }
   .pv-next { translate: 100vw 0; }
@@ -460,9 +463,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* (on the palest day skies, where the sun's glow and the clouds lighten the top: a soft shade behind the forecast's words,
    so the small ones read; none at night, or where the sky's deep enough already. Kept to the weather's own box, gone by
    its top, foot and right and faded in at its left: the scroller it's in cuts off anything past it, which would show as
-   a box's straight edges) */
-:is(.hero, .pg-page) { isolation: isolate; }
-body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) :is(.hero, .pg-page)::before {
+   a box's straight edges. The weather now's by the page's sky; each place's beside it by that place's own (app.js
+   drawPage, placePages), so a shade comes and goes with its page as it's swiped, not as it lands) */
+:is(.hero, .pg-page, .pv-hero) { isolation: isolate; }
+body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) .hero::before,
+:is(.pg-page, .pv-hero):is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"])::before {
   content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse 70% 64% at 32% 50%, rgba(6, 18, 44, 0.26), rgba(6, 18, 44, 0.14) 60%, transparent 78%);
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
@@ -562,8 +567,11 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
    say) would have the whole page restyled just then. Where that can't be had, app.js does the same as it scrolls.
    Landed on the next place, it's drawn in the weather now's place at once (:root.pg-snap: nothing eased) */
 /* (its colours laid out as the sky under it has them, so once landed it's that sky exactly: on a short touch screen, over
-   more than the screen's height) */
-.sky-alt { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); background-size: inherit; }
+   more than the screen's height; its glows too, its own sky's (where that has none of its own, the plain ones, not this
+   sky's), and over this sky's, the one at its foot and all: so nothing of this one's is left to go, or the next one's to
+   come, as it lands) */
+.sky-alt { position: absolute; inset: 0; z-index: 1; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); background-size: inherit;
+  --glow: rgba(255, 255, 255, 0.12); --glow-2: rgba(120, 160, 255, 0.12); }
 /* (its clouds, stars, rain or snow with it, over this sky's own, as it comes in; there only while it's swiped: nothing of
    them kept moving out of sight) */
 .sky-alt > * { transition: none !important; }
@@ -1001,9 +1009,15 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* ---------- tiles ---------- */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (min-width: 640px) and (max-width: 979px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
-.tile { border-radius: 24px; padding: 13px 14px; min-height: 136px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* (each two rows of the tiles' grid, its title's and the rest's, shared with the tiles beside it: so a row's titles are as
+   tall as the tallest of them, and where one's in two lines ("Feels like", 320 across), the figures beside it are as far
+   down as its own, level with it, rather than a line higher; and only in that row. Where they can't be shared (before
+   Safari 16), its own two: its title's, then the rest taking up what's left, as it was) */
+.tile { border-radius: 24px; padding: 13px 14px; display: grid; grid-row: span 2; grid-template-rows: auto 1fr; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); row-gap: 3px; min-width: 0; }
+/* (a tile at least 136 tall, as ever, its title in a line: the room under its title, less its padding, title and gap) */
+.tile-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: calc(136px - 2 * 13px - 12px * 1.4 - 2px - 3px); }
 .tile.wide { grid-column: span 2; }
-.tile h3 { margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+.tile h3 { align-self: start; margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
 .tile .big, .detail-now .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
 .tile .big small, .detail-now .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
 /* (the Sun's: its word under the time where the two don't fit side by side, "10:48pm Sunset" on a narrow phone, rather
@@ -1095,9 +1109,11 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .tile .sunarc { margin: 2px auto 0; }
 .detail-now .sunarc { max-width: 260px; margin: 6px 0 0; }
 .kv.moons dd span { display: inline-block; vertical-align: -3px; margin-right: 6px; }
-.moon-row { display: flex; align-items: center; gap: 10px; margin: 2px 0; }
-/* the sea: how warm, the waves, and the tide's next day as a little curve */
-.sea-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* (its figure at the top, level with the Sun's beside it, as every tile's is) */
+.moon-row { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; }
+/* the sea: how warm, the waves, and the tide's next day as a little curve (its figure right under its title, as every
+   tile's is: level with the Sun's beside it, three tiles across) */
+.sea-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .tidec { width: 168px; max-width: 54vw; height: auto; display: block; overflow: visible; }
 .tidec .tc-water { fill: rgba(90, 200, 250, 0.2); }
 .tidec .tc-line { fill: none; stroke: #5ac8fa; stroke-width: 2; stroke-linecap: round; }

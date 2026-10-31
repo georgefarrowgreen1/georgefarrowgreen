@@ -964,6 +964,8 @@ function drawPage(el, q, i, only) {
   const v = prepare(q, only) || glanceView(q), sig = heroSig(v, i);
   if (el._sig === sig) return v;
   el._sig = sig;
+  // (its own sky with it, for the shade behind its words: styles.css .pg-page[data-sky])
+  el.dataset.sky = v?.sky || "";
   el.replaceChildren(...heroBits(v, i));
   return v;
 }
@@ -1022,8 +1024,8 @@ function placePages(a, b, va, vb) {
     if (pv._for === want && pv._top === top) continue;
     pv._for = want; pv._id = id; pv._top = top; pv.dataset.whole = e ? "1" : "";
     // (with the hero's line under its briefing, as tall as it is, said or not; faded as far as the page is scrolled, as
-    // the scroller is: wire's onScroll)
-    const now = id ? h("div", { class: "pv-hero" }, ...heroBits(v, i), h("p", { class: "status" })) : null;
+    // the scroller is: wire's onScroll; and its own sky with it, for the shade behind its words: styles.css)
+    const now = id ? h("div", { class: "pv-hero", "data-sky": v?.sky || null }, ...heroBits(v, i), h("p", { class: "status" })) : null;
     now?.style.setProperty("--c", $("pager").style.getPropertyValue("--c") || "0");
     pv.replaceChildren(...(id ? [now, ...(e ? e.nodes : [h("div", { class: "col" }, $("main").querySelector(":scope > .col-a > .skeleton").cloneNode(true))])] : []));
     // (a page put back that was off the page meanwhile, a few places away: what's still to move in it watched for again,
@@ -2272,10 +2274,11 @@ const uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u <
 const airName = (q) => (q <= 20 ? "Good" : q <= 40 ? "Fair" : q <= 60 ? "Moderate" : q <= 80 ? "Poor" : q <= 100 ? "Very poor" : "Extremely poor");
 const seaName = (c) => (c == null ? "" : c < 11 ? "Very cold" : c < 15 ? "Cold" : c < 18 ? "Cool" : c < 22 ? "Pleasant" : "Warm");
 // a tile of what it's like right now, that opens to its own sheet (openDetail): its title a button that covers the whole tile
+// (what it says under its title kept together, so a row's titles can share a height: styles.css .tile)
 function tileFor([kind, title, icon, wide], ...kids) {
   return h("section", { class: `tile opens${wide ? " wide" : ""}`, "data-kind": kind }, h("h3", {}, h("span", { svg: glyph(icon, 14) }),
     h("button", { class: "tile-open", type: "button", "aria-haspopup": "dialog", "aria-controls": "detail", onclick: () => openDetail(kind) }, title),
-    h("span", { class: "tile-chev", svg: glyph("chevron", 12) })), ...kids);
+    h("span", { class: "tile-chev", svg: glyph("chevron", 12) })), h("div", { class: "tile-body" }, ...kids));
 }
 // a temperature's colour, cold blue to hot red (the 16 days' bars' colours: styles.css .d-fill)
 const WARMTH = [[-5, [124, 196, 255]], [7, [142, 230, 168]], [17, [255, 209, 102]], [25, [255, 154, 77]], [32, [255, 93, 93]]];
@@ -2923,8 +2926,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.59";
-const NEWS = "Opens quicker: the rain radar loads as you scroll down to it, and keeps up on an iPad when you attach or take off a trackpad; sunrise and sunset point the right way and sit level with the hours, the Right Now tiles line up, and the forecast is easier to read with your phone on its side";
+const BUILD = "1.60";
+const NEWS = "Swiping to another place is smoother: its sky's glow and the shade behind its words come in with it, so nothing changes as you land; and the Right Now tiles' figures sit level in every row, on the smallest phones too";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

@@ -129,6 +129,13 @@ async function look(ctx, size, scheme, [name, url, act, sel, o = {}]) {
     await p.waitForTimeout(1800);
     if (act) await act(p).catch((e) => errs.push(`couldn't open: ${String(e.message).split('\n')[0].slice(0, 120)}`));
     await p.waitForTimeout(500);
+    // (down the page a screen at a time, and back to the top: what's drawn only once it's scrolled to, e.g. Weather's
+    // radar, is then there to check)
+    for (let i = 0; i < 12; i++) {
+      if (!await p.evaluate(() => { const y = scrollY; scrollBy({ top: innerHeight * 0.8, behavior: 'instant' }); return scrollY > y; })) break;
+      await p.waitForTimeout(400);
+    }
+    await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' })); await p.waitForTimeout(900);
     const a = await p.evaluate(AUDIT), taps = kind === 'desk' ? [] : await p.evaluate(TAPS);
     let axe = [];
     if (sz === 'phone' || sz === 'desk' || sz === 'se') {

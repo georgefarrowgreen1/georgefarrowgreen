@@ -423,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.88";
-const NEWS = "Tidier screens: names and figures are no longer cut short (Holdings, Income, Find and Add, the computer layout), the News count sits clear of its tab, the Worth Knowing cards run to the edge on an iPad, and a stock's story isn't listed twice";
+const BUILD = "1.89";
+const NEWS = "On a quiet day, a stock's page no longer repeats its latest headline just above the News list, where you can tap it";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1981,11 +1981,12 @@ async function whyMoving(sym, el) {
   if (!el.isConnected) return;
   // (the latest few about it, under what's said: not the one said, where it's the day's story)
   const move = q.chgPct || 0, vsMarket = m?.chgPct != null ? ` The ${INDEX_NAMES[MARKET_OF[q.ex]]} is ${m.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(m.chgPct), 1)}%.` : "";
-  const shown = story && Math.abs(move) >= 1 ? story : null, rest = about.filter((n) => n !== shown), list = el.parentNode?.querySelector("#snews");
-  if (list && rest.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, rest.slice(0, 3).map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
+  const shown = story && Math.abs(move) >= 1 ? story : null, rest = about.filter((n) => n !== shown).slice(0, 3), list = el.parentNode?.querySelector("#snews");
+  if (list && rest.length) list.replaceChildren(h("h3.slabel", { text: "News" }), h("div.snews", {}, rest.map((n) => h("a.story", { href: n.link, target: "_blank", rel: "noopener", onclick: readsIn(n) },
     h("span.m", {}, h("span", { text: `${n.src} · ${ago(n.at)}` })), h("b", { text: n.title })))));
   if (shown) return said(shown.title, `${shown.src} · ${ago(shown.at)}`, shown);
-  if (Math.abs(move) < 1) return said(`A quiet day for it, moving with the market.${vsMarket}`, story ? `Latest: ${story.title.slice(0, 90)}${story.title.length > 90 ? "…" : ""}` : "No news about it today");
+  // (a quiet day: its latest story said small, unless it's in the news just under this, to tap there; on the desk there's none)
+  if (Math.abs(move) < 1) return said(`A quiet day for it, moving with the market.${vsMarket}`, !story ? "No news about it today" : list && rest.includes(story) ? "From the day's prices" : `Latest: ${story.title.slice(0, 90)}${story.title.length > 90 ? "…" : ""}`);
   return said(`No news about it today, so it's ${m && Math.sign(m.chgPct) === Math.sign(move) ? "moving with the market" : "moving on its own"}.${vsMarket}`, "From the day's prices and news");
 }
 // The chart: drawn in, then reshaped as the range changes; read with a finger along it
