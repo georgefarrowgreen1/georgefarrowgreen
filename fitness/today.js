@@ -590,7 +590,9 @@ function nightsView() {
 const FEEL = [["sleep", "Sleep", "contrast", ["Poor", "OK", "Great"], ["Slept poorly", "slept OK", "slept well"]],
   ["legs", "Legs", "run", ["Heavy", "Normal", "Fresh"], ["heavy legs", "normal legs", "fresh legs"]],
   ["mood", "Motivation", "bolt", ["Low", "OK", "High"], ["low motivation", "motivation OK", "keen"]]];
-let feelDraft = {}, feelOpen = false;
+// (a check-in half answered is for its own day: one left last night isn't carried into the morning's, newDay)
+let feelDraft = {}, feelOpen = false, feelDay = null;
+const feelToday = () => { if (feelDay !== TODAY) { feelDraft = {}; feelOpen = false; feelDay = TODAY; } };
 function verdictOf(w) {
   const f = S.feel[TODAY];
   const rd = rhythmOn() ? rhDay(TODAY) : null, tm = rhythmOn() ? rhDay(addDays(TODAY, 1)) : null;
@@ -603,6 +605,7 @@ function verdictOf(w) {
   return score <= 2 && hard ? ["amber", "swap", "Take it easy today", `${w.name} would cost more than it gives today.`] : ["green", "check", score >= 5 ? "Ready for it" : "Good to go", w ? `${w.name} as planned.` : "Ride as you feel."];
 }
 function setFeel(k, v) {
+  feelToday();
   const was = S.feel[TODAY], all = (f) => FEEL.every(([x]) => f?.[x] != null);
   try { localStorage.setItem("fitness:asked", String(TODAY)); } catch (_) {}
   if (!all(was)) { const ws = watchSleep(); feelDraft = { ...(ws ? { sleep: ws.v } : {}), ...feelDraft, [k]: v }; if (!all(feelDraft)) return redraw(); }
@@ -612,6 +615,7 @@ function setFeel(k, v) {
   if (!all(was) || after !== before) toast(before && after !== before ? "Rhythm has changed your plan to suit" : "Thanks: today stands");
 }
 function feelCard(w, inside = false) {
+  feelToday();
   const f = S.feel[TODAY] || {}, done = FEEL.every(([k]) => f[k] != null), ws = !done && watchSleep(), cur = done ? f : { ...(ws ? { sleep: ws.v } : {}), ...feelDraft }, v = done && verdictOf(w);
   // (inside the morning card, the night's tiles have sleep: asked only once you open it again to change it)
   const box = inside ? "div.checkin.mc-check" : "div.card.glass.checkin", rows = FEEL.filter(([k]) => !(inside && ws && k === "sleep"));

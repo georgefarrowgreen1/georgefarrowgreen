@@ -2,7 +2,7 @@
 // counted after messages go, disappearing messages and read receipts (and in a group someone has left), what one person
 // is sent of others' reactions and flights together, the minute tick finding what it needs by index, and what quiet
 // hours hold that no pigeon carries
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { db, msgView, refundLoft, loft } from '../../../functions/_pigeon.js';
@@ -12,7 +12,7 @@ import { reactsFor } from '../../../functions/_reacts.js';
 import { nearViews, flockUp } from '../../../functions/_moments.js';
 import { stampPassports, restampPair } from '../../../functions/_passport.js';
 import { settleBirds, birdQs, birdsFrom } from '../../../functions/_birds.js';
-import { friendRequested, friendAccepted, groupAdded, heldTick, oneTick } from '../../../functions/_notify.js';
+import { friendRequested, friendAccepted, groupAdded, heldTick, oneTick, TICK_WAIT } from '../../../functions/_notify.js';
 import { idleDue } from '../../../functions/_retention.js';
 
 const sql = new DatabaseSync(':memory:'), asked = [];
@@ -221,6 +221,31 @@ test('one tick at a time: one asked for while another runs is left out, or waits
   assert.equal(lease(), '0', 'given back by one that went wrong too');
   sql.prepare("UPDATE pg_meta SET v = ? WHERE k = 'tick_run'").run(String(Date.now() - 1));   // (one that died part way: its lease run out)
   assert.equal(await oneTick(D, async () => 'next'), 'next');
+});
+
+test('a tick’s lease is short and kept fresh while it runs: one left by a tick that died is taken over within the schedulers’ wait, and a stuck one can’t hold it past a minute or so', async () => {
+  const lease = () => Number(sql.prepare("SELECT v FROM pg_meta WHERE k = 'tick_run'").get().v);
+  // (a scheduler's wait and a tick of its own, well inside the ticker's 55 s)
+  assert.ok(TICK_WAIT <= 20e3);
+  // (left by a tick that died: not busy, but run once it lapses, inside the wait)
+  sql.prepare("UPDATE pg_meta SET v = ? WHERE k = 'tick_run'").run(String(Date.now() + 600));
+  assert.equal(await oneTick(D, async () => 'taken over', TICK_WAIT), 'taken over');
+  const flush = () => new Promise((r) => setImmediate(r));
+  mock.timers.enable({ apis: ['setInterval', 'Date'], now: now });
+  try {
+    let release; const stuck = oneTick(D, () => new Promise((r) => { release = r; }));
+    await flush();
+    assert.ok(lease() <= now + 15e3 && lease() < now + TICK_WAIT, 'shorter than the wait: one that dies is always taken over');
+    for (let i = 0; i < 4; i++) { mock.timers.tick(5e3); await flush(); }
+    assert.equal(lease(), now + 20e3 + 15e3, 'kept fresh while it runs');
+    for (let i = 0; i < 9; i++) { mock.timers.tick(5e3); await flush(); }
+    assert.equal(lease(), now + 60e3 + 15e3, 'but for a minute at most');
+    assert.deepEqual(await oneTick(D, async () => 'too soon'), { busy: true });
+    for (let i = 0; i < 3; i++) { mock.timers.tick(5e3); await flush(); }
+    assert.equal(await oneTick(D, async () => 'after the stuck one'), 'after the stuck one', 'then it lapses');
+    release('stuck'); assert.equal(await stuck, 'stuck');
+    assert.equal(lease(), 0, 'given back');
+  } finally { mock.timers.reset(); }
 });
 
 test('an account unused for a year goes no sooner than the day its email gave, a full week after it went', async () => {

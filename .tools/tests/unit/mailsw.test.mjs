@@ -2,7 +2,8 @@
 // what a browser gives it made up: its own files always from the network while there is one, from what it kept only with
 // no answer (or Mail's host failing), never the API; and a notice for a device signed out elsewhere saying only that,
 // with its notices stopped, while one whose sign-in can't be checked in time still shows, as a slow notice counts as
-// none shown and the phone stops notices for a site that keeps doing that.
+// none shown and the phone stops notices for a site that keeps doing that. And every file the page loads as it opens
+// among those it keeps, so Mail opens offline.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -112,4 +113,43 @@ test('a notice for a device signed out elsewhere says only that, and stops them 
     assert.equal(w.shown[0].body, push.body);
     assert.equal(w.subscribed(), true);
   }
+});
+
+// (every file Mail's page loads as it opens, the page's manifest says it opens at, or its script puts up (the sign-in
+// page's pictures, shown offline too): one added and not to FILES, and Mail wouldn't open offline. And every one in FILES
+// there to be kept, as the browser keeps none of them if one's missing)
+test('every file Mail’s page loads as it opens is one the worker keeps for opening offline, and each of those is there', { skip }, () => {
+  const pub = new URL('./', SW), read = (f) => readFileSync(new URL(f, pub), 'utf8');
+  const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(read('sw.js'))[1]);
+  // (as the worker knows a file of Mail's own: its path, without a query; another site's, none)
+  const own = (u, base = '/') => {
+    const x = new URL(u, new URL(base, 'https://email.inflite.ai/'));
+    return x.origin === 'https://email.inflite.ai' ? x.pathname : null;
+  };
+  const attr = (tag, k) => {
+    const m = new RegExp(`\\s${k}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
+    return m ? m[1] ?? m[2] ?? m[3] : null;
+  };
+  const html = read('index.html'), want = new Set(['/']);
+  for (const [tag] of html.matchAll(/<script\b[^>]*>/gi)) if (attr(tag, 'src')) want.add(own(attr(tag, 'src')));
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi))
+    if (/\b(stylesheet|icon|apple-touch-icon|manifest|modulepreload|preload)\b/i.test(attr(tag, 'rel') || '')) want.add(own(attr(tag, 'href')));
+  // (where the manifest says Mail opens; its own icons are asked for as it's added to the Home Screen, not as it opens)
+  const manifest = [...want].find((f) => f && /\.webmanifest$|manifest\.json$/.test(f));
+  assert.ok(manifest, 'the page names its manifest');
+  want.add(own(JSON.parse(read(manifest.slice(1))).start_url || '/', manifest));
+  // (what each script brings in, a module's imports among them, and the pictures and files Mail's script names by their
+  // place; never the worker itself, which the browser keeps)
+  const scripts = [...want].filter((f) => f?.endsWith('.js'));
+  for (const s of scripts) {
+    const src = read(s.slice(1));
+    for (const [, a, b] of src.matchAll(/^\s*import\b[^'"]*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm)) want.add(own(a || b, s));
+    for (const [, u] of src.matchAll(/["'`](\/[\w.-]+\.(?:svg|png|jpe?g|webp|gif|ico|css|js|mjs|json|webmanifest|woff2?))["'`?]/g)) if (u !== '/sw.js') want.add(u);
+  }
+  // (and what each stylesheet brings in: another stylesheet, a font, a picture)
+  for (const s of [...want].filter((f) => f?.endsWith('.css')))
+    for (const [, a, b] of read(s.slice(1)).matchAll(/url\(\s*["']?([^"')\s]+)|@import\s+["']([^"']+)["']/g)) want.add(own(a || b, s));
+  for (const f of ['/app.js', '/app.css', '/theme.js', '/manifest.webmanifest', '/icon.svg', '/icon-180.png', '/inflite.svg']) assert.ok(want.has(f), `found ${f}`);
+  assert.deepEqual([...want].filter((f) => f && !FILES.includes(f)), [], 'loaded as Mail opens, but not kept for opening offline (sw.js FILES)');
+  for (const f of FILES) assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `sw.js FILES: ${f} isn’t there`);
 });

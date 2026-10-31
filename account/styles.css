@@ -793,6 +793,8 @@ a.btn { text-decoration: none; }
   --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 14px; margin-top: calc(-1 * (var(--top) + 28px));
   margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px))); }
 .ifh.ahead .ifh-me .avatar { display: grid; place-items: center; }
+/* (busy, as you sign out from the menu: a ring turning round your photo, over a shade, so it shows on any photo) */
+.ifh.ahead .ifh-me > .spin { position: absolute; inset: 0; border: 2.5px solid #fff; border-right-color: transparent; background: rgba(0, 0, 0, 0.32); }
 .ifh.ahead .ifh-acts .backapp { height: 38px; padding: 0 12px 0 8px; gap: 4px; display: inline-flex; align-items: center; color: var(--tint-text); font-weight: 600; font-size: 15px; }
 body:has(.ifh) .status { display: none; }
 @media (min-width: 760px) { .ifh.ahead { margin-top: calc(-1 * (var(--top) + 72px)); --ifh-pt: calc(var(--top) + 40px); } }

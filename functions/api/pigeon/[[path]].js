@@ -42,7 +42,7 @@ import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs } from "../../_notify.js";
 
 // All of Chat's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -1380,8 +1380,8 @@ async function pushTest({ request, env }) {
 }
 async function notifyTick({ request, env }) {
   tickAuthOk(request, env);
-  // (not alongside one the site's traffic asked for: that one's waited for, up to 30 s, and this one runs after it)
-  return json(await oneTick(await db(env), () => tick(env, linkOrigin(request)), 30e3));
+  // (not alongside one the site's traffic asked for: that one's waited for, up to 20 s, and this one runs after it)
+  return json(await oneTick(await db(env), () => tick(env, linkOrigin(request)), TICK_WAIT));
 }
 // The link at the bottom of notification emails. GET shows a button (so mail
 // scanners that follow links don't unsubscribe anyone); POST turns email off,
