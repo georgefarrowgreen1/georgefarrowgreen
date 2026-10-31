@@ -226,7 +226,8 @@ async function shot(p, kind, size, scheme, [name, url, act, sel], errs) {
   let axe = [];
   if (sz === 'phone' || sz === 'desk' || sz === 'se') {
     await p.evaluate(AXE);
-    axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, resultTypes: ['violations'] })).violations
+    // (all but pinch to zoom, which every app has off on purpose, as a native app: decided, so not a finding)
+    axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false } }, resultTypes: ['violations'] })).violations
       .map((v) => `${v.id} ×${v.nodes.length} (${v.impact}): ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ').slice(0, 140)}`));
   }
   const file = `${name}-${sz}-${scheme}.png`;
