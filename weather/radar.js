@@ -377,6 +377,36 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     for (const v of marks) { const w = document.createElement("span"); w.textContent = say(v); w.style.setProperty("--at", `${(((v - lo) / (hi - lo)) * 100).toFixed(1)}%`); ws.append(w); }
     box.append(i, ws); return box;
   };
+  // (along the bar in the card, each word as near its place as it can be without meeting the next: pushed apart where
+  // they would, the legend a size smaller where even that won't do (a small phone's card), and where that won't either
+  // (the text made larger), the ends and every other word between; measured again as the card changes width. Full
+  // screen, up the side, there's room for them all: styles.css --x, .tight)
+  const APART = 6;
+  const spread = () => {
+    const big = card.classList.contains("radar-big");
+    for (const ws of legend.querySelectorAll(".rl-words")) {
+      const all = [...ws.children], n = all.length;
+      // (its length measured again at each size tried: the wind's switch beside it is a size smaller too)
+      const place = () => {
+        const W = ws.clientWidth, on = all.filter((s) => !s.hidden), w = on.map((s) => s.getBoundingClientRect().width), k1 = on.length - 1;
+        const x = on.map((s, k) => (k === 0 ? 0 : k === k1 ? W - w[k] : (parseFloat(s.style.getPropertyValue("--at")) / 100) * W - w[k] / 2));
+        for (let k = 1; k <= k1; k++) x[k] = Math.max(x[k], x[k - 1] + w[k - 1] + APART);
+        x[k1] = Math.min(x[k1], W - w[k1]);
+        for (let k = k1 - 1; k >= 0; k--) x[k] = Math.min(x[k], x[k + 1] - APART - w[k]);
+        if (x[0] < -0.5) return false;
+        on.forEach((s, k) => s.style.setProperty("--x", `${x[k].toFixed(1)}px`));
+        return true;
+      };
+      let done = false;
+      for (const [tight, gone] of [[false, () => false], [true, () => false], [true, (k) => k % 2 === 1 && k < n - 1], [true, (k) => k > 0 && k < n - 1]]) {
+        legend.classList.toggle("tight", tight && !big);
+        all.forEach((s, k) => (s.hidden = !big && gone(k)));
+        if (big || !ws.clientWidth || (done = place())) break;
+      }
+      ws.classList.toggle("spread", done);
+    }
+  };
+  if (typeof ResizeObserver === "function") new ResizeObserver(spread).observe(legend);
   // (round numbers in the units chosen: °C or °F; mph, km/h, m/s or knots, as Apple's has 0 to 75 mph)
   const drawLegend = () => {
     const title = Object.assign(document.createElement("b"), { className: "rl-title", textContent: kind === "rain" ? KINDS.rain : kind === "aq" ? "Air quality (European index)" : kind === "uv" ? "UV index" : `${named()} (${kind === "temp" ? tempUnit() : windUnit()})` });
@@ -396,6 +426,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     // (the wind's has buttons in it, so its colours alone are the picture)
     if (kind === "wind") { legend.removeAttribute("role"); legend.removeAttribute("aria-label"); }
     else { legend.setAttribute("role", "img"); legend.setAttribute("aria-label", SAID[kind]); }
+    spread();
   };
   // the wind's, or its gusts' (kept as chosen): the colours, the flow, the bubble and the words all of the one chosen
   let gusts = false;
@@ -1300,30 +1331,57 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     credit.addEventListener("click", () => credits?.());
     dry = document.createElement("span"); dry.className = "radar-dry off";
     wrap.append(flowCv, top, ruler, credit, dry);
-    const moved = () => {
-      const s = map.state(), most = s.mpp * 90;
-      zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;
-      // the longest round distance that fits in 90 pixels
-      const [n, unit, m] = miles() ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
-      ruler.textContent = `${n} ${unit}`;
-      ruler.style.width = `${Math.round((n * m) / s.mpp)}px`;
+    // (its names in before the foot's measured: the scale never drawn under them for a moment first)
+    credited([...map.credit, "RainViewer"]);
+    // the map's foot, narrow (a small phone's card), holds the scale, "Tap to explore" and the ©, each clear of the others:
+    // the hint along from the middle where the scale would meet it, the scale a step shorter where even that won't do;
+    // and where the credits, open, would cover the scale, it steps aside while they're open (they're in full as the map
+    // first appears, as its sources ask: styles.css .under). Where each is, measured again as any of them, or the map,
+    // changes size (sizes, below)
+    const words = credit.querySelector(".rc-t");
+    let foot = null, hintW = 0;
+    const measure = () => {
+      // ("Tap to explore", out of sight till the credits fold: shown for the moment it takes to measure it, once)
+      if (!hint.hidden) hintW = hint.offsetWidth;
+      else if (!hintW) { hint.hidden = false; hintW = hint.offsetWidth; hint.hidden = true; }
+      const cx = credit.offsetLeft + credit.offsetWidth, cy = credit.offsetTop + credit.offsetHeight;
+      foot = { w: el.offsetWidth, x: ruler.offsetLeft, top: ruler.offsetTop, bottom: ruler.offsetTop + ruler.offsetHeight, c: credit.offsetLeft,
+        names: { l: cx - words.offsetWidth, r: cx, top: cy - words.offsetHeight, bottom: cy } };
     };
+    const moved = () => {
+      const s = map.state(), f = foot, hinted = f && hintW && touch && !card.classList.contains("radar-big");
+      // (90 pixels, or what's left of the foot beside the hint, where it's to come in)
+      const most = s.mpp * (hinted ? Math.max(40, Math.min(90, f.c - APART - hintW - APART - f.x)) : 90);
+      zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;
+      // the longest round distance that fits in that
+      const [n, unit, m] = miles() ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
+      const long = Math.round((n * m) / s.mpp), end = f ? f.x + long : 0;
+      ruler.textContent = `${n} ${unit}`;
+      ruler.style.width = `${long}px`;
+      if (!f) return;
+      const mid = (f.w - hintW) / 2, nm = f.names;
+      hint.style.marginLeft = hinted && end + APART > mid ? `${Math.max(0, Math.round(Math.min(end + APART, f.c - APART - hintW) - mid))}px` : "";
+      ruler.classList.toggle("under", nm.l < end + APART && f.x < nm.r + APART && nm.top < f.bottom + APART && f.top < nm.bottom + APART);
+    };
+    measure();
     map.on("move", moved); moved();
+    // (aside from the first where it's to be, not fading out from under the names as the map appears)
+    ruler.getAnimations().forEach((a) => a.finish());
     // (the wind's flow kept to the map as it moves: once a frame)
     let flowAt = 0;
     map.on("move", () => { if (kind === "wind") flowAt ||= requestAnimationFrame(() => { flowAt = 0; flowMoved(); }); });
     // the names step aside from all that's over the map (as from the place's dot), measured again once any of it, or
     // the map, has changed size (a little room round each; not every frame of the © folding away)
-    const over = [top, menu, ruler, credit, hint, chip], words = credit.querySelector(".rc-t");
+    const over = [top, menu, ruler, credit, hint, chip];
     let settle = 0;
     const clear = () => {
+      measure(); moved();
       const b = el.getBoundingClientRect();
       map.clear((credit.classList.contains("folded") ? over : [...over, words]).map((x) => x.getBoundingClientRect()).filter((r) => r.width && r.height)
         .map((r) => ({ x: r.left - b.left - 4, y: r.top - b.top - 4, w: r.width + 8, h: r.height + 8 })));
     };
     const sizes = new ResizeObserver(() => { clearTimeout(settle); settle = setTimeout(clear, 100); });
     for (const x of [el, ...over, words]) sizes.observe(x);
-    credited([...map.credit, "RainViewer"]);
     // (folded, the names may have the space its words had again)
     setTimeout(() => { credit.classList.add("folded"); told = true; hint.hidden = !touch || card.classList.contains("radar-big"); setTimeout(clear, 650); }, 5000);
   }

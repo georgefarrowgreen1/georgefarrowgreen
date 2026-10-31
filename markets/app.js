@@ -423,8 +423,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.89";
-const NEWS = "On a quiet day, a stock's page no longer repeats its latest headline just above the News list, where you can tap it";
+const BUILD = "1.90";
+const NEWS = "Long fund names show over two lines instead of being cut off; the card dots, the income plan's sliders, the form fields and the switches are easier to tap; and a stray “null” no longer shows under Buys and sales";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1151,7 +1151,7 @@ function movable(list) {
     y0 = e.clientY; pid = e.pointerId;
     wait = setTimeout(() => {
       const rows = [...list.children].filter((r) => r.dataset.sym), from = rows.indexOf(row);
-      drag = { row, rows, from, to: from, step: row.offsetHeight };
+      drag = { row, rows, from, to: from, step: row.offsetHeight, hs: rows.map((r) => r.offsetHeight) };
       row.classList.add("lifted"); list.classList.add("sorting");
       try { row.setPointerCapture(pid); } catch (_) {}
       navigator.vibrate?.(8);
@@ -1167,8 +1167,10 @@ function movable(list) {
     requestAnimationFrame(roll);
   };
   const move = (y) => {
-    const dy = y - y0, { row, rows, from, step } = drag;
-    const to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / step)));
+    const dy = y - y0, { row, rows, from, step, hs } = drag, way = Math.sign(dy);
+    // (past each once past its middle, by its own height: one whose name's over two lines is taller)
+    let to = from;
+    for (let i = from + way, d = Math.abs(dy); way && i >= 0 && i < rows.length && d > hs[i] / 2; d -= hs[i], i += way) to = i;
     drag.to = to;
     row.style.transform = `translateY(${dy}px) scale(1.02)`;
     rows.forEach((r, i) => { if (r !== row) r.style.transform = i > from && i <= to ? `translateY(${-step}px)` : i < from && i >= to ? `translateY(${step}px)` : ""; });
@@ -1916,10 +1918,11 @@ async function drawBuys(sym) {
       h("span", {}, h("b", { text: `${x.qty > 0 ? "Bought" : "Sold"} ${fmt(Math.abs(x.qty), Math.abs(x.qty) % 1 ? 2 : 0)}` }), h("small", { text: when(x.at) })),
       h("span.r", {}, h("b.num", { text: x.price != null ? priceSaid(q, x.price) : "–" }), h("small", { text: x.price != null ? (rate(q.cur) != null ? money(Math.abs(x.qty) * x.price * rate(q.cur)) : money(Math.abs(x.qty) * x.price, q.cur)) : "price not said" })), del);
   };
-  el.replaceChildren(h("h3.slabel", {}, "Buys and sales"),
+  // (what's made on sales only once there's been one: replaceChildren writes a null out as the word, as h() doesn't)
+  el.replaceChildren(...[h("h3.slabel", {}, "Buys and sales"),
     h("div.list.flush", {}, [...b.buys].reverse().map(row)),
     b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: rate(q.cur) != null ? signed(b.made * rate(q.cur)) : signed(b.made, q.cur) }), h("i", { text: "over what it cost you on average" }))) : null,
-    h("div.links", { style: "margin-top:14px" }, add));
+    h("div.links", { style: "margin-top:14px" }, add)].filter(Boolean));
 }
 // A buy or a sale: which, the day, how many and the price each (today's to start with)
 function buyView(sym) {

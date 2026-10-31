@@ -870,8 +870,8 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.62";
-const NEWS = "The welcome fits the smallest phones without scrolling, upright or on their side, with Get Started always in view";
+const BUILD = "1.63";
+const NEWS = "Get Started on the welcome now shows in full on more small and older phones, from the Home Screen too and with a long first name";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

@@ -138,6 +138,7 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .label span, .label button { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; color: var(--text-3); }
 .label button { position: relative; color: var(--tint-text); font-weight: 600; }
 .label button::after, .del::after, .seg button::after { content: ""; position: absolute; inset: -12px -10px; }
+.seg button::after { inset: -12px 0; }     /* (a switch's above and below only: beside each is the next one, whose own it'd be) */
 .del { position: relative; }
 
 /* one insight at a time (the strip out to the screen's edges where they're beyond the column's, as on a tablet, so the next
@@ -153,7 +154,8 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .dots { display: flex; justify-content: center; margin-top: 14px; }
 .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width 0.45s var(--ease-spring), background 0.3s; }
 .dots i.on { width: 18px; background: var(--text-2); }
-.dots button { padding: 14px 9px; margin: -6px 0; }     /* (each a 24px target, the next 24px along) */
+.dots button { padding: 14px 13px; margin: -6px 0; }     /* (each a 32px target, the next 32px along) */
+@media (pointer: coarse) { .dots button { padding-block: 19px; margin-block: -11px; } }     /* (44px tall to a finger, the row no taller) */
 .dots button i { display: block; }
 @media (hover: hover) { .dots button { cursor: pointer; } .dots button:hover i:not(.on) { background: var(--text-3); } }
 .vbar { display: grid; gap: 8px; margin-top: 6px; }
@@ -174,6 +176,8 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item:first-child { border-top: 0; }
 .item:active { opacity: 0.6; }
 .item b { display: block; font-size: 16.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* (a name over two lines where it must, as a fund's often is, rather than cut; the figures beside it stay on one) */
+.item:not(.rmore) > span:first-child > b, .res .rn b, .dt td:first-child b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 .item small { display: block; font-size: 13.5px; color: var(--text-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item svg { width: 64px; height: 26px; overflow: visible; }
 .item .r { text-align: right; min-width: 0; }
@@ -197,7 +201,7 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .item.ord { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 0; } .item.ord:active { opacity: 1; }
 .mv { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--ctl); color: var(--text-2); }
 .mv:active { background: var(--press); } .mv[aria-disabled="true"] { opacity: 0.35; }
-.field input[type="date"] { color-scheme: inherit; font-family: inherit; -webkit-appearance: none; appearance: none; min-height: 1.5em; }
+.field input[type="date"] { align-self: center; color-scheme: inherit; font-family: inherit; -webkit-appearance: none; appearance: none; min-height: calc(1.5em + 24px); padding-block: 12px; margin-block: -12px; }     /* (the field's height to tap, in its padding: Safari's isn't sure to keep its day in the middle of a taller box) */
 /* (Safari's day sits to the left like everything else's, and an empty one keeps its height) */
 .field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .slabel { margin: 30px 0 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
@@ -252,7 +256,12 @@ button.fact { width: 100%; text-align: left; }
 .knob { margin-top: 14px; }
 .knob label { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 500; }
 .knob label span { color: var(--text-2); font-variant-numeric: tabular-nums; }
-.knob input { width: 100%; margin: 8px 0 0; accent-color: var(--up); }
+.knob input { display: block; width: 100%; height: 32px; margin: 0 0 -3px; accent-color: var(--up); }     /* (its track where it was, in a 32px target) */
+@media (pointer: coarse) { .knob input { height: 44px; margin: -6px 0 -7px; } }     /* (and 44px to a finger, clear of the switch under it) */
+/* (by the keyboard, just its track, as it was: so its ring's round that, not across its label. Nothing moves: its foot's
+   margin taking the place of the 14px over the next, as the one it had added to it) */
+.knob input:focus-visible { height: 16px; margin: 8px 0 19px; }
+@media (pointer: coarse) { .knob input:focus-visible { margin-bottom: 21px; } }
 .knob.inline { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 500; }
 .proj { margin-top: 14px; }
 .proj svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -281,7 +290,7 @@ button.fact { width: 100%; text-align: left; }
 /* the mix's switch: by holding, kind or account */
 /* a switch in a section's label: said as the switch is, not as the label */
 .label:has(> .per) { align-items: center; }     /* (the label level with the switch, not with its top) */
-.label .per button { text-transform: none; letter-spacing: 0; color: var(--text-3); font-weight: 600; font-size: 12.5px; }
+.label .per button { text-transform: none; letter-spacing: 0; color: var(--text-3); font-weight: 600; font-size: 12.5px; white-space: nowrap; }     /* (on a small phone the label's words wrap, not the switch's) */
 .label .per button[aria-pressed="true"] { color: var(--text); }
 /* a holding's page: what you can do with it, kept at the bottom as you read */
 .sbar { position: sticky; bottom: calc(-44px - env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 34px -24px calc(-44px - env(safe-area-inset-bottom, 0px)); padding: 14px 24px calc(14px + env(safe-area-inset-bottom, 0px));
@@ -312,7 +321,7 @@ button.fact { width: 100%; text-align: left; }
 .dialc b { font: 600 clamp(24px, 7.4vw, 30px)/1.05 var(--font-d); letter-spacing: -0.6px; }
 .dialc small { min-height: 1.2em; font-size: 12.5px; color: var(--text-2); }
 /* its key, under it: two columns, each a name you can tap */
-.mkeys { width: 100%; margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; }
+.mkeys { width: 100%; margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 20px; }     /* (each key reaching 10px past its column: theirs meeting in the gap, not over each other) */
 .mkey { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; margin: 0 -10px; border-radius: 12px; font-size: 14px; color: var(--text-2); transition: background-color 0.25s; }
 .mkey i { width: 9px; height: 9px; border-radius: 50%; }
 .mkey span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }     /* (a long name over two lines, not cut) */
@@ -330,7 +339,7 @@ button.inline { display: inline; color: var(--tint-text); font-weight: 600; font
 .form .lrow label { margin: 0; }
 .per { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--field); }
 .per button { position: relative; padding: 4px 11px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text-3); transition: background-color 0.25s, color 0.25s; }
-.per button::after { content: ""; position: absolute; inset: -8px -2px; }
+.per button::after { content: ""; position: absolute; inset: -9px -1px; }     /* (44px tall; beside it, to the middle of the 2px between) */
 .per button[aria-pressed="true"] { background: var(--thumb); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 8px -3px rgba(0, 0, 0, 0.24); }     /* (raised, as the other switches' thumbs are) */
 .echo { margin: 8px 4px 0; min-height: 1.4em; font-size: 13.5px; color: var(--text-3); }
 .choice button[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
@@ -553,7 +562,7 @@ body.sheet-up .sheet { transform: none; }
 
 /* search, and the forms */
 .field { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 0 16px; border-radius: 16px; background: var(--field); margin-top: 14px; }
-.field input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; }
+.field input { flex: 1; align-self: stretch; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; }     /* (the whole field's height, there to tap) */
 /* (no room kept for the search's clear button while there's nothing to clear, so its hint's whole on a small phone) */
 .field input:placeholder-shown::-webkit-search-cancel-button { display: none; }
 .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
@@ -670,7 +679,7 @@ body.desk-on .tabbar { display: none; }
 .dcmd { flex: 0 1 560px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px 0 14px; border-radius: 12px; background: var(--field); }
 .dcmd:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
 .dcmd .prompt { font: 600 18px/1 var(--font-d); color: var(--tint-text); }
-.dcmd input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 14.5px; }
+.dcmd input { flex: 1; align-self: stretch; min-width: 0; border: 0; background: none; outline: none; font-size: 14.5px; }
 kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); background: var(--ctl); font: 600 11px/1 var(--font); color: var(--text-2); }
 .tape { flex: 1 0 auto; display: flex; gap: 0; justify-content: flex-end; min-width: 0; overflow: hidden; }     /* (never narrower than its markets: the command line gives way) */
 .tick { display: grid; grid-template-columns: auto auto; gap: 0 8px; align-items: baseline; padding: 0 16px; border-left: 0.5px solid var(--line); text-align: left; white-space: nowrap; }
@@ -1277,6 +1286,7 @@ html { touch-action: pan-x pan-y; }
 @media (max-width: 359px) {
   .item { grid-template-columns: minmax(0, 1fr) minmax(76px, auto); }
   .item > svg { display: none; }
+  .res { column-gap: 8px; }     /* (and a little more room for a result's name) */
 }
 /* a phone on its side: a slimmer tab bar, nearer the edge, so it covers less of the little height there is */
 @media (max-height: 500px) and (orientation: landscape) {

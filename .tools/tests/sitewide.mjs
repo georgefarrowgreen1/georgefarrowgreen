@@ -10,19 +10,70 @@ import { joinChat } from './join.mjs';
 import * as F from './mocks/wxappdata.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', WX = 'http://weather.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', MKT = 'http://finance.ifl.test:8788', HOME = 'http://gfg.test:8788', MAIL = 'http://127.0.0.1:8806';
+// (where every sign-in and sign-up is done: secure, as the apps are, or it can't make its keys)
+const AUTH = 'http://auth.ifl.test:8788';
 const AXE = readFileSync(`${S}/wr/node_modules/axe-core/axe.min.js`, 'utf8');
 const src = readFileSync(`${S}/wr/audit.mjs`, 'utf8');
 const AUDIT = eval(src.slice(src.indexOf('const AUDIT = ') + 14, src.indexOf('\nconst b = await')).replace(/;\s*$/, ''));
-// what's too small to tap (on a screen that's touched): visible, on screen, under 32px either way (words linked inside a
-// sentence aside)
-const TAPS = () => [...document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=switch], [role=tab]')].filter((e) => {
-  const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
-  if (!r.width || !r.height || cs.visibility === 'hidden' || +cs.opacity === 0 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return false;
-  if (e.tagName === 'A' && e.closest('p')) return false;
-  const hit = document.elementFromPoint(Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2)), Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2)));
-  if (!hit || !(hit === e || e.contains(hit) || hit.contains(e))) return false;
-  return r.width < 32 || r.height < 32;
-}).map((e) => { const r = e.getBoundingClientRect(); return `${(e.getAttribute('aria-label') || e.textContent || e.className || e.tagName).trim().replace(/\s+/g, ' ').slice(0, 28)} ${Math.round(r.width)}×${Math.round(r.height)}`; });
+// what's too small to tap or click, by WCAG 2.2's rule (2.5.8): where a finger or a pointer gets it is under 24px either
+// way, and a 24px circle round its middle reaches another target, or another small one's circle. Where it gets it is
+// measured, not its box: out from its middle each way, while what's hit there is it, inside it, or its label (a tile's
+// title whose ::after covers the tile; a switch in its row). Words linked inside a sentence aside. On a screen that's
+// touched, what's under 44px either way is listed too, apart, as advice (near). (Partly scrolled out of a strip, it's
+// taken at its size: it's all there as it's scrolled to. Partly off the screen, it's judged where it's scrolled to, not
+// here, but is there for those beside it)
+const TAPS = (touch) => {
+  const SEL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=switch], [role=tab], [role=link], [role=checkbox], [role=radio], [role=menuitem]';
+  const W = innerWidth, H = innerHeight;
+  // (whose a tap there is: the target it's in, or the control of the label it's in)
+  const whose = (h) => { if (!h) return null; const t = h.closest(SEL); if (t) return t; const l = h.closest('label'); return l ? l.control : null; };
+  const shown = (e) => { if (getComputedStyle(e).visibility !== 'visible') return false; for (let x = e; x; x = x.parentElement) if (+getComputedStyle(x).opacity < 0.05) return false; return true; };
+  const strip = (e, r) => { for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) { const c = getComputedStyle(x); if (!/auto|scroll/.test(c.overflowX + c.overflowY)) continue; const q = x.getBoundingClientRect(); if (r.left < q.left - 1 || r.right > q.right + 1 || r.top < q.top - 1 || r.bottom > q.bottom + 1) return true; } return false; };
+  const all = [];
+  for (const e of document.querySelectorAll(SEL)) {
+    const r = e.getBoundingClientRect();
+    const rs = [r, ...[...(e.labels || [])].map((l) => l.getBoundingClientRect())].filter((q) => q.width && q.height && q.bottom > 0 && q.top < H && q.right > 0 && q.left < W);
+    if (!rs.length || !shown(e)) continue;
+    // (from its middle, or its label's: a control drawn by its label. Not hit there: under something, or not where it's drawn)
+    let s = null, q = null;
+    for (const x of rs) { const at = [Math.min(W - 1, Math.max(0, (x.left + x.right) / 2)), Math.min(H - 1, Math.max(0, (x.top + x.bottom) / 2))]; if (whose(document.elementFromPoint(...at)) === e) { s = at; q = x; break; } }
+    if (!s) continue;
+    const whole = strip(e, q);
+    // (how far it's still it, out from the middle one way, a pixel at a time to 64px; to the screen's edge, its own edge
+    // at least. Still it at the screen's edge past its own edge (a wider place to tap running off the screen), it isn't
+    // judged here; drawn up to the edge itself (icons at the top, a bar at the foot), it is. Within 1.5px of its own edge,
+    // it's its edge: a hit test finds a box up to a pixel past it, and a 22.5px target would pass for 24)
+    let past = false;
+    const snap = (v, edge) => (Math.abs(v - edge) <= 1.5 ? edge : v);
+    const reach = (k, dir, edge) => {
+      let last = s[k];
+      for (let d = 1; d <= 64; d++) {
+        const at = [...s]; at[k] += dir * d;
+        if (at[k] < 0 || at[k] > (k ? H : W) - 1) { past ||= dir < 0 ? last < edge - 1.5 : last > edge + 1.5; return snap(dir < 0 ? Math.min(edge, last) : Math.max(edge, last), edge); }
+        if (whose(document.elementFromPoint(...at)) !== e) return snap(s[k] + dir * (d - 0.5), edge);
+        last = at[k];
+      }
+      return last;
+    };
+    const [l, rr] = whole || q.width >= 44 ? [q.left, q.right] : [reach(0, -1, q.left), reach(0, 1, q.right)];
+    const [t, bt] = whole || q.height >= 44 ? [q.top, q.bottom] : [reach(1, -1, q.top), reach(1, 1, q.bottom)];
+    past ||= !whole && (q.left < 0 || q.top < 0 || q.right > W || q.bottom > H);
+    all.push({ e, a: { l, r: rr, t, b: bt }, w: Math.round(rr - l), h: Math.round(bt - t), skip: past || (e.tagName === 'A' && !!e.closest('p')) });
+  }
+  const said = (o) => `${(o.e.getAttribute('aria-label') || o.e.labels?.[0]?.textContent || o.e.textContent || o.e.getAttribute('placeholder') || o.e.getAttribute('title') || o.e.getAttribute('class') || o.e.tagName).trim().replace(/\s+/g, ' ').slice(0, 28)} ${o.w}×${o.h}`;
+  const mid = (o) => [(o.a.l + o.a.r) / 2, (o.a.t + o.a.b) / 2];
+  const gap = ([x, y], a) => Math.hypot(Math.max(a.l - x, 0, x - a.r), Math.max(a.t - y, 0, y - a.b));
+  const under = (o) => o.w < 24 || o.h < 24;
+  const small = [], near = [];
+  for (const o of all) {
+    if (o.skip) continue;
+    if (touch && (o.w < 44 || o.h < 44)) near.push(said(o));
+    if (!under(o)) continue;
+    const c = mid(o);
+    if (all.some((x) => x.e !== o.e && (gap(c, x.a) < 12 || under(x) && Math.hypot(c[0] - mid(x)[0], c[1] - mid(x)[1]) < 24))) small.push(said(o));
+  }
+  return { small, near };
+};
 const H = 3600e3, PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const IPAD = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
@@ -33,7 +84,7 @@ const SIZES = [['se', 320, 568, 'phone'], ['mini', 375, 812, 'phone'], ['phone',
 const LIGHT = new Set(['phone', 'desk']);
 // (a browser of its own for each size: a long run in one wears it out)
 const launch = () => chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--disable-dev-shm-usage', '--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${MKT},${ACCT},${WX},${FIT}`] });
+  args: ['--disable-dev-shm-usage', '--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${HOME},${AUTH},${CHAT},${MKT},${ACCT},${WX},${FIT}`] });
 let b = await launch();
 const report = { pages: [], loads: [] };
 let fails = 0;
@@ -96,7 +147,9 @@ const SCREENS = [
   ['404', HOME + '/no-such-page', null, 'body'],
   ['account', ACCT + '/', null, '.app, .group'],
   ['account-notify', ACCT + '/', async (p) => { await p.locator('button:has-text("Notifications"), .row:has-text("Notifications")').first().click(); await p.waitForTimeout(900); }, '.app, .group'],
-  ['chat', CHAT + '/', null, '#screen, .welcome, .hdr'],
+  // (on a computer, Chat's page says it isn't available there, with a code to scan; on a phone on its side, to turn it
+  // upright: those are its screens there)
+  ['chat', CHAT + '/', null, '#screen .view, .na-qr:not([hidden]), .rotate'],
   ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', null, '.day-row'],
   ['fitness', FIT + '/', null, 'main, .empty, .ifh'],
   // (from 1100px wide Markets is its desk, markets/desk.js: today's screen is the desk there, and the phone's tabs aren't)
@@ -113,44 +166,122 @@ const SCREENS = [
 let mailUp = false;
 try { mailUp = (await fetch(MAIL + '/')).ok; } catch (_) {}
 
-async function look(ctx, size, scheme, [name, url, act, sel, o = {}]) {
-  if (o.mail && !mailUp) return;
-  const [sz, w, h, kind] = size;
-  if (o.phone && w >= 1100) return;
-  const c = o.fresh ? await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk', userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', colorScheme: scheme, serviceWorkers: 'block' }) : null;
-  const p = await (c || ctx).newPage();
-  await p.setViewportSize({ width: w, height: h });
-  const errs = [];
-  p.on('pageerror', (e) => errs.push(String(e.message || e).slice(0, 160)));
-  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[134]/.test(m.text())) errs.push(m.text().slice(0, 160)); });
-  try {
-    await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await p.waitForSelector(sel, { timeout: 20000 }).catch(() => errs.push(`never showed ${sel}`));
-    await p.waitForTimeout(1800);
-    if (act) await act(p).catch((e) => errs.push(`couldn't open: ${String(e.message).split('\n')[0].slice(0, 120)}`));
-    await p.waitForTimeout(500);
-    // (down the page a screen at a time, and back to the top: what's drawn only once it's scrolled to, e.g. Weather's
-    // radar, is then there to check)
-    for (let i = 0; i < 12; i++) {
-      if (!await p.evaluate(() => { const y = scrollY; scrollBy({ top: innerHeight * 0.8, behavior: 'instant' }); return scrollY > y; })) break;
+// the screen's own scrollers (a list, a thread, a column): seen, on the screen and not under anything, holding more than
+// they show; the biggest four, each to be stepped towards its far end (down, or up where it's at its foot: a thread) and
+// put back as it was (by its foot, there: older messages may come in above)
+const SCROLLERS = () => {
+  const out = [];
+  for (const x of document.body.querySelectorAll('*')) {
+    const c = getComputedStyle(x);
+    if (!/auto|scroll/.test(c.overflowY) || x.scrollHeight <= x.clientHeight + 40 || c.visibility !== 'visible') continue;
+    const r = x.getBoundingClientRect(), l = Math.max(r.left, 0), rr = Math.min(r.right, innerWidth), t = Math.max(r.top, 0), b = Math.min(r.bottom, innerHeight);
+    if (rr - l < 120 || b - t < 120) continue;
+    const h = document.elementFromPoint((l + rr) / 2, (t + b) / 2);
+    if (h && (h === x || x.contains(h))) out.push([x, (rr - l) * (b - t)]);
+  }
+  const list = out.sort((a, b) => b[1] - a[1]).slice(0, 4).map(([x]) => {
+    const left = x.scrollHeight - x.clientHeight - x.scrollTop, down = left >= x.scrollTop;
+    return { x, down, was: down ? x.scrollTop : left };
+  });
+  window.__sweep = {
+    step: (i) => { const { x, down } = list[i], y = x.scrollTop; x.scrollBy({ top: (down ? 0.8 : -0.8) * x.clientHeight, behavior: 'instant' }); return x.scrollTop !== y; },
+    back: (i) => { const { x, down, was } = list[i]; x.scrollTo({ top: down ? was : x.scrollHeight - x.clientHeight - was, behavior: 'instant' }); },
+  };
+  return list.length;
+};
+async function shot(p, kind, size, scheme, [name, url, act, sel], errs) {
+  const [sz, w, h] = size;
+  await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  // (any of them shown: the first in the page may be one that's hidden at this size)
+  await p.waitForSelector(sel.split(',').map((x) => `${x.trim()}:visible`).join(', '), { timeout: 20000 }).catch(() => errs.push(`never showed ${sel}`));
+  await p.waitForTimeout(1800);
+  if (act) await act(p).catch((e) => errs.push(`couldn't open: ${String(e.message).split('\n')[0].slice(0, 120)}`));
+  await p.waitForTimeout(500);
+  // (down the page a screen at a time, and back to the top: what's drawn only once it's scrolled to, e.g. Weather's
+  // radar, is then there to check; and each step is checked as it's seen, for what's only found on the screen, as a box
+  // drawn over part of a text)
+  const seen = [];
+  for (let i = 0; i < 12; i++) {
+    if (!await p.evaluate(() => { const y = scrollY; scrollBy({ top: innerHeight * 0.8, behavior: 'instant' }); return scrollY > y; })) break;
+    await p.waitForTimeout(400);
+    seen.push(await p.evaluate(AUDIT));
+  }
+  await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' })); await p.waitForTimeout(900);
+  const a = await p.evaluate(AUDIT);
+  // (then the screen's own scrollers, a step at a time within a cap, each step checked, and each put back)
+  const n = await p.evaluate(SCROLLERS);
+  for (let i = 0, steps = 0; i < n && steps < 16; i++) {
+    for (let k = 0; k < 6 && steps < 16; k++, steps++) {
+      if (!await p.evaluate((i) => window.__sweep.step(i), i)) break;
       await p.waitForTimeout(400);
+      seen.push(await p.evaluate(AUDIT));
     }
-    await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' })); await p.waitForTimeout(900);
-    const a = await p.evaluate(AUDIT), taps = kind === 'desk' ? [] : await p.evaluate(TAPS);
-    let axe = [];
-    if (sz === 'phone' || sz === 'desk' || sz === 'se') {
-      await p.evaluate(AXE);
-      axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, resultTypes: ['violations'] })).violations
-        .map((v) => `${v.id} ×${v.nodes.length} (${v.impact}): ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ').slice(0, 140)}`));
+    await p.evaluate((i) => window.__sweep.back(i), i); await p.waitForTimeout(300);
+  }
+  if (n) await p.waitForTimeout(600);
+  // (what was found only while scrolled, listed with the rest and apart, as scrolled)
+  const scrolled = [...new Set(seen.flatMap((r) => r.issues))].filter((x) => !a.issues.includes(x));
+  const ellipsis = [...new Set([...a.trunc, ...seen.flatMap((r) => r.trunc)])];
+  const taps = await p.evaluate(TAPS, kind !== 'desk');
+  let axe = [];
+  if (sz === 'phone' || sz === 'desk' || sz === 'se') {
+    await p.evaluate(AXE);
+    axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, resultTypes: ['violations'] })).violations
+      .map((v) => `${v.id} ×${v.nodes.length} (${v.impact}): ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ').slice(0, 140)}`));
+  }
+  const file = `${name}-${sz}-${scheme}.png`;
+  await p.screenshot({ path: `${out}/${file}` });
+  const issues = [...a.issues, ...scrolled];
+  report.pages.push({ name, size: sz, w, h, scheme, issues, scrolled, ellipsis, taps: [...new Set(taps.small)].slice(0, 12), near: [...new Set(taps.near)].slice(0, 12), nearCount: taps.near.length, axe, errs: [...new Set(errs)], file });
+  const bad = issues.length + errs.length;
+  console.log(`${bad ? 'NOTE' : 'ok  '}  ${name} ${sz} ${scheme}: ${issues.length} layout, ${taps.small.length} small taps${taps.near.length ? ` (${taps.near.length} under 44)` : ''}, ${axe.length} axe, ${errs.length} errors${bad ? '  — ' + [...issues, ...errs].slice(0, 4).join(' | ') : ''}`);
+}
+// (each screen on its own: one that crashes, or hangs, is tried once more on a fresh context (and a fresh browser, if
+// that's what went down), and then reported, and the run goes on)
+async function renew(kit) {
+  await kit.ctx?.close().catch(() => {});
+  for (let k = 0; ; k++) {
+    try {
+      if (!b.isConnected()) b = await launch();
+      kit.ctx = await context(kit.kind, kit.scheme, states[kit.kind]);
+      await (await kit.ctx.newPage()).close();   // (a browser that's going down can still give a context, but not a page)
+      return;
+    } catch (e) {
+      if (k) throw e;
+      await b.close().catch(() => {}); b = await launch();
     }
-    const file = `${name}-${sz}-${scheme}.png`;
-    await p.screenshot({ path: `${out}/${file}` });
-    const row = { name, size: sz, w, h, scheme, issues: a.issues, ellipsis: a.trunc, taps: [...new Set(taps)].slice(0, 12), axe, errs: [...new Set(errs)], file };
-    report.pages.push(row);
-    const bad = a.issues.length + errs.length;
-    console.log(`${bad ? 'NOTE' : 'ok  '}  ${name} ${sz} ${scheme}: ${a.issues.length} layout, ${taps.length} small taps, ${axe.length} axe, ${errs.length} errors${bad ? '  — ' + [...a.issues, ...errs].slice(0, 4).join(' | ') : ''}`);
-  } catch (e) { console.log(`NOTE  ${name} ${sz} ${scheme}: ${String(e.message).split('\n')[0]}`); }
-  await p.close(); if (c) await c.close();
+  }
+}
+async function look(kit, size, scheme, scr) {
+  const [name, , , , o = {}] = scr, [sz, w, h, kind] = size;
+  if (o.mail && !mailUp) return;
+  if (o.phone && w >= 1100) return;
+  for (let k = 0; ; k++) {
+    let c = null, p = null, timer = 0;
+    const errs = [];
+    try {
+      c = o.fresh ? await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk', userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', colorScheme: scheme, serviceWorkers: 'block' }) : null;
+      p = await (c || kit.ctx).newPage();
+      await p.setViewportSize({ width: w, height: h });
+      p.on('pageerror', (e) => errs.push(String(e.message || e).slice(0, 160)));
+      p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[134]/.test(m.text())) errs.push(m.text().slice(0, 160)); });
+      const hung = new Promise((_, no) => { timer = setTimeout(() => no(new Error('hung for 4 minutes')), 240e3); p.once('crash', () => no(new Error('the page crashed'))); });
+      await Promise.race([shot(p, kind, size, scheme, scr, errs), hung]);
+      return;
+    } catch (e) {
+      const why = String(e.message || e).split('\n')[0].slice(0, 160);
+      if (k) {
+        report.pages.push({ name, size: sz, w, h, scheme, issues: [], scrolled: [], ellipsis: [], taps: [], near: [], nearCount: 0, axe: [], errs: [`couldn't look, twice: ${why}`], file: null });
+        console.log(`NOTE  ${name} ${sz} ${scheme}: couldn't look, twice (${why})`);
+        return;
+      }
+      console.log(`again ${name} ${sz} ${scheme}: ${why}`);
+      await renew(kit).catch((e) => console.log(`      (no fresh context: ${String(e.message).split('\n')[0]})`));
+    } finally {
+      clearTimeout(timer);
+      await p?.close().catch(() => {}); await c?.close().catch(() => {});
+    }
+  }
 }
 
 // each app's first load, from nothing (a phone, an empty cache): what it fetched, how much, and when it showed
@@ -191,15 +322,16 @@ for (const size of process.env.LOADS_ONLY ? [] : SIZES.slice(Math.max(0, SIZES.f
   const kind = size[3];
   await b.close().catch(() => {}); b = await launch();
   for (const scheme of LIGHT.has(size[0]) ? ['dark', 'light'] : ['dark']) {
-    const ctx = await context(kind, scheme, states[kind]);
-    for (const scr of SCREENS) await look(ctx, size, scheme, scr);
-    await ctx.close();
+    const kit = { kind, scheme, ctx: null };
+    await renew(kit).catch((e) => console.log(`      (no context for ${size[0]} ${scheme}: ${String(e.message).split('\n')[0]}; each screen tries again)`));
+    for (const scr of SCREENS) await look(kit, size, scheme, scr);
+    await kit.ctx?.close().catch(() => {});
   }
   save();
 }
 await b.close().catch(() => {}); b = await launch();
 const people = { desk: await context('phone', 'dark', states.phone) };
-for (const [name, url, sel] of [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen, .hdr'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
+for (const [name, url, sel] of [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen .view'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
   ['fitness', FIT + '/', 'main'], ['markets', MKT + '/', '#pv'], ...(mailUp ? [['mail', MAIL + '/?demo', 'body']] : [])]) await load(people.desk, name, url, sel);
 save();
 console.log(`${report.pages.length} screens looked at`);

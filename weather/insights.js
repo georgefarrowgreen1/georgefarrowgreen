@@ -27,6 +27,7 @@ const sum = (a) => a.reduce((x, y) => x + (y || 0), 0);
 const MORE = { umbrella: "rain", heavyrain: "rain", storm: "rain", snow: "rain", wetweek: "rain", dryweek: "rain", wind: "wind", frost: "feels", ice: "feels",
   heat: "feels", bitter: "feels", warmnight: "feels", wear: "feels", fog: "visibility", uv: "uv", air: "air", pollen: "air", pressure: "pressure" };
 // an insight's short line (its row folded): the fullest of these that fits beside its icon on a phone, about 32 letters
+// (on the narrowest, 320 across, about 26: there it takes a second line rather than lose a figure, styles.css .ins-short)
 const fit = (...xs) => xs.find((x) => x.length <= 32) ?? xs[xs.length - 1];
 // a day named mid-sentence: "from tomorrow", not "from Tomorrow" (the days of the week keep their capitals)
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());

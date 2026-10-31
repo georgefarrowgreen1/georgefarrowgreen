@@ -1023,6 +1023,9 @@ function placePages(a, b, va, vb) {
     const id = q && onePage() ? cell(q.lat, q.lon) : "", e = id ? pages.get(id) : null, want = e || id, top = id ? heroSig(v, i) : "";
     if (pv._for === want && pv._top === top) continue;
     pv._for = want; pv._id = id; pv._top = top; pv.dataset.whole = e ? "1" : "";
+    // (its own sky, for its cards' glass and headings: tinted as they'll be once it's landed on, not as this one's are,
+    // styles.css .pv[data-sky])
+    pv.dataset.sky = (id && v?.sky) || "";
     // (with the hero's line under its briefing, as tall as it is, said or not; faded as far as the page is scrolled, as
     // the scroller is: wire's onScroll; and its own sky with it, for the shade behind its words: styles.css)
     const now = id ? h("div", { class: "pv-hero", "data-sky": v?.sky || null }, ...heroBits(v, i), h("p", { class: "status" })) : null;
@@ -1052,6 +1055,9 @@ function layoutPager(force = false, only = true) {
   const va = a && drawPage(pp, a, S.cur - 1, only), vb = b && drawPage(pn, b, S.cur + 1, only);
   document.querySelector(".sky-prev").dataset.sky = va?.sky || "";
   document.querySelector(".sky-next").dataset.sky = vb?.sky || "";
+  // (and the page's own colour at the sky's foot that comes with each, as sky has it: styles.css .sky-foot)
+  document.querySelector(".sky-foot-prev").style.backgroundColor = SKY_FOOT[va?.sky] || "";
+  document.querySelector(".sky-foot-next").style.backgroundColor = SKY_FOOT[vb?.sky] || "";
   document.querySelector(".pg-name-prev").textContent = a ? a.name : "";
   document.querySelector(".pg-name-next").textContent = b ? b.name : "";
   document.querySelector(".pg-sub-prev").textContent = subOf(a);
@@ -1113,12 +1119,12 @@ function dragOff() {
   dragging = false; document.querySelector(".top").classList.remove("swiping"); document.querySelector(".sky").classList.remove("swiping");
   $("pager").classList.remove("pg-led");
   if (!linked) {
-    for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
+    for (const x of document.querySelectorAll("main > .col, .pv, .sky-alt, .sky-foot > i, #place-name, .pg-name, #place-sub, .pg-sub")) { x.style.translate = ""; x.style.opacity = ""; }
     $("place-btn").style.width = $("place-name").style.width = ""; document.querySelector(".place-line").style.alignSelf = "";
   }
 }
 // (as styles.css has it: the cards along with it (and the next place's beside them; or, wide, fading), the next sky over
-// this one, the next name over this one)
+// this one (and the page's own colour at its foot), the next name over this one)
 let followRaf = 0;
 function follow() {
   followRaf ||= requestAnimationFrame(() => {
@@ -1128,7 +1134,8 @@ function follow() {
     const whole = onePage() && !calm.matches, vw = (n) => `${n.toFixed(2)}vw 0`;
     for (const c of document.querySelectorAll("main > .col")) { c.style.translate = calm.matches ? "" : vw(-x * 100); c.style.opacity = whole ? "" : o(1 - 2 * ax); }
     if (whole) { document.querySelector(".pv-prev").style.translate = vw(-100 - x * 100); document.querySelector(".pv-next").style.translate = vw(100 - x * 100); }
-    document.querySelector(".sky-prev").style.opacity = o(-x); document.querySelector(".sky-next").style.opacity = o(x);
+    document.querySelector(".sky-prev").style.opacity = document.querySelector(".sky-foot-prev").style.opacity = o(-x);
+    document.querySelector(".sky-next").style.opacity = document.querySelector(".sky-foot-next").style.opacity = o(x);
     $("place-name").style.opacity = o(1 - 5 * ax);
     document.querySelector(".pg-name-prev").style.opacity = o(-2 * x - 1); document.querySelector(".pg-name-next").style.opacity = o(2 * x - 1);
     // (and the line under it, the same, and the pill and the name in it from this place's width to the next one's, unless
@@ -1181,6 +1188,13 @@ function commit(dir) {
   // (the swipe's own styles off first: what's now showing measured as it's laid out, pillWidths)
   dragOff();
   layoutPager(true);
+  // (its page was beside it, settled into place throughout (stillCopy): what's on screen of it, the same now, rather than
+  // a card at the foot of the screen still to settle, moving up as it lands; measured settled, as it's been shown)
+  if (whole) {
+    const xs = [...document.querySelectorAll("main > .col :is(.card, .ins, .tile):not(.settled)")];
+    for (const x of xs) x.classList.add("settled");
+    for (const x of xs) { const r = x.getBoundingClientRect(); if (r.height && r.top < innerHeight) settled?.unobserve(x); else x.classList.remove("settled"); }
+  }
   // (its page wasn't beside it yet: its cards come up under it)
   if (!whole) { for (const c of document.querySelectorAll("main > .col")) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: EASE_OUT }); arrive(true); }
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("pg-snap")));
@@ -2926,8 +2940,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.60";
-const NEWS = "Swiping to another place is smoother: its sky's glow and the shade behind its words come in with it, so nothing changes as you land; and the Right Now tiles' figures sit level in every row, on the smallest phones too";
+const BUILD = "1.61";
+const NEWS = "Swiping between places, the next place's cards come in already tinted for its sky, with the colour at the foot of the screen; on small phones the radar's legend words and scale no longer run into each other or its credits; and a Highlight too long for one line takes two rather than losing a figure";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
