@@ -1496,9 +1496,6 @@ a.acct-btn { text-decoration: none; }
 .radar-time .rt-rel { display: block; font-size: 13px; color: var(--ink-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the legend: the radar's colours as one bar, light to extreme, and snow's beside it (radar.js: --stops, --at) */
 .radar-legend { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0 0; font-size: 11.5px; color: var(--text-2); }
-/* (its room kept till radar.js has come to draw it, as the card comes near: its bar, the gap and its words; so the
-   card's as tall before as after, and nothing under it moves, nor the copy of the page beside it: app.js radarLater) */
-.radar-legend:empty { min-height: calc(8px + 4px + 16px); }
 .rl-title { display: none; }
 .rl-rain { flex: 1; min-width: 0; }
 .rl-bar { display: block; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--stops)); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
@@ -1693,8 +1690,6 @@ body.no-scroll { overflow: hidden; }
 .radar-chip { display: none !important; }
 /* on the day map, the controls on it in light glass, their ink dark, as Apple's */
 .radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
-/* (and so till radar.js has come and said which, as the card comes near: data-layer, light-map; app.js radarLater) */
-@media (prefers-color-scheme: light) { .radar:not([data-layer]) .radar-map { background: #f2f1ee; } }
 .radar.light-map .map-zoom, .radar.light-map :is(.radar-centre, .map-layers), .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
   background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
 .radar.light-map .map-zoom button { color: #1c1c1e; }

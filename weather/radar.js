@@ -9,17 +9,16 @@
 // (it asks apps to keep them few); closer in, they're enlarged: smoothly, read
 // back into reflectivity and blended (rainmap.js rainValues), rather than as squares.
 //
-// This, and the map's code, are loaded only as the card comes near (this a screen ahead: app.js radarLater; the
-// vector map's half a screen ahead: it's a megabyte). The radar's say on the rain here, which the page wants as it
-// opens, is radarrain.js's, as are the tiles' readings and the list of frames, shared with it.
+// The map's code is loaded only as the card comes near (the vector map's, a screen ahead: it's a megabyte).
 
-import { grid, paint, fadeEdges, timeline, LEGEND, rainValues, colour, ramp, squareAt, driftOf, rainSaid, partsAt, tileOf, cornerOf, paintField, fieldAt, gridAt, tint, mmhOf, MIN_RATE, TEMP_STOPS, WIND_STOPS } from "./rainmap.js";
+import { grid, paint, fadeEdges, timeline, LEGEND, decode, rainValues, colour, ramp, squareAt, driftOf, rainSaid, radarAt, partsAt, tileOf, cornerOf, paintField, fieldAt, gridAt, tint, mmhOf, MIN_RATE, TEMP_STOPS, WIND_STOPS } from "./rainmap.js";
 import { glMix } from "./radarmix.js";
-import { NATIVE, SRC, tileCodes, forgetTiles, framesNow } from "./radarrain.js";
 
+const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
-// (NATIVE and SRC, the radar's finest detail and the size of its tiles asked for: radarrain.js)
-const SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
+// NATIVE: the radar's finest detail, as a zoom of 256-pixel tiles; SRC: the size of the tiles
+// asked for (512, a zoom below, as fine as NATIVE's)
+const NATIVE = 7, SRC = 512, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
 // the map's zoom as it opens (about 10 miles to its scale's bar: the place and the rain about it, the radar smoothed), and
 // the closest it goes (two steps in: no closer than the radar's worth seeing)
 const VIEW = 9, CLOSEST = 11, FIELD_ZOOM = 7;
@@ -136,6 +135,68 @@ const canvasFor = (g, rates, snow, edges = false) => {
 // (the grid the models' hours are on: about 550 km across about the place, 13 × 13, so the hours after the next two
 // cover the map as it's usually seen, not just a box about the place; the next two's, finer, is 220 km)
 const hourGrid = (lat, lon) => grid(lat, lon, 13, 2.5, 6);
+// A radar tile's pixels, read back into reflectivity once (the last 120 kept). Asked for six at a time, the frame
+// on show first; a tile that doesn't come isn't kept (it's asked for again next time it's wanted)
+const codes = new Map(), asks = [];
+let asking = 0;
+function next() {
+  while (asking < 6 && asks.length) {
+    const k = Math.max(0, asks.findIndex((a) => a.shown()));
+    const a = asks.splice(k, 1)[0];
+    asking++;
+    a.go();
+  }
+}
+// (read back off the page's own thread where it can be: each tile handed to a thread of its own (radarwork.js) as a
+// bitmap, its codes handed back, so the page isn't held up a tile at a time as it opens or the map's moved; here,
+// where there's no such thread, or it won't start or can't read one)
+let reader = null, reads = 0;
+const reading = new Map();
+function readerOf() {
+  if (reader !== null) return reader;
+  reader = false;
+  if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap !== "function") return reader;
+  try {
+    const w = new Worker(new URL("./radarwork.js", import.meta.url), { type: "module" });
+    w.onmessage = ({ data: { id, codes: got } }) => { const f = reading.get(id); reading.delete(id); f?.(got); };
+    w.onerror = (e) => { e.preventDefault?.(); reader = false; try { w.terminate(); } catch (_) {} for (const f of reading.values()) f(null); reading.clear(); };
+    reader = w;
+  } catch (_) {}
+  return reader;
+}
+function tileCodes(url, shown = () => true) {
+  if (codes.has(url)) return codes.get(url);
+  const p = new Promise((ok) => {
+    asks.push({ shown, go: () => {
+      const img = new Image(), end = (v) => { asking--; ok(v); next(); };
+      img.crossOrigin = "anonymous";
+      const here = () => {
+        try {
+          const c = document.createElement("canvas"); c.width = c.height = SRC;
+          const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0, SRC, SRC);
+          end(decode(x.getImageData(0, 0, SRC, SRC).data));
+        } catch (_) { end(null); }
+      };
+      img.onload = () => {
+        const w = readerOf();
+        if (!w) return here();
+        createImageBitmap(img).then((bmp) => {
+          // (its thread gone meanwhile: read here)
+          if (reader !== w) { bmp.close(); return here(); }
+          const id = ++reads;
+          w.postMessage({ id, bmp, size: SRC }, [bmp]);
+          reading.set(id, (got) => (got ? end(got) : here()));
+        }).catch(here);
+      };
+      img.onerror = () => { if (codes.get(url) === p) codes.delete(url); end(null); };
+      img.src = url;
+    } });
+    next();
+  });
+  codes.set(url, p);
+  if (codes.size > 120) codes.delete(codes.keys().next().value);
+  return p;
+}
 // How the radar is smoothed (rainmap.js rainValues): crisp edges in the radar's own bands, soft edges with
 // colours that flow, or (as here) clean edges with flowing colour
 const LOOKS = { contours: { edge: [0.22, 0.45], soft: 0.4 }, gradient: { edge: [0.04, 0.6], soft: 2.5 }, both: { edge: [0.16, 0.5], soft: 1.4 } };
@@ -296,15 +357,29 @@ const unkeep = (k, x) => { x.bmp?.close?.(); kept.delete(k); };
 // The radar put away (radar's putAway): the tiles' readings, and every frame's tile kept but those on the map now, let go,
 // some tens of megabytes, so a phone short of memory is no likelier to close the app; worked out again as they're wanted
 function letGo() {
-  forgetTiles();
+  codes.clear();
   for (const [k, x] of kept) if (x.done && !inUse(x)) unkeep(k, x);
 }
 
+// RainViewer's list of frames, kept a few minutes (the card and the next hours' words both ask for it)
+let frameList = null;
+function framesNow() {
+  if (frameList && Date.now() - frameList.at < 3 * 60e3) return frameList.p;
+  const p = fetch(FRAMES, { signal: AbortSignal.timeout(10000) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`radar ${r.status}`))));
+  frameList = { at: Date.now(), p };
+  p.catch(() => { if (frameList?.p === p) frameList = null; });
+  return p;
+}
 // How the rain about a place is moving (rainmap.js driftOf), from the latest radar frame and the one 20 minutes before
 async function driftAt(host, past, lat, lon) {
   const a = past[past.length - 3], b = past[past.length - 1], tile = (fr) => (x, y) => tileCodes(`${host}${fr.path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`);
   const [A, B] = await Promise.all([squareAt(lat, lon, tile(a)), squareAt(lat, lon, tile(b))]);
   return driftOf(A, B, (b.time - a.time) / 60);
+}
+// The rain here over the next two hours, from the radar, for the next few hours' words and chart (app.js, with the
+// models' after it: rainmap.js blend): rainmap.js radarAt, on the card's own tiles (kept, so it then has them to hand)
+export async function rainAt(lat, lon) {
+  return radarAt(lat, lon, await framesNow(), (url) => tileCodes(url), Date.now());
 }
 
 const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min % 60} min ` : ""}ago` : `${min} min ago`);

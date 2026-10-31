@@ -24,18 +24,18 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-1.59" />
+  <meta name="app-version" content="wx-1.58" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
   <link rel="stylesheet" href="./styles.css" />
   <script type="module" src="./app.js"></script>
   <!-- everything app.js needs, asked for at once (rather than found one import at a time), and the forecast's
-       server warmed up while they come (the radar card's own, radar.js, only as it comes near: app.js radarLater) -->
+       server warmed up while they come -->
   <link rel="modulepreload" href="./data.js" /><link rel="modulepreload" href="./format.js" /><link rel="modulepreload" href="./insights.js" />
   <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
   <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
-  <link rel="modulepreload" href="./radarrain.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
+  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
   <link rel="modulepreload" href="./solar.js" /><link rel="modulepreload" href="./account.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
   <!-- (the account's page, where Sign in goes: ready to open the moment it's tapped) -->

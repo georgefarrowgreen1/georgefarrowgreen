@@ -8,7 +8,7 @@ import { timeChart, rangeChart, hush } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
 import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS } from "./skill.js";
-import { rainAt } from "./radarrain.js";
+import { radar, rainAt } from "./radar.js";
 import { blend } from "./rainmap.js";
 import { oneRain } from "./agree.js";
 import { zonesSpell, zonesSay, zoneSaid, FACES, PITCHES, MAX_ZONES, ZONE_COLOURS } from "./solar.js";
@@ -640,7 +640,7 @@ async function go(force = false, fresh = null) {
   // what asked for it (a pull to refresh) told once it's drawn, not before: paint)
   const again = !moved && !!S.wx;
   if (again) S.hold = { again: true, until: Date.now() + 2500, timer: 0 };
-  if (!S.radar) S.radar = radarLater($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     temp: (c) => S.f.temp(c), tempUnit: () => (S.f.units.temp === "f" ? "°F" : "°C"), windNum: (k) => Math.round(S.f.windNum(k)), windUnit: () => S.f.windUnit,
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -737,7 +737,7 @@ const shaped = (wx, r = S.rain) => {
   const led = r && r.id === cell(t.place.lat, t.place.lon) && Date.now() - r.at <= 40 * 60e3 ? { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) } : t;
   return oneRain(led, nowWall(led.place.offset));
 };
-// The radar's say on the next couple of hours here (radarrain.js rainAt), asked for with each forecast, and the page drawn
+// The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
 // again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
 // (each place's, as last had: a place beside the one shown asked too, so it's drawn there as it will be: readyNearby)
 const rains = new Map();
@@ -2923,8 +2923,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.59";
-const NEWS = "Opens a little quicker: the rain radar's map code now loads as you scroll to it";
+const BUILD = "1.58";
+const NEWS = "Warnings no longer drop off when a source is slow, each place and hazard gets its own warning, and the 16 days' bars always draw in";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3449,35 +3449,6 @@ const later = (get) => {
 const [detailJs, DE] = later(() => import("./detail.js")), [settingsJs, SE] = later(() => import("./settings.js"));
 const openDetail = (kind) => detailJs(`detail:${kind}`).then((m) => m.openDetail(kind)).catch(() => {});
 const openDay = (key) => detailJs(`day:${key}`).then((m) => m.openDay(key)).catch(() => {});
-// The radar card (radar.js: the map, its frames and their playback), fetched as the page is scrolled to within a screen
-// of it, not as the page opens, which needs only the radar's say on the rain here (radarrain.js); at once only if it's
-// in sight as the page opens (a wide screen, say: as the page is first drawn, a card further down passes close by for
-// a moment). Meanwhile what the page tells it (the place, its bubble, the other places, the warnings: the last of each)
-// is kept, and handed over as it comes, and its line put in at once, so the card's as tall as it will be (with its
-// legend's room: styles.css); one that couldn't be fetched is tried again as the page next looks (check: refresh). In
-// sight, it's asked for (ask), so with a new version in meanwhile the page starts again on it there, as a sheet asked
-// for does (later), rather than leaving the card blank till the updater puts it in
-const [radarJs] = later(() => import("./radar.js"));
-function radarLater(card, opts) {
-  let real = null, asked = false, here = { lat: opts.lat, lon: opts.lon };
-  const told = {};
-  const make = (ask) => {
-    if (real || (asked && !(ask && newApp))) return;
-    asked = true;
-    radarJs(ask).then((m) => { if (real) return; real = m.radar(card, { ...opts, ...here }); for (const [k, a] of Object.entries(told)) real[k](...a); }, () => { asked = false; });
-  };
-  const near = (margin, ask) => { const io = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) { io.disconnect(); make(ask); } }, { rootMargin: margin }); io.observe(card); };
-  near("120px", "radar");
-  addEventListener("scroll", () => { if (!asked) near("100% 0px"); }, { once: true, passive: true });
-  const tell = (k) => (...a) => (real ? real[k](...a) : void (told[k] = a));
-  return {
-    place(lat, lon) { if (real) real.place(lat, lon); else here = { lat, lon }; },
-    refresh() { if (real) real.refresh(); else make("radar"); },
-    still(had) { return real ? real.still(had) : Promise.resolve(null); },
-    note(text) { if (real) real.note(text); else { const s = card.querySelector(".radar-note > span"); if (s) s.textContent = text || ""; } },
-    others: tell("others"), warnings: tell("warnings"), mark: tell("mark"),
-  };
-}
 // Started again on the new version (later): how far down the page was, and what was asked for, kept a moment for it, as
 // the updater keeps where you are (IFL.updates); then, once the page is drawn on it, scrolled back to and opened (reopen)
 const AGAIN = "wx:again";
@@ -3494,7 +3465,6 @@ function reopen() {
   let n = 0;
   const open = () => {
     if (!S.wx && n++ < 20) { setTimeout(open, 250); return; }
-    // (the radar: only scrolled back to, where it's in sight, so fetched: radarLater)
     if (k.y) scrollTo(0, k.y);
     if (what === "detail" && S.wx) openDetail(arg);
     else if (what === "day" && S.wx) openDay(arg);
