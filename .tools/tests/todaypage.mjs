@@ -502,6 +502,14 @@ await part('morning', async () => {
   await mode('ok'); await ctl('/__morning', { on: false }); await reset();
   const { ctx, p } = await open({ push: true });
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  // (its settings: in a sheet from the menu, under your photo, not on the page)
+  const openMorning = async () => {
+    await p.click('#hd .ifh-me'); await p.waitForSelector('.ifm-pop.open');
+    await p.click('.ifm-pop [data-k=morning]'); await p.waitForSelector('#morning.on'); await p.waitForTimeout(700);
+  };
+  ok(!(await p.isVisible('#mOn')) && !(await p.$('#day #morning')), 'morning: not on the page, only in the menu');
+  await openMorning();
+  ok(await p.isVisible('#mOn'), 'morning: its settings, opened from the menu');
   ok(!(await p.isChecked('#mOn')), 'morning: off, as the account says');
   ok(!(await p.$('#lock, .lk-note')), 'morning: no Lock Screen picture, its settings only');
   await p.click('#mOn');
@@ -531,6 +539,7 @@ await part('morning', async () => {
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
+  await openMorning();
   has(await text(p, '#mWhy'), 'Not on any of your devices yet · Turn On Here', 'on with no device: said, with Turn On Here');
   const reach = await p.$eval('#mWhy [data-turnon]', (b) => { const r = b.getBoundingClientRect(), a = getComputedStyle(b, '::after'); return [r.height - parseFloat(a.top) - parseFloat(a.bottom), r.width - parseFloat(a.left) - parseFloat(a.right)]; });
   ok(reach[0] >= 44 && reach[1] >= 44, 'Turn On Here: a finger’s reach, 44 by 44 or more', JSON.stringify(reach));
@@ -540,7 +549,7 @@ await part('morning', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
   ok(!(await p.$('#lock, .lk-note')), 'still no Lock Screen picture, with a next one to come');
-  await p.$eval('#morning', (s) => s.scrollIntoView());
+  await openMorning();
   await p.screenshot({ path: `${OUT}/morning-390-dark.png` });
   await ctx.close();
 });
