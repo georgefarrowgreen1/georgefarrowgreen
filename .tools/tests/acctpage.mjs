@@ -81,9 +81,8 @@ await joinChat(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'r
 await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForTimeout(600);
 await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open');
 const youCard = await L.p.$('.ifm-pop .ifm-card'), setRow = await L.p.$('.ifm-pop [data-k=settings]'), popSays = await L.p.innerText('.ifm-pop');
-// (and Today, first, at the apps' site itself, with its icon: .tools/inflite/menu.js todayUrl)
-const todayRow = await L.p.$eval('.ifm-rows > .ifm-grp:first-child > a.ifm-today', (a) => ({ href: a.getAttribute('href'), says: a.innerText.replace(/\s+/g, ' ').trim(), icon: a.querySelector('img.ifm-img')?.naturalWidth > 0 })).catch(() => null);
-ok(todayRow?.href === `${CHAT.replace('//chat.', '//')}/` && todayRow.says === 'Today Your day' && todayRow.icon, 'InFlite’s menu starts with Today, at the apps’ site itself', JSON.stringify(todayRow));
+// (and no row to Today, inflite.ai: Today is in no other app's menu)
+ok(!(await L.p.$('.ifm-pop .ifm-today, .ifm-pop a[href="https://inflite.ai/"]')) && !/Today/.test(popSays), 'InFlite’s menu has no row to Today', popSays);
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 ok(!!youCard && !(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!setRow && !(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(popSays), 'Chat leads here, without naming any other app');
 // (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in

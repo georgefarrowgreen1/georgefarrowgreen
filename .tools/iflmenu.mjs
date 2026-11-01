@@ -12,16 +12,25 @@ export const CSS_START = "/* ==== InFlite's menu, shared: from .tools/inflite/me
 export const CSS_END = "/* ==== end of InFlite's menu ==== */";
 export const SCRIPTS = ["pigeon/app.js", "weather/app.js", "fitness/app.js", "markets/app.js", "account/app.js"];
 export const STYLES = ["pigeon/styles.css", "weather/styles.css", "fitness/styles.css", "markets/styles.css", "account/styles.css"];
-const APPS = ["chat", "weather", "fitness", "markets", "mail", "today", "account"];
+const APPS = ["chat", "weather", "fitness", "markets", "mail", "account"];
+// (an app in no other app's menu, its name, icon and colour in its own copy alone: Today, at inflite.ai, its folder
+// named today/public)
+const OWN = { today: { name: "Today", tint: "#2a6ae6" } };
+const ownOf = (dir) => Object.keys(OWN).find((a) => new RegExp(`(^|/)${a}/public/?$`).test(dir)) || null;
 
 // an app's icon, small: no notes, no spaces between its parts
 const mini = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<\?xml[^>]*>/, "").replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
-export const jsBlock = () => {
-  const icons = Object.fromEntries(APPS.map((a) => [a, mini(readFileSync(`${ROOT}.tools/inflite/icons/${a}.svg`, "utf8"))]));
-  const js = readFileSync(`${ROOT}.tools/inflite/menu.js`, "utf8").trim().replace("/*ICONS*/{}", JSON.stringify(icons));
+export const jsBlock = (own) => {
+  const icons = Object.fromEntries([...APPS, ...(own ? [own] : [])].map((a) => [a, mini(readFileSync(`${ROOT}.tools/inflite/icons/${a}.svg`, "utf8"))]));
+  let js = readFileSync(`${ROOT}.tools/inflite/menu.js`, "utf8").trim().replace("/*ICONS*/{}", JSON.stringify(icons));
+  if (own) {
+    const last = '["account", "Account"]];';
+    if (!js.includes(last)) throw new Error(`.tools/inflite/menu.js's APPS no longer ends ${last}: say in iflmenu.mjs where ${own} goes`);
+    js = js.replace(last, `["account", "Account"], ["${own}", "${OWN[own].name}"]];`);
+  }
   return `${JS_START}\n${js}\n${JS_END}`;
 };
-export const cssBlock = () => `${CSS_START}\n${readFileSync(`${ROOT}.tools/inflite/menu.css`, "utf8").trim()}\n${CSS_END}`;
+export const cssBlock = (own) => `${CSS_START}\n${readFileSync(`${ROOT}.tools/inflite/menu.css`, "utf8").trim()}${own ? `\n.ifm-in-${own} { --ifm-tint: ${OWN[own].tint}; }` : ""}\n${CSS_END}`;
 
 function into(file, start, end, b) {
   const text = readFileSync(file, "utf8");
@@ -40,8 +49,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // (the other folders named, each an app's of its own: Mail's and Today's, in the inflite repo)
   for (const dir of process.argv.slice(2)) {
     if (!existsSync(`${dir}/app.css`)) throw new Error(`No app.css in ${dir}`);
-    if (into(`${dir}/app.js`, JS_START, JS_END, js)) said.push(`${dir}/app.js`);
-    if (into(`${dir}/app.css`, CSS_START, CSS_END, css)) said.push(`${dir}/app.css`);
+    const own = ownOf(dir);
+    if (into(`${dir}/app.js`, JS_START, JS_END, own ? jsBlock(own) : js)) said.push(`${dir}/app.js`);
+    if (into(`${dir}/app.css`, CSS_START, CSS_END, own ? cssBlock(own) : css)) said.push(`${dir}/app.css`);
   }
   console.log(said.length ? `InFlite's menu, copied into: ${said.join(", ")}` : "InFlite's menu: every copy already the same");
 }

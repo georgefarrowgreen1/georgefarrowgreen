@@ -7,7 +7,7 @@ const IFL = (() => {
   // (no app's page pinched bigger, as no app's is: iPhone takes no notice of a page's viewport saying so, only of its own
   // gesture events refused. A map or a photo still pinches itself, by its touches; menu.css says the rest, touch-action)
   for (const n of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(n, (e) => e.preventDefault(), { passive: false });
-  const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["today", "Today"], ["account", "Account"]];
+  const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
   const ICONS = /*ICONS*/{};
   const GLYPHS = {
@@ -47,10 +47,6 @@ const IFL = (() => {
     addp: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   };
-  // InFlite Today, your day from every app, where it is: inflite.ai from any of its apps' addresses (the tests' ifl.test,
-  // on its port, from theirs); anywhere else (a preview, georgefarrowgreen.pages.dev, this machine) none, as there's no
-  // Today of its own there to go to
-  const todayUrl = () => { const { protocol, hostname, port } = location; return /(^|\.)inflite\.ai$/.test(hostname) ? "https://inflite.ai/" : /(^|\.)ifl\.test$/.test(hostname) ? `${protocol}//ifl.test${port ? ":" + port : ""}/` : null; };
   const svg = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name] || ""}</svg>`;
   const urls = {};
   const iconUrl = (a) => urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" })));
@@ -303,17 +299,7 @@ const IFL = (() => {
       }
       return groups.filter((g) => g.childNodes.length);
     };
-    // (Today first, in every app but Today: a group of its own, kept as the app's rows are drawn again)
-    const todayAt = o.app !== "today" ? todayUrl() : null;
-    let todayGroup = null;
-    if (todayAt) {
-      const ic = el("img", "ifm-ic ifm-img"); ic.src = iconUrl("today"); ic.alt = "";
-      const go = el("a", "ifm-row go ifm-today", ic, el("span", "ifm-l", "Today"), el("span", "ifm-val", "Your day"));
-      go.insertAdjacentHTML("beforeend", svg("chev", "ifm-chev"));
-      go.href = todayAt;
-      todayGroup = el("div", "ifm-grp", go);
-    }
-    const rowsBox = el("div", "ifm-rows", ...(todayGroup ? [todayGroup] : []), ...drawRows(o.rows));
+    const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
     const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
     // (its foot: the app and its version, quietly, a green dot while it's up to date; a new version waiting, an Update
     // button in the dot's place; and Sign Out, the one round button at the end, named for screen readers)
@@ -361,9 +347,7 @@ const IFL = (() => {
     open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
-      // (Today's group never taken out and put back, which would drop a focus on it: only the app's own rows after it)
-      for (const g of [...rowsBox.children]) if (g !== todayGroup) g.remove();
-      rowsBox.append(...drawRows(list));
+      rowsBox.replaceChildren(...drawRows(list));
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
@@ -407,6 +391,6 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow, todayUrl,
+  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
     updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready };
 })();

@@ -20,11 +20,15 @@ test("Mail's copy, where the inflite repo is beside this one, is the template's 
   assert.equal(copy(M + "app.css", CSS_START, CSS_END), cssBlock(), "Mail's app.css copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public");
 });
 
-// (Today's, likewise)
+// (Today's, likewise, with its own name, icon and colour: in no other app's menu)
+test("no other app's menu knows Today", () => {
+  assert.ok(!jsBlock().includes('"today"') && !cssBlock().includes("ifm-in-today"), "the shared menu names Today: it's in Today's copy alone");
+  assert.ok(jsBlock("today").includes('["today", "Today"]') && cssBlock("today").includes(".ifm-in-today"), "Today's copy doesn't know its own name or colour");
+});
 test("Today's copy, where the inflite repo is beside this one, is the template's too", { skip: !existsSync(ROOT + "../inflite/today/public/app.js") }, () => {
   const T = "../inflite/today/public/";
-  assert.equal(copy(T + "app.js", JS_START, JS_END), jsBlock(), "Today's app.js copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
-  assert.equal(copy(T + "app.css", CSS_START, CSS_END), cssBlock(), "Today's app.css copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
+  assert.equal(copy(T + "app.js", JS_START, JS_END), jsBlock("today"), "Today's app.js copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
+  assert.equal(copy(T + "app.css", CSS_START, CSS_END), cssBlock("today"), "Today's app.css copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
 });
 
 test("each app opens it, and says its version", () => {
