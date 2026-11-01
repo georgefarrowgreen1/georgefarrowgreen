@@ -28,6 +28,8 @@
 //   POST   /api/fitness/push         the morning notification on this phone: { sub, at, tz, days } (functions/_fitpush.js)
 //   POST   /api/fitness/push-move    the browser renewed its subscription: { was, sub } (fitness/sw.js)
 //   DELETE /api/fitness/push         and off again: { endpoint }
+//   POST   /api/fitness/today        the coming days as this phone has them planned, for InFlite Today: { tz, units, days }
+//                                    (functions/_fittoday.js), sent by the app as it opens
 //   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret: Garmin's look for
 //                                    what's new, and the morning notifications that are due
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
@@ -43,6 +45,7 @@ import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick,
 import { pushKey, setMorning, moveMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
+import { setSnapshot } from "../../_fittoday.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick, stravaShare } from "../../_strava.js";
 import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
@@ -254,6 +257,13 @@ const ROUTES = {
     const u = await signedIn(request, env), b = await body(request);
     await stopMorning(env, u.id, b.endpoint);
     return json({ on: false });
+  },
+  // (the coming days, for InFlite Today: what's planned each, as this phone has it, kept in place of the last)
+  "POST today": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await limit(env, `fxtoday:${u.id}`, 120, 3600e3);
+    return json(await setSnapshot(env, u.id, await body(request, 32 * 1024)));
   },
   "POST garmin-tick": async ({ request, env }) => {
     tickAuthOk(request, env);

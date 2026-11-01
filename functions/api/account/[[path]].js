@@ -20,6 +20,8 @@
 //   POST /api/account/handback        a sign-in made here for an app that sent you here, handed back to it: a code (good
 //                                     once, for two minutes, and only in the tab that asked: functions/_handback.js)
 //   POST /api/account/password/upgrade  an account from before Argon2id, signed in to with its password: stretched anew
+//   GET  /api/account/apps/today-build  InFlite Today's version, for its About sheet (asked of inflite.ai only then)
+//   (Mail's and InFlite Today's, asked by their servers: functions/_mailapp.js, functions/_todayapp.js)
 //   POST /api/account/join            can an account be made (with this invite, or by anyone on a test server)
 //   GET  /api/account/handle?h=       is a handle free (and what's near it that is)
 //   POST /api/account/signup          a new account: its key pair made, and locked with the password, in the browser
@@ -45,6 +47,9 @@ import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap,
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
+import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
+import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today.js";
+import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
@@ -125,7 +130,7 @@ export async function appFigures(env, id) {
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness, markets] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness, markets, today] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
@@ -135,6 +140,7 @@ async function view(env, u) {
     adminOf(env).catch(() => null),
     fitnessOf(env, u.id),
     marketsOf(env, u.id).catch(() => ({ holdings: 0 })),
+    todayPrefs(env, u.id).catch(() => null),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -156,7 +162,7 @@ async function view(env, u) {
     // sign-in an account page opened from an app came from)
     devices: ss.map((x) => {
       const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
-      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness", "markets"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight", "fitness", "markets", "today"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
@@ -176,6 +182,9 @@ async function view(env, u) {
       inflight,
       fitness,
       markets,
+      // (InFlite Today's cards, in the account's order, and its morning notification: what's kept here, never its
+      // version, which is asked of inflite.ai only as its About sheet opens: GET apps/today-build)
+      today: { order: today?.cards.order || [], hidden: today?.cards.hidden || [], morning: { on: !!today?.m_on, at: today?.m_at ?? 420 } },
     },
   };
 }
@@ -192,12 +201,14 @@ const near = (a, b) => a && b && Math.abs(a.lat - b.lat) < 0.006 && Math.abs(a.l
 async function notifySettings(env, u) {
   const D = await db(env), p = prefsOf(u), wx = (await weatherOf(env, u.id)).data || {}, n = wx.notify || {}, solar = wx.settings?.solar;
   const none = (x, v) => x.catch(() => v);
-  const [chatOn, wxOn, fm, admin, mk] = await Promise.all([
+  const [chatOn, wxOn, fm, admin, mk, td, tdOn] = await Promise.all([
     none(D.prepare("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ?").bind(u.id).first().then((r) => r?.n || 0), 0),
     none(devicesOf(env, u.id).then((d) => d.length), 0),
     none(morningOf(env, u.id), { on: true, at: null, phones: 0 }),
     none(adminOf(env), null),
-    none(alertsOf(env, u.id), { on: 0, off: false, alerts: [] })]);
+    none(alertsOf(env, u.id), { on: 0, off: false, alerts: [] }),
+    none(todayPrefs(env, u.id), null),
+    none(todayDevices(env, u.id).then((d) => d.length), 0)]);
   const places = (wx.places || []).map((x) => { const on = (n.places || []).find((q) => near(q, x)); return { name: x.name, lat: x.lat, lon: x.lon, rain: !!on?.rain, warn: !!on?.warn }; });
   // (one with notifications on that's no longer saved: still said, so it can be turned off)
   for (const q of n.places || []) if (!places.some((x) => near(q, x))) places.push({ name: q.name, lat: q.lat, lon: q.lon, rain: !!q.rain, warn: !!q.warn });
@@ -212,6 +223,9 @@ async function notifySettings(env, u) {
     // (Markets's price alerts: on for each holding chosen on its page there; all off here)
     markets: mk,
     mail: admin?.id === u.id ? {} : null,
+    // (InFlite Today's morning notification: on or off, its time, the devices it's on, and its lines, which are chosen in
+    // Today itself)
+    today: { on: !!td?.m_on, at: td?.m_at ?? 420, devices: tdOn, lines: Object.fromEntries(["weather", "fitness", "chat", "markets"].map((k) => [k, td?.m_lines?.[k] !== false])) },
   };
 }
 async function setNotify(env, u, b) {
@@ -262,6 +276,21 @@ async function setNotify(env, u, b) {
     // (one holding's alert off: it's turned on again from its page in Markets)
     if (m.off !== undefined) await setMarketAlert(env, u.id, m.off, false);
     if (m.wrap !== undefined) { if (typeof m.wrap !== "boolean") throw new HttpError(400, "Choose on or off."); await setWrap(env, u.id, m.wrap); }
+  }
+  // InFlite Today's morning notification: on or off, and its time (minutes after midnight); turned on for the first
+  // time, at the time Weather's briefing or Fitness's reminder already comes, unless one's chosen (as Today's own
+  // Morning section does it: functions/_todayapp.js). tz: this browser's zone, used where the account hasn't one of its
+  // own (Quiet Hours')
+  if (b.today !== undefined) {
+    const d = b.today && typeof b.today === "object" ? b.today : null;
+    if (!d) throw new HttpError(400, "Bad request.");
+    let at = d.at;
+    if (d.on === true && at === undefined) {
+      // (never turned on yet: no row, or one only Today's Edit has made)
+      const r = await todayPrefs(env, u.id);
+      if (r.updated == null || (!r.m_on && r.m_at === 420 && r.m_tz == null && r.m_sent == null && r.m_last == null)) at = await firstMorningAt(env, u);
+    }
+    await saveMorning(env, u.id, { on: d.on, at, tz: typeof d.tz === "string" ? d.tz : undefined });
   }
 }
 
@@ -326,8 +355,14 @@ async function sendConfirm(env, u, request) {
 }
 
 const ROUTES = {
-  // Mail's, asked by its server (functions/_mailapp.js)
+  // Mail's and InFlite Today's, asked by their servers (functions/_mailapp.js, functions/_todayapp.js)
   ...MAIL_ROUTES,
+  ...TODAY_ROUTES,
+  // InFlite Today's version, for its About sheet here: asked of inflite.ai as the sheet opens, never as the page loads
+  "GET apps/today-build": async ({ request, env }) => {
+    await signedIn(request, env);
+    return json({ build: await todayBuild(env) });
+  },
   // a sign-in handed over from Chat: the code used up (good once, for a minute, and only while the sign-in it came from
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
@@ -874,7 +909,7 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkBuys, mkIsa, mkAlerts] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkBuys, mkIsa, mkAlerts, today, upcoming] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
@@ -892,6 +927,8 @@ const ROUTES = {
       mkdb(env).then((M) => M.prepare("SELECT symbol, qty, price, at FROM mk_buys WHERE user_id = ? ORDER BY symbol, at").bind(u.id).all()).then((r) => r.results).catch(() => []),
       isaOf(env, u.id).catch(() => null),
       alertsOf(env, u.id).catch(() => null),
+      todayExport(env, u.id).catch(() => null),
+      snapshotOf(env, u.id).catch(() => null),   // (the coming days' sessions, as Fitness last sent them for Today)
     ]);
     let photo = null;
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
@@ -918,7 +955,8 @@ const ROUTES = {
       },
       weather: { places: wx.data?.places || [], settings: wx.data?.settings || {}, notifications: wx.data?.notify || null, devices: wxDevices.map((d) => d.label) },
       // (each activity's figures; its file, as imported, is in Fitness: Export everything)
-      fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })), nights: fxNights },
+      fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })), nights: fxNights,
+        upcoming: upcoming ? { updatedAt: iso(upcoming.at ?? upcoming.updatedAt), timeZone: upcoming.tz ?? upcoming.timeZone ?? null, units: upcoming.units ?? null, days: upcoming.days || {} } : null },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {
         holdings: mkList.map((x) => ({ symbol: x.symbol, name: x.name, shares: x.qty, averageCost: x.cost, account: x.account, boughtOn: x.since ? iso(x.since).slice(0, 10) : null, addedAt: iso(x.added), alertAt: x.alert ? `${x.alert}%` : null,
@@ -926,6 +964,8 @@ const ROUTES = {
         isa: mkIsa ? { taxYear: mkIsa.year, paidIn: mkIsa.paid } : null,
         notifications: mkAlerts ? { priceAlerts: !mkAlerts.off, eveningWrap: mkAlerts.wrap, devices: mkAlerts.on } : null,
       },
+      // (InFlite Today: the cards' order and those hidden, its morning notification, and how many devices it's on)
+      today,
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

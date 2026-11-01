@@ -8,6 +8,7 @@
 import { HttpError, limit, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
 import { tablesOnce } from "./_fitness.js";
+import { morningUsers } from "./_today.js";
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const LATE = 3 * 60;   // (a tick missed by more than three hours: that day's left unsaid, not sent mid-morning)
@@ -118,11 +119,15 @@ export async function morningTick(env, t = Date.now()) {
     D.prepare("DELETE FROM fx_push WHERE user_id IN (SELECT id FROM pg_users WHERE delete_at IS NOT NULL)"),
   ]).catch(() => {});
   // (not those whose account has turned it off on its Notifications page)
-  const { results } = await D.prepare("SELECT p.endpoint, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
+  const { results } = await D.prepare("SELECT p.endpoint, p.user_id, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
+  // (nor those whose morning comes from InFlite Today, on a device of theirs: today's session is in that,
+  // functions/_todaymorning.js; nothing's claimed for them here)
+  const viaToday = await morningUsers(env).catch(() => new Set());
   let sent = 0;
   for (const r of results) {
     const now = localNow(r.tz, t);
     if (r.sent === now.day || now.mins < r.at || now.mins > r.at + LATE) continue;
+    if (viaToday.has(r.user_id)) continue;
     // (claimed first, so two ticks at once send it once)
     const claim = await D.prepare("UPDATE fx_push SET sent = ?2 WHERE endpoint = ?1 AND (sent IS NULL OR sent != ?2)").bind(r.endpoint, now.day).run();
     if (!claim.meta?.changes) continue;

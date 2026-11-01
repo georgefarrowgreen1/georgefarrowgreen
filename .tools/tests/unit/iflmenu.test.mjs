@@ -20,6 +20,13 @@ test("Mail's copy, where the inflite repo is beside this one, is the template's 
   assert.equal(copy(M + "app.css", CSS_START, CSS_END), cssBlock(), "Mail's app.css copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public");
 });
 
+// (Today's, likewise)
+test("Today's copy, where the inflite repo is beside this one, is the template's too", { skip: !existsSync(ROOT + "../inflite/today/public/app.js") }, () => {
+  const T = "../inflite/today/public/";
+  assert.equal(copy(T + "app.js", JS_START, JS_END), jsBlock(), "Today's app.js copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
+  assert.equal(copy(T + "app.css", CSS_START, CSS_END), cssBlock(), "Today's app.css copy is out of date: run node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public");
+});
+
 test("each app opens it, and says its version", () => {
   for (const [f, app] of [["pigeon/app.js", "chat"], ["weather/app.js", "weather"], ["fitness/app.js", "fitness"]]) {
     const js = readFileSync(ROOT + f, "utf8");
@@ -31,6 +38,8 @@ test("each app opens it, and says its version", () => {
 test("the template's apps' icons are each app's own", () => {
   const icons = { chat: "pigeon", weather: "weather", fitness: "fitness", account: "account" };
   for (const [a, d] of Object.entries(icons)) assert.equal(readFileSync(`${ROOT}.tools/inflite/icons/${a}.svg`, "utf8"), readFileSync(`${ROOT}${d}/icon.svg`, "utf8"), `.tools/inflite/icons/${a}.svg isn't ${d}/icon.svg`);
+  // (Today's is InFlite's own)
+  assert.equal(readFileSync(`${ROOT}.tools/inflite/icons/today.svg`, "utf8"), readFileSync(`${ROOT}.tools/inflite/inflite.svg`, "utf8"), ".tools/inflite/icons/today.svg isn't .tools/inflite/inflite.svg");
 });
 
 test("each app's top is InFlite's header", () => {

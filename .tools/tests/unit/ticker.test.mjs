@@ -16,7 +16,7 @@ const env = { INFLIGHT_TICK_SECRET: "chat", WEATHER_TICK_SECRET: "wx" };
 
 test("the scheduler asks for every job, each with its secret, and a run where all go is fine", async () => {
   const r = await run(env, () => new Response("{}"));
-  assert.deepEqual(r.asked, ["/api/fitness/garmin-tick Bearer chat", "/api/markets/tick Bearer chat", "/api/pigeon/notify-tick Bearer chat", "/api/weather/tick Bearer wx"]);
+  assert.deepEqual(r.asked, ["/api/fitness/garmin-tick Bearer chat", "/api/markets/tick Bearer chat", "/api/pigeon/notify-tick Bearer chat", "/api/today/tick Bearer chat", "/api/weather/tick Bearer wx"]);
   assert.equal(r.threw, null);
   // (Weather's own secret only if it has one: else Chat's)
   assert.ok((await run({ INFLIGHT_TICK_SECRET: "chat" }, () => new Response("{}"))).asked.includes("/api/weather/tick Bearer chat"));
@@ -25,11 +25,15 @@ test("the scheduler asks for every job, each with its secret, and a run where al
 test("a run where a job fails (refused, or the site not answering) is said to have failed, naming it", async () => {
   const one = await run(env, (p) => new Response("Not allowed.", { status: p === "/api/markets/tick" ? 401 : 200 }));
   assert.match(one.threw?.message || "", /\/api\/markets\/tick/);
-  assert.doesNotMatch(one.threw.message, /weather|pigeon|fitness/);
+  assert.doesNotMatch(one.threw.message, /weather|pigeon|fitness|today/);
+  // (Today's morning notification refused: named, alone)
+  const today = await run(env, (p) => new Response("Not allowed.", { status: p === "/api/today/tick" ? 401 : 200 }));
+  assert.match(today.threw?.message || "", /\/api\/today\/tick/);
+  assert.doesNotMatch(today.threw.message, /weather|pigeon|fitness|markets/);
   const down = await run(env, () => { throw new Error("The site isn't answering."); });
-  for (const p of ["notify-tick", "weather/tick", "garmin-tick", "markets/tick"]) assert.match(down.threw?.message || "", new RegExp(p));
+  for (const p of ["notify-tick", "weather/tick", "garmin-tick", "markets/tick", "today/tick"]) assert.match(down.threw?.message || "", new RegExp(p));
   // (no secret set: nothing asked, and each job said not to have gone)
   const none = await run({}, () => new Response("{}"));
   assert.equal(none.asked.length, 0);
-  assert.match(none.threw?.message || "", /notify-tick.*weather\/tick.*garmin-tick.*markets\/tick/);
+  assert.match(none.threw?.message || "", /notify-tick.*weather\/tick.*garmin-tick.*markets\/tick.*today\/tick/);
 });

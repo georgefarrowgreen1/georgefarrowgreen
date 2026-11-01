@@ -1,0 +1,34 @@
+{
+  "signedIn": true,
+  "accountOrigin": "https://account.inflite.ai",
+  "user": {
+    "id": "4f6c8d2e-1a3b-4c5d-8e9f-0a1b2c3d4e5f",
+    "name": "Alex Morgan",
+    "first": "Alex",
+    "handle": "alexphone",
+    "photoAt": 1789380000000,
+    "appearance": "auto"
+  },
+  "prefs": {
+    "order": [
+      "weather",
+      "chat",
+      "fitness",
+      "markets"
+    ],
+    "hidden": []
+  },
+  "morning": {
+    "on": true,
+    "at": 420,
+    "devices": 1
+  },
+  "links": {
+    "chat": "https://chat.inflite.ai",
+    "weather": "https://weather.inflite.ai",
+    "fitness": "https://fitness.inflite.ai",
+    "finance": "https://finance.inflite.ai",
+    "account": "https://account.inflite.ai",
+    "auth": "https://auth.inflite.ai"
+  }
+}

@@ -411,7 +411,9 @@ await L.p.locator('.strip-all').click(); await settle(L, 500);
 const agRows = await L.p.locator('.agenda .ag-row').count();
 ok(strip === 7 && await L.p.locator('main .session').count() === 1 && agRows === 14 && /% easy/.test(bal), 'Today has the plan: the week in the strip, today first, and both weeks a tap away', `${strip} ${agRows} ${bal}`);
 // (tomorrow, looked at: and a day that isn't the day for it, rest instead, Rhythm taking it in)
-await L.p.locator('.agenda .ag-row.today + .ag-row, .agenda .ag-row.today ~ .ag-row').first().click(); await settle(L, 600);
+// (the row after today's, in this week's group or, on a Sunday, the first of next week's)
+const agAll = L.p.locator('.agenda .ag-row'), agToday = await agAll.evaluateAll((rs) => rs.findIndex((r) => r.classList.contains('today')));
+await agAll.nth(agToday + 1).click(); await settle(L, 600);
 const tmText = await L.p.locator('main .session').first().innerText();
 ok(/^Tomorrow$/.test(await L.p.locator('.ifh .ifh-name').innerText()) && !(await L.p.locator('.agenda').count()), 'tomorrow, tapped: its day on the page', tmText.replace(/\s+/g, ' ').slice(0, 100));
 if (await L.p.locator('.day-change .chip-btn', { hasText: /^Rest$/ }).count()) {

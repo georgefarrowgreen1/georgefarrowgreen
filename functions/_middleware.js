@@ -4,7 +4,8 @@
 // finance.inflite.ai: Markets, the same way (functions/_mktapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
 // auth.inflite.ai: where every sign-in and sign-out happens, the same files (functions/_acctapp.js).
-// (inflite.ai itself is kept for something else: not this project's.)
+// (inflite.ai itself is InFlite Today, the inflite repo's root Worker: not this project's, though its data is, at
+// account.inflite.ai/api/account/today/*, functions/_todayapp.js.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
 // still (functions/_hop.js). Every other address carries straight on (the home page).
 import { serveApp, isChat, notFound } from "./_app.js";

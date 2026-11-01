@@ -45,6 +45,7 @@ import { blend } from "../weather/rainmap.js";
 import { oneRain } from "../weather/agree.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
+import { morningUsers } from "./_today.js";
 
 // (MAX_SUBS: devices not signed in, at most, and NET_DAY of them a day from one network; MAX_ALL: every device, the
 // account's included: accounts are by invite, so theirs aren't held back by anyone else's)
@@ -55,7 +56,8 @@ export const MAX_PLACES = 12;
 // service allows 10,000 a day: the ticks have OM_DAY a day between them, earned evenly through it, however often they
 // come, and at most BUDGET in one; what the quiet hours don't use is kept, up to OM_KEEP, an hour and a half's, for the
 // morning's briefings)
-const BUDGET = 55, COST_FULL = 7, OM_DAY = 8000, OM_KEEP = 500;
+const BUDGET = 55, OM_DAY = 8000;
+export const COST_FULL = 7, OM_KEEP = 500;
 // the places the radar's read for in a tick (each costs a few tiles, shared with any place near it)
 const RADAR_PLACES = 40;
 // the places whose official warnings are asked for in a tick, at most, how many at once, and none begun once the tick's
@@ -455,19 +457,28 @@ async function tick(env, D, t, origin, until = Infinity) {
   const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1 OR solar IS NOT NULL").all();
   // (an account's Quiet Hours, from its Notifications page, every app's: its devices' rain and sun wait them out, as Weather's
   // own night does; warnings, and the briefing at the time it was set for, still come)
-  const { results: quiets } = await D.prepare("SELECT d.dev, u.notify_prefs FROM wx_devs d JOIN pg_users u ON u.id = d.user_id WHERE d.user_id IS NOT NULL").all().catch(() => ({ results: [] }));
+  const { results: quiets } = await D.prepare("SELECT d.dev, d.user_id, u.notify_prefs FROM wx_devs d JOIN pg_users u ON u.id = d.user_id WHERE d.user_id IS NOT NULL").all().catch(() => ({ results: [] }));
   const held = new Set(quiets.filter((q) => { const p = prefsOf(q); return p.quiet && quietNow(p, t); }).map((q) => q.dev));
   for (const s of subs) s.held = held.has(s.dev);
+  // (an account whose morning comes from InFlite Today, on a device of its: its devices' briefing is in that
+  // (functions/_todaymorning.js), so it isn't pushed here, nor its whole forecast asked for; its email still comes)
+  const viaToday = await morningUsers(env).catch(() => new Set());
+  if (viaToday.size) {
+    const userOf = new Map(quiets.map((q) => [q.dev, q.user_id]));
+    for (const s of subs) if (s.brief && !isMail(s) && viaToday.has(userOf.get(s.dev))) s.brief = 0;
+  }
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
   const need = toLook(subs, t);
   // places a few kilometres apart share a forecast (0.05°); the whole of it only where a briefing's due (or the clock's not known yet)
   const snap = (v) => Math.round(v * 20) / 20, cellOf = (s) => `${snap(s.lat)},${snap(s.lon)}`;
   const cells = new Map();
   for (const s of need) { const k = cellOf(s), c = cells.get(k) || { lat: snap(s.lat), lon: snap(s.lon), full: false }; c.full ||= due(s) || s.tz_off == null; cells.set(k, c); }
-  // (what's left of Open-Meteo's allowance, kept between ticks: they run one at a time)
-  let left = null; try { left = JSON.parse((await D.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").first())?.v); } catch (_) {}
+  // (what's left of Open-Meteo's allowance, kept between ticks: they run one at a time, but InFlite Today's page spends
+  // from it too, so what this spends is taken off what's there as it writes: spendOm)
+  const kept = (await D.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").first().catch(() => null))?.v ?? null;
+  let left = null; try { left = JSON.parse(kept); } catch (_) {}
   const have = allowance(left, t), asked = budgeted([...cells], Math.floor(Math.min(have, BUDGET))), cost = asked.reduce((a, [, c]) => a + (c.full ? COST_FULL : 1), 0);
-  if (cost) await D.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('om_bucket', ?)").bind(JSON.stringify({ n: have - cost, at: t })).run();
+  if (cost) await spendOm(D, kept, cost, t);
   const forecasts = new Map(), base = env.WXAPP_URL || "https://api.open-meteo.com";
   ask: for (const full of [true, false]) {
     const list = asked.filter(([, c]) => c.full === full);
@@ -529,6 +540,19 @@ export function toLook(subs, t, most = PER_TICK, rnd = Math.random) {
 // what's been earned since (OM_DAY a day), up to OM_KEEP; the whole of OM_KEEP the first time. (A tick asks for no more
 // than BUDGET of it)
 export const allowance = (left, t) => Math.min(OM_KEEP, left && Number.isFinite(left.n) && Number.isFinite(left.at) ? left.n + Math.max(0, t - left.at) * OM_DAY / 864e5 : OM_KEEP);
+// What a tick spends of it (cost, at t), taken off what's kept (was: om_bucket's v as the tick read it, or null if there
+// was none), only where no one's spent from it since (InFlite Today's page asks for forecasts out of it too:
+// functions/_todaywx.js); if someone has, taken off what they left instead, once, so their spending isn't written over
+export async function spendOm(D, was, cost, t) {
+  const now = (n) => JSON.stringify({ n, at: t });
+  let left = null; try { left = JSON.parse(was); } catch (_) {}
+  const put = (v, from) => (from == null ? D.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES ('om_bucket', ?1)").bind(v)
+    : D.prepare("UPDATE wx_meta SET v = ?1 WHERE k = 'om_bucket' AND v IS ?2").bind(v, from)).run();
+  if ((await put(now(allowance(left, t) - cost), was)).meta?.changes) return;
+  const fresh = (await D.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").first())?.v ?? null;
+  let theirs = null; try { theirs = JSON.parse(fresh); } catch (_) {}
+  await put(now(allowance(theirs, t) - cost), fresh);
+}
 // Official warnings for the places that want them, once each place's clock is known (for saying when): each place's
 // asked for once, however many phones are there, a few at a time; at most WARN_PLACES a tick, and none begun once the
 // tick (begun at t) has had WARN_MS, or they've had WARN_LEAST, if that's later. The rest wait for a later tick, in a

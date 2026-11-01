@@ -1113,6 +1113,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-in-fitness { --ifm-tint: #f0542e; }
 .ifm-in-markets { --ifm-tint: #12a46a; }
 .ifm-in-mail { --ifm-tint: #1aa58f; }
+.ifm-in-today { --ifm-tint: #2a6ae6; }
 .ifm-in-account { --ifm-tint: #5b4fe0; }
 
 .ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
@@ -1158,6 +1159,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
 .ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
 .ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+/* (an app's own icon in a row: Today's, at the top of every other app's menu) */
+.ifm-ic.ifm-img { padding: 0; background: none; object-fit: cover; }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
 /* (its own name: an app's .warn, a banner of its own, isn't this) */

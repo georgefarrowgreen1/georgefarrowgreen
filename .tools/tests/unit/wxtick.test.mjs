@@ -134,3 +134,123 @@ test("a notification claimed once, and only while the tick's still beginning thi
   assert.equal(await claim(D, { id: "a" }, "last_rain", NOON), true, "nothing claimed before (null): claimed");
   assert.ok(LEASE > 60e3 && LEASE < 5 * 60e3, `the lease: longer than a tick is let run, shorter than the time between ticks (${LEASE} ms)`);
 });
+
+// ---- the whole tick, against a database of its own (Node's own SQLite in memory, standing in for D1, with the site's
+// schema), with Open-Meteo, the push services and the email service stood in for ----
+function d1() {
+  const s = new DatabaseSync(":memory:"), after = [];
+  const exec = (sql, args) => {
+    const p = s.prepare(sql);
+    if (p.columns().length) return { results: p.all(...args), success: true, meta: { changes: 0 } };
+    const r = p.run(...args);
+    return { results: [], success: true, meta: { changes: Number(r.changes) } };
+  };
+  const st = (sql, args = []) => ({
+    bind: (...a) => st(sql, a.map((v) => (v === undefined ? null : typeof v === "boolean" ? Number(v) : v))),
+    // (after: what's done once a query matching it has been answered: another's write landing between a read and a write)
+    first: async (col) => { const row = s.prepare(sql).get(...args) ?? null; for (const [re, then] of after.splice(0)) if (re.test(sql)) then(s); else after.push([re, then]); return col && row ? row[col] ?? null : row; },
+    all: async () => exec(sql, args), run: async () => exec(sql, args), now: () => exec(sql, args),
+  });
+  return { sql: s, after, prepare: (q) => st(q), async batch(list) { s.exec("BEGIN"); try { const r = list.map((x) => x.now()); s.exec("COMMIT"); return r; } catch (e) { s.exec("ROLLBACK"); throw e; } } };
+}
+const { db } = await import("../../../functions/_pigeon.js");
+const { wxdb, wxTick, spendOm } = await import("../../../functions/_wxpush.js");
+const { tddb } = await import("../../../functions/_today.js");
+const { forecast } = await import("../mocks/wxappdata.mjs");
+const W = "http://wx.test", MON = Date.UTC(2026, 10, 2, 7, 5);       // (07:05 on Monday 2 November, at tz_off 0)
+const tickEnv = { DB: d1(), PIGEON_PUSH_URL: "http://push.test/push", WXAPP_URL: W, METEOALARM_URL: W, NWS_URL: W, EA_URL: W, RAINVIEWER_URL: W, AWC_URL: W, WARN_TTL: "0",
+  RESEND_API_KEY: "test-key", RESEND_API_URL: "http://mail.test/emails", PIGEON_FROM: "noreply@georgefarrowgreen.com" };
+const run = (sql, ...a) => tickEnv.DB.sql.prepare(sql).run(...a), rows = (sql, ...a) => tickEnv.DB.sql.prepare(sql).all(...a).map((r) => ({ ...r }));
+let asked = { full: 0, rain: 0, push: [], mail: [] };
+async function ticking(fn) {
+  const real = globalThis.fetch, said = console.error;
+  globalThis.fetch = async (url, o = {}) => {
+    const u = String(url);
+    if (u.startsWith(`${W}/v1/forecast`)) { asked[/minutely_15=/.test(u) && !/daily=/.test(u) ? "rain" : "full"]++; return Response.json(forecast(MON)); }
+    if (u === tickEnv.PIGEON_PUSH_URL) { asked.push.push(o.headers["X-Endpoint"]); return new Response("", { status: 201 }); }
+    if (u === tickEnv.RESEND_API_URL) { asked.mail.push(JSON.parse(o.body)); return Response.json({ id: "m" }); }
+    return new Response("{}", { status: 404 });
+  };
+  console.error = () => {};
+  try { return await fn(); } finally { globalThis.fetch = real; console.error = said; }
+}
+// a phone's push keys, as a browser makes them
+async function keys() {
+  const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  return { p256dh: Buffer.from(await crypto.subtle.exportKey("raw", k.publicKey)).toString("base64url"), auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url") };
+}
+await db(tickEnv); await wxdb(tickEnv); await tddb(tickEnv);
+for (const id of ["today", "plain"]) {
+  run("INSERT INTO pg_users (id, handle, name, email, email_ok, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?1, ?1, ?1, ?1 || '@example.com', ?2, '{}', 's', 'p', 'v', 3, ?2, ?2)", id, MON - 864e5);
+  run("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at) VALUES (?, ?, ?, ?)", `s-${id}`, id, MON, MON);
+}
+// (the first account has InFlite Today's morning on, on a phone of a sign-in that still lasts)
+const tk = await keys();
+run("INSERT INTO td_prefs (user_id, cards, m_on, m_at, m_lines, updated) VALUES ('today', '{}', 1, 420, '{}', ?)", MON);
+run("INSERT INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUES ('https://fcm.googleapis.com/fcm/send/today-phone', 'today', ?, ?, 's-today', ?)", tk.p256dh, tk.auth, MON);
+// each account's Weather on a phone (and the first's by email too), its morning briefing at 07:00 in London
+async function device(dev, user, mail = false) {
+  const k = mail ? { p256dh: "", auth: "" } : await keys(), endpoint = mail ? dev : `https://fcm.googleapis.com/fcm/send/${dev}`;
+  run("INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, units, brief_at, created, updated) VALUES (?, ?, ?, ?, ?, '{}', '07:00', ?, ?)", dev, endpoint, k.p256dh, k.auth, user, MON, MON);
+  run(`INSERT INTO wx_subs (id, dev, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, tz_off, created, updated, warn)
+    VALUES (?1, ?2, ?3, ?4, ?5, 51.51, -0.13, 'London', 0, 1, '07:00', '{}', 0, ?6, ?6, 0)`, `${dev}:51.51,-0.13`, dev, endpoint, k.p256dh, k.auth, MON);
+}
+const briefed = () => Object.fromEntries(rows("SELECT dev, last_brief FROM wx_subs ORDER BY dev").map((r) => [r.dev, r.last_brief]));
+
+test("an account whose morning comes from InFlite Today: its phones' briefing isn't pushed (nor its forecast asked for), and its email still comes", async () => {
+  await device("wx-today", "today");
+  let r = await ticking(() => wxTick(tickEnv, MON, "https://georgefarrowgreen.com"));
+  assert.equal(r.brief, 0, JSON.stringify(r));
+  assert.deepEqual(asked, { full: 0, rain: 0, push: [], mail: [] }, "not even its forecast asked for: there's nothing else to say there");
+  assert.deepEqual(briefed(), { "wx-today": null }, "nothing claimed: were Today's morning turned off, it would come");
+  // the same account's email, and another account's phone, at the same place
+  await device("mail:today", "today", true); await device("wx-plain", "plain");
+  r = await ticking(() => wxTick(tickEnv, MON + 5 * 60e3, "https://georgefarrowgreen.com"));
+  assert.deepEqual(asked.push, ["https://fcm.googleapis.com/fcm/send/wx-plain"], "the other account's phone has its briefing pushed; this one's doesn't");
+  assert.equal(asked.mail.length, 1, "this account's briefing email still comes");
+  assert.deepEqual(asked.mail[0]?.to, "today@example.com");
+  assert.deepEqual(briefed(), { "mail:today": "2026-11-02", "wx-plain": "2026-11-02", "wx-today": null });
+  // Today's morning turned off: its phones' briefing comes again (that day's still in time)
+  run("UPDATE td_prefs SET m_on = 0 WHERE user_id = 'today'");
+  asked = { full: 0, rain: 0, push: [], mail: [] };
+  await ticking(() => wxTick(tickEnv, MON + 10 * 60e3, "https://georgefarrowgreen.com"));
+  assert.deepEqual(asked.push, ["https://fcm.googleapis.com/fcm/send/wx-today"]);
+  run("UPDATE td_prefs SET m_on = 1 WHERE user_id = 'today'");
+});
+
+test("Open-Meteo's allowance: what InFlite Today's page spends from it while a tick runs isn't written over by the tick", async () => {
+  // (the next morning: the briefings due again, one whole forecast for their place, COST_FULL of the allowance)
+  const TUE = MON + 864e5;
+  run("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('om_bucket', ?)", JSON.stringify({ n: 300, at: TUE }));
+  // Today's page charges 10 of it just after the tick's read what's left
+  tickEnv.DB.after.push([/k = 'om_bucket'/, (s) => s.prepare("UPDATE wx_meta SET v = ? WHERE k = 'om_bucket'").run(JSON.stringify({ n: 290, at: TUE }))]);
+  asked = { full: 0, rain: 0, push: [], mail: [] };
+  await ticking(() => wxTick(tickEnv, TUE, "https://georgefarrowgreen.com"));
+  assert.equal(asked.full, 1);
+  assert.deepEqual(JSON.parse(rows("SELECT v FROM wx_meta WHERE k = 'om_bucket'")[0].v), { n: 290 - 7, at: TUE }, "the tick's 7 taken off what Today left, not off what the tick read");
+  // and with no one else spending, as before: what it read, less what it spent
+  asked = { full: 0, rain: 0, push: [], mail: [] };
+  run("UPDATE wx_subs SET last_brief = NULL");
+  await ticking(() => wxTick(tickEnv, TUE + 5 * 60e3, "https://georgefarrowgreen.com"));
+  const left = JSON.parse(rows("SELECT v FROM wx_meta WHERE k = 'om_bucket'")[0].v);
+  assert.equal(left.at, TUE + 5 * 60e3); assert.ok(Math.abs(left.n - (283 + 5 * 60e3 * 8000 / 864e5 - 7)) < 1e-9, JSON.stringify(left));
+});
+
+test("Open-Meteo's allowance kept as a compare-and-set: none kept yet, someone else's first write kept too; a lost race taken off what they left, once", async () => {
+  const s = new DatabaseSync(":memory:");
+  s.exec("CREATE TABLE wx_meta (k TEXT PRIMARY KEY, v TEXT)");
+  const D = { prepare: (q) => ({ bind: (...b) => ({ run: async () => ({ meta: { changes: Number(s.prepare(q).run(...b).changes) } }) }), first: async () => s.prepare(q).get() ?? null }) };
+  const v = () => JSON.parse(s.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").get().v), t = Date.UTC(2026, 10, 2, 7);
+  await spendOm(D, null, 7, t);
+  assert.deepEqual(v(), { n: 500 - 7, at: t }, "none kept yet: the whole of what's kept, less what's spent");
+  // read as { 493 }, then someone else spent 20 of it: the tick's 7 off theirs
+  const was = s.prepare("SELECT v FROM wx_meta WHERE k = 'om_bucket'").get().v;
+  s.prepare("UPDATE wx_meta SET v = ? WHERE k = 'om_bucket'").run(JSON.stringify({ n: 473, at: t }));
+  await spendOm(D, was, 7, t);
+  assert.deepEqual(v(), { n: 466, at: t });
+  // none when the tick read it, but someone else wrote first
+  s.exec("DELETE FROM wx_meta");
+  s.prepare("INSERT INTO wx_meta (k, v) VALUES ('om_bucket', ?)").run(JSON.stringify({ n: 200, at: t }));
+  await spendOm(D, null, 7, t);
+  assert.deepEqual(v(), { n: 193, at: t });
+});

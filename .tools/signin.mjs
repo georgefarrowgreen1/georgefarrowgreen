@@ -1,8 +1,9 @@
 // InFlite's way in, shared: .tools/inflite/signin.css copied into each app's stylesheet (between the marks below, so
 // each app still sends one stylesheet, as its service worker and version check expect), and InFlite's mark,
 // .tools/inflite/inflite.svg, into each app's folder. Change them there, then run: node .tools/signin.mjs
-// (Mail, in the inflite repo, takes the same copy: pass its folder, node .tools/signin.mjs ../inflite/email/public,
-// and it's done there too.) A unit test checks this repository's copies (unit/iflsignin.test.mjs).
+// (Mail and Today, in the inflite repo, take the same copy: pass the folder, one at a time, node .tools/signin.mjs
+// ../inflite/email/public, then node .tools/signin.mjs ../inflite/today/public, and it's done there too.) A unit test
+// checks this repository's copies (unit/iflsignin.test.mjs).
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from "fs";
 const ROOT = new URL("../", import.meta.url).pathname;
 export const START = "/* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */";

@@ -6,6 +6,7 @@ import { keepSentTo } from "./_retention.js";
 import { dropAccount } from "./_wxpush.js";
 import { dropFitness } from "./_fitness.js";
 import { dropMarkets } from "./_markets.js";
+import { dropToday } from "./_today.js";
 
 import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
@@ -15,6 +16,7 @@ export async function removeAccount(env, id) {
   await dropAccount(env, id);
   await dropFitness(env, id);
   await dropMarkets(env, id);
+  await dropToday(env, id);
   await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);

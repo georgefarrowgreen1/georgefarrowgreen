@@ -37,3 +37,12 @@ export function homeOrigin(env, request) {
   if (env?.ACCOUNT_SITE && request) { const u = new URL(typeof request === "string" ? request : request.url); return `${u.protocol}//${env.ACCOUNT_SITE}${u.port ? ":" + u.port : ""}`; }
   return `https://${homeSite(env)}`;
 }
+// InFlite Today's address: the apps' site itself, "https://inflite.ai" (or a test's stood-in site, with the port it's on)
+export function todayOrigin(env, request) {
+  if (env?.APPS_SITE && request) { const u = new URL(typeof request === "string" ? request : request.url); return `${u.protocol}//${env.APPS_SITE}${u.port ? ":" + u.port : ""}`; }
+  return `https://${appsSite(env)}`;
+}
+// the apps' addresses, as Today links to them (request: null for production's, as the morning's tick has none)
+export function todayLinks(env, request) {
+  return Object.fromEntries(["chat", "weather", "fitness", "finance", "account", "auth"].map((name) => [name, appOrigin(name, env, request)]));
+}

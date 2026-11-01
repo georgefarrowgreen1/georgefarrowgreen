@@ -335,4 +335,6 @@ export async function dropFitness(env, userId) {
   // for an account that's gone (functions/_health.js); each where its table's been made)
   // (and Strava's tokens and files waiting: functions/_strava.js; the files went with the rest above)
   for (const t of ["fx_well", "fx_health", "fx_health_key", "fx_strava", "fx_strava_new"]) await D.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(userId).run().catch(() => {});
+  // (and the days it last sent for InFlite Today: functions/_fittoday.js)
+  await D.prepare("DELETE FROM fx_today WHERE user_id = ?").bind(userId).run().catch(() => {});
 }

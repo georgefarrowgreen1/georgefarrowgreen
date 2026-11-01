@@ -22,7 +22,7 @@
 // mk_cache:    the markets' data, as last fetched, with when.
 import { HttpError, db, fromB64url, b64url, safeEqual, serverSecret } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
-import { yearDivs } from "../markets/income.js";
+import { yearDivs, marked } from "../markets/income.js";
 
 const MIN = 60e3, HOUR = 60 * MIN;
 export const MAX_HOLDINGS = 60;
@@ -222,21 +222,23 @@ export async function quotes(env, symbols, by = Infinity) {
 }
 // A year of a holding, for what's worth knowing: its week, a year of its dividends to expect again (each, and all
 // together: by how often it pays, from its history, markets/income.js yearDivs), what it paid over its chart's year (got12,
-// for the year's return), and its year's high and low. (An index, crypto or a currency pays none: its history's not asked for)
-export async function yearOf(env, symbol) {
-  const [y, hist] = await Promise.all([chart(env, symbol, "1y").catch(() => null), /^\^|=X$|-(USD|GBP|EUR)$/.test(symbol) ? null : dividends(env, symbol).catch(() => null)]);
+// for the year's return), and its year's high and low. (An index, crypto or a currency pays none: its history's not asked for.)
+// opt: cached's
+export async function yearOf(env, symbol, opt) {
+  const [y, hist] = await Promise.all([chart(env, symbol, "1y", opt).catch(() => null), /^\^|=X$|-(USD|GBP|EUR)$/.test(symbol) ? null : dividends(env, symbol, opt).catch(() => null)]);
   if (!y || !y.c.length) return null;
   const c = y.c, wk = c.length > 5 ? (c.at(-1) / c[c.length - 6] - 1) * 100 : null, sum = (a) => a.reduce((s, d) => s + d.amount, 0);
   const divs = yearDivs(hist?.length ? hist : y.divs), got = y.divs.filter((d) => d.t >= y.t[0]);
   return { wk, div12: sum(divs), got12: sum(got), lastDiv: divs.at(-1) || null, divs, hi52: y.hi52 ?? Math.max(...c), lo52: y.lo52 ?? Math.min(...c), yr: (c.at(-1) / c[0] - 1) * 100,
     first: c[0], last: c.at(-1) };
 }
-// A symbol's dividends, as far back as they go (for what it's paid you since you bought): [{ t, amount }], kept a day
-export async function dividends(env, symbol) {
+// A symbol's dividends, as far back as they go (for what it's paid you since you bought): [{ t, amount }], kept a day.
+// opt: cached's
+export async function dividends(env, symbol, opt) {
   return cached(env, `d:${symbol}`, 24 * HOUR, async () => {
     const j = await fetchJson(env, `/v8/finance/chart/${encodeURIComponent(symbol)}?range=max&interval=3mo&events=div`);
     return readChart(j, symbol)?.divs || null;
-  });
+  }, opt);
 }
 // What a currency's worth in pounds, today (GBP: 1; by: as quotes, though one never had before, with nothing kept to
 // give, has a couple of seconds of its own past it: the prices may have taken all of theirs, and what's held in it
@@ -752,8 +754,9 @@ async function tidy(D, t) {
   ]).catch(() => {});
 }
 // the day where a market is ("2026-10-29")
-const dayIn = (tz, t) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t)); } catch (_) { return new Date(t).toISOString().slice(0, 10); } };
+export const dayIn = (tz, t) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t)); } catch (_) { return new Date(t).toISOString().slice(0, 10); } };
 const money = (v, cur) => `${{ GBP: "£", USD: "$", EUR: "€" }[cur] || ""}${v.toLocaleString("en-GB", { minimumFractionDigits: v >= 1000 ? 0 : 2, maximumFractionDigits: v >= 1000 ? 0 : 2 })}${{ GBP: 1, USD: 1, EUR: 1 }[cur] ? "" : cur ? " " + cur : ""}`;
+export { money as moneySaid };
 // The scheduler's turn (workers/ticker, every five minutes): each alert whose holding has moved as far as asked today
 // (from yesterday's close), said once that day, on every phone of the account's; held through its Quiet Hours, and said
 // after them if it's still that far
@@ -840,12 +843,69 @@ export async function wrapTick(env, t = Date.now()) {
 // move being another day's. → { value, total, pct, top, low, day (one's change today, in pounds), shut (the markets shut
 // today, as people say them: only where nothing you own there traded, one that didn't (suspended, say) not its market's) }
 const PLACE = { Nasdaq: "New York", NYSE: "New York", "NYSE American": "New York", "NYSE Arca": "New York" };
-const andSaid = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
+export const andSaid = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
+// (one that traded today, by its own market's day; crypto never shuts. Where, as people say it)
+const tradedOn = (r, t) => r.x.kind === "crypto" || (!!r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t)), placeOf = (r) => PLACE[r.x.ex] || r.x.ex;
+// (the markets shut today: where nothing you own there traded, one that didn't (suspended, say) not its market's)
+function shutOf(held, t) {
+  const open = new Set(held.filter((r) => tradedOn(r, t)).map(placeOf));
+  return [...new Set(held.filter((r) => !tradedOn(r, t)).map(placeOf))].filter((p) => p && !open.has(p));
+}
 export function wrapFigures(held, fx, t = Date.now()) {
-  const on = (r) => r.x.kind === "crypto" || (!!r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t)), today = held.filter(on), place = (r) => PLACE[r.x.ex] || r.x.ex;
+  const on = (r) => tradedOn(r, t), today = held.filter(on);
   const day = (r) => (on(r) ? (r.x.price - r.x.prev) * r.qty * fx[r.x.cur] : 0), by = [...today].sort((a, b) => day(b) - day(a));
-  const value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = today.reduce((a, r) => a + day(r), 0), open = new Set(today.map(place));
-  return { value, total, pct: value - total ? (total / (value - total)) * 100 : 0, top: by[0], low: by.at(-1), day, shut: [...new Set(held.filter((r) => !on(r)).map(place))].filter((p) => p && !open.has(p)) };
+  const value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = today.reduce((a, r) => a + day(r), 0);
+  return { value, total, pct: value - total ? (total / (value - total)) * 100 : 0, top: by[0], low: by.at(-1), day, shut: shutOf(held, t) };
+}
+// For InFlite Today (functions/_todaymkt.js), in Markets' own words. The next dividend you can expect, as Markets
+// expects it (markets/app.js income(): each of a year's, specials left out, a year on, the soonest still to come, valued
+// at what you hold): items [{ symbol, name, qty, rate, divs: [{ t (s), amount }] }] → { symbol, name, at, value } or null
+// (at: ms. One with no rate to put it in pounds by, or none held, isn't counted: there's nothing to say it's worth)
+export function nextDividend(items, t = Date.now()) {
+  let next = null;
+  for (const x of items || []) {
+    const divs = Array.isArray(x?.divs) ? x.divs : [];
+    if (!divs.length || !(x.qty > 0) || !Number.isFinite(x.rate)) continue;
+    // (one-offs told from all it's given; only a year's, by how often it pays, expected again)
+    const one = new Set(marked(divs).filter((d) => d.special).map((d) => d.t));
+    for (const d of yearDivs(divs, t / 1000)) {
+      if (one.has(d.t)) continue;
+      const at = new Date(d.t * 1000);
+      at.setUTCFullYear(at.getUTCFullYear() + 1);
+      // (the soonest still to come; on the same day, the first in the list, as Markets sorts them)
+      if (+at > t && (!next || +at < next.at)) next = { symbol: x.symbol, name: x.name, at: +at, value: d.amount * x.qty * x.rate };
+    }
+  }
+  return next;
+}
+// Whether a market's open, as Markets says it (markets/app.js marketSaid: "London open · closes in 2h 5m", "Markets
+// closed"), from the quotes (London's index, else New York's: each with its day's hours, open) → { open, said }
+export function marketState(q, t = Date.now()) {
+  const now = t / 1000, say = (sym, where) => {
+    const o = q?.[sym]?.open;
+    if (!o || !(now >= o.start && now < o.end)) return null;
+    const m = Math.round((o.end - now) / 60), hrs = Math.floor(m / 60);
+    return { open: true, said: `${where} open · closes in ${hrs ? `${hrs}h ` : ""}${m % 60}m` };
+  };
+  return say("^FTSE", "London") || say("^GSPC", "New York") || { open: false, said: "Markets closed" };
+}
+// The markets shut today, as people say them, where nothing you own there has traded today (wrapFigures' shut), once
+// it's clear: at a weekend there, or an hour past its usual open (London 09:00, New York 10:30, each in its own zone;
+// anywhere else, at weekends only). No holiday calendar: a holiday's a market that should have traded by now and hasn't;
+// before then (London at 07:00 on a Monday), it isn't said to be shut → ["London", …]
+const USUAL = { London: ["Europe/London", 9 * 60], "New York": ["America/New_York", 10 * 60 + 30] };
+function wallIn(tz, t) {
+  let p;
+  try { p = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t)); }
+  catch (_) { p = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t)); }
+  const v = Object.fromEntries(p.map((x) => [x.type, x.value]));
+  return { weekend: v.weekday === "Sat" || v.weekday === "Sun", mins: Number(v.hour) * 60 + Number(v.minute) };
+}
+export function shutToday(held, t = Date.now()) {
+  return shutOf(held, t).filter((p) => {
+    const [tz, opens] = USUAL[p] || [held.find((r) => placeOf(r) === p)?.x.tz || "UTC", null], w = wallIn(tz, t);
+    return w.weekend || (opens != null && w.mins >= opens);
+  });
 }
 
 // What the evening wrap says about dividends (inc: incomeOf's; held: what you own, [{ symbol, name, x: its quote }]; fx:

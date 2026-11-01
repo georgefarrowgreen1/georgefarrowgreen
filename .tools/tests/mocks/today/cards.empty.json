@@ -1,0 +1,42 @@
+{
+  "at": 1793607000000,
+  "tz": "Europe/London",
+  "cards": {
+    "weather": {
+      "state": "empty",
+      "href": "https://weather.inflite.ai/",
+      "said": "Add a place in Weather, and its day shows here.",
+      "action": {
+        "label": "Add a place in Weather",
+        "href": "https://weather.inflite.ai/"
+      }
+    },
+    "chat": {
+      "state": "empty",
+      "href": "https://chat.inflite.ai/",
+      "said": "Add a friend in Chat, and their pigeons show here.",
+      "action": {
+        "label": "Open Chat",
+        "href": "https://chat.inflite.ai/"
+      }
+    },
+    "fitness": {
+      "state": "empty",
+      "href": "https://fitness.inflite.ai/#today",
+      "said": "Open Fitness, and today’s session shows here.",
+      "action": {
+        "label": "Open Fitness",
+        "href": "https://fitness.inflite.ai/#today"
+      }
+    },
+    "markets": {
+      "state": "empty",
+      "href": "https://finance.inflite.ai/",
+      "said": "Add what you own in Markets, and Today shows how it’s doing.",
+      "action": {
+        "label": "Open Markets",
+        "href": "https://finance.inflite.ai/"
+      }
+    }
+  }
+}

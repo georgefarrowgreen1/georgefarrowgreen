@@ -81,6 +81,9 @@ await joinChat(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'r
 await L.p.click('[data-act=tab][data-id=account]'); await L.p.waitForTimeout(600);
 await L.p.click('.chead .ifh-me'); await L.p.waitForSelector('.ifm-pop.open');
 const youCard = await L.p.$('.ifm-pop .ifm-card'), setRow = await L.p.$('.ifm-pop [data-k=settings]'), popSays = await L.p.innerText('.ifm-pop');
+// (and Today, first, at the apps' site itself, with its icon: .tools/inflite/menu.js todayUrl)
+const todayRow = await L.p.$eval('.ifm-rows > .ifm-grp:first-child > a.ifm-today', (a) => ({ href: a.getAttribute('href'), says: a.innerText.replace(/\s+/g, ' ').trim(), icon: a.querySelector('img.ifm-img')?.naturalWidth > 0 })).catch(() => null);
+ok(todayRow?.href === `${CHAT.replace('//chat.', '//')}/` && todayRow.says === 'Today Your day' && todayRow.icon, 'InFlite’s menu starts with Today, at the apps’ site itself', JSON.stringify(todayRow));
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 ok(!!youCard && !(await L.p.$('#screen > main.view [data-act=accountopen]')) && !!setRow && !(await L.p.$('#screen > main.view [data-act=ifsettings]')) && !/Weather/.test(popSays), 'Chat leads here, without naming any other app');
 // (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in
@@ -97,7 +100,7 @@ await shot(L, '01a-menu');
 await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { state: 'detached' });
 // (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
 const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
-ok(opens.join() === `${CHAT}/,${WX}/,${FIT}/,${CHAT.replace('//chat.', '//finance.')}/`, 'each app\'s card opens the app, on this site (Markets at finance.)', opens.join());
+ok(opens.join() === `${CHAT.replace('//chat.', '//')}/,${CHAT}/,${WX}/,${FIT}/,${CHAT.replace('//chat.', '//finance.')}/`, 'each app\'s card opens the app, on this site (Today at the site itself, Markets at finance.)', opens.join());
 const links = [];
 for (const name of ['Chat', 'Weather', 'Fitness']) {
   await L.p.click(`main .app:has(b:text-is("${name}")) .about`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);

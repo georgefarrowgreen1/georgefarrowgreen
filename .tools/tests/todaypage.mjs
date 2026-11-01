@@ -1,0 +1,493 @@
+// Today's page (the inflite repo's today/: its Worker and public files), end to end in real Chromium: its Worker run by
+// wrangler dev on :8787 against a stand-in for the account (mocks/todaystub.mjs on :8789, answering from
+// mocks/today/*.json), both started here and stopped by PID at the end. Run on its own, under the e2e lock:
+//   flock <scratch>/today-real/e2e.lock node .tools/tests/todaypage.mjs [state dir] [screenshots dir]
+// Checked: the way in (InFlite's shared one, its words for search engines, the apps between the name and Sign in never
+// over either, the hand-back's address); signing in by hand-back; no one's day drawn once signed out, at any moment; the
+// hostile names as text; each card in each state, its links, Try Again; the requests the page makes; Edit; the morning
+// with a stand-in push service; the menu and Sign Out; and no CSP violation, console error or sideways scroll anywhere.
+import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+
+const HERE = new URL('./', import.meta.url).pathname;
+const IFL = process.env.IFL_ROOT || new URL('../../../inflite/', import.meta.url).pathname;
+const OUT = process.argv[3] || `${tmpdir()}/todaypage`;
+mkdirSync(OUT, { recursive: true });
+const BASE = 'http://localhost:8787', STUB = 'http://127.0.0.1:8789';
+let fails = 0;
+const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c && extra ? '  — ' + extra : ''}`); if (!c) fails++; };
+const same = (a, b, l) => ok(JSON.stringify(a) === JSON.stringify(b), l, `got ${JSON.stringify(a)?.slice(0, 400)}, wanted ${JSON.stringify(b)?.slice(0, 400)}`);
+if (!existsSync(`${IFL}today/public/index.html`)) { console.log('SKIP  the inflite repo isn’t beside this one'); console.log('FAILS 0'); process.exit(0); }
+
+const FIX = (f) => JSON.parse(readFileSync(new URL(`./mocks/today/${f}`, import.meta.url), 'utf8'));
+const CARDS = FIX('cards.json'), EMPTY = FIX('cards.empty.json'), QUIET = FIX('cards.quiet.json'), SESSION = FIX('session.json');
+const T0 = CARDS.at, TQ = QUIET.at, ME = SESSION.user.id, KEYS = ['weather', 'chat', 'fitness', 'markets'];
+const BUILD = /const BUILD = "([\d.]+)"/.exec(readFileSync(`${IFL}today/public/app.js`, 'utf8'))[1];
+const SESSION_COOKIE = 'account=stubsession0123456789abcdefABCDEF';
+const FAKE_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/today-phone';
+
+// ---- the stand-in account and Today's Worker ----
+const stub = spawn(process.execPath, [`${HERE}mocks/todaystub.mjs`, '8789'], { stdio: ['ignore', 'ignore', 'inherit'] });
+const wbin = [`${IFL}node_modules/.bin/wrangler`, `${HERE}node_modules/.bin/wrangler`].find((f) => existsSync(f));
+let wlog = '';
+const wr = spawn(wbin, ['dev', '--port', '8787', '--var', 'ACCOUNT_ORIGIN:http://127.0.0.1:8789'], { cwd: IFL, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+wr.stdout.on('data', (d) => (wlog += d)); wr.stderr.on('data', (d) => (wlog += d));
+let stopped = false;
+const stop = () => { if (stopped) return; stopped = true; try { process.kill(-wr.pid, 'SIGTERM'); } catch {} try { stub.kill(); } catch {} };
+process.on('exit', stop);
+for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stop(); process.exit(1); });
+const up = async (u) => { for (let i = 0; i < 90; i++) { try { if ((await fetch(u)).ok) return true; } catch {} await new Promise((r) => setTimeout(r, 1000)); } return false; };
+if (!(await up(`${STUB}/__log`)) || !(await up(`${BASE}/version`))) { console.log(wlog.slice(-2000)); ok(false, 'the stub and Today’s Worker start'); console.log(`FAILS ${fails}`); stop(); process.exit(1); }
+
+const ctl = (path, body) => fetch(STUB + path, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }).then((r) => r.json());
+const mode = (m) => ctl('/__mode', { mode: m });
+const reqs = async () => (await ctl('/__log')).filter((e) => e.path.startsWith('/api/account/today/'));
+const reset = () => ctl('/__reset', {});
+
+// ---- the browser ----
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
+const errs = [];
+async function open({ w = 390, h = 844, scheme = 'dark', time = T0, push = false, signedIn = true, path = '/', wait = true, watch = false } = {}) {
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
+  // (other cookies of the site's, which never go on to the account)
+  await ctx.addCookies([{ name: 'theme', value: 'dark', url: BASE }, { name: 'known-device', value: 'abc123', url: BASE }, ...(signedIn ? [{ name: 'account', value: SESSION_COOKIE.split('=')[1], url: BASE }] : [])]);
+  await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
+  if (watch) await ctx.addInitScript(() => {
+    // (any of the day's words, drawn at any moment from the first script on)
+    const WORDS = ['Biscuit', 'Tempo 2 × 15', '20,862', 'pigeons on their way', 'Partly Cloudy', 'Rolls-Royce', 'Alex'];
+    window.__seen = [];
+    const look = (t) => { for (const x of WORDS) if (t && t.includes(x)) window.__seen.push(x); };
+    new MutationObserver((ms) => { for (const m of ms) { for (const n of m.addedNodes) look(n.textContent); if (m.type === 'characterData') look(m.target.data); } }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  if (push) {
+    await ctx.grantPermissions(['notifications'], { origin: BASE });
+    // (headless Chromium has no push service: one stood in for, as the other apps' tests do)
+    await ctx.addInitScript((endpoint) => {
+      const make = () => ({ endpoint, toJSON: () => ({ endpoint, keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
+      PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make() : null; };
+      PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(); };
+    }, FAKE_ENDPOINT);
+  }
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (40[14]|502)/.test(m.text())) errs.push(m.text()); });
+  await p.clock.setFixedTime(new Date(time));
+  await p.goto(BASE + path);
+  if (wait) await (signedIn ? p.waitForSelector('#in:not([hidden]) .tcard[data-state]', { timeout: 15000 }) : p.waitForSelector('#out:not([hidden]) #signin'));
+  return { ctx, p };
+}
+const text = (p, s) => p.$eval(s, (e) => e.innerText).catch(() => '');
+const has = (hay, needle, l) => ok(hay.includes(needle), l, `“${needle}” not in “${hay.slice(0, 300)}”`);
+// (ONLY=a,b: just the parts whose names have those in them)
+const ONLY = process.env.ONLY?.split(',');
+async function part(name, fn) { if (ONLY && !ONLY.some((o) => name.includes(o))) return; try { await fn(); } catch (e) { ok(false, name, e.stack?.split('\n').slice(0, 3).join(' | ')); } }
+const sha = (s) => createHash('sha256').update(s).digest('base64url');
+
+// ======================================================================= signed out: the way in
+await part('signed out', async () => {
+  await mode('out'); await reset();
+  const { ctx, p } = await open({ signedIn: false });
+  ok(await p.isVisible('#out.ifl-in .ifl-cta #signin') && await p.isVisible('#out.ifl-in .ifl-top'), 'signed out: InFlite’s shared way in');
+  ok(!(await p.isVisible('#in')), 'signed out: no day drawn');
+  same(await p.title(), 'InFlite Today', 'the title');
+  const meta = await p.evaluate(() => Object.fromEntries([...document.querySelectorAll('meta[name], meta[property]')].map((m) => [m.getAttribute('name') || m.getAttribute('property'), m.content])));
+  ok(/^Your day from InFlite’s apps on one page/.test(meta.description), 'the description');
+  same([meta['og:title'], meta['og:image'], meta['og:url'], meta['twitter:card']], ['InFlite Today', 'https://inflite.ai/og.png', 'https://inflite.ai/', 'summary_large_image'], 'the og tags');
+  same(await p.$eval('link[rel=canonical]', (l) => l.href), 'https://inflite.ai/', 'the canonical address');
+  const apps = await p.$$eval('.today-apps a', (as) => as.map((a) => [a.textContent.trim(), a.href, a.getAttribute('aria-label')]));
+  same(apps.map((a) => a.slice(0, 2)), [['Chat', 'https://chat.inflite.ai/'], ['Weather', 'https://weather.inflite.ai/'], ['Fitness', 'https://fitness.inflite.ai/'], ['Markets', 'https://finance.inflite.ai/']], 'the four apps, linked');
+  ok(apps.every((a) => /^\w+: /.test(a[2])), 'each app says what it is');
+  const asked = await reqs();
+  same(asked.map((e) => `${e.method} ${e.path}`), ['GET /api/account/today/me'], 'the way in costs the account one request');
+  await p.screenshot({ path: `${OUT}/out-390-dark.png` });
+  // (Sign in: to the sign-in page with the hash of a word kept in this tab, and the way back)
+  await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
+  await p.click('#signin');
+  await p.waitForURL(/auth\.inflite\.ai/);
+  let h = new URLSearchParams(new URL(p.url()).hash.slice(1));
+  same([h.get('signin'), h.get('back'), /^[\w-]{43}$/.test(h.get('ask') || '')], ['today', `${BASE}/`, true], 'Sign in goes to …/#signin=today&ask=<43>&back=<Today>/');
+  const ask = h.get('ask');
+  await p.goto(`${BASE}/`);
+  const verifier = await p.evaluate(() => sessionStorage.getItem('inflite:signin-verifier'));
+  ok(verifier && sha(verifier) === ask, 'ask is the hash of the word kept in this tab');
+  await p.waitForSelector('#out:not([hidden]) #signin');
+  await p.click('#join');
+  await p.waitForURL(/auth\.inflite\.ai/);
+  h = new URLSearchParams(new URL(p.url()).hash.slice(1));
+  same([h.get('join'), h.get('back')], ['today', `${BASE}/`], 'New here? goes to …/#join=today');
+  await ctx.close();
+});
+
+await part('the apps between the name and Sign in', async () => {
+  await mode('out');
+  for (const [w, h, shown] of [[320, 568, null], [390, 844, true], [820, 1180, true], [568, 320, false]]) {
+    const { ctx, p } = await open({ w, h, signedIn: false });
+    const m = await p.evaluate(() => {
+      const r = (e) => e.getBoundingClientRect();
+      const nav = document.querySelector('.today-apps'), on = getComputedStyle(nav).display !== 'none';
+      const kids = [...nav.children].filter((k) => on && getComputedStyle(k).display !== 'none' && r(k).height > 0).map((k) => [r(k).top, r(k).bottom]);
+      const top = r(document.querySelector('.ifl-top')), cta = Math.min(r(document.querySelector('.ifl-cta')).top, r(document.querySelector('.ifl-brand')).top);
+      return { kids, top: top.bottom, cta };
+    });
+    const over = m.kids.some(([t, bt]) => t < m.top || bt > m.cta);
+    ok(!over, `${w}×${h}: what InFlite is never over the name or Sign in`, JSON.stringify(m));
+    if (shown !== null) ok(!!m.kids.length === shown, `${w}×${h}: the apps ${shown ? 'shown' : 'left out (too short)'}`, JSON.stringify(m));
+    if (w === 320) await p.screenshot({ path: `${OUT}/out-320.png` });
+    await ctx.close();
+  }
+});
+
+await part('robots, sitemap, 404', async () => {
+  same(await (await fetch(`${BASE}/robots.txt`)).text(), 'User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://inflite.ai/sitemap.xml\n', 'robots.txt');
+  ok((await (await fetch(`${BASE}/sitemap.xml`)).text()).includes('<loc>https://inflite.ai/</loc>'), 'sitemap.xml');
+  const { ctx, p } = await open({ signedIn: false, wait: false, path: '/nope' });
+  const r = await p.goto(`${BASE}/nope`);
+  same(r.status(), 404, '/nope answers 404');
+  has(await text(p, 'body'), 'This page isn’t here', '/nope is 404.html');
+  ok(await p.$('a[href="/"]'), '404.html links home');
+  await ctx.close();
+  const v = await (await fetch(`${BASE}/version`)).json();
+  same(v, { build: BUILD, min: null }, '/version answers BUILD');
+});
+
+// ======================================================================= signing in by hand-back
+await part('hand-back', async () => {
+  await mode('out'); await reset();
+  const { ctx, p } = await open({ signedIn: false });
+  await p.evaluate(() => sessionStorage.setItem('inflite:signin-verifier', 'v'.repeat(43)));
+  // (back from the sign-in page: a page of its own, as it comes from auth's address)
+  await p.goto('about:blank');
+  await p.goto(`${BASE}/#signin=goodcode123&face=1`);
+  await p.waitForSelector('#in:not([hidden]) .tcard[data-state]');
+  const hb = (await reqs()).find((e) => e.path.endsWith('/handback'));
+  same(hb && JSON.parse(hb.body), { code: 'goodcode123', verifier: 'v'.repeat(43) }, 'the stub sees {code, verifier}');
+  ok((await ctx.cookies(BASE)).some((c) => c.name === 'account'), 'the account’s Set-Cookie is relayed');
+  same(await p.evaluate(() => location.hash), '', 'the code is taken out of the address');
+  ok(await p.evaluate(() => sessionStorage.getItem('inflite:signin-verifier') === null), 'the word is used once');
+  has(await text(p, '#hd'), 'Today', 'signed in: the header');
+  await ctx.close();
+});
+
+// ======================================================================= signed out after signed in: no one's day, ever
+await part('signed out after signed in', async () => {
+  await mode('ok');
+  const { ctx, p } = await open({ watch: true });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  ok(await p.evaluate((id) => !!localStorage.getItem(`today:cards:${id}`) && !!localStorage.getItem('today:session'), ME), 'signed in: the day kept in this browser, for this account');
+  // (offline, an hour later: the kept copy, said when it's from)
+  await mode('down');
+  await p.clock.setFixedTime(new Date(T0 + 15 * 60e3));
+  await p.reload();
+  await p.waitForSelector('#in:not([hidden]) .tcard[data-state="ok"]');
+  has(await text(p, '#cards'), 'Tempo 2 × 15', 'the account not answering: the copy kept here is drawn');
+  same(await text(p, '#kept'), 'Updated 08:10', 'and marked when it’s from');
+  // (signed out elsewhere: reloaded, nothing of the day at any moment, and nothing kept)
+  await mode('out');
+  await p.reload();
+  await p.waitForSelector('#out:not([hidden]) #signin');
+  await p.waitForTimeout(1500);
+  same(await p.evaluate(() => window.__seen), [], 'signed out: no card text drawn at any moment');
+  same(await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('today:cards:') || k === 'today:session')), [], 'signed out: nothing of the day kept in this browser');
+  ok(await p.isVisible('#out #signin'), 'signed out: the way in');
+  await ctx.close();
+});
+
+// ======================================================================= the hostile names, as text
+await part('hostile names', async () => {
+  const sig = (p) => p.evaluate(() => [...document.querySelectorAll('#cards *')].map((e) => `${e.tagName}[${[...e.attributes].map((a) => a.name).sort().join(',')}]`).join('|'));
+  await mode('clean');
+  let { ctx, p } = await open();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  const clean = await sig(p);
+  await ctx.close();
+  await mode('ok');
+  ({ ctx, p } = await open());
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  same(await p.$eval('.tcard[data-app=chat] .pg-row .pg-av', (e) => e.getAttribute('title')), 'Sam "Q" & O\'Neil', 'Sam "Q" & O\'Neil, as text');
+  const chat = await p.$eval('.tcard[data-app=chat]', (e) => e.textContent);
+  has(chat, "O'Brien, Courier", "O'Brien, as text");
+  has(chat, 'to <b>x</b>', '<b>x</b>, as text');
+  ok(!(await p.$$eval('#cards b', (bs) => bs.some((x) => x.textContent === 'x'))), 'no <b> made of it');
+  ok((await sig(p)) === clean, 'no element or attribute more than the clean fixture gives');
+  await ctx.close();
+});
+
+// ======================================================================= each card, in each state
+await part('cards: ok', async () => {
+  await mode('ok'); await reset();
+  const { ctx, p } = await open();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  const heads = await p.$$eval('.tcard', (cs) => cs.map((c) => [c.dataset.app, c.querySelector('.tc-head').getAttribute('href')]));
+  same(heads, KEYS.map((k) => [k, CARDS.cards[k].href]), 'each card’s head links to its app at the fixture’s href');
+  for (const k of KEYS) {
+    const send = await p.$eval(`.tcard[data-app=${k}] a[data-send]`, (a) => a.href).catch(() => null);
+    same(send, `https://chat.inflite.ai/#share=${encodeURIComponent(CARDS.cards[k].share)}`, `${k}: Send to a friend goes to Chat’s #share= with its line`);
+  }
+  const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
+  same(fit.slice(0, 2), [['Start ride', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Start ride and Change, to Fitness’s #today');
+  const rows = await p.$$eval('.tcard[data-app=chat] .pg-row, .tcard[data-app=chat] .pg-streak', (as) => as.map((a) => a.getAttribute('href')));
+  const c = CARDS.cards.chat;
+  same(rows, [...c.inbound, ...c.unread, ...c.mine, c.streak].map((x) => x.href), 'Chat: each row links to its friend in Chat');
+  const mk = await p.$$eval('.tcard[data-app=markets] a', (as) => as.map((a) => a.getAttribute('href')));
+  const m = CARDS.cards.markets;
+  ok([m.top.href, m.low.href, m.dividend.href, m.href].every((x) => mk.includes(x)), 'Markets: top, low and the dividend link to #s=, the value to Markets');
+  ok(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')) === CARDS.cards.weather.href, 'Weather: the warning links to Weather');
+  const words = await text(p, '#cards');
+  for (const w of ['2 pigeons on their way to you', 'Sam’s lands about 11:05', 'Mum’s lands about 16:20', 'A mystery pigeon', 'Leo’s landed at 07:30', 'Not read yet', 'To Leo · lands tomorrow about 01:40', '12-day flight streak with Mum', 'Ends at 00:00 if no pigeon flies today',
+    'Yellow wind warning today 18:00 to tomorrow 03:00', 'Dry, sunny spells until about 15:00', 'NEXT FOUR HOURS', 'Feels like 7°',
+    'Tempo 2 × 15', 'Why today:', 'Best 10:00 to 11:00', '11°, dry, a light westerly · London',
+    'London open · closes in 8h 20m', '+£61.20', '+0.29%', 'Rolls-Royce did most of the work, adding £48.10.', 'Tesco gave back £12.40.', 'Dividend, around 6 Nov', 'Tesco: about £43.20', '£12,000 of your ISA allowance left', '£8,000 of £20,000 used · till 5 April'])
+    has(words, w, `ok: “${w}”`);
+  has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
+  const av = (await reqs()).find((e) => e.path.endsWith('/avatar'));
+  ok(av && av.query.id, 'the header’s photo is today/avatar');
+  await ctx.close();
+});
+
+await part('cards: empty', async () => {
+  await mode('empty');
+  const { ctx, p } = await open({ scheme: 'light' });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="empty"]').length === 4);
+  for (const k of KEYS) {
+    const e = EMPTY.cards[k];
+    const got = await p.$eval(`.tcard[data-app=${k}]`, (c) => [c.querySelector('.tc-said').textContent, c.querySelector('.tc-foot a').textContent, c.querySelector('.tc-foot a').href]);
+    same(got, [e.said, e.action.label, e.action.href], `empty: ${k}’s words and its button`);
+  }
+  await p.screenshot({ path: `${OUT}/empty-390-light.png`, fullPage: true });
+  await ctx.close();
+});
+
+await part('cards: error, and Try Again', async () => {
+  await mode('error'); await reset();
+  const { ctx, p } = await open({ w: 820, h: 1180 });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="error"]').length === 4);
+  same(await p.$$eval('.tcard [data-retry]', (bs) => bs.map((x) => x.dataset.retry)), KEYS, 'error: each card has Try Again');
+  await p.click('.tcard[data-app=chat] [data-retry]');
+  await p.waitForTimeout(800);
+  const again = (await reqs()).filter((e) => e.path.endsWith('/cards') && e.query.only);
+  same(again.map((e) => e.query), [{ only: 'chat' }], 'Try Again asks for only=<that card>');
+  await ctx.close();
+});
+
+await part('cards: quiet', async () => {
+  await mode('quiet');
+  const { ctx, p } = await open({ time: TQ, scheme: 'light' });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  const words = await text(p, '#cards');
+  for (const w of ['No pigeons on their way', 'No session planned today', 'Next · Monday', 'London and New York are shut today', 'No change today yet: your holdings are as they closed.', 'TOMORROW IN LONDON', 'Dry and partly cloudy tonight.'])
+    has(words, w, `quiet: “${w}”`);
+  same(await p.$$eval('a[data-send]', (as) => as.map((a) => a.closest('.tcard').dataset.app)), ['weather', 'chat'], 'quiet: no Send to a friend where there’s nothing to say');
+  await p.screenshot({ path: `${OUT}/quiet-390-light.png`, fullPage: true });
+  await ctx.close();
+});
+
+await part('cards: words across a clock change, a day out, and a dividend of £100 or more', async () => {
+  // (the cards drawn in the page by cards.js itself, with an answer and a moment of our choosing)
+  const { ctx, p } = await open();
+  const draw = (key, card, now) => p.evaluate(async ([key, card, now]) => {
+    const { cardHTML, tick } = await import('/cards.js');
+    const box = document.createElement('div');
+    box.innerHTML = cardHTML(key, card, { links: {}, tz: 'Europe/London', now });
+    const before = box.textContent.replace(/\s+/g, ' ');
+    tick(box, now);
+    return [before, box.textContent.replace(/\s+/g, ' ')];
+  }, [key, card, now]);
+  const chat = (inbound, unread, mine = []) => ({ ...CARDS.cards.chat, inbound, unread, mine, streak: null });
+  const pigeon = { ...CARDS.cards.chat.inbound[0] }, leo = { ...CARDS.cards.chat.unread[0] };
+  // 00:30 BST on Sunday 25 October 2026, the day the clocks go back: a pigeon landing at 08:00 on Monday, 32½ hours on
+  let now = Date.UTC(2026, 9, 24, 23, 30), lands = Date.UTC(2026, 9, 26, 8, 0);
+  let [said, ticked] = await draw('chat', chat([{ ...pigeon, sentAt: now - 3600e3, landsAt: lands }], []), now);
+  has(said, 'Sam’s lands tomorrow about 08:00', 'Chat: “tomorrow” on the 25-hour day');
+  has(said, '1d 8h to go', 'Chat: a day or more to go, as Chat says it (1d 8h)');
+  has(ticked, '1d 8h to go', 'Chat: the minute’s tick says it the same way');
+  // 00:30 BST on Monday 30 March 2026, the day after the clocks went forward: landed at 21:00 on Sunday
+  now = Date.UTC(2026, 2, 29, 23, 30);
+  [said] = await draw('chat', chat([], [{ ...leo, last: Date.UTC(2026, 2, 29, 20, 0) }]), now);
+  has(said, 'Leo’s landed yesterday at 21:00', 'Chat: “yesterday” the morning after the 23-hour day');
+  // and the plain days still: today, tomorrow, and further off by the weekday
+  [said] = await draw('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 2 * 864e5 }], []), T0);
+  ok(/Sam’s lands \w{3} about/.test(said) && !said.includes('tomorrow'), 'Chat: two days off, by the weekday', said.slice(0, 200));
+  // Markets: an expected dividend of £100 or more without the pence, under £100 with them
+  const mk = CARDS.cards.markets;
+  [said] = await draw('markets', { ...mk, dividend: { ...mk.dividend, value: 143.2 } }, T0);
+  has(said, 'Tesco: about £143', 'Markets: about £143, as Markets says it');
+  ok(!said.includes('£143.20'), 'Markets: no pence on a dividend of £100 or more');
+  [said] = await draw('markets', { ...mk, dividend: { ...mk.dividend, value: 99.5 } }, T0);
+  has(said, 'Tesco: about £99.50', 'Markets: pence under £100');
+  await ctx.close();
+});
+
+await part('cards: slow', async () => {
+  await mode('slow');
+  const { ctx, p } = await open({ wait: false });
+  await p.waitForSelector('#in:not([hidden])');
+  same(await p.$$eval('.tcard.loading', (cs) => cs.map((c) => c.dataset.app)), KEYS, 'slow: each card’s place held, in your order, as the session answers');
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4, null, { timeout: 15000 });
+  ok(true, 'slow: then the cards');
+  await ctx.close();
+});
+
+// ======================================================================= the requests the page makes
+await part('requests', async () => {
+  await mode('ok'); await reset();
+  const { ctx, p } = await open();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.waitForTimeout(500);
+  const all = await reqs();
+  const cards = all.filter((e) => e.method === 'GET' && e.path.endsWith('/cards'));
+  same(cards.map((e) => e.query.with), ['morning'], 'one /api/today?with=morning a load');
+  same(all.filter((e) => e.path.endsWith('/today/morning')).length, 0, 'no separate /api/morning');
+  ok(all.every((e) => !/fcm|endpoint/i.test(JSON.stringify(e.query)) && !/fcm/.test(e.path)), 'no address carries a push endpoint');
+  ok(all.every((e) => Object.keys(e.query).every((k) => ['only', 'with', 'device', 'id', 'v'].includes(k))), 'only the five named parts of an address go on');
+  ok(all.every((e) => e.headers.origin === BASE), 'every request to the account carries Today’s own Origin');
+  same([...new Set(all.map((e) => e.headers.cookie))], [SESSION_COOKIE], 'only the account’s cookie goes on');
+  await ctx.close();
+});
+
+// ======================================================================= Edit
+await part('edit', async () => {
+  await mode('ok'); await reset();
+  const { ctx, p } = await open();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.click('#edit');
+  await p.waitForSelector('#sh-edit.on');
+  await p.click('#edList [data-k=chat] [data-mv="-1"]');
+  await p.click('#edList [data-k=markets] [data-show]');
+  await p.waitForTimeout(900);
+  same(await p.$$eval('#cards .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'weather', 'fitness'], 'Edit: moved and hidden on the page at once');
+  let puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
+  same(puts.length, 1, 'Edit: the changes sent once, after the last');
+  same(JSON.parse(puts.at(-1)?.body || '{}'), { order: ['chat', 'weather', 'fitness', 'markets'], hidden: ['markets'] }, 'Edit: the PUT body');
+  await p.screenshot({ path: `${OUT}/edit-390-dark.png` });
+  await p.click('#edReset');
+  await p.waitForTimeout(900);
+  puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
+  same(JSON.parse(puts.at(-1)?.body || '{}'), { order: KEYS, hidden: [] }, 'Back to the day’s order sends the default');
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(400);
+  ok(!(await p.$('#sh-edit.on')), 'Escape closes Edit');
+  await ctx.close();
+});
+await part('edit: a change made while the last is on its way', async () => {
+  // (the account answering each PUT 700 ms late; a second move made after the first PUT's gone, before its answer)
+  const order = (p) => p.$$eval('#cards .tcard', (cs) => cs.map((c) => c.dataset.app).join(','));
+  const putOrders = async () => (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs')).map((e) => JSON.parse(e.body).order.join(','));
+  for (const gap of [900, 550]) {
+    await mode('ok');
+    const { ctx, p } = await open();
+    await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+    await p.route('**/api/prefs', async (r) => { await new Promise((y) => setTimeout(y, 700)); await r.continue(); });
+    await reset();
+    await p.click('#edit');
+    await p.waitForSelector('#sh-edit.on');
+    await p.click('#edList [data-k=markets] [data-mv="-1"]');
+    await p.waitForTimeout(gap);
+    await p.click('#edList [data-k=markets] [data-mv="-1"]');
+    const seen = new Set();
+    for (let i = 0; i < 30; i++) { seen.add(await order(p)); await p.waitForTimeout(100); }
+    same([...seen], ['weather,markets,chat,fitness'], `Edit, ${gap} ms apart: the newer order stays on the page while the older PUT answers`);
+    await p.waitForTimeout(1200);
+    same(await order(p), 'weather,markets,chat,fitness', `Edit, ${gap} ms apart: still the newer order once every PUT has answered`);
+    same((await putOrders()).at(-1), 'weather,markets,chat,fitness', `Edit, ${gap} ms apart: the newer order is the last the account was sent`);
+    await ctx.close();
+  }
+});
+
+// ======================================================================= the morning, with a stand-in push service
+await part('morning', async () => {
+  await mode('ok'); await ctl('/__morning', { on: false }); await reset();
+  const { ctx, p } = await open({ push: true });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  ok(!(await p.isChecked('#mOn')), 'morning: off, as the account says');
+  has(await text(p, '#lock'), 'Off: turn it on to have it each morning', 'morning: off, said under the preview');
+  await p.click('#mOn');
+  await p.waitForFunction(() => document.querySelector('#mOn').checked && !document.querySelector('#mOn').disabled);
+  await p.waitForTimeout(300);
+  const all = await reqs(), i = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/push')), j = all.findIndex((e) => e.method === 'PUT' && e.path.endsWith('/today/morning'));
+  ok(i >= 0 && j > i, 'turning it on: POST /api/push, then PUT /api/morning');
+  same(JSON.parse(all[i]?.body || '{}').sub?.endpoint, FAKE_ENDPOINT, 'the subscription sent in the body');
+  const put = JSON.parse(all[j]?.body || '{}');
+  same([put.on, put.tz], [true, 'Europe/London'], 'PUT /api/morning {on: true, tz}');
+  const lock = await text(p, '#lock');
+  for (const l of FIX('morning.json').preview.lines) has(lock.replace(/\s+/g, ' '), l.replace(/\s+/g, ' '), `the preview: “${l.slice(0, 30)}…”`);
+  has(lock, 'This morning’s came at 07:02', 'the preview’s caption');
+  ok(await p.isEnabled('#tryNow'), 'Show it on this phone, with this device');
+  await reset();
+  await p.click('#tryNow');
+  await p.waitForTimeout(500);
+  const tried = (await reqs()).find((e) => e.path.endsWith('/morning/try'));
+  same(JSON.parse(tried?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'Show it on this phone posts the endpoint, in the body');
+  has(await text(p, '.toast'), 'Sent', 'and says so');
+  // (opened again: this device named by its hash, never its endpoint)
+  await reset();
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  const q = (await reqs()).find((e) => e.path.endsWith('/cards'))?.query || {};
+  same(q.device, sha(FAKE_ENDPOINT).slice(0, 16), 'the device’s name: the first 16 of b64url(SHA-256(endpoint))');
+  // (turned on from Account, on no device yet)
+  await ctl('/__morning', { on: true, devices: 0, thisDevice: false });
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.waitForTimeout(300);
+  has(await text(p, '#mWhy'), 'Not on any of your devices yet · Turn On Here', 'on with no device: said, with Turn On Here');
+  await p.$eval('#morning', (s) => s.scrollIntoView());
+  await p.screenshot({ path: `${OUT}/morning-390-dark.png` });
+  await ctx.close();
+});
+
+// ======================================================================= the menu, and Sign Out
+await part('menu and sign out', async () => {
+  await mode('ok'); await reset();
+  const { ctx, p } = await open({ push: true });
+  await p.evaluate(() => localStorage.setItem('fakesub', '1'));
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.click('#hd .ifh-me');
+  await p.waitForSelector('.ifm-pop.open');
+  const rows = await p.$$eval('.ifm-rows .ifm-row', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
+  same(rows, ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows');
+  has(await text(p, '.ifm-pop .ifm-who'), 'Alex Morgan', 'the menu: you');
+  has(await text(p, '.ifm-foot'), `Today ${BUILD}`, 'the menu’s foot: Today and its version');
+  ok(await p.$eval('.ifm-foot-ic', (i) => i.complete && i.naturalWidth > 0), 'and Today’s icon beside it');
+  ok(!(await p.$('.ifm-today')), 'no Today row in Today’s own menu');
+  await p.screenshot({ path: `${OUT}/menu-390-dark.png` });
+  await reset();
+  await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
+  await p.click('.ifm-out');
+  await p.waitForURL(/auth\.inflite\.ai/);
+  const h = new URLSearchParams(new URL(p.url()).hash.slice(1));
+  same([h.get('signout'), h.get('back')], ['today', `${BASE}/`], 'Sign Out ends at the sign-in page’s #signout=today&back=…');
+  const all = await reqs(), del = all.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/push')), out = all.findIndex((e) => e.path.endsWith('/signout'));
+  ok(del >= 0 && out > del, 'Sign Out: this device’s notifications stopped first (DELETE push), then signed out');
+  same(JSON.parse(all[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE push names the endpoint in its body');
+  await p.goto(`${BASE}/robots.txt`);
+  same(await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('today:'))), [], 'Sign Out: nothing of the day kept');
+  await ctx.close();
+});
+
+// ======================================================================= everywhere: no CSP violation, console error or sideways scroll
+await part('every width, light and dark', async () => {
+  await mode('ok');
+  for (const scheme of ['light', 'dark']) for (const w of [320, 390, 820, 1440]) {
+    const { ctx, p } = await open({ w, h: w < 700 ? 844 : 1000, scheme });
+    await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+    await p.waitForTimeout(300);
+    const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    ok(over <= 0, `${w} ${scheme}: no sideways scroll`, `${over}px`);
+    if (w === 390 && scheme === 'dark') {
+      const sw = await p.evaluate(async () => (await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 5000))]))?.active?.scriptURL || '');
+      ok(sw.endsWith('/sw.js'), 'sw.js registered', sw);
+    }
+    if (w === 1440 || w === 320) await p.screenshot({ path: `${OUT}/ok-${w}-${scheme}.png`, fullPage: true });
+    await ctx.close();
+  }
+});
+same(errs, [], 'no CSP violation and no console error, on any page');
+
+await b.close();
+stop();
+console.log(`FAILS ${fails}`);
+process.exit(fails ? 1 : 0);

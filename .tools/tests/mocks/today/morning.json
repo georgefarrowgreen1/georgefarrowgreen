@@ -1,0 +1,32 @@
+{
+  "on": true,
+  "at": 420,
+  "tz": "Europe/London",
+  "lines": {
+    "weather": true,
+    "fitness": true,
+    "chat": true,
+    "markets": true
+  },
+  "names": false,
+  "devices": 1,
+  "thisDevice": true,
+  "sentToday": true,
+  "preview": {
+    "kind": "sent",
+    "at": 1793602920000,
+    "title": "London · 14° / 7°",
+    "lines": [
+      "Dry, sunny spells until about 15:00, then cloudy, with wind picking up. Met Office: yellow wind warning today 18:00 to tomorrow 03:00.",
+      "Tempo 2 × 15 · best 10:00–11:00",
+      "2 pigeons on their way",
+      "Your portfolio is at £20,801, as it closed"
+    ],
+    "out": []
+  },
+  "replaces": {
+    "weather": true,
+    "fitness": false
+  },
+  "place": "London"
+}

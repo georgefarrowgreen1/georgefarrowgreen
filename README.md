@@ -2,7 +2,9 @@
 
 Two sites from one Pages project (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
 live at **inflite.ai**: Chat (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
-each below. inflite.ai itself is kept for another project, not this one.
+each below. inflite.ai itself is InFlite Today, the inflite repo's root Worker (`today/`): its page there, and its data
+from this project, at `account.inflite.ai/api/account/today/*` (`functions/_todayapp.js`), with its morning
+notification sent from here (`functions/_todaymorning.js`).
 
 - **One account, two sign-ins.** The account's cookie is each site's own (`Domain=inflite.ai` for every app;
   `georgefarrowgreen.com` for the home page). The home page's **Sign in** goes to the account's page, and comes back

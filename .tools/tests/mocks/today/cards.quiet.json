@@ -1,0 +1,153 @@
+{
+  "at": 1793475600000,
+  "tz": "Europe/London",
+  "cards": {
+    "weather": {
+      "state": "ok",
+      "place": {
+        "name": "London",
+        "lat": 51.5072,
+        "lon": -0.1276
+      },
+      "href": "https://weather.inflite.ai/?lat=51.5072&lon=-0.1276&name=London",
+      "clock": "24",
+      "offset": 0,
+      "sky": "partly-night",
+      "now": {
+        "temp": "10°",
+        "feels": "8°",
+        "label": "Partly Cloudy",
+        "icon": "partly-moon",
+        "isDay": false
+      },
+      "day": {
+        "hi": "13°",
+        "lo": "8°"
+      },
+      "lead": "Dry and partly cloudy tonight.",
+      "more": "Down to 6° tonight. Tomorrow: sunny spells, 13°.",
+      "warning": null,
+      "hours": {
+        "label": "Tomorrow in London",
+        "wet": false,
+        "list": [
+          {
+            "t": 1793523600000,
+            "time": "09",
+            "temp": "8°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 0
+          },
+          {
+            "t": 1793530800000,
+            "time": "11",
+            "temp": "11°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 0
+          },
+          {
+            "t": 1793538000000,
+            "time": "13",
+            "temp": "13°",
+            "icon": "mostly-sun",
+            "label": "Mostly Clear",
+            "pop": 0
+          },
+          {
+            "t": 1793545200000,
+            "time": "15",
+            "temp": "12°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793552400000,
+            "time": "17",
+            "temp": "10°",
+            "icon": "partly-moon",
+            "label": "Partly Cloudy",
+            "pop": 5
+          }
+        ]
+      },
+      "brief": {
+        "title": "London · 13° / 8°"
+      },
+      "share": "London today: dry and partly cloudy tonight."
+    },
+    "chat": {
+      "state": "ok",
+      "href": "https://chat.inflite.ai/",
+      "inbound": [],
+      "unread": [],
+      "mine": [],
+      "more": 0,
+      "streak": null,
+      "share": "Sending you a pigeon."
+    },
+    "fitness": {
+      "state": "ok",
+      "href": "https://fitness.inflite.ai/#today",
+      "day": "2026-10-31",
+      "tz": "Europe/London",
+      "kind": "none",
+      "session": null,
+      "done": null,
+      "best": null,
+      "next": {
+        "day": "2026-11-02",
+        "label": "Monday",
+        "name": "Tempo 2 × 15",
+        "secs": 3600,
+        "kind": "Tempo"
+      },
+      "event": null,
+      "units": "metric",
+      "snapshotAt": 1793470320000,
+      "share": null
+    },
+    "markets": {
+      "state": "ok",
+      "href": "https://finance.inflite.ai/",
+      "owned": 6,
+      "following": 1,
+      "value": 20801.21,
+      "change": 0,
+      "pct": 0,
+      "traded": false,
+      "market": {
+        "open": false,
+        "said": "Markets closed",
+        "shut": [
+          "London",
+          "New York"
+        ]
+      },
+      "top": null,
+      "low": null,
+      "spark": null,
+      "dividend": {
+        "name": "Tesco",
+        "symbol": "TSCO.L",
+        "at": 1793923200000,
+        "value": 43.2,
+        "href": "https://finance.inflite.ai/#s=TSCO.L"
+      },
+      "isa": {
+        "year": "2026/27",
+        "paid": 8000,
+        "allowance": 20000,
+        "left": 12000,
+        "used": 0.4,
+        "days": 157,
+        "inIsa": 15190.65
+      },
+      "leftOut": [],
+      "stale": false,
+      "share": null
+    }
+  }
+}

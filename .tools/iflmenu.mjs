@@ -1,7 +1,8 @@
 // InFlite's menu, shared: .tools/inflite/menu.js (with the apps' icons, .tools/inflite/icons/, drawn into it) copied
 // into each app's script, and .tools/inflite/menu.css into its stylesheet, each between the marks below (so each app
 // still sends the files it did, as its service worker and version check expect). Change them there, then run:
-// node .tools/iflmenu.mjs   (and for Mail, in the inflite repo: node .tools/iflmenu.mjs ../inflite/email/public)
+// node .tools/iflmenu.mjs   (and for Mail and Today, in the inflite repo, each folder named:
+// node .tools/iflmenu.mjs ../inflite/email/public ../inflite/today/public)
 // A unit test checks this repository's copies (unit/iflmenu.test.mjs).
 import { readFileSync, writeFileSync, existsSync } from "fs";
 const ROOT = new URL("../", import.meta.url).pathname;
@@ -11,7 +12,7 @@ export const CSS_START = "/* ==== InFlite's menu, shared: from .tools/inflite/me
 export const CSS_END = "/* ==== end of InFlite's menu ==== */";
 export const SCRIPTS = ["pigeon/app.js", "weather/app.js", "fitness/app.js", "markets/app.js", "account/app.js"];
 export const STYLES = ["pigeon/styles.css", "weather/styles.css", "fitness/styles.css", "markets/styles.css", "account/styles.css"];
-const APPS = ["chat", "weather", "fitness", "markets", "mail", "account"];
+const APPS = ["chat", "weather", "fitness", "markets", "mail", "today", "account"];
 
 // an app's icon, small: no notes, no spaces between its parts
 const mini = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<\?xml[^>]*>/, "").replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
@@ -36,11 +37,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const said = [], js = jsBlock(), css = cssBlock();
   for (const f of SCRIPTS) if (into(ROOT + f, JS_START, JS_END, js)) said.push(f);
   for (const f of STYLES) if (into(ROOT + f, CSS_START, CSS_END, css)) said.push(f);
-  const mail = process.argv[2];
-  if (mail) {
-    if (!existsSync(`${mail}/app.css`)) throw new Error(`No app.css in ${mail}`);
-    if (into(`${mail}/app.js`, JS_START, JS_END, js)) said.push(`${mail}/app.js`);
-    if (into(`${mail}/app.css`, CSS_START, CSS_END, css)) said.push(`${mail}/app.css`);
+  // (the other folders named, each an app's of its own: Mail's and Today's, in the inflite repo)
+  for (const dir of process.argv.slice(2)) {
+    if (!existsSync(`${dir}/app.css`)) throw new Error(`No app.css in ${dir}`);
+    if (into(`${dir}/app.js`, JS_START, JS_END, js)) said.push(`${dir}/app.js`);
+    if (into(`${dir}/app.css`, CSS_START, CSS_END, css)) said.push(`${dir}/app.css`);
   }
   console.log(said.length ? `InFlite's menu, copied into: ${said.join(", ")}` : "InFlite's menu: every copy already the same");
 }

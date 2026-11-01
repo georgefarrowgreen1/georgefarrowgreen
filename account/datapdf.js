@@ -1,6 +1,6 @@
 // Your data as a document (account/app.js exportView): what the export gives (functions/api/account/[[path]].js
 // POST export), set out to read and keep. Your profile, then sign-in and security, recent activity, preferences,
-// Chat and Weather, each as rows and tables, A4, page numbers at the foot. Written by pdf.js; text Helvetica can't
+// Chat, Weather, Fitness, Markets and Today, each as rows and tables, A4, page numbers at the foot. Written by pdf.js; text Helvetica can't
 // show is drawn by the page's canvas, in the system's own font.
 
 import { PDF, Flow } from "./pdf.js";
@@ -10,6 +10,10 @@ const day = (t) => (t ? new Date(t).toLocaleDateString("en-GB", { day: "numeric"
 const when = (t) => (t ? `${day(t)}, ${new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "");
 const onOff = (v) => (v ? "On" : "Off");
 const hour = (h) => `${String(h).padStart(2, "0")}:00`;
+// (a day as kept, "2026-11-02": that day, wherever this is read)
+const dayOf = (k) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(k || "")); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : ""; };
+// InFlite Today's cards, as it names them
+const CARDS = { weather: "Weather", chat: "Chat", fitness: "Fitness", markets: "Markets" };
 // Chat's notifications, as Chat names them
 const NOTES = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off"], ["rerouted", "A pigeon changes course"], ["lost", "A pigeon is lost"],
   ["delays", "Weather delays"], ["requests", "Friend requests"], ["accepted", "Request accepted"], ["reactions", "Reactions"], ["moments", "Mid-air moments"],
@@ -48,7 +52,7 @@ export async function dataPdf(data, { did, units }) {
   const a = data.account || {}, si = data.signIn || {}, inf = data.inflight || {}, wx = data.weather || {}, at = new Date(data.exportedAt || Date.now());
   const pdf = new PDF({ title: `Your data · ${a.name}`, author: `${a.name} (@${a.handle})`, raster: rasterizer() });
   const icons = {};
-  await Promise.all([["inflight", "/apps/inflight.png"], ["weather", "/apps/weather.png"], ["fitness", "/apps/fitness.png"], ["markets", "/apps/markets.png"]].map(async ([k, src]) => { try { icons[k] = pdf.jpeg(await asJpeg(src)); } catch (_) {} }));
+  await Promise.all([["inflight", "/apps/inflight.png"], ["weather", "/apps/weather.png"], ["fitness", "/apps/fitness.png"], ["markets", "/apps/markets.png"], ["today", "/apps/today.png"]].map(async ([k, src]) => { try { icons[k] = pdf.jpeg(await asJpeg(src)); } catch (_) {} }));
   // (every page after the first: whose data, at the top)
   const f = new Flow(pdf, { onPage: (p, n, fl) => {
     if (n === 1) return;
@@ -212,6 +216,8 @@ export async function dataPdf(data, { did, units }) {
   const fx = data.fitness || {}, rides = fx.activities || [];
   section("Fitness", icons.fitness);
   figures([[rides.length, rides.length === 1 ? "activity" : "activities"], [(fx.nights?.length ?? 0), "nights of sleep"]]);
+  // (the coming days' sessions, as Fitness last sent them, for Today's card and its morning notification)
+  if (fx.upcoming) rows([["Kept for Today", `${Object.keys(fx.upcoming.days || {}).length} days, updated ${new Date(fx.upcoming.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`]]);
   sub("Activities", "Newest first. Each one's file, as imported, is in Fitness: Export everything.");
   table([{ label: "Name", w: 4 }, { label: "Sport", w: 1.6 }, { label: "On", w: 2 }, { label: "From", w: 2.2 }],
     rides.map((x) => [x.name || "An activity", x.sport || "", day(x.startedAt), x.device || ""]), "No activities yet.");
@@ -228,6 +234,18 @@ export async function dataPdf(data, { did, units }) {
   sub("ISA and notifications");
   rows([mk.isa && ["ISA paid in", `£${Number(mk.isa.paidIn || 0).toLocaleString("en-GB")} in ${mk.isa.taxYear}`],
     mk.notifications && ["Price alerts", onOff(mk.notifications.priceAlerts)], mk.notifications && ["Evening wrap", onOff(mk.notifications.eveningWrap)]]);
+
+  // ---- InFlite Today: its cards, in your order, and its morning notification ----
+  const td = data.today;
+  if (td) {
+    const mo = td.morning || {}, hid = td.cards?.hidden || [], shown = (td.cards?.order || []).filter((k) => !hid.includes(k)).map((k) => CARDS[k] || k);
+    section("Today", icons.today);
+    rows([["Cards", [shown.join(", ") || "All hidden", hid.length && `Hidden: ${hid.map((k) => CARDS[k] || k).join(", ")}`].filter(Boolean).join(". ")],
+      ["Morning notification", mo.on ? `${mo.at || "07:00"}, ${mo.timeZone || "Europe/London"}` : "Off"],
+      ["Its lines", Object.entries(mo.lines || {}).filter(([, v]) => v).map(([k]) => CARDS[k] || k).join(", ") || "None"],
+      ["Devices", String(td.devices || 0)],
+      ["Last sent", mo.lastSent ? dayOf(mo.lastSent) : "Not yet"]]);
+  }
 
   // ---- the foot of every page ----
   const N = pdf.pages.length;

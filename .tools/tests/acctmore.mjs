@@ -165,7 +165,7 @@ await closeSheet(P);
 
 // ---- 4. Each app's sheet: what it keeps of yours, and the way into it ----
 const cards = await P.p.$$eval('main .app', (as) => as.map((a) => a.innerText.replace(/\s+/g, ' ').trim()));
-ok(/^Chat 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
+ok(/^Today Your day, from all your apps One page, every app Open$/.test(cards[0]) && /^Chat 4 friends · 9 sent 6 places in your passport Open$/.test(cards[1]) && /^Weather 4 places Alerts on Open$/.test(cards[2]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
 await P.p.click('main .app:has(b:text-is("Chat")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
 const inf = await sheetText(P);
 ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'Chat: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);

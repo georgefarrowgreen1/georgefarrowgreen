@@ -3,7 +3,8 @@
 // signed in already, carry on as yourself); and the page hands the sign-in back to the app, with a code in the
 // address's # that's good once, for two minutes, and only with the app's secret. So a code seen anywhere else, or one
 // a page elsewhere sends you back with, signs nothing in. The app swaps it for a sign-in of its own (Chat's:
-// functions/api/pigeon handback; Weather's: functions/_wxacct.js; Fitness's: functions/api/fitness; Markets's: functions/api/markets).
+// functions/api/pigeon handback; Weather's: functions/_wxacct.js; Fitness's: functions/api/fitness; Markets's: functions/api/markets;
+// Mail's and Today's, whose servers ask the account's address: functions/_mailapp.js, functions/_todayapp.js).
 //
 // For Chat it brings what unlocks the key there (box): the password's first half, or the PRF secret of a passkey
 // with its own copy of the key (pk: which one, for that copy), sealed on the account's page to a key pair Chat
@@ -12,7 +13,7 @@
 
 import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, safeEqual } from "./_pigeon.js";
 
-const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness", "markets", "mail"]);
+const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness", "markets", "mail", "today"]);
 const WORD = /^[A-Za-z0-9_-]{43}$/, CODE = /^[A-Za-z0-9_-]{20,64}$/;
 export const PASSKEY_ID = /^[A-Za-z0-9_-]{16,1400}$/;
 
@@ -42,9 +43,10 @@ export async function makeHandback(env, u, b) {
 
 // (the app) the code used up, whatever comes of it, and the sign-in it hands back, if it's this app's and its word is
 // the one the app kept, and the sign-in it was made for still lasts: { row, u, siteHash (that sign-in's, for the
-// browser's cookie), authAt (when it last showed it's you: a sign-in made from it is no fresher) }
-export async function takeHandback(env, request, app, b) {
-  await limit(env, "handback-ip:" + clientIp(request), 30, 15 * 60e3);
+// browser's cookie), authAt (when it last showed it's you: a sign-in made from it is no fresher) }. (limitKey, max: the
+// tries allowed, under a key of the app's own, where the network's address isn't the browser's)
+export async function takeHandback(env, request, app, b, { limitKey, max = 30 } = {}) {
+  await limit(env, limitKey ?? "handback-ip:" + clientIp(request), max, 15 * 60e3);
   const code = String(b.code || ""), verifier = String(b.verifier || ""), D = await db(env), t = Date.now();
   const row = CODE.test(code) && await D.prepare("DELETE FROM pg_handback WHERE hash = ? RETURNING *").bind(hex(await sha256(code))).first();
   const word = WORD.test(verifier) ? b64url(await sha256(verifier)) : "";

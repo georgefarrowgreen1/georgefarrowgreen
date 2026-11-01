@@ -1,7 +1,8 @@
 // The site's scheduler: Cloudflare runs this every 5 minutes (wrangler.toml's crons) and it asks for Chat's and
 // Weather's notification jobs (as GitHub's schedule, .github/workflows, does but can't be relied on to: it runs hours
-// late), and for Fitness's look at Garmin Connect. Each job keeps itself to one run at a time, so the two schedulers,
-// and the apps' own traffic, never double up.
+// late), for Fitness's look at Garmin Connect, Markets' alerts and InFlite Today's morning notification (which only this
+// asks for: while it's on, Weather's briefing and Fitness's reminder aren't sent for that account, so it mustn't stop).
+// Each job keeps itself to one run at a time, so the two schedulers, and the apps' own traffic, never double up.
 // Its secrets are the jobs' own: wrangler secret put INFLIGHT_TICK_SECRET (and WEATHER_TICK_SECRET, if it's different).
 const SITE = "https://georgefarrowgreen.pages.dev";
 
@@ -22,6 +23,7 @@ export default {
       ask("/api/weather/tick", env.WEATHER_TICK_SECRET || env.INFLIGHT_TICK_SECRET),
       ask("/api/fitness/garmin-tick", env.INFLIGHT_TICK_SECRET),   // (Fitness's Garmin Connect accounts: what's new)
       ask("/api/markets/tick", env.INFLIGHT_TICK_SECRET),   // (Markets's price alerts)
+      ask("/api/today/tick", env.INFLIGHT_TICK_SECRET),   // (Today's morning notification)
     ])).filter(Boolean);
     // (the run itself marked as failed, if any job did: so it's seen in the Worker's own list of its runs and its errors
     // in Cloudflare's dashboard, not only in its log)

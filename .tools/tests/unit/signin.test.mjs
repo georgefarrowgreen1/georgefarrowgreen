@@ -61,6 +61,29 @@ test('the account’s page sends a sign-in back only to the app’s own address'
   assert.equal(local('weather', 'http://weather.localhost:8788/'), 'http://weather.localhost:8788/');
   assert.equal(local('inflight', 'http://localhost:9999/pigeon/'), 'http://chat.localhost:8788/');
 });
+test('InFlite Today, at the apps’ site itself: a sign-in goes back only there (and "home" is still only the home page)', () => {
+  const site = backFor('https://account.inflite.ai/');
+  assert.equal(site('today', 'https://inflite.ai/'), 'https://inflite.ai/');
+  for (const bad of ['https://evil.example/', 'https://inflite.ai.evil.example/', 'http://inflite.ai/', 'https://inflite.ai:444/', 'https://inflite.ai/x', 'https://inflite.ai/?a=1',
+    'https://u:p@inflite.ai/', 'https://www.inflite.ai/', 'https://chat.inflite.ai/', 'https://account.inflite.ai/', 'https://georgefarrowgreen.com/', 'javascript:alert(1)', 'nonsense', null])
+    assert.equal(site('today', bad), 'https://inflite.ai/', String(bad));
+  assert.equal(site('home', 'https://inflite.ai/'), 'https://georgefarrowgreen.com/', 'the home page is never Today');
+  assert.equal(site('inflight', 'https://inflite.ai/'), 'https://chat.inflite.ai/', 'nor is Chat');
+  // (from the sign-in page too, and the tests' site, on its port)
+  assert.equal(backFor('https://auth.inflite.ai/')('today', 'https://inflite.ai/'), 'https://inflite.ai/');
+  const tests = backFor('http://account.ifl.test:8788/');
+  assert.equal(tests('today', 'http://ifl.test:8788/'), 'http://ifl.test:8788/');
+  assert.equal(tests('today', 'http://ifl.test:9999/'), 'http://ifl.test:8788/');
+  assert.equal(tests('today', 'http://gfg.test:8788/'), 'http://ifl.test:8788/');
+  assert.equal(tests('home', 'http://ifl.test:8788/'), 'http://gfg.test:8788/');
+});
+test('the account’s page takes Today’s sign-in and sign-out, and names it', () => {
+  const src = read('account/app.js');
+  assert.match(src, /const SIGN_FOR = [\s\S]*?\(inflight\|weather\|fitness\|markets\|mail\|today\|home\)/);
+  assert.match(src, /const OUT = [\s\S]*?\(account\|inflight\|weather\|fitness\|markets\|mail\|today\|home\)/);
+  assert.match(src, /today: \{ name: "Today", sub: "@" \}/);
+  assert.match(read('functions/_handback.js'), /APPS = new Set\(\[[^\]]*"today"[^\]]*\]\)/);
+});
 
 test('no app signs in by itself any more: the account’s page does, and hands it back', () => {
   const inflight = read('pigeon/app.js'), weather = read('weather/account.js') + read('weather/app.js');

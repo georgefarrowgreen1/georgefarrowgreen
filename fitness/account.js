@@ -140,3 +140,5 @@ export const rideWeather = () => call("weather");
 export const pushKey = () => call("push-key");
 export const morning = (b) => call("push", { method: "POST", body: b });
 export const morningOff = (endpoint) => call("push", { method: "DELETE", body: { endpoint } });
+// The coming days, as this phone has them planned, for InFlite Today (functions/_fittoday.js): { tz, units, days }
+export const today = (b) => call("today", { method: "POST", body: b });

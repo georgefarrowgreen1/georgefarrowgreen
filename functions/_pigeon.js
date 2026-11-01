@@ -568,7 +568,7 @@ export function placeOf(request) {
 export function appKey(request) {
   const p = request ? new URL(request.url).pathname : "";
   return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness" : p.startsWith("/api/markets/") ? "markets"
-    : p.startsWith("/api/account/mail/") ? "mail" : p.startsWith("/api/account/") ? "account" : null;
+    : p.startsWith("/api/account/mail/") ? "mail" : p.startsWith("/api/account/today/") ? "today" : p.startsWith("/api/account/") ? "account" : null;
 }
 // The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null
 const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? appKey(request) : null);
