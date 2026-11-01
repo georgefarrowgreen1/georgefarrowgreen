@@ -503,7 +503,7 @@ await part('morning', async () => {
   const { ctx, p } = await open({ push: true });
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   ok(!(await p.isChecked('#mOn')), 'morning: off, as the account says');
-  has(await text(p, '#lock'), 'Off: turn it on to have it each morning', 'morning: off, said under the preview');
+  ok(!(await p.$('#lock, .lk-note')), 'morning: no Lock Screen picture, its settings only');
   await p.click('#mOn');
   await p.waitForFunction(() => document.querySelector('#mOn').checked && !document.querySelector('#mOn').disabled);
   await p.waitForTimeout(300);
@@ -512,9 +512,6 @@ await part('morning', async () => {
   same(JSON.parse(all[i]?.body || '{}').sub?.endpoint, FAKE_ENDPOINT, 'the subscription sent in the body');
   const put = JSON.parse(all[j]?.body || '{}');
   same([put.on, put.tz], [true, 'Europe/London'], 'PUT /api/morning {on: true, tz}');
-  const lock = await text(p, '#lock');
-  for (const l of FIX('morning.json').preview.lines) has(lock.replace(/\s+/g, ' '), l.replace(/\s+/g, ' '), `the preview: “${l.slice(0, 30)}…”`);
-  has(lock, 'This morning’s came at 07:02', 'the preview’s caption');
   ok(await p.isEnabled('#tryNow'), 'Show it on this …, with this device');
   same(await text(p, '#tryNow'), 'Show it on this computer', 'Show it on this computer, on a computer');
   await reset();
@@ -542,8 +539,7 @@ await part('morning', async () => {
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
-  const later = (await text(p, '#lock')).replace(/\s+/g, ' ');
-  ok(later.includes('How it reads now · Tomorrow’s comes at 07:00') && later.includes('Monday 2 November') && later.includes('08:10'), 'a later day’s preview: said as how it reads now, at now', later.slice(0, 300));
+  ok(!(await p.$('#lock, .lk-note')), 'still no Lock Screen picture, with a next one to come');
   await p.$eval('#morning', (s) => s.scrollIntoView());
   await p.screenshot({ path: `${OUT}/morning-390-dark.png` });
   await ctx.close();
