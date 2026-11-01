@@ -520,14 +520,7 @@ await part('morning', async () => {
   same(JSON.parse(all[i]?.body || '{}').sub?.endpoint, FAKE_ENDPOINT, 'the subscription sent in the body');
   const put = JSON.parse(all[j]?.body || '{}');
   same([put.on, put.tz], [true, 'Europe/London'], 'PUT /api/morning {on: true, tz}');
-  ok(await p.isEnabled('#tryNow'), 'Show it on this …, with this device');
-  same(await text(p, '#tryNow'), 'Show it on this computer', 'Show it on this computer, on a computer');
-  await reset();
-  await p.click('#tryNow');
-  await p.waitForTimeout(500);
-  const tried = (await reqs()).find((e) => e.path.endsWith('/morning/try'));
-  same(JSON.parse(tried?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'Show it on this … posts the endpoint, in the body');
-  has(await text(p, '.toast'), 'Sent', 'and says so');
+  ok(!(await p.$('#tryNow, #mNotify')), 'no buttons at the foot of the morning’s settings');
   // (opened again: this device named by its hash, never its endpoint)
   await reset();
   await p.reload();
