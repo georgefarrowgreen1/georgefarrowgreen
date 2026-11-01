@@ -73,7 +73,7 @@ async function open({ w = 390, h = 844, scheme = 'dark', time = T0, push = false
   }
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (40[14]|502)/.test(m.text())) errs.push(m.text()); });
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: (the server responded with a status of (40[14]|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
   await p.clock.setFixedTime(new Date(time));
   await p.goto(BASE + path);
   if (wait) await (signedIn ? p.waitForSelector('#in:not([hidden]) .tcard[data-state]', { timeout: 15000 }) : p.waitForSelector('#out:not([hidden]) #signin'));
@@ -123,7 +123,7 @@ await part('signed out', async () => {
 
 await part('the apps between the name and Sign in', async () => {
   await mode('out');
-  for (const [w, h, shown] of [[320, 568, null], [390, 844, true], [820, 1180, true], [568, 320, false]]) {
+  for (const [w, h, shown] of [[320, 568, null], [360, 640, null], [390, 844, true], [820, 1180, true], [568, 320, false]]) {
     const { ctx, p } = await open({ w, h, signedIn: false });
     const m = await p.evaluate(() => {
       const r = (e) => e.getBoundingClientRect();
@@ -135,6 +135,7 @@ await part('the apps between the name and Sign in', async () => {
     const over = m.kids.some(([t, bt]) => t < m.top || bt > m.cta);
     ok(!over, `${w}×${h}: what InFlite is never over the name or Sign in`, JSON.stringify(m));
     if (shown !== null) ok(!!m.kids.length === shown, `${w}×${h}: the apps ${shown ? 'shown' : 'left out (too short)'}`, JSON.stringify(m));
+    ok(m.kids.length === 0 || m.kids.length === 2, `${w}×${h}: what InFlite is, with the apps, or neither`, JSON.stringify(m));
     if (w === 320) await p.screenshot({ path: `${OUT}/out-320.png` });
     await ctx.close();
   }
@@ -177,13 +178,36 @@ await part('signed out after signed in', async () => {
   const { ctx, p } = await open({ watch: true });
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   ok(await p.evaluate((id) => !!localStorage.getItem(`today:cards:${id}`) && !!localStorage.getItem('today:session'), ME), 'signed in: the day kept in this browser, for this account');
-  // (offline, an hour later: the kept copy, said when it's from)
-  await mode('down');
   await p.clock.setFixedTime(new Date(T0 + 15 * 60e3));
+  // (the account answering with an error (the Worker's 502): no one's day, in a tab or on the Home Screen alike, as
+  // another app may have signed out meanwhile; and nothing taken away, for when it answers)
+  const nothingDrawn = async (l) => {
+    await p.waitForSelector('#out:not([hidden]) #signin');
+    await p.waitForTimeout(800);
+    same(await p.evaluate(() => window.__seen), [], `${l}: no card text drawn at any moment`);
+    ok(!(await p.isVisible('#in')), `${l}: no day drawn`);
+    return text(p, '#outSaid');
+  };
+  await mode('down');
+  await p.reload();
+  has(await nothingDrawn('the account answering 502, in a tab'), 'Couldn’t reach', 'the account answering 502, in a tab: said so');
+  // (no answer at all, in a tab: still no one's day)
+  await mode('ok');
+  await ctx.route('**/api/**', (r) => r.abort('internetdisconnected'));
+  await p.reload();
+  has(await nothingDrawn('no network, in a tab'), 'Couldn’t reach InFlite just now', 'no network, in a tab: said so');
+  ok(await p.evaluate((id) => !!localStorage.getItem(`today:cards:${id}`), ME), 'no network, in a tab: the copy still kept, for when it answers');
+  // (no answer at all, in a Home Screen Today, whose sign-in no other app can end: the kept copy, said when it's from)
+  await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
   await p.reload();
   await p.waitForSelector('#in:not([hidden]) .tcard[data-state="ok"]');
-  has(await text(p, '#cards'), 'Tempo 2 × 15', 'the account not answering: the copy kept here is drawn');
+  has(await text(p, '#cards'), 'Tempo 2 × 15', 'no network, on the Home Screen: the copy kept here is drawn');
   same(await text(p, '#kept'), 'Updated 08:10', 'and marked when it’s from');
+  // (the account answering with an error, on the Home Screen: no one's day either)
+  await ctx.unroute('**/api/**');
+  await mode('down');
+  await p.reload();
+  await nothingDrawn('the account answering 502, on the Home Screen');
   // (signed out elsewhere: reloaded, nothing of the day at any moment, and nothing kept)
   await mode('out');
   await p.reload();
@@ -227,7 +251,9 @@ await part('cards: ok', async () => {
     same(send, `https://chat.inflite.ai/#share=${encodeURIComponent(CARDS.cards[k].share)}`, `${k}: Send to a friend goes to Chat’s #share= with its line`);
   }
   const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
-  same(fit.slice(0, 2), [['Start ride', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Start ride and Change, to Fitness’s #today');
+  same(fit.slice(0, 2), [['Details', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Details and Change, in Fitness’s words, to Fitness’s #today');
+  ok(await p.$eval('.tcard[data-app=fitness] .tc-foot .pill.primary', (a) => a.textContent === 'Details' && !a.querySelector('svg')), 'Fitness: no play glyph, as nothing starts a session');
+  same(await p.$$eval('.tcard[data-app=fitness] .ft-bt-key span', (ss) => ss.map((x) => x.textContent)), ['Great', 'Good', 'Fair', 'Poor'], 'Fitness: the hours’ colours, with their key');
   const rows = await p.$$eval('.tcard[data-app=chat] .pg-row, .tcard[data-app=chat] .pg-streak', (as) => as.map((a) => a.getAttribute('href')));
   const c = CARDS.cards.chat;
   same(rows, [...c.inbound, ...c.unread, ...c.mine, c.streak].map((x) => x.href), 'Chat: each row links to its friend in Chat');
@@ -235,8 +261,15 @@ await part('cards: ok', async () => {
   const m = CARDS.cards.markets;
   ok([m.top.href, m.low.href, m.dividend.href, m.href].every((x) => mk.includes(x)), 'Markets: top, low and the dividend link to #s=, the value to Markets');
   ok(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')) === CARDS.cards.weather.href, 'Weather: the warning links to Weather');
+  // (a name in Markets' sentence: tapped on its words, or a finger's width beyond them, and never taken by the other name)
+  const reach = await p.$$eval('.tcard[data-app=markets] a.mk-name', (as) => as.map((a, i) => {
+    a.scrollIntoView({ block: 'center' });
+    const r = a.getBoundingClientRect(), x = r.left + r.width / 2, at = (y) => document.elementFromPoint(x, y)?.closest('a.mk-name') === a;
+    return [at(r.top + 2), at(r.bottom - 2), i === 0 ? at(r.top - 11) : at(r.bottom + 11)];
+  }));
+  same(reach, [[true, true, true], [true, true, true]], 'Markets: each name tapped on its words or a finger’s width beyond them, never taken by the other');
   const words = await text(p, '#cards');
-  for (const w of ['2 pigeons on their way to you', 'Sam’s lands about 11:05', 'Mum’s lands about 16:20', 'A mystery pigeon', 'Leo’s landed at 07:30', 'Not read yet', 'To Leo · lands tomorrow about 01:40', '12-day flight streak with Mum', 'Ends at 00:00 if no pigeon flies today',
+  for (const w of ['2 pigeons on their way to you', 'Sam’s pigeon lands about 11:05', 'Mum’s pigeon lands about 16:20', 'A mystery pigeon', 'Leo’s pigeon landed at 07:30', 'Not read yet', 'To Leo · lands tomorrow about 01:40', '12-day flight streak with Mum', 'Send a pigeon in the next 15h 50m to keep it',
     'Yellow wind warning today 18:00 to tomorrow 03:00', 'Dry, sunny spells until about 15:00', 'NEXT FOUR HOURS', 'Feels like 7°',
     'Tempo 2 × 15', 'Why today:', 'Best 10:00 to 11:00', '11°, dry, a light westerly · London',
     'London open · closes in 8h 20m', '+£61.20', '+0.29%', 'Rolls-Royce did most of the work, adding £48.10.', 'Tesco gave back £12.40.', 'Dividend, around 6 Nov', 'Tesco: about £43.20', '£12,000 of your ISA allowance left', '£8,000 of £20,000 used · till 5 April'])
@@ -277,8 +310,9 @@ await part('cards: quiet', async () => {
   const { ctx, p } = await open({ time: TQ, scheme: 'light' });
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   const words = await text(p, '#cards');
-  for (const w of ['No pigeons on their way', 'No session planned today', 'Next · Monday', 'London and New York are shut today', 'No change today yet: your holdings are as they closed.', 'TOMORROW IN LONDON', 'Dry and partly cloudy tonight.'])
+  for (const w of ['No pigeons on their way to you', 'No session planned today', 'Next · Monday', 'London and New York are shut today', 'Your holdings are as they closed.', 'TOMORROW IN LONDON', 'Dry and partly cloudy tonight.'])
     has(words, w, `quiet: “${w}”`);
+  ok(!words.includes('No change today yet'), 'quiet: no “yet” on a day the markets are shut');
   same(await p.$$eval('a[data-send]', (as) => as.map((a) => a.closest('.tcard').dataset.app)), ['weather', 'chat'], 'quiet: no Send to a friend where there’s nothing to say');
   await p.screenshot({ path: `${OUT}/quiet-390-light.png`, fullPage: true });
   await ctx.close();
@@ -300,16 +334,51 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
   // 00:30 BST on Sunday 25 October 2026, the day the clocks go back: a pigeon landing at 08:00 on Monday, 32½ hours on
   let now = Date.UTC(2026, 9, 24, 23, 30), lands = Date.UTC(2026, 9, 26, 8, 0);
   let [said, ticked] = await draw('chat', chat([{ ...pigeon, sentAt: now - 3600e3, landsAt: lands }], []), now);
-  has(said, 'Sam’s lands tomorrow about 08:00', 'Chat: “tomorrow” on the 25-hour day');
+  has(said, 'Sam’s pigeon lands tomorrow about 08:00', 'Chat: “tomorrow” on the 25-hour day');
   has(said, '1d 8h to go', 'Chat: a day or more to go, as Chat says it (1d 8h)');
   has(ticked, '1d 8h to go', 'Chat: the minute’s tick says it the same way');
   // 00:30 BST on Monday 30 March 2026, the day after the clocks went forward: landed at 21:00 on Sunday
   now = Date.UTC(2026, 2, 29, 23, 30);
   [said] = await draw('chat', chat([], [{ ...leo, last: Date.UTC(2026, 2, 29, 20, 0) }]), now);
-  has(said, 'Leo’s landed yesterday at 21:00', 'Chat: “yesterday” the morning after the 23-hour day');
+  has(said, 'Leo’s pigeon landed yesterday at 21:00', 'Chat: “yesterday” the morning after the 23-hour day');
   // and the plain days still: today, tomorrow, and further off by the weekday
   [said] = await draw('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 2 * 864e5 }], []), T0);
-  ok(/Sam’s lands \w{3} about/.test(said) && !said.includes('tomorrow'), 'Chat: two days off, by the weekday', said.slice(0, 200));
+  ok(/Sam’s pigeon lands \w{3} about/.test(said) && !said.includes('tomorrow'), 'Chat: two days off, by the weekday', said.slice(0, 200));
+  // (a card drawn at t0 and ticked at t1: its title, its count in the air, its rows and its streak, each as text)
+  const parts = (key, card, t0, t1 = t0) => p.evaluate(async ([key, card, t0, t1]) => {
+    const { cardHTML, tick } = await import('/cards.js');
+    const box = document.createElement('div'), t = (e) => (e ? e.textContent.replace(/\s+/g, ' ').trim() : null);
+    box.innerHTML = cardHTML(key, card, { links: {}, tz: 'Europe/London', now: t0 });
+    tick(box, t1);
+    return { title: t(box.querySelector('.tc-h')), meta: t(box.querySelector('.tc-meta')), rows: [...box.querySelectorAll('.pg-row .pg-tx')].map((x) => [t(x.querySelector('b')), t(x.querySelector('small'))].join(' / ')),
+      streak: t(box.querySelector('.pg-streak .tx small')), streakGone: box.querySelector('.pg-streak')?.hidden ?? null, bt: box.querySelector('.ft-bt')?.getAttribute('aria-label') || '' };
+  }, [key, card, t0, t1]);
+  // a pigeon five minutes off: “lands at”; landed since the answer: “landed at”, its title and count with it
+  let c5 = await parts('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 5 * 60e3 }], [], CARDS.cards.chat.mine), T0);
+  same([c5.title, c5.meta, c5.rows[0]], ['A pigeon on its way to you', '2 in the air', 'Sam’s pigeon lands at 08:15 / Biscuit, Navigator · 213 mi from Paris · 5m to go'], 'Chat: five minutes off, “lands at”');
+  c5 = await parts('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 - 20 * 60e3 }], [], CARDS.cards.chat.mine), T0);
+  same([c5.title, c5.meta, c5.rows[0]], ['Sam’s pigeon landed', '1 in the air', 'Sam’s pigeon landed at 07:50 / Biscuit, Navigator · 213 mi from Paris · Landed'], 'Chat: landed since the answer, “landed at”, with its title and count');
+  // as it lands, the minute's tick says so in its row, its title and its count
+  c5 = await parts('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 5 * 60e3 }], []), T0, T0 + 6 * 60e3);
+  same([c5.title, c5.meta, c5.rows[0]], ['Sam’s pigeon landed', '', 'Sam’s pigeon landed at 08:15 / Biscuit, Navigator · 213 mi from Paris · Landed'], 'Chat: as it lands, the tick says so in its row, title and count');
+  // landed unread ten days ago: with its date, as a weekday alone reads as this week's (Chat's atTime); two from one friend
+  c5 = await parts('chat', chat([], [{ ...leo, last: T0 - 10 * 864e5 }]), T0);
+  same(c5.rows, ['Leo’s pigeon landed Fri 23 Oct at 09:10 / Not read yet'], 'Chat: ten days ago, with its date');
+  c5 = await parts('chat', chat([], [{ ...leo, n: 2 }]), T0);
+  same([c5.title, c5.rows[0]], ['2 pigeons landed', 'Leo’s pigeons landed, the last at 07:30 / 2 not read yet'], 'Chat: two from one friend');
+  // the streak, counting down as Chat does (its Flight Streak row), by the minute's tick; gone once it's ended
+  const st = { ...CARDS.cards.chat, inbound: [], unread: [], mine: [] };
+  c5 = await parts('chat', st, T0, T0 + 30 * 60e3);
+  same([c5.streak, c5.streakGone], ['Send a pigeon in the next 15h 20m to keep it', false], 'Chat: the streak’s time left, as Chat says it, by the tick');
+  c5 = await parts('chat', st, T0, st.streak.endsAt + 60e3);
+  same(c5.streakGone, true, 'Chat: the streak’s row gone once it’s ended');
+  // Fitness: a run's hours said as a run's
+  const fit = CARDS.cards.fitness;
+  c5 = await parts('fitness', { ...fit, session: { ...fit.session, sport: 'run' } }, T0);
+  ok(/^Each daylight hour for a run:/.test(c5.bt), 'Fitness: a run’s hours, said as a run’s', c5.bt.slice(0, 80));
+  // Fitness: a rest day, with the reason Fitness gave for it (the card's own why)
+  [said] = await draw('fitness', { ...fit, kind: 'rest', session: null, best: null, why: 'Hard days yesterday: let it sink in.' }, T0);
+  ok(said.includes('Rest, and let it sink in') && said.includes('Hard days yesterday: let it sink in.'), 'Fitness: a rest day, with Fitness’s reason for it', said.slice(0, 200));
   // Markets: an expected dividend of £100 or more without the pence, under £100 with them
   const mk = CARDS.cards.markets;
   [said] = await draw('markets', { ...mk, dividend: { ...mk.dividend, value: 143.2 } }, T0);
@@ -317,6 +386,27 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
   ok(!said.includes('£143.20'), 'Markets: no pence on a dividend of £100 or more');
   [said] = await draw('markets', { ...mk, dividend: { ...mk.dividend, value: 99.5 } }, T0);
   has(said, 'Tesco: about £99.50', 'Markets: pence under £100');
+  // one holding, as Markets says it (markets/app.js daySaid)
+  [said] = await draw('markets', { ...mk, owned: 1, change: 61.2, pct: 1.21, top: { ...mk.top, change: 61.2 }, low: null }, T0);
+  ok(said.includes('Rolls-Royce is up 1.21% today.') && !said.includes('did most of the work'), 'Markets: one holding up, in Markets’ words', said.slice(0, 200));
+  // (its one name, laid out in the page: a finger's reach, 44 high or more)
+  const tall = await p.evaluate(async (card) => {
+    const { cardHTML } = await import('/cards.js');
+    const box = document.createElement('div');
+    box.innerHTML = cardHTML('markets', card, { links: {}, tz: 'Europe/London', now: Date.now() });
+    document.querySelector('#cards').prepend(box);
+    const a = box.querySelector('a.mk-name');
+    a.scrollIntoView({ block: 'center' });
+    const r = a.getBoundingClientRect(), x = r.left + r.width / 2, at = (y) => document.elementFromPoint(x, y)?.closest('a.mk-name') === a;
+    let top = r.top, bottom = r.bottom;
+    while (at(top - 1)) top--;
+    while (at(bottom + 1)) bottom++;
+    box.remove();
+    return Math.round(bottom - top);
+  }, { ...mk, owned: 1, change: 61.2, pct: 1.21, top: { ...mk.top, change: 61.2 }, low: null });
+  ok(tall >= 44, 'Markets: one holding’s name, 44 high or more to tap', `${tall}px`);
+  [said] = await draw('markets', { ...mk, owned: 1, change: -30, pct: -0.58, top: null, low: { ...mk.low, change: -30 } }, T0);
+  ok(said.includes('Tesco is down 0.58% today.') && !said.includes('took away'), 'Markets: one holding down, in Markets’ words', said.slice(0, 200));
   await ctx.close();
 });
 
@@ -327,6 +417,17 @@ await part('cards: slow', async () => {
   same(await p.$$eval('.tcard.loading', (cs) => cs.map((c) => c.dataset.app)), KEYS, 'slow: each card’s place held, in your order, as the session answers');
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4, null, { timeout: 15000 });
   ok(true, 'slow: then the cards');
+  await ctx.close();
+});
+
+await part('cards: a clock behind the account’s', async () => {
+  // (this device's clock 13 hours behind, across midnight: the day still said from the answer's moment, never before it)
+  await mode('ok');
+  const { ctx, p } = await open({ time: T0 - 13 * 3600e3 });
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  const words = await text(p, '.tcard[data-app=chat]');
+  for (const w of ['Sam’s pigeon lands about 11:05', 'Leo’s pigeon landed at 07:30', 'To Leo · lands tomorrow about 01:40', 'Send a pigeon in the next 15h 50m to keep it'])
+    has(words, w, `a clock 13 hours behind: “${w}”`);
   await ctx.close();
 });
 
@@ -414,12 +515,13 @@ await part('morning', async () => {
   const lock = await text(p, '#lock');
   for (const l of FIX('morning.json').preview.lines) has(lock.replace(/\s+/g, ' '), l.replace(/\s+/g, ' '), `the preview: “${l.slice(0, 30)}…”`);
   has(lock, 'This morning’s came at 07:02', 'the preview’s caption');
-  ok(await p.isEnabled('#tryNow'), 'Show it on this phone, with this device');
+  ok(await p.isEnabled('#tryNow'), 'Show it on this …, with this device');
+  same(await text(p, '#tryNow'), 'Show it on this computer', 'Show it on this computer, on a computer');
   await reset();
   await p.click('#tryNow');
   await p.waitForTimeout(500);
   const tried = (await reqs()).find((e) => e.path.endsWith('/morning/try'));
-  same(JSON.parse(tried?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'Show it on this phone posts the endpoint, in the body');
+  same(JSON.parse(tried?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'Show it on this … posts the endpoint, in the body');
   has(await text(p, '.toast'), 'Sent', 'and says so');
   // (opened again: this device named by its hash, never its endpoint)
   await reset();
@@ -433,6 +535,15 @@ await part('morning', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
   has(await text(p, '#mWhy'), 'Not on any of your devices yet · Turn On Here', 'on with no device: said, with Turn On Here');
+  const reach = await p.$eval('#mWhy [data-turnon]', (b) => { const r = b.getBoundingClientRect(), a = getComputedStyle(b, '::after'); return [r.height - parseFloat(a.top) - parseFloat(a.bottom), r.width - parseFloat(a.left) - parseFloat(a.right)]; });
+  ok(reach[0] >= 44 && reach[1] >= 44, 'Turn On Here: a finger’s reach, 44 by 44 or more', JSON.stringify(reach));
+  // (the next one, tomorrow, composed now: said as how it reads now, at now)
+  await ctl('/__morning', { on: true, devices: 1, thisDevice: true, preview: { ...FIX('morning.json').preview, kind: 'next', at: T0 + 22 * 3600e3 + 50 * 60e3 } });
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.waitForTimeout(300);
+  const later = (await text(p, '#lock')).replace(/\s+/g, ' ');
+  ok(later.includes('How it reads now · Tomorrow’s comes at 07:00') && later.includes('Monday 2 November') && later.includes('08:10'), 'a later day’s preview: said as how it reads now, at now', later.slice(0, 300));
   await p.$eval('#morning', (s) => s.scrollIntoView());
   await p.screenshot({ path: `${OUT}/morning-390-dark.png` });
   await ctx.close();

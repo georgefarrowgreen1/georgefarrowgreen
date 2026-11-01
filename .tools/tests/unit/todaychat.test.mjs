@@ -95,6 +95,7 @@ test("the pigeons Today must never show aren't there: lost already, booked and n
   for (const p of ["LOST-PLACE", "BOOKED-PLACE", "BLOCKED-PLACE", "ASKER-PLACE", "MYBOOKED-PLACE", "MYBLOCKED-PLACE"]) assert.ok(!json.includes(p), `not ${p}`);
   for (const who of [BAD, ASKER, STRANGER]) assert.ok(!json.includes(who), `nothing from or to ${who}`);
   assert.deepEqual(card.inbound.map((x) => x.from), ["Paris", "Inverness", "DOOMED-PLACE"], "soonest first");
+  assert.deepEqual([card.inboundTotal, card.inboundFrom], [3, 3], "how many on their way, and from how many friends: the same pigeons as the list");
   const doomed = card.inbound[2], swift = card.inbound[0];
   assert.deepEqual(Object.keys(doomed).sort(), Object.keys(swift).sort(), "the doomed one has the same fields as any other");
   assert.equal(doomed.landsAt, T + 4 * H, "and its landing as planned");
@@ -126,7 +127,7 @@ test("no friends: the card says to add one; friends with nothing on: empty lists
   assert.deepEqual(await chatCard(env, { id: id(9) }, ctx), { state: "empty", href: `${LINKS.chat}/`, said: "Add a friend in Chat, and their pigeons show here.", action: { label: "Open Chat", href: `${LINKS.chat}/` } });
   link(id(9), STRANGER);
   const quiet = await chatCard(env, { id: id(9) }, ctx);
-  assert.deepEqual(quiet, { state: "ok", href: `${LINKS.chat}/`, inbound: [], unread: [], mine: [], more: 0, streak: null, share: "Sending you a pigeon." });
+  assert.deepEqual(quiet, { state: "ok", href: `${LINKS.chat}/`, inbound: [], inboundTotal: 0, inboundFrom: 0, unread: [], mine: [], more: 0, streak: null, share: "Sending you a pigeon." });
 });
 
 test("the source reads pigeons only through its own allowlist: no SELECT *, no m.*, never Chat's own views of a message", () => {
@@ -150,4 +151,24 @@ test("a friend's picture, through Today: your own, a friend's, or someone who's 
     if (r) assert.equal(r.headers.get("Content-Type"), "image/jpeg");
   }
   assert.equal(await avatarFor(env, ME, ""), null);
+});
+
+test("more on their way than the card lists: the soonest 6, and every one counted, with the friends sending them, for the morning's words", async () => {
+  const BUSY = id(20), A = id(21), B = id(22), C = id(23), D = id(24);
+  user(BUSY, "Busy Person"); user(A, "Ana Bell"); user(B, "Bo Chen"); user(C, "Cy Dent"); user(D, "Di Eves");
+  for (const f of [A, B, C, D]) link(BUSY, f);
+  link(STRANGER, BUSY, "pending");
+  // (7 from Ana, the soonest; then one each from Bo, Cy and Di; and some that aren't counted: lost, booked, from someone not a friend)
+  for (let i = 0; i < 7; i++) msg(`busy-a${i}`, { sender: A, recipient: BUSY, deliver_at: T + (i + 1) * 60e3 });
+  [B, C, D].forEach((f, i) => msg(`busy-f${i}`, { sender: f, recipient: BUSY, deliver_at: T + (10 + i) * H }));
+  msg("busy-lost", { sender: B, recipient: BUSY, lost_at: T - H, deliver_at: T + 20 * H });
+  msg("busy-booked", { sender: C, recipient: BUSY, sched: 1, sent_at: T + H, deliver_at: T + 21 * H });
+  msg("busy-stranger", { sender: STRANGER, recipient: BUSY });
+  const card = await chatCard(env, { id: BUSY }, ctx);
+  assert.equal(card.inbound.length, 6, "the soonest 6 listed");
+  assert.ok(card.inbound.every((p) => p.who.id === A), "all Ana's");
+  assert.deepEqual([card.inboundTotal, card.inboundFrom], [10, 4], "all 10 counted, from 4 friends: not the lost one, the booked one, nor the stranger's");
+  const line = (names) => morningLines({ chat: card }, { names, tz: "Europe/London", t: T, lines: { weather: false, fitness: false, markets: false } }).lines[0];
+  assert.equal(line(false), "10 pigeons on their way");
+  assert.equal(line(true), "Pigeons from Ana and 3 others on their way");
 });

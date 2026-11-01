@@ -12,10 +12,10 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
 import { tddb, todayPrefs } from "../../../functions/_today.js";
-import { wxdb } from "../../../functions/_wxpush.js";
+import { wxdb, OM_KEEP } from "../../../functions/_wxpush.js";
 import { forecast } from "../mocks/wxappdata.mjs";
 import { morningLines, composeMorning, previewMorning, sendMorningNow, morningTick, nextAt, isDue, tickTest, countedDb, PER_TICK, AT_ONCE, LEASE, DB_BUDGET, DB_MOST } from "../../../functions/_todaymorning.js";
-import { Quiet } from "../../../functions/_todaycards.js";
+import { Quiet, cardsMemo } from "../../../functions/_todaycards.js";
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`../mocks/today/${f}`, import.meta.url), "utf8"));
 const CARDS = fixture("cards.json"), QUIET = fixture("cards.quiet.json"), MORNING = fixture("morning.json");
@@ -59,21 +59,26 @@ test("the Fitness line: the session and its best time, a poor day, no best time,
   assert.deepEqual(say(with_("fitness", { state: "empty", href: "", said: "x", action: {} })).out, ["Fitness"]);
 });
 
+// (a Chat card with these on their way, the soonest the card lists, and its counts of them all: by default, just these)
+const chatWith = (inbound, total = inbound.length, from = new Set(inbound.map((p) => p.who.id)).size) => with_("chat", { ...CARDS.cards.chat, inbound, inboundTotal: total, inboundFrom: from });
+
 test("the Chat line, names off (Chat's default): how many, never who", () => {
   const chat = CARDS.cards.chat;
   assert.equal(say(CARDS.cards).lines[2], "2 pigeons on their way");
-  assert.equal(say(with_("chat", { ...chat, inbound: [chat.inbound[0]] })).lines[2], "A pigeon on its way");
-  // (the card lists the soonest 6 at most, so 6 may be more: functions/_todaychat.js)
+  assert.equal(say(chatWith([chat.inbound[0]])).lines[2], "A pigeon on its way");
   const some = (k) => Array.from({ length: k }, (_, i) => ON_WAY(`F${i}`, AT + (i + 1) * 1e6));
-  assert.equal(say(with_("chat", { ...chat, inbound: some(5) })).lines[2], "5 pigeons on their way");
-  assert.equal(say(with_("chat", { ...chat, inbound: some(6) })).lines[2], "6 or more pigeons on their way");
-  const r = say(with_("chat", { ...chat, inbound: [] }));
+  assert.equal(say(chatWith(some(5))).lines[2], "5 pigeons on their way");
+  // (the card lists the soonest 6 at most, and counts them all: functions/_todaychat.js)
+  assert.equal(say(chatWith(some(6))).lines[2], "6 pigeons on their way", "exactly 6: no more behind them");
+  assert.equal(say(chatWith(some(6), 9, 9)).lines[2], "9 pigeons on their way", "9, of which the card lists 6");
+  assert.equal(say(chatWith(some(2), 0, 0)).lines[2], "2 pigeons on their way", "never fewer than it lists");
+  const r = say(with_("chat", { ...chat, inbound: [], inboundTotal: 0, inboundFrom: 0 }));
   assert.deepEqual(r.out, ["Chat"], "none on its way: nothing to say (landed ones and your own aren't the morning's)");
   assert.ok(!JSON.stringify(say(CARDS.cards)).includes("Sam") && !JSON.stringify(say(CARDS.cards)).includes("Mum"), "no one named");
 });
 
 test("the Chat line, names on: who, soonest first, each first name once; landing about, then at, within 10 minutes; never a kind", () => {
-  const chat = CARDS.cards.chat, named = (inbound, t = AT) => say(with_("chat", { ...chat, inbound }), { names: true, t }).lines.find((l) => /igeon/.test(l));
+  const chat = CARDS.cards.chat, named = (inbound, t = AT, ...counts) => say(chatWith(inbound, ...counts), { names: true, t }).lines.find((l) => /igeon/.test(l));
   assert.equal(named([chat.inbound[0]]), "A pigeon from Sam, landing about 11:05", "the hostile name's first word, as the card gives it");
   assert.equal(named([ON_WAY("Ana", AT + 10 * 60e3 + 60e3)]), "A pigeon from Ana, landing about 08:21");
   assert.equal(named([ON_WAY("Ana", AT + 9 * 60e3)]), "A pigeon from Ana, landing at 08:19");
@@ -81,16 +86,22 @@ test("the Chat line, names on: who, soonest first, each first name once; landing
   // (in the order they land, whatever order they come in)
   assert.equal(named([ON_WAY("Leo", AT + 5e6), ON_WAY("Ana", AT + 1e6), ON_WAY("Bo", AT + 3e6)]), "Pigeons from Ana, Bo and Leo on their way");
   assert.equal(named([ON_WAY("Ana", AT + 1e6), ON_WAY("Ana", AT + 2e6)]), "Pigeons from Ana on their way", "two from one friend: named once");
-  assert.equal(named(["Ana", "Bo", "Cy", "Di", "Ed"].map((n, i) => ON_WAY(n, AT + (i + 1) * 1e6))), "Pigeons from Ana, Bo and 3 others on their way");
-  // (the card lists the soonest 6 at most: with 6 there may be more behind them, so no number, and no "only these")
-  assert.equal(named(["Ana", "Bo", "Cy", "Di", "Ed", "Flo"].map((n, i) => ON_WAY(n, AT + (i + 1) * 1e6))), "Pigeons from Ana, Bo and others on their way");
-  assert.equal(named(["Ana", "Bo", "Ana", "Bo", "Ana", "Cy"].map((n, i) => ON_WAY(n, AT + (i + 1) * 1e6))), "Pigeons from Ana, Bo, Cy and maybe others on their way");
+  const from = (names) => names.map((n, i) => ON_WAY(n, AT + (i + 1) * 1e6));
+  assert.equal(named(from(["Ana", "Bo", "Cy", "Di", "Ed"])), "Pigeons from Ana, Bo and 3 others on their way");
+  // (the card lists the soonest 6 at most, and counts them all, and the friends sending them: so exactly, however many)
+  assert.equal(named(from(["Ana", "Bo", "Cy", "Di", "Ed", "Flo"])), "Pigeons from Ana, Bo and 4 others on their way", "6 friends, all listed");
+  assert.equal(named(from(["Ana", "Bo", "Cy", "Di", "Ed", "Flo"]), AT, 9, 8), "Pigeons from Ana, Bo and 6 others on their way", "8 friends, 6 of them listed");
+  assert.equal(named(from(["Ana", "Bo", "Ana", "Bo", "Ana", "Cy"])), "Pigeons from Ana, Bo and Cy on their way", "6 pigeons from 3 friends, all listed");
+  assert.equal(named(from(["Ana", "Bo", "Ana", "Bo", "Ana", "Cy"]), AT, 8, 4), "Pigeons from Ana, Bo and 2 others on their way", "a 4th friend's further back than the list goes");
+  assert.equal(named(from(["Ana", "Ana", "Ana", "Ana", "Ana", "Bo"]), AT, 7, 3), "Pigeons from Ana, Bo and 1 other on their way");
+  assert.equal(named(from(["Ana", "Ana", "Ana", "Ana", "Ana", "Ana"]), AT, 7, 2), "Pigeons from Ana and 1 other on their way");
+  assert.equal(named(from(["Ana", "Ana", "Ana", "Ana", "Ana", "Ana"]), AT, 8, 1), "Pigeons from Ana on their way", "all Ana's, more than the list holds");
   // (in the account's own zone: 11:05 in London is 20:05 in Tokyo)
-  assert.equal(say(with_("chat", { ...chat, inbound: [chat.inbound[0]] }), { names: true, tz: "Asia/Tokyo" }).lines.find((l) => /igeon/.test(l)), "A pigeon from Sam, landing about 20:05");
+  assert.equal(say(chatWith([chat.inbound[0]]), { names: true, tz: "Asia/Tokyo" }).lines.find((l) => /igeon/.test(l)), "A pigeon from Sam, landing about 20:05");
   // never the kind: a rocket, a mystery's, a swift
   const kinds = [ON_WAY("Ana", AT + 1e6, { kind: "rocket" }), ON_WAY("Bo", AT + 2e6, { kind: null, mystery: true })];
   for (const names of [false, true]) {
-    const s = JSON.stringify(say(with_("chat", { ...chat, inbound: kinds }), { names }));
+    const s = JSON.stringify(say(chatWith(kinds), { names }));
     assert.doesNotMatch(s, /rocket|swift|turbo|mystery|Biscuit|Navigator|Paris/i, s);
   }
 });
@@ -130,7 +141,7 @@ test("no letter's words, nor anything sealed, can reach the notification, whatev
   const leaky = (p) => ({ ...p, ct: "SECRET-CT", via_ct: "SECRET-VIA", via_note: "SECRET-NOTE", viaNote: "SECRET-NOTE", body: "SECRET-BODY", wrap: "SECRET-WRAP", photo_size: 98765, from: "SECRET-FROM", to: "SECRET-TO", note: "SECRET-NOTE" });
   const chat = { ...CARDS.cards.chat, inbound: CARDS.cards.chat.inbound.map(leaky), unread: CARDS.cards.chat.unread.map(leaky), mine: CARDS.cards.chat.mine.map(leaky), share: "SECRET-BODY", body: "SECRET-BODY" };
   for (const names of [false, true]) for (const inbound of [chat.inbound, chat.inbound.slice(0, 1)]) {
-    const s = JSON.stringify(say(with_("chat", { ...chat, inbound }), { names }));
+    const s = JSON.stringify(say(with_("chat", { ...chat, inbound, inboundTotal: inbound.length, inboundFrom: inbound.length }), { names }));
     for (const m of MARKS) assert.ok(!s.includes(m), `${m} in ${s}`);
   }
 });
@@ -468,6 +479,30 @@ test("Show it on this phone: sent to that phone now, its health kept, and never 
   assert.equal(devices(a.id).length, 1, "gone: forgotten");
   await assert.rejects(sendMorningNow(env, u, { endpoint: "https://fcm.googleapis.com/fcm/send/someone-else" }), (e) => e.status === 400);
   assert.deepEqual(prefs(a.id), { m_sent: "2026-11-01", m_last: JSON.stringify(last) });
+  done();
+});
+
+test("Show it on this phone is the page's: from the cards it worked out in the last minute, else worked out as a page's are, never spending what's kept of Open-Meteo's allowance for the briefings", async () => {
+  pushes = []; answer = () => 201; forecasts = 0;
+  const a = await account(), u = { id: a.id, notify_prefs: null }, row = await todayPrefs(env, a.id);
+  run("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?, ?, 1, ?)", a.id, JSON.stringify({ places: [{ name: "Leeds", lat: 53.8008, lon: -1.5491 }], settings: {}, notify: {} }), Date.now());
+  // (only the briefings' reserve left: a page's below its floor, which the tick may still spend)
+  run("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('om_bucket', ?)", JSON.stringify({ n: OM_KEEP / 2, at: Date.now() }));
+  assert.deepEqual(await sendMorningNow(env, u, { endpoint: a.phones[0].endpoint }), { sent: 1 });
+  assert.equal(forecasts, 0, "Open-Meteo not asked: the reserve's the briefings'");
+  const plain = await opened(a.phones[0], pushes[0].body);
+  assert.match(plain.title, /^Your \w+day$/, "no forecast to be had: the day as its title");
+  // (the tick, composing the same account's, may spend it)
+  await composeMorning(env, u, row, Date.now());
+  assert.equal(forecasts, 1, "the tick's compose asks");
+  // (and with the page's cards from the last minute, those: nothing worked out again)
+  cardsMemo.set(a.id, { at: CARDS.at, tz: "Europe/London", cards: CARDS.cards });
+  pushes = [];
+  assert.deepEqual(await sendMorningNow(env, u, { endpoint: a.phones[0].endpoint }), { sent: 1 });
+  const note = await opened(a.phones[0], pushes[0].body);
+  assert.equal(note.title, "London · 14° / 7°");
+  assert.equal(note.body, say(CARDS.cards).lines.join("\n"));
+  assert.equal(forecasts, 1, "nothing asked again");
   done();
 });
 

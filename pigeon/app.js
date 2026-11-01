@@ -373,7 +373,9 @@ const IFL = (() => {
     open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
-      rowsBox.replaceChildren(...(todayGroup ? [todayGroup] : []), ...drawRows(list));
+      // (Today's group never taken out and put back, which would drop a focus on it: only the app's own rows after it)
+      for (const g of [...rowsBox.children]) if (g !== todayGroup) g.remove();
+      rowsBox.append(...drawRows(list));
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));

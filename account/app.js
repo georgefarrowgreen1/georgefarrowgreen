@@ -388,7 +388,9 @@ const IFL = (() => {
     open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
-      rowsBox.replaceChildren(...(todayGroup ? [todayGroup] : []), ...drawRows(list));
+      // (Today's group never taken out and put back, which would drop a focus on it: only the app's own rows after it)
+      for (const g of [...rowsBox.children]) if (g !== todayGroup) g.remove();
+      rowsBox.append(...drawRows(list));
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
@@ -1447,11 +1449,12 @@ function marketsView() {
     h("a.btn", { href: siteUrl(APPS.markets.sub) }, "Open Markets", icon("open", 18, 2.4))] };
 }
 // (InFlite Today: the cards it shows, in your order, its morning notification, and its version, asked of it as this
-// opens (GET apps/today-build), once for the page; "–" till it says, or if it doesn't)
+// opens (GET apps/today-build), once for the page; "–" till it says, or if it doesn't. A read always has every card
+// in its order, so none means the settings couldn't be read: then neither the cards nor the morning is said)
 let todayAsked = null, todayBuild = null;
 const CARD_NAMES = { weather: "Weather", chat: "Chat", fitness: "Fitness", markets: "Markets" };
 function todayAboutView() {
-  const x = S.me.apps?.today || {}, hidden = x.hidden || [], shown = (x.order || []).filter((k) => !hidden.includes(k)), mo = x.morning || {};
+  const x = S.me.apps?.today || {}, known = !!x.order?.length, hidden = x.hidden || [], shown = (x.order || []).filter((k) => !hidden.includes(k)), mo = x.morning || {};
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
   todayAsked ||= call("apps/today-build").then((r) => (todayBuild = r.build || null), () => { todayAsked = null; return null; });
   const ver = row("Version", todayBuild || "–");
@@ -1459,9 +1462,9 @@ function todayAboutView() {
   return { title: "Today", quiet: true, body: [
     h("div.app-head", {}, h("img", { src: "/apps/today.png", alt: "", width: 64, height: 64 }), h("b", { text: "Today" }), h("span", { text: "One page, every app" })),
     h("div.group", {},
-      row("Cards", shown.length ? `${shown.length} of 4 shown` : "All hidden"),
-      h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: [shown.map((k) => CARD_NAMES[k]).join(" · "), hidden.length && `Hidden: ${hidden.map((k) => CARD_NAMES[k]).join(", ")}`].filter(Boolean).join(" · ") }))),
-      row("Morning notification", mo.on ? hhmm(mo.at ?? 420) : "Off"),
+      known && row("Cards", shown.length ? `${shown.length} of 4 shown` : "All hidden"),
+      known && h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: [shown.map((k) => CARD_NAMES[k]).join(" · "), hidden.length && `Hidden: ${hidden.map((k) => CARD_NAMES[k]).join(", ")}`].filter(Boolean).join(" · ") }))),
+      known && row("Morning notification", mo.on ? hhmm(mo.at ?? 420) : "Off"),
       ver),
     h("p.hint", { text: "Today shows your day from every app on one page, at inflite.ai. It keeps only your cards’ order and its morning notification’s settings with your account; the rest is each app’s own." }),
     h("a.btn", { href: siteUrl(APPS.today.sub) }, "Open Today", icon("open", 18, 2.4))] };

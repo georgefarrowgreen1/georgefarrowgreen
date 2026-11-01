@@ -22,11 +22,15 @@ const AIR = "m.notified_at IS NULL AND m.sent_at <= ?2 AND m.deliver_at > ?2 AND
 // ctx: functions/_todaycards.js cardsFor's
 export async function chatCard(env, u, ctx) {
   const { t, links } = ctx, me = u.id, href = `${links.chat}/`, D = await db(env);
-  const [inbound, unread, mine, friends] = (await D.batch([
+  const [inbound, [all], unread, mine, friends] = (await D.batch([
     // in the air to me
     D.prepare(`SELECT m.sender, m.sent_at, m.deliver_at, m.km, m.pigeon, m.swift, m.mystery, m.bird_name, m.bird_rank, m.from_place, u.name, u.avatar_at
       FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
       WHERE m.recipient = ?1 AND ${AIR} ORDER BY m.deliver_at LIMIT ${INBOUND}`).bind(me, t),
+    // …all of them, however many the card lists, and from how many friends (for the morning's words)
+    D.prepare(`SELECT COUNT(*) AS n, COUNT(DISTINCT m.sender) AS f
+      FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
+      WHERE m.recipient = ?1 AND ${AIR}`).bind(me, t),
     // landed, not read, by friend
     D.prepare(`SELECT m.sender, COUNT(*) AS n, MAX(m.deliver_at) AS last, u.name, u.avatar_at
       FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
@@ -53,6 +57,9 @@ export async function chatCard(env, u, ctx) {
     // (a mystery pigeon's kind is never said to whoever it's flying to: their Chat says only "A mystery pigeon")
     inbound: inbound.map((m) => ({ who: who(m.sender, m.name, m.avatar_at), sentAt: m.sent_at, landsAt: m.deliver_at, km: Math.round(m.km || 0), kind: m.mystery ? null : kindOf(m),
       mystery: !!m.mystery, bird: bird(m), from: m.from_place ?? null, href: open(m.sender) })),
+    // (every pigeon on its way to you, not only the soonest the card lists, and the friends sending them)
+    inboundTotal: Math.max(inbound.length, Number(all?.n) || 0),
+    inboundFrom: Math.max(new Set(inbound.map((m) => m.sender)).size, Number(all?.f) || 0),
     unread: unread.map((r) => ({ who: who(r.sender, r.name, r.avatar_at), n: r.n, last: r.last, href: open(r.sender) })),
     // (yours: its kind always, as Chat tells its sender: "Mystery: rocket")
     mine: mine.slice(0, MINE).map((m) => ({ who: who(m.recipient, m.name, m.avatar_at), sentAt: m.sent_at, landsAt: m.deliver_at, km: Math.round(m.km || 0), kind: kindOf(m),

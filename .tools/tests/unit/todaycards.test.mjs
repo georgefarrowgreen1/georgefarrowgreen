@@ -317,7 +317,7 @@ test("Fitness: no snapshot, or one over 8 days old, is the card saying to open F
 test("Fitness: a day with nothing planned, and the next session in the days after", async () => {
   snapRow("fx-none", week("2026-11-02", [{ state: "none" }, { state: "rest", why: "" }, TEMPO, { state: "none" }]));
   const c = await fitnessCard(env, { id: "fx-none" }, ctxAt(MON));
-  assert.equal(c.kind, "none"); assert.equal(c.session, null); assert.equal(c.share, null); assert.equal(c.best, null);
+  assert.equal(c.kind, "none"); assert.equal(c.session, null); assert.equal(c.share, null); assert.equal(c.best, null); assert.equal(c.why, null);
   assert.deepEqual(c.next, { day: "2026-11-04", label: "Wednesday", name: "Tempo 2 × 15", secs: 3600, kind: "Tempo" });
   assert.equal(c.day, "2026-11-02"); assert.equal(c.tz, "Europe/London");
   sameShape(c, QUIET.cards.fitness, "fitness (none)");
@@ -327,10 +327,15 @@ test("Fitness: a rest day, and an event", async () => {
   snapRow("fx-rest", week("2026-11-02", [{ state: "rest", why: "Easy after the weekend." }, TEMPO]));
   const r = await fitnessCard(env, { id: "fx-rest" }, ctxAt(MON));
   assert.equal(r.kind, "rest"); assert.equal(r.share, "A rest day today, letting the week sink in.");
+  assert.equal(r.why, "Easy after the weekend.", "the rest day's reason, as Fitness gave it");
+  assert.equal(r.session, null);
   assert.deepEqual(r.next, { day: "2026-11-03", label: "Tomorrow", name: "Tempo 2 × 15", secs: 3600, kind: "Tempo" });
+  sameShape(r, QUIET.cards.fitness, "fitness (rest)");
+  snapRow("fx-rest2", week("2026-11-02", [{ state: "rest", why: "" }]));
+  assert.equal((await fitnessCard(env, { id: "fx-rest2" }, ctxAt(MON))).why, null, "none given: none");
   snapRow("fx-event", week("2026-11-02", [{ state: "event", name: "London to Brighton" }]));
   const e = await fitnessCard(env, { id: "fx-event" }, ctxAt(MON));
-  assert.equal(e.kind, "event"); assert.deepEqual(e.event, { name: "London to Brighton" });
+  assert.equal(e.kind, "event"); assert.deepEqual(e.event, { name: "London to Brighton" }); assert.equal(e.why, null);
 });
 
 test("Fitness: done, from what's in Fitness, shows even with no snapshot", async () => {
@@ -360,6 +365,7 @@ test("Fitness: today's session, and its best time to ride from the weather where
   const c = await fitnessCard(env, { id: "fx-ride" }, ctxAt(MON));
   assert.equal(c.kind, "session");
   assert.deepEqual(c.session, { id: "rh:tempo:60", sport: "ride", name: "Tempo 2 × 15", kind: "Tempo", secs: 3600, tss: 62, hard: true, why: TEMPO.why, steps: TEMPO.steps });
+  assert.equal(c.why, null, "a session's why is its own, not a rest day's");
   assert.equal(c.best.said, "Best 08:00 to 09:00"); assert.equal(c.best.span, "08:00–09:00"); assert.equal(c.best.poor, false);
   assert.equal(c.best.sub, "14°, dry, a light westerly · London");
   assert.deepEqual(c.best.grid.map((g) => new Date(g.t).getUTCHours()), [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "each daylight hour in a ride's hours");

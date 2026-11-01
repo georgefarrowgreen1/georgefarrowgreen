@@ -82,6 +82,8 @@
       "state": "ok",
       "href": "https://chat.inflite.ai/",
       "inbound": [],
+      "inboundTotal": 0,
+      "inboundFrom": 0,
       "unread": [],
       "mine": [],
       "more": 0,
@@ -95,6 +97,7 @@
       "tz": "Europe/London",
       "kind": "none",
       "session": null,
+      "why": null,
       "done": null,
       "best": null,
       "next": {

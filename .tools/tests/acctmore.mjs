@@ -180,6 +180,30 @@ ok(/Saved places 4/.test(wxs) && /London · Edinburgh · St Ives · Łódź/.tes
 ok((await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${WX}/`, 'and the way in');
 await shot(P, '04-app-weather');
 await closeSheet(P);
+// (Today's: its cards, in the account's order, and its morning notification; where its settings couldn't be read,
+// neither said, rather than "All hidden" and "Off")
+await P.p.click('main .app:has(b:text-is("Today")) .about'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
+const tds = await sheetText(P);
+ok(/Cards 4 of 4 shown/.test(tds) && /Weather · Chat · Fitness · Markets/.test(tds) && /Morning notification Off/.test(tds) && /Version/.test(tds), 'Today: its cards, its morning notification and its version', tds);
+await closeSheet(P);
+// (the account as the server sends it when Today's settings couldn't be read: stood in for in the page, while asked to)
+await P.p.addInitScript(() => {
+  try { if (!sessionStorage.getItem('t:td-unread')) return; } catch (_) { return; }
+  const f = window.fetch;
+  window.fetch = async (...a) => {
+    const r = await f(...a);
+    if (!/\/api\/account\/me$/.test(String(a[0]?.url || a[0]))) return r;
+    const j = await r.clone().json();
+    if (j.apps?.today) j.apps.today = { order: [], hidden: [], morning: { on: false, at: 420 } };
+    return new Response(JSON.stringify(j), { status: r.status, headers: r.headers });
+  };
+});
+await P.p.evaluate(() => sessionStorage.setItem('t:td-unread', '1')); await account(P);
+await P.p.click('main .app:has(b:text-is("Today")) .about'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
+const tdx = await sheetText(P);
+ok(!/Cards|All hidden|Morning notification/.test(tdx) && /Version/.test(tdx), 'Today, its settings not read: neither its cards nor its morning said', tdx);
+await closeSheet(P);
+await P.p.evaluate(() => sessionStorage.removeItem('t:td-unread')); await account(P);
 
 // ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
 const ck0 = await P.p.locator('main .row:has(b:text-is("Sign-in and Security"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());

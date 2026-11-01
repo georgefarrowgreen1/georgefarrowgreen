@@ -126,6 +126,7 @@ try {
   const ch = c.chat || {};
   ok(ch.state === 'ok' && ch.inbound?.length === 1 && ch.inbound[0].who.first === 'Sam' && ch.inbound[0].kind === 'swift' && ch.inbound[0].bird?.name === 'Biscuit' && ch.inbound[0].href === `http://chat.ifl.test:8788/#open=${SAM}`,
     'Chat: Sam’s pigeon on its way, its kind, its bird, and a link to Sam in Chat', JSON.stringify(ch.inbound));
+  ok(ch.inboundTotal === 1 && ch.inboundFrom === 1, 'Chat: every pigeon on its way counted, and the friends sending them (not Pat’s, only asking)', JSON.stringify({ n: ch.inboundTotal, from: ch.inboundFrom }));
   ok(ch.unread?.length === 1 && ch.unread[0].who.first === 'Mum' && ch.unread[0].n === 1, 'Chat: Mum’s landed and not read', JSON.stringify(ch.unread));
   ok(ch.mine?.length === 1 && ch.mine[0].to === 'Lisbon' && ch.mine[0].kind === 'standard', 'Chat: yours in the air', JSON.stringify(ch.mine));
   ok(ch.streak?.n === 12 && ch.streak.who.first === 'Mum' && ch.share === 'My flight streak with Mum is 12 days.', 'Chat: the streak that ends today unless a pigeon flies, and the line to send', JSON.stringify({ s: ch.streak, share: ch.share }));
@@ -143,6 +144,13 @@ try {
   ok(r.s === 200 && Object.keys(r.j.cards || {}).join() === 'markets', '?only=markets: that card alone', Object.keys(r.j.cards || {}).join());
   const dv = r.j.cards?.markets?.dividend;
   ok(dv && /^(RR\.L|TSCO\.L|AAPL)$/.test(dv.symbol) && dv.at > Date.now() && dv.value > 0 && dv.href === `http://finance.ifl.test:8788/#s=${encodeURIComponent(dv.symbol)}`, 'Markets: the next dividend as Markets expects it, from what it kept since', JSON.stringify(dv));
+
+  // (a rest day, as Fitness sends it: its reason on the card)
+  r = await app('fitness', 'POST', '/api/fitness/today', alex, { tz: 'Europe/London', units: 'metric', days: { [today]: { state: 'rest', why: 'An easy week, after the race.' }, [after(1)]: tempo } });
+  ok(r.s === 200 && r.j.ok, 'a rest day sent, as Fitness sends it', `${r.s} ${r.text.slice(0, 160)}`);
+  r = await cards(alex, '?only=fitness');
+  const rest = r.j.cards?.fitness || {};
+  ok(rest.state === 'ok' && rest.kind === 'rest' && rest.why === 'An easy week, after the race.' && rest.session === null && rest.next?.label === 'Tomorrow', 'Fitness: a rest day, with the reason Fitness gave for it', JSON.stringify(rest).slice(0, 240));
 
   // ---- 4. When what a card needs isn't there ----
   warn = 'down';

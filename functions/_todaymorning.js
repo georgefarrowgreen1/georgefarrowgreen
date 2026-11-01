@@ -11,7 +11,7 @@ import { HttpError } from "./_pigeon.js";
 import { prefsOf, pushToSub } from "./_notify.js";
 import { todayLinks } from "./_sites.js";
 import { CARDS, tddb, todayPrefs, morningTz, todayDevices, deviceOk, deviceGone, deviceFailed, tidyDevices, morningCandidates, claimMorning, releaseMorning, keepLast } from "./_today.js";
-import { cardsFor, Quiet } from "./_todaycards.js";
+import { cardsFor, cardsMemo, Quiet } from "./_todaycards.js";
 import { moneySaid, andSaid } from "./_markets.js";
 
 // how long a tick goes on beginning things (an account composed, claimed and sent), from its start: the scheduler gives
@@ -33,8 +33,6 @@ export const DB_BUDGET = 650, DB_MOST = 700;
 const LATE = 3 * 60;
 // (how often the scheduler asks: workers/ticker/wrangler.toml, every 5 minutes, on the minutes that are multiples of 5)
 const EVERY = 5 * 60e3;
-// (the most pigeons on their way the Chat card lists, the soonest: functions/_todaychat.js INBOUND)
-const INBOUND_MAX = 6;
 // (its words, at most, and how long a push service keeps one for a phone that's off)
 const BODY_MAX = 400, TTL = 4 * 3600;
 // the apps' lines, in the order the notification has them
@@ -115,24 +113,29 @@ function fitnessLine(c) {
   if (best && text(best.span)) return `${name} · best ${text(best.span)}`;
   return Number(c.session.secs) > 0 ? `${name}, ${dur(Number(c.session.secs))}` : name;
 }
-// Chat's: who has pigeons on their way to you, from the card's inbound list alone. Named only where the account's Chat
-// names people in its notifications (its names preference); never a word of any letter, nor what kind of pigeon it is.
-// (The card lists only the soonest few: a full list may have more behind it, so then it says neither exactly how many
-// nor that there's no one else)
+// Chat's: who has pigeons on their way to you. Named only where the account's Chat names people in its notifications
+// (its names preference); never a word of any letter, nor what kind of pigeon it is. How many, and from how many
+// friends, are the card's counts of them all (inboundTotal, inboundFrom); the names, its list of the soonest few
 function chatLine(c, names, tz, t) {
   if (!ok(c) || !Array.isArray(c.inbound) || !c.inbound.length) return null;
-  const list = [...c.inbound].sort((a, b) => (Number(a?.landsAt) || 0) - (Number(b?.landsAt) || 0)), full = list.length >= INBOUND_MAX;
-  if (!names) return list.length === 1 ? "A pigeon on its way" : `${list.length}${full ? " or more" : ""} pigeons on their way`;
+  const list = [...c.inbound].sort((a, b) => (Number(a?.landsAt) || 0) - (Number(b?.landsAt) || 0));
+  const count = (v, least) => (Number.isInteger(v) && v > least ? v : least);
+  const n = count(c.inboundTotal, list.length);
+  if (!names) return n === 1 ? "A pigeon on its way" : `${n} pigeons on their way`;
   const firstOf = (p) => text(p?.who?.first) || text(p?.who?.name).split(/\s+/)[0] || "a friend";
-  if (list.length === 1) {
+  if (n === 1) {
     const lands = Number(list[0].landsAt);
     if (!Number.isFinite(lands)) return `A pigeon from ${firstOf(list[0])} on its way`;
     // (about, while it's more than 10 minutes out, as Chat gives a range until then; at, after)
     return `A pigeon from ${firstOf(list[0])}, landing ${lands - t > 10 * 60e3 ? "about" : "at"} ${hhmm(tz, lands)}`;
   }
-  const firsts = [...new Set(list.map(firstOf))];
-  if (firsts.length > 3) return `Pigeons from ${firsts[0]}, ${firsts[1]} and ${full ? "others" : `${firsts.length - 2} others`} on their way`;
-  return `Pigeons from ${and(full ? [...firsts, "maybe others"] : firsts)} on their way`;
+  // (the friends in the list, soonest first, each first name once; those sending pigeons further back than the list
+  // goes aren't in it, and are among the others)
+  const senders = [...new Map(list.map((p) => [text(p?.who?.id) || firstOf(p), firstOf(p)])).values()], firsts = [...new Set(senders)];
+  const from = count(c.inboundFrom, senders.length);
+  if (senders.length === from && firsts.length <= 3) return `Pigeons from ${and(firsts)} on their way`;
+  const shown = firsts.slice(0, 2), others = from - senders.filter((f) => shown.includes(f)).length;
+  return `Pigeons from ${and([...shown, `${others} other${others === 1 ? "" : "s"}`])} on their way`;
 }
 // Markets': the portfolio's day by Markets' own logic (only what's traded today, judged by its own market's day), in the
 // evening wrap's words, or the markets shut today, or as it closed (before anything's traded)
@@ -161,13 +164,15 @@ export function morningLines(cards, { names, tz, t, lines }) {
 }
 
 // The notification for an account (cards: the page's, where it has them, so the preview is what's shown; memo: the
-// tick's, shared between its accounts: forecasts, warnings, a ride's weather) → { title, body, lines, out, tag, url, ttl }
-export async function composeMorning(env, u, row, t, { memo, cards } = {}) {
+// tick's, shared between its accounts: forecasts, warnings, a ride's weather; purpose: the tick's "morning", or "page"
+// for one the page asks for, which spends only a page's share of Open-Meteo's allowance, never what's kept for the
+// briefings: functions/_todaywx.js) → { title, body, lines, out, tag, url, ttl }
+export async function composeMorning(env, u, row, t, { memo, cards, purpose = "morning" } = {}) {
   const tz = morningTz(u, row), lines = row?.m_lines && typeof row.m_lines === "object" ? row.m_lines : {};
   const only = CARDS.filter((k) => lines[k] !== false);
   // (the page's own answer, or its cards alone)
   const have = cards && typeof cards === "object" ? (cards.cards && typeof cards.cards === "object" ? cards.cards : cards) : null;
-  const got = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
+  const got = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: purpose === "page" ? "page" : "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
   const m = morningLines(got, { names: !!prefsOf(u).names, tz, t, lines });
   // (cut at a character, never through one)
   const body = [...m.lines.join("\n")].slice(0, BODY_MAX).join("");
@@ -187,7 +192,7 @@ export async function previewMorning(env, u, row, t, { cards } = {}) {
   // (sent today where the account is: a day claimed with nothing to say keeps the last one that went, from another day)
   if (decided && last && typeof last === "object" && Number.isFinite(last.at) && localNow(tz, last.at).day === today)
     return { kind: "sent", at: last.at, title: last.title || "", lines: Array.isArray(last.lines) ? last.lines : [], out: Array.isArray(last.out) ? last.out : [] };
-  const note = await composeMorning(env, u, row, t, { cards }), turn = (Math.floor(t / EVERY) + 1) * EVERY;
+  const note = await composeMorning(env, u, row, t, { cards, purpose: "page" }), turn = (Math.floor(t / EVERY) + 1) * EVERY;
   const at = decided ? wallMoments(zone, nextDay(today), mins)[0] : row?.m_on && isDue(u, row, turn) ? turn : nextAt(tz, mins, t);
   return { kind: "next", at, title: note.title, lines: note.lines, out: note.out };
 }
@@ -200,13 +205,15 @@ async function health(env, endpoint, r, out = null) {
   else await deviceFailed(env, endpoint);
 }
 
-// "Show it on this phone": one now, to that device (endpoint: one of the account's), composed as the morning's would be.
-// It never counts as the day's (the day's claim and what was last sent are untouched), so the Morning section doesn't say
-// this morning's came at 15:42 → { sent: 0 | 1 }
+// "Show it on this phone": one now, to that device (endpoint: one of the account's), in the morning's words. It's the
+// page's: from the cards it worked out in the last minute (functions/_todaycards.js cardsMemo), else worked out now as a
+// page's are. It never counts as the day's (the day's claim and what was last sent are untouched), so the Morning
+// section doesn't say this morning's came at 15:42 → { sent: 0 | 1 }
 export async function sendMorningNow(env, u, { endpoint }) {
   const devs = await todayDevices(env, u.id), dev = devs.find((d) => d.endpoint === endpoint);
   if (!dev) throw new HttpError(400, "Turn the morning notification on on this device first.");
-  const t = Date.now(), note = await composeMorning(env, u, await todayPrefs(env, u.id), t);
+  const t = Date.now(), cards = cardsMemo.get(u.id)?.answer?.cards;
+  const note = await composeMorning(env, u, await todayPrefs(env, u.id), t, { cards, purpose: "page" });
   const r = await pushToSub(env, dev, note).catch(() => "error");
   await health(env, dev.endpoint, r);
   return { sent: r === "sent" ? 1 : 0 };

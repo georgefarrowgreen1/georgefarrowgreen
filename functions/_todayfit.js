@@ -60,6 +60,8 @@ export async function fitnessCard(env, u, ctx) {
   const out = {
     state: "ok", href, day: day.day, tz: zone, kind,
     session: kind === "done" || kind === "session" ? session : null,
+    // (a rest day's reason, as Fitness gave it)
+    why: kind === "rest" ? String(today.why || "").trim() || null : null,
     done, best: null,
     next: kind === "done" ? sessionOn(dayAfter(day.day, 1), 1) : kind === "rest" || kind === "none" ? nextIn(NEXT_DAYS) : null,
     event: kind === "event" ? { name: String(today.name || "Your event") } : null,
