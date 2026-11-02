@@ -30,12 +30,14 @@
 //   DELETE /api/fitness/push         and off again: { endpoint }
 //   POST   /api/fitness/today        the coming days as this phone has them planned, for InFlite Today: { tz, units, days }
 //                                    (functions/_fittoday.js), sent by the app as it opens
+//   POST   /api/fitness/offers/<id>  a plan from Chat (GET me's offers: functions/_fitshare.js) answered: { answer: "yes" }
+//                                    as it's added to your plan here, or "no"
 //   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret: Garmin's look for
 //                                    what's new, and the morning notifications that are due
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
-import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet } from "../../_pigeon.js";
+import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -47,15 +49,17 @@ import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst
 import { rideWeather } from "../../_fitwx.js";
 import { setSnapshot } from "../../_fittoday.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick, stravaShare } from "../../_strava.js";
+import { offersFor, answerOffer } from "../../_fitshare.js";
 import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 // (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
-// for next time, a moment early so nothing changing as it's read is missed)
+// for next time, a moment early so nothing changing as it's read is missed; offers: plans agreed in Chat, waiting to be
+// added here or added, read without changing anything)
 async function view(env, u, since = null) {
   const at = Date.now() - 2000;
-  const [k, got, garmin, health, strava] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false }))]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava,
+  const [k, got, garmin, health, strava, offers] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false })), offersFor(env, u.id).catch(() => [])]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava, offers,
     // (the look, as the account has it: its page's Appearance)
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
@@ -265,6 +269,14 @@ const ROUTES = {
     await limit(env, `fxtoday:${u.id}`, 120, 3600e3);
     return json(await setSnapshot(env, u.id, await body(request, 32 * 1024)));
   },
+  // (a plan from Chat: added to your plan here, so yes, or not wanted, no; the plan itself is the phone's to change)
+  "POST offers/:id": async ({ request, env, id }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 4 * 1024);
+    await limit(env, `fxoffer:${u.id}`, 120, 3600e3);
+    if (!(await answerOffer(env, u.id, id, b.answer))) throw new HttpError(404, "That plan isn’t there any more.");
+    return json({ ok: true });
+  },
   "POST garmin-tick": async ({ request, env }) => {
     tickAuthOk(request, env);
     // (the morning's notices first, quick and due now, so a slow Garmin or Strava can't hold them past the tick's time)
@@ -303,7 +315,8 @@ export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
     : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
-    : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1] : null;
+    : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1]
+    : parts[0] === "offers" && parts.length === 2 && UUID_RE.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
   // (only at Fitness's own address; the scheduler's turn at the site's own, as Chat's and Weather's are)
   const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";

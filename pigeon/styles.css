@@ -2523,6 +2523,44 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* Powered by InFlite, over Sign in (where it sits: InFlite's way in, at the end), in Chat's night */
 .welcome.night{--ifl-pill:rgba(255,255,255,.08);--ifl-pill-ink:rgba(214,224,255,.8);--ifl-pill-edge:inset 0 0 0 .5px rgba(255,255,255,.14)}
 
+/* ---- Send to a Friend: its sheet, a card waiting above the message box, a card in a letter (the card's own look:
+   cards.css) ---- */
+.sendcard{margin:4px 16px 0}
+.sendsay{margin:0;padding:12px 14px;border-radius:16px;background:var(--cell);font-size:15px;line-height:20px}
+.sendrow .stag{flex:none;margin-left:6px;padding:3px 9px;border-radius:999px;background:var(--fill);color:var(--label-2);font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sendrow .stag.best{background:var(--tint-fill);color:#fff}
+.sendrow.dim .ctext,.sendrow.dim .av{opacity:.45}
+.sendrow:disabled{cursor:default}
+.sendrow .csub.why{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal}
+.schips{display:flex;flex-wrap:wrap;gap:8px;margin:0 16px}
+.schip{position:relative;min-height:36px;padding:7px 14px;border:0;border-radius:999px;background:var(--cell);color:var(--label);font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background-color .2s,color .2s,transform .3s var(--snappy)}
+.schip[aria-checked="true"]{background:var(--tint-fill);color:#fff}
+.schip:active:not(:disabled){transform:scale(.95)}
+.schip:disabled{opacity:.4;cursor:default}
+.whenlines{margin:10px 20px 0;color:var(--label-2);font-size:13px;line-height:18px}
+.planbox{margin:10px 16px 0}
+.planbox .schips{margin:0}
+.planline{margin:10px 4px;font-size:15px;line-height:20px;font-variant-numeric:tabular-nums}
+.planbox .gfoot{padding:0 4px}
+.sendgo{display:grid;gap:8px;margin:20px 16px 0}
+.sendgo .spend{margin:0;text-align:center;color:var(--label-2);font-size:13px;line-height:18px}
+.sendgo .gfoot{margin:0;padding:0 4px;text-align:center}
+.cardatt{position:relative;display:flex;align-items:center;gap:12px;padding:8px 10px 8px 8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
+.cardatt:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
+.cardatt .cthumb{flex:none;width:44px;height:44px;border-radius:12px;background:var(--fill);display:grid;place-items:center;color:var(--tint)}
+.cardatt .cthumb .ico{font-size:21px}
+.cardatt .ainfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cardatt .ainfo > b{font-size:15px;font-weight:600;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cardatt .atext{font-size:13px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cardatt button{position:relative;flex:none;border:0;background:var(--fill);color:var(--label-2);width:28px;height:28px;border-radius:50%;display:grid;place-items:center}
+.cardatt button::after{content:"";position:absolute;inset:-6px}
+.cardatt button svg{font-size:13px;stroke-width:2.6}
+.b.withcard{width:min(84%,340px);max-width:84%}
+.laterpick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:14px;color:var(--label-2)}
+.laterpick .schip{min-height:32px;padding:5px 12px}
+@media (prefers-reduced-motion: reduce){.cardatt:not([hidden]){animation:rm-in .18s ease both!important}}
+@media (prefers-reduced-transparency:reduce){.cardatt{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}}
+
 /* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */
 /* InFlite's way in, the same in every app (Chat, Fitness, Mail): where everything on it sits, so no app's drifts.
    Markup, in each app's own words:

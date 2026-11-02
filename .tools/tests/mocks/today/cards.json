@@ -83,7 +83,8 @@
       "brief": {
         "title": "London · 14° / 7°"
       },
-      "share": "London today: dry, sunny spells until about 15:00, then cloudy, with wind picking up. Met Office: yellow wind warning today 18:00 to tomorrow 03:00."
+      "share": "London today: dry, sunny spells until about 15:00, then cloudy, with wind picking up. Met Office: yellow wind warning today 18:00 to tomorrow 03:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoid2VhdGhlciIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjA3MDAwMDAwLCJzYXkiOiJMb25kb24gdG9kYXk6IGRyeSwgc3Vubnkgc3BlbGxzIHVudGlsIGFib3V0IDE1OjAwLCB0aGVuIGNsb3VkeSwgd2l0aCB3aW5kIHBpY2tpbmcgdXAuIE1ldCBPZmZpY2U6IHllbGxvdyB3aW5kIHdhcm5pbmcgdG9kYXkgMTg6MDAgdG8gdG9tb3Jyb3cgMDM6MDAuIiwic25hcCI6eyJwbGFjZSI6IkxvbmRvbiIsInR6IjoiRXVyb3BlL0xvbmRvbiIsInRlbXAiOjkuNCwiZmVlbHMiOjcuMSwiaGkiOjE0LCJsbyI6NywiY29kZSI6MiwiaXNEYXkiOnRydWUsImxlYWQiOiJEcnksIHN1bm55IHNwZWxscyB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiBjbG91ZHksIHdpdGggd2luZCBwaWNraW5nIHVwLiIsInJhaW4iOm51bGwsInNwZWxsIjpudWxsfSwicmVmIjp7ImNlbGwiOls1MS41LC0wLjE1XX19"
     },
     "chat": {
       "state": "ok",
@@ -272,7 +273,8 @@
       "event": null,
       "units": "metric",
       "snapshotAt": 1793559720000,
-      "share": "Today: Tempo 2 × 15, 1 h. Best time to ride 10:00 to 11:00."
+      "share": "Today: Tempo 2 × 15, 1 h. Best time to ride 10:00 to 11:00.",
+      "sendCard": null
     },
     "markets": {
       "state": "ok",
@@ -327,7 +329,8 @@
       },
       "leftOut": [],
       "stale": false,
-      "share": "My portfolio is up 0.3% today."
+      "share": "My portfolio is up 0.3% today.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyJ9+/x\"><b>x</b>"
     }
   }
 }

@@ -22,6 +22,7 @@ import * as A from "./account.js";
 import * as C from "./charts.js";
 import { marked as markDivs, health, project, taxYearOf, csv, yearDivs, yearOn } from "./income.js";
 import { sameStory, storiesOf } from "./stories.js";
+import { stockSendCard, chatHash } from "./send.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
@@ -423,8 +424,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.91";
-const NEWS = "Easier to tap with a finger: the income chart's months on a small phone, News' filters and each story's ••• button, the Holdings key, and the tabs on a phone on its side; long fund names take a third line where two won't do; and moving through with the keyboard stops clear of the header and the tab bar";
+const BUILD = "1.92";
+const NEWS = "Send in Chat sends a card with the day’s move, in percent only";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -2281,10 +2282,12 @@ async function turnOnHere(say = (m) => toast(m, true)) {
   } catch (e) { say(e.message || "Couldn’t turn on alerts here just now."); return false; }
 }
 // ---- sending one to a friend, in Chat ----
+// (the words as ever, and beside them the day's move as a card Chat draws and keeps up to date: in percent only, never
+// a price or anything you hold: send.js. Chat's address ends in "/", and the hash starts with "#")
 function sendInChat(sym, name = nameOf(sym)) {
   const q = S.q[sym], text = `${name} (${plainSym(sym)}) is ${q?.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q?.chgPct || 0), 1)}% today, at ${priceSaid(q)}.`;
   const chat = A.chatPage();
-  if (chat) { location.assign(`${chat}#${new URLSearchParams({ share: text })}`); return; }
+  if (chat) { location.assign(chat + chatHash(text, stockSendCard(sym, name, q, Date.now()))); return; }
   if (navigator.share) { navigator.share({ text }).catch(() => {}); return; }
   navigator.clipboard?.writeText(text).then(() => toast("Copied, to paste in Chat"), () => toast(text));
 }

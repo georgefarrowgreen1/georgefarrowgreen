@@ -8,7 +8,7 @@
 import { kept } from "./_wxacct.js";
 import { wxdb, allowance, COST_FULL, OM_KEEP } from "./_wxpush.js";
 import { warningsAt } from "./_wxwarn.js";
-import { withDeadline, cardMs, couldnt, Quiet, zoneOk, offsetAt } from "./_todaycards.js";
+import { withDeadline, cardMs, couldnt, Quiet, zoneOk, offsetAt, withSend } from "./_todaycards.js";
 import { logError } from "./_pigeon.js";
 import { shapeForecast, forecastQuery } from "../weather/data.js";
 import { makeFormat, nowWall, dayStart, HOUR, DAY } from "../weather/format.js";
@@ -17,6 +17,8 @@ import { briefing } from "../weather/alerts.js";
 import { codeInfo, label, iconOf } from "../weather/codes.js";
 import { inForce, colourOf, titleOf, badgeOf, spanOf } from "../weather/official.js";
 import { oneRain } from "../weather/agree.js";
+import { nowcast, isWet } from "../weather/insights.js";
+import { liveMiss } from "./_share.js";
 
 // a forecast kept this long for its cell (caches.default: each data centre its own)
 const KEEP_S = 1800;
@@ -48,11 +50,13 @@ async function charge(env, t, purpose) {
 }
 
 // The forecast for a place's cell (the JSON as Open-Meteo gives it): the tick's memo first, then this data centre's
-// copy, then Open-Meteo itself, paid for (charge, as purpose allows)
-async function forecastJson(env, slat, slon, t, purpose) {
+// copy, then Open-Meteo itself, paid for (charge, as purpose allows). userId: for Chat's live cards and the like
+// (functions/_share.js liveMiss), whose paid asks are counted for the account and for everyone, before any is made
+async function forecastJson(env, slat, slon, t, purpose, userId = null) {
   const url = `${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${forecastQuery(slat, slon, 3)}`;
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null, key = cache && new Request(url);
   if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
+  if (userId) await liveMiss(env, userId);
   await charge(env, t, purpose);
   // (Open-Meteo not answering, or not as it should, is no fault here: the card says so, and nothing's logged)
   const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } }).catch(() => { throw new Quiet("Open-Meteo didn't answer."); });
@@ -66,11 +70,11 @@ async function forecastJson(env, slat, slon, t, purpose) {
 }
 // A cell's forecast and its official warnings, asked for together, once a tick however many accounts share the cell
 // (memo: "wx:<lat>,<lon>" → { forecast, warnings }, each a promise). A place's warnings not had in 5 seconds are none.
-function cellOf(env, slat, slon, t, memo, purpose) {
+function cellOf(env, slat, slon, t, memo, purpose, userId = null) {
   const k = `wx:${slat},${slon}`, had = memo?.get(k);
   if (had) return had;
   const c = {
-    forecast: forecastJson(env, slat, slon, t, purpose),
+    forecast: forecastJson(env, slat, slon, t, purpose, userId),
     warnings: withDeadline(warningsAt(env, slat, slon, t), 5000).then((r) => r?.warnings || []).catch(() => []),
   };
   c.forecast.catch(() => {});
@@ -91,15 +95,15 @@ export async function weatherCard(env, u, ctx) {
   try {
     // (what's left of the card's time, a little kept back to say it couldn't, with its place)
     const left = cardMs(purpose) - (Date.now() - started) - 250;
-    return await withDeadline(dayAt(env, place, href, data.settings || {}, t, memo, purpose), Math.max(0, left));
+    return await withDeadline(dayAt(env, place, href, data.settings || {}, t, memo, purpose, ctx.live || null), Math.max(0, left));
   } catch (e) {
     if (!(e instanceof Quiet)) await logError(env, "today weather", e);
     return couldnt("weather", links, { href, place });
   }
 }
 
-async function dayAt(env, place, href, settings, t, memo, purpose) {
-  const slat = snap(place.lat), slon = snap(place.lon), c = cellOf(env, slat, slon, t, memo, purpose);
+async function dayAt(env, place, href, settings, t, memo, purpose, userId = null) {
+  const slat = snap(place.lat), slon = snap(place.lon), c = cellOf(env, slat, slon, t, memo, purpose, userId);
   const [j, official] = await Promise.all([c.forecast, c.warnings]);
   let wx = shapeForecast(j, { name: place.name, lat: place.lat, lon: place.lon });
   if (!wx.hourly.length || !wx.daily.length) throw new Error("forecast: no hours");
@@ -134,7 +138,7 @@ async function dayAt(env, place, href, settings, t, memo, purpose) {
     list.push({ t: real, time: i || evening ? (clock === "12" ? f.time(h.t) : f.hour(h.t)) : "Now", temp: f.temp(x.temp), icon: iconOf(x.code, x.isDay), label: label(x.code, x.isDay), pop: Math.round(x.pop ?? 0) });
   });
   const hours = { label: evening ? `Tomorrow in ${place.name}` : "Next four hours", wet: list.some((h) => h.pop >= 20), list };
-  return {
+  return withSend({
     state: "ok",
     place,
     href,
@@ -149,7 +153,58 @@ async function dayAt(env, place, href, settings, t, memo, purpose) {
     hours,
     brief: { title: briefing(wx, now, f).title },
     share: `${place.name} today: ${lower(lead)}${warning ? ` ${warning.said}` : ""}`,
-  };
+  // (the card for Chat: functions/_todaycards.js packs it for the page's "Send to a friend")
+  }, sendOf(wx, place.name, slat, slon, now, t, lead));
+}
+
+// ---- Chat's cards (pigeon/cards.js): the weather as it is, for a friend, and live again later ----
+const r1 = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 10) / 10);
+// Rain at a place in real moments (epoch ms, not the place's wall ms): from the quarter hours (nowcast), and past them,
+// the first wet hour in the next 12 (isWet), with when it stops. → { now, at?, end? } or null (dry for 12 hours)
+function rainOf(wx, now, offset) {
+  const real = (w) => (Number.isFinite(w) ? w - offset * 1000 : null), keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v != null));
+  const nc = nowcast(wx, now, makeFormat({}));
+  if (nc) return keep({ now: !!nc.now, at: nc.now ? null : real(nc.startsAt), end: real(nc.endsAt) });
+  const q = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now), past = q.length >= 4 ? q.at(-1).t + 15 * 60e3 : now;
+  const hours = wx.hourly.filter((h) => h.t + HOUR > past && h.t < now + 12 * HOUR), i = hours.findIndex((h) => isWet(h));
+  if (i < 0) return null;
+  const h = hours[i], on = h.t <= now && q.length < 4;
+  const dry = wx.hourly.find((x) => x.t > h.t && !isWet(x));
+  return keep({ now: on, at: on ? null : real(Math.max(h.t, past)), end: dry ? real(dry.t) : null });
+}
+// The weather now at a 0.05° cell, raw (°C, real ms): { temp, feels, code, isDay, hi, lo, rain, at }
+function nowOf(wx, now, t) {
+  const cur = wx.current || hourAt(wx, now), d = dayOf(wx, now);
+  if (!cur) throw new Quiet("No hours.");
+  return { temp: r1(cur.temp), feels: r1(cur.feels), code: Number.isFinite(cur.code) ? cur.code : null, isDay: !!cur.isDay, hi: r1(d?.tmax), lo: r1(d?.tmin), rain: rainOf(wx, now, wx.place.offset || 0), at: t };
+}
+// A weather card (pigeon/cards.js, from "today"): the place's name and its 0.05° cell, never the place itself
+function sendOf(wx, name, slat, slon, now, t, lead) {
+  const n = nowOf(wx, now, t), tz = zoneOk(wx.place.tz) ? wx.place.tz : null;
+  const snap = { place: String(name || "").slice(0, 60), ...(tz ? { tz } : {}), temp: n.temp, feels: n.feels, code: n.code, isDay: n.isDay, hi: n.hi, lo: n.lo, lead: String(lead || "").slice(0, 140), rain: n.rain, spell: null };
+  for (const k of Object.keys(snap)) if (snap[k] == null && k !== "rain" && k !== "spell") delete snap[k];
+  return { v: 1, kind: "weather", from: "today", at: t, say: `${name} today: ${lower(lead)}`.slice(0, 200), snap, ref: { cell: [slat, slon] } };
+}
+// A cell's forecast for a live look (Chat's "Now" and the rain at friends' places): this data centre's copy, else a paid
+// ask, counted first for the account and for everyone (liveMiss), at a page's share of the allowance. Throws Quiet.
+async function liveWx(env, lat, lon, t, userId) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Quiet("No place.");
+  const slat = snap(lat), slon = snap(lon), j = await forecastJson(env, slat, slon, t, "page", userId || "anyone");
+  let wx = shapeForecast(j, { name: "", lat: slat, lon: slon });
+  if (!wx.hourly.length || !wx.daily.length) throw new Quiet("No hours.");
+  const now = nowWall(wx.place.offset || 0, t);
+  wx = oneRain(wx, now);
+  return { wx, now, slat, slon };
+}
+export async function cellNow(env, lat, lon, t, { userId } = {}) {
+  const { wx, now } = await liveWx(env, Number(lat), Number(lon), t, userId);
+  return nowOf(wx, now, t);
+}
+// The card for a place with no Weather place to go by (Chat's own place, for "How's yours?"). Throws Quiet.
+export async function weatherSend(env, place, t, { userId } = {}) {
+  const { wx, now, slat, slon } = await liveWx(env, Number(place?.lat), Number(place?.lon), t, userId);
+  const head = headline(wx, now, makeFormat({})), cut = /^(.+?[.!?])(?:\s+|$)/.exec(head), lead = cut ? cut[1] : head;
+  return sendOf(wx, String(place?.name || "").trim() || "Here", slat, slon, now, t, lead);
 }
 
 // A time on the place's clock (w: weather/format.js's wall ms) as the real moment, epoch ms, at the offset its zone (tz,

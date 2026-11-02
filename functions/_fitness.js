@@ -13,6 +13,7 @@
 // Nothing here reads a file: the phone did that. What's kept is checked to be what it says, and limited in size.
 
 import { HttpError, limit } from "./_pigeon.js";
+import { dropShares } from "./_fitshare.js";
 
 export const MAX_ACTS = 5000, MAX_FILE = 25 * 1024 * 1024, MAX_STORE = 2 * 1024 * 1024 * 1024, MAX_STATE = 256 * 1024;
 export const SPORTS = ["ride", "run", "swim", "walk", "strength", "row", "other"];
@@ -337,4 +338,6 @@ export async function dropFitness(env, userId) {
   for (const t of ["fx_well", "fx_health", "fx_health_key", "fx_strava", "fx_strava_new"]) await D.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(userId).run().catch(() => {});
   // (and the days it last sent for InFlite Today: functions/_fittoday.js)
   await D.prepare("DELETE FROM fx_today WHERE user_id = ?").bind(userId).run().catch(() => {});
+  // (and the sessions sent to friends from Chat, and the plans from Chat waiting: functions/_fitshare.js)
+  await dropShares(env, userId);
 }

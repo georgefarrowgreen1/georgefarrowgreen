@@ -51,6 +51,7 @@ import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
 import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today.js";
 import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
+import { sharesOf, offersOf } from "../../_fitshare.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
 import { connectUrl as stravaUrl, disconnectStrava, stravaOf, stravaAll } from "../../_strava.js";
@@ -909,7 +910,7 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkBuys, mkIsa, mkAlerts, today, upcoming] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkBuys, mkIsa, mkAlerts, today, upcoming, fxShares, fxOffers] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
@@ -929,6 +930,8 @@ const ROUTES = {
       alertsOf(env, u.id).catch(() => null),
       todayExport(env, u.id).catch(() => null),
       snapshotOf(env, u.id).catch(() => null),   // (the coming days' sessions, as Fitness last sent them for Today)
+      sharesOf(env, u.id).catch(() => []),        // (sessions sent to friends from Chat, each kept a few days)
+      offersOf(env, u.id).catch(() => []),        // (plans agreed in Chat, for Fitness)
     ]);
     let photo = null;
     if (u.avatar_at && env.BIO_R2) { const o = await env.BIO_R2.get(avatarKey(u.id)).catch(() => null); if (o) { const a = new Uint8Array(await o.arrayBuffer()); let s = ""; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); photo = "data:image/jpeg;base64," + btoa(s); } }
@@ -956,7 +959,9 @@ const ROUTES = {
       weather: { places: wx.data?.places || [], settings: wx.data?.settings || {}, notifications: wx.data?.notify || null, devices: wxDevices.map((d) => d.label) },
       // (each activity's figures; its file, as imported, is in Fitness: Export everything)
       fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })), nights: fxNights,
-        upcoming: upcoming ? { updatedAt: iso(upcoming.at ?? upcoming.updatedAt), timeZone: upcoming.tz ?? upcoming.timeZone ?? null, units: upcoming.units ?? null, days: upcoming.days || {} } : null },
+        upcoming: upcoming ? { updatedAt: iso(upcoming.at ?? upcoming.updatedAt), timeZone: upcoming.tz ?? upcoming.timeZone ?? null, units: upcoming.units ?? null, days: upcoming.days || {} } : null,
+        sentToFriends: fxShares.map((x) => ({ day: x.day, sport: x.sport, until: iso(x.until) })),
+        plansWaiting: fxOffers.map((x) => ({ start: iso(x.start), name: x.name, who: x.who, state: x.state })) },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {
         holdings: mkList.map((x) => ({ symbol: x.symbol, name: x.name, shares: x.qty, averageCost: x.cost, account: x.account, boughtOn: x.since ? iso(x.since).slice(0, 10) : null, addedAt: iso(x.added), alertAt: x.alert ? `${x.alert}%` : null,

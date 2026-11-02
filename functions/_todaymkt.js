@@ -6,7 +6,7 @@
 // market shut): no dividend, ISA or day's line, so a tick's accounts cost the database no more than they need
 
 import { holdings, quotes, rates, isaOf, dividends, yearOf, wrapFigures, dayIn, nextDividend, marketState, shutToday, INDICES } from "./_markets.js";
-import { Quiet } from "./_todaycards.js";
+import { Quiet, withSend } from "./_todaycards.js";
 
 // the prices by this long after the card's begun, and the rates a second after (what's late given as kept: quoteBy),
 // inside the card's 7 seconds
@@ -65,7 +65,7 @@ export async function marketsCard(env, u, ctx) {
   const nd = items.length ? nextDividend(items, t) : null;
   const dividend = nd ? { name: nd.name, symbol: nd.symbol, at: nd.at < 1e11 ? nd.at * 1000 : nd.at, value: pence(nd.value), href: at(nd.symbol) } : null;
 
-  return {
+  return withSend({
     state: "ok",
     href,
     owned: mine.length,
@@ -83,7 +83,9 @@ export async function marketsCard(env, u, ctx) {
     leftOut: mine.filter((h) => !held.some((r) => r.symbol === h.symbol)).map((h) => h.name),
     stale: held.some((r) => !!r.x.stale),
     share: !traded ? null : Math.abs(change) < 1 || Math.abs(pct).toFixed(1) === "0.0" ? "My portfolio’s little changed today." : `My portfolio is ${change > 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)}% today.`,
-  };
+  // (the card for Chat, pigeon/cards.js: the whole portfolio's percent and nothing more, no holding named, no amount)
+  }, traded ? { v: 1, kind: "markets", from: "today", at: t, say: Math.abs(pct).toFixed(1) === "0.0" ? "My portfolio’s little changed today." : `My portfolio is ${pct > 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)}% today.`,
+    snap: { name: "Portfolio", sym: null, pct, day: dayIn("Europe/London", t) } } : null);
 }
 
 // Your money through the day: each holding at its price at each moment, its last close before it opened (markets/app.js

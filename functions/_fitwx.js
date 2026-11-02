@@ -2,7 +2,7 @@
 // of your places in Weather (kept with the same account: functions/_wxacct.js), else roughly where you're connecting
 // from (Cloudflare's guess, to the city). The forecast is Open-Meteo's, as Weather's is, cached a while for each place
 // (to about a kilometre), so many opens of the app ask it once. The phone works out the best time from it, and Rhythm the wet days
-// (fitness/besttime.js); nothing is kept here.
+// (fitness/besttime.js); nothing is kept here. Chat's plans for two ask for a place's week the same way (hoursAt).
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 import { kept } from "./_wxacct.js";
 
@@ -28,11 +28,17 @@ export async function rideWeather(env, userId, request) {
   const place = saved ? { name: saved.name, lat: saved.lat, lon: saved.lon }
     : Number.isFinite(Number(cf.latitude)) && Number.isFinite(Number(cf.longitude)) ? { name: cf.city || cf.region || "Near you", lat: Number(cf.latitude), lon: Number(cf.longitude), rough: true } : null;
   if (!place) return { place: null };
-  const lat = place.lat.toFixed(2), lon = place.lon.toFixed(2);
+  const { offset, hours } = await hoursAt(env, place.lat, place.lon);
+  return { place: { name: place.name, rough: !!place.rough }, offset, hours };
+}
+
+// A place's week, hour by hour (to about a kilometre, kept a while for it): also Chat's plans for two (functions/_share.js
+// together), each person's place asked for on its own. → { offset, hours } as rideWeather has them
+export async function hoursAt(env, lat, lon) {
   const base = env.WXAPP_URL || "https://api.open-meteo.com";
-  const d = await cachedJSON(`${base}/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${HOURS}&forecast_days=7&timezone=auto&timeformat=unixtime&wind_speed_unit=kmh`);
+  const d = await cachedJSON(`${base}/v1/forecast?latitude=${Number(lat).toFixed(2)}&longitude=${Number(lon).toFixed(2)}&hourly=${HOURS}&forecast_days=7&timezone=auto&timeformat=unixtime&wind_speed_unit=kmh`);
   const H = d?.hourly || {}, t = Array.isArray(H.time) ? H.time : [];
   const hours = t.slice(0, 168).map((s, i) => ({ t: s * 1000, temp: r1(H.temperature_2m?.[i]), feels: r1(H.apparent_temperature?.[i]), pop: r1(H.precipitation_probability?.[i]),
     rain: r1(H.precipitation?.[i]), code: H.weather_code?.[i] ?? null, wind: r1(H.wind_speed_10m?.[i]), gust: r1(H.wind_gusts_10m?.[i]), dir: H.wind_direction_10m?.[i] ?? null, day: H.is_day?.[i] === 1 }));
-  return { place: { name: place.name, rough: !!place.rough }, offset: Number(d?.utc_offset_seconds) || 0, hours };
+  return { offset: Number(d?.utc_offset_seconds) || 0, hours };
 }

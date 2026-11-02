@@ -5,7 +5,7 @@
 
 import { db } from "./_pigeon.js";
 import { streaksFor, STREAK_MIN } from "./_streaks.js";
-import { firstWord } from "./_todaycards.js";
+import { firstWord, withSend } from "./_todaycards.js";
 
 // the only columns of pg_msgs Today reads (with pg_users' id, name and avatar_at, for who). Never ct, via_ct, via_note,
 // body, wrap, sender_key, photo, photo_size, once, sched, legs, via*, wx*; lost_at only in a WHERE
@@ -76,5 +76,6 @@ export async function chatCard(env, u, ctx) {
   if (risk) { const f = pals.get(risk.id); out.streak = { who: who(f.id, f.name, f.avatar_at), n: risk.n, endsAt: risk.endsAt, best: risk.best, href: open(f.id) }; }
   const long = [...streaks].sort((a, b) => b.n - a.n || a.endsAt - b.endsAt)[0];
   if (long) out.share = `My flight streak with ${firstWord(pals.get(long.id).name) || "you"} is ${long.n} days.`;
-  return out;
+  // (the card for Chat, pigeon/cards.js: that streak, the friend's first name, its days and its best)
+  return withSend(out, long ? { v: 1, kind: "streak", from: "today", at: t, say: out.share, snap: { who: (firstWord(pals.get(long.id).name) || "A friend").slice(0, 40), n: long.n, ...(Number.isFinite(long.best) ? { best: Math.max(long.best, long.n) } : {}) } } : null);
 }

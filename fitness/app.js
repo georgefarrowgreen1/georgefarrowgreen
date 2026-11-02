@@ -507,6 +507,8 @@ const S = {
   sport: "ride", actSport: "all", formDays: 42,
   own: [], acts: [], garmin: { on: false },
   sums: new Watched(), summed: false,
+  // (plans made in Chat, as the account has them: waiting to be added here, or added: invites.js)
+  offers: [],
 };
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
@@ -874,8 +876,8 @@ function head(title, sub, ...right) {
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.64";
-const NEWS = "Today, at inflite.ai, can show today's session and its best time";
+const BUILD = "1.65";
+const NEWS = "Send today’s session to a friend, and plans made in Chat arrive here to add";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2124,6 +2126,9 @@ async function fetchMe(base = meBase) {
 function arrive(m, kept = false) {
   if (!kept && m.appearance) lookOf(m.appearance);
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
+  // (plans from Chat only from the account's own answer, never the copy kept here: one said no to on another device
+  // mustn't show, ready to tap, till then)
+  S.offers = !kept && Array.isArray(m.offers) ? m.offers : [];
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
   adopt(m.data);
@@ -2164,6 +2169,7 @@ function takeUp(m) {
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   S.health = m.health || { on: false };
+  S.offers = Array.isArray(m.offers) ? m.offers : [];
   S.me.more = m.more;
   setActs(); redraw(); estimate();
   if (!background.done) background(m); else { garminNow(m.garmin); stravaNow(m.strava); older(); }

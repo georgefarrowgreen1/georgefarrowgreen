@@ -10,6 +10,7 @@ import { marketsCard } from "./_todaymkt.js";
 import { db, logError } from "./_pigeon.js";
 import { photoOf } from "./_profile.js";
 import { todayLinks } from "./_sites.js";
+import { packCard } from "../pigeon/cards.js";
 
 export const CARD_KEYS = ["weather", "chat", "fitness", "markets"];
 
@@ -42,6 +43,12 @@ export function shareCut(s, n = SHARE_MAX) {
   const cut = t.slice(0, n - 1), at = cut.lastIndexOf(" ");
   return `${(at > n / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:.–—-]+$/, "")}…`;
 }
+// A card with its card for Chat (pigeon/cards.js) beside it: held apart from what the card says (not one of its keys, so
+// never in its JSON), for cardsFor to pack for the page (sendCard) or hand to Chat's "How's yours?" (keepSend)
+export function withSend(card, send) {
+  Object.defineProperty(card, "send", { value: send || null, enumerable: false, configurable: true, writable: true });
+  return card;
+}
 // a name's first word ("Sam" for "Sam Lee"), as Chat calls people
 export const firstWord = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
 // whether a zone's a real one (cardsFor uses London's where it isn't)
@@ -50,14 +57,17 @@ export const zoneOk = (tz) => { if (typeof tz !== "string" || !tz || tz.length >
 // The cards asked for (only), as at t, in the account's zone (tz), with the apps' addresses (links: functions/_sites.js
 // todayLinks); memo: a Map the morning's tick shares between its accounts (forecasts, warnings, a ride's weather).
 // purpose: "page" or "morning", which differ in how long each card has. env carries waitUntil where it can.
+// Each ok card's card for Chat (send: pigeon/cards.js) goes to the page packed, as sendCard (null where there's none,
+// or it's too big), and not at all to the morning; keepSend: the card itself kept too (Chat's "How's yours?":
+// functions/_share.js my-card), and live: the account's paid forecasts counted as Chat's live looks are (liveMiss).
 // → { at, tz, cards }
-export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), request = null, purpose = "page", tz = "Europe/London", links, memo = null } = {}) {
+export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), request = null, purpose = "page", tz = "Europe/London", links, memo = null, keepSend = false, live = false } = {}) {
   // (the cards' own functions, looked up here and not above: the card modules import this one back)
   const make = { weather: weatherCard, chat: chatCard, fitness: fitnessCard, markets: marketsCard };
   // (none asked for: none worked out; only left out: all four)
   const keys = CARD_KEYS.filter((k) => (Array.isArray(only) ? only : CARD_KEYS).includes(k));
   const zone = zoneOk(tz) ? tz : "Europe/London", ln = links || todayLinks(env, request), ms = cardMs(purpose);
-  const ctx = { only: keys, t, request, purpose: purpose === "morning" ? "morning" : "page", tz: zone, links: ln, memo };
+  const ctx = { only: keys, t, request, purpose: purpose === "morning" ? "morning" : "page", tz: zone, links: ln, memo, live: live ? u.id : null };
   const got = await Promise.all(keys.map((k) => withDeadline(Promise.resolve().then(() => make[k](env, u, ctx)), ms).catch(async (e) => {
     if (!(e instanceof Quiet)) await logError(env, `today ${k}`, e);
     return couldnt(k, ln);
@@ -66,6 +76,12 @@ export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), reque
   keys.forEach((k, i) => {
     const c = got[i];
     if (c && c.state === "ok" && "share" in c) c.share = c.share == null ? null : shareCut(c.share);
+    if (c && typeof c === "object" && "send" in c) {
+      const send = c.send;
+      delete c.send;
+      if (c.state === "ok" && ctx.purpose === "page") { let packed = null; try { packed = send ? packCard(send) : null; } catch (_) {} c.sendCard = packed; }
+      if (keepSend) withSend(c, send);
+    }
     cards[k] = c;
   });
   return { at: t, tz: zone, cards };

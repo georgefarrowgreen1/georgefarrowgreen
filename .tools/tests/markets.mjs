@@ -310,14 +310,23 @@ await w.click('#nt-m-on'); await settle(w, 1500);
 ok(rows("SELECT user_id FROM mk_off").length === 1, 'and every Markets alert off, for the account');
 await w.close(); pages.pop();
 
-// ---- 11c. Send in Chat: Chat opens, with it waiting for the friend you pick ----
+// ---- 11c. Send in Chat: Chat opens its Send to a Friend sheet, with the day's move as a card (percent only) ----
 await p.click('.tab[data-tab="holdings"]'); await settle(p, 800);
 await p.locator('.item:has-text("Tesco")').first().click(); await p.waitForSelector('button:has-text("Send in Chat")'); await settle(p, 700);
+const went = []; const onNav = (f) => { if (f === p.mainFrame() && f.url().startsWith(CHAT)) went.push(f.url()); }; p.on('framenavigated', onNav);
 await p.click('button:has-text("Send in Chat")');
 await p.waitForURL((u) => u.hostname.startsWith('chat.'), { timeout: 20000 });
-await p.waitForSelector('.toast:has-text("Pick who to send it to")', { timeout: 30000 }).catch(() => {});
-ok(/Pick who to send it to/.test(await text(p, '.toast')), 'Send in Chat: Chat, saying to pick who to send it to', await text(p, '.toast'));
+await p.waitForSelector('.sheet h2:text-is("Send to a Friend")', { timeout: 30000 }).catch(() => {});
+p.off('framenavigated', onNav);
+const to = went[0] || '';
+ok(to.startsWith(`${CHAT}/#share=`) && /&card=[A-Za-z0-9_-]+$/.test(to), "Send in Chat: to Chat's /#share=, the words first and the card after them", to.slice(0, 120));
+ok(!!(await p.$('.sheet h2:text-is("Send to a Friend")')), 'Chat opens Send to a Friend (not the old toast)', await text(p, '.sheet h2'));
+const mcard = (await p.locator('.sheet .cd-card').first().textContent().catch(() => '') || '').replace(/\s+/g, ' ');
+ok(/Markets · Tesco/.test(mcard) && /[+\u2212]\d+\.\d\d%/.test(mcard), 'with the Tesco card drawn: its day\'s move in percent', mcard);
+ok(!/412|£|\dp\b|GBp/.test(mcard), 'and no price or amount in it', mcard);
+ok(!/Pick who to send it to/.test(await text(p, '.toast').catch(() => '')), 'no toast, as the sheet says it all');
 ok(await p.evaluate(() => !location.hash), "and the words aren't left in Chat's address");
+await p.screenshot({ path: `${out}/11c-send-sheet.png` });
 await p.goto(MKT + '/'); await p.waitForSelector('#pv', { timeout: 20000 }); await settle(p, 1200);
 
 // ---- 12. Light, as the account may have it ----

@@ -192,6 +192,17 @@ button.card:active { transform: scale(0.985); transition-duration: var(--dur-pre
 .session .about { margin: 10px 0 0; color: var(--text-2); font-size: 15px; line-height: 1.4; }
 .session .profile { margin: 16px -4px 4px; }
 .session .acts { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+/* who a day's session is with: a plan made in Chat, added (invites.js) */
+.with-mate { margin: 10px 0 0; font-size: 15px; font-weight: 600; color: var(--tint-text); }
+/* a plan made in Chat, waiting at the top of Today to be added (invites.js) */
+.offer { display: grid; justify-items: start; gap: 8px; }
+.offer h2 { margin: 2px 0 0; font-size: 22px; line-height: 1.15; letter-spacing: -0.2px; }
+.offer-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 8px; border-radius: 999px; background: var(--glass-ctl); font-size: 13px; font-weight: 600; color: var(--tint-text); }
+.offer-when { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.offer .about { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; }
+.offer .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.offer-said { margin: 0 0 14px; font-size: 17px; line-height: 1.4; }
+.offer-acts { display: grid; gap: 10px; margin-top: 16px; }
 .session.done h2 { display: flex; align-items: center; gap: 8px; }
 .session.rest h2 { color: var(--text); }
 .tick-badge { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: #fff; background: linear-gradient(180deg, #5fe39a, #1fa75a); flex: none; }

@@ -17,6 +17,8 @@ const ENTRIES = [
   ...readdirSync(new URL("functions/", ROOT)).filter((f) => /^_today.*\.js$/.test(f)).sort().map((f) => `functions/${f}`),
   // (and the modules whose names Today's share, or which import Today's, each from its own end of its loops)
   "functions/_fittoday.js", "functions/_wxpush.js", "functions/_fitpush.js", "functions/_markets.js", "functions/_sites.js", "functions/_handback.js",
+  // (and Chat's "Send to a friend", which imports Today's cards, Weather's and Fitness's, from its own end and Chat's API's)
+  "functions/_share.js", "functions/_fitshare.js", "functions/api/pigeon/[[path]].js",
 ];
 
 // each loaded in its own Node, all at once → null, or what went wrong
@@ -71,6 +73,18 @@ const SHARED = {
     morningLines: "cards, { names, tz, t, lines }", composeMorning: "env, u, row, t, { memo, cards } = {}", previewMorning: "env, u, row, t, { cards } = {}",
     sendMorningNow: "env, u, { endpoint }", morningTick: "env, t = Date.now()", nextAt: "tz, mins, t",
   },
+  // (Send to a friend's: functions/_share.js, _fitshare.js, and the parts of Today's, Weather's and Fitness's it shares)
+  "functions/_share.js": {
+    liveMiss: "env, userId",
+    SHARE_ROUTES: (v, at) => assert.deepEqual(Object.keys(v || {}).sort(), ["GET my-card", "GET together", "POST card-now", "POST fit-offer", "POST fit-share", "POST share-rank"], at),
+  },
+  "functions/_fitshare.js": {
+    shareFor: "env, userId, { day, tz, sport }", dropShare: "env, userId, id", doneIn: "env, userId, start, end", fitNowMany: "env, shares, asker",
+    fitNow: "env, { share, asker }", addOffer: "env, userId, offer", offersFor: "env, userId", answerOffer: "env, userId, id, answer",
+    sharesOf: "env, userId", offersOf: "env, userId", dropShares: "env, userId",
+  },
+  "functions/_fitwx.js": { hoursAt: "env, lat, lon", rideWeather: "env, userId, request" },
+  "functions/_todaywx.js+": { cellNow: "env, lat, lon, t", weatherSend: "env, place, t" },
   "functions/_wxpush.js": { COST_FULL: (v, at) => assert.equal(v, 7, at), OM_KEEP: (v, at) => assert.equal(v, 500, at) },
   "functions/_fittoday.js": { cleanSnapshot: "b", setSnapshot: "env, userId, b", snapshotOf: "env, userId" },
   "functions/_markets.js": {
@@ -84,7 +98,7 @@ const takes = (params) => new Function(params, "").length;
 
 for (const [file, names] of Object.entries(SHARED)) {
   test(`${file}: every name Today's parts share is exported, each function taking at least the arguments it's listed with`, async () => {
-    const m = await import(new URL(file, ROOT).href), wrong = [];
+    const m = await import(new URL(file.replace(/\+$/, ""), ROOT).href), wrong = [];
     for (const [name, want] of Object.entries(names)) {
       const at = `${file} ${name}`;
       try {

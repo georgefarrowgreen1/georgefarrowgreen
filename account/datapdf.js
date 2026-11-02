@@ -218,6 +218,14 @@ export async function dataPdf(data, { did, units }) {
   figures([[rides.length, rides.length === 1 ? "activity" : "activities"], [(fx.nights?.length ?? 0), "nights of sleep"]]);
   // (the coming days' sessions, as Fitness last sent them, for Today's card and its morning notification)
   if (fx.upcoming) rows([["Kept for Today", `${Object.keys(fx.upcoming.days || {}).length} days, updated ${new Date(fx.upcoming.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`]]);
+  // (sessions sent to friends in Chat, each kept so the friend can see whether it got done, and plans made in Chat that
+  // came to Fitness to add: only when there are any)
+  const sent = Array.isArray(fx.sentToFriends) ? fx.sentToFriends : [], plans = Array.isArray(fx.plansWaiting) ? fx.plansWaiting : [];
+  // (a plan still unanswered is waiting only while its time is to come: the export keeps one gone by until Fitness next tidies)
+  const nOf = (st, ahead) => plans.filter((x) => x?.state === st && (ahead === undefined || (new Date(x.start).getTime() > at.getTime()) === ahead)).length;
+  const planWords = [[nOf("new", true), "waiting"], [nOf("yes"), "added"], [nOf("no"), "turned down"], [nOf("new", false), "not answered"]].filter(([n]) => n).map(([n, w]) => `${n} ${w}`).join(", ");
+  rows([sent.length && ["Sent to friends", sent.length === 1 ? "1 session, kept 3 days after it" : `${sent.length} sessions, kept 3 days after each`],
+    plans.length && ["Plans from Chat", planWords || `${plans.length}`]]);
   sub("Activities", "Newest first. Each one's file, as imported, is in Fitness: Export everything.");
   table([{ label: "Name", w: 4 }, { label: "Sport", w: 1.6 }, { label: "On", w: 2 }, { label: "From", w: 2.2 }],
     rides.map((x) => [x.name || "An activity", x.sport || "", day(x.startedAt), x.device || ""]), "No activities yet.");

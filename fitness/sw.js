@@ -39,7 +39,7 @@ self.addEventListener("notificationclick", (e) => {
 // gone as you sign out).
 const SHELL = "fitness-app-1";
 const FILES = ["./", "theme.js", "styles.css", "app.js", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js",
-  "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js",
+  "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js", "send.js", "invites.js",
   "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png"];
 const at = (f) => new URL(f, self.registration.scope).href;
 // (a file of the app's, by its address: its code, styles, manifest and pictures, each directly in its folder; not the

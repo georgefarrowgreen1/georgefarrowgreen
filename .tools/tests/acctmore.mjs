@@ -336,6 +336,18 @@ await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
 ok(top === 0 && down === 1 && (await bar()) === 0, "a phone: InFlite's header compact once scrolled, large again at the top", JSON.stringify({ top, down }));
 
 // ---- 10. Your data: as a PDF to read and keep, written from the export (the server's JSON) ----
+// (two sessions sent to friends from Chat, and two plans from Chat in Fitness, one waiting and one added; a friend's own
+// row that isn't yours. The tables as functions/_fitshare.js makes them, in case nothing's made them yet)
+sql(`
+CREATE TABLE IF NOT EXISTS fx_shares (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, day TEXT NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL, made INTEGER NOT NULL, until INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS fx_offers (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL, wid TEXT NOT NULL, name TEXT NOT NULL, secs INTEGER NOT NULL, who TEXT NOT NULL, role TEXT NOT NULL, far INTEGER NOT NULL DEFAULT 0, dry INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'new', made INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (user_id, id));
+INSERT INTO fx_shares (id, user_id, day, tz, sport, made, until) VALUES ('shareAAAAAAAAAAAAAAAAA', '${uid}', '2026-11-01', 'Europe/London', 'ride', ${t - DAY}, ${t + 3 * DAY}),
+  ('shareBBBBBBBBBBBBBBBBB', '${uid}', '2026-11-02', 'Europe/London', 'run', ${t}, ${t + 4 * DAY}), ('shareCCCCCCCCCCCCCCCCC', 'friend1', '2026-11-02', 'Europe/London', 'ride', ${t}, ${t + 4 * DAY});
+INSERT INTO fx_offers (user_id, id, start, stop, tz, sport, wid, name, secs, who, role, state, made, until) VALUES
+  ('${uid}', '11111111-1111-4111-8111-111111111111', ${t + DAY}, ${t + DAY + 7200e3}, 'Europe/London', 'ride', 'free-ride', 'Ride how you like', 7200, 'Ada', 'asked', 'new', ${t}, ${t + DAY + 12 * 3600e3 + 7200e3}),
+  ('${uid}', '22222222-2222-4222-8222-222222222222', ${t + 2 * DAY}, ${t + 2 * DAY + 3600e3}, 'Europe/London', 'run', 'run-easy-40', 'Easy run 40', 2400, 'Ben', 'answered', 'yes', ${t}, ${t + 2 * DAY + 13 * 3600e3}),
+  ('${uid}', '33333333-3333-4333-8333-333333333333', ${t - 2 * DAY}, ${t - 2 * DAY + 3600e3}, 'Europe/London', 'run', 'run-easy-40', 'Easy run 40', 2400, 'Cal', 'asked', 'new', ${t - 3 * DAY}, ${t - 2 * DAY + 13 * 3600e3});
+`);
 await account(P);
 await openRow(P, 'Your Data');
 ok(/Download as PDF/.test(await sheetText(P)) && !/Download as JSON/.test(await sheetText(P)), 'your data: as a PDF (the JSON it\'s written from stays the server\'s)');
@@ -351,7 +363,8 @@ const words = sh(`pdftotext -layout "${pdfPath}" -`).replace(/[ \t]+/g, ' ');
 for (const [re, what] of [[/Your data/, 'its title'], [/Rowan Hale/, 'your name'], [/@rowan/, 'handle'], [/rowan@example\.com Confirmed/, 'email, confirmed'], [/Sign-in and security/, 'sign-in'],
   [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'Chat\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
   [/Place 1/, 'the passport'], [/A pigeon lands On/, 'Chat\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
-  [/°C · km\/h · mm/, 'units'], [new RegExp(`Page 1 of ${pages}`), 'page numbers']]) ok(re.test(words), `the PDF: ${what}`, re.test(words) ? '' : words.slice(0, 600));
+  [/°C · km\/h · mm/, 'units'], [/Sent to friends 2 sessions, kept 3 days after each/, 'sessions sent to friends'], [/Plans from Chat 1 waiting, 1 added, 1 not answered/, 'plans from Chat (one gone by unanswered isn\'t waiting)'],
+  [new RegExp(`Page 1 of ${pages}`), 'page numbers']]) ok(re.test(words), `the PDF: ${what}`, re.test(words) ? '' : words.slice(0, 600));
 ok(!/Łódź/.test(words) && !/\?\?d\?/.test(words), 'a name Helvetica can\'t show: not as broken text...');
 const imgs = sh(`pdfimages -list "${pdfPath}"`).trim().split('\n').slice(2);
 ok(imgs.length >= 4 && imgs.some((l) => /\bjpeg\b/.test(l) && /\b64\b|\b512\b|\b300\b/.test(l)) && imgs.some((l) => /\bimage\b.*\brgb\b.*\b(8)\b/.test(l) && !/jpeg/.test(l)),
@@ -360,6 +373,10 @@ sh(`pdftoppm -r 70 -png "${pdfPath}" "${out}/pdf-page"`);
 const json = await P.p.evaluate(() => fetch('/api/account/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()).catch(() => ({})));
 ok(json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
   'and the export it\'s written from: pigeons sent and had counted as Chat\'s log counts them', JSON.stringify(json.inflight?.pigeons));
+ok(JSON.stringify(json.fitness?.sentToFriends?.map((x) => [x.day, x.sport])) === JSON.stringify([['2026-11-01', 'ride'], ['2026-11-02', 'run']]) && json.fitness.sentToFriends.every((x) => Object.keys(x).join() === 'day,sport,until'),
+  'and in it, the sessions you sent to friends (yours only: day, sport and how long kept, nothing more)', JSON.stringify(json.fitness?.sentToFriends));
+ok(JSON.stringify(json.fitness?.plansWaiting?.map((x) => [x.name, x.who, x.state])) === JSON.stringify([['Easy run 40', 'Cal', 'new'], ['Ride how you like', 'Ada', 'new'], ['Easy run 40', 'Ben', 'yes']]),
+  'and the plans from Chat', JSON.stringify(json.fitness?.plansWaiting));
 await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');

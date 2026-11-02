@@ -18,6 +18,7 @@ import { weatherCard, skyFor } from "../../../functions/_todaywx.js";
 import { fitnessCard } from "../../../functions/_todayfit.js";
 import { marketsCard } from "../../../functions/_todaymkt.js";
 import { forecast as omForecast } from "../mocks/wxappdata.mjs";
+import { unpackCard, normCard } from "../../../pigeon/cards.js";
 import { shapeForecast } from "../../../weather/data.js";
 import { makeFormat, nowWall } from "../../../weather/format.js";
 import { headline } from "../../../weather/insights.js";
@@ -130,8 +131,10 @@ function sameShape(got, want, at = "") {
   if (Array.isArray(want)) { assert.ok(Array.isArray(got), `${at}: a list`); if (want.length && got.length) sameShape(got[0], want[0], `${at}[0]`); return; }
   if (typeof want === "object") {
     assert.ok(got && typeof got === "object" && !Array.isArray(got), `${at}: an object`);
-    assert.deepEqual(Object.keys(got).sort(), Object.keys(want).sort(), `${at}: its keys`);
-    for (const k of Object.keys(want)) sameShape(got[k], want[k], `${at}.${k}`);
+    // (the card for Chat, packed for the page: on any ok card, whether or not the fixture's has it)
+    const keys = (o) => Object.keys(o).filter((k) => k !== "sendCard").sort();
+    assert.deepEqual(keys(got), keys(want), `${at}: its keys`);
+    for (const k of Object.keys(want)) if (k !== "sendCard") sameShape(got[k], want[k], `${at}.${k}`);
     return;
   }
   assert.equal(typeof got, typeof want, `${at}: ${typeof want}`);
@@ -345,6 +348,9 @@ test("Fitness: done, from what's in Fitness, shows even with no snapshot", async
   assert.equal(c.kind, "done"); assert.equal(c.session, null);
   assert.deepEqual(c.done, { name: "Morning ride", sport: "ride", start: MON - H, secs: 3600, dist: 30120, tss: 55, from: "fitness" }, "today's, by the account's day, not yesterday's");
   assert.equal(c.share, "Out on a ride today.");
+  // (the card for Chat goes by the sport, never the activity's own name, which no view of a done card shows)
+  assert.equal(c.send.snap.name, "Ride");
+  assert.ok(!JSON.stringify(c.send).includes("Morning ride"), "the activity's own name isn't sent");
 });
 
 test("Fitness: done, from what's waiting to come in from Garmin, whatever was planned", async () => {
@@ -617,4 +623,44 @@ test("the fixtures agree with each other: the same times, zone and links through
   assert.equal(QUIET.at, SAT_EVE);
   for (const f of [CARDS, EMPTY, ERROR, QUIET]) for (const c of Object.values(f.cards)) assert.ok(Object.values(LINKS).some((l) => c.href.startsWith(`${l}/`)), c.href);
   for (const [k, c] of Object.entries(EMPTY.cards)) sameShape(c, { state: "", href: "", said: "", action: { label: "", href: "" } }, `empty ${k}`);
+});
+
+// ================================ Chat's cards (Send to a friend) ================================
+test("each card's card for Chat: packed for the page only, the weather's by its 0.05° cell, the portfolio's percent only, the session's with no share id, and nothing kept", async () => {
+  omAt = MON; warnFeed = { warnings: [] }; market(WEEKDAY); setBucket(OM_KEEP, MON); ride = "fine";
+  const shares = () => sql.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'fx_shares'").get().n ? sql.prepare("SELECT COUNT(*) AS n FROM fx_shares").get().n : 0;
+  const before = shares();
+  // weather
+  const w = (await cardsFor(env, { id: "wx1" }, { only: ["weather"], t: MON, links: LINKS })).cards.weather;
+  assert.equal(w.state, "ok");
+  assert.ok(!("send" in w), "the card itself isn't in the page's answer");
+  const wc = unpackCard(w.sendCard);
+  assert.ok(wc, "sendCard unpacks");
+  assert.equal(wc.kind, "weather"); assert.equal(wc.from, "today"); assert.equal(wc.snap.place, "London");
+  assert.deepEqual(wc.ref.cell, [51.5, -0.15], "the 0.05° cell");
+  for (const exact of ["51.5072", "-0.1276", "0.1276"]) assert.ok(!JSON.stringify(wc).includes(exact), `no exact place (${exact})`);
+  assert.ok(!("warn" in wc.snap));
+  assert.ok(wc.say.startsWith("London today: "), wc.say);
+  // markets: the whole portfolio's percent, and nothing else
+  pf("mk-send"); market(WEEKDAY);
+  const m = (await cardsFor(env, { id: "mk-send" }, { only: ["markets"], t: WEEKDAY, links: LINKS })).cards.markets, mc = unpackCard(m.sendCard);
+  assert.ok(mc, JSON.stringify(m.sendCard));
+  assert.deepEqual(Object.keys(mc.snap).sort(), ["day", "name", "pct", "sym"]);
+  assert.equal(mc.snap.name, "Portfolio"); assert.equal(mc.snap.sym, null); assert.equal(mc.snap.pct, m.pct);
+  assert.ok(!("ref" in mc));
+  for (const word of ["Rolls", "Tesco", "RR.L", "TSCO", "top", "change", "value", "isa", "dividend"]) assert.ok(!JSON.stringify(mc).includes(word), word);
+  // fitness: today's session, no share id
+  const f = (await cardsFor(env, { id: "fx-ride" }, { only: ["fitness"], t: MON, links: LINKS })).cards.fitness, fc = unpackCard(f.sendCard);
+  assert.ok(fc);
+  assert.equal(fc.kind, "fitness"); assert.equal(fc.snap.name, "Tempo 2 × 15"); assert.equal(fc.snap.sport, "ride"); assert.equal(fc.snap.day, "2026-11-02");
+  assert.ok(!("ref" in fc), "no share id: Chat makes one as it's sent");
+  assert.ok(fc.snap.best && fc.snap.best.end > fc.snap.best.start);
+  // the morning's cards carry none
+  const mo = (await cardsFor(env, { id: "fx-ride" }, { only: ["fitness"], t: MON, links: LINKS, purpose: "morning" })).cards.fitness;
+  assert.ok(!("sendCard" in mo) && !("send" in mo));
+  // kept for "How's yours?" only when asked
+  const kept = (await cardsFor(env, { id: "fx-ride" }, { only: ["fitness"], t: MON, links: LINKS, keepSend: true })).cards.fitness;
+  assert.ok(normCard(kept.send)); assert.ok(!JSON.stringify(kept).includes('"send"'), "and never in its JSON");
+  assert.equal(shares(), before, "no share row made by a page");
+  await settle();
 });

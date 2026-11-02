@@ -7,6 +7,9 @@ import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
 import { linkParts, linksIn } from "./links.js";
+import { payloadParts, buildPayload, padPayload, readShareHash, canForward, liveKey, liveItem, isLive, landWords, nextLocal, whenLine, pigeonsFor, spendWords, sentToast, askWords, planWords, answerWords, cardWords, normCard, normPlan, laterPlan, MARGIN_MS, ASK_KINDS, PLAN_SPORTS } from "./cards.js";
+import { rankFriends, seenFrom, rainAsk } from "./rank.js";
+import { cardHtml, sheetCardHtml, askHtml, sideBySideHtml, inviteHtml, answerHtml, stripHtml } from "./cardview.js";
 import { ABOUT, BODIES, EARTH_R, MOON_R, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf, lookTo, moonLook, marsLook, sunLook, orbitWhere, ORBIT, distAt } from "./moon.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
@@ -414,8 +417,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.63";            // shown in InFlite's menu
-const APP_NEWS = "On an iPad, the welcome's frame shows all the way round";       // (said once it's in)
+const APP_VERSION = "1.64";            // shown in InFlite's menu
+const APP_NEWS = "Send to a Friend sends the card itself, kept up to date in the letter, and puts the right friends first";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -485,6 +488,7 @@ const S = {
   avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
+  cardNow: new Map(), cardWait: null, laterOpen: null,   // cards' live "Now" (memory only), a card waiting above a chat's message box, an invite's other times shown
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -4120,6 +4124,7 @@ function go(view, chat) {
   if (!same && $ta) $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || "";
   // (something another app sent here to be shared, as Markets's Send in Chat does: into the first chat you open)
   if (!same && $ta && view === "chat" && chat && S.share) { $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + S.share; S.share = null; }
+  if (!same && view === "chat" && chat && S.cardWait && !S.cardWait.chat) S.cardWait.chat = chat;      // (and a card sent here the same way)
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
@@ -4876,7 +4881,9 @@ function bubble(f, m, gapTop, g) {
   }
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
-  const jumbo = !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
+  // a card, a request, an invite or an answer inside it (pigeon/cards.js), drawn under its words
+  const cb = !p.p && !p.v && !p.bad ? cardBlock(f, m, p, g) : null;
+  const jumbo = !cb && !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : linked(p.t);
   // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : "";
@@ -4915,7 +4922,8 @@ function bubble(f, m, gapTop, g) {
     else photo = `<div class="ph wait"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
     html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
-  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${by}${quote}${text}${tail}</div>`;
+  } else if (cb) html = `<div class="b withcard${cls}" data-mid="${esc(m.id)}"${kk(`${st}:c${cb.sig}`)}${tapAct}>${by}${quote}${p.t ? text : ""}${cb.html}${tail}</div>`;
+  else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${by}${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote" data-key="vn:${esc(m.id)}"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
@@ -5585,7 +5593,11 @@ function openReactMenu(anchor, id) {
   const words = m && S.plain.get(id)?.t;
   // (each web address in it, to open: also what VoiceOver reaches them by, as a bubble's links are part of its button)
   const links = typeof words === "string" ? linksIn(words).slice(0, 3) : [];
+  // a card in it, sent on to a friend: your own of any kind, a friend's only if it's public (cards.js canForward)
+  const pc = m && !m.flying && !m.lost ? partsOf(S.plain.get(id))?.card : null;
+  let fwd = false; try { fwd = !!pc && canForward(pc, { mine: m.from === S.me.id }); } catch (_) {}
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
+    ...(fwd ? [{ label: "Send to a Friend", icon: I.share, act: "cardfwd", id }] : []),
     ...(typeof words === "string" && words.trim() ? [{ label: "Copy", icon: I.copy, act: "copymsg", id }] : []),
     ...links.map((u) => ({ label: "Open Link", sub: new URL(u).hostname.replace(/^www\./, ""), icon: I.globe, act: "openlink", id: u })),
     ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])]);
@@ -5820,7 +5832,7 @@ function vGroupChat(g) {
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${vanishLine(g.vanish)}${body}${outboxBubbles(g.id)}</div>`;
+    <h1 class="sr">${esc(g.name)}</h1>${warn}${(liveSoon(g.id), "")}<div class="msgs">${vanishLine(g.vanish)}${body}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
@@ -5854,7 +5866,7 @@ function vChat() {
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${myKeyWarn()}${warn}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${myKeyWarn()}${warn}${(liveSoon(f.id), "")}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -6014,7 +6026,8 @@ function renderCompose() {
   $compose.hidden = !show; if (!show) { composeH = 0; return; }
   const c = composeState(), { g, f, dumb, sched, via, kind } = c;
   const note = $(".note", $compose), btn = $(".send", $compose), pill = $(".kind", $compose);
-  const has = (dumb ?? $ta.value).trim() || S.attach;
+  const cw = S.cardWait && S.cardWait.chat === S.chat ? S.cardWait.card : null;     // (a card waiting to go with it: Send to a Friend)
+  const has = (dumb ?? $ta.value).trim() || S.attach || cw;
   S.sendKind = kind;
   const hatch = () => fmtDur(Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity)) - now());
   let stop = "", blocked = true;
@@ -6082,6 +6095,14 @@ function renderCompose() {
     a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
+  // a card waiting to go with what's written (from Send to a Friend), above the message box like a photo, with its ✕
+  let ca = $(".cardatt", $compose);
+  if (!ca) { ca = document.createElement("div"); ca.className = "cardatt"; ca.hidden = true; a.before(ca); }
+  const ck = cw ? kSig(JSON.stringify(cw)) : "";
+  if (ca.dataset.k !== ck) {
+    ca.dataset.k = ck; ca.hidden = !cw;
+    ca.innerHTML = cw ? `<span class="cthumb" aria-hidden="true">${I.share}</span><span class="ainfo"><b>${esc(cardLabel(cw))}</b><span class="atext">${esc(cw.say || "")}</span></span><button type="button" data-act="cardrm" aria-label="Remove the card">${I.x}</button>` : "";
+  }
   composeGlide();
 }
 const TABS = [["messages", "Messages", "bubble"], ["friends", "Friends", "people"], ["account", "Account", "person"]];
@@ -6233,6 +6254,8 @@ async function addGo(h, btn) {
 function onInput(e) {
   if (e.target.id === "add-h") { const m = $(".add-msg", $layer); if (m) m.classList.remove("bad"); return addLookup(); }
   if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
+  if (e.target.id === "f-sendwords" && S.sheet?.type === "send") { S.sheet.words = e.target.value.slice(0, 500); S.sheet.edited = true; return; }
+  if (e.target.id === "f-askwords" && S.sheet?.type === "askback") { S.sheet.words = e.target.value.slice(0, 500); return; }
   if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
   if (e.target.id === "fsearch") { S.fq = e.target.value; filterLists(); }
 }
@@ -6497,6 +6520,8 @@ function drawSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "lookup": return drawLook(s);
+    case "send": $layer.innerHTML = drawSend(s); return;
+    case "askback": $layer.innerHTML = drawAskBack(s); return;
     case "map": {
       const mm = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
       if (mm && moonOf(mm)) return drawMoonFlight(s, mm);
@@ -8442,7 +8467,7 @@ async function busyBtn(btn, label, fn) {
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
-const ONCE_ACTS = new Set(["acctsignin", "acctjoin", "accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh"]);
+const ONCE_ACTS = new Set(["acctsignin", "acctjoin", "accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh", "planans", "planlater", "asksend", "sendgo"]);
 const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
@@ -8652,6 +8677,8 @@ async function onClick1(e, t) {
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
+      // (a card another app sent, not sent from the sheet: it waits above the next chat's message box, as its words did)
+      if (S.sheet?.type === "send" && S.sheet.link && !S.sheet.busy) { const w = S.sheet.edited ? S.sheet.words.trim() : S.sheet.base; S.cardWait = { chat: null, card: S.sheet.card }; S.share = w && w !== S.sheet.card.say ? w : null; }
       if (S.sheet?.type === "reauth") { const r = S.sheet.resolve; S.sheet = S.sheet.back || null; renderSheet(); return r(false); }
       S.sheet = null; return renderSheet();
     case "closepop": return closePop();
@@ -8661,6 +8688,21 @@ async function onClick1(e, t) {
     case "skyopen": S.sheet = null; renderSheet(); return go("chat", id);
     case "airopen": haptic("tick"); S.mapNext = t.dataset.m; return go("chat", id);
     case "msgmenu": return openReactMenu(t, id);
+    // Send to a Friend, a card's "How's yours?", and plans made together
+    case "sendpick": return sendPick(id);
+    case "sendwhen": { const s = S.sheet; if (s?.type !== "send" || s.busy || s.plan || !["asap", "before", "morning"].includes(id)) return; s.when = id; return renderSheet(); }
+    case "sendask": { const s = S.sheet; if (s?.type !== "send" || s.busy || s.plan) return; s.ask = !s.ask; return renderSheet(); }
+    case "sendplan": return sendPlan();
+    case "planpick": { const s = S.sheet; if (s?.type !== "send" || !s.together?.windows) return; s.win = Math.max(0, Math.min(s.together.windows.length - 1, Number(id) || 0)); return renderSheet(); }
+    case "sendgo": return sendGo();
+    case "sendchat": return sendChat();
+    case "cardfwd": return cardFwd(id);
+    case "cardrm": S.cardWait = null; return renderCompose();
+    case "askshow": return openAskBack(id);
+    case "asksend": return askSend();
+    case "askno": return askNo();
+    case "planans": return planAnswer(id, t.dataset.a);
+    case "planlater": return planLater(id, Number(t.dataset.t));
     case "link": return;                 // (a link in a message: the browser opens it, and the message's menu doesn't)
     case "openlink": { const u = linksIn(id)[0]; if (u) window.open(u, "_blank", "noopener,noreferrer"); return; }
     case "react": return sendReact(id, t.dataset.e);
@@ -9650,7 +9692,10 @@ function outboxBubbles(chat) {
 
 async function send() {
   const raw = $ta.value, text = (dumbText() ?? raw).trim();
-  if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
+  // a card waiting above the box (Send to a Friend) goes with it, and with no words its own line is what it says
+  // (not with a photo or a voice pigeon, which draw no card: it stays waiting, to go next on its own)
+  const cw = S.cardWait && S.cardWait.chat === S.chat && !S.attach ? S.cardWait : null, words = text || (cw ? String(cw.card.say || cardWords(cw.card) || "").slice(0, 500) : "");
+  if ((!text && !S.attach && !cw) || S.busy || $(".send", $compose).disabled) return;
   if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
   S.busy = true; S.err = "";
   if (S.attach) renderCompose();          // (words alone: the box drawn once, cleared, as they go up: sendRise)
@@ -9661,7 +9706,7 @@ async function send() {
   // (a photo or a voice pigeon shows its own progress, in its card)
   const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
   if (!att) {
-    S.pending = { id, to, t: text, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
+    S.pending = { id, to, t: words, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
     S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id); draftsSoon();
   }
   const tidy = () => {
@@ -9670,9 +9715,12 @@ async function send() {
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
     draftsSoon();
   };
+  let ref = null;
   try {
     const mc = !group(to) && moonChat(friend(to)), sc = !mc && schedFor(to), vi = !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now)
-    const payload = { t: text };
+    const payload = { t: words };
+    // (a Fitness card one to one gets its share id now, at Send; in a group it shows "When sent" only)
+    if (cw) { const sr = group(to) ? { card: noRef(cw.card), id: null } : await shareRef(cw.card); ref = sr.id; payload.c = sr.card; }
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
     let blob = null;
     if (att?.voice) {
@@ -9692,20 +9740,20 @@ async function send() {
     const route = routeStyle() === "fastest" ? {} : { route: routeStyle() };   // the way it goes
     if (g) {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
-      const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
+      const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, padPayload({ ...payload }));      // (padded to a size bucket: cards.js)
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       meta = { id, group: g.id, body, keys, pigeon: kind, ...carry, ...route };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: kind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), pigeon: kind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
       ...(!vi && !sc && noShipOn() && kind === "standard" ? { noShip: true } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
-      ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
+      ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: words, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
     // no signal: it waits on the perch (sealed already) and takes off once there is
     const queue = async () => {
       await outboxAdd({ id, to, path, meta, blob, kind, at: Date.now() });
       S.pending = null;                // (the same pigeon, waiting on the perch now)
-      S.plain.set(id, payload);
+      S.plain.set(id, payload); if (cw && S.cardWait === cw) S.cardWait = null;
       if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }
       tidy();
       if (rt) S.replyTo = null;
@@ -9741,7 +9789,7 @@ async function send() {
     if (sc) { S.sched = null; if (r.me) S.me = r.me; afterRise().then(() => toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`)); }
     S.noShip = null;
     if (vi) { S.via = null; afterRise().then(() => toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`)); }
-    S.plain.set(id, payload);
+    S.plain.set(id, payload); if (cw && S.cardWait === cw) S.cardWait = null;
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
     tidy(); S.stick = true; S.pending = null;
     if (att) announce("Sent.");
@@ -9754,6 +9802,7 @@ async function send() {
     await afterRise(); offerNotify();
   } catch (err) {
     // (the browser's own errors, a key it can't use, can come with no words: never a silent nothing)
+    dropRef(ref);                      // (a share id made for a card that didn't go: gone again)
     const say = err.message || "Couldn’t seal this pigeon. Try again, or check their safety number.";
     if (here()) S.err = say; else toast(esc(say)); showUpload(null);
     // words that were up already come back down into the box (or its draft), with what they replied to
@@ -9959,21 +10008,599 @@ async function openFlightLog(at) {
 // #requests the friend requests, #account the Account tab, #flightlog your
 // Flight Log; and from the site's other apps, #share=<words>, to send to a
 // friend (it waits in the message box of the next chat you open). Opened
-// while signed out, they wait until you've signed in.
+// while signed out, they wait until you've signed in. With a card beside the
+// words (&card=, pigeon/cards.js), Send to a Friend opens with it instead.
 function openLink(hash) {
   const o = /#open=([0-9a-f-]{36})/.exec(hash || ""), rq = /#requests/.test(hash || ""), acc = /#account\b/.test(hash || ""), log = /#flightlog\b/.test(hash || "");
-  let sh = null;
+  let sh = null, card = null;
   try { sh = /#share=/.test(hash || "") ? (new URLSearchParams(String(hash).slice(1)).get("share") || "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").trim().slice(0, 500) : null; } catch (_) {}
-  if (!o && !rq && !acc && !log && !sh) return false;
+  // (the card never trusted: unpacked and checked field by field, any Fitness share id dropped, and only ever filling in the sheet)
+  if (sh != null) try { const r = readShareHash(String(hash)); card = r?.card || null; if (typeof r?.words === "string") sh = r.words; } catch (_) { card = null; }
+  if (!o && !rq && !acc && !log && !sh && !card) return false;
   if (location.hash) history.replaceState(null, "", location.pathname);
   if (!S.me) { S.pendingLink = hash; return true; }
   closePop(); S.sheet = null; renderSheet();
+  if (card) { go("messages"); openSendSheet(card, { words: sh || "", link: true }); return true; }
   if (sh) { S.share = sh; go("messages"); toast("Pick who to send it to. It’s waiting in the message box."); return true; }
   if (log) { go("account"); openFlightLog(); }
   else if (acc) go("account");
   else if (o && (friend(o[1]) || group(o[1]))) go("chat", o[1]);
   else { go("friends"); if (S.incoming.length) { S.sheet = { type: "requests" }; renderSheet(); } }
   return true;
+}
+
+/* ============================================================
+   Send to a Friend: cards in letters
+   ============================================================
+   Another of the site's apps (Weather, Fitness, Markets, Today) sends a card beside its words (#share=…&card=…,
+   openLink). The card travels inside the sealed letter ({ t, c, ask?, plan?, ans?, re? }: pigeon/cards.js), padded
+   to a size bucket, never in the clear, and t is always a sentence of its own, so an older Chat shows the words.
+   Here: the sheet that picks who it goes to (ranked by pigeon/rank.js), sendLetter (one letter, taking nothing of
+   the message box's), the card drawn in its letter with "When sent" and "Now" (pigeon/cardview.js), asking back
+   ("How's yours?"), and plans made together, which go to each person's Fitness to add. */
+const NO_SIGNAL = "No signal. Try again when you have some.";
+const SEND_MAX = 12;                   // friends at one go (the server takes 120 pigeons an hour)
+const APP_WORD = { weather: "Weather", fitness: "Fitness", markets: "Markets" };
+// another of the site's apps, beside Chat (chat.<site> → weather.<site>); none where Chat's at another kind of address
+const appOrigin = (name) => (/^chat\./.test(location.host) ? location.origin.replace("//chat.", `//${name}.`) : null);
+const cardLinks = () => ({ weather: appOrigin("weather"), finance: appOrigin("finance") });
+// a letter's parts, each checked on its own: a card that fails is words only, never "couldn't be opened"
+const partsOf = (p) => { if (!p || p.bad || typeof p !== "object") return null; try { return payloadParts(p); } catch (_) { return null; } };
+const cardLabel = (c) => ({ weather: `Weather · ${c.snap?.place || ""}`, fitness: `Fitness · ${c.snap?.name || ""}`, markets: `Markets · ${c.snap?.name || ""}`, streak: "Chat · Flight streak" })[c?.kind] || "Card";
+// a card without its Fitness share id (a forwarded one, or one whose id couldn't be had: it shows "When sent" only)
+const noRef = (c) => { if (!c || c.kind !== "fitness" || !c.ref) return c; const { ref, ...rest } = c; return rest; };
+// whose turn, and what can fly: as the message box has them (composeState)
+const turnOf = (f) => { const ct = S.turns.get(f.id); return (ct && ct.at >= (S.raw?.now || 0) ? ct : f.turn) || {}; };
+const lofts = () => ({ swift: S.me?.swift || 0, turbo: S.me?.turbo || 0, rocket: S.me?.rocket || 0 });
+const pickOf = (f, landAt) => ({ id: f.id, free: !!turnOf(f).free, waiting: S.outbox.some((o) => o.to === f.id && o.kind === "standard" && !o.err), landAt: landAt ?? null });
+const oneKind = (f) => { try { return pigeonsFor([pickOf(f, null)], { me: lofts(), now: now() }).get(f.id) || null; } catch (_) { return null; } };
+// "A, B and C"; past three, "A, B, C and 2 More"
+const andList = (a) => (a.length <= 1 ? a[0] || "" : a.length <= 3 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : `${a.slice(0, 3).join(", ")} and ${a.length - 3} More`);
+// a time on this phone's clock: "10:00" today, "Sat 10:00" another day
+const clockSay = (ms) => (sameDay(ms, now()) ? fmtTime(ms) : `${DOW[new Date(ms).getDay()]} ${fmtTime(ms)}`);
+const spanSay = (w) => `${clockSay(w.start)}–${fmtTime(w.end)}`;
+const quoteOf = (m, p) => ({ id: m.id, from: m.from, t: String(p?.t || "").replace(/\s+/g, " ").slice(0, 90) });
+const keptList = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || "[]"); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
+const keepIn = (k, id) => { const l = keptList(k); if (!l.includes(id)) l.push(id); try { localStorage.setItem(k, JSON.stringify(l.slice(-300))); } catch (_) {} };
+// (any link in a card opens as a link, not the letter's menu)
+const linkActs = (h) => String(h || "").replace(/<a /g, '<a data-act="link" ');
+const canPlan = (c) => (c?.kind === "fitness" && PLAN_SPORTS.includes(c.snap?.sport)) || (c?.kind === "weather" && ["cycle", "run"].includes(c.snap?.spell?.act));
+const planSport = (c) => (c.kind === "fitness" ? c.snap.sport : c.snap.spell.act === "cycle" ? "ride" : "run");
+
+/* ---------- the live "Now": asked of the server for the cards a chat (or a sheet) shows, kept in memory only ---------- */
+const NOW_KEEP = { weather: 10 * MIN, markets: 2 * MIN, fitness: 5 * MIN };
+let nowBusy = false, nowFailAt = -1e9, nowSoon = 0, nowNext = null;
+const nowAsked = new Map();
+const keyOfCard = (c) => { try { return liveKey(c) || null; } catch (_) { return null; } };
+const nowHad = (c) => { const k = keyOfCard(c); return k ? S.cardNow.get(k) || null : null; };
+// what a card's "Now" is: the answer, or "wait" (asked, or about to be)
+const nowVal = (c) => nowHad(c)?.v ?? "wait";
+async function nowFor(cards) {
+  // (asked while another is on its way: asked again as soon as that one's answered, so a sheet opened meanwhile still fills)
+  if (nowBusy) { nowNext = [...(nowNext || []), ...cards].slice(-24); return; }
+  if (document.hidden || Date.now() - nowFailAt < 60e3) return;
+  const items = new Map(); let fit = 0;
+  for (const c of cards) {
+    const k = keyOfCard(c), had = k && S.cardNow.get(k);
+    if (!k || items.has(k) || (had && now() - had.at < (NOW_KEEP[c.kind] || 5 * MIN))) continue;
+    let it = null; try { it = liveItem(c); } catch (_) {}
+    if (!it || (c.kind === "fitness" && ++fit > 4)) continue;
+    items.set(k, it); if (items.size >= 12) break;
+  }
+  if (!items.size) return;
+  nowBusy = true;
+  try {
+    const r = await api("card-now", { method: "POST", body: { items: [...items.values()] } }), ks = [...items.keys()], t = now();
+    (Array.isArray(r.now) ? r.now : []).forEach((v, i) => { if (ks[i] && v && typeof v === "object" && !v.quiet) S.cardNow.set(ks[i], { at: t, v }); });
+    if (S.view === "chat") render();
+    if (S.sheet?.type === "send" || S.sheet?.type === "askback") renderSheet();
+  } catch (_) { nowFailAt = Date.now(); }
+  finally { nowBusy = false; }
+  const next = nowNext; nowNext = null;
+  if (next) nowFor(next);
+}
+// A chat drawn: its live cards (newest first, a dozen at most), asked for together, once in 30 s, not while hidden
+function liveSoon(chat) {
+  if (!chat || document.hidden || now() - (nowAsked.get(chat) || 0) < 30e3) return;
+  clearTimeout(nowSoon);
+  nowSoon = setTimeout(() => {
+    if (S.view !== "chat" || S.chat !== chat || !S.me) return;
+    const g = group(chat), cards = [], t = now();
+    for (const m of [...(S.msgs.get(chat) || [])].reverse()) {
+      if ((m.flying && m.from !== S.me.id) || m.lost || m.recalled) continue;
+      const c = partsOf(S.plain.get(m.id))?.card;
+      if (!c || (g && c.kind === "fitness")) continue;
+      let live = false; try { live = isLive(c, { landedAt: m.deliverAt, mine: m.from === S.me.id, now: t }); } catch (_) {}
+      if (live) cards.push(c);
+      if (cards.length >= 24) break;
+    }
+    if (!cards.length) return;
+    nowAsked.set(chat, t); nowFor(cards);
+  }, 400);
+}
+
+/* ---------- a card in its letter ---------- */
+// The card part of a letter (its card, a request, an invite, an answer), drawn by pigeon/cardview.js: { html, sig },
+// or null for words only (and words only, never a blank, if drawing it fails)
+function cardBlock(f, m, p, g) {
+  const pp = partsOf(p); if (!pp || !(pp.card || pp.plan || pp.ans)) return null;
+  try {
+    const mine = m.from === S.me.id, who = first(f?.name || "A friend"), t = now(), tz = MY_TZ, id = m.id, links = cardLinks();
+    const list = S.msgs.get(S.chat) || [];
+    const any = (fn) => list.some((x) => x.id !== id && fn(x, partsOf(S.plain.get(x.id))));
+    const answered = () => any((x, q) => x.from === S.me.id && q?.ans?.re === id);
+    const one = (c, mineC, landedAt) => {
+      const live = !(g && c.kind === "fitness") && isLive(c, { landedAt, mine: mineC, now: t });
+      return { live, html: cardHtml(c, { now: live ? nowVal(c) : null, viewAt: t, sentAt: m.sentAt, live, mine: mineC, links, tz }), sig: live ? `${nowHad(c)?.at || "w"}` : "s" };
+    };
+    let html = "", sig = `${Math.floor(t / 600e3)}`;            // (phrased for when it's seen: "Rain due 15:00", then "Rain was due 15:00")
+    if (pp.ans) {
+      const done = !mine && answered();
+      html = answerHtml(pp.ans, { mine, who, id, canAnswer: !g && !mine && !done && pp.ans.a === "later" && pp.ans.plan?.start > t, tz, viewAt: t });
+      sig += `a${done ? 1 : 0}`;
+      if (!g && !mine && pp.ans.a === "yes" && pp.ans.plan) offerSoon(m, pp.ans, f);
+    } else if (pp.plan) {
+      const done = !mine && answered();
+      if (pp.card) { const c = one(pp.card, mine, m.deliverAt); html += c.html; sig += c.sig; }
+      html += inviteHtml(pp.plan, { mine, who, id, canAnswer: !g && !mine && !done, tz, viewAt: t, showLater: S.laterOpen === id });
+      if (S.laterOpen === id && !done && !mine && !/planlater|cd-later/.test(html)) html += laterChips(pp.plan, id);
+      sig += `p${done ? 1 : 0}${pp.plan.start < t ? "x" : ""}${S.laterOpen === id ? "l" : ""}`;
+    } else {
+      // (only with the request it answers: a letter that asked, of this kind, from the other one of you two)
+      const c = pp.card, orig = pp.re && list.find((x) => x.id === pp.re.ask && x.from !== m.from), op = orig && partsOf(S.plain.get(orig.id));
+      const oc = op?.ask && op.card && op.ask.kind === c.kind && op.card.kind === c.kind ? op.card : null;
+      if (oc && !g) {
+        // a "How's yours?" answered: both, side by side, you on the left (on both phones)
+        const origMine = orig.from === S.me.id, [mc, tc] = origMine ? [oc, c] : [c, oc], [ma, ta] = origMine ? [orig, m] : [m, orig];
+        const lm = isLive(mc, { landedAt: ma.deliverAt, mine: true, now: t }), lt = isLive(tc, { landedAt: ta.deliverAt, mine: false, now: t });
+        html = sideBySideHtml(mc, tc, { nowMine: lm ? nowVal(mc) : null, nowTheirs: lt ? nowVal(tc) : null, who, viewAt: t, tz });
+        sig += `b${lm ? nowHad(mc)?.at || "w" : ""}${lt ? nowHad(tc)?.at || "w" : ""}`;
+      } else {
+        const one1 = one(c, mine, m.deliverAt); html = one1.html; sig += one1.sig;
+        if (pp.ask && !g) {
+          const state = mine ? (any((x, q) => x.from !== S.me.id && q?.re?.ask === id) ? "sent" : "open")
+            : any((x, q) => x.from === S.me.id && q?.re?.ask === id) ? "sent" : keptList("inflight-askno").includes(id) ? "declined" : "open";
+          html += askHtml(pp.ask, { mine, who, state, id });
+          sig += state;
+        }
+      }
+    }
+    return html ? { html: linkActs(html), sig } : null;
+  } catch (e) { console.warn("card", e?.message); return null; }
+}
+// "Later": the invite's other times still ahead, as chips (where the invite doesn't draw them itself)
+function laterChips(plan, id) {
+  const opts = (plan.opts || []).filter((o) => o.start > now());
+  return `<div class="laterpick">${opts.length ? opts.map((o) => `<button type="button" class="schip" data-act="planlater" data-id="${esc(id)}" data-t="${esc(o.start)}">${esc(clockSay(o.start))}</button>`).join("") : `<span>No other time is dry for you both.</span>`}</div>`;
+}
+// A plan said yes to, in each person's Fitness to add (nothing changes in anyone's plan until they add it there)
+const fitOffer = (id, plan, f, role) => api("fit-offer", { method: "POST", body: { id, start: plan.start, stop: plan.end, tz: plan.tz || MY_TZ, sport: plan.sport, wid: plan.wid, name: plan.name, secs: plan.secs, who: first(f?.name || "A friend").slice(0, 40), role, far: !!plan.far, dry: !!plan.dry } });
+// a friend's Yes to your own invite (or to your own "later"), once per phone
+const offerBusy = new Set();
+// (only what your own letter offered: its workout, at its time or one of its other times; never what the answer says of its own)
+function offerSoon(m, ans, f) {
+  if (group(S.chat) || m.from === S.me.id) return;
+  const o = (S.msgs.get(S.chat) || []).find((x) => x.id === ans.re), op = o && o.from === S.me.id ? partsOf(S.plain.get(o.id)) : null;
+  const mineP = op?.plan || (op?.ans?.a === "later" ? op.ans.plan : null), a = ans.plan;
+  const w = mineP && [mineP, ...(op.plan ? mineP.opts || [] : [])].find((x) => x.start === a.start && x.end === a.end);
+  if (!w || !(w.end > now()) || offerBusy.has(m.id) || keptList("inflight-offered").includes(m.id)) return;
+  offerBusy.add(m.id);
+  setTimeout(() => fitOffer(m.id, { ...mineP, start: w.start, end: w.end, dry: w.dry === true }, f, "asked").then(() => { keepIn("inflight-offered", m.id); toast("In Fitness, to add to your plan."); }, () => {}), 0);
+}
+
+/* ---------- sending one letter ---------- */
+// A Fitness share id for a card about to go (made now, at Send, never before): the card with it, or without one
+async function shareRef(card) {
+  if (card?.kind !== "fitness") return { card, id: null };
+  const sn = card.snap || {};
+  try {
+    const r = await api("fit-share", { method: "POST", body: { day: sn.day, tz: sn.tz || MY_TZ, sport: sn.sport } });
+    if (typeof r.id === "string" && /^[A-Za-z0-9_-]{22}$/.test(r.id)) return { card: { ...card, ref: { share: r.id } }, id: r.id };
+  } catch (_) {}
+  return { card: noRef(card), id: null };
+}
+const dropRef = (id) => { if (id) api("fit-share", { method: "POST", body: { drop: id } }).catch(() => {}); };
+// One letter to one friend, with everything said here and nothing taken from the message box (no stopover, named
+// pigeon or landing time of its own: only what's passed in). Online only: with no signal it sends nothing.
+// A reply that never came may still have reached the server (unsure, with its id): sent again, it goes with the same id,
+// so the server keeps only the one ("That scroll was already sent." is then the one that went).
+async function sendLetter(to, payload, { kind, landAt = null, id: again = null } = {}) {
+  if (navigator.onLine === false) throw Object.assign(new Error(NO_SIGNAL), { offline: true });
+  const id = again || uuid(), route = routeStyle() === "fastest" ? {} : { route: routeStyle() };
+  const meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), pigeon: kind, ...route, ...(landAt ? { landAt } : {}) };
+  let r;
+  try { r = await api("messages", { method: "POST", body: meta }); }
+  catch (e) {
+    if (e.offline) throw Object.assign(new Error(NO_SIGNAL), { offline: true, unsure: true, id });
+    if (again && e.status === 409 && /already sent/.test(e.message || "")) { S.plain.set(id, payload); return { id, message: null }; }
+    throw e;
+  }
+  S.plain.set(id, payload);
+  // (the lofts as they are now, for the next one: the server says when it was told a time, else one fewer here)
+  if (r.me) S.me = r.me; else if (PAID.includes(kind) && S.me[kind] > 0) S.me[kind]--;
+  const list = S.msgs.get(to); if (list && r.message && !list.some((x) => x.id === r.message.id)) list.push(r.message);
+  const f = friend(to), was = f?.streak, st = r.streak;
+  if (f && st) { f.streak = st; if (st.n >= STREAK_MIN && (!was || !was.today || was.n < st.n)) toast(`${I.flame} ${st.n}-day streak with ${esc(first(f.name))}`); }
+  return r;
+}
+
+/* ---------- the sheet: Send to a Friend ---------- */
+// every letter on this phone (decrypted, one to one), for what friends have sent before (rank.js seenFrom)
+function lettersHere() {
+  const out = [];
+  for (const [chat, list] of S.msgs) { if (!friend(chat)) continue; for (const m of list) { const p = S.plain.get(m.id); if (p && !p.bad) out.push({ from: m.from, to: m.from === S.me.id ? chat : S.me.id, payload: p }); } }
+  return out;
+}
+function openSendSheet(card, { words = "", link = false } = {}) {
+  if (!card || !S.me) return;
+  let seen = new Map(); try { seen = seenFrom(lettersHere(), S.me.id) || new Map(); } catch (_) {}
+  const s = { type: "send", card, base: String(words || card.say || cardWords(card) || "").trim().slice(0, 500), words: "", edited: false, link,
+    pick: [], when: "asap", ask: false, plan: false, together: null, win: 0, rain: null, seen, busy: false, progress: null, err: "", note: "" };
+  S.sheet = s; renderSheet();
+  nowFor([card]);
+  if (card.kind === "weather") rainFor(s);
+}
+// rain at the friends nearest the card's place (share-rank), for the reasons and "Before the Rain"
+async function rainFor(s) {
+  let ids = []; try { ids = rainAsk(s.card, S.friends, 6) || []; } catch (_) {}
+  if (!ids.length) return;
+  try { const r = await api("share-rank", { method: "POST", body: { kind: "weather", ids } }); if (S.sheet === s) { s.rain = r.rain && typeof r.rain === "object" ? r.rain : {}; renderSheet(); } } catch (_) {}
+}
+// when a friend's letter lands, as chosen (null: as soon as it can). A timed one takes a swift pigeon or faster, so its
+// flight is a swift's at most; the server re-plans it and refuses one too soon to make, so there's a margin.
+function landFor(s, f) {
+  if (s.plan || s.when === "asap") return null;
+  const t = now(), fly = flightMs(chatKm(f), mySpeed("swift"));
+  let at = null;
+  try {
+    if (s.when === "before") { const r = s.rain?.[f.id]; if (r?.at && !r.now) { at = r.at - HOUR; if (at - fly < t + MARGIN_MS) at = null; } }
+    else if (s.when === "morning") at = nextLocal(f.tz || MY_TZ, "07:30", t + fly + MARGIN_MS);
+  } catch (_) { at = null; }
+  return Number.isFinite(at) && at > t + fly && at <= t + 30 * DAY ? Math.round(at) : null;
+}
+// the pigeon each picked friend gets, in the order shown
+function sendKinds(s, order) {
+  const picks = order.filter((id) => s.pick.includes(id)).map(friend).filter(Boolean);
+  try { return pigeonsFor(picks.map((f) => pickOf(f, landFor(s, f))), { me: lofts(), now: now() }) || new Map(); } catch (_) { return new Map(); }
+}
+// The friends, ranked for the card, each with its reason, its pigeon, and whether it can be picked (greyed at the foot
+// if not, with why). Ranked once to know the order shown, then again with what's free for each in that order.
+function sendRows(s) {
+  const t = now(), card = s.card, pool = S.friends;
+  const why0 = (f) => (f.keyChanged ? "Check the new safety number first" : f.lat == null && !f.moon ? "No location yet" : moonChat(f) ? "Send from the chat" : null);
+  const opts = (canFly, landsIn) => ({ friends: pool, me: { lat: S.me.lat, lon: S.me.lon, tz: MY_TZ }, now: t, rain: s.rain || {}, seen: s.seen, landsIn,
+    streakRisk: (f) => { const st = streakOf(f); return st && streakRisk(st) ? { n: st.n, endsAt: st.endsAt } : null; },
+    lastAt: (f) => (f.last ? (f.last.from === S.me.id ? f.last.sentAt : f.last.deliverAt) : null), canFly });
+  let r0 = []; try { r0 = rankFriends(card, opts(why0, (f) => flightMs(chatKm(f), mySpeed(turnOf(f).free ? "standard" : "swift")))) || []; } catch (_) {}
+  const order = r0.length ? r0.map((r) => r.id) : pool.map((f) => f.id);
+  const kinds = sendKinds(s, order), picksIn = order.filter((id) => s.pick.includes(id)).map(friend).filter(Boolean), memo = new Map();
+  const kf = (f) => {
+    if (!memo.has(f.id)) {
+      let k = null;
+      if (s.pick.includes(f.id)) k = kinds.get(f.id) || null;
+      else try { k = pigeonsFor([...picksIn, f].map((x) => pickOf(x, landFor(s, x))), { me: lofts(), now: t }).get(f.id) || null; } catch (_) {}
+      memo.set(f.id, k);
+    }
+    return memo.get(f.id);
+  };
+  const canFly = (f) => why0(f) || (kf(f) ? null : "No pigeon free just now");
+  const landsIn = (f) => flightMs(chatKm(f), mySpeed(kf(f) || "swift"));
+  let rows = []; try { rows = rankFriends(card, opts(canFly, landsIn)) || []; } catch (_) {}
+  if (!rows.length) rows = pool.map((f) => ({ id: f.id, score: 0, reason: `Lands in ${durShort(landsIn(f))}`, best: false, lands: landsIn(f), can: !canFly(f), why: canFly(f) }));
+  rows = rows.filter((r) => friend(r.id)).map((r) => { const f = friend(r.id); return { ...r, can: !canFly(f), why: canFly(f), kind: kf(f), lands: Number.isFinite(r.lands) ? r.lands : landsIn(f) }; });
+  return [...rows.filter((r) => r.can), ...rows.filter((r) => !r.can)];
+}
+// The plan, as it would go: the workout the server chose, the window picked, the others as chips
+function planOf(s) {
+  const tg = s.together; if (!tg?.windows?.length) return null;
+  const w = tg.windows[s.win] || tg.windows[0], wk = tg.workout || {};
+  try {
+    return normPlan({ sport: planSport(s.card), wid: wk.wid, name: wk.name, secs: wk.secs, start: w.start, end: w.end, tz: MY_TZ,
+      opts: tg.windows.filter((x) => x !== w).slice(0, 3).map((x) => ({ start: x.start, end: x.end, dry: !!x.dry })), dry: !!w.dry, far: !!tg.far });
+  } catch (_) { return null; }
+}
+// The plan's own words, as the box would show them (none while there's no window)
+function planWordsOf(s) { const pl = s.plan ? planOf(s) : null; try { return pl ? planWords(pl, { tz: MY_TZ, now: now() }) || "" : ""; } catch (_) { return ""; } }
+// Typed words keep the plan's words as they were shown: when the window or the friend changes, those go for the new
+// ones (or, turned off, go), so the letter never names an earlier time; where they've been typed over, the box starts
+// again from the new words
+function syncPlanWords(s) {
+  if (s.together?.wait) return;
+  const cur = planWordsOf(s), was = s.pwShown || "";
+  if (s.edited && was && was !== cur) {
+    if (s.words.includes(was)) s.words = s.words.replace(was, cur).replace(/\s+/g, " ").trim().slice(0, 500);
+    else if (cur) { s.words = ""; s.edited = false; }
+    if (!s.words.trim()) { s.words = ""; s.edited = false; }
+  } else if (s.edited && !was && cur && !s.words.includes(cur)) s.words = `${s.words.trim().slice(0, 499 - cur.length)} ${cur}`.trim();
+  s.pwShown = cur;
+}
+// What a friend's letter says: what was typed, else the words for the moment it lands (and "How's yours?" when it asks)
+function wordsFor(s, f, landAt, ask = true) {
+  let t = s.base;
+  if (s.plan) {
+    // (an invite always says its time, for a Chat that shows only the words: what was typed, with the time added if it doesn't)
+    const pl = planOf(s), typed = s.edited ? String(s.words || "").trim() : ""; let pw = "";
+    if (pl) try { pw = planWords(pl, { tz: MY_TZ, now: now() }) || ""; } catch (_) {}
+    t = !pw ? (s.edited ? s.words : t) : !typed ? pw : typed.includes(fmtTime(pl.start)) ? typed : `${typed.slice(0, 499 - pw.length).trim()} ${pw}`;
+  } else if (s.edited) t = s.words;
+  else if (f && landAt && s.when !== "asap") try { t = landWords(s.card, { mode: s.when, landAt, rainAt: s.rain?.[f.id]?.at ?? null, tz: f.tz || MY_TZ }) || t; } catch (_) {}
+  t = String(t || "").trim() || s.card.say || cardWords(s.card) || "";
+  if (ask && s.ask && !s.plan && ASK_KINDS.includes(s.card.kind)) { try { t = askWords(t.slice(0, 486)); } catch (_) {} }
+  return t.slice(0, 500);
+}
+// the window for two, from the server (Fitness's forecast at both places), for the one friend picked
+async function planFetch(s) {
+  const f = friend(s.pick[0]); if (!f || !canPlan(s.card)) return;
+  const k = oneKind(f) || "swift", after = Math.round(now() + flightMs(chatKm(f), mySpeed(k)) + 30 * MIN);
+  const wid = s.card.kind === "fitness" && s.card.snap?.wid ? `&wid=${encodeURIComponent(s.card.snap.wid)}` : "";
+  s.together = { wait: true, for: f.id }; s.note = ""; renderSheet();
+  let note = "", tg = null;
+  try {
+    const r = await api(`together?with=${encodeURIComponent(f.id)}&sport=${planSport(s.card)}${wid}&after=${after}`);
+    if (r.quiet) note = "Can’t look for a time just now. Try again later.";
+    else if (!Array.isArray(r.windows) || !r.windows.length) note = "No time is dry for you both in the next three days.";
+    else tg = { for: f.id, workout: r.workout, windows: r.windows.slice(0, 4), hours: Array.isArray(r.hours) ? r.hours : [], far: !!r.far };
+  } catch (e) { note = e.offline ? NO_SIGNAL : "Can’t look for a time just now. Try again later."; }
+  if (S.sheet !== s || !s.plan || s.pick[0] !== f.id) return;
+  if (tg) { s.together = tg; s.win = 0; } else { s.plan = false; s.together = null; s.note = note; }
+  renderSheet();
+}
+function drawSend(s) {
+  syncPlanWords(s);
+  const card = s.card, t = now(), tz = MY_TZ, rows = sendRows(s), links = cardLinks();
+  const picked = rows.filter((r) => s.pick.includes(r.id)), names = picked.map((r) => first(friend(r.id).name));
+  const paid = lofts(), anyPaid = paid.swift + paid.turbo + paid.rocket > 0;
+  const rainy = card.kind === "weather" && picked.some((r) => { const x = s.rain?.[r.id]; return x?.at && !x.now; });
+  if ((s.when === "before" && !rainy) || (!anyPaid && s.when !== "asap")) s.when = "asap";
+  let cardPart = "";
+  try { cardPart = linkActs(sheetCardHtml(card, { now: keyOfCard(card) ? nowVal(card) : null, viewAt: t, links, tz })); } catch (_) {}
+  if (!cardPart) cardPart = `<p class="sendsay">${esc(card.say || cardWords(card) || "")}</p>`;
+  const f0 = picked[0] && friend(picked[0].id), shown = s.edited ? s.words : wordsFor(s, f0, f0 && landFor(s, f0), false);
+  const top = `<div class="sendcard">${cardPart}</div>
+    <div class="group mt-s"><label class="fcell"><input id="f-sendwords" maxlength="500" placeholder="Add a line" aria-label="Words to go with it" autocomplete="off" value="${esc(shown)}"></label></div>`;
+  if (!S.friends.length) return sheetHtml("Send to a Friend", `${top}<p class="empty">Add a friend in Chat, and you can send them this.<br><button type="button" class="btn" data-act="addfriend">Add a Friend</button></p>`, { left: { label: "Cancel", act: "close" }, right: null });
+  const row = (r) => {
+    const f = friend(r.id), on = s.pick.includes(r.id);
+    // (the tag says when it lands, unless that's the reason already)
+    const tag = r.can && (r.best || !/^Lands in /.test(r.reason || "")) ? `<span class="stag${r.best ? " best" : ""}">${r.best ? "Best fit" : `Lands in ${esc(durShort(r.lands))}`}</span>` : "";
+    return `<button type="button" class="cell pickrow sendrow${r.can ? "" : " dim"}" role="checkbox" aria-checked="${on}" data-act="sendpick" data-id="${esc(r.id)}"${!r.can && !on ? " disabled" : ""}>${avatar(f, "s")}<span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub why">${esc(r.can ? r.reason || "" : r.why || "")}</span></span>${tag}<span class="tickbox" aria-hidden="true">${I.check}</span></button>`;
+  };
+  const chip = (k, label, off) => `<button type="button" class="schip" role="radio" aria-checked="${s.when === k}" data-act="sendwhen" data-id="${k}"${off ? " disabled" : ""}>${label}</button>`;
+  const timedOff = s.plan || !anyPaid || s.busy;
+  const lines = !anyPaid ? ["Timed landings need a swift pigeon, and your lofts are empty."] : picked.slice(0, 3).map((r) => {
+    const f = friend(r.id), la = landFor(s, f), rain = s.rain?.[f.id], before = !s.plan && s.when === "before" && rain?.at && !rain.now;
+    const mode = s.plan ? "asap" : before ? "before" : la ? s.when : "asap";
+    try { return whenLine(first(f.name), { mode, landAt: mode === "before" ? la : la ?? t + r.lands, rainAt: rain?.at ?? null, tz, theirTz: f.tz || tz, now: t }); } catch (_) { return ""; }
+  }).filter(Boolean);
+  if (anyPaid && picked.length > 3) lines.push(`and ${picked.length - 3} more`);
+  let planPart = "";
+  if (s.plan && s.together?.wait) planPart = `<p class="gfoot">Looking for a time dry for you both…</p>`;
+  else if (s.plan && s.together?.windows) {
+    const tg = s.together, w = tg.windows[s.win] || tg.windows[0], f = friend(tg.for);
+    let strip = ""; try { strip = stripHtml(tg.hours, { who: first(f?.name || ""), start: w.start, end: w.end, tz }); } catch (_) {}
+    planPart = `<div class="planbox">${strip}<p class="planline">${w.dry ? "<b>Dry for both</b> " : ""}${esc(spanSay(w))}</p>
+      ${tg.windows.length > 1 ? `<div class="schips" role="radiogroup" aria-label="Time">${tg.windows.map((x, i) => `<button type="button" class="schip" role="radio" aria-checked="${x === w}" data-act="planpick" data-id="${i}">${esc(clockSay(x.start))}</button>`).join("")}</div>` : ""}
+      ${tg.far ? `<p class="gfoot">You’re far apart: same time, each where you are.</p>` : ""}</div>`;
+  }
+  const kinds = picked.map((r) => r.kind), ready = picked.length && picked.every((r) => r.kind) && (!s.plan || planOf(s));
+  let spend = ""; try { spend = picked.length && picked.every((r) => r.kind) ? spendWords(kinds, names) : ""; } catch (_) {}
+  const label = s.busy && s.progress ? `Sending ${s.progress[0]} of ${s.progress[1]}…` : !names.length ? "Choose a Friend" : names.length === 1 ? `Send a Pigeon to ${names[0]}` : `Send ${names.length} Pigeons to ${andList(names)}`;
+  return sheetHtml("Send to a Friend", `${top}
+    <div class="ghead">Send To</div><div class="group">${rows.map(row).join("")}</div>
+    <div class="ghead">When It Lands</div>
+    <div class="schips" role="radiogroup" aria-label="When it lands">${chip("asap", "As Soon as It Can", s.busy)}${rainy ? chip("before", "Before the Rain", timedOff) : ""}${chip("morning", "With Their Morning", timedOff)}</div>
+    ${lines.length ? `<p class="whenlines">${lines.map(esc).join("<br>")}</p>` : ""}
+    ${ASK_KINDS.includes(card.kind) || canPlan(card) ? `<div class="group mt-s">
+      ${ASK_KINDS.includes(card.kind) ? toggleCell({ act: "sendask", icon: I.bubble, tile: "blue", label: "Ask “How’s Yours?”", on: s.ask && !s.plan, disabled: s.plan || s.busy }) : ""}
+      ${canPlan(card) ? toggleCell({ act: "sendplan", icon: I.clock, tile: "green", label: "Make It a Plan", sub: s.plan ? "A plan goes to one friend at a time." : esc(s.note || ""), on: s.plan, disabled: s.busy }) : ""}</div>` : ""}
+    ${planPart}
+    <div class="sendgo">
+      <button type="button" class="btn wide" data-act="sendgo"${ready && !s.busy ? "" : " disabled"}>${esc(label)}</button>
+      ${spend ? `<p class="spend">${esc(spend)}</p>` : ""}
+      ${picked.length === 1 && !s.plan && !s.ask && !s.busy ? `<button type="button" class="btn wide plain" data-act="sendchat">Write More in the Chat</button>` : ""}
+      ${s.err ? `<p class="gfoot bad" role="alert">${esc(s.err)}</p>` : ""}
+    </div>`, { left: { label: "Cancel", act: "close" }, right: null });
+}
+function sendPick(id) {
+  const s = S.sheet; if (s?.type !== "send" || s.busy) return;
+  const r = sendRows(s).find((x) => x.id === id); if (!r) return;
+  const i = s.pick.indexOf(id);
+  if (i >= 0) { s.pick.splice(i, 1); if (s.plan) s.together = null; }
+  else {
+    if (!r.can) return;
+    if (s.plan) { s.pick = [id]; renderSheet(); return planFetch(s); }
+    if (s.pick.length >= SEND_MAX) return toast("12 at most, at one go.");
+    s.pick.push(id);
+  }
+  renderSheet();
+}
+function sendPlan() {
+  const s = S.sheet; if (s?.type !== "send" || s.busy || !canPlan(s.card)) return;
+  s.plan = !s.plan; s.note = ""; s.together = null;
+  if (s.plan) { s.ask = false; s.when = "asap"; if (s.pick.length > 1) s.pick = s.pick.slice(0, 1); }
+  renderSheet();
+  if (s.plan && s.pick.length) planFetch(s);
+}
+// Send: one letter at a time, in the order shown, each with the pigeon the lofts have for it as they are by then
+// (the server takes a loft's pigeon only if the loft is as it read it: two at once would turn one away)
+async function sendGo() {
+  const s = S.sheet; if (s?.type !== "send" || s.busy || !s.pick.length) return;
+  if (navigator.onLine === false) { s.err = NO_SIGNAL; return renderSheet(); }
+  const plan = s.plan ? planOf(s) : null; if (s.plan && !plan) return;
+  const order = sendRows(s).map((r) => r.id).filter((id) => s.pick.includes(id)).map(friend).filter(Boolean);
+  s.busy = true; s.err = ""; s.progress = [1, order.length]; renderSheet();
+  const results = [], failed = [];
+  const sr = await shareRef(s.card), card = sr.card;           // (one id for every letter of this send)
+  // letters whose reply never came (they may have gone): sent again as they were, with the same id, never as a second one
+  const unsure = s.unsure || (s.unsure = new Map()), refOk = s.refOk || (s.refOk = new Set()), maybeDrop = new Set([sr.id]);
+  let off = false;
+  for (let i = 0; i < order.length; i++) {
+    const f = order[i], name = first(f.name);
+    s.progress = [i + 1, order.length]; if (S.sheet === s) renderSheet();
+    if (off) { failed.push(f.id); results.push({ name, ok: false, err: NO_SIGNAL }); continue; }
+    const again = unsure.get(f.id), rest = order.slice(i), lands = new Map(rest.map((x) => [x.id, again ? again.landAt : landFor(s, x)]));
+    let kind = null; try { kind = pigeonsFor(rest.map((x) => pickOf(x, lands.get(x.id))), { me: lofts(), now: now() }).get(f.id) || null; } catch (_) {}
+    kind ||= again?.kind || null;             // (one that may have gone already: the server says so before it counts pigeons)
+    if (!kind) { failed.push(f.id); results.push({ name, ok: false, err: "No pigeon free just now." }); continue; }
+    const landAt = lands.get(f.id);
+    let payload = again?.payload || null;
+    try {
+      payload ||= buildPayload({ t: wordsFor(s, f, landAt), card, ...(plan ? { plan } : s.ask && ASK_KINDS.includes(card.kind) ? { ask: { kind: card.kind } } : {}) });
+      const r = await sendLetter(f.id, payload, { kind, landAt, id: again?.id || null });
+      unsure.delete(f.id); refOk.add(again ? again.ref : sr.id);
+      results.push({ name, ok: true, landAt, lands: r.message ? Math.max(0, (r.message.deliverAt || now()) - now()) : null });     // (one that had gone already: when, the chat says)
+    } catch (e) {
+      failed.push(f.id); results.push({ name, ok: false, err: e.message || "Couldn’t send it." });
+      if (e.offline) off = true;
+      if (e.unsure && payload) unsure.set(f.id, { id: e.id, payload, landAt, kind, ref: again ? again.ref : sr.id });
+      else if (again && !e.offline) { unsure.delete(f.id); maybeDrop.add(again.ref); }     // (an answer, and not "already sent": it never went)
+    }
+  }
+  const sent = results.some((x) => x.ok);
+  // a share id no letter carries (none went, and none may have): gone again
+  const held = new Set([...unsure.values()].map((x) => x.ref));
+  for (const ref of maybeDrop) if (ref && !refOk.has(ref) && !held.has(ref)) dropRef(ref);
+  s.busy = false; s.progress = null;
+  if (sent) haptic("success");
+  if (!failed.length) { if (S.sheet === s) { S.sheet = null; renderSheet(); } }
+  else { s.pick = failed; if (off) s.err = NO_SIGNAL; if (S.sheet === s) renderSheet(); }
+  let say = ""; try { say = sentToast(results); } catch (_) {}
+  if (say) toast(esc(say));
+  if (sent) { if (S.view === "chat") render(); sync().catch(() => {}); }
+}
+// "Write More in the Chat": the card waits above that chat's message box, sent with what you write there
+function sendChat() {
+  const s = S.sheet; if (s?.type !== "send" || s.pick.length !== 1 || s.busy) return;
+  const f = friend(s.pick[0]); if (!f) return;
+  const words = s.edited ? s.words.trim() : s.base, say = words && words !== s.card.say ? words : null;
+  // (from inside that same chat, go() leaves its box as it is: the words go straight in, never on to the next chat opened)
+  const here = S.view === "chat" && S.chat === f.id && !!$ta;
+  S.cardWait = { chat: f.id, card: s.card };
+  S.share = here ? null : say;
+  S.sheet = null; renderSheet();
+  go("chat", f.id);
+  if (here && say) { $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + say; fitTa(); }
+}
+// A card in a letter, sent on: your own of any kind; a friend's only if it's public (a forecast, a stock's move)
+function cardFwd(id) {
+  const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id), c = m && partsOf(S.plain.get(id))?.card;
+  let ok = false; try { ok = !!c && canForward(c, { mine: m.from === S.me.id }); } catch (_) {}
+  if (ok) openSendSheet(noRef(c), { words: c.say || "" });
+}
+
+/* ---------- asking back: "How's yours?" ---------- */
+async function openAskBack(id) {
+  const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id), pp = m && partsOf(S.plain.get(id)), f = friend(chat);
+  if (!pp?.ask || !f || m.from === S.me.id || group(chat)) return;
+  const s = { type: "askback", id, chat, kind: pp.ask.kind, wait: true, card: null, said: "", words: "Here’s mine.", busy: false, err: "" };
+  S.sheet = s; renderSheet();
+  let card = null, said = "";
+  try {
+    // (only your own, read from your own account: nothing is written anywhere until Send)
+    const r = await api(`my-card?kind=${encodeURIComponent(s.kind)}&tz=${encodeURIComponent(MY_TZ || "")}`);
+    try { card = r.card ? normCard(r.card) : null; } catch (_) { card = null; }
+    if (card && card.kind !== s.kind) card = null;
+    if (!card) said = typeof r.said === "string" && r.said.trim() ? r.said.trim().slice(0, 200) : "Couldn’t get yours just now. Try again in a moment.";
+  } catch (e) { said = e.offline ? NO_SIGNAL : "Couldn’t get yours just now. Try again in a moment."; }
+  if (S.sheet !== s) return;
+  Object.assign(s, { wait: false, card: noRef(card), said });
+  renderSheet();
+  if (card) nowFor([card]);
+}
+function drawAskBack(s) {
+  const f = friend(s.chat), who = esc(first(f?.name || "your friend")), word = APP_WORD[s.kind] || "the app";
+  const href = appOrigin(s.kind === "markets" ? "finance" : s.kind);
+  let body;
+  if (s.wait) body = `<p class="empty">Getting yours…</p>`;
+  else if (!s.card) body = `<p class="empty"><b>${esc(s.said)}</b>${href ? `<a class="btn" href="${esc(href + "/")}" target="_blank" rel="noopener">Open ${word}</a>` : ""}</p>`;
+  else {
+    let c = ""; try { c = linkActs(sheetCardHtml(s.card, { now: keyOfCard(s.card) ? nowVal(s.card) : null, viewAt: now(), links: cardLinks(), tz: MY_TZ })); } catch (_) {}
+    body = `<div class="sendcard">${c || `<p class="sendsay">${esc(s.card.say || "")}</p>`}</div>
+      <div class="group mt-s"><label class="fcell"><input id="f-askwords" maxlength="500" placeholder="Add a line" aria-label="Words to go with it" autocomplete="off" value="${esc(s.words)}"></label></div>
+      <p class="gfoot">Only this card goes back to ${who}. Nothing else from ${word} is shared.${s.kind === "markets" ? " Percentages only, never amounts." : ""}</p>
+      <div class="sendgo"><button type="button" class="btn wide" data-act="asksend" data-id="${esc(s.id)}"${s.busy ? " disabled" : ""}>${s.busy ? "Sending…" : "Send"}</button>
+        <button type="button" class="btn wide plain" data-act="askno" data-id="${esc(s.id)}"${s.busy ? " disabled" : ""}>Not Now</button>
+        ${s.err ? `<p class="gfoot bad" role="alert">${esc(s.err)}</p>` : ""}</div>`;
+  }
+  return sheetHtml("Send Yours Back?", body, { left: { label: "Cancel", act: "close" }, right: null });
+}
+// A reply to a letter (an answer to a plan, or yours sent back) whose own reply never came: it may have gone, so a
+// second tap sends it again as it was, with the same id ("That scroll was already sent." is then the one that went),
+// never as a second letter: by the letter replied to ("ask:<id>" for yours sent back)
+const replyUnsure = new Map();
+async function askSend() {
+  const s = S.sheet; if (s?.type !== "askback" || !s.card || s.busy) return;
+  const f = friend(s.chat), m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id); if (!f || !m) return;
+  const key = `ask:${m.id}`, again = replyUnsure.get(key);
+  const kind = oneKind(f) || again?.kind; if (!kind) { s.err = "No pigeon free just now."; return renderSheet(); }
+  s.busy = true; s.err = ""; renderSheet();
+  let ref = again?.ref || null, payload = again?.payload || null;
+  try {
+    if (!payload) {
+      const sr = await shareRef(s.card); ref = sr.id;
+      payload = buildPayload({ t: String(s.words || "").trim() || "Here’s mine.", card: sr.card, re: { ask: m.id }, q: quoteOf(m, S.plain.get(m.id)) });
+    }
+    const r = await sendLetter(f.id, payload, { kind, id: again?.id || null });
+    replyUnsure.delete(key);
+    if (S.sheet === s) { S.sheet = null; renderSheet(); }
+    haptic("success");
+    let say = ""; try { say = sentToast([{ name: first(f.name), ok: true, landAt: null, lands: Math.max(0, (r.message?.deliverAt || now()) - now()) }]); } catch (_) {}
+    if (say) toast(esc(say));
+    render(); sync().catch(() => {});
+  } catch (e) {
+    // (one that may have gone keeps its share id, for the same letter again; one that surely didn't, loses it)
+    if (e.unsure && payload) replyUnsure.set(key, { id: e.id, payload, kind, ref });
+    else if (!e.offline || !again) { replyUnsure.delete(key); dropRef(ref); }
+    if (S.sheet === s) { s.busy = false; s.err = e.message || "Couldn’t send it."; renderSheet(); }
+  }
+}
+// "Not Now": nothing goes, and this phone remembers (the letter then says "You didn't send yours")
+function askNo() {
+  const s = S.sheet; if (s?.type !== "askback") return;
+  keepIn("inflight-askno", s.id); S.sheet = null; renderSheet(); render();
+}
+
+/* ---------- plans: answering an invite ---------- */
+// the letter answered (an invite, or a friend's "later" with its one time) and its plan
+function planIn(id) {
+  const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id), pp = m && partsOf(S.plain.get(id));
+  const plan = pp?.plan || (pp?.ans?.a === "later" ? pp.ans.plan : null);
+  return m && plan && m.from !== S.me.id && !group(S.chat) ? { m, plan, later: !pp.plan, p: S.plain.get(id) } : null;
+}
+const answeredHere = (id) => (S.msgs.get(S.chat) || []).some((x) => x.from === S.me.id && partsOf(S.plain.get(x.id))?.ans?.re === id);
+async function planAnswer(id, a) {
+  const x = planIn(id); if (!x || !["yes", "later", "no"].includes(a) || answeredHere(id)) return;
+  if (!(x.plan.start > now())) { toast("That time has passed."); return render(); }
+  if (a === "later") { if (x.later) return; S.laterOpen = S.laterOpen === id ? null : id; return render(); }
+  return planSend(x, a === "yes" ? { re: id, a, plan: x.plan } : { re: id, a });
+}
+async function planLater(id, at) {
+  const x = planIn(id); if (!x || x.later || answeredHere(id)) return;
+  const plan = laterPlan(x.plan, at);
+  if (!plan || !(plan.start > now())) { toast("That time has passed."); return render(); }
+  return planSend(x, { re: id, a: "later", plan });
+}
+async function planSend(x, ans) {
+  const f = friend(S.chat); if (!f) return;
+  // (an answer that may have gone already goes again as it was, whichever button's tapped now)
+  const again = replyUnsure.get(x.m.id); if (again) ans = again.ans;
+  const kind = oneKind(f) || again?.kind; if (!kind) return toast("No pigeon free just now.");
+  let payload = again?.payload || null;
+  try {
+    if (!payload) {
+      let t = ""; try { t = answerWords(ans, { tz: MY_TZ, now: now() }); } catch (_) {}
+      payload = buildPayload({ t: t || { yes: "Yes, that works.", later: "Later suits me better.", no: "Can’t make it this time." }[ans.a], ans, q: quoteOf(x.m, x.p) });
+    }
+    const r = await sendLetter(f.id, payload, { kind, id: again?.id || null });
+    replyUnsure.delete(x.m.id);
+    S.laterOpen = null; haptic("success"); render();
+    if (ans.a === "yes") { try { await fitOffer(r.message?.id || r.id, ans.plan, f, "answered"); toast("In Fitness, to add to your plan."); } catch (_) {} }
+    sync().catch(() => {});
+  } catch (e) {
+    if (e.unsure && payload) replyUnsure.set(x.m.id, { id: e.id, payload, kind, ans });
+    else if (!e.offline || !again) replyUnsure.delete(x.m.id);
+    toast(esc(e.message || "Couldn’t send it."));
+  }
 }
 
 /* ============================================================

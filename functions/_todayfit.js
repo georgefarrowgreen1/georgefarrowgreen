@@ -4,10 +4,10 @@
 // a session are Fitness's own: the card opens it.
 
 import { snapshotOf } from "./_fittoday.js";
-import { fitdb } from "./_fitness.js";
+import { donesIn } from "./_fitshare.js";
 import { rideWeather } from "./_fitwx.js";
 import { kept } from "./_wxacct.js";
-import { localDay, dayAfter, weekdayOf } from "./_todaycards.js";
+import { localDay, dayAfter, weekdayOf, withSend } from "./_todaycards.js";
 import { bestWindow, hourScore, ratingOf, windWords, LIMITS } from "../fitness/besttime.js";
 import { dur } from "../fitness/ui.js";
 
@@ -30,22 +30,10 @@ export async function fitnessCard(env, u, ctx) {
   if (fresh && !snap.days[byTz.day]) { zone = snap.tz; day = localDay(snap.tz, t); }
   const today = fresh ? snap.days[day.day] : undefined;
 
-  // done, whatever was planned: anything started today, in Fitness, or waiting to come in from Garmin or Strava (their
-  // tables may not be made yet)
-  const D = await fitdb(env), win = [u.id, day.start, day.end];
-  const [acts, garmin, strava] = await Promise.all([
-    D.prepare("SELECT id, start, sport, name, sum FROM fx_acts WHERE user_id = ?1 AND start >= ?2 AND start < ?3 ORDER BY start DESC LIMIT 5").bind(...win).all().then((r) => r.results || []),
-    D.prepare("SELECT id, start, name FROM fx_garmin_new WHERE user_id = ?1 AND start >= ?2 AND start < ?3 ORDER BY start DESC LIMIT 5").bind(...win).all().then((r) => r.results || []).catch(() => []),
-    D.prepare("SELECT id, start, name, sport FROM fx_strava_new WHERE user_id = ?1 AND start >= ?2 AND start < ?3 ORDER BY start DESC LIMIT 5").bind(...win).all().then((r) => r.results || []).catch(() => []),
-  ]);
-  const sumOf = (s) => { try { const v = JSON.parse(s || "{}"); return v && typeof v === "object" ? v : {}; } catch (_) { return {}; } };
+  // done, whatever was planned: anything started today, in Fitness, or waiting to come in from Garmin or Strava
+  // (functions/_fitshare.js donesIn: the newest of any)
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  const dones = [
-    ...acts.map((a) => { const s = sumOf(a.sum); return { name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: num(s.secs), dist: num(s.dist), tss: num(s.tss), from: "fitness" }; }),
-    ...garmin.map((g) => ({ name: g.name || "Activity", sport: null, start: g.start, secs: null, dist: null, tss: null, from: "garmin" })),
-    ...strava.map((a) => ({ name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: null, dist: null, tss: null, from: "strava" })),
-  ].sort((a, b) => b.start - a.start);
-  const done = dones[0] || null;
+  const done = (await donesIn(env, u.id, day.start, day.end))[0] || null;
 
   if (!done && !today) return { state: "empty", href, said: "Open Fitness, and today’s session shows here.", action: { label: "Open Fitness", href } };
 
@@ -71,14 +59,40 @@ export async function fitnessCard(env, u, ctx) {
   };
   // the best time for a ride or a run that isn't done, from the weather where you ride (shared by the morning's
   // accounts riding in the same place: memo "ride:<lat>,<lon>")
-  if (kind === "session" && (session.sport === "ride" || session.sport === "run")) out.best = await bestOf(env, u, session, t, out.units, memo, request).catch(() => null);
+  let dry = false;
+  if (kind === "session" && (session.sport === "ride" || session.sport === "run")) {
+    const b = await bestOf(env, u, session, t, out.units, memo, request).catch(() => null);
+    if (b) { const { dry: d, ...best } = b; out.best = best; dry = d; }
+  }
   if (kind === "done") {
     const s = out.session, verb = s && DID[s.sport];
     out.share = s && verb ? `${verb} my ${s.kind ? `${s.kind.toLowerCase()} ` : ""}session today: ${s.name}.` : OUT_ON.has(done.sport) ? `Out on a ${done.sport} today.` : "Trained today.";
   } else if (kind === "rest") out.share = "A rest day today, letting the week sink in.";
   else if (kind === "event") out.share = `Event day today: ${out.event.name}.`;
   else if (kind === "session") out.share = `Today: ${session.name}, ${dur(session.secs)}.${out.best && !out.best.poor ? ` Best time to ${session.sport === "run" ? "run" : "ride"} ${out.best.span.replace("–", " to ")}.` : ""}`;
-  return out;
+  // the card for Chat (pigeon/cards.js): today's session, or what's done, with no share id (Chat makes one as it's sent,
+  // so nothing's kept for a card that's only looked at here)
+  return withSend(out, sendOf(out, done, dry, t));
+}
+const SEND_SPORTS = new Set(["ride", "run", "swim", "walk", "row", "strength"]);
+const SEND_NOUN = { ride: "Ride", run: "Run", swim: "Swim", walk: "Walk", row: "Row", strength: "Strength" };
+function sendOf(c, done, dry, t) {
+  const s = c.session, sport = c.kind === "done" ? (SEND_SPORTS.has(done?.sport) ? done.sport : s?.sport) : s?.sport;
+  if (!["session", "done"].includes(c.kind) || !SEND_SPORTS.has(sport) || !c.share) return null;
+  // (what's done that wasn't planned goes by its sport, "Run", never its own name: it came from a file, Strava or
+  // Garmin, or a rename, and no view of a done card shows it, so it isn't sent)
+  const name = String(s && s.sport === sport ? s.name : c.kind === "done" ? SEND_NOUN[sport] : "").slice(0, 60);
+  if (!name) return null;
+  const snap = { day: c.day, tz: c.tz, sport, name };
+  if (s && s.sport === sport) {
+    if (s.kind) snap.kind = s.kind.slice(0, 30);
+    if (/^[A-Za-z0-9_:-]{1,40}$/.test(s.id)) snap.wid = s.id;
+    if (s.secs > 0) snap.secs = Math.round(s.secs);
+    if (s.tss > 0) snap.tss = Math.round(s.tss);
+  }
+  snap.best = c.kind === "session" && c.best && !c.best.poor ? { start: c.best.start, end: c.best.end, dry: !!dry } : null;
+  snap.done = c.kind === "done" ? Object.fromEntries(["secs", "dist", "tss"].filter((k) => done?.[k] != null).map((k) => [k, Math.round(done[k])])) : null;
+  return { v: 1, kind: "fitness", from: "today", at: t, say: c.share.slice(0, 200), snap };
 }
 
 // The best stretch today, as Fitness says it (fitness/today.js bestTime): "Best 10:00 to 11:00", "11°, dry, a light
@@ -103,6 +117,8 @@ async function bestOf(env, u, session, t, units, memo, request) {
   const grid = rw.hours.filter((h) => h.day && local(h.t).toISOString().slice(0, 10) === today && local(h.t).getUTCHours() >= a.from && local(h.t).getUTCHours() + 1 <= a.to)
     .map((h) => ({ t: h.t, rating: ratingOf(hourScore(h, rw.hours.find((x) => x.t === h.t - 3600e3), a)) }));
   return {
+    // (dry: for Chat's card only, taken off before the card's answer)
+    dry: !!b.dry && b.pop < 30,
     start: b.start, end: b.end, span: `${clock(b.start)}–${clock(b.end)}`, rating: b.rating, poor,
     said: poor ? "No good time outside today" : `Best ${clock(b.start)} to ${clock(b.end)}`,
     sub: poor ? `${why}: the trainer, perhaps${where}` : `${deg(b.temp)}, ${b.dry && b.pop < 30 ? "dry" : `${Math.round(b.pop)}% chance of rain`}, ${windWords(b.wind, b.dir)}${where}`,

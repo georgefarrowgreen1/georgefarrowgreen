@@ -34,6 +34,8 @@ http.createServer((req, res) => {
   const met = u.pathname.startsWith('/weatherapi/');                 // MET Norway's locationforecast (one point)
   if (met ? metDown : down) { res.writeHead(500); return res.end(); }
   const lats = (u.searchParams.get('latitude') || u.searchParams.get('lat') || '').split(','), lons = (u.searchParams.get('longitude') || u.searchParams.get('lon') || '').split(',');
+  // (Send to a Friend's patterns, 'share-…': a whole forecast of their own, shareOne below)
+  if (!met && pattern.startsWith('share-')) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(lats.length === 1 ? shareOne(u, 0, lats, lons) : lats.map((_, i) => shareOne(u, i, lats, lons)))); }
   // pattern 'swirl': wind that varies from place to place, for the wind map
   const at = (i) => pattern === 'lane' ? (lats[i] >= lane ? { sp: 80, fr: 270 } : { sp: 0, fr: 270 }) : pattern === 'swirl' ? { sp: 12 + 30 * Math.abs(Math.sin(lats[i] * Math.PI / 25)), fr: (270 + 70 * Math.sin(lons[i] * Math.PI / 18) + 50 * Math.cos(lats[i] * Math.PI / 12) + 360) % 360 } : { sp: speed, fr: from };
   // pattern 'alps-storm': still air, but thunderstorms over the Alps
@@ -69,3 +71,61 @@ http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(lats.length === 1 ? one(0) : lats.map((_, i) => one(i))));
 }).listen(8796, '127.0.0.1').keepAliveTimeout = 120e3;   // (longer than tests leave a connection idle)
+
+// Send to a Friend (sharecard, shareask, shareplan): the same weather at every place, in the forecast's own form (each
+// variable asked for, hourly, daily, now and by the quarter hour; times in UTC, the zone it says it's in).
+//   'share-wet'         raining now and all day, everywhere
+//   'share-dry-window'  dry 10:00–12:00 every day, wet the rest (so two friends' best time is 10:00–12:00)
+//   'share-rain-at'     dry now, raining from startAfter hours ahead (2 if not given)
+function shareOne(u, i, lats, lons) {
+  const q = u.searchParams, t = Date.now(), H = 3600e3, D = 864e5;
+  const wetAt = (ms) => pattern === 'share-wet' ? true : pattern === 'share-dry-window' ? !(new Date(ms).getUTCHours() >= 10 && new Date(ms).getUTCHours() < 12) : pattern === 'share-rain-at' ? ms >= t + (startAfter ?? 2) * H : false;
+  const unix = q.get('timeformat') === 'unixtime' || q.get('forecast_hours') != null;
+  const when = (ms, day) => (unix ? Math.floor(ms / 1000) : new Date(ms).toISOString().slice(0, day ? 10 : 16));
+  const v = (k, ms, wet) => {
+    const dayH = new Date(ms).getUTCHours(), day = dayH >= 7 && dayH < 17;
+    if (/^temperature/.test(k)) return wet ? 12 : 15; if (/^apparent/.test(k)) return wet ? 10 : 14;
+    if (k === 'relative_humidity_2m') return wet ? 95 : 70; if (k === 'dew_point_2m') return 9;
+    if (k === 'precipitation_probability') return wet ? 90 : 5; if (k === 'precipitation') return wet ? 2 : 0; if (k === 'snowfall') return 0;
+    if (k === 'weather_code') return wet ? 63 : 1; if (k === 'pressure_msl') return 1015; if (/^cloud_cover/.test(k)) return wet ? 95 : 15;
+    if (k === 'visibility') return wet ? 5000 : 20000; if (/^wind_speed/.test(k)) return 10; if (/^wind_direction/.test(k)) return 270; if (/^wind_gusts/.test(k)) return 20;
+    if (k === 'uv_index') return day ? 1 : 0; if (k === 'is_day') return day ? 1 : 0; if (k === 'cape') return 0; if (k === 'lifted_index') return 2;
+    if (k === 'vapour_pressure_deficit') return 0.5; if (k === 'sunshine_duration') return day && !wet ? 3600 : 0;
+    return 0;
+  };
+  const vars = (name) => String(q.get(name) || '').split(',').filter(Boolean);
+  const out = { latitude: +lats[i], longitude: +lons[i], timezone: 'GMT', timezone_abbreviation: 'GMT', utc_offset_seconds: 0, elevation: 10 };
+  if (vars('hourly').length) {
+    const fh = q.get('forecast_hours'), past = Number(q.get('past_days') || 0), days = Number(q.get('forecast_days') || 7);
+    const h0 = fh != null ? Math.floor(t / H) * H : Math.floor(t / D) * D - past * D, n = fh != null ? Number(fh) : (past + days) * 24;
+    const ts = Array.from({ length: n }, (_, h) => h0 + h * H);
+    out.hourly = { time: ts.map((ms) => when(ms)) };
+    for (const k of vars('hourly')) out.hourly[k] = ts.map((ms) => v(k, ms, wetAt(ms)));
+  }
+  if (vars('daily').length) {
+    const past = Number(q.get('past_days') || 0), days = Number(q.get('forecast_days') || 7), d0 = Math.floor(t / D) * D - past * D;
+    const ds = Array.from({ length: past + days }, (_, d) => d0 + d * D), wetDay = (ms) => Array.from({ length: 24 }, (_, h) => wetAt(ms + h * H)).filter(Boolean).length;
+    out.daily = { time: ds.map((ms) => when(ms, true)) };
+    for (const k of vars('daily')) out.daily[k] = ds.map((ms) => {
+      const w = wetDay(ms);
+      if (k === 'sunrise') return when(ms + 7 * H); if (k === 'sunset') return when(ms + 17 * H);
+      if (k === 'weather_code') return w ? 63 : 1; if (k === 'temperature_2m_max' || k === 'apparent_temperature_max') return 16; if (k === 'temperature_2m_min' || k === 'apparent_temperature_min') return 9;
+      if (k === 'daylight_duration') return 36000; if (k === 'sunshine_duration') return (10 - Math.min(10, w)) * 3600; if (k === 'uv_index_max') return 2;
+      if (k === 'precipitation_sum') return w * 2; if (k === 'precipitation_hours') return w; if (k === 'precipitation_probability_max') return w ? 90 : 5;
+      if (k === 'wind_speed_10m_max') return 15; if (k === 'wind_gusts_10m_max') return 25; if (k === 'wind_direction_10m_dominant') return 270;
+      return 0;
+    });
+  }
+  if (vars('current').length) {
+    const q0 = Math.floor(t / 900e3) * 900e3;
+    out.current = { time: when(q0), interval: 900 };
+    for (const k of vars('current')) out.current[k] = v(k, t, wetAt(t)) / (k === 'precipitation' ? 4 : 1);
+  }
+  if (vars('minutely_15').length) {
+    // (each quarter's rain is the 15 minutes up to its time, as Open-Meteo has it)
+    const q0 = Math.floor(t / 900e3) * 900e3, n = Number(q.get('forecast_minutely_15') || 17), qs = Array.from({ length: n }, (_, k) => q0 + k * 900e3);
+    out.minutely_15 = { time: qs.map((ms) => when(ms + 900e3)) };
+    for (const k of vars('minutely_15')) out.minutely_15[k] = qs.map((ms) => (k === 'precipitation' ? (wetAt(ms) ? 0.5 : 0) : v(k, ms, wetAt(ms))));
+  }
+  return out;
+}

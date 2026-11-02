@@ -1654,7 +1654,30 @@ function hero(wx, now, fresh = false) {
   // (and written, so read out, only when what it says has changed: not every minute, nor as each part comes in)
   const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""], brief = $("brief");
   if (brief.dataset.said !== said) { const had = !!brief.dataset.said; brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; if (had && shown) rise(brief); }
+  sendPill();
   keepHero(wx);
+}
+// ---- Send to a friend: the weather here, as a card, to Chat (send.js), which shows who it's for and keeps the card up
+// to date in the letter. Under the words, once there's a forecast to send (not on a place's page drawn beside: R) ----
+// (its code fetched as the pill's first put up, not as the page opens: in hand by the time it's tapped)
+let sendJs = null;
+const sendMod = () => (sendJs ||= import("./send.js").catch((e) => { sendJs = null; throw e; }));
+function sendPill() {
+  if (R || $("send-btn")) return;
+  sendMod().catch(() => {});
+  $("brief").after(h("button", { class: "pill-btn send-btn", id: "send-btn", type: "button", onclick: sendToFriend }, h("span", { svg: glyph("share", 17) }), "Send to a friend"));
+}
+async function sendToFriend() {
+  const wx = S.wx;
+  if (!wx) return;
+  const now = nowWall(wx.place.offset), said = $("brief").dataset.said || I.headline(wx, now, S.f);
+  let card = null, chatPage = () => null, chatHash = null;
+  try { const M = await sendMod(); ({ chatPage, chatHash } = M); card = M.weatherSendCard(wx, now, S.f, { activities: S.settings.activities, name: place()?.name || wx.place.name, headline: said }); } catch (e) { console.error(e); }
+  const words = card?.say || said, chat = chatHash && chatPage();
+  // (to Chat, beside Weather, the words first and the card after them; else the words, by the phone's own sharing, or copied)
+  if (chat) { location.assign(chat + chatHash(words, card)); return; }
+  if (navigator.share) { navigator.share({ text: words }).catch(() => {}); return; }
+  navigator.clipboard?.writeText(words).then(() => toast("Copied, to paste in Chat"), () => toast(words));
 }
 
 // what the top of the page shows, kept for boot.js to put up the moment the page is next opened (written when it
@@ -2940,8 +2963,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.62";
-const NEWS = "The location and Settings buttons at the top are easier to tap; on more phones the radar's scale shows beside its credits from the start; and full screen on a phone on its side, the radar's legend, timeline, scale and © no longer cover one another";
+const BUILD = "1.63";
+const NEWS = "Send to a friend: the forecast goes to Chat as a card that keeps itself up to date";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

@@ -7,6 +7,9 @@ import { dayChanges, dlFor, download, moveView, openDay, openWorkout, rhythmIntr
 import { progActs } from "./progressview.js";
 import { mapsAlways, wide } from "./app.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
+import * as X from "./app.js";
+import { offerCards, withOffer, withLine } from "./invites.js";
+import { sessionSendCard, chatHash, chatPage } from "./send.js";
 
 // ---- Today ----
 // Today, and every day around it (the Plan's days too): the day strip, the day you're looking at, what Rhythm's
@@ -30,6 +33,8 @@ function todayView() {
   const planned = rhythmOn() || myPlan();
   const left = [isToday ? sessionCard(w, id, done) : dayCard(sel)], right = [];
   if (S.dayFx && left[0]) { left[0].classList.add("day-in", S.dayFx); S.dayFx = null; }
+  // (plans made in Chat, waiting to be added: above the day's card, soonest first: invites.js)
+  if (isToday) left.unshift(...offerCards(X));
   // (on a computer: the two weeks as one grid across the top, the day under it, and beside it only what decides the
   // day: the morning's check-in and what Rhythm says; the week and where it's heading are the grid's and Progress's)
   if (wide()) {
@@ -168,7 +173,8 @@ function dayCard(day) {
     h("p.about", { text: rhythmOn() ? "Not ridden: Rhythm has taken it in, and the days after follow what you did." : "Not ridden." }));
   const changes = dayChanges(day);
   return h("div.card.hero.glass.session.ahead", {},
-    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${S.swaps[day] !== undefined ? " · changed" : ""}`), w.name, null),
+    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mateOn(day) ? ` · with ${mateOn(day).who}` : S.swaps[day] !== undefined ? " · changed" : ""}`), w.name, null),
+    mateOn(day) && h("p.with-mate", { text: withLine(mateOn(day)) }),
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
     rd && h("p.why", {}, h("b", { text: "Why: " }), S.swaps[day] !== undefined ? "you changed this day." : rd.why),
@@ -289,13 +295,16 @@ function sessionCard(w, id, done, day = TODAY) {
         bar("Planned", pt, Math.max(pt, s.tss) * 1.08, "plan"), bar("Ridden", s.tss, Math.max(pt, s.tss) * 1.08, "done")),
       (rec || ef) && h("div.hero-chips", {}, rec && h("span.rec", {}, icon("medal", 14, 2.2), rec),
         ef && h("span.held" + (ef.held === ef.n ? ".ok" : ""), {}, icon(ef.held === ef.n ? "check" : "info", 14, 2.6), E.effortsSaid(ef))),
-      h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride", icon("chev", 15, 2.4))));
+      h("div.acts", {}, h("button.pill", { type: "button", onclick: () => openAct(a) }, "See the ride", icon("chev", 15, 2.4)),
+        day === TODAY && h("button.pill", { type: "button", onclick: () => sendToFriend(pl, a) }, sendIcon(), "Send to a friend")));
   }
   if (id === "event") {
     return h("div.card.hero.glass.session", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"), plan().name),
       h("p.about", { text: "This is what the weeks were for. Start steady, eat early, and enjoy it." }));
   }
-  if (!myPlan() && !rhythmOn()) return rhythmIntro();
+  // (a plan made in Chat and added here: who it's with, from the account's agreed plans: invites.js)
+  const mate = w ? withOffer(TODAY, S.swaps, S.offers) : null;
+  if (!myPlan() && !rhythmOn() && !mate) return rhythmIntro();
   const rd = rhythmOn() && S.swaps[TODAY] === undefined ? rhDay(TODAY) : null;
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day");
   if (!w && rd) {
@@ -317,7 +326,8 @@ function sessionCard(w, id, done, day = TODAY) {
   const m = measure(w, paceFor(w.sport)), swapped = S.swaps[TODAY] !== undefined;
   const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
   return h("div.card.hero.glass.session.go", {},
-    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${swapped ? " · swapped" : ""}`), w.name),
+    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mate ? ` · with ${mate.who}` : swapped ? " · swapped" : ""}`), w.name),
+    mate && h("p.with-mate", { text: withLine(mate) }),
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
     rd ? h("p.why", {}, h("b", { text: "Why today: " }), whyToday(rd.why, w)) : h("p.about", { text: w.about }),
@@ -329,8 +339,35 @@ function sessionCard(w, id, done, day = TODAY) {
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(w) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
-      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")),
+      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap"),
+      h("button.pill", { type: "button", onclick: () => sendToFriend(w, null) }, sendIcon(), "Send to a friend")),
     w.sport !== "strength" && dlFor(w, TODAY));
+}
+// a day's plan made in Chat, added (invites.js)
+const mateOn = (day) => withOffer(day, S.swaps, S.offers);
+// ---- Send to a friend: today's session, or what's done, as a card to Chat (send.js), which shows who it's for and
+// tells them, when they open it, whether it got done. Nothing's asked of the account here: Chat makes the card's share
+// id as the letter goes ----
+const sendIcon = () => svgOf('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/></svg>');
+function sendToFriend(w, a) {
+  const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return null; } })();
+  const m = w ? measure(w, paceFor(w.sport)) : null, s = a ? sumOf(a) : null;
+  const card = sessionSendCard({ day: TODAY, tz,
+    w: w && { id: w.id, sport: w.sport, name: w.name, kind: w.kind, secs: m.secs, tss: w.sport !== "strength" ? m.tss : null },
+    done: a && { sport: a.sport, name: a.name, secs: s?.moving ?? s?.secs ?? null, dist: s?.dist ?? null, tss: s?.tss ?? null },
+    best: !a && w ? bestOf(w) : null });
+  const words = card?.say || (w ? `Today: ${w.name}.` : "Trained today."), chat = chatPage();
+  // (to Chat, beside Fitness, the words first and the card after them; else the words, by the phone's own sharing, or copied)
+  if (chat) { location.assign(chat + chatHash(words, card)); return; }
+  if (navigator.share) { navigator.share({ text: words }).catch(() => {}); return; }
+  navigator.clipboard?.writeText(words).then(() => toast("Copied, to paste in Chat"), () => toast(words));
+}
+// the best time to go today, as the card shows it (bestTime): { start, end, dry } in real ms, or null (none good, or
+// the made-up examples' day). From the ride weather already here, however old: sending asks nothing of the account
+function bestOf(w) {
+  if (S.examples || (w.sport !== "ride" && w.sport !== "run")) return null;
+  const d = S.wx?.d, b = d?.hours?.length ? BT.bestWindow(d, { secs: measure(w, paceFor(w.sport)).secs, sport: w.sport === "run" ? "run" : "ride" }) : null;
+  return b && b.rating !== "Poor" ? { start: b.start, end: b.end, dry: !!b.dry && b.pop < 30 } : null;
 }
 // The weather where you ride (functions/_fitwx.js), asked for once and kept half an hour; the page drawn again when
 // it comes

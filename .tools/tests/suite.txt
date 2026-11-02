@@ -52,3 +52,8 @@ todayauth
 todaycards
 todaymorning
 todaysnap
+sharecard
+shareask
+shareplan
+wxshare
+fitshare
