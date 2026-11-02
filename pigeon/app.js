@@ -418,7 +418,7 @@ const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
 const APP_VERSION = "1.64";            // shown in InFlite's menu
-const APP_NEWS = "Send to a Friend sends the card itself, kept up to date in the letter, and puts the right friends first";       // (said once it's in)
+const APP_NEWS = "Send to a Friend sends the card itself, kept up to date in the letter, and puts the right friends first; and opened from another app, Sign in is on the screen again";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -4038,12 +4038,16 @@ function fitScreen() {
   if (screenFitted || navigator.standalone !== true || !screen.width || !screen.height) return;
   screenFitted = true;
   const doc = document.documentElement;
+  const behindBar = () => { if (!matchMedia("(orientation: portrait)").matches) return true; const p = document.createElement("div"); p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none"; document.body.appendChild(p); const t = p.offsetHeight; p.remove(); return t > 0; };
   const fit = () => {
     const portrait = matchMedia("(orientation: portrait)").matches;
     const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
     const h = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
     // (only when the window is the whole screen, not an iPad window beside another app)
-    const whole = Math.abs(window.innerWidth - w) < 2;
+    // (and only when the page itself fills it, running up behind the status bar: a link from another Home Screen app
+    // opens in iOS's own small browser, still "standalone" but under its bar, with no status bar inset, where sized
+    // to the screen the page ran off its foot, Sign in with it)
+    const whole = Math.abs(window.innerWidth - w) < 2 && behindBar();
     doc.classList.toggle("fullscreen-fix", whole);
     if (whole) doc.style.setProperty("--screen-h", `${h}px`);
     if (window.scrollY) window.scrollTo(0, 0);
