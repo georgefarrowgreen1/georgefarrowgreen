@@ -162,8 +162,11 @@ const tickEnv = { DB: d1(), PIGEON_PUSH_URL: "http://push.test/push", WXAPP_URL:
   RESEND_API_KEY: "test-key", RESEND_API_URL: "http://mail.test/emails", PIGEON_FROM: "noreply@georgefarrowgreen.com" };
 const run = (sql, ...a) => tickEnv.DB.sql.prepare(sql).run(...a), rows = (sql, ...a) => tickEnv.DB.sql.prepare(sql).all(...a).map((r) => ({ ...r }));
 let asked = { full: 0, rain: 0, push: [], mail: [] };
+// (the tick run on the test's own clock, from 07:05 on that Monday: the tick keeps to its time by the clock, so by the
+// real one, once that Monday had passed, it had no time left for anything)
 async function ticking(fn) {
-  const real = globalThis.fetch, said = console.error;
+  const real = globalThis.fetch, said = console.error, realNow = Date.now, from = realNow();
+  Date.now = () => MON + (realNow() - from);
   globalThis.fetch = async (url, o = {}) => {
     const u = String(url);
     if (u.startsWith(`${W}/v1/forecast`)) { asked[/minutely_15=/.test(u) && !/daily=/.test(u) ? "rain" : "full"]++; return Response.json(forecast(MON)); }
@@ -172,7 +175,7 @@ async function ticking(fn) {
     return new Response("{}", { status: 404 });
   };
   console.error = () => {};
-  try { return await fn(); } finally { globalThis.fetch = real; console.error = said; }
+  try { return await fn(); } finally { globalThis.fetch = real; console.error = said; Date.now = realNow; }
 }
 // a phone's push keys, as a browser makes them
 async function keys() {
