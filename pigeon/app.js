@@ -417,8 +417,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.64";            // shown in InFlite's menu
-const APP_NEWS = "Send to a Friend sends the card itself, kept up to date in the letter, and puts the right friends first; and opened from another app, Sign in is on the screen again";       // (said once it's in)
+const APP_VERSION = "1.65";            // shown in InFlite's menu
+const APP_NEWS = "A card in your own letter is easy to read again while the pigeon’s on its way";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
