@@ -434,8 +434,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.69";
-const NEWS = "Your data includes the sessions you’ve sent to friends, and plans from Chat";
+const BUILD = "1.70";
+const NEWS = "Opened from a link in another app, such as an email in Mail, sheets fill the window so their last rows are in reach";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -681,7 +681,10 @@ const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator
 // own window with a browser's bars added (and where the page counts as on the Home Screen). There, a sheet set at the
 // page's foot sat under the bottom bar, its last rows out of reach: so a sheet there is the whole screen instead, from
 // under the top bar, its rows scrolling clear of the bottom one. styles.css html.inbrowser)
-if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp())) document.documentElement.classList.add("inbrowser");
+// (and opened from an app any other way, as by a link in an email read in Mail: iOS's own small browser, still
+// "standalone", but under its bar, so with no status bar inset, upright. As Chat, Mail and Markets tell it: behindBar)
+const underBar = () => { if (navigator.standalone !== true || !matchMedia("(orientation: portrait)").matches) return false; const p = document.createElement("div"); p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none"; document.body.appendChild(p); const t = p.offsetHeight; p.remove(); return t === 0; };
+if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 async function call(path, { method = "GET", body, type } = {}) {

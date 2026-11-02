@@ -424,8 +424,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.92";
-const NEWS = "Send in Chat sends a card with the day’s move, in percent only";
+const BUILD = "1.93";
+const NEWS = "Opened from another app, everything at the foot is on the screen: a sheet’s last buttons, the tabs";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -2598,15 +2598,19 @@ function live() {
 // A page shorter than the screen is laid out that way more than a longer one (so News, with little in it, had its tab bar
 // sitting higher than Today's): there, every page is a little taller than the screen (html.homescreen: styles.css),
 // and the gap's measured again as each tab's drawn.
+// (and only where the page itself fills the screen, running up behind the status bar: a link from another Home Screen
+// app opens Markets in iOS's own small browser, still "standalone" but under its bar, with no status bar inset. Its
+// window is short of the screen by that bar, not by iOS's slip, and taking that back put a sheet's foot off the screen)
+const behindBar = () => { if (!matchMedia("(orientation: portrait)").matches) return true; const p = document.createElement("div"); p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none"; document.body.appendChild(p); const t = p.offsetHeight; p.remove(); return t > 0; };
 function fitScreen() {
-  if (navigator.standalone !== true || !screen.width || !screen.height) return;
+  if (navigator.standalone !== true || !screen.width || !screen.height || !behindBar()) return;
   const doc = document.documentElement;
   doc.classList.add("homescreen");
   const fit = () => {
     const portrait = matchMedia("(orientation: portrait)").matches;
     const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
     const h = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-    const gap = Math.abs(innerWidth - w) < 2 ? Math.round(h - innerHeight) : 0;
+    const gap = Math.abs(innerWidth - w) < 2 && behindBar() ? Math.round(h - innerHeight) : 0;
     doc.style.setProperty("--fix-gap", `${gap > 0 && gap < 120 ? gap : 0}px`);
   };
   fit();

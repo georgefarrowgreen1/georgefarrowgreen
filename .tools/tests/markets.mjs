@@ -337,6 +337,25 @@ await lp.screenshot({ path: `${out}/8-light.png` });
 ok(await lp.evaluate(() => getComputedStyle(document.body).color) === 'rgb(12, 20, 32)', 'light, where the device is: dark words on the pale sky');
 await lc.close();
 
+// ---- 12b. Opened from another Home Screen app: iOS's own small browser, still "standalone" but under its bar, its
+// window short of the screen (here 750 of 844) by that bar and its toolbar, not by iOS's slip. Laid out as in a browser:
+// the tab bar, and a stock's sheet down to its last button, on the screen ----
+const hc = await b.newContext({ viewport: { width: 390, height: 750 }, screen: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: IPHONE, locale: 'en-GB', colorScheme: 'dark' });
+await hc.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
+await hc.addCookies(await ctx.cookies());
+const hp = await hc.newPage(); await hp.goto(MKT + '/'); await hp.waitForSelector('#pv', { timeout: 20000 }); await settle(hp, 2000);
+const foot = await hp.evaluate(() => ({ h: innerHeight, gap: getComputedStyle(document.documentElement).getPropertyValue('--fix-gap').trim(), tabs: Math.round(document.querySelector('.tabbar .tab').getBoundingClientRect().bottom) }));
+ok(foot.tabs <= foot.h, "in iOS's small browser: the tab bar on the screen", JSON.stringify(foot));
+await hp.locator('.item:has-text("Tesco")').first().click(); await hp.waitForSelector('.sheet .sprice'); await settle(hp, 1200);
+const sh = await hp.evaluate(async () => {
+  const sb = document.querySelector('#sbody'); sb.scrollTop = sb.scrollHeight; await new Promise((r) => setTimeout(r, 400));
+  const last = [...document.querySelectorAll('#sheet button')].at(-1);
+  return { h: innerHeight, sheet: Math.round(document.querySelector('#sheet').getBoundingClientRect().bottom), last: last.textContent.trim(), lastAt: Math.round(last.getBoundingClientRect().bottom) };
+});
+await hp.screenshot({ path: `${out}/12b-small-browser-stock.png` });
+ok(sh.sheet <= sh.h + 1 && sh.lastAt <= sh.h, "and a stock's sheet, scrolled to its end, has its last button on the screen", JSON.stringify(sh));
+await hc.close();
+
 // ---- 13. Signing out: back to the start ----
 await p.click('.ifh-me'); await p.waitForSelector('.ifm-pop.open'); await settle(p, 500);
 ok(/Markets 1\.\d\d/.test(await text(p, '.ifm-foot')) && /Find and Add/.test(await text(p, '.ifm-pop')), "InFlite's menu: Markets and its version, and Find and Add", await text(p, '.ifm-foot'));
