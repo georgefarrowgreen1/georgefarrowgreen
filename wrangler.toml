@@ -31,3 +31,9 @@ bucket_name = "bio-media"
 binding = "DB"
 database_name = "bio-db"
 database_id = "de4ad515-52c6-4cb3-9f8f-008384ef813a"
+
+# Typing dots (workers/live): held in memory for a few seconds, never stored. Deployed by .github/workflows/live-deploy.yml.
+[[durable_objects.bindings]]
+name = "TYPING"
+class_name = "Typing"
+script_name = "georgefarrowgreen-live"
