@@ -22,7 +22,7 @@ export async function ensureStreaks(D) { return ensure(D); }
 async function ensure(D) {
   if (ready) return;
   if (!(await D.prepare("SELECT 1 FROM pg_meta WHERE k = 'streaks_v1'").first())) {
-    await D.prepare(`WITH d AS (SELECT DISTINCT MIN(sender, recipient) AS a, MAX(sender, recipient) AS b, sent_at / ${DAY} AS day FROM pg_msgs WHERE sent_at <= ?1),
+    await D.prepare(`WITH d AS (SELECT DISTINCT MIN(sender, recipient) AS a, MAX(sender, recipient) AS b, sent_at / ${DAY} AS day FROM pg_msgs WHERE sent_at <= ?1 AND instant IS NULL),
       r AS (SELECT a, b, day, day - ROW_NUMBER() OVER (PARTITION BY a, b ORDER BY day) AS g FROM d),
       i AS (SELECT a, b, MIN(day) AS s, MAX(day) AS l, COUNT(*) AS n FROM r GROUP BY a, b, g)
       INSERT OR IGNORE INTO pg_streaks (a, b, start, last, best)
@@ -32,7 +32,8 @@ async function ensure(D) {
   ready = true;
 }
 
-// A pigeon took off between x and y: today joins the run, or starts a new one.
+// A pigeon took off between x and y: today joins the run, or starts a new one. (Letters only: never called for an instant
+// message. A letter to a friend with pigeons off still counts for the pair.)
 // (SQLite reads the old row for every SET, so these all see the run as it was.)
 export async function bumpStreak(D, x, y, t) {
   await ensure(D);
@@ -72,7 +73,7 @@ export async function streakTick(env, D, t) {
   const today = dayOf(t);
   if (env.PIGEON_STREAK_ANYTIME !== "1" && t < (today + 1) * DAY - WARN) return 0;     // (PIGEON_STREAK_ANYTIME: local testing only)
   let pushes = 0;
-  const { results } = await D.prepare(`SELECT s.*, ua.name AS a_name, ua.notify_prefs AS a_prefs, ub.name AS b_name, ub.notify_prefs AS b_prefs
+  const { results } = await D.prepare(`SELECT s.*, ua.name AS a_name, ua.notify_prefs AS a_prefs, ua.pigeons AS a_pigeons, ub.name AS b_name, ub.notify_prefs AS b_prefs, ub.pigeons AS b_pigeons
     FROM pg_streaks s JOIN pg_users ua ON ua.id = s.a JOIN pg_users ub ON ub.id = s.b
     WHERE s.last = ?1 AND s.last - s.start + 1 >= ?2 AND COALESCE(s.warned, -1) < s.last LIMIT 200`).bind(today - 1, STREAK_MIN).all();
   for (const r of results) {
@@ -81,8 +82,9 @@ export async function streakTick(env, D, t) {
     const friends = await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(r.a, r.b).first();
     if (!friends) continue;
     const n = r.last - r.start + 1, hrs = Math.max(1, Math.round(((today + 1) * DAY - t) / HOUR));
-    for (const [me, them, themName, prefs] of [[r.a, r.b, r.b_name, r.a_prefs], [r.b, r.a, r.a_name, r.b_prefs]]) {
-      const p = prefsOf({ notify_prefs: prefs }); if (!p.streaks || isQuiet(p, t)) continue;
+    // (only to whoever has pigeons on: streaks are theirs)
+    for (const [me, them, themName, prefs, on] of [[r.a, r.b, r.b_name, r.a_prefs, r.a_pigeons], [r.b, r.a, r.a_name, r.b_prefs, r.b_pigeons]]) {
+      const p = prefsOf({ notify_prefs: prefs }); if (on === 0 || !p.streaks || isQuiet(p, t)) continue;
       pushes += await pushTo(env, me, { title: "Keep your streak going",
         body: p.names ? `Your ${n}-day streak with ${firstName(themName)} ends in ${hrs} hour${hrs === 1 ? "" : "s"}. Send a pigeon to keep it alive.` : `One of your ${n}-day streaks ends in ${hrs} hour${hrs === 1 ? "" : "s"}. Send a pigeon to keep it alive.`,
         tag: "streak-" + them, url: `/pigeon/#open=${them}` });

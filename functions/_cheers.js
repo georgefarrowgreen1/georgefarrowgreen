@@ -39,8 +39,11 @@ function check(row, by, me, t, sentAt) {
   if (row.deliver_at - t < 60e3) throw new HttpError(409, "It’s nearly there!");
 }
 
+// (cheering is a pigeon's: with pigeons off, there's none to cheer on)
+const pigeonsOn = (u) => { if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that."); };
 async function cheer({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
+  pigeonsOn(u);
   await limit(env, "cheer:" + u.id, 120, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env);
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");
@@ -67,6 +70,7 @@ async function cheer({ request, env, waitUntil }) {
 
 async function groupCheer({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
+  pigeonsOn(u);
   await limit(env, "cheer:" + u.id, 120, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env);
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");

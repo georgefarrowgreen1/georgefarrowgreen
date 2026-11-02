@@ -66,7 +66,7 @@ ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycli
 ok(await shown(V, '#sign-in') && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: Sign in, no Edit and no photo');
 ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT.replace('//account.', '//auth.')}/#signin=home`, 'Sign in goes to the sign-in page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
 ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.ifl.test:8788/', 'the apps open at their own addresses');
-ok(await text(V, '#app-inflight small') === 'Letters carried by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
+ok(await text(V, '#app-inflight small') === 'Messages, and letters by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');
 await V.p.click('#sign-in'); await V.p.waitForSelector('main .backapp', { timeout: 20000 }).catch(() => {});
 ok(await text(V, 'main .backapp') === 'Home' && await V.p.isVisible('main .signin'), 'Sign in: the account’s sign-in, with Home to go back');
@@ -142,7 +142,7 @@ ok(await text(P, 'main .backapp') === 'Home' && !P.p.url().includes('#'), 'their
 await P.p.click('main .backapp'); await P.p.waitForSelector('body.known', { timeout: 20000 }).catch(() => {});
 ok(P.p.url() === `${SITE}/`, 'Home: back on the home page', P.p.url());
 await settle(P);
-ok(await text(P, '#app-inflight small') === 'Letters carried by pigeon', 'an app they’ve not used yet says what it is');
+ok(await text(P, '#app-inflight small') === 'Messages, and letters by pigeon', 'an app they’ve not used yet says what it is');
 r = await put(P, '/api/content', { name: 'Pat’s Page' });
 ok(r.status === 403 && /owner/.test(r.json?.error), 'they can’t change the words', `${r.status} ${r.body}`);
 ok(await P.p.evaluate(() => document.querySelector('#c-name').value === 'Pat Reed' && document.querySelector('#c-email').value === 'pat@example.com'), 'a message from them has their name and email filled in');

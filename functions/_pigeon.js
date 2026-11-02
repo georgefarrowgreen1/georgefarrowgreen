@@ -209,6 +209,18 @@ SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_near (a TEXT NOT NULL, b TEXT NOT NUL
 // flight streaks (functions/_streaks.js): per pair (a < b), the run of UTC days with a take-off, its best, and the day it was last warned about
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_streaks (a TEXT NOT NULL, b TEXT NOT NULL, start INTEGER NOT NULL, last INTEGER NOT NULL, best INTEGER NOT NULL DEFAULT 1, warned INTEGER, PRIMARY KEY (a, b))",
   "CREATE INDEX IF NOT EXISTS pg_streaks_b ON pg_streaks(b)", "CREATE INDEX IF NOT EXISTS pg_streaks_last ON pg_streaks(last)");
+// Instant messages (and pigeons as a switch): each chat's usual way, mine to them (a: me, b: them; no row: my new_way);
+// a line for each change of it, shown in the chat (kept 30 days); and the change feed the open app polls (functions/
+// _pulse.js): user_id is told chat changed at `at` (one to one: the other person's id; a group: its id), kept 7 days.
+// (only the new tables and their own indexes here: an index naming a column added below goes after its ALTER, as this
+// whole list runs first, in one batch)
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ways (a TEXT NOT NULL, b TEXT NOT NULL, way TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b)) WITHOUT ROWID",
+  "CREATE INDEX IF NOT EXISTS pg_ways_b ON pg_ways(b)",
+  "CREATE TABLE IF NOT EXISTS pg_wayev (a TEXT NOT NULL, b TEXT NOT NULL, way TEXT NOT NULL, at INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS pg_wayev_pair ON pg_wayev(a, b, at)",
+  "CREATE INDEX IF NOT EXISTS pg_wayev_at ON pg_wayev(at)",
+  "CREATE TABLE IF NOT EXISTS pg_pulse (user_id TEXT NOT NULL, chat TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, chat)) WITHOUT ROWID",
+  "CREATE INDEX IF NOT EXISTS pg_pulse_at ON pg_pulse(at)");
 export const claimId = (D, id, kind, t) => D.prepare("INSERT INTO pg_ids (id, kind, at) VALUES (?, ?, ?)").bind(id, kind, t);
 export const idTaken = async (D, id) => !!(await D.prepare("SELECT 1 FROM pg_ids WHERE id = ?").bind(id).first());
 const MIGRATIONS = [
@@ -417,6 +429,26 @@ const MIGRATIONS = [
   // messages by when they left: what's a month old found without reading every message there is, words and all (functions/
   // _retention.js keepMonth, every 10 minutes; functions/_notify.js blurOld, hourly)
   "CREATE INDEX IF NOT EXISTS pg_msgs_sent ON pg_msgs(sent_at)",
+  // Pigeons as a switch (existing accounts: on), how new chats start, Show When I'm Typing (on), the one-time note
+  // (NULL: not seen yet), and the chat the app last said is open, and when (a message's push waits while it is)
+  "ALTER TABLE pg_users ADD COLUMN pigeons INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE pg_users ADD COLUMN new_way TEXT NOT NULL DEFAULT 'pigeon'",
+  "ALTER TABLE pg_users ADD COLUMN hide_typing INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE pg_users ADD COLUMN noted_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN open_chat TEXT",
+  "ALTER TABLE pg_users ADD COLUMN open_at INTEGER",
+  // each group member's own way there (NULL: their new_way)
+  "ALTER TABLE pg_group_members ADD COLUMN way TEXT",
+  // instant: 1 = a message, NULL = a letter (every row from before); got_at: when the recipient's Chat had it (delivered).
+  // Each partial index right after the column it names (turns read letters only; marking delivered finds nothing new free)
+  "ALTER TABLE pg_msgs ADD COLUMN instant INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_letters ON pg_msgs(sender, recipient, sent_at) WHERE instant IS NULL",
+  "ALTER TABLE pg_msgs ADD COLUMN got_at INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_notgot ON pg_msgs(recipient) WHERE got_at IS NULL",
+  "ALTER TABLE pg_gmsgs ADD COLUMN instant INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_gmsgs_letters ON pg_gmsgs(group_id, sender, sent_at) WHERE instant IS NULL",
+  "ALTER TABLE pg_gdeliv ADD COLUMN got_at INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_notgot ON pg_gdeliv(user_id) WHERE got_at IS NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -472,6 +504,19 @@ async function setUp(env) {
       await env.DB.batch([
         env.DB.prepare("UPDATE pg_users SET pw_at = (SELECT MAX(at) FROM pg_events e WHERE e.user_id = pg_users.id AND e.kind IN ('signup', 'password', 'reset')) WHERE pw_at IS NULL"),
         env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('pwat_v1', '1')"),
+      ]);
+    }
+    // instant messages arrive: every chat and group from before goes by pigeon, as it did (no line in any chat), and
+    // whatever has landed counts as delivered. Each step can run twice harmlessly (two copies starting at once)
+    if (!(await env.DB.prepare("SELECT 1 FROM pg_meta WHERE k = 'instant_v1'").first())) {
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare("INSERT OR IGNORE INTO pg_ways (a, b, way, at) SELECT a, b, 'pigeon', 0 FROM pg_links WHERE status = 'ok'"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_ways (a, b, way, at) SELECT b, a, 'pigeon', 0 FROM pg_links WHERE status = 'ok'"),
+        env.DB.prepare("UPDATE pg_group_members SET way = 'pigeon' WHERE way IS NULL"),
+        env.DB.prepare("UPDATE pg_msgs SET got_at = deliver_at WHERE got_at IS NULL AND deliver_at <= ?").bind(now),
+        env.DB.prepare("UPDATE pg_gdeliv SET got_at = deliver_at WHERE got_at IS NULL AND deliver_at <= ?").bind(now),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('instant_v1', '1')"),
       ]);
     }
     await env.DB.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
@@ -758,10 +803,13 @@ export async function serveOnce(env, key) {
 export const birdOn = (m, me) => (m.bird_name ? { bird: { name: m.bird_name, rank: m.bird_rank, wear: m.bird_wear || null, ...(me === m.sender ? { id: m.bird, up: m.bird_up || null } : {}) } } : {});
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
+// (an instant message is never flying, even one sent at a time and still waiting for it: to an older Chat it's a standard
+// letter that has landed, with nothing to draw)
 export function msgView(me, m, t) {
-  const lost = isLost(m, t), flying = !lost && t < m.deliver_at;
+  const lost = isLost(m, t), flying = !m.instant && !lost && t < m.deliver_at;
   return {
     id: m.id, from: m.sender, to: m.recipient, km: m.km,
+    instant: !!m.instant, delivered: !!(m.got_at || m.read_at), gotAt: m.got_at || null,
     pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at, vanish: m.vanish || null,
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)

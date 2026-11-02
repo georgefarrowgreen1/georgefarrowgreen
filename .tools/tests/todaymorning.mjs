@@ -218,6 +218,18 @@ ok(sixty < SIXTY.length * 3, `the morning reads no holding’s dividends, nor th
 note = to(ph.sub.endpoint, since)[0] ? await opened(ph, to(ph.sub.endpoint, since)[0].body) : {};
 ok(/^Your portfolio|shut today\. Your portfolio is at £/.test(String(note.body || '').split('\n')[3] || ''), 'and its Markets line, as Markets says it', note.body);
 
+// ---- 7a. With Chat's pigeons off: a letter is a letter, and an instant message is never on its way ----
+const tm = Date.now();
+sql(`UPDATE pg_users SET pigeons = 0 WHERE id = '${alex.id}'; DELETE FROM pg_msgs WHERE id = 'tm-2';
+  INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, swift, instant, stamped) VALUES ('tm-3', '${sam.id}', '${alex.id}', 'SECRET-CT-MSG', 0, ${tm - 60e3}, ${tm - 60e3}, 0, 1, 1);
+  UPDATE td_prefs SET m_sent = NULL, m_last = NULL WHERE user_id = '${alex.id}'`);
+since = Date.now();
+r = await tick('/api/today/tick');
+note = to(ph.sub.endpoint, since)[0] ? await opened(ph, to(ph.sub.endpoint, since)[0].body) : {};
+const at1 = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(t0 + 3 * H);
+ok(String(note.body || '').split('\n')[2] === `A letter from Sam, arriving about ${at1}`, 'pigeons off, names on: “A letter from Sam, arriving about …”, and the message not in it', note.body);
+ok(!/pigeon|streak|SECRET/i.test(JSON.stringify(note)), 'no pigeon words, no streak, no message’s words', JSON.stringify(note));
+
 // ---- 8. The tick answers only its scheduler ----
 const nope = await new Promise((done) => { const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/today/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer wrong' } }, (res) => { res.resume(); done(res.statusCode); }); q.end(); });
 ok(nope === 401, 'the tick with the wrong secret: refused', String(nope));

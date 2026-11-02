@@ -350,7 +350,7 @@ await shot(L, '14b-notifications');
 const wxm = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').notify?.email;
 ok(wxm?.warn === true && wxm?.brief === true, 'Weather\'s warnings and briefing by email: kept with Weather\'s own choices', JSON.stringify(wxm));
 await ntBack();
-ok(/Chat 10 of 11, and by email/.test((await sheetText(L)).replace(/\s+/g, ' ')), 'and Chat\'s folder says so on the page', await sheetText(L));
+ok(/Chat 11 of 12, and by email/.test((await sheetText(L)).replace(/\s+/g, ' ')), 'and Chat\'s folder says so on the page', await sheetText(L));
 await closeSheet(L);
 ok(!!(await L.p.$('main .row:has(b:text-is("Notifications"))')) && !(await L.p.$('main .row:has(b:text-is("Emails"))')), 'Preferences: Notifications, in place of Emails');
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);

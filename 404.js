@@ -16,7 +16,7 @@ if (document.referrer && history.length > 1) {
 
 // "Did you mean": the first part of the address against the places there are, a slip of a letter or two allowed
 const ACCOUNT = { key: "account", name: "Your account", about: "Sign in, your profile", href: "https://account.inflite.ai/", ic: "person" };
-const INFLIGHT = { key: "inflight", name: "Chat", about: "Letters by pigeon", href: "https://chat.inflite.ai/", img: "/apps/inflight.png" };
+const INFLIGHT = { key: "inflight", name: "Chat", about: "Messages, and letters by pigeon", href: "https://chat.inflite.ai/", img: "/apps/inflight.png" };
 const WEATHER = { key: "weather", name: "Weather", about: "Forecasts and radar", href: "https://weather.inflite.ai/", img: "/apps/weather.png" };
 const FITNESS = { key: "fitness", name: "Fitness", about: "Training, using AI", href: "https://fitness.inflite.ai/", img: "/apps/fitness.png" };
 const MARKETS = { key: "markets", name: "Markets", about: "Your money, said simply", href: "https://finance.inflite.ai/", img: "/apps/markets.png" };

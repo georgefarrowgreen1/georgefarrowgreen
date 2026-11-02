@@ -3,19 +3,20 @@
 // kept for it (functions/_handback.js). For the tests that drive Chat's API directly.
 //   acctCall(path, body, { cookie, ip })   the account's API, from its page: { s, j, cookie (the sign-in it gave) }
 //   inflightFrom(cookie, { ip })           that sign-in handed to Chat: Chat's answer { s, j: { token, me, vault, … } }
-//   madeIn(signupBody, { ip })             an account made on the account's page and signed in to Chat: { s, j }
+//   madeIn(signupBody, { ip, pigeons })    an account made on the account's page and signed in to Chat: { s, j }
+//                                          (pigeons: true or false sets Chat's switch then; left out, as new ones get)
 //   signedIn({ email, proof }, { ip })     an account signed in to on the account's page, then Chat: { s, j }
-//   hostCall(host, path, body, { cookie, ip })  a POST to any of the site's addresses (the tests' gfg.test ones too),
-//                                          from its own page: { s, j, cookie }
+//   hostCall(host, path, body, { cookie, ip, method, token })  a POST (or method) to any of the site's addresses (the
+//                                          tests' gfg.test ones too), from its own page: { s, j, cookie }
 import http from 'http';
 import { createHash, randomBytes } from 'crypto';
 const PORT = Number((process.env.TEST_BASE || 'http://localhost:8788').match(/:(\d+)\/?$/)?.[1] || 8788);
 // (each on a connection of its own: the local server can drop an idle kept-alive one while a test waits)
-function post(host, path, body, { cookie, ip } = {}) {
+function post(host, path, body, { cookie, ip, method = 'POST', token } = {}) {
   const data = JSON.stringify(body || {});
   return new Promise((done, no) => {
-    const q = http.request({ host: '127.0.0.1', port: PORT, path, method: 'POST', agent: false, headers: { Host: `${host}:${PORT}`, Origin: `http://${host}:${PORT}`, 'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(data), ...(cookie ? { Cookie: cookie } : {}), ...(ip ? { 'CF-Connecting-IP': ip } : {}) } }, (res) => {
+    const q = http.request({ host: '127.0.0.1', port: PORT, path, method, agent: false, headers: { Host: `${host}:${PORT}`, Origin: `http://${host}:${PORT}`, 'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(data), ...(cookie ? { Cookie: cookie } : {}), ...(ip ? { 'CF-Connecting-IP': ip } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c));
       res.on('end', () => {
         let j = {}; try { j = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {}
@@ -34,9 +35,16 @@ export async function inflightFrom(cookie, { ip } = {}) {
   if (made.s !== 200) return made;
   return post('localhost', '/api/pigeon/handback', { code: made.j.code, verifier: word }, { ip });
 }
-export async function madeIn(signup, { ip } = {}) {
+export async function madeIn(signup, { ip, pigeons } = {}) {
   const made = await acctCall('signup', signup, { ip });
-  return made.s === 201 && made.cookie ? inflightFrom(made.cookie, { ip }) : made;
+  if (!(made.s === 201 && made.cookie)) return made;
+  const r = await inflightFrom(made.cookie, { ip });
+  if (pigeons !== undefined && r.s === 200) {
+    const m = await post('localhost', '/api/pigeon/me', { pigeons: !!pigeons }, { ip, method: 'PATCH', token: r.j.token });
+    if (m.s !== 200) throw new Error('pigeons not set: ' + m.s);
+    if (r.j.me && m.j.me) r.j.me = m.j.me;
+  }
+  return r;
 }
 export async function signedIn({ email, proof }, { ip } = {}) {
   const r = await acctCall('signin/password', { email, proof }, { ip });

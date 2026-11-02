@@ -116,26 +116,30 @@ function fitnessLine(c) {
 // Chat's: who has pigeons on their way to you. Named only where the account's Chat names people in its notifications
 // (its names preference); never a word of any letter, nor what kind of pigeon it is. How many, and from how many
 // friends, are the card's counts of them all (inboundTotal, inboundFrom); the names, its list of the soonest few
+// With pigeons off (the card's pigeons false), the same said plainly, as letters: "A letter from Sam, arriving about 11:05".
+// Instant messages are never in it (the card's inbound is letters in the air only).
 function chatLine(c, names, tz, t) {
   if (!ok(c) || !Array.isArray(c.inbound) || !c.inbound.length) return null;
+  const off = c.pigeons === false;
+  const W = off ? { one: "A letter", many: "letters", Many: "Letters", lands: "arriving" } : { one: "A pigeon", many: "pigeons", Many: "Pigeons", lands: "landing" };
   const list = [...c.inbound].sort((a, b) => (Number(a?.landsAt) || 0) - (Number(b?.landsAt) || 0));
   const count = (v, least) => (Number.isInteger(v) && v > least ? v : least);
   const n = count(c.inboundTotal, list.length);
-  if (!names) return n === 1 ? "A pigeon on its way" : `${n} pigeons on their way`;
+  if (!names) return n === 1 ? `${W.one} on its way` : `${n} ${W.many} on their way`;
   const firstOf = (p) => text(p?.who?.first) || text(p?.who?.name).split(/\s+/)[0] || "a friend";
   if (n === 1) {
     const lands = Number(list[0].landsAt);
-    if (!Number.isFinite(lands)) return `A pigeon from ${firstOf(list[0])} on its way`;
+    if (!Number.isFinite(lands)) return `${W.one} from ${firstOf(list[0])} on its way`;
     // (about, while it's more than 10 minutes out, as Chat gives a range until then; at, after)
-    return `A pigeon from ${firstOf(list[0])}, landing ${lands - t > 10 * 60e3 ? "about" : "at"} ${hhmm(tz, lands)}`;
+    return `${W.one} from ${firstOf(list[0])}, ${W.lands} ${lands - t > 10 * 60e3 ? "about" : "at"} ${hhmm(tz, lands)}`;
   }
   // (the friends in the list, soonest first, each first name once; those sending pigeons further back than the list
   // goes aren't in it, and are among the others)
   const senders = [...new Map(list.map((p) => [text(p?.who?.id) || firstOf(p), firstOf(p)])).values()], firsts = [...new Set(senders)];
   const from = count(c.inboundFrom, senders.length);
-  if (senders.length === from && firsts.length <= 3) return `Pigeons from ${and(firsts)} on their way`;
+  if (senders.length === from && firsts.length <= 3) return `${W.Many} from ${and(firsts)} on their way`;
   const shown = firsts.slice(0, 2), others = from - senders.filter((f) => shown.includes(f)).length;
-  return `Pigeons from ${and([...shown, `${others} other${others === 1 ? "" : "s"}`])} on their way`;
+  return `${W.Many} from ${and([...shown, `${others} other${others === 1 ? "" : "s"}`])} on their way`;
 }
 // Markets': the portfolio's day by Markets' own logic (only what's traded today, judged by its own market's day), in the
 // evening wrap's words, or the markets shut today, or as it closed (before anything's traded)

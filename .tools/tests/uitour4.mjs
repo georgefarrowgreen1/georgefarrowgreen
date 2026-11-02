@@ -166,6 +166,43 @@ for (const [w, h, th] of [[390, 844, 'light'], [390, 844, 'dark'], [320, 568, 'l
   }
   sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${gs.me.id}'`);
 }
+// ---- pigeons off (Chat 1.67): Ola and Ben, messages only, with ticks and typing; a letter on its way to Ola, as it
+// "arrives"; and, from George (pigeons on), the message box's Now and pigeon states, the way sheet and the one-time note ----
+const O = await phone('Ola Bright', 'ola', 'Leeds'), Bn = await phone('Ben Ash', 'ben', 'York');
+const [os, bs] = [await sess(O), await sess(Bn)];
+for (const t of [os.token, bs.token]) await api(t, 'me', { pigeons: false }, 'PATCH');
+await api(os.token, 'friends', { handle: 'ben' }); await api(bs.token, 'friends-respond', { id: os.me.id, accept: true });
+await api(gs.token, 'friends', { handle: 'ola' }); await api(os.token, 'friends-respond', { id: gs.me.id, accept: true });
+await O.reload(); await O.waitForSelector('.tabs'); await Bn.reload(); await Bn.waitForSelector('.tabs');
+await openChat(O, bs.me.id); await send(O, 'Running late, ten minutes');
+await openChat(Bn, os.me.id); await send(Bn, 'No rush, I’ve got a table by the window');
+await openChat(O, bs.me.id); await send(O, 'See you soon');
+await api(gs.token, 'messages', { id: crypto.randomUUID(), to: os.me.id, ct: 'c'.repeat(60), pigeon: 'standard' });
+const offScreens = [
+  ['off-messages', O, async () => {}],
+  ['off-chat', O, async () => { await openChat(O, bs.me.id); await O.waitForTimeout(1500); }],
+  ['off-chat-typing', O, async () => { await openChat(O, bs.me.id); await openChat(Bn, os.me.id); await Bn.click('#msg'); await Bn.type('#msg', 'On my', { delay: 80 }); await O.waitForSelector('.msgs .typing', { timeout: 8000 }).catch(() => {}); }],
+  ['off-letter', O, async () => { await Bn.fill('#msg', '').catch(() => {}); await openChat(O, gs.me.id); await O.waitForTimeout(800); }],
+  ['off-account', O, async () => { await act(O, 'tab', 'account'); }],
+  ['compose-now', G, async () => { await openChat(G, os.me.id); }],
+  ['compose-pigeon', G, async () => { await openChat(G, os.me.id); if ((await G.getAttribute('.compose .mode', 'data-next')) !== 'pigeon') await G.click('.compose .mode'); await G.waitForTimeout(400); }],
+  ['waysheet', G, async () => { await openChat(G, os.me.id); await G.click('.mpill[data-act=waysheet]'); await G.waitForSelector('.sheet [data-act=setway]'); }],
+  ['note', G, async () => { sql(`UPDATE pg_users SET noted_at = NULL WHERE id = '${gs.me.id}'`); await G.reload(); await G.waitForSelector('.tabs'); await G.waitForSelector('.notecard', { timeout: 8000 }).catch(() => {}); }],
+];
+for (const [w, h, th] of [[390, 844, 'light'], [390, 844, 'dark'], [320, 568, 'light'], [320, 568, 'dark']]) {
+  size = String(w); theme = th;
+  for (const [p, t] of [[O, os.token], [G, gs.token]]) {
+    await p.setViewportSize({ width: w, height: h });
+    await api(t, 'me', { appearance: th }, 'PATCH'); await p.evaluate((x) => { try { localStorage.setItem('inflight-theme', x); } catch (_) {} }, th);
+    await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(1000);
+  }
+  for (const [name, p, go] of offScreens) {
+    if (want && !want.has(name)) continue;
+    try { await home(p); await go(); await snap(p, name); }
+    catch (e) { report.push({ tag: `${size}-${theme}-${name}`, error: String(e).split('\n')[0] }); console.log(`${size}-${theme}-${name}: ERROR ${String(e).split('\n')[0]}`); }
+  }
+  sql(`UPDATE pg_users SET noted_at = ${Date.now()} WHERE id = '${gs.me.id}'`);
+}
 // signed out
 const W = await (await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true })).newPage();
 size = '390'; theme = 'light';

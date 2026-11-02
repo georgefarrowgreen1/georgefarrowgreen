@@ -9,7 +9,7 @@ import { firstWord, withSend } from "./_todaycards.js";
 
 // the only columns of pg_msgs Today reads (with pg_users' id, name and avatar_at, for who). Never ct, via_ct, via_note,
 // body, wrap, sender_key, photo, photo_size, once, sched, legs, via*, wx*; lost_at only in a WHERE
-export const CHAT_COLUMNS = ["sender", "recipient", "sent_at", "deliver_at", "km", "pigeon", "swift", "mystery", "bird_name", "bird_rank", "from_place", "to_place", "read_at"];
+export const CHAT_COLUMNS = ["sender", "recipient", "sent_at", "deliver_at", "km", "pigeon", "swift", "mystery", "bird_name", "bird_rank", "from_place", "to_place", "read_at", "instant"];
 
 // (how many of each the card shows)
 const INBOUND = 6, UNREAD = 6, MINE = 3;
@@ -20,8 +20,10 @@ const FRIENDS = "JOIN pg_links l ON l.status = 'ok' AND ((l.a = m.sender AND l.b
 const AIR = "m.notified_at IS NULL AND m.sent_at <= ?2 AND m.deliver_at > ?2 AND (m.lost_at IS NULL OR m.lost_at > ?2) AND m.gone_at IS NULL";
 
 // ctx: functions/_todaycards.js cardsFor's
+// (u: the account's pg_users row, with its pigeons switch: every caller passes it; one without it counts as on)
 export async function chatCard(env, u, ctx) {
   const { t, links } = ctx, me = u.id, href = `${links.chat}/`, D = await db(env);
+  const pigeons = u.pigeons !== 0 && u.pigeons !== false;
   const [inbound, [all], unread, mine, friends] = (await D.batch([
     // in the air to me
     D.prepare(`SELECT m.sender, m.sent_at, m.deliver_at, m.km, m.pigeon, m.swift, m.mystery, m.bird_name, m.bird_rank, m.from_place, u.name, u.avatar_at
@@ -31,8 +33,8 @@ export async function chatCard(env, u, ctx) {
     D.prepare(`SELECT COUNT(*) AS n, COUNT(DISTINCT m.sender) AS f
       FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
       WHERE m.recipient = ?1 AND ${AIR}`).bind(me, t),
-    // landed, not read, by friend
-    D.prepare(`SELECT m.sender, COUNT(*) AS n, MAX(m.deliver_at) AS last, u.name, u.avatar_at
+    // landed, not read, by friend (and how many of them are messages rather than letters)
+    D.prepare(`SELECT m.sender, COUNT(*) AS n, SUM(m.instant IS NOT NULL) AS msgs, MAX(m.deliver_at) AS last, u.name, u.avatar_at
       FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
       WHERE m.recipient = ?1 AND m.read_at IS NULL AND m.deliver_at <= ?2 AND m.lost_at IS NULL AND m.gone_at IS NULL
       GROUP BY m.sender ORDER BY last DESC LIMIT ${UNREAD}`).bind(me, t),
@@ -44,7 +46,7 @@ export async function chatCard(env, u, ctx) {
     D.prepare(`SELECT u.id, u.name, u.avatar_at FROM pg_links l JOIN pg_users u ON u.id = (CASE WHEN l.a = ?1 THEN l.b ELSE l.a END)
       WHERE (l.a = ?1 OR l.b = ?1) AND l.status = 'ok' LIMIT 1000`).bind(me),
   ])).map((r) => r.results || []);
-  if (!friends.length) return { state: "empty", href, said: "Add a friend in Chat, and their pigeons show here.", action: { label: "Open Chat", href } };
+  if (!friends.length) return { state: "empty", pigeons, href, said: pigeons ? "Add a friend in Chat, and their pigeons show here." : "Add a friend in Chat, and your messages show here.", action: { label: "Open Chat", href } };
 
   const who = (id, name, at) => ({ id, name: String(name ?? ""), first: firstWord(name), photoAt: at || null });
   const open = (id) => `${links.chat}/#open=${id}`;
@@ -53,6 +55,7 @@ export async function chatCard(env, u, ctx) {
   const bird = (m) => (m.bird_name ? { name: String(m.bird_name), rank: m.bird_rank || null } : null);
   const out = {
     state: "ok",
+    pigeons,
     href,
     // (a mystery pigeon's kind is never said to whoever it's flying to: their Chat says only "A mystery pigeon")
     inbound: inbound.map((m) => ({ who: who(m.sender, m.name, m.avatar_at), sentAt: m.sent_at, landsAt: m.deliver_at, km: Math.round(m.km || 0), kind: m.mystery ? null : kindOf(m),
@@ -60,14 +63,16 @@ export async function chatCard(env, u, ctx) {
     // (every pigeon on its way to you, not only the soonest the card lists, and the friends sending them)
     inboundTotal: Math.max(inbound.length, Number(all?.n) || 0),
     inboundFrom: Math.max(new Set(inbound.map((m) => m.sender)).size, Number(all?.f) || 0),
-    unread: unread.map((r) => ({ who: who(r.sender, r.name, r.avatar_at), n: r.n, last: r.last, href: open(r.sender) })),
+    unread: unread.map((r) => ({ who: who(r.sender, r.name, r.avatar_at), n: r.n, messages: Number(r.msgs) || 0, last: r.last, href: open(r.sender) })),
     // (yours: its kind always, as Chat tells its sender: "Mystery: rocket")
     mine: mine.slice(0, MINE).map((m) => ({ who: who(m.recipient, m.name, m.avatar_at), sentAt: m.sent_at, landsAt: m.deliver_at, km: Math.round(m.km || 0), kind: kindOf(m),
       mystery: !!m.mystery, bird: bird(m), to: m.to_place ?? null, href: open(m.recipient) })),
     more: Math.max(0, mine.length - MINE),
     streak: null,
-    share: "Sending you a pigeon.",
+    share: pigeons ? "Sending you a pigeon." : "Sending you a message.",
   };
+  // (streaks are pigeons': with them off, none, and no streak card)
+  if (!pigeons) return withSend(out, null);
   // streaks, with friends only: the one that ends soonest unless a pigeon flies today (the longer, of two ending
   // together), and the longest still going, for the line to send
   const pals = new Map(friends.map((f) => [f.id, f])), streaks = [];

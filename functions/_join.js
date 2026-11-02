@@ -84,11 +84,16 @@ export async function makeAccount(env, request, b) {
     const c = await D.prepare("UPDATE pg_invites SET used_at = ?, used_by = ? WHERE hash = ? AND used_at IS NULL AND revoked_at IS NULL").bind(t, id, claimed).run();
     if (!c.meta.changes) throw new HttpError(403, "That invite has already been used.", "invite");
   }
-  // (new accounts start with names hidden on the lock screen: they can turn them on)
+  // (new accounts start with names hidden on the lock screen: they can turn them on; and with pigeons off, their chats
+  // instant, and the note about instant messages already seen, as there's nothing to change for them.
+  // PIGEON_TEST_PIGEONS: tests only, as PIGEON_COUNT_DB is ("1": new accounts as they were before, pigeons on; never set
+  // in production)
+  const old = env.PIGEON_TEST_PIGEONS === "1";
   try {
-    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, pw_at, notify_prefs)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, t, JSON.stringify({ names: false })).run();
+    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, pw_at, notify_prefs, pigeons, new_way, noted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, t, JSON.stringify({ names: false }),
+        old ? 1 : 0, old ? "pigeon" : "instant", t).run();
   } catch (e) {
     if (claimed) await D.prepare("UPDATE pg_invites SET used_at = NULL, used_by = NULL WHERE hash = ? AND used_by = ?").bind(claimed, id).run();
     throw e;

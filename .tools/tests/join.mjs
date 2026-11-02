@@ -1,7 +1,8 @@
 // A new account, as one's made now: from Chat's welcome (Create your account), on the account's own page (accounts
 // are made there, and signed in to there, and only there), and straight back to Chat, signed in (its place chosen,
 // and its passkey offer answered). For the tests that start with someone new.
-//   joinChat(page, inflightUrl, { name, handle, email, password, city, passkey })
+//   joinChat(page, inflightUrl, { name, handle, email, password, city, passkey, pigeons })
+//   pigeonsTo(page, on): Chat's Pigeons switch, set from the page (PATCH me), then Chat loaded again
 //   makeAccount(page, accountUrl, { name, handle, email, password }), signInChat(page, inflightUrl, { email, password })
 //   onAccountPage(page, { email, password }): on the account's page, sent there by an app to sign in; then back in it
 //   fillJoin(page, { name, handle, email, password }, { send }): the account's page's join card, a step at a time
@@ -88,7 +89,9 @@ export async function signInChat(page, inflight, { email, password = PASSWORD })
   await page.click('.welcome [data-act=acctsignin]');
   await pageOut(page, inflight, await onAccountPage(page, { email, password }));
 }
-export async function joinChat(page, inflight, { name, handle, email, password = PASSWORD, city, passkey = false }) {
+// (pigeons: true or false sets Chat's switch once the account's in; left out, the account keeps what new ones get, which
+//  in the tests is pigeons on, as accounts were before: server.sh's PIGEONS)
+export async function joinChat(page, inflight, { name, handle, email, password = PASSWORD, city, passkey = false, pigeons }) {
   await open(page, inflight);
   await page.waitForSelector('.welcome [data-act=acctjoin]', { state: 'visible', timeout: 30000 });
   await page.click('.welcome [data-act=acctjoin]');
@@ -102,6 +105,19 @@ export async function joinChat(page, inflight, { name, handle, email, password =
   await page.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
   await page.click(passkey ? '[data-act=pkadd]' : '[data-act=onbdone]');
   await page.waitForSelector('.tabs', { timeout: 30000 });
+  if (pigeons !== undefined) await pigeonsTo(page, pigeons);
+}
+// Chat's Pigeons switch, set as Chat's own switch sets it (PATCH /api/pigeon/me, with the sign-in Chat keeps), then Chat
+// loaded again so it draws what it now is
+export async function pigeonsTo(page, on) {
+  const s = await page.evaluate((on) => new Promise((res) => {
+    const r = indexedDB.open('inflight'); r.onerror = () => res(0);
+    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onerror = () => res(0);
+      g.onsuccess = () => fetch('/api/pigeon/me', { method: 'PATCH', headers: { Authorization: 'Bearer ' + g.result?.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ pigeons: !!on }) })
+        .then((x) => res(x.status), () => res(0)); };
+  }), on);
+  if (s !== 200) throw new Error('pigeons not set: ' + s);
+  await page.reload(); await page.waitForSelector('.tabs', { timeout: 30000 });
 }
 
 // Chat's settings on the account's page, as Settings in InFlite's menu opens them (a window of its own, signed

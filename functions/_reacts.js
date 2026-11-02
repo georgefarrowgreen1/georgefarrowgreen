@@ -5,6 +5,7 @@
 // One reaction per person per message; sending another replaces it.
 
 import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken } from "./_pigeon.js";
+import { pokes } from "./_pulse.js";
 
 const SPEED = 9;                     // as fast as a rocket pigeon
 const lostBy = (x, t) => x.lost_at != null && t >= x.lost_at;
@@ -42,10 +43,10 @@ async function react({ request, env }) {
   if (!UUID_RE.test(id) || !UUID_RE.test(msgId)) throw new HttpError(400, "That reaction was malformed.");
   if (await idTaken(D, id)) throw new HttpError(409, "That reaction was already sent.");
   const tg = await target(D, u, msgId, group);
-  let sealed, keys = null;
+  let sealed, keys = null, members = [];
   if (group) {
     sealed = String(b.body || "");
-    const members = (await D.prepare("SELECT user_id FROM pg_group_members WHERE group_id = ?").bind(tg.group).all()).results.map((r) => r.user_id);
+    members = (await D.prepare("SELECT user_id FROM pg_group_members WHERE group_id = ?").bind(tg.group).all()).results.map((r) => r.user_id);
     const k = b.keys && typeof b.keys === "object" ? b.keys : {};
     if (Object.keys(k).length !== members.length || members.some((m) => typeof k[m] !== "string" || k[m].length < 20 || k[m].length > 2000)) throw new HttpError(409, "Someone joined or left the group. Try again.");
     keys = JSON.stringify(k);
@@ -57,25 +58,37 @@ async function react({ request, env }) {
   // flight time comes from the half-degree places, never anyone's exact spot.
   const c = (x) => (group ? Math.round(x * 2) / 2 : x);
   const km = to?.lat != null && u.lat != null ? haversineKm(c(u.lat), c(u.lon), c(to.lat), c(to.lon)) : 0;
-  const deliver = t + flightMs(km, SPEED);
+  // (on an instant message it arrives at once, as does one from someone with pigeons off: there's no tiny pigeon then)
+  const deliver = tg.msg.instant || !u.pigeons ? t : t + flightMs(km, SPEED);
   await D.batch([
     claimId(D, id, "r", t),
     D.prepare("DELETE FROM pg_reacts WHERE msg_id = ? AND sender = ?").bind(msgId, u.id),
     D.prepare("INSERT INTO pg_reacts (id, msg_id, group_id, sender, recipient, ct, keys, sent_at, deliver_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, msgId, tg.group || null, u.id, tg.other, sealed, keys, t, deliver),
+    ...pokes(D, chatOf(u.id, tg.msg, members)),
   ]);
   const row = await D.prepare("SELECT * FROM pg_reacts WHERE id = ?").bind(id).first();
   return json({ react: reactView(u.id, row, t) });
 }
 async function unreact({ request, env }) {
   const u = await requireUser(request, env);
-  const msgId = String((await body(request)).msg || "");
-  await (await db(env)).prepare("DELETE FROM pg_reacts WHERE msg_id = ? AND sender = ?").bind(msgId, u.id).run();
+  const msgId = String((await body(request)).msg || ""), D = await db(env);
+  const [{ results: [m] }, { results: [g] }] = await D.batch([D.prepare("SELECT sender, recipient FROM pg_msgs WHERE id = ?").bind(msgId),
+    D.prepare("SELECT group_id FROM pg_gmsgs WHERE id = ?").bind(msgId)]);
+  const members = g ? (await D.prepare("SELECT user_id FROM pg_group_members WHERE group_id = ?").bind(g.group_id).all()).results.map((r) => r.user_id) : [];
+  const told = m && (m.sender === u.id || m.recipient === u.id) ? chatOf(u.id, m, []) : g && members.includes(u.id) ? chatOf(u.id, g, members) : [];
+  await D.batch([D.prepare("DELETE FROM pg_reacts WHERE msg_id = ? AND sender = ?").bind(msgId, u.id), ...pokes(D, told)]);
   return json({ ok: true });
+}
+// Who's told a reaction changed: both sides of a one-to-one chat (my other phones too), everyone in a group
+function chatOf(me, m, members) {
+  if (m.group_id) return members.map((id) => [id, m.group_id]);
+  const other = m.sender === me ? m.recipient : m.sender;
+  return [[other, me], [me, other]];
 }
 
 // What one person sees of a reaction: its contents once it has landed (always, if it's theirs).
-function reactView(me, r, t) {
+export function reactView(me, r, t) {
   const flying = t < r.deliver_at, open = r.sender === me || !flying;
   const keys = r.keys ? JSON.parse(r.keys) : null;
   return { id: r.id, msg: r.msg_id, from: r.sender, to: r.recipient, sentAt: r.sent_at, deliverAt: r.deliver_at, flying,

@@ -24,3 +24,12 @@ test("a tag that isn't this chat's: the whole chat", async () => {
   const again = await ask(chat, "0123456789abcdef");
   assert.equal(again.same, undefined); assert.deepEqual(again.messages, chat.messages);
 });
+test("a chat's way lines change its tag; nothing about typing is in the chat answer", async () => {
+  const before = await ask({ ...chat, lines: [], way: "pigeon", theirWay: "pigeon" });
+  const after = await ask({ ...chat, lines: [{ by: "b", way: "instant", at: 5 }], way: "pigeon", theirWay: "instant" }, before.tag);
+  assert.notEqual(after.tag, before.tag); assert.equal(after.same, undefined); assert.deepEqual(after.lines, [{ by: "b", way: "instant", at: 5 }]);
+  // (the server's own chat answer: no typing in it, ever)
+  const src = (await import("node:fs")).readFileSync(new URL("../../../functions/api/pigeon/[[path]].js", import.meta.url), "utf8");
+  const body = src.slice(src.indexOf("async function listMessages("), src.indexOf("async function sendMessage("));
+  assert.ok(body.length > 100 && !/typing/i.test(body), "listMessages and its delta never mention typing");
+});

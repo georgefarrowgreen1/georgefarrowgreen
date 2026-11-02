@@ -1,5 +1,5 @@
 // What a sync costs: someone with 8 friends and 5 groups, pigeons each way. How many trips to the
-// database it makes (the server counts them in tests: X-DB-Trips) and how long it takes, and that
+// database it makes (and opening a chat, the pulse an open chat makes, and what changed in it since its last answer) (the server counts them in tests: X-DB-Trips) and how long it takes, and that
 // what it returns is the same as last time it was saved (SAVE=1 ./run.sh syncperf saves it).
 import { madeIn } from './handback.mjs';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -43,6 +43,16 @@ const [, gl] = await api(H.token, 'sync');
 const gs0 = [...gl.groups].sort((a, b) => a.name.localeCompare(b.name))[0];
 console.log(`chat: ${await trips('messages?with=' + F[0].me.id)} trips; group chat: ${await trips('group-messages?id=' + gs0.id)} trips`);
 ok((await trips('messages?with=' + F[0].me.id)) <= Number(process.env.MAX_CHAT || 8), `opening a chat: at most ${process.env.MAX_CHAT || 8} trips (it was 10, one after another)`);
+// the pulse an open chat makes every few seconds: at most 2 trips (its sign-in, then one batch), measured as the least of
+// 3, each right after another request (so the minute's background round isn't due) and over a second apart (the pulse's
+// own limit); and what changed in a chat since its last answer (?after=): at most 4
+const least = async (path, body) => { const t = []; for (let i = 0; i < 3; i++) { await api(H.token, 'sync'); const [s, , h] = await api(H.token, path, body); t.push(s === 200 ? Number(h.get('x-db-trips')) : Infinity); await new Promise((r) => setTimeout(r, 1100)); } return Math.min(...t); };
+const pulseTrips = await least('pulse', { since: Date.now(), open: F[0].me.id });
+ok(pulseTrips <= 2, 'the pulse: at most 2 trips (the least of 3)', String(pulseTrips));
+const after = (await api(H.token, 'messages?with=' + F[0].me.id))[1].now;
+const deltaTrips = await least(`messages?with=${F[0].me.id}&after=${after}`);
+ok(deltaTrips <= 4, 'what changed in an open chat (?after=): at most 4 trips (the least of 3)', String(deltaTrips));
+console.log(`pulse: ${pulseTrips} trips; delta: ${deltaTrips} trips`);
 const chat = (await api(H.token, 'messages?with=' + F[0].me.id))[1], gchat = (await api(H.token, 'group-messages?id=' + gs0.id))[1];
 const last = runs.at(-1), ms = runs.slice(1).map((r) => r.ms).sort((a, b) => a - b), med = ms[Math.floor(ms.length / 2)];
 console.log(`sync: ${last.trips} trips to the database, ${med.toFixed(0)} ms (median of 5, local)`);

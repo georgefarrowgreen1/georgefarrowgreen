@@ -81,31 +81,39 @@ async function prune(c, html) {
   }
 }
 
+// the sign-in the app keeps on this phone (the same one it sends), or null when signed out
+const tokenHere = () => new Promise((res) => {
+  const r = indexedDB.open("inflight", 1);
+  r.onupgradeneeded = () => { r.transaction.abort(); res(null); };   // (nothing kept here yet: not signed in)
+  r.onerror = () => res(null);
+  r.onsuccess = () => { try { const q = r.result.transaction("kv").objectStore("kv").get("session"); q.onsuccess = () => res(q.result?.token || null); q.onerror = () => res(null); } catch (_) { res(null); } };
+});
+
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : "" }; }
-  // an open app catches up at once (a pigeon that changed course is redrawn on its map straight away)
-  e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => cs.forEach((c) => c.postMessage({ inflight: "sync" }))).catch(() => {}));
-  e.waitUntil(self.registration.showNotification(d.title || "Chat", {
-    body: d.body || "A pigeon has landed.",
+  // an open app catches up at once (a pigeon that changed course is redrawn on its map straight away; a message's chat at once)
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => cs.forEach((c) => c.postMessage({ inflight: "sync", tag: d.tag || "" }))).catch(() => {}));
+  // (and in the same wait, never holding it up: the message has reached this phone, so one pulse says so, delivered, for
+  // the sender's ticks. Its answer isn't needed (since: now, so it's small), and anything going wrong, too fast included,
+  // is let be: an open app's own pulse does the same)
+  const pulsed = tokenHere().then((token) => token && fetch("/api/pigeon/pulse", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ since: Date.now() }) })).catch(() => {});
+  e.waitUntil(Promise.all([self.registration.showNotification(d.title || "Chat", {
+    body: d.body || "You have a new message.",
     icon: "/pigeon/icon-192.png",
     badge: "/pigeon/badge-96.png",                // (Android draws this small, from its shape alone: the white pigeon)
     tag: d.tag || undefined,
     renotify: !!d.tag,
     data: { url: d.url || "/pigeon/" },
-  }));
+  }), pulsed]));
 });
 
 // The browser renewed this phone's push subscription by itself: the new one sent in the old one's place (with the
 // sign-in the app keeps on this phone, the same one it sends), so notifications carry on without Chat being opened first
 self.addEventListener("pushsubscriptionchange", (e) => {
   e.waitUntil((async () => {
-    const token = await new Promise((res) => {
-      const r = indexedDB.open("inflight", 1);
-      r.onupgradeneeded = () => { r.transaction.abort(); res(null); };   // (nothing kept here yet: not signed in)
-      r.onerror = () => res(null);
-      r.onsuccess = () => { try { const q = r.result.transaction("kv").objectStore("kv").get("session"); q.onsuccess = () => res(q.result?.token || null); q.onerror = () => res(null); } catch (_) { res(null); } };
-    });
+    const token = await tokenHere();
     if (!token) return;
     const call = (path, init = {}) => fetch("/api/pigeon/" + path, { ...init, headers: { Authorization: "Bearer " + token, ...(init.body ? { "Content-Type": "application/json" } : {}) } });
     let sub = e.newSubscription;

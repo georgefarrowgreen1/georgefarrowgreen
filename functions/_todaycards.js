@@ -30,7 +30,7 @@ export function withDeadline(p, ms) {
 
 // What each card says when it couldn't be had (each card's own module says it too, with what it knows by then: the
 // Weather card its place)
-const COULDNT = { weather: "Couldn’t get the forecast just now.", chat: "Couldn’t get your pigeons just now.", fitness: "Couldn’t get today’s session just now.", markets: "Couldn’t get prices just now." };
+const COULDNT = { weather: "Couldn’t get the forecast just now.", chat: "Couldn’t get your chats just now.", fitness: "Couldn’t get today’s session just now.", markets: "Couldn’t get prices just now." };
 const HEADS = { weather: (l) => `${l.weather}/`, chat: (l) => `${l.chat}/`, fitness: (l) => `${l.fitness}/#today`, markets: (l) => `${l.finance}/` };
 export const couldnt = (key, links, more = {}) => ({ state: "error", href: HEADS[key](links), said: COULDNT[key], retry: true, ...more });
 

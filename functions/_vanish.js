@@ -16,6 +16,7 @@
    landing instead (or from when they were turned off, for one that landed
    before), so its going says nothing of when, or whether, it was read. */
 import { json, db, requireUser, body, HttpError, DAY } from "./_pigeon.js";
+import { pokes } from "./_pulse.js";
 
 export const VANISH = [DAY, 7 * DAY, 30 * DAY];
 export const vanishOk = (ms) => ms === 0 || VANISH.includes(ms);
@@ -42,7 +43,8 @@ async function setPair({ request, env }) {
   const ok = await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, other).first();
   if (!ok) throw new HttpError(403, "You can only change this with a friend.");
   const [x, y] = pair(u.id, other), t = Date.now();
-  await D.prepare("INSERT INTO pg_vanish (a, b, ms, by, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(a, b) DO UPDATE SET ms = excluded.ms, by = excluded.by, at = excluded.at").bind(x, y, ms, u.id, t).run();
+  await D.batch([D.prepare("INSERT INTO pg_vanish (a, b, ms, by, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(a, b) DO UPDATE SET ms = excluded.ms, by = excluded.by, at = excluded.at").bind(x, y, ms, u.id, t),
+    ...pokes(D, [[other, u.id], [u.id, other]])]);
   return json({ vanish: ms ? { ms, by: u.id, at: t } : null });
 }
 

@@ -253,6 +253,10 @@ test("whenLine, exactly", () => {
   assert.equal(C.whenLine("Leo", { mode: "morning", landAt: at("2026-11-03T07:30:00Z"), tz: LON, theirTz: "Europe/Dublin", now }), "Leo’s lands 07:30 tomorrow", "the same clock isn't their time");
   assert.equal(C.whenLine("Leo", { mode: "morning", landAt: at("2026-11-04T07:30:00Z"), tz: LON, theirTz: LON, now }), "Leo’s lands 07:30 on Wednesday");
   assert.equal(C.whenLine("Leo", { mode: "morning", landAt: at("2026-11-02T07:30:00Z") + 10 * H, tz: LON, theirTz: LON, now }), "Leo’s lands 17:30");
+  // a message (no pigeon): now says nothing; sent at a time, when it arrives
+  assert.equal(C.whenLine("Leo", { mode: "now", tz: LON, now }), "");
+  assert.equal(C.whenLine("Leo", { mode: "at", landAt: at("2026-11-03T12:30:00Z"), tz: LON, theirTz: "America/New_York", now }), "Arrives 07:30 tomorrow, their time");
+  assert.equal(C.whenLine("Leo", { mode: "at", landAt: at("2026-11-03T07:30:00Z"), tz: LON, theirTz: LON, now }), "Arrives 07:30 tomorrow");
 });
 test("sentToast, exactly", () => {
   assert.equal(C.sentToast([{ name: "Leo", ok: true, lands: 8 * MIN }, { name: "Ade", ok: true, lands: 6 * MIN }]), "Sent · Leo in 8m, Ade in 6m");
@@ -261,6 +265,12 @@ test("sentToast, exactly", () => {
   assert.equal(C.sentToast([1, 2, 3, 4, 5].map((i) => ({ name: `F${i}`, ok: true, lands: 2 * H }))), "Sent · F1 in 2h, F2 in 2h, F3 in 2h and 2 more");
   assert.equal(C.sentToast([{ name: "Leo", ok: true, lands: 1 }, { name: "Ade", ok: false, err: "That’s too soon." }]), "Couldn’t send to Ade: That’s too soon.");
   assert.equal(C.sentToast([{ name: "Ade", ok: false }, { name: "Mum", ok: false, err: "x" }]), "Couldn’t send to Ade and Mum. Try again.");
+  // messages: sent, or sent at a time on their clock; failures as ever
+  assert.equal(C.sentToast([{ name: "Leo", ok: true }], { instant: true }), "Sent to Leo");
+  assert.equal(C.sentToast([{ name: "Leo", ok: true }, { name: "Ade", ok: true }], { instant: true }), "Sent to Leo and Ade");
+  assert.equal(C.sentToast([{ name: "Leo", ok: true }], { instant: true, at: Date.parse("2026-11-03T12:30:00Z"), tz: "America/New_York" }), "Leo gets it at 07:30, their time");
+  assert.equal(C.sentToast([{ name: "Ade", ok: false, err: "x" }], { instant: true }), "Couldn’t send to Ade: x");
+  assert.equal(C.sentToast([{ name: "Leo", ok: true, lands: 8 * MIN }], {}), "Sent · Leo in 8m", "without instant, as ever");
 });
 test("compareNow: weather, every row", () => {
   const w = C.normCard(weather({ snap: { rain: { now: false, at: Date.parse("2026-11-02T15:00:00Z") } } }));

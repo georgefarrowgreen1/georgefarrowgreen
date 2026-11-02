@@ -19,6 +19,8 @@ const ENTRIES = [
   "functions/_fittoday.js", "functions/_wxpush.js", "functions/_fitpush.js", "functions/_markets.js", "functions/_sites.js", "functions/_handback.js",
   // (and Chat's "Send to a friend", which imports Today's cards, Weather's and Fitness's, from its own end and Chat's API's)
   "functions/_share.js", "functions/_fitshare.js", "functions/api/pigeon/[[path]].js",
+  // (and instant Chat's: the pulse, groups and notifications, each from its own end; and the typing Worker, alone)
+  "functions/_pulse.js", "functions/_groups.js", "functions/_notify.js", "functions/_reacts.js", "functions/_vanish.js", "workers/live/index.js",
 ];
 
 // each loaded in its own Node, all at once → null, or what went wrong

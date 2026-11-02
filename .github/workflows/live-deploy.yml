@@ -1,0 +1,48 @@
+name: Deploy the live worker
+
+# workers/live: a small Cloudflare Worker holding the Typing Durable Object, which keeps
+# Chat's typing dots in memory for a few seconds and never stores them. The site reaches
+# it through the TYPING binding in the root wrangler.toml, so this has to have run once
+# before that binding goes live. Deployed on each push to main that changes it, with the
+# CLOUDFLARE_API_TOKEN the scheduler's deploy already uses ("Workers Scripts: Edit");
+# CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account. It has no
+# secrets of its own. Until the token is set, this does nothing.
+on:
+  push:
+    branches: [main]
+    paths: ["workers/live/**", ".github/workflows/live-deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the token's there
+        id: ready
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::notice::CLOUDFLARE_API_TOKEN isn't set, so the live worker isn't deployed."; echo "go=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "go=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.go == '1'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.go == '1'
+        with:
+          node-version: 22
+      - name: Deploy workers/live
+        if: steps.ready.outputs.go == '1'
+        working-directory: workers/live
+        run: |
+          W="npx --yes wrangler@4.149.0"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
+          $W deploy

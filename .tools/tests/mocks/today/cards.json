@@ -88,6 +88,7 @@
     },
     "chat": {
       "state": "ok",
+      "pigeons": true,
       "href": "https://chat.inflite.ai/",
       "inbound": [
         {
@@ -137,6 +138,7 @@
             "photoAt": null
           },
           "n": 1,
+          "messages": 0,
           "last": 1793604600000,
           "href": "https://chat.inflite.ai/#open=b1c2d3e4-0000-4000-8000-000000000003"
         }

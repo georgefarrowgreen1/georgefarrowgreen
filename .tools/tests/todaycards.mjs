@@ -152,6 +152,21 @@ try {
   const rest = r.j.cards?.fitness || {};
   ok(rest.state === 'ok' && rest.kind === 'rest' && rest.why === 'An easy week, after the race.' && rest.session === null && rest.next?.label === 'Tomorrow', 'Fitness: a rest day, with the reason Fitness gave for it', JSON.stringify(rest).slice(0, 240));
 
+  // ---- 3a. Chat: a message, counted apart from letters; and the card for someone with pigeons off ----
+  ok(ch.pigeons === true, 'Chat: pigeons on, said on the card', JSON.stringify({ pigeons: ch.pigeons }));
+  const tm = Date.now();
+  sql(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, swift, instant, stamped) VALUES ('td-msg', '${SAM}', '${A}', 'SECRET-CT', 0, ${tm - 60e3}, ${tm - 60e3}, 0, 1, 1)`);
+  r = await cards(alex, '?only=chat');
+  const cm = r.j.cards?.chat || {}, samU = (cm.unread || []).find((u) => u.who?.first === 'Sam'), mumU = (cm.unread || []).find((u) => u.who?.first === 'Mum');
+  ok(samU?.n === 1 && samU.messages === 1 && mumU?.n === 1 && mumU.messages === 0 && !/SECRET/.test(r.text), 'Chat: Sam’s instant message unread, counted as a message; Mum’s letter as a letter', JSON.stringify(cm.unread));
+  ok(cm.inbound?.length === 1 && cm.inboundTotal === 1, 'and a message is never “on its way”', JSON.stringify({ n: cm.inboundTotal }));
+  sql(`UPDATE pg_users SET pigeons = 0 WHERE id = '${A}'`);
+  r = await cards(alex, '?only=chat');
+  const co = r.j.cards?.chat || {};
+  ok(co.state === 'ok' && co.pigeons === false && co.streak === null && co.share === 'Sending you a message.', 'pigeons off: no streak, and the line to send is plain', JSON.stringify({ pigeons: co.pigeons, streak: co.streak, share: co.share }));
+  ok(co.inbound?.length === 1 && co.inbound[0].who.first === 'Sam' && co.unread?.find((u) => u.who?.first === 'Sam')?.messages === 1, 'and letters on their way still shown, and the message still unread', JSON.stringify({ in: co.inbound?.length, un: co.unread }));
+  sql(`UPDATE pg_users SET pigeons = 1 WHERE id = '${A}'`);
+
   // ---- 4. When what a card needs isn't there ----
   warn = 'down';
   r = await cards(alex, '?only=weather');

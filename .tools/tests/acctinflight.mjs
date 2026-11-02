@@ -25,7 +25,7 @@ async function browser(name) {
 }
 const shot = (p, n) => p.screenshot({ path: `${out}/${n}.png` });
 const text = (p, sel) => p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
-const row = (k) => rows(`SELECT notify_prefs, notify_email, no_receipts, hide_online, hide_tracker, loc_approx FROM pg_users WHERE handle = '${k}'`)[0];
+const row = (k) => rows(`SELECT notify_prefs, notify_email, no_receipts, hide_online, hide_tracker, loc_approx, pigeons, new_way, hide_typing FROM pg_users WHERE handle = '${k}'`)[0];
 const prefs = (k) => JSON.parse(row(k)?.notify_prefs || '{}');
 
 // ---- two accounts: Sam, and Rowan, who's blocked Sam ----
@@ -62,20 +62,25 @@ const go = await W.waitForSelector(`main .welcome .btn, ${FIRST}`, { timeout: 20
 if (await go.evaluate((e) => e.matches('.btn'))) await go.click();
 await W.waitForSelector(FIRST, { timeout: 20000 }); await W.waitForTimeout(700);
 const sheet = await text(W, '#sheet');
-ok(/^Chat/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*10 of 11/.test(sheet) && !/Email me/i.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open Chat/.test(sheet) && !(await W.$('#if-landed')),
+ok(/^Chat/.test(await text(W, '#sheet .sheet-head h2')) && /Kept with your account/.test(sheet) && /Notifications\s*11 of 12/.test(sheet) && !/Email me/i.test(sheet) && /Who sees what\s*All shared/.test(sheet) && /Blocked\s*1/.test(sheet) && /Open Chat/.test(sheet) && !(await W.$('#if-landed')),
   'the page opens at Chat’s settings: notifications (on their own page), email, who sees what, and one blocked, and the way into the app', sheet.replace(/\s+/g, ' ').slice(0, 260));
 ok(!!(await W.$('#sheet .toapp')) && /Chat/.test(await text(W, '#sheet .toapp')), 'with the way back to Chat');
+// (Pigeons first, on for an account as they were before; and how new chats start, by pigeon)
+const NEWCHATS = '#sheet .row:has-text("New chats start as")';
+ok(/Pigeons\s*Letters that take real time to fly, with the map, birds and streaks/.test(sheet) && await W.isChecked('#if-pigeons') && !!(await W.$(NEWCHATS))
+  && (await W.getAttribute(`${NEWCHATS} .seg button:text-is("By Pigeon")`, 'aria-checked')) === 'true', 'Pigeons on, and new chats start By Pigeon');
 await shot(W, '02-account-sheet');
 // (its notifications: Chat's folder on the account's Notifications page)
 const folder = async () => { await W.locator('#sheet .row', { hasText: 'Notifications' }).first().click(); await W.waitForSelector('#sheet #nt-c-landed', { timeout: 10000 }); await W.waitForTimeout(600); };
 await folder();
-ok(await W.isChecked('#nt-c-landed') && !(await W.isChecked('#nt-c-names')) && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')) && /How they look/i.test(await text(W, '#sheet')),
-  'Notifications: Chat\'s folder on the account\'s Notifications page: pigeons, friends, the lock screen, its emails');
+ok(await W.isChecked('#nt-c-landed') && await W.isChecked('#nt-c-messages') && !(await W.isChecked('#nt-c-names')) && /Messages\s*Messages\s*When a friend sends you one/i.test(await text(W, '#sheet')) && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')) && /How they look/i.test(await text(W, '#sheet')),
+  'Notifications: Chat\'s folder on the account\'s Notifications page: messages, pigeons, friends, the lock screen, its emails', (await text(W, '#sheet')).slice(0, 200));
+ok(/Just “Sent you a message” or “A pigeon has landed”/.test(await text(W, '#sheet')), 'names off: just “Sent you a message” or “A pigeon has landed”');
 ok(!(await W.isDisabled('#nt-c-email')), 'email, its address confirmed, can be turned on');
 await shot(W, '02b-notifications');
 
 // ---- 3. changes, each saved by Chat's own rules ----
-const idFor = (k) => (k === 'quiet' ? 'nt-quiet' : ['receipts', 'shareTracker', 'approxLocation', 'showOnline', 'shareNews'].includes(k) ? 'if-' + k : 'nt-c-' + k);
+const idFor = (k) => (k === 'quiet' ? 'nt-quiet' : ['receipts', 'shareTracker', 'approxLocation', 'showOnline', 'shareNews', 'showTyping', 'pigeons'].includes(k) ? 'if-' + k : 'nt-c-' + k);
 const flip = async (k) => { const id = idFor(k); await W.locator('#' + id).scrollIntoViewIfNeeded(); await W.click('#' + id); await W.waitForFunction((id) => !document.getElementById(id)?.disabled, id); await W.waitForTimeout(250); };
 const back = async () => { await W.click('#sheet .sheet-head .back'); await W.waitForSelector(FIRST); await W.waitForTimeout(500); };
 await flip('reactions');
@@ -90,15 +95,49 @@ await W.selectOption('#nt-to', '6'); await W.waitForFunction(() => !document.get
 const p1 = prefs('rowan');
 ok(p1.quiet === true && p1.quietFrom === 21 && p1.quietTo === 6 && p1.tz === 'Europe/London', 'Quiet hours, 21:00 to 06:00, in the phone’s time zone', JSON.stringify(p1));
 ok(/21:00 to 06:00, every app/.test(await text(W, '#sheet')), 'and said, in its row');
+ok(/Messages and pigeons that come meanwhile buzz when they end; rain alerts, your panels and new mail stay quiet\. Warnings still come\./.test(await text(W, '#sheet')), 'and what it holds: messages as well as pigeons', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 400));
 await acctOpen(W, 'inflight'); await W.waitForSelector(FIRST);
-ok(/Notifications\s*Quiet 21:00–06:00\s*9 of 11/.test(await text(W, '#sheet')), 'and on the first page: 9 of 11, quiet 21:00–06:00', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 200));
+ok(/Notifications\s*Quiet 21:00–06:00\s*10 of 12/.test(await text(W, '#sheet')), 'and on the first page: 10 of 12, quiet 21:00–06:00', (await text(W, '#sheet')).replace(/\s+/g, ' ').slice(0, 200));
 await ifPage(W, 'Who sees what');
 await flip('receipts'); await flip('shareTracker'); await flip('approxLocation');
 const r1 = row('rowan');
 ok(r1.no_receipts === 1 && r1.hide_tracker === 1 && r1.loc_approx === 1 && r1.hide_online === 0, 'who sees what: read receipts and the tracker off, location approximate, online still shown', JSON.stringify(r1));
+// (Show when I’m typing: on, as for everyone; off, then on again)
+ok(await W.isChecked('#if-showTyping') && /Show when I’m typing\s*Friends see dots while you write\. Never the words, and never kept/.test(await text(W, '#sheet'))
+  && /Online, typing, read receipts and news work both ways: turn one off and you won’t see other people’s either\. With online hidden, ticks still show, but not exactly when\./.test(await text(W, '#sheet')),
+  'Show when I’m typing: on, after Show when I’m online, and both ways, as the hint says');
+await flip('showTyping');
+ok(row('rowan').hide_typing === 1, 'Show when I’m typing off: saved', JSON.stringify(row('rowan')));
+await flip('showTyping');
+ok(row('rowan').hide_typing === 0, 'and on again');
 await shot(W, '03-changed');
 await back();
-ok(/Who sees what\s*2 of 5/.test(await text(W, '#sheet')), 'and on the first page: 2 of 5 shared');
+ok(/Who sees what\s*3 of 6/.test(await text(W, '#sheet')), 'and on the first page: 3 of 6 shared');
+// Pigeons: off (how new chats start goes with them, and the flights' notifications), then on, and new chats Instant
+await flip('pigeons');
+await W.waitForFunction(() => !document.querySelector('#sheet .row .seg'), null, { timeout: 5000 }).catch(() => {});
+const off1 = await text(W, '#sheet');
+ok(row('rowan').pigeons === 0 && !(await W.$(NEWCHATS)) && !(await W.isChecked('#if-pigeons')), 'Pigeons off: saved, and “New chats start as” gone', JSON.stringify(row('rowan')));
+ok(/Notifications\s*Quiet 21:00–06:00\s*4 of 5/.test(off1), 'its notifications count only what’s shown with pigeons off: 4 of 5', off1.replace(/\s+/g, ' ').slice(0, 220));
+await folder();
+const offN = await text(W, '#sheet');
+ok(!!(await W.$('#nt-c-messages')) && !!(await W.$('#nt-c-landed')) && !(await W.$('#nt-c-takeoff')) && !(await W.$('#nt-c-moments')) && !(await W.$('#nt-c-streaks')) && !(await W.$('#nt-c-weekly'))
+  && /Letters friends send by pigeon/.test(offN) && !/Pigeons/.test(offN.replace(/A pigeon/g, '')) && /Just “Sent you a message”/.test(offN) && !/or “A pigeon has landed”/.test(offN),
+  'its notifications with pigeons off: messages and letters that land, then friends; nothing about flights', offN.replace(/\s+/g, ' ').slice(0, 260));
+await back();
+await flip('pigeons');
+await W.waitForSelector(NEWCHATS, { timeout: 5000 }).catch(() => {});
+ok(row('rowan').pigeons === 1 && !!(await W.$(NEWCHATS)), 'Pigeons on again: “New chats start as” back');
+// (Chat's folder at once, drawn first as it is now: what was kept from a moment ago, with pigeons off, not shown)
+await W.locator('#sheet .row', { hasText: 'Notifications' }).first().click(); await W.waitForSelector('#sheet #nt-c-landed', { timeout: 10000 });
+ok(!!(await W.$('#nt-c-takeoff')) && !!(await W.$('#nt-c-streaks')), 'and its notifications, opened at once: the flights’ back, first time');
+await back();
+await W.click(`${NEWCHATS} .seg button:text-is("Instant")`);
+for (let i = 0; i < 20 && row('rowan').new_way !== 'instant'; i++) await W.waitForTimeout(250);
+ok(row('rowan').new_way === 'instant', 'New chats start as Instant: saved', JSON.stringify(row('rowan')));
+await W.click(`${NEWCHATS} .seg button:text-is("By Pigeon")`);
+for (let i = 0; i < 20 && row('rowan').new_way !== 'pigeon'; i++) await W.waitForTimeout(250);
+ok(row('rowan').new_way === 'pigeon', 'and By Pigeon again');
 // Sam, unblocked (Unblock, then Unblock? to be sure)
 await ifPage(W, 'Blocked');
 await W.click('#sheet .row[data-id] button'); await W.waitForTimeout(400); await W.click('#sheet .row[data-id] button');
@@ -115,6 +154,12 @@ ok(st === 200 && j.notify.quietFrom === 21 && j.notify.landed === true, 'an hour
 ok(st === 400, 'a privacy switch that isn’t on or off is refused', String(st));
 [st] = await api('inflight', 'PATCH', { email: 1 });
 ok(st === 400, 'so is an email setting that isn’t', String(st));
+[st, j] = await api('inflight', 'PATCH', { pigeons: 'yes' });
+ok(st === 400 && j?.error === 'Choose on or off.', 'Pigeons that aren’t on or off are refused', `${st} ${JSON.stringify(j)}`);
+[st, j] = await api('inflight', 'PATCH', { newChats: 'owl' });
+ok(st === 400 && j?.error === 'Choose Instant or By Pigeon.', 'so is a way for new chats that isn’t Instant or By Pigeon', `${st} ${JSON.stringify(j)}`);
+[st] = await api('inflight', 'PATCH', { privacy: { showTyping: 'no' } });
+ok(st === 400 && row('rowan').pigeons === 1 && row('rowan').new_way === 'pigeon' && row('rowan').hide_typing === 0, 'and Show when I’m typing that isn’t on or off; nothing changed', String(st));
 const cross = await A.p.evaluate(async (u) => { try { return (await fetch(u + '/api/account/inflight', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{"privacy":{"receipts":true}}' })).status; } catch (_) { return 'blocked'; } }, ACCT);
 ok(cross !== 200 && row('rowan').no_receipts === 1, 'nothing changes from Chat’s own address (or anywhere but the page)', String(cross));
 const anonCtx = await b.newContext(), anon = (await (await anonCtx.newPage()).goto(ACCT + '/api/account/inflight')).status(); await anonCtx.close();
@@ -122,15 +167,27 @@ ok(anon === 401, 'and nothing to see without the account', String(anon));
 
 // ---- 5. the page itself: Chat's card has them beside Open ----
 await W.click('#sheet .sheet-head .x'); await W.waitForTimeout(900);
-ok(!!(await W.$('[data-sec="apps"] .app-set')) && (await W.getAttribute('[data-sec="apps"] .app-set', 'aria-label')) === 'Chat settings', 'Chat’s card: its settings beside Open');
+ok(!!(await W.$('[data-sec="apps"] [data-k="inflight-settings"]')) && (await W.getAttribute('[data-sec="apps"] [data-k="inflight-settings"]', 'aria-label')) === 'Chat settings', 'Chat’s card: its settings beside Open');
 await W.evaluate(() => document.querySelector('[data-sec="apps"]').scrollIntoView({ block: 'center' })); await W.waitForTimeout(500);
 await shot(W, '05-card');
-await W.click('[data-sec="apps"] .app-set'); await W.waitForSelector(FIRST, { timeout: 10000 }); await W.waitForTimeout(600);
-ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*2 of 5/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
+await W.click('[data-sec="apps"] [data-k="inflight-settings"]'); await W.waitForSelector(FIRST, { timeout: 10000 }); await W.waitForTimeout(600);
+ok(/Quiet 21:00–06:00/.test(await text(W, '#sheet')) && /Who sees what\s*3 of 6/.test(await text(W, '#sheet')) && /Blocked\s*No one/.test(await text(W, '#sheet')), 'opened from there: as they were left');
+// (Pigeons off here, for Chat to show once it's synced)
+await flip('pigeons');
+ok(row('rowan').pigeons === 0, 'Pigeons off, from the card’s settings');
 await W.close();
 
-// ---- 6. back in Chat ----
-await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 }); await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForTimeout(800);
+// ---- 6. back in Chat: the switch took effect ----
+await A.p.reload(); await A.p.waitForSelector('.tabs', { timeout: 20000 });
+await A.p.click('[data-act=tab][data-id=messages]');
+await A.p.waitForSelector('.birdt[data-act=pigeons]', { timeout: 15000 }).catch(() => {});
+// (the header drawn from what Chat kept, then again once it's synced: every Pigeons switch in it off by then)
+await A.p.waitForFunction(() => { const bs = [...document.querySelectorAll('.birdt[data-act=pigeons]')]; return bs.length && bs.every((x) => x.getAttribute('aria-pressed') === 'false'); }, null, { timeout: 10000 }).catch(() => {});
+await shot(A.p, '06-messages-after');
+const birds = await A.p.$$eval('.birdt[data-act=pigeons]', (bs) => bs.map((x) => `${x.getAttribute('aria-pressed')}:${x.getBoundingClientRect().width > 0}`));
+ok(birds.length > 0 && birds.every((x) => x.startsWith('false')), 'back in Chat: Pigeons off, as the account page left them', JSON.stringify(birds));
+await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForTimeout(800);
+ok((await A.p.getAttribute('#pg-switch', 'aria-checked').catch(() => null)) === 'false', 'and its own switch says so');
 await shot(A.p, '06-inflight-after');
 
 // (the browser's word for the try from Chat's address, refused: that's step 4's point, not an error)

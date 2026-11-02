@@ -46,18 +46,18 @@ export async function skinOpen(env, uid, skin) {
 // Everything in the log, as it stood at time t (the weekly note compares two).
 export async function logFor(D, uid, t) {
   const u = { id: uid };
-  // one row per pigeon you've sent: one to one, and each of your group pigeons
+  // one row per pigeon you've sent: one to one, and each of your group pigeons (letters only: an instant message isn't a flight)
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon, w_dodged AS dodged, w_shelter AS shelter_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon, w_dodged AS dodged, w_shelter AS shelter_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2 AND instant IS NULL
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon, d.w_dodged, d.w_shelter FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon, d.w_dodged, d.w_shelter FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2 AND m.instant IS NULL
     UNION ALL
     -- (and those whose messages have gone, after a month: what they did, kept: functions/_retention.js)
     SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, grp, NULL, wx_ms, moon IS NOT NULL, moon, dodged, shelter_ms FROM pg_flights WHERE sender = ?1 AND sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
-      (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
-      (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
+      (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL AND instant IS NULL) +
+      (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.user_id = ?1 AND d.deliver_at <= ?2 AND d.lost_at IS NULL AND m.instant IS NULL) +
       (SELECT COUNT(*) FROM pg_flights WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
   // (the Moon's flights count as flights, and for the Moonshot badge; their distances stay out of the Earth's records)
   const landedAll = sent.filter((p) => p.deliver_at <= t && p.lost_at == null), landed = landedAll.filter((p) => !p.lunar);

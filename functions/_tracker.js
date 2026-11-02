@@ -89,17 +89,18 @@ async function inTheAir(D, t) {
 // Like the map, it leaves out anyone who keeps their pigeons off the tracker.
 async function today(D, t) {
   const day0 = Math.floor(t / 864e5) * 864e5;
-  const cols = "sent_at, deliver_at, lost_at, km, legs";
+  const cols = "sent_at, deliver_at, lost_at, km, legs, instant";
   const one = await D.prepare(`SELECT m.from_lat, m.from_lon, m.to_lat, m.to_lon, m.${cols.split(", ").join(", m.")}
     FROM pg_msgs m JOIN pg_users a ON a.id = m.sender JOIN pg_users b ON b.id = m.recipient
     WHERE m.sent_at <= ?1 AND m.deliver_at >= ?2 AND (m.lost_at IS NULL OR m.lost_at >= ?2) AND COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0 LIMIT 20000`).bind(t, day0).all();
-  const grp = await D.prepare(`SELECT g.from_lat, g.from_lon, d.to_lat, d.to_lon, g.sent_at, d.deliver_at, d.lost_at, d.km, d.legs
+  const grp = await D.prepare(`SELECT g.from_lat, g.from_lon, d.to_lat, d.to_lon, g.sent_at, d.deliver_at, d.lost_at, d.km, d.legs, g.instant
     FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id JOIN pg_users a ON a.id = g.sender JOIN pg_users b ON b.id = d.user_id
     WHERE g.sent_at <= ?1 AND d.deliver_at >= ?2 AND (d.lost_at IS NULL OR d.lost_at >= ?2) AND COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0 LIMIT 20000`).bind(t, day0).all();
   let landed = 0, km = 0, budget = 20000; const seas = new Map();      // (at most 20,000 points named in all: a busy day stays quick)
   for (const f of [...one.results, ...grp.results]) {
     const end = Math.min(f.deliver_at, f.lost_at ?? Infinity), a = Math.max(f.sent_at, day0), b = Math.min(t, end);
-    if (f.deliver_at <= t && f.deliver_at >= day0 && (f.lost_at == null || f.lost_at > f.deliver_at)) landed++;
+    // (pigeons: an instant message never flew)
+    if (!f.instant && f.deliver_at <= t && f.deliver_at >= day0 && (f.lost_at == null || f.lost_at > f.deliver_at)) landed++;
     if (!(b > a) || f.from_lat == null || f.to_lat == null) continue;
     const frac = (b - a) / (f.deliver_at - f.sent_at || 1); km += (f.km || 0) * frac;
     // where it flew today: a point every ~100 km of it (at most 40), named from the passport's grid

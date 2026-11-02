@@ -15,7 +15,8 @@ import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HttpError, json, chatJson, body, readCapped, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
-import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
+import { groupSent, groupRerouted, groupAdded, groupMessageSent } from "./_notify.js";
+import { pokes, typingClear } from "./_pulse.js";
 import { windsAlong } from "./_weather.js";
 import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, riskOf, ceilingFor } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
@@ -51,7 +52,7 @@ async function membersOf(D, gid) {
 }
 // The group, if this person is in it.
 async function groupFor(D, u, gid) {
-  const g = UUID_RE.test(String(gid || "")) && await D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? WHERE g.id = ?").bind(u.id, gid).first();
+  const g = UUID_RE.test(String(gid || "")) && await D.prepare("SELECT g.*, m.muted, m.way AS my_way FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? WHERE g.id = ?").bind(u.id, gid).first();
   if (!g) throw new HttpError(404, "That group isn’t there any more.");
   return g;
 }
@@ -78,7 +79,7 @@ function moonOf(d, friend) {
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, viewedAt: d.viewed_at || null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, viewedAt: d.viewed_at || null, delivered: !!(d.got_at || d.read_at), recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
       liveAt: d.live_at ?? null, legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null, ...moonOf(d, friend) };
   });
@@ -95,7 +96,7 @@ function theirView(m, d, friends, t) {
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place, ...moonOf(d, friend),
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, vanish: m.vanish || null, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, instant: !!m.instant, vanish: m.vanish || null, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
@@ -151,17 +152,18 @@ async function turnIn(D, uid, gid, t) {
 // What decides your turn in a group, for each of your groups (or just one), in one statement: your last
 // pigeon there, and whether one is on its way to you, whether any ever came, and whether one landed since yours
 function turnQ(D, uid, t, gid = null) {
-  const mine = (f) => `(SELECT ${f} FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 ORDER BY sent_at DESC LIMIT 1)`;
+  // (letters only: an instant message never takes a turn)
+  const mine = (f) => `(SELECT ${f} FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 AND instant IS NULL ORDER BY sent_at DESC LIMIT 1)`;
   return D.prepare(`SELECT gm.group_id, ${mine("id")} AS mine_id, ${mine("sent_at")} AS mine_at,
-      EXISTS (SELECT 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.group_id = gm.group_id AND d.user_id = ?1 AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)) AS inbound,
-      EXISTS (SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.group_id = gm.group_id) AS anyd,
+      EXISTS (SELECT 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.group_id = gm.group_id AND d.user_id = ?1 AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2) AND m.instant IS NULL) AS inbound,
+      EXISTS (SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.group_id = gm.group_id AND m.instant IS NULL) AS anyd,
       EXISTS (SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.group_id = gm.group_id AND m.sender != ?1
-        AND m.sent_at > ${mine("sent_at")} AND d.deliver_at <= ?2 AND d.lost_at IS NULL) AS heard
+        AND m.sent_at > ${mine("sent_at")} AND d.deliver_at <= ?2 AND d.lost_at IS NULL AND m.instant IS NULL) AS heard
     FROM pg_group_members gm WHERE gm.user_id = ?1 ${gid ? "AND gm.group_id = ?3" : ""}`).bind(uid, t, ...(gid ? [gid] : []));
 }
 // the deliveries of your last pigeon in each of your groups
 const mineDelsQ = (D, uid) => D.prepare(`SELECT msg_id, deliver_at, lost_at, recalled FROM pg_gdeliv WHERE msg_id IN
-  (SELECT (SELECT id FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 ORDER BY sent_at DESC LIMIT 1) FROM pg_group_members gm WHERE gm.user_id = ?1)`).bind(uid);
+  (SELECT (SELECT id FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 AND instant IS NULL ORDER BY sent_at DESC LIMIT 1) FROM pg_group_members gm WHERE gm.user_id = ?1)`).bind(uid);
 function turnFrom(r, dels, t) {
   if (!r?.mine_id) return { free: true, state: r?.inbound ? "inbound" : r?.anyd ? "sill" : "fresh" };
   if (dels.length && dels.every((d) => lostBy(d, t))) return { free: true, state: dels.some((d) => d.recalled) ? "recalled" : "lost" };
@@ -183,7 +185,8 @@ const lastIds = `SELECT (SELECT m.id FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.
 export const GROUP_QS = 9;
 export function groupQs(D, u, t) {
   return [
-    D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? ORDER BY g.created_at").bind(u.id),
+    // (with my way there: my own, else how my new chats start)
+    D.prepare("SELECT g.*, m.muted, COALESCE(m.way, ?2) AS way FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ?1 ORDER BY g.created_at").bind(u.id, u.new_way === "instant" ? "instant" : "pigeon"),
     turnQ(D, u.id, t), mineDelsQ(D, u.id),
     D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id, status FROM pg_links WHERE status IN ('ok', 'blocked') AND (a = ?1 OR b = ?1)").bind(u.id),
     D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.moon, u.loc_at, u.seen_at, u.hide_online
@@ -220,7 +223,7 @@ export function groupsFrom(res, u, t) {
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = lastOf.get(g.id), tr = turnOf.get(g.id);
-    return { id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members, vanish: g.vanish ? { ms: g.vanish, by: g.vanish_by } : null,
+    return { id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, way: g.way === "instant" ? "instant" : "pigeon", members, vanish: g.vanish ? { ms: g.vanish, by: g.vanish_by } : null,
       last: last ? viewsWith(u.id, [last], friends, t, dels, off)[0] : null, unread: unreadIn.get(g.id) || 0,
       turn: turnFrom(tr, tr?.mine_id ? mineDels.filter((d) => d.msg_id === tr.mine_id) : [], t) };
   });
@@ -233,15 +236,16 @@ function event(D, gid, t, kind, actor, target = null) {
     SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${said(kind) ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4`)
     .bind(...[gid, t, kind, actor.id || actor, said(kind) ? null : target].concat(said(kind) ? [target] : []));
 }
-// (a new name, or how long messages last: words, not someone)
-const said = (kind) => kind === "rename" || kind === "vanish";
+// (a new name, how long messages last, or how someone's messages go: words, not someone)
+const said = (kind) => kind === "rename" || kind === "vanish" || kind === "way";
 // Disappearing messages for the group: anyone in it can set it, and everyone sees who did.
 async function setVanish({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, "gvanish:" + u.id, 30, 24 * 3600e3);
   const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id), ms = Number(b.ms);
   if (!vanishOk(ms)) throw new HttpError(400, "Choose off, 1 day, 7 days or 30 days.");
-  if ((g.vanish || 0) !== ms) await D.batch([D.prepare("UPDATE pg_groups SET vanish = ?, vanish_by = ? WHERE id = ?").bind(ms || null, u.id, g.id), event(D, g.id, Date.now(), "vanish", u, String(ms))]);
+  if ((g.vanish || 0) !== ms) await D.batch([D.prepare("UPDATE pg_groups SET vanish = ?, vanish_by = ? WHERE id = ?").bind(ms || null, u.id, g.id), event(D, g.id, Date.now(), "vanish", u, String(ms)),
+    ...pokes(D, (await membersOf(D, g.id)).map((m) => [m.user_id, g.id]))]);
   return json({ group: await groupView(env, u, g.id) });
 }
 
@@ -273,7 +277,8 @@ async function createGroup({ request, env, waitUntil }) {
   const id = crypto.randomUUID();
   await D.batch([
     D.prepare("INSERT INTO pg_groups (id, name, created_by, created_at) VALUES (?, ?, ?, ?)").bind(id, name, u.id, t),
-    ...[u.id, ...ids].map((m) => D.prepare("INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES (?, ?, ?, ?)").bind(id, m, u.id, t)),
+    // (each member's way there starts as their new chats do)
+    ...[u.id, ...ids].map((m) => D.prepare("INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at, way) VALUES (?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2))").bind(id, m, u.id, t)),
     event(D, id, t, "create", u), ...ids.map((m) => event(D, id, t, "add", u, m)),
   ]);
   waitUntil(groupAdded(env, u, ids, { id, name }).catch(() => {}));
@@ -284,7 +289,7 @@ async function addMembers({ request, env, waitUntil }) {
   await limit(env, "groupadd:" + u.id, 60, 24 * 3600e3);
   const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id), t = Date.now();
   const ids = await cleanMembers(D, u, b.members, await membersOf(D, g.id));
-  await D.batch(ids.flatMap((m) => [D.prepare("INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES (?, ?, ?, ?)").bind(g.id, m, u.id, t),
+  await D.batch(ids.flatMap((m) => [D.prepare("INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at, way) VALUES (?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2))").bind(g.id, m, u.id, t),
     event(D, g.id, t, "add", u, m)]));
   waitUntil(groupAdded(env, u, ids, g).catch(() => {}));
   return json({ group: await groupView(env, u, g.id) });
@@ -307,10 +312,11 @@ export async function leaveGroup(env, uid, gid) {
     D.prepare("DELETE FROM pg_gevents WHERE group_id = ?").bind(gid),
   ]);
 }
-async function leave({ request, env }) {
+async function leave({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), g = await groupFor(D, u, (await body(request)).id);
   await leaveGroup(env, u.id, g.id);
+  waitUntil(typingClear(env, [["g:" + g.id, u.id]]));       // (no dots of theirs there for a moment longer)
   return json({ ok: true });
 }
 async function mute({ request, env }) {
@@ -337,8 +343,9 @@ async function listMessages({ request, env }) {
     D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? WHERE g.id = ?").bind(u.id, gid),
     D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'ok' AND (a = ?1 OR b = ?1)").bind(u.id),
     visibleQ(D, u.id, gid),
-    D.prepare(`SELECT e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
-      JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(gid, u.id),
+    // (the newest 500, oldest first)
+    D.prepare(`SELECT * FROM (SELECT e.rowid AS rid, e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
+      JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at DESC, e.rowid DESC LIMIT 500) ORDER BY at, rid`).bind(gid, u.id),
   ]);
   if (!g) throw new HttpError(404, "That group isn’t there any more.");
   const friends = new Set(fr.map((r) => r.id));
@@ -373,7 +380,6 @@ async function listMessages({ request, env }) {
 
 async function send({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
-  await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
     const f = await new Response(await readCapped(request, MAX_PHOTO + MAX_BODY * 2 + GROUP_MAX * 4096, "That photo is too large. Try a smaller one."),
@@ -387,15 +393,20 @@ async function send({ request, env, waitUntil }) {
   if (sealed.length < 20 || sealed.length > MAX_BODY) throw new HttpError(400, "That message is too long.");
   if (photo && photo.size > MAX_PHOTO) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
+  // a message (only when the phone says so: one from before always sends letters), on a limit of its own
+  const instant = meta.instant === true;
+  if (instant && meta.landAt != null) throw new HttpError(400, "Pick when it arrives in a chat with one friend.");
+  await limit(env, instant ? "msg:" + u.id : "send:" + u.id, instant ? 600 : 120, 60 * 60e3);
   const D = await db(env), t = Date.now(), g = await groupFor(D, u, meta.group);
-  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
+  if (!instant && u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (await idTaken(D, id)) throw new HttpError(409, "That message was already sent.");
-  if (isSpace(meta.pigeon)) throw new HttpError(409, "In a group, pigeons to and from the Moon or Mars go as space pigeons by themselves. Choose any pigeon.");
+  if (!instant && isSpace(meta.pigeon)) throw new HttpError(409, "In a group, pigeons to and from the Moon or Mars go as space pigeons by themselves. Choose any pigeon.");
   // everyone in the group right now, you included, needs their own sealed copy of the key
   const members = await membersOf(D, g.id);
   const want = members.map((m) => m.user_id);
   if (Object.keys(keys).length !== want.length || want.some((m) => typeof keys[m] !== "string" || keys[m].length < 20 || keys[m].length > 2000))
     throw new HttpError(409, "Someone joined or left the group. Try again.");
+  if (instant) return sendInstant({ env, waitUntil, D, u, g, t, id, sealed, keys, want, photo, meta });
 
   const tn = await turnIn(D, u.id, g.id, t);
   const mystery = meta.pigeon === "mystery";
@@ -462,6 +473,7 @@ async function send({ request, env, waitUntil }) {
         bird?.id ?? null, bird?.name ?? null, bird?.rank ?? null, bird ? lead.to : null, bird?.wear ?? null),
       ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs, moon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs, d.moon ?? null)),
+      ...pokes(D, [[u.id, g.id], ...dels.map((d) => [d.to, g.id])]),
     ]);
     written = true;
     if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
@@ -480,6 +492,52 @@ async function send({ request, env, waitUntil }) {
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
 }
 
+// An instant group message: one delivery for each member it goes to (never the sender, whose copy of the key is the
+// message's own, and never anyone either of you has blocked), all arriving now, with no flight: no turn, loft, route,
+// location or season. Each member is told (groupMessageSent), as quiet hours and an open chat allow.
+async function sendInstant({ env, waitUntil, D, u, g, t, id, sealed, keys, want, photo, meta }) {
+  const cut = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
+  const others = want.filter((m) => m !== u.id && !cut.has(m));
+  let written = false;
+  try {
+    await D.batch([
+      claimId(D, id, "g", t),
+      D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, vanish, once, instant)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'standard', 0, ?, ?, ?, ?, 1)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, t,
+        photo ? t + PHOTO_TTL : null, g.vanish || null, photo ? (meta.once === false ? 0 : 1) : null),
+      ...others.map((m) => D.prepare("INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, stamped) VALUES (?, ?, ?, 0, ?, 1)").bind(id, m, keys[m], t)),
+      ...pokes(D, [[u.id, g.id], ...others.map((m) => [m, g.id])]),
+    ]);
+    written = true;
+    if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
+  } catch (e) {
+    if (written) await D.batch([D.prepare("DELETE FROM pg_gdeliv WHERE msg_id = ?").bind(id), D.prepare("DELETE FROM pg_gmsgs WHERE id = ?").bind(id), D.prepare("DELETE FROM pg_ids WHERE id = ?").bind(id)]).catch((x) => console.error("pigeon undo", x && x.message));
+    if (!written && String(e).includes("UNIQUE")) throw new HttpError(409, "That message was already sent.");
+    throw e;
+  }
+  waitUntil(groupMessageSent(env, u, g, others, id).catch(() => {}));
+  const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
+  return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
+}
+// How my messages to a group go (POST way, functions/api/pigeon): my own way there, with a line everyone sees (one of
+// mine in the last 10 minutes said again rather than another added), and everyone in it told
+const WAYS = ["instant", "pigeon"], WAY_AGAIN = 10 * 60e3;
+export async function groupWay(D, u, gid, way, t = Date.now()) {
+  const g = await groupFor(D, u, gid);
+  if (!WAYS.includes(way)) throw new HttpError(400, "Choose Instant or By Pigeon.");
+  if ((g.my_way || (u.new_way === "instant" ? "instant" : "pigeon")) === way) return { ok: true, way, at: null };
+  const members = await membersOf(D, g.id);
+  await D.batch([
+    D.prepare("UPDATE pg_group_members SET way = ? WHERE group_id = ? AND user_id = ?").bind(way, g.id, u.id),
+    D.prepare(`UPDATE pg_gevents SET target_name = ?3, at = ?4 WHERE group_id = ?1 AND kind = 'way' AND actor = ?2 AND at > ?4 - ${WAY_AGAIN}`).bind(g.id, u.id, way, t),
+    D.prepare(`INSERT INTO pg_gevents (group_id, at, kind, actor, actor_name, target, target_name)
+      SELECT ?1, ?4, 'way', ?2, a.name, NULL, ?3 FROM pg_users a WHERE a.id = ?2
+      AND NOT EXISTS (SELECT 1 FROM pg_gevents WHERE group_id = ?1 AND kind = 'way' AND actor = ?2 AND at > ?4 - ${WAY_AGAIN})`).bind(g.id, u.id, way, t),
+    ...pokes(D, members.map((m) => [m.user_id, g.id])),
+  ]);
+  return { ok: true, way, at: t };
+}
+
 // Call back a group message: every pigeon of it still in the air turns for home
 // (ones that already landed stay). If none had landed, its contents go too.
 async function recall({ request, env }) {
@@ -489,6 +547,8 @@ async function recall({ request, env }) {
   const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
   if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");
   await groupFor(D, u, m.group_id);
+  if (m.instant) throw new HttpError(409, "That message has already been sent.");
+  if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that.");
   const flying = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ?1 AND deliver_at > ?2 AND (lost_at IS NULL OR lost_at > ?2) LIMIT 1").bind(id, t).first();
   if (!flying) throw new HttpError(409, "Too late: those pigeons have already landed.");
   await spendSwift(D, u, t);
@@ -496,6 +556,7 @@ async function recall({ request, env }) {
   // (all landed in the moment between: the swift one never went after them, so it's back in its loft)
   if (!r.meta.changes) { await refundLoft(D, u.id, "swift", t).catch((e) => console.error("pigeon refund", e && e.message)); throw new HttpError(409, "Too late: those pigeons have already landed."); }
   await dropFly(D, id, t);
+  await D.batch(pokes(D, (await membersOf(D, m.group_id)).map((x) => [x.user_id, m.group_id]))).catch(() => {});
   const landed = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ? AND deliver_at <= ? AND lost_at IS NULL LIMIT 1").bind(id, t).first();
   if (!landed) {
     await D.prepare("UPDATE pg_gmsgs SET body = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END WHERE id = ?").bind(id).run();
@@ -505,11 +566,19 @@ async function recall({ request, env }) {
   return json({ message: (await views(D, u.id, [fresh], await friendIds(D, u.id), t))[0] });
 }
 
+// (my other phones told, and, unless I've read receipts off or hide when I'm online, the senders of what I've read: only
+// when something was waiting to be read)
 async function markRead({ request, env }) {
   const u = await requireUser(request, env);
-  const D = await db(env), g = await groupFor(D, u, (await body(request)).id), t = Date.now();
-  await D.prepare(`UPDATE pg_gdeliv SET read_at = ?1 WHERE user_id = ?2 AND read_at IS NULL AND deliver_at <= ?1 AND lost_at IS NULL
-    AND msg_id IN (SELECT id FROM pg_gmsgs WHERE group_id = ?3)`).bind(t, u.id, g.id).run();
+  const D = await db(env), g = await groupFor(D, u, (await body(request)).id), t = Date.now(), now = Date.now();
+  const waiting = "FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.user_id = ?1 AND m.group_id = ?2 AND d.read_at IS NULL AND d.deliver_at <= ?3 AND d.lost_at IS NULL";
+  await D.batch([
+    D.prepare(`INSERT INTO pg_pulse (user_id, chat, at) SELECT ?1, ?2, ?4 WHERE EXISTS (SELECT 1 ${waiting}) ON CONFLICT(user_id, chat) DO UPDATE SET at = MAX(at, excluded.at)`).bind(u.id, g.id, t, now),
+    ...(!u.no_receipts && !u.hide_online ? [D.prepare(`INSERT INTO pg_pulse (user_id, chat, at) SELECT DISTINCT m.sender, m.group_id, ?4 ${waiting}
+      ON CONFLICT(user_id, chat) DO UPDATE SET at = MAX(at, excluded.at)`).bind(u.id, g.id, t, now)] : []),
+    D.prepare(`UPDATE pg_gdeliv SET read_at = ?1 WHERE user_id = ?2 AND read_at IS NULL AND deliver_at <= ?1 AND lost_at IS NULL
+      AND msg_id IN (SELECT id FROM pg_gmsgs WHERE group_id = ?3)`).bind(t, u.id, g.id),
+  ]);
   return json({ ok: true });
 }
 

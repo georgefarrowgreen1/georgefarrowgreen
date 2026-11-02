@@ -323,3 +323,48 @@ test('the account as its page is given it: Quiet Hours said, for the row in Pref
   await D.prepare('UPDATE pg_users SET notify_prefs = ? WHERE id = ?').bind(JSON.stringify({ quiet: true, quietFrom: 23, quietTo: 6 }), u.id).run();
   assert.deepEqual((await me()).prefs.quiet, { on: true, from: 23, to: 6 });
 });
+
+test('accounts: new start with pigeons off, tests and old rows on', async () => {
+  const id = await E2E.newIdentity(), make = async (handle, extra = {}) => {
+    const res = await onPage('signup', { name: handle, handle, email: `${handle}@example.com`, salt: E2E.newSalt(), proof: proofOf('a long test password'), vault: 'v'.repeat(40), pub: id.pub },
+      { ip: `198.51.100.${80 + handle.length}`, e: { ...PAGE_ENV, PIGEON_OPEN_SIGNUP: '1', ...extra } });
+    assert.equal(res.status, 201, await res.clone().text());
+    return D.prepare('SELECT pigeons, new_way, noted_at FROM pg_users WHERE handle = ?').bind(handle).first();
+  };
+  const fresh = await make('newone');
+  assert.deepEqual([fresh.pigeons, fresh.new_way], [0, 'instant'], 'a new account: pigeons off, its chats instant');
+  assert.ok(fresh.noted_at > 0, 'and the note about instant messages already seen');
+  const tested = await make('testone', { PIGEON_TEST_PIGEONS: '1' });
+  assert.deepEqual([tested.pigeons, tested.new_way], [1, 'pigeon'], 'the tests’ accounts: as accounts were before');
+  assert.ok(tested.noted_at > 0);
+  const raw = await account('rawone', 'a long test password');
+  assert.deepEqual([raw.pigeons, raw.new_way, raw.noted_at], [1, 'pigeon', null], 'a row as older code writes it: pigeons on, the note still to see');
+});
+
+test('account routes: inflight carries pigeons, newChats, showTyping; bad values 400', async () => {
+  const u = await account('gil', 'a long test password'), cookie = await signedInHere(u);
+  const call = async (method, data) => {
+    const request = new Request(`${ACCT}/api/account/inflight`, { method, headers: { Origin: ACCT, 'CF-Connecting-IP': '198.51.100.90', 'Content-Type': 'application/json', Cookie: cookie },
+      ...(data ? { body: JSON.stringify(data) } : {}) });
+    return accountApi({ request, env: PAGE_ENV, params: { path: ['inflight'] }, waitUntil: () => {} });
+  };
+  const got = await (await call('GET')).json();
+  assert.equal(got.pigeons, true); assert.equal(got.newChats, 'pigeon'); assert.equal(got.privacy.showTyping, true);
+  const set = await call('PATCH', { pigeons: false, newChats: 'instant', privacy: { showTyping: false } });
+  assert.equal(set.status, 200, await set.clone().text());
+  const after = await set.json();
+  assert.deepEqual([after.pigeons, after.newChats, after.privacy.showTyping], [false, 'instant', false]);
+  const row = await D.prepare('SELECT pigeons, new_way, hide_typing, noted_at FROM pg_users WHERE id = ?').bind(u.id).first();
+  assert.deepEqual([row.pigeons, row.new_way, row.hide_typing], [0, 'instant', 1]);
+  assert.ok(row.noted_at > 0, 'turning pigeons off answers the note too');
+  for (const [bad, said] of [[{ pigeons: 'yes' }, 'Choose on or off.'], [{ newChats: 'owl' }, 'Choose Instant or By Pigeon.'], [{ privacy: { showTyping: 'no' } }, 'Choose on or off.']]) {
+    const r = await call('PATCH', bad);
+    assert.equal(r.status, 400, JSON.stringify(bad));
+    assert.equal((await r.json()).error, said);
+  }
+  const still = await D.prepare('SELECT pigeons, new_way, hide_typing FROM pg_users WHERE id = ?').bind(u.id).first();
+  assert.deepEqual([still.pigeons, still.new_way, still.hide_typing], [0, 'instant', 1], 'a refused change changes nothing');
+  // the notifications' folder: messages first, and whether pigeons are on
+  const n = await (await accountApi({ request: req('/api/account/notify', { cookie }), env: PAGE_ENV, params: { path: ['notify'] }, waitUntil: () => {} })).json();
+  assert.equal(Object.keys(n.chat.kinds)[0], 'messages'); assert.equal(n.chat.kinds.messages, true); assert.equal(n.chat.pigeons, false);
+});

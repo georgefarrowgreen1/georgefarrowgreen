@@ -2561,6 +2561,107 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 @media (prefers-reduced-motion: reduce){.cardatt:not([hidden]){animation:rm-in .18s ease both!important}}
 @media (prefers-reduced-transparency:reduce){.cardatt{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}}
 
+/* ---------- messages now, letters by pigeon (pigeons a switch on each account) ----------
+   The pigeons' own colour where they show (the bird at the top, By Pigeon, a letter's send button); messages keep Chat's blue.
+   Typing dots, ticks under a run of messages, a chat's way as a line, a letter among messages, one sealed until it arrives. */
+:root{--pg-a:#ff8a6b;--pg-b:#e8352a;--pg-grad:linear-gradient(160deg,var(--pg-a),var(--pg-b))}
+/* the bird at the top of Messages and Friends: on, in the pigeons' orange */
+.ifh-act.birdt .bird,.nbtn.birdt .bird{width:22px;height:22px;fill:currentColor}
+.ifh-act.birdt[aria-pressed="true"],.nbtn.birdt[aria-pressed="true"]{color:#fff!important;background:var(--pg-grad)}
+/* a chat's way, in its header: Instant, or By Pigeon */
+.nbtn.mpill{width:auto;height:34px;margin-right:4px;padding:0 11px 0 9px;gap:5px;border-radius:999px;background:var(--fill);color:var(--label);font-size:13px;font-weight:650;white-space:nowrap}
+.nbtn.mpill svg{font-size:16px;width:16px;height:16px}
+.nbtn.mpill .bird{fill:currentColor}
+.nbtn.mpill.pigeon{background:var(--pg-grad);color:#fff}
+.nbtn.mpill:active{transform:scale(.94)}
+/* the message box: the Now button, and the pill and send button by pigeon */
+.compose .mode{flex:none;align-self:flex-end;display:inline-flex;align-items:center;gap:4px;height:32px;margin:2px 4px 2px 0;padding:0 10px 0 8px;border:0;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:14px;font-weight:600;letter-spacing:-.2px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .2s var(--snappy)}
+.compose .mode .ico{font-size:16px;color:var(--tint)}
+.compose .mode.round{width:32px;padding:0;justify-content:center}
+.compose .mode:active{transform:scale(.92)}
+.compose .kind.pigeon{background:var(--pg-grad);color:#fff}
+.compose .kind.pigeon > .ico{color:rgba(255,255,255,.85)}
+.send.pigeon{background:var(--pg-grad)}
+.send.pigeon .bird{width:20px;height:20px;fill:#fff}
+/* ticks: grey, then two, then blue once read */
+.tk{display:inline-flex;vertical-align:-3px;margin-left:3px;color:var(--label-2)}
+.tk .ico{font-size:15px;stroke-width:2.4}
+.tk.read{color:var(--tint)}
+.msgs > .mt.rm{align-self:flex-start;display:flex;align-items:center;gap:1px;margin:3px 8px 6px!important;font-size:11px;line-height:14px;font-weight:500;color:var(--label-2);font-variant-numeric:tabular-nums}
+.msgs > .mt.rm.me{align-self:flex-end}
+.mrow .mprev{display:flex;align-items:flex-start;gap:8px}
+.mrow .mprev .mpt{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mrow .mprev .mrt{flex:none;display:flex;align-items:center;margin-top:1px}
+.mrow .mprev .mrt .badge-n{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--tint-fill);font-size:12px;line-height:20px}
+.mrow .mprev .mrt .tk{margin:0}
+.mrow .mprev .mrt svg{margin:0}
+.mrow .mtop:has(.mplace) .mname{flex:0 1 auto}
+.mrow .mplace{flex:1;min-width:0;font-size:13px;color:var(--label-2)}
+.mrow .mprev .typingnow,.chatwho .sub.ty{color:var(--tint);font-weight:600}
+/* typing: three dots at the foot of the chat (and in a group, who) */
+.msgs > .typing{align-self:flex-start;display:inline-flex;gap:5px;margin-top:6px;padding:12px 15px;border-radius:21px;background:var(--bubble-in);box-shadow:var(--edge)}
+.msgs > .typing i{width:8px;height:8px;border-radius:50%;background:var(--label-2);animation:tdots 1.2s infinite}
+.msgs > .typing i:nth-child(2){animation-delay:.18s}
+.msgs > .typing i:nth-child(3){animation-delay:.36s}
+@keyframes tdots{0%,80%,100%{opacity:.3;transform:none}40%{opacity:1;transform:translateY(-3px)}}
+@media (prefers-reduced-motion: reduce){.msgs > .typing i{animation:none;opacity:.6}}
+.msgs > .typing-who{align-self:flex-start;margin:3px 8px 0;font-size:11px;line-height:14px;color:var(--label-2)}
+/* a chat's way changing, as a line */
+.sysline.way{display:block}
+.sysline.way > svg{width:13px;height:13px;margin-right:5px;vertical-align:-2px}
+.sysline.way > .ico{font-size:13px;color:var(--label-2)}
+.sysline.way > .bird{fill:var(--orange-t,var(--orange))}
+/* a letter among messages, and one sealed until it arrives (pigeons off) */
+.ltag{display:flex;align-items:center;gap:4px;margin-bottom:3px;font-size:12px;line-height:15px;font-weight:650;color:var(--label-2)}
+.ltag .bird{width:14px;height:14px;fill:currentColor}
+.b.me .ltag{color:rgba(255,255,255,.85)}
+.b.me.up .ltag,.b.me.waiting .ltag{color:var(--label-2)}
+.sealedb{align-self:flex-start;display:flex;align-items:center;gap:11px;max-width:86%;margin-top:2px;padding:10px 14px;border:0;border-radius:21px;background:none;box-shadow:inset 0 0 0 1.5px var(--label-3);color:var(--label-2);font:inherit;font-size:calc(15px * var(--ts, 1));line-height:1.35;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sealedb.gap-top{margin-top:10px}
+.sealedb b{color:var(--label);font-weight:600}
+.sealedb > .ico{flex:none;font-size:20px;color:var(--label-2)}
+.sealedb:active{transform:scale(.98)}
+/* a message still on its way to the server: plain, with a faint clock */
+.b.me.pending[data-instant]{animation:none;opacity:.78}
+.b .pclock{display:inline-flex;margin-left:6px;vertical-align:-2px;opacity:.7}
+.b .pclock .ico{font-size:13px}
+/* the one-time note and the tips, where the In the air strip goes */
+.notecard,.pgtip{display:grid;gap:8px;margin:4px 16px 12px;padding:14px 16px 14px;border-radius:20px;background:var(--cell);box-shadow:inset 0 0 0 1px var(--sep)}
+.notecard .tt,.pgtip .tt{display:flex;align-items:center;gap:11px}
+.notecard .tt i,.pgtip .tt i{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;color:#fff;background:var(--pg-grad)}
+.notecard .tt i{background:var(--tint-fill)}
+.notecard .tt i .ico{font-size:19px}
+.pgtip .tt i .bird{width:21px;height:21px;fill:#fff}
+.notecard b,.pgtip b{font-size:16px;line-height:21px}
+.notecard p,.pgtip p{margin:0;font-size:14px;line-height:19px;color:var(--label-2);text-wrap:pretty}
+.notecard .tfoot,.pgtip .tfoot{display:flex;flex-wrap:wrap;gap:8px}
+/* Friends: who has pigeons off */
+.uses{flex:none;margin-left:6px;padding:3px 9px;border-radius:999px;background:var(--fill);color:var(--label-2);font-size:12px;font-weight:650;white-space:nowrap}
+/* Account: the switch, and how new chats start */
+.pgset .tile.orange{background:var(--pg-grad)}
+.pgset .tile .bird{fill:#fff}
+.wayrow{flex-wrap:wrap;gap:10px}
+.wayseg{flex:none;display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:12px;background:var(--fill);width:min(200px,100%)}
+.wayseg button{min-height:32px;padding:4px 8px;border:0;border-radius:9px;background:none;color:var(--label);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:background .2s,color .2s}
+.wayseg button[aria-pressed="true"]{background:var(--cell);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+/* the way sheet: radio rows */
+.wayopt .tile .bird{fill:#fff}
+.wayopt .tickbox{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1.6px var(--label-3);color:transparent;font-size:14px}
+.wayopt[aria-checked="true"] .tickbox{background:var(--tint-fill);box-shadow:none;color:#fff}
+.wayopt .tickbox .ico{stroke-width:3.2}
+/* welcome: under the tagline */
+.welcome .whisper.wsub{margin-top:6px;font-size:14px;opacity:.82}
+/* a few pigeons cross the screen as they come and go */
+.flockfx{position:fixed;inset:0;z-index:60;pointer-events:none;overflow:hidden}
+.flockfx .fb{position:absolute;left:-40px;width:30px;height:30px;color:var(--label);opacity:.9;animation:flockby var(--d) cubic-bezier(.4,.1,.5,1) var(--dl) both}
+.flockfx .fb .bird{width:100%;height:100%;fill:currentColor}
+@keyframes flockby{0%{transform:translate(0,0)}50%{transform:translate(calc(var(--w) * .5),-22px)}100%{transform:translate(calc(var(--w) + 90px),-48px)}}
+.flockfx.away .fb{left:var(--x);animation-name:flockaway}
+@keyframes flockaway{0%{transform:none;opacity:.9}100%{transform:translate(240px,-460px) scale(.6);opacity:0}}
+@media (prefers-reduced-motion: reduce){.flockfx{display:none}}
+@media (max-width:360px){.nbtn.mpill{padding:0 8px 0 7px}.nbtn.mpill span{display:none}.compose .mode span{display:none}.compose .mode{width:32px;padding:0;justify-content:center}}
+@media (max-width:360px){.ifh.chead:has(.ifh-acts > :nth-child(3)){column-gap:6px}.ifh.chead:has(.ifh-acts > :nth-child(3)) .ifh-name{font-size:calc(22px * (1 - .375 * var(--p)))}.ifh.chead .ifh-acts:has(> :nth-child(3)) .ifh-act{width:36px;height:36px}}   /* a small phone with three buttons up top: the title still reads */
+
 /* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */
 /* InFlite's way in, the same in every app (Chat, Fitness, Mail): where everything on it sits, so no app's drifts.
    Markup, in each app's own words:

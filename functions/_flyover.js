@@ -110,6 +110,7 @@ export async function flyOnMine(D, me, ids) {
 // Wave at a pigeon that flew over you: its sender hears of it.
 async function wave({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
+  if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that.");
   await limit(env, "wave:" + u.id, 60, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env), t = Date.now();
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");

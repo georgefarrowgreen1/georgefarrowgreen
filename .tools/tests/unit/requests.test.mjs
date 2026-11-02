@@ -63,3 +63,17 @@ test('notification settings: each change merged where they are kept, so two at o
   await savePrefs(D, 'b', { takeoff: true }); await savePrefs(D, 'c', { lost: false });
   assert.equal(prefs('b').takeoff, true); assert.equal(prefs('c').lost, false); assert.equal(prefs('c').landed, true);
 });
+
+test('notification settings: messages merges and defaults to true', async () => {
+  const sq = new DatabaseSync(':memory:');
+  sq.exec("CREATE TABLE pg_users (id TEXT PRIMARY KEY, notify_prefs TEXT)");
+  sq.exec(`INSERT INTO pg_users VALUES ('a', '{"landed":false}'), ('b', NULL)`);
+  const D = { prepare: (q) => { const st = sq.prepare(q); return { bind: (...v) => ({ run: async () => st.run(...v) }) }; } };
+  const prefs = (id) => prefsOf(sq.prepare('SELECT notify_prefs FROM pg_users WHERE id = ?').get(id));
+  assert.equal(prefs('a').messages, true, 'kept before there was a messages switch: on');
+  assert.equal(prefs('b').messages, true);
+  await savePrefs(D, 'a', { messages: false });
+  assert.equal(prefs('a').messages, false); assert.equal(prefs('a').landed, false, 'merged: what was there stays');
+  await savePrefs(D, 'a', { messages: 'yes' });
+  assert.equal(prefs('a').messages, true, 'kept as on or off');
+});

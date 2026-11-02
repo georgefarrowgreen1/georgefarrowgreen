@@ -26,6 +26,15 @@ test("a streak about to end, whatever the card", () => {
   r = one(W, leo, { streakRisk: () => ({ n: 9, endsAt: NOW + 7 * H }) });
   assert.equal(r.reason, "Lands in 8m", "six hours or more to go isn't at risk");
 });
+test("pigeons off: no landing time and no streak (landsIn null, no streakRisk), so no “Lands in” and no streak reason", () => {
+  const leo = f("leo", "Leo");
+  let r = one(W, leo, { landsIn: () => null });
+  assert.deepEqual([r.score, r.reason, r.lands], [0, "", null]);
+  r = one(M, leo, { landsIn: () => null, lastAt: () => NOW - H });
+  assert.deepEqual([r.score, r.reason], [15, "Wrote today"], "the other reasons as ever");
+  r = one(W, f("c", "Cat", { place: "Cromer" }), { landsIn: () => null, rain: { c: { now: true, at: NOW, end: NOW + H } } });
+  assert.equal(r.reason, "Raining in Cromer now");
+});
 test("weather: rain reaching them, raining now, dry all day", () => {
   const cromer = f("c", "Cat", { place: "Cromer" });
   let r = one(W, cromer, { rain: { c: { now: false, at: Date.parse("2026-11-05T14:40:00Z"), end: NOW + 6 * H } } });

@@ -8,6 +8,8 @@ birdtest
 cheertest
 nearmiss
 notify
+instant
+pigeonway
 contactmail
 vanish
 verify

@@ -6,7 +6,7 @@
 // VAPID key it makes for itself on first use and keeps in D1.
 //
 // Message text never appears in a notification: the server can't read it.
-// A notification says who sent a pigeon and that it has landed.
+// A notification says who sent a message, or a pigeon and that it has landed.
 //
 // Landings happen on a timer, not on a request, so a "tick" looks for pigeons
 // that have landed since the last one. It runs at most once a minute on the
@@ -24,6 +24,7 @@ import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
 import { housekeeping, WAY_PARTS } from "./_retention.js";
 import { streakTick } from "./_streaks.js";
+import { pokes, pokesAfter } from "./_pulse.js";
 
 const enc = new TextEncoder();
 const EMAIL_EVERY = 30 * MIN;     // at most one email per person per half hour
@@ -32,7 +33,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, streaks: true, names: false, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { messages: true, landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, streaks: true, names: false, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -41,7 +42,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "streaks", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["messages", "landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "streaks", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -183,9 +184,67 @@ async function notifyEmail(env, origin, u, subject, mail) {
 /* ---------------- events ---------------- */
 const firstName = (n) => String(n || "").trim().split(/\s+/)[0] || "Someone";
 const userPrefs = async (env, id) => {
-  const u = await (await db(env)).prepare("SELECT id, email, notify_email, email_at, notify_prefs FROM pg_users WHERE id = ?").bind(id).first();
+  const u = await (await db(env)).prepare("SELECT id, email, notify_email, email_at, notify_prefs, pigeons, open_chat, open_at FROM pg_users WHERE id = ?").bind(id).first();
   return u ? { u, p: prefsOf(u) } : null;
 };
+// That very chat open on their phone just now (its app says so with every pulse): a message there isn't pushed, it's seen
+export const OPEN_FOR = 30e3;
+export const openOn = (u, key, t = Date.now()) => !!u && u.open_chat === key && u.open_at != null && t - u.open_at < OPEN_FOR;
+// (an open chat holds a message's push back only so long: then the tick claims it as usual, read by then or not)
+const OPEN_HOLD = 5 * MIN;
+
+/* ---------- messages (instant): told at once ---------- */
+// A friend sending many in a row buzzes you at most once every 10 seconds (per copy of the server, so at worst an extra
+// one, never one missing); the next one says how many. Claimed-but-not-pushed rows can't be told from pushed ones, so
+// this isn't kept in the database. (exported for the tests, which start each case afresh)
+const BURST = 10e3;
+export const pushBurst = new Map();
+function burstOk(key, t) {
+  const was = pushBurst.get(key);
+  if (was != null && t - was < BURST) return false;
+  pushBurst.set(key, t);
+  if (pushBurst.size > 2000) for (const [k, at] of pushBurst) if (t - at >= BURST) pushBurst.delete(k);
+  return true;
+}
+// The words, the count, the urgency and the tag, the same whether it's told as it's sent or by the tick
+async function tellMessage(env, D, toId, from, p, t) {
+  if (!burstOk(toId + "|" + from.id, t)) return 0;
+  const n = Math.max(1, (await D.prepare(`SELECT COUNT(*) AS n FROM pg_msgs WHERE recipient = ?1 AND sender = ?2 AND instant = 1 AND read_at IS NULL AND deliver_at <= ?3
+    AND lost_at IS NULL AND gone_at IS NULL`).bind(toId, from.id, t).first())?.n || 0);
+  return pushTo(env, toId, { title: p.names ? firstName(from.name) : "Chat",
+    body: p.names ? (n > 1 ? `Sent you ${n} messages.` : "Sent you a message.") : n > 1 ? `You have ${n} new messages.` : "You have a new message.",
+    tag: "msg-" + from.id, url: `/pigeon/#open=${from.id}`, urgency: "high" });
+}
+async function tellGroupMessage(env, D, toId, g, from, p, t) {
+  if (!burstOk(toId + "|" + g.id + "|" + from.id, t)) return 0;
+  const n = Math.max(1, (await D.prepare(`SELECT COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.user_id = ?1 AND m.group_id = ?2 AND m.sender = ?3
+    AND m.instant = 1 AND d.read_at IS NULL AND d.deliver_at <= ?4 AND d.lost_at IS NULL AND m.gone_at IS NULL`).bind(toId, g.id, from.id, t).first())?.n || 0);
+  const first = firstName(from.name);
+  return pushTo(env, toId, { title: p.names ? g.name : "Chat",
+    body: p.names ? (n > 1 ? `${first} sent ${n} messages.` : `${first} sent a message.`) : n > 1 ? `You have ${n} new messages.` : "You have a new message.",
+    tag: "gmsg-" + g.id, url: `/pigeon/#open=${g.id}`, urgency: "high" });
+}
+// One just sent (from: who sent it; not one booked for later, which the tick tells when it's sent). Quiet hours, or the
+// chat open on their phone, leave it unclaimed for the tick; claimed first, so the tick never tells it again
+export async function messageSent(env, from, toId, msgId) {
+  const t = Date.now(), r = await userPrefs(env, toId);
+  if (!r || isQuiet(r.p, t) || openOn(r.u, from.id, t)) return;
+  const D = await db(env);
+  const c = await D.prepare("UPDATE pg_msgs SET notified_at = ? WHERE id = ? AND notified_at IS NULL AND read_at IS NULL").bind(t, msgId).run();
+  if (!c.meta.changes || !r.p.messages || !(await pals(D, from.id, toId))) return;
+  await tellMessage(env, D, toId, from, r.p, t);
+}
+// …and in a group, to each member it went to (memberIds: never its sender), as each one's settings say
+export async function groupMessageSent(env, from, g, memberIds, msgId) {
+  const D = await db(env);
+  for (const id of memberIds) {
+    const t = Date.now(), r = await userPrefs(env, id);
+    if (!r || isQuiet(r.p, t) || openOn(r.u, g.id, t)) continue;
+    const c = await D.prepare("UPDATE pg_gdeliv SET notified_at = ? WHERE msg_id = ? AND user_id = ? AND notified_at IS NULL AND read_at IS NULL").bind(t, msgId, id).run();
+    if (!c.meta.changes || !r.p.messages || (await isMuted(env, g.id, id))) continue;
+    await tellGroupMessage(env, D, id, g, from, r.p, t);
+  }
+}
 // Held by quiet hours (a friend request, one accepted, being added to a group: none of them comes with a pigeon, so
 // nothing else would bring them up again): kept, and told once quiet hours end, if it still stands (heldTick)
 const hold = async (env, uid, kind, about, by = null) =>
@@ -198,7 +257,7 @@ export async function friendRequested(env, origin, from, toId) {
     await notifyEmail(env, origin, r.u, r.p.names ? `${firstName(from.name)} wants to be friends on Chat` : "You have a new friend request on Chat", {
       icon: "friend", title: r.p.names ? `${firstName(from.name)} wants to be friends` : "New friend request",
       preheader: r.p.names ? `@${from.handle} sent you a friend request.` : "Someone sent you a friend request.",
-      lines: [r.p.names ? `${firstName(from.name)} sent you a friend request. Accept it to start sending each other pigeons.` : "Someone sent you a friend request. Open Chat to see who."],
+      lines: [r.p.names ? `${firstName(from.name)} sent you a friend request. ${r.u.pigeons ? "Accept it to start sending each other pigeons." : "Accept it to start chatting."}` : "Someone sent you a friend request. Open Chat to see who."],
       ...(r.p.names ? { pill: ["at", `@${from.handle}`] } : {}),
       button: { label: "See request", url: appLink(origin, "#requests") },
     }).catch(() => {});
@@ -206,11 +265,13 @@ export async function friendRequested(env, origin, from, toId) {
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted) return;
   if (isQuiet(r.p)) return hold(env, toId, "accepted", by.id);
-  await pushTo(env, toId, { title: r.p.names ? "New friend" : "Chat", body: r.p.names ? `${firstName(by.name)} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
+  await pushTo(env, toId, { title: r.p.names ? "New friend" : "Chat", body: r.p.names ? `${firstName(by.name)} accepted your friend request. ${r.u.pigeons ? "Send them a pigeon!" : "Say hello!"}` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
 }
 // The person you sent a pigeon to moved, so it changed course.
+// (what's said only of pigeons goes only to someone with pigeons on: functions/_notify.js's pigeon-only pushes)
+const pigeonsOn = (r) => !!r && r.u.pigeons !== 0;
 export async function pigeonRerouted(env, senderId, to, deliverAt) {
-  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p)) return;
+  const r = await userPrefs(env, senderId); if (!pigeonsOn(r) || !r.p.rerouted || isQuiet(r.p)) return;
   const eta = etaText(deliverAt - Date.now());
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "Chat",
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${eta}.`, tag: "course-" + to.id, url: `/pigeon/#open=${to.id}` });
@@ -218,7 +279,7 @@ export async function pigeonRerouted(env, senderId, to, deliverAt) {
 // They went to another world (or somewhere new on one), and your pigeon followed: how (functions/_follow.js)
 const WORLD = { moon: "the Moon", mars: "Mars", earth: "Earth" };
 export async function pigeonFollowed(env, senderId, to, end, x, gid = null) {
-  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p)) return;
+  const r = await userPrefs(env, senderId); if (!pigeonsOn(r) || !r.p.rerouted || isQuiet(r.p)) return;
   if (gid && (await isMuted(env, gid, senderId))) return;
   const g = gid ? await (await db(env)).prepare("SELECT name FROM pg_groups WHERE id = ?").bind(gid).first() : null;
   const by = x.moon.pk === "laser" ? "a laser pigeon" : x.moon.pk === "orbital" ? "an orbital pigeon" : "a lunar pigeon", nm = r.p.names && firstName(to.name);
@@ -231,12 +292,12 @@ export async function pigeonFollowed(env, senderId, to, end, x, gid = null) {
     tag: "course-" + (gid || to.id), url: `/pigeon/#open=${gid || to.id}` });
 }
 export async function followingYou(env, uid, n, end) {
-  const r = await userPrefs(env, uid); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  const r = await userPrefs(env, uid); if (!pigeonsOn(r) || !r.p.moments || isQuiet(r.p)) return;
   await pushTo(env, uid, { title: "Chat", body: `${n === 1 ? "A pigeon on its way to you is" : `${n} pigeons on their way to you are`} following you to ${WORLD[end.b]}.`, tag: "following", url: "/pigeon/" });
 }
 // A friend has just sent you a pigeon (off unless you turn it on).
 export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") {
-  const r = await userPrefs(env, toId); if (!r || !r.p.takeoff || isQuiet(r.p)) return;
+  const r = await userPrefs(env, toId); if (!pigeonsOn(r) || !r.p.takeoff || isQuiet(r.p)) return;
   const eta = etaText(deliverAt - Date.now());
   await pushTo(env, toId, { title: r.p.names ? firstName(from.name) : "Chat", body: r.p.names ? `Sent you a ${kind === "standard" ? "" : kind + " "}pigeon. It lands in ${eta}.` : `A ${kind === "standard" ? "" : kind + " "}pigeon is on its way to you. It lands in ${eta}.`,
     tag: "from-" + from.id, url: `/pigeon/#open=${from.id}` });
@@ -255,7 +316,7 @@ export async function groupAdded(env, by, ids, g) {
 }
 export async function groupSent(env, from, g, dels, kind = "standard") {
   for (const d of dels) {
-    const r = await userPrefs(env, d.to); if (!r || !r.p.takeoff || isQuiet(r.p) || await isMuted(env, g.id, d.to)) continue;
+    const r = await userPrefs(env, d.to); if (!pigeonsOn(r) || !r.p.takeoff || isQuiet(r.p) || await isMuted(env, g.id, d.to)) continue;
     const what = kind === "standard" ? "pigeon" : `${kind} pigeon`, eta = etaText(d.at - Date.now());
     await pushTo(env, d.to, { title: r.p.names ? g.name : "Chat", body: r.p.names ? `${firstName(from.name)} sent a ${what}. It lands in ${eta}.` : `A ${what} is on its way to you. It lands in ${eta}.`,
       tag: "group-" + g.id, url: `/pigeon/#open=${g.id}` });
@@ -263,7 +324,7 @@ export async function groupSent(env, from, g, dels, kind = "standard") {
 }
 // Someone cheered on a pigeon you're in on: it lands a little sooner.
 export async function cheeredNote(env, toId, by, x) {
-  const r = await userPrefs(env, toId); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  const r = await userPrefs(env, toId); if (!pigeonsOn(r) || !r.p.moments || isQuiet(r.p)) return;
   if (x.group && (await isMuted(env, x.group, toId))) return;
   const who = r.p.names ? firstName(by.name) : "Someone";
   await pushTo(env, toId, { title: "A little tailwind",
@@ -271,13 +332,13 @@ export async function cheeredNote(env, toId, by, x) {
 }
 // Someone waved at your pigeon as it flew over them.
 export async function wavedNote(env, toId, by, x) {
-  const r = await userPrefs(env, toId); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  const r = await userPrefs(env, toId); if (!pigeonsOn(r) || !r.p.moments || isQuiet(r.p)) return;
   const who = firstName(by.name);
   await pushTo(env, toId, { title: r.p.names ? `${who} waved` : "A wave",
     body: r.p.names ? `${who} waved at your pigeon as it flew over${x.place ? " " + x.place : " them"}.` : "A friend waved at your pigeon as it flew over them.", tag: "wave-" + x.id, url: `/pigeon/#open=${by.id}` });
 }
 export async function groupRerouted(env, senderId, to, gid, deliverAt) {
-  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
+  const r = await userPrefs(env, senderId); if (!pigeonsOn(r) || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "Chat",
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + gid, url: `/pigeon/#open=${gid}` });
 }
@@ -323,26 +384,41 @@ async function allRows(D, sql, binds, alias, key, per = 200, pages = 25) {
 }
 async function groupTick(env, D, t, since) {
   let pushes = 0, landedN = 0, held = 0;
-  const { results: due } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, COALESCE(gm.muted, 1) AS muted, s.name AS sname
+  const { results: due } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.deliver_at, d.read_at, m.sender, m.group_id, m.instant, g.name AS gname, u.notify_prefs, u.open_chat, u.open_at,
+      COALESCE(gm.muted, 1) AS muted, s.name AS sname
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id JOIN pg_users s ON s.id = m.sender
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?1 AND d.deliver_at > ?2`, [t, since], "d", "deliver_at");
-  const ready = due.filter((d) => !isQuiet(prefsOf(d), t));
+  // (quiet hours hold both; a message also waits while that group is open on their phone, for 5 minutes at most)
+  const ready = due.filter((d) => !isQuiet(prefsOf(d), t) && !(d.instant && openOn(d, d.group_id, t) && d.deliver_at > t - OPEN_HOLD));
   held = due.length - ready.length;
+  // (one held still changes the group for both phones as it comes due: poked once, then again when it's told)
+  const go = new Set(ready), waits = due.filter((d) => !go.has(d));
+  if (waits.length) await D.batch(pokesAfter(D, waits.flatMap((d) => [[d.user_id, d.group_id, d.deliver_at], [d.sender, d.group_id, d.deliver_at]]))).catch(() => {});
   if (ready.length) {
     for (let i = 0; i < ready.length; i += 90) {
       const part = ready.slice(i, i + 90);
       const { results } = await D.prepare(`UPDATE pg_gdeliv SET notified_at = ? WHERE notified_at IS NULL AND rowid IN (${part.map(() => "?").join(",")}) RETURNING rowid AS rid`).bind(t, ...part.map((d) => d.rid)).all();
       const claimed = new Set(results.map((r) => r.rid));
-      // one notification per person per group: who sent it, or how many landed
-      const by = new Map();
+      // (each landing tells its member's and its sender's phones the group changed)
+      const told = part.filter((d) => claimed.has(d.rid));
+      if (told.length) await D.batch(pokes(D, told.flatMap((d) => [[d.user_id, d.group_id], [d.sender, d.group_id]]))).catch(() => {});
+      // one notification per person per group: who sent it, or how many landed (messages: per sender, as they're told
+      // when sent)
+      const by = new Map(), msgs = new Map();
       for (const d of part) {
         if (!claimed.has(d.rid)) continue;
         landedN++;
-        if (d.muted || !prefsOf(d).landed) continue;
+        if (d.muted) continue;
+        if (d.instant) {
+          if (prefsOf(d).messages && !d.read_at) msgs.set(d.user_id + "|" + d.group_id + "|" + d.sender, d);
+          continue;
+        }
+        if (!prefsOf(d).landed) continue;
         const k = d.user_id + "|" + d.group_id, x = by.get(k) || { d, n: 0, from: new Set() };
         x.n++; x.from.add(firstName(d.sname)); by.set(k, x);
       }
+      for (const d of msgs.values()) pushes += await tellGroupMessage(env, D, d.user_id, { id: d.group_id, name: d.gname }, { id: d.sender, name: d.sname }, prefsOf(d), t);
       for (const { d, n, from } of by.values()) {
         const names = prefsOf(d).names;
         pushes += await pushTo(env, d.user_id, { title: names ? d.gname : "Chat",
@@ -403,7 +479,7 @@ function dayClock(ts, tz, t = Date.now()) {
 const whenAt = (ts, tz) => { const d = dayClock(ts, tz), [w, c] = d.includes(" ") ? [d.slice(0, d.lastIndexOf(" ")), d.slice(d.lastIndexOf(" ") + 1)] : [null, d]; return !w ? `at ${c}` : w === "tomorrow" ? `tomorrow at ${c}` : `on ${w} at ${c}`; };
 async function wxTick(env, D, t, since) {
   let pushes = 0;
-  const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.wx, m.wx_ms, m.deliver_at, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
+  const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.wx, m.wx_ms, m.deliver_at, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp, s.pigeons AS spg, r.pigeons AS rpg FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
     WHERE m.wx_at IS NOT NULL AND m.wx_told IS NULL AND m.wx_at <= ?1 AND m.wx_at > ?2 AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND m.wx_ms >= ?3
       AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 200`).bind(t, since, WX_MIN).all();
@@ -412,12 +488,12 @@ async function wxTick(env, D, t, since) {
     if (!claimed.meta.changes) continue;
     let k = "bad weather"; try { k = WX_WORDS[JSON.parse(m.wx).k] || k; } catch (_) {}
     const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
-    if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "Chat",
+    if (m.spg !== 0 && sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "Chat",
       body: `Your pigeon flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, sp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.recipient}` });
-    if (rp.delays && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "Chat",
+    if (m.rpg !== 0 && rp.delays && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "Chat",
       body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
+  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, u.pigeons, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.wx_at IS NOT NULL AND d.wx_told IS NULL AND d.wx_at <= ?1 AND d.wx_at > ?2 AND d.deliver_at > ?1 AND d.wx_ms >= ?3
@@ -425,7 +501,7 @@ async function wxTick(env, D, t, since) {
   for (const d of grp) {
     const claimed = await D.prepare("UPDATE pg_gdeliv SET wx_told = ? WHERE rowid = ? AND wx_told IS NULL").bind(t, d.rid).run();
     if (!claimed.meta.changes) continue;
-    const p = prefsOf(d); if (!p.delays || isQuiet(p, t) || d.muted) continue;
+    const p = prefsOf(d); if (d.pigeons === 0 || !p.delays || isQuiet(p, t) || d.muted) continue;
     let k = "bad weather"; try { k = WX_WORDS[JSON.parse(d.wx).k] || k; } catch (_) {}
     pushes += await pushTo(env, d.user_id, { title: p.names ? d.gname : "Chat",
       body: `A pigeon to you flew into ${k}. It’ll land ${lateBy(d.wx_ms)} late, ${whenAt(d.deliver_at, p.tz)}.`, tag: "wx-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
@@ -445,19 +521,19 @@ async function turnNotes(env, D, t, turns) {
       ? `${who} is sheltering from ${WX_WORDS[x.k] || "storms"}${p.names && x.where ? ` ${x.where}` : ""} until about ${dayClock(x.until, p.tz)}. It now lands ${whenAt(x.deliver, p.tz)}.`
       : `${who} changed course ${why(p)}. It now lands ${whenAt(x.deliver, p.tz)}.`;
     if (x.group) {
-      const g = await D.prepare(`SELECT g.name, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
+      const g = await D.prepare(`SELECT g.name, u.notify_prefs, u.pigeons, COALESCE(gm.muted, 1) AS muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
         LEFT JOIN pg_group_members gm ON gm.group_id = g.id AND gm.user_id = ?2 WHERE g.id = ?1`).bind(x.r.group_id, x.r.user_id).first();
-      const p = g && prefsOf(g); if (!p || !p.delays || isQuiet(p, t) || g.muted) continue;
+      const p = g && prefsOf(g); if (!p || g.pigeons === 0 || !p.delays || isQuiet(p, t) || g.muted) continue;
       pushes += await pushTo(env, x.r.user_id, { title: p.names ? g.name : "Chat", body: say(p, "A pigeon to you"),
         tag: "wxturn-" + x.r.msg_id, url: `/pigeon/#open=${x.r.group_id}` });
       continue;
     }
-    const { results } = await D.prepare("SELECT id, name, notify_prefs FROM pg_users WHERE id IN (?1, ?2)").bind(x.r.sender, x.r.recipient).all();
+    const { results } = await D.prepare("SELECT id, name, notify_prefs, pigeons FROM pg_users WHERE id IN (?1, ?2)").bind(x.r.sender, x.r.recipient).all();
     const s = results.find((u) => u.id === x.r.sender), r = results.find((u) => u.id === x.r.recipient); if (!s || !r) continue;
     const sp = prefsOf(s), rp = prefsOf(r);
-    if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, s.id, { title: sp.names ? `To ${firstName(r.name)}` : "Chat",
+    if (s.pigeons !== 0 && sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, s.id, { title: sp.names ? `To ${firstName(r.name)}` : "Chat",
       body: say(sp, "Your pigeon"), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${r.id}` });
-    if (rp.delays && !isQuiet(rp, t) && (await pals(D, s.id, r.id))) pushes += await pushTo(env, r.id, { title: rp.names ? firstName(s.name) : "Chat",
+    if (r.pigeons !== 0 && rp.delays && !isQuiet(rp, t) && (await pals(D, s.id, r.id))) pushes += await pushTo(env, r.id, { title: rp.names ? firstName(s.name) : "Chat",
       body: say(rp, `${rp.names ? "Their" : "A"} pigeon to you`), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${s.id}` });
   }
   return pushes;
@@ -484,7 +560,7 @@ const shipSay = (p, who, v, ev, deliver) => (ev === SHIP_BOARD
 const SPACE_KIND = { lunar: "lunar pigeon", lunarx: "lunar express pigeon", laser: "laser pigeon", orbital: "orbital pigeon" };
 async function spaceTick(env, D, t) {
   let pushes = 0;
-  const { results } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.pigeon, m.moon, m.moon_told, m.sent_at, m.deliver_at, r.name AS rname, s.notify_prefs FROM pg_msgs m
+  const { results } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.pigeon, m.moon, m.moon_told, m.sent_at, m.deliver_at, r.name AS rname, s.notify_prefs, s.pigeons FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
     WHERE m.moon IS NOT NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1)`, [t], "m", "deliver_at");
   for (const m of results) {
@@ -495,7 +571,7 @@ async function spaceTick(env, D, t) {
     if (!due) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET moon_told = ?1 WHERE id = ?2 AND COALESCE(moon_told, -1) < ?1").bind(base + due.i, m.id).run();
     if (!claimed.meta.changes || t - due.at > 2 * HOUR) continue;
-    const p = prefsOf(m); if (!p.moments || isQuiet(p, t)) continue;
+    const p = prefsOf(m); if (m.pigeons === 0 || !p.moments || isQuiet(p, t)) continue;
     pushes += await pushTo(env, m.sender, { title: p.names ? `To ${firstName(m.rname)}` : "Chat", body: `Your ${SPACE_KIND[L.mn.pk] || SPACE_KIND[m.pigeon] || "pigeon"}: ${due.text.replace(/^./, (c) => c.toLowerCase())}.`,
       tag: "space-" + m.id, url: `/pigeon/#open=${m.recipient}` });
   }
@@ -503,7 +579,7 @@ async function spaceTick(env, D, t) {
 }
 async function shipTick(env, D, t, since) {
   let pushes = 0;
-  const { results: one } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
+  const { results: one } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp, s.pigeons AS spg, r.pigeons AS rpg FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
     WHERE m.notified_at IS NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) AND COALESCE(m.ship_told, 0) < 2 AND m.legs LIKE '%"b"%'`, [t], "m", "deliver_at");
   for (const m of one) {
@@ -511,12 +587,12 @@ async function shipTick(env, D, t, since) {
     const claimed = await D.prepare("UPDATE pg_msgs SET ship_told = ?1 WHERE id = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, m.id).run();
     if (!claimed.meta.changes) continue;
     const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
-    if (sp.moments && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "Chat",
+    if (m.spg !== 0 && sp.moments && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "Chat",
       body: shipSay(sp, "Your pigeon", v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.recipient}` });
-    if (rp.moments && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "Chat",
+    if (m.rpg !== 0 && rp.moments && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "Chat",
       body: shipSay(rp, `${rp.names ? "Their" : "A"} pigeon to you`, v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const { results: grp } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
+  const { results: grp } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, u.pigeons, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.notified_at IS NULL AND d.deliver_at > ?1 AND m.sent_at <= ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND COALESCE(d.ship_told, 0) < 2 AND d.legs LIKE '%"b"%'`, [t], "d", "deliver_at");
@@ -524,17 +600,20 @@ async function shipTick(env, D, t, since) {
     const v = voyageOf(d.legs), ev = v && shipEv(v, t, since, d.ship_told); if (!ev) continue;
     const claimed = await D.prepare("UPDATE pg_gdeliv SET ship_told = ?1 WHERE rowid = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, d.rid).run();
     if (!claimed.meta.changes) continue;
-    const p = prefsOf(d); if (!p.moments || isQuiet(p, t) || d.muted) continue;
+    const p = prefsOf(d); if (d.pigeons === 0 || !p.moments || isQuiet(p, t) || d.muted) continue;
     pushes += await pushTo(env, d.user_id, { title: p.names ? d.gname : "Chat", body: shipSay(p, "A pigeon to you", v, ev, d.deliver_at), tag: "ship-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
   }
   return pushes;
 }
 async function reactTick(env, D, t, since) {
   let pushes = 0;
-  const { results } = await allRows(D, `SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
+  const { results } = await allRows(D, `SELECT r.id, r.sender, r.recipient, r.group_id, r.deliver_at, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
     FROM pg_reacts r JOIN pg_users u ON u.id = r.recipient JOIN pg_users s ON s.id = r.sender
     LEFT JOIN pg_groups g ON g.id = r.group_id LEFT JOIN pg_group_members gm ON gm.group_id = r.group_id AND gm.user_id = r.recipient
     WHERE r.recipient IS NOT NULL AND r.notified_at IS NULL AND r.deliver_at <= ?1 AND r.deliver_at > ?2`, [t, since], "r", "deliver_at");
+  // (one that flew has landed: its chat poked on both sides, so an open chat shows it now, whether or not quiet hours hold
+  // its notification; one that came at once was poked as it was sent, and isn't poked again)
+  if (results.length) await D.batch(pokesAfter(D, results.flatMap((r) => [[r.recipient, r.group_id || r.sender, r.deliver_at], [r.sender, r.group_id || r.recipient, r.deliver_at]]))).catch(() => {});
   for (const r of results) {
     const p = prefsOf(r); if (isQuiet(p, t)) continue;                      // held until quiet hours end
     const c = await D.prepare("UPDATE pg_reacts SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, r.id).run();
@@ -557,7 +636,7 @@ async function nearTick(env, D, t, since) {
     const claimed = await D.prepare("UPDATE pg_near SET told = ? WHERE a = ? AND b = ? AND told IS NULL").bind(t, r.a, r.b).run();
     if (!claimed.meta.changes) continue;
     for (const v of new Set([r.a_from, r.a_to].filter((x) => x === r.b_from || x === r.b_to))) {
-      const u = await D.prepare("SELECT id, notify_prefs FROM pg_users WHERE id = ?").bind(v).first(); if (!u) continue;
+      const u = await D.prepare("SELECT id, notify_prefs, pigeons FROM pg_users WHERE id = ?").bind(v).first(); if (!u || u.pigeons === 0) continue;
       const p = prefsOf(u); if (!p.moments || isQuiet(p, t)) continue;
       // the leader first, if one overtook the other
       const [x, y] = r.lead === r.b ? ["b", "a"] : ["a", "b"];
@@ -594,7 +673,7 @@ async function nearTick(env, D, t, since) {
 // where you were (and still friends); never who it's flying to.
 async function flyTick(env, D, t, since) {
   let pushes = 0;
-  const { results } = await D.prepare(`SELECT f.*, s.name AS sname, u.notify_prefs, u.lat AS ulat, u.lon AS ulon FROM pg_flyover f
+  const { results } = await D.prepare(`SELECT f.*, s.name AS sname, u.notify_prefs, u.pigeons, u.lat AS ulat, u.lon AS ulon FROM pg_flyover f
     JOIN pg_users s ON s.id = f.sender JOIN pg_users u ON u.id = f.user_id
     WHERE f.told IS NULL AND f.at <= ?1 AND f.at > ?2 LIMIT 200`).bind(t, since).all();
   for (const r of results) {
@@ -602,7 +681,7 @@ async function flyTick(env, D, t, since) {
     if (!friends || r.ulat == null || haversineKm(r.ulat, r.ulon, r.lat, r.lon) > 25) { await D.prepare("DELETE FROM pg_flyover WHERE msg_id = ? AND user_id = ? AND told IS NULL").bind(r.msg_id, r.user_id).run(); continue; }
     const claimed = await D.prepare("UPDATE pg_flyover SET told = ? WHERE msg_id = ? AND user_id = ? AND told IS NULL").bind(t, r.msg_id, r.user_id).run();
     if (!claimed.meta.changes) continue;
-    const p = prefsOf(r); if (!p.moments || isQuiet(p, t)) continue;
+    const p = prefsOf(r); if (r.pigeons === 0 || !p.moments || isQuiet(p, t)) continue;
     pushes += await pushTo(env, r.user_id, { title: "Look up!", body: p.names ? `${firstName(r.sname)}’s pigeon just flew over you. Wave hello?` : "A friend’s pigeon just flew over you. Wave hello?",
       tag: "fly-" + r.msg_id, url: `/pigeon/#open=${r.sender}` });
   }
@@ -649,24 +728,35 @@ export async function tick(env, origin) {
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
     D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR),
     D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t),
-    D.prepare("DELETE FROM pg_errors WHERE at < ?").bind(t - 14 * DAY)]).catch(() => {});
+    D.prepare("DELETE FROM pg_errors WHERE at < ?").bind(t - 14 * DAY),
+    // chats' way lines after 30 days, and the change feed after 7 (functions/_pulse.js)
+    D.prepare("DELETE FROM pg_wayev WHERE at < ?").bind(t - 30 * DAY),
+    D.prepare("DELETE FROM pg_pulse WHERE at < ?").bind(t - 7 * DAY)]).catch(() => {});
   // messages over a month old (their pigeons' lines kept), stray files, accounts unused for a year (functions/_retention.js):
   // before the blur below, which would otherwise clear a month-old flight's way before its line could note what it did
   await housekeeping(env, D, t, origin).catch((e) => logError(env, "pigeon housekeeping", e));
   await blurOld(D, t).catch((e) => logError(env, "pigeon blur", e));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
-  const { results: due } = await allRows(D, `SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
+  const { results: due } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.instant, m.deliver_at, u.notify_prefs, u.open_chat, u.open_at FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
     WHERE m.notified_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2`, [t, since], "m", "deliver_at");
   const prefs = new Map(due.map((m) => [m.recipient, prefsOf(m)]));
-  const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t));       // quiet ones wait
+  // quiet ones wait; and a message waits while that chat is open on their phone (they're reading it), for 5 minutes at
+  // most: an app that went without saying so still gets its push. (since never moves past LOOKBACK, so it's seen again)
+  const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t) && !(m.instant && openOn(m, m.sender, t) && m.deliver_at > t - OPEN_HOLD));
   let landed = [];
+  // (one held still changes the chat for both phones as it lands, or as a message booked for now is sent: poked once,
+  // when it comes due, and again when it's told; the pulse brings it, not the next full fetch)
+  const go = new Set(ready), waits = due.filter((m) => !go.has(m));
+  if (waits.length) await D.batch(pokesAfter(D, waits.flatMap((m) => [[m.recipient, m.sender, m.deliver_at], [m.sender, m.recipient, m.deliver_at]]))).catch(() => {});
   if (ready.length) {
     // claim them first, so two ticks running at once can't both send
     for (const part of chunks(ready)) {
-      const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${part.map(() => "?").join(",")}) RETURNING sender, recipient, read_at`)
+      const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${part.map(() => "?").join(",")}) RETURNING sender, recipient, read_at, instant`)
         .bind(t, ...part.map((m) => m.id)).all();
-      landed.push(...results.filter((m) => prefs.get(m.recipient).landed && !m.read_at));
+      // (both phones told the chat changed: a letter has landed, or a message booked for now has been sent)
+      if (results.length) await D.batch(pokes(D, results.flatMap((m) => [[m.recipient, m.sender], [m.sender, m.recipient]]))).catch(() => {});
+      landed.push(...results.filter((m) => (m.instant ? prefs.get(m.recipient).messages : prefs.get(m.recipient).landed) && !m.read_at));
     }
   }
   let pushes = 0, emails = 0;
@@ -677,8 +767,10 @@ export async function tick(env, origin) {
   for (const m of lost) {
     const p = prefsOf(m); if (isQuiet(p, t)) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, m.id).run();
+    if (claimed.meta.changes) await D.batch(pokes(D, [[m.sender, m.recipient], [m.recipient, m.sender]])).catch(() => {});
     if (!claimed.meta.changes || !p.lost) continue;
-    const last = await D.prepare("SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(m.sender, m.recipient, t).first();
+    // (letters only take turns)
+    const last = await D.prepare("SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 AND instant IS NULL ORDER BY sent_at DESC LIMIT 1").bind(m.sender, m.recipient, t).first();
     const again = turn(m.sender, last, t).free ? " It’s your turn again." : "";      // (not if another of yours, or one of theirs, has flown since)
     pushes += await pushTo(env, m.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(m.name)} didn’t make it.${again}` : `One of your pigeons didn’t make it.${again}`,
       tag: "lost-" + m.recipient, url: `/pigeon/#open=${m.recipient}` });
@@ -689,12 +781,14 @@ export async function tick(env, origin) {
       const { results: senders } = await D.prepare(`SELECT id, name FROM pg_users WHERE id IN (${part.map(() => "?").join(",")})`).bind(...part).all();
       for (const x of senders) name.set(x.id, x.name);
     }
+    // (letters and messages told apart: a message as it's told when sent, its words, count and tag the same, whichever claims it)
     const pairs = new Map();
-    for (const m of landed) { const k = m.recipient + "|" + m.sender; pairs.set(k, (pairs.get(k) || 0) + 1); }
+    for (const m of landed) { const k = m.recipient + "|" + m.sender + "|" + (m.instant ? 1 : 0); pairs.set(k, (pairs.get(k) || 0) + 1); }
     for (const [k, n] of pairs) {
-      const [to, from] = k.split("|"), names = prefs.get(to).names;
+      const [to, from, inst] = k.split("|"), names = prefs.get(to).names;
       // blocked or unfriended since it took off: it still lands, but no one is told who sent it
       if (!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(to, from).first())) continue;
+      if (inst === "1") { pushes += await tellMessage(env, D, to, { id: from, name: name.get(from) }, prefs.get(to), t); continue; }
       pushes += await pushTo(env, to, { title: names ? firstName(name.get(from)) : "Chat",
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
@@ -702,20 +796,24 @@ export async function tick(env, origin) {
   // friend requests and the like that quiet hours held, now they've ended for whoever they're for
   await heldTick(env, D, t, origin).catch((e) => logError(env, "pigeon held", e));
   // scheduled pigeons that have just taken off: now their recipient can hear about them
-  const { results: off } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.deliver_at, m.pigeon, u.name FROM pg_msgs m JOIN pg_users u ON u.id = m.sender
+  // (a message booked for a time has no take-off to tell: the landing pass above told it as a message)
+  const { results: off } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.deliver_at, m.pigeon, m.instant, u.name FROM pg_msgs m JOIN pg_users u ON u.id = m.sender
     WHERE m.sched = 1 AND m.sent_at <= ?1 LIMIT 200`).bind(t).all();
   for (const m of off) {
     const claimed = await D.prepare("UPDATE pg_msgs SET sched = 2 WHERE id = ? AND sched = 1").bind(m.id).run();
-    if (claimed.meta.changes && m.deliver_at > t) { await pigeonSent(env, { id: m.sender, name: m.name }, m.recipient, m.deliver_at, m.pigeon).catch(() => {}); }
+    // (a message booked for a time arrives as it's sent: both phones told, whether or not its notification waits)
+    if (claimed.meta.changes) await D.batch(pokes(D, m.instant ? [[m.recipient, m.sender], [m.sender, m.recipient]] : [[m.recipient, m.sender]])).catch(() => {});
+    if (claimed.meta.changes && !m.instant && m.deliver_at > t) { await pigeonSent(env, { id: m.sender, name: m.name }, m.recipient, m.deliver_at, m.pigeon).catch(() => {}); }
   }
   // stopovers: tell the friend it's resting with them, so they can add a line before it flies on
-  const { results: rests } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.via, m.via_off, s.name AS sname, r.name AS rname, v.notify_prefs FROM pg_msgs m
+  const { results: rests } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.via, m.via_off, s.name AS sname, r.name AS rname, v.notify_prefs, v.pigeons AS vpigeons FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient JOIN pg_users v ON v.id = m.via
     WHERE m.via IS NOT NULL AND m.via_told IS NULL AND m.via_at <= ?1 AND m.via_at > ?2 AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 200`).bind(t, since).all();
   for (const m of rests) {
     const p = prefsOf(m); if (isQuiet(p, t)) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET via_told = ? WHERE id = ? AND via_told IS NULL").bind(t, m.id).run();
-    if (!claimed.meta.changes || !p.landed || m.via_off <= t) continue;
+    // (not to a friend with pigeons off: they couldn't add a line, so they aren't asked to)
+    if (!claimed.meta.changes || !p.landed || m.via_off <= t || m.vpigeons === 0) continue;
     pushes += await pushTo(env, m.via, { title: p.names ? `${firstName(m.sname)}’s pigeon stopped by` : "A pigeon stopped by",
       body: p.names ? `It’s resting with you on its way to ${firstName(m.rname)}. Add a line before it flies on.` : "It’s resting with you for an hour. Add a line before it flies on.",
       tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
@@ -742,30 +840,34 @@ export async function tick(env, origin) {
     // (each half picks out its unread recent landings first, by index, not every message there is)
     const { results: waiting } = await D.prepare(`
       WITH inbox AS (
-        SELECT recipient AS to_id, sender, sender AS chat, id, read_at, lost_at, deliver_at FROM pg_msgs
+        SELECT recipient AS to_id, sender, sender AS chat, id, read_at, lost_at, deliver_at, instant FROM pg_msgs
           WHERE read_at IS NULL AND lost_at IS NULL AND deliver_at <= ?2 AND deliver_at > ?3
           AND EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'ok' AND ((k.a = recipient AND k.b = sender) OR (k.a = sender AND k.b = recipient)))
         UNION ALL
-        SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
+        SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at, g.instant FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
           JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0
           AND d.read_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?2 AND d.deliver_at > ?3
           AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = d.user_id AND k.b = g.sender) OR (k.a = g.sender AND k.b = d.user_id))))
-      SELECT u.id, u.email, u.notify_prefs, u.email_at, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
+      SELECT u.id, u.email, u.notify_prefs, u.email_at, COUNT(m.id) AS n, SUM(CASE WHEN m.instant = 1 THEN 1 ELSE 0 END) AS msgs, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
       FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND u.email_ok IS NOT NULL AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
       GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
     for (const u of waiting) {
-      const p = prefsOf(u); if (!p.landed || isQuiet(p, t)) continue;
+      // (letters as landed says, messages as messages does)
+      const p = prefsOf(u), msgs = u.msgs || 0; if (!((p.landed && u.n - msgs > 0) || (p.messages && msgs > 0)) || isQuiet(p, t)) continue;
       const claimed = await D.prepare("UPDATE pg_users SET email_at = ?1 WHERE id = ?2 AND COALESCE(email_at, 0) < ?3").bind(t, u.id, t - EMAIL_EVERY).run();
       if (!claimed.meta.changes) continue;
       const who = String(u.names || "").split(",").map(firstName);
       const list = who.length > 2 ? `${who.slice(0, -1).join(", ")} and ${who.at(-1)}` : who.join(" and ");
-      const subject = !p.names ? (u.n > 1 ? `${u.n} pigeons have landed` : "A pigeon has landed")
-        : u.n > 1 ? `${u.n} pigeons have landed` : `A pigeon from ${who[0]} has landed`;
+      // all letters: as pigeons; all messages: as messages; some of each: both
+      const letters = !p.names ? (u.n > 1 ? `${u.n} pigeons have landed` : "A pigeon has landed") : u.n > 1 ? `${u.n} pigeons have landed` : `A pigeon from ${who[0]} has landed`;
+      const messages = !p.names ? (u.n > 1 ? `You have ${u.n} new messages on Chat` : "You have a new message on Chat")
+        : who.length > 1 ? `${u.n} new messages` : u.n > 1 ? `${u.n} new messages from ${who[0]}` : `${who[0]} sent you a message`;
+      const subject = msgs === 0 ? letters : msgs >= u.n ? messages : `${u.n} new messages and letters`;
       try {
         await notifyEmail(env, origin, u, subject, {
-          icon: "landed", title: u.n > 1 ? `${u.n} pigeons have landed` : p.names ? `A pigeon from ${who[0]} has landed` : "A pigeon has landed",
+          icon: "landed", title: msgs === 0 ? (u.n > 1 ? `${u.n} pigeons have landed` : p.names ? `A pigeon from ${who[0]} has landed` : "A pigeon has landed") : subject,
           preheader: p.names ? `From ${list}. Open Chat to read ${u.n > 1 ? "them" : "it"}.` : `Open Chat to read ${u.n > 1 ? "them" : "it"}.`,
           ...(p.names ? { pill: ["person", `From ${list}`] } : {}),
           lines: [u.n > 1 ? `They’re waiting for you in Chat.` : "It’s waiting for you in Chat."],
@@ -812,8 +914,9 @@ export async function weekOf(D, uid, t) {
 async function weeklyTick(env, D, t, origin) {
   const out = { pushes: 0, emails: 0, sent: 0 };
   // a random slice each minute, so over Sunday evening everyone's turn comes round
+  // (your week in flight is a pigeons' note: none with them off)
   const { results } = await D.prepare(`SELECT id, name, email, notify_email, email_at, notify_prefs FROM pg_users
-    WHERE COALESCE(weekly_at, 0) < ?1 AND (notify_email = 1 OR EXISTS (SELECT 1 FROM pg_push WHERE user_id = pg_users.id)) ORDER BY RANDOM() LIMIT 300`).bind(t - 6 * DAY).all();
+    WHERE COALESCE(weekly_at, 0) < ?1 AND pigeons != 0 AND (notify_email = 1 OR EXISTS (SELECT 1 FROM pg_push WHERE user_id = pg_users.id)) ORDER BY RANDOM() LIMIT 300`).bind(t - 6 * DAY).all();
   for (const u of results) {
     const p = prefsOf(u);
     if (!weeklyDue(env, p, t)) continue;

@@ -210,12 +210,13 @@ export async function tidyDevices(env) {
 }
 
 // ---- the morning's send (functions/_todaymorning.js) ----
-// the accounts with the morning on, not being deleted, with a device: [{ u: { id, notify_prefs }, row }]
+// the accounts with the morning on, not being deleted, with a device: [{ u: { id, notify_prefs, pigeons }, row }] (pigeons: Chat's
+// card says letters plainly to someone with them off)
 export async function morningCandidates(env) {
   const D = await tddb(env);
-  const { results } = await D.prepare(`SELECT p.user_id, ${COLS.split(", ").map((c) => "p." + c).join(", ")}, u.notify_prefs FROM td_prefs p JOIN pg_users u ON u.id = p.user_id
+  const { results } = await D.prepare(`SELECT p.user_id, ${COLS.split(", ").map((c) => "p." + c).join(", ")}, u.notify_prefs, u.pigeons FROM td_prefs p JOIN pg_users u ON u.id = p.user_id
     WHERE p.m_on = 1 AND u.delete_at IS NULL AND EXISTS (SELECT 1 FROM td_push p2 JOIN pg_sessions s ON s.hash = p2.session WHERE p2.user_id = p.user_id)`).all();
-  return results.map((r) => ({ u: { id: r.user_id, notify_prefs: r.notify_prefs ?? null }, row: rowOf(r) }));
+  return results.map((r) => ({ u: { id: r.user_id, notify_prefs: r.notify_prefs ?? null, pigeons: r.pigeons ?? 1 }, row: rowOf(r) }));
 }
 // the day claimed, only where it's still as it was (was: the row's m_sent) → whether it's this one's
 export async function claimMorning(env, userId, day, was) {

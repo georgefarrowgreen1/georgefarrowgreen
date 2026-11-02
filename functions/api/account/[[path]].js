@@ -56,7 +56,7 @@ import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept a
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
 import { connectUrl as stravaUrl, disconnectStrava, stravaOf, stravaAll } from "../../_strava.js";
 import { newKey as healthKey, forget as healthOff, healthOf } from "../../_health.js";
-import { ADMIN_ROUTES, adminOf, setPrivacy } from "../pigeon/[[path]].js";
+import { ADMIN_ROUTES, adminOf, setPrivacy, setChatPrefs } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
 const UNITS = { temp: ["c", "f"], wind: ["mph", "kmh", "ms", "kn"], precip: ["mm", "in"], pressure: ["hpa", "inhg", "mmhg"], clock: ["12", "24"] };
@@ -99,20 +99,21 @@ function weatherMail(n) {
 }
 // What Chat keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
 // groups, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have gone
-// after a month), and places in your passport
-const SENT = `(SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1)
+// after a month), and places in your passport. (Letters only: instant messages aren't pigeons)
+const SENT = `(SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1 AND instant IS NULL) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.instant IS NULL)
   + (SELECT COUNT(*) FROM pg_flights WHERE sender = ?1)`;
 // (and had: those that have landed, as its log counts them; ?2 is now)
-const HAD = `(SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)
-  + (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)
+const HAD = `(SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL AND instant IS NULL)
+  + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.user_id = ?1 AND d.deliver_at <= ?2 AND d.lost_at IS NULL AND m.instant IS NULL)
   + (SELECT COUNT(*) FROM pg_flights WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)`;
 async function inflightOf(D, id) {
   const r = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_links WHERE (a = ?1 OR b = ?1) AND status = 'ok') AS friends,
       (SELECT COUNT(*) FROM pg_group_members WHERE user_id = ?1) AS groups,
       ${SENT} AS sent,
-      (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places`).bind(id).first().catch(() => null);
-  return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
+      (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places,
+      (SELECT pigeons FROM pg_users WHERE id = ?1) AS pigeons`).bind(id).first().catch(() => null);
+  return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0, pigeons: r?.pigeons !== 0 };
 }
 // What each app keeps of yours, in a line, for the site's home page (functions/api/me): Chat's friends and pigeons
 // sent, Weather's places and whether it sends you anything, Fitness's activities and whether you're on a plan (null for
@@ -121,7 +122,7 @@ export async function appFigures(env, id) {
   const [inflight, wx, fx, mk] = await Promise.all([inflightOf(await db(env), id), weatherOf(env, id), fitnessOf(env, id), marketsOf(env, id).catch(() => ({ holdings: 0 }))]);
   const places = Array.isArray(wx.data?.places) ? wx.data.places.length : 0, n = wx.data?.notify;
   return {
-    inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent } : null,
+    inflight: inflight.friends || inflight.sent ? { friends: inflight.friends, sent: inflight.sent, pigeons: inflight.pigeons } : null,
     weather: places ? { places, alerts: !!((n?.places || []).length || n?.brief) } : null,
     fitness: fx.activities || fx.plan ? { activities: fx.activities, plan: !!fx.plan } : null,
     markets: mk.holdings ? { holdings: mk.holdings, owned: mk.owned || 0 } : null,
@@ -197,7 +198,7 @@ async function view(env, u) {
 // they read on the lock screen and its emails; Weather's places and what each tells you, its briefing, its roof and its
 // emails (functions/_wxacct.js changeNotify); Fitness's morning reminder (functions/_fitpush.js); Mail's are Mail's own,
 // asked of it from the page (the admin's alone). Each app's devices are each its own: how many it's on, said ----
-const CHAT_KINDS = ["landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
+const CHAT_KINDS = ["messages", "landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
 const near = (a, b) => a && b && Math.abs(a.lat - b.lat) < 0.006 && Math.abs(a.lon - b.lon) < 0.006;
 async function notifySettings(env, u) {
   const D = await db(env), p = prefsOf(u), wx = (await weatherOf(env, u.id)).data || {}, n = wx.notify || {}, solar = wx.settings?.solar;
@@ -217,7 +218,7 @@ async function notifySettings(env, u) {
   return {
     quiet: { on: !!p.quiet, from: p.quietFrom, to: p.quietTo, tz: p.tz },
     emailOk: !!u.email_ok,
-    chat: { on: chatOn, kinds: Object.fromEntries(CHAT_KINDS.map((k) => [k, !!p[k]])), names: !!p.names, email: !!u.notify_email },
+    chat: { on: chatOn, kinds: Object.fromEntries(CHAT_KINDS.map((k) => [k, !!p[k]])), names: !!p.names, email: !!u.notify_email, pigeons: !!u.pigeons },
     weather: { on: wxOn, places, brief: n.brief ? { name: n.brief.name, lat: n.brief.lat, lon: n.brief.lon } : null, briefAt: n.briefAt || "07:00",
       email: { warn: !!n.email?.warn, brief: !!n.email?.brief }, solar: zones ? { alert: !!solar.alert, zones } : null },
     fitness: { on: fm.phones, morning: fm.on, at: fm.at },
@@ -299,10 +300,12 @@ async function inflightSettings(env, u) {
   const { results } = await (await db(env)).prepare(`SELECT p.id, p.handle, p.name FROM pg_links l JOIN pg_users p ON p.id = l.b
     WHERE l.a = ? AND l.status = 'blocked' ORDER BY p.name COLLATE NOCASE`).bind(u.id).all();
   return { notify: prefsOf(u), email: !!u.notify_email, emailOk: !!u.email_ok,
-    privacy: { showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, approxLocation: !!u.loc_approx, shareTracker: !u.hide_tracker },
+    // pigeons as a switch, and how new chats start (functions/api/pigeon setChatPrefs)
+    pigeons: !!u.pigeons, newChats: u.new_way === "instant" ? "instant" : "pigeon",
+    privacy: { showOnline: !u.hide_online, showTyping: !u.hide_typing, receipts: !u.no_receipts, shareNews: !u.hide_news, approxLocation: !!u.loc_approx, shareTracker: !u.hide_tracker },
     blocked: results.map((p) => ({ id: p.id, handle: p.handle, name: p.name })) };
 }
-const PRIVACY = ["showOnline", "receipts", "shareNews", "approxLocation", "shareTracker"];
+const PRIVACY = ["showOnline", "showTyping", "receipts", "shareNews", "approxLocation", "shareTracker"];
 // Fitness's settings that are the account's (as its record has them, functions/_fitness.js): kilometres or miles (none
 // chosen: the phone's region's, in the app), and whether it asks how you are each morning
 // and where its rides and nights come from (Garmin Connect, Strava, Apple Health), the devices they were recorded on,
@@ -765,7 +768,7 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     await limit(env, "pushtest:" + u.id, 10, 60 * 60e3);
-    return json({ sent: await pushTo(env, u.id, { title: "Chat", body: "Notifications are on. You’ll hear when a pigeon lands.", tag: "test", url: "/pigeon/" }) });
+    return json({ sent: await pushTo(env, u.id, { title: "Chat", body: u.pigeons ? "Notifications are on. You’ll hear when a message comes or a pigeon lands." : "Notifications are on. You’ll hear when a message comes.", tag: "test", url: "/pigeon/" }) });
   },
 
   // ---- Chat's settings (inflightSettings), as its Settings sends you here for them: each change by the app's own
@@ -775,6 +778,9 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096), D = await db(env);
     await limit(env, "prefs:" + u.id, 120, 3600e3);
+    // (checked before anything changes)
+    if (b.pigeons !== undefined && typeof b.pigeons !== "boolean") throw new HttpError(400, "Choose on or off.");
+    if (b.newChats !== undefined && !["instant", "pigeon"].includes(b.newChats)) throw new HttpError(400, "Choose Instant or By Pigeon.");
     if (b.notify !== undefined) {
       if (!b.notify || typeof b.notify !== "object") throw new HttpError(400, "Bad request.");
       await savePrefs(D, u.id, b.notify);
@@ -788,6 +794,8 @@ const ROUTES = {
       for (const k of PRIVACY) if (P[k] !== undefined) { if (typeof P[k] !== "boolean") throw new HttpError(400, "Choose on or off."); set[k] = P[k]; }
       await setPrivacy(D, u, set);
     }
+    // pigeons on or off, and how new chats start (by Chat's own rules: checked there before anything changes)
+    if (b.pigeons !== undefined || b.newChats !== undefined) await setChatPrefs(D, u, { pigeons: b.pigeons, newChats: b.newChats }, Date.now(), env);
     return json(await inflightSettings(env, await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
   },
   // ---- Weather's settings (weatherSettings), as its Settings sends you here for them (signed in, kept with the account) ----
@@ -914,8 +922,10 @@ const ROUTES = {
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
-      all("SELECT x.handle, x.name, l.created_at FROM pg_links l JOIN pg_users x ON x.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE (l.a = ?1 OR l.b = ?1) AND l.status = 'ok'", u.id),
-      all("SELECT g.name, m.joined_at FROM pg_group_members m JOIN pg_groups g ON g.id = m.group_id WHERE m.user_id = ?", u.id),
+      // (and how my messages to each go: my way, else how my new chats start)
+      all(`SELECT x.handle, x.name, l.created_at, COALESCE((SELECT w.way FROM pg_ways w WHERE w.a = ?1 AND w.b = x.id), ?2) AS way FROM pg_links l
+        JOIN pg_users x ON x.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE (l.a = ?1 OR l.b = ?1) AND l.status = 'ok'`, u.id, u.new_way === "instant" ? "instant" : "pigeon"),
+      all("SELECT g.name, m.joined_at, COALESCE(m.way, ?2) AS way FROM pg_group_members m JOIN pg_groups g ON g.id = m.group_id WHERE m.user_id = ?1", u.id, u.new_way === "instant" ? "instant" : "pigeon"),
       one(`SELECT ${SENT} AS sent, ${HAD} AS received`, u.id, Date.now()),
       all("SELECT place, first_at, n FROM pg_passport WHERE user_id = ?", u.id),
       all("SELECT name, created_at, km FROM pg_birds WHERE owner = ?", u.id),
@@ -949,12 +959,14 @@ const ROUTES = {
       inflight: {
         place: u.place || null, location: u.lat != null ? { lat: u.lat, lon: u.lon, approximate: !!u.loc_approx } : null,
         friends: friends.map((f) => ({ handle: f.handle, name: f.name, since: iso(f.created_at) })),
-        groups: groups.map((g) => ({ name: g.name, joinedAt: iso(g.joined_at) })),
+        groups: groups.map((g) => ({ name: g.name, joinedAt: iso(g.joined_at), way: g.way })),
+        chatWays: friends.map((f) => ({ handle: f.handle, way: f.way })),
         pigeons: { sent: pigeons?.sent || 0, received: pigeons?.received || 0 },
         passport: passport.map((p) => ({ place: p.place, firstAt: iso(p.first_at), times: p.n })),
         birds: birds.map((x) => ({ name: x.name, hatchedAt: iso(x.created_at), km: Math.round(x.km || 0) })),
         settings: { notifications: prefsOf(u), emailWhenPigeonsLand: !!u.notify_email, showWhenOnline: !u.hide_online, readReceipts: !u.no_receipts,
-          shareNews: !u.hide_news, liveTracker: !u.hide_tracker, approximateLocation: !!u.loc_approx },
+          shareNews: !u.hide_news, liveTracker: !u.hide_tracker, approximateLocation: !!u.loc_approx,
+          pigeons: !!u.pigeons, newChatsStart: u.new_way === "instant" ? "instant" : "pigeon", showWhenTyping: !u.hide_typing },
       },
       weather: { places: wx.data?.places || [], settings: wx.data?.settings || {}, notifications: wx.data?.notify || null, devices: wxDevices.map((d) => d.label) },
       // (each activity's figures; its file, as imported, is in Fitness: Export everything)

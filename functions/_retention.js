@@ -49,15 +49,15 @@ export async function keepMonth(env, D, t, batch = BATCH) {
   await settleBirds(D, t).catch(() => {});
   for (let i = 0; i < 4 && (await stampPassports(D, t, null, 25).catch(() => 0)) === 25; i++);
   let n = 0;
-  // one to one
+  // one to one (an instant message has no flight: it goes after its month with no line kept, and never waits to be stamped)
   const { results: one } = await D.prepare(`SELECT id, photo FROM pg_msgs m WHERE ${done("?1")} AND sent_at < ?1
-    AND (lost_at IS NOT NULL OR deliver_at < ?2 OR EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id))
+    AND (instant = 1 OR lost_at IS NOT NULL OR deliver_at < ?2 OR EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id))
     AND (bird IS NULL OR bird_done IS NOT NULL OR deliver_at < ?2) LIMIT ?3`).bind(cut, grace, batch).all();
   if (one.length) {
     const ids = JSON.stringify(one.map((m) => m.id));
     await D.batch([
       D.prepare(`INSERT OR IGNORE INTO pg_flights (${COLS}) SELECT id, id, sender, recipient, 0, NULL, pigeon, km, sent_at, deliver_at, lost_at, recalled, wind,
-        from_place, to_place, risky, from_lon, to_lon, wx_ms, ${WAY("legs")}, ${MOON("moon")} FROM pg_msgs WHERE id IN ${IDS}`).bind(ids),
+        from_place, to_place, risky, from_lon, to_lon, wx_ms, ${WAY("legs")}, ${MOON("moon")} FROM pg_msgs WHERE id IN ${IDS} AND instant IS NULL`).bind(ids),
       D.prepare(`DELETE FROM pg_reacts WHERE msg_id IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_near WHERE a IN ${IDS} OR b IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_flyover WHERE msg_id IN ${IDS}`).bind(ids),
@@ -68,11 +68,11 @@ export async function keepMonth(env, D, t, batch = BATCH) {
     if (photos.length && env.BIO_R2) await env.BIO_R2.delete(photos).catch(() => {});
     n += one.length;
   }
-  // groups: once every one of a message's pigeons is done with
+  // groups: once every one of a message's pigeons is done with (an instant one: as above)
   const { results: grp } = await D.prepare(`SELECT m.id, m.photo FROM pg_gmsgs m WHERE m.sent_at < ?1
     AND NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND NOT ${done("?1", "d.")})
-    AND NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.lost_at IS NULL AND d.deliver_at >= ?2
-      AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id))
+    AND (m.instant = 1 OR NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.lost_at IS NULL AND d.deliver_at >= ?2
+      AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id)))
     AND (m.bird IS NULL OR m.bird_done IS NOT NULL OR m.sent_at < ?2) LIMIT ?3`).bind(cut, grace, Math.max(1, batch >> 2)).all();
   if (grp.length) {
     const ids = JSON.stringify(grp.map((m) => m.id));
@@ -80,7 +80,7 @@ export async function keepMonth(env, D, t, batch = BATCH) {
       // (no place it went for a group pigeon: it could be someone who isn't the sender's friend)
       D.prepare(`INSERT OR IGNORE INTO pg_flights (${COLS}) SELECT m.id || ':' || d.user_id, m.id, m.sender, d.user_id, 1, m.group_id, m.pigeon, d.km, m.sent_at,
         d.deliver_at, d.lost_at, d.recalled, d.wind, m.from_place, NULL, m.risky, m.from_lon, d.to_lon, d.wx_ms, ${WAY("d.legs", "d.")}, ${MOON("d.moon")}
-        FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.id IN ${IDS}`).bind(ids),
+        FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.id IN ${IDS} AND m.instant IS NULL`).bind(ids),
       D.prepare(`DELETE FROM pg_reacts WHERE msg_id IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_flyover WHERE msg_id IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_stamped WHERE id IN (SELECT d.msg_id || ':' || d.user_id FROM pg_gdeliv d WHERE d.msg_id IN ${IDS})`).bind(ids),
@@ -100,7 +100,7 @@ export async function keepMonth(env, D, t, batch = BATCH) {
 // An account going (functions/_accounts.js): the pigeons its friends sent it that have landed stay in their senders'
 // logs as lines, unnamed, as older ones already do
 export const keepSentTo = (D, id, t) => D.prepare(`INSERT OR IGNORE INTO pg_flights (${COLS}) SELECT id, id, sender, NULL, 0, NULL, pigeon, km, sent_at, deliver_at,
-  lost_at, recalled, wind, from_place, to_place, risky, from_lon, to_lon, wx_ms, ${WAY("legs")}, ${MOON("moon")} FROM pg_msgs WHERE recipient = ?1 AND sender != ?1 AND ${done("?2")}`).bind(id, t);
+  lost_at, recalled, wind, from_place, to_place, risky, from_lon, to_lon, wx_ms, ${WAY("legs")}, ${MOON("moon")} FROM pg_msgs WHERE recipient = ?1 AND sender != ?1 AND ${done("?2")} AND instant IS NULL`).bind(id, t);
 
 // Files nothing points to: a page of storage looked through each run (where it got to kept in pg_meta), each file
 // checked against what should have it. Only files over a day old, so one being sent right now is never touched.

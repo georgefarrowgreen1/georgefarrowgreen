@@ -262,7 +262,7 @@ test("who has Today's morning (for Weather and Fitness to skip theirs): on, with
   await T.addDevice(env, { id: "gus", sessionHash: "sGus" }, sub);
   assert.ok((await T.morningUsers(env)).has("gus"));
   const c = (await T.morningCandidates(env)).find((x) => x.u.id === "gus");
-  assert.deepEqual(Object.keys(c.u).sort(), ["id", "notify_prefs"]);
+  assert.deepEqual(Object.keys(c.u).sort(), ["id", "notify_prefs", "pigeons"]);
   assert.deepEqual(Object.keys(c.row).sort(), ["cards", "m_at", "m_last", "m_lines", "m_on", "m_sent", "m_tz", "updated"]);
   await T.saveMorning(env, "gus", { on: false });
   assert.ok(!(await T.morningUsers(env)).has("gus"), "off");

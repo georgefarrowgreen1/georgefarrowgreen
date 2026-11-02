@@ -80,6 +80,7 @@
     },
     "chat": {
       "state": "ok",
+      "pigeons": true,
       "href": "https://chat.inflite.ai/",
       "inbound": [],
       "inboundTotal": 0,

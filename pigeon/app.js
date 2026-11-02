@@ -417,8 +417,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.66";            // shown in InFlite's menu
-const APP_NEWS = "A card in your own letter is easy to read while the pigeon’s in the air";       // (said once it's in)
+const APP_VERSION = "1.67";            // shown in InFlite's menu
+const APP_NEWS = "Messages arrive as soon as they’re sent, with typing dots and read ticks. Pigeons are a switch, and letters still fly when you choose";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -472,6 +472,20 @@ const LIVE_LEFT = HOUR;                // pigeons with longer than this to go ha
 const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
+/* ---------- pigeons: a switch on each account ----------
+   Off, Chat is a quick messenger: messages arrive as soon as they're sent, with no birds, maps or landing times. On,
+   any one message can go by pigeon (the Now button in the message box), or a whole chat (its way, from its name).
+   A copy of you from before the switch (no pigeons at all) counts as on. */
+const pigeonsOn = () => S.me?.pigeons !== false;
+const chatOf = (key) => friend(key) || group(key);
+// a chat's usual way for what you send (a copy from before ways, with none: by pigeon, so nothing goes instant by mistake)
+const wayOf = (c) => (c?.way ?? S.me?.newChats ?? "pigeon") === "instant" ? "instant" : "pigeon";
+// how a chat's next message goes when nothing's been chosen for it with the button: its usual way (pigeons off: now)
+const defaultNext = (c) => (pigeonsOn() && wayOf(c) === "pigeon" ? "pigeon" : "now");
+// how this chat's next message goes: a choice made with the message box's button (S.next), else its usual way
+const nextOf = (key) => (!pigeonsOn() ? "now" : S.next.get(key) ?? defaultNext(chatOf(key)));
+// a time as "1h 05m" (or "45m", "1d 3h"), for how long a letter takes
+const durPad = (ms) => { const d = Math.floor(ms / DAY), h = Math.floor((ms % DAY) / HOUR), m = Math.round((ms % HOUR) / MIN); return d ? `${d}d ${h}h` : h ? `${h}h ${pad2(m)}m` : `${Math.max(1, m)}m`; };
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "locpick", "pkoffer"]);
 // before you're in: all under the welcome's night sky, which carries on from one to the next
@@ -489,6 +503,10 @@ const S = {
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
   cardNow: new Map(), cardWait: null, laterOpen: null,   // cards' live "Now" (memory only), a card waiting above a chat's message box, an invite's other times shown
+  next: new Map(), lines: new Map(),          // a chat's next message, as chosen with the message box's button ("now" | "pigeon"); a chat's way changes, as lines
+  // the pulse (section "the pulse"): what's changed, typing, and when to ask next
+  live: { since: Date.now(), seen: new Map(), typingIn: new Map(), typingOut: null, typingOk: true, quietSince: Date.now(), timer: 0, fails: 0, off: false,
+    lastSync: 0, lastGroupLoad: new Map(), busy: false, again: false, lastAt: 0, next: 3000, okAt: 0, keyAt: 0, after: new Map(), fullAt: new Map(), tsig: "" },
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -749,6 +767,8 @@ const I = {
   up: ico(`<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>`),
   check: ico(`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
   ticks: ico(`<path d="m2.5 12.5 4 4 8-9"/><path d="m11 15.5 1 1 8-9"/>`),
+  tick1: ico(`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
+  bolt: ico(`<path d="M13 2 4 14h7l-1 8 9-12h-7Z"/>`),
   x: ico(`<path d="M6 6l12 12M18 6 6 18"/>`),
   pin: ico(`<path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0c0 5.4 6.5 11 6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>`),
   gone: ico(`<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 4l16 16"/>`),
@@ -2783,11 +2803,15 @@ async function applySync(d) {
     checkPin(f);
     if (f.last) await decrypt(f.id, f.last);
     // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
-    if (f.last && !f.last.flying && !f.last.lost && !S.seenLanded.has(f.last.id)) {
+    if (f.last && !f.last.flying && !f.last.lost && !f.last.waiting && !S.seenLanded.has(f.last.id)) {
       S.seenLanded.add(f.last.id);                 // (one landing in front of you comes down on screen: playKeyed)
-      if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
-        toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
-      else if (S.started && f.last.from === f.id && !f.last.readAt) announce(landedSay(first(f.name), f.last.id));     // (in it: comes down on screen, and said)
+      const nm = esc(first(f.name));
+      // a message: said in another chat (on the list, the row says so; in its own chat, it's there); a letter: as it lands
+      if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id)) {
+        if (!f.last.instant) toast(pigeonsOn() ? `<b>${nm}</b><br>A pigeon just landed.` : `A letter from <b>${nm}</b> arrived.`, "Read", () => go("chat", f.id));
+        else if (S.view === "chat") toast(`New message from <b>${nm}</b>`, "Open", () => go("chat", f.id));
+      }
+      else if (S.started && f.last.from === f.id && !f.last.readAt) announce(f.last.instant ? msgSay(first(f.name), f.last.id) : landedSay(first(f.name), f.last.id));     // (in it: comes down on screen, and said)
     }
   }
   for (const g of S.groups) {
@@ -2799,13 +2823,17 @@ async function applySync(d) {
     const l = g.last;
     if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
       S.seenLanded.add(l.id);
-      if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
-        toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
-      else if (S.started && !l.readAt) announce(landedSay(first(member(g, l.from)?.name || "someone"), l.id));
+      const who = esc(first(member(g, l.from)?.name || "someone"));
+      if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id)) {
+        if (!l.instant) toast(`<b>${esc(g.name)}</b><br>${pigeonsOn() ? `A pigeon from ${who} just landed.` : `A letter from ${who} arrived.`}`, "Read", () => go("chat", g.id));
+        else if (S.view === "chat") toast(`<b>${esc(g.name)}</b><br>New message from ${who}`, "Open", () => go("chat", g.id));
+      }
+      else if (S.started && !l.readAt) announce(l.instant ? msgSay(first(member(g, l.from)?.name || "someone"), l.id) : landedSay(first(member(g, l.from)?.name || "someone"), l.id));
     }
   }
 }
 // (what's said of one landing in the chat you're in: who from, and its words, as they're on screen)
+const msgSay = (who, id) => { const t = (S.plain.get(id)?.t || "").trim(); return `Message from ${who}${t ? `: ${t.length > 280 ? t.slice(0, 280) + "…" : t}` : "."}`; };
 const landedSay = (who, id) => { const t = (S.plain.get(id)?.t || "").trim(); return `A pigeon from ${who} just landed${t ? `: ${t.length > 280 ? t.slice(0, 280) + "…" : t}` : "."}`; };
 // something set off, landed or was called back: the In the air strip catches up now, not 20 s later
 function skiesFollow() {
@@ -2842,7 +2870,8 @@ async function sync() {
       // (an Appearance this phone couldn't save to your account yet goes again with any sync, not only one bringing news: syncTheme)
       if (same && themeWaits() && !themeSaving) saveTheme(theme());
       S.started = true;
-      if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
+      if (S.view === "chat" && S.chat && !S.locked && chatDue(S.chat)) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
+      S.live.forceChat = false;
       if (S.token !== tok) return;
       // (the open Skies map keeps up every time; on Messages the strip does whenever the sync changed, a new landing
       // time say, and past that every couple of minutes, for what no sync shows)
@@ -3099,13 +3128,15 @@ async function decryptGroup(g, m, kind = "msg") {
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
 async function loadGroup(gid) { return loadChat(gid); }
-async function loadChat(fid) {
+async function loadChat(fid, pre) {
   const g = group(fid), tok = S.token, tags = (S.chatTags ||= new Map());
   // (a chat that's here already says which copy it has: unchanged, the server just says so, rather than send it all again)
   const tag = S.msgs.has(fid) && tags.get(fid);
-  const d = await api((g ? "group-messages?id=" : "messages?with=") + encodeURIComponent(fid) + (tag ? "&tag=" + encodeURIComponent(tag) : ""));
+  const d = pre || await api((g ? "group-messages?id=" : "messages?with=") + encodeURIComponent(fid) + (tag ? "&tag=" + encodeURIComponent(tag) : ""));
   if (S.token !== tok) return;                     // signed out meanwhile
   S.skew = d.now - Date.now();
+  // (what the next ask of only what's changed starts from, and when this chat was last fetched whole: the pulse)
+  if (!g && Number.isFinite(d.now)) { S.live.after.set(fid, d.now); S.live.fullAt.set(fid, Date.now()); }
   if (d.same) { if (S.msgs.has(fid) && tags.get(fid) === d.tag) return fetchMedia(fid); tags.delete(fid); return loadChat(fid); }
   if (d.tag) tags.set(fid, d.tag); else tags.delete(fid);
   // the same as last time: nothing to open, draw or save again
@@ -3123,7 +3154,9 @@ async function loadChat(fid) {
 // (someone else's in a group goes when the server wipes it: only it knows when everyone has read it).
 const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
 // Messages are kept for 30 days after they land (or are lost), then go for everyone (functions/_retention.js)
-const KEEP_MS = 30 * DAY, KEEP_SAY = "Messages are kept for 30 days after they land, then deleted for everyone. Your Flight Log, passport and badges keep every flight.";
+const KEEP_MS = 30 * DAY, keepSay = () => (pigeonsOn() ? "Messages are kept for 30 days after they land, then deleted for everyone. Your Flight Log, passport and badges keep every flight." : "Messages are kept for 30 days after they arrive, then deleted for everyone.");
+// (what disappearing messages wait for, besides being read)
+const orLand = () => (pigeonsOn() ? "(or land, if read receipts are off)" : "(or arrive, if read receipts are off)");
 const kept = (m, t = now()) => { const end = m.lost ? m.lostAt || m.deliverAt : m.deliverAt; return !!end && end + KEEP_MS < t && !(m.flock || []).some((x) => !x.lost && x.deliverAt + KEEP_MS >= t); };
 function vanished(m, t = now()) {
   if (!m?.vanish) return false;
@@ -3149,7 +3182,14 @@ async function applyChat(fid, d, live) {
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
   if (!live) S.chatTags?.delete(fid);              // (what's shown now isn't the copy the server last named: loadChat)
+  // (a group's fresh copy: a member whose new message is in it, their dots go at once)
+  if (g && live && S.msgs.has(fid) && S.live.typingIn.has(fid)) {
+    const L = S.live, tin = L.typingIn.get(fid), had = new Set(S.msgs.get(fid).map((m) => m.id));
+    const by = new Set(d.messages.filter((m) => !had.has(m.id) && !m.flying).map((m) => m.from)), ids = tin.ids.filter((x) => !by.has(x));
+    if (ids.length !== tin.ids.length) { if (ids.length) L.typingIn.set(fid, { ...tin, ids }); else L.typingIn.delete(fid); L.tsig = typingSig(); }
+  }
   S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn && { ...d.turn, at: d.now || 0 }); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
+  if (!g) { S.lines.set(fid, Array.isArray(d.lines) ? d.lines.filter((x) => x && typeof x.by === "string" && Number.isFinite(x.at)) : []); const f = friend(fid); if (f && (d.way === "instant" || d.way === "pigeon")) f.way = d.way; if (f && (d.theirWay === "instant" || d.theirWay === "pigeon")) f.theirWay = d.theirWay; }
   if (g) { S.gevents.set(fid, d.events || []); if (live) (S.geventsLive ||= new Set()).add(fid); }
   for (const m of d.messages) if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
   if (!live) return;
@@ -3160,6 +3200,221 @@ async function applyChat(fid, d, live) {
     for (const m of d.messages) if ((g ? m.from !== S.me.id : m.from === fid) && !m.flying && !m.lost) m.readAt = m.readAt || now();
     const x = g || friend(fid); if (x) x.unread = 0;
   }
+}
+
+/* ---------- the pulse: what's changed, typing, delivered and read, while Chat is open ----------
+   A small ask every few seconds (the server says how often: next) while a chat or Messages is on screen. It says which
+   chat is open (so a notification for it isn't sent), whether you're typing (only when the next message goes now), and
+   marks what's reached this phone as delivered. Its answer: which chats changed (the open one fetches only what changed),
+   unread counts for the list, and who's typing. No pulse while hidden, locked, offline, or on Friends or Account. */
+const pulseOpen = () => (S.view === "chat" && S.chat ? S.chat : "");
+function pulseWanted() {
+  const L = S.live;
+  if (L.off || !S.token || !S.me || !S.priv || S.locked || AUTH_VIEWS.has(S.view) || document.visibilityState !== "visible" || navigator.onLine === false) return false;
+  return (S.view === "chat" && !!S.chat) || (S.view === "messages" && !S.sheet);
+}
+// what this pulse says of typing: "typing" (the box has words, the next message goes now, a key since: every 3 s at most),
+// "stop" (it was, and isn't now, or it's another chat), or nothing
+function typingSay(open) {
+  const L = S.live, out = L.typingOut;
+  const can = !!open && S.view === "chat" && L.typingOk && S.me?.showTyping !== false && document.visibilityState === "visible" && !S.locked && nextOf(open) === "now" && !!$ta?.value.trim();
+  if (can && L.keyAt > (out?.at || 0) && (!out || out.chat !== open || Date.now() - out.at >= 3000)) return "typing";
+  if (out && (!can || out.chat !== open)) return "stop";
+  return null;
+}
+// a pulse as soon as it may go (never within a second of the last one)
+function pulseNow() {
+  const L = S.live;
+  if (L.busy) { L.again = true; return; }
+  clearTimeout(L.timer);
+  L.timer = setTimeout(pulse, Math.max(0, 1050 - (Date.now() - L.lastAt)));
+}
+async function pulse() {
+  const L = S.live;
+  clearTimeout(L.timer); L.timer = 0;
+  if (L.busy || L.off || (!pulseWanted() && !(L.force && S.token && document.visibilityState === "visible"))) return;
+  const forced = L.force; L.force = false;
+  const open = pulseOpen(), body = { since: L.since, open }, ty = typingSay(open);
+  // (a chat just opened, or back to the list, or back after being away: quiet from now, not from before)
+  if (open !== L.quietFor) { L.quietFor = open; L.quietSince = Date.now(); }
+  if (ty === "typing") { body.typing = open; L.typingOut = { chat: open, at: Date.now() }; L.quietSince = Date.now(); }
+  else if (ty === "stop") { body.stop = L.typingOut.chat; L.typingOut = null; }
+  L.busy = true; L.lastAt = Date.now();
+  const tok = S.token;
+  let wait = L.next || 3000;
+  try {
+    const r = await fetch("/api/pigeon/pulse", { method: "POST", headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" }, body: JSON.stringify(body),
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(15000) : undefined });
+    if (S.token !== tok) return;
+    if (r.status === 404) { L.off = true; return; }                                   // (no pulse on this server: the 15 s sync, as before)
+    if (r.status === 429) {                                                           // (too soon: not a failure; a told-at-once one, or a stop, goes again)
+      const d = await r.json().catch(() => ({})); wait = Math.max(250, Number(d.retry) || 1000);
+      if (body.stop && !L.typingOut) L.typingOut = { chat: body.stop, at: 0 };
+      if (forced) L.force = true;
+      return;
+    }
+    if (!r.ok || !/json/.test(r.headers.get("Content-Type") || "")) throw new Error(`pulse ${r.status}`);
+    const d = await r.json();
+    L.fails = 0; L.okAt = Date.now();
+    if (Number.isFinite(d.now)) L.since = d.now;
+    if (Number.isFinite(d.next) && d.next >= 1000) L.next = d.next;
+    wait = L.next;
+    await pulseApply(d, open);
+  } catch (_) {
+    L.fails++;
+    wait = Math.min(30000, (L.next || 3000) * 2 ** L.fails);
+  } finally {
+    L.busy = false;
+    // (nothing either way for two minutes: every 10 s at most, until something changes or you type)
+    if (Date.now() - L.quietSince > 120e3) wait = Math.max(wait, 10000);
+    if (L.again) { L.again = false; wait = Math.min(wait, Math.max(0, 1050 - (Date.now() - L.lastAt))); }
+    clearTimeout(L.timer); L.timer = 0;
+    if (!L.off && S.token === tok && (pulseWanted() || (L.force && document.visibilityState === "visible"))) L.timer = setTimeout(pulse, wait);
+  }
+}
+const typingSig = () => [...S.live.typingIn].map(([k, v]) => `${k}:${v.ids.join(",")}`).sort().join("|");
+async function pulseApply(d, open) {
+  const L = S.live;
+  if (d.typing === null) { L.typingOk = false; L.typingOut = null; }          // (typing isn't on, on this server: not asked again)
+  // the list's unread counts, at once (one to one; the chat you're in is read)
+  let listMoved = false;
+  if (d.unread && typeof d.unread === "object") for (const f of S.friends) {
+    if (S.view === "chat" && S.chat === f.id) continue;
+    const n = Math.max(0, Number(d.unread[f.id]) || 0);
+    if ((f.unread || 0) !== n) { f.unread = n; listMoved = true; }
+  }
+  // what changed: the open chat, only what's new; any other, a sync (every 5 s at most on the list, 15 s in a chat)
+  let other = false;
+  for (const c of Array.isArray(d.changed) ? d.changed : []) {
+    if (!c || typeof c.chat !== "string" || L.seen.get(c.chat) === c.at) continue;
+    L.seen.set(c.chat, c.at); L.quietSince = Date.now();
+    if (c.chat === open && friend(open)) deltaFetch(open);
+    else if (c.chat === open && group(open)) groupLoad(open);
+    else other = true;
+  }
+  if (other) syncSoon(S.view === "chat" ? 15e3 : 5e3);
+  // who's typing (shown for 7 s at most without a fresh word: pulseTick)
+  const ty = d.typing && typeof d.typing === "object" ? d.typing : {}, until = Date.now() + 7000, next = new Map();
+  for (const [k, ids] of Object.entries(ty)) { const xs = Array.isArray(ids) ? ids.filter((x) => typeof x === "string" && x !== S.me?.id) : []; if (xs.length) next.set(k, { ids: xs, until }); }
+  if (next.size) L.quietSince = Date.now();
+  L.typingIn = next;
+  const sig = typingSig();
+  if (sig !== L.tsig || (listMoved && S.view === "messages")) { L.tsig = sig; if (S.view === "chat" || S.view === "messages") calmRender(); }
+  else if (listMoved) renderTabs();
+}
+// every second: dots that have gone quiet go, and the pulse starts or stops as the screen changes
+function pulseTick() {
+  const L = S.live;
+  if (L.typingIn.size) {
+    for (const [k, v] of L.typingIn) if (v.until <= Date.now()) L.typingIn.delete(k);
+    const sig = typingSig(); if (sig !== L.tsig) { L.tsig = sig; if (S.view === "chat" || S.view === "messages") calmRender(); }
+  }
+  if (pulseWanted()) { if (!L.timer && !L.busy) pulseNow(); }
+  else { L.quietFor = null; if (L.timer && !L.force) { clearTimeout(L.timer); L.timer = 0; } }     // (no pulse here: back again, it starts afresh)
+}
+// going away: one last word, that nothing's open now and you've stopped typing (it outlives the page if it must)
+function pulseHide() {
+  const L = S.live;
+  clearTimeout(L.timer); L.timer = 0; L.quietFor = null;
+  L.fullAt.clear();                               // (back again, the open chat is fetched whole: anything may have changed)
+  if (L.off || !S.token || !(S.view === "chat" || S.view === "messages")) return;
+  const body = { since: L.since, open: "" };
+  if (L.typingOut) { body.stop = L.typingOut.chat; L.typingOut = null; }
+  L.lastAt = Date.now();
+  try { fetch("/api/pigeon/pulse", { method: "POST", keepalive: true, headers: { Authorization: "Bearer " + S.token, "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {}); } catch (_) {}
+}
+// a key in the message box: typing, said with the next pulse (sooner if it's due)
+function typingKey() {
+  const L = S.live; L.keyAt = Date.now();
+  if (S.view !== "chat" || !S.chat) return;
+  const ty = typingSay(S.chat);
+  if (ty) { L.quietSince = Date.now(); pulseNow(); }
+}
+// the open chat's full fetch: on opening, after being away, every 60 s, or when asked; between, the pulse brings what changed
+// (a group's, every sync as before; no pulse working, every sync too)
+function chatDue(id) {
+  const L = S.live, live = !L.off && Date.now() - L.okAt < 20e3;
+  return !live || !!group(id) || !!L.forceChat || Date.now() - (L.fullAt.get(id) || 0) >= 60e3;
+}
+function syncSoon(gap) {
+  const L = S.live, left = (S.lastSync || 0) + gap - Date.now();
+  if (left <= 0) return sync();
+  if (!L.syncTimer) L.syncTimer = setTimeout(() => { L.syncTimer = 0; sync(); }, left);
+}
+// a group that changed: fetched whole, once every 3 s at most
+function groupLoad(gid) {
+  const L = S.live, left = (L.lastGroupLoad.get(gid) || 0) + 3000 - Date.now();
+  if (left > 0) { if (!L.gTimer) L.gTimer = setTimeout(() => { L.gTimer = 0; if (S.view === "chat" && S.chat === gid) groupLoad(gid); }, left); return; }
+  L.lastGroupLoad.set(gid, Date.now());
+  loadChat(gid).then(() => { if (S.view === "chat" && S.chat === gid) calmRender(); }).catch(() => {});
+}
+// a notification arrived while Chat's open: the chat it's for, if it's on screen, at once
+function pushTag(tag) {
+  if (typeof tag !== "string" || S.view !== "chat" || !S.chat || S.locked) return;
+  if (tag === "msg-" + S.chat || tag === "from-" + S.chat) { if (friend(S.chat)) deltaFetch(S.chat); }
+  else if ((tag === "gmsg-" + S.chat || tag === "group-" + S.chat) && group(S.chat)) groupLoad(S.chat);
+}
+// The open chat, only what's changed since its last answer (GET messages?with=&after=); whole when that's too old,
+// it's not been fetched whole for a minute, or the server answers in full
+async function deltaFetch(fid) {
+  const L = S.live;
+  if (L.deltaBusy) { L.deltaAgain = fid; return; }
+  L.deltaBusy = true;
+  try {
+    const after = L.after.get(fid), whole = !after || !S.msgs.has(fid) || Date.now() - (L.fullAt.get(fid) || 0) >= 60e3 || now() - after > 590e3;
+    if (whole) await loadChat(fid);
+    else {
+      const tok = S.token, d = await api(`messages?with=${encodeURIComponent(fid)}&after=${encodeURIComponent(after)}`);
+      if (S.token !== tok) return;
+      if (d.delta) await applyDelta(fid, d); else await loadChat(fid, d);
+    }
+    if (S.view === "chat" && S.chat === fid) calmRender();
+  } catch (e) { if (!e.offline) console.warn("delta", e.message); }
+  finally {
+    L.deltaBusy = false;
+    if (L.deltaAgain) { const x = L.deltaAgain; L.deltaAgain = null; if (S.view === "chat" && S.chat === x) deltaFetch(x); }
+  }
+}
+// what changed, merged in: messages by id, those gone taken out, their reactions as they are now, new way lines
+async function applyDelta(fid, d) {
+  const f = friend(fid); if (!f || !Array.isArray(d.messages)) return;
+  const L = S.live;
+  if (Number.isFinite(d.now)) { S.skew = d.now - Date.now(); L.after.set(fid, d.now); }
+  const list = [...(S.msgs.get(fid) || [])], at = new Map(list.map((m, i) => [m.id, i]));
+  const gone = new Set(Array.isArray(d.gone) ? d.gone.filter((x) => typeof x === "string") : []);
+  for (const r of d.reacts || []) await decrypt(fid, r, "react");
+  for (const m of d.messages) {
+    if (vanished(m)) { gone.add(m.id); S.plain.delete(m.id); S.pctx.delete(m.id); continue; }
+    await decrypt(fid, m);
+    if (m.note && m.via) await openNote(m.id, m.via, S.me.id, m.note);
+    if (m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
+    if (at.has(m.id)) list[at.get(m.id)] = m; else list.push(m);
+    // (a message from them: their dots go at once)
+    if (m.from === fid && L.typingIn.has(fid) && !m.flying) { L.typingIn.delete(fid); L.tsig = typingSig(); }
+  }
+  for (const id of gone) { S.plain.delete(id); S.pctx.delete(id); }
+  S.msgs.set(fid, list.filter((m) => !gone.has(m.id)).sort((a, b) => a.sentAt - b.sentAt));
+  const ids = new Set(d.messages.map((m) => m.id));
+  S.reacts.set(fid, [...(S.reacts.get(fid) || []).filter((r) => !ids.has(r.msg) && !gone.has(r.msg)), ...(Array.isArray(d.reacts) ? d.reacts : [])]);
+  // a line collapsed into a later one (a change undone within 10 minutes) replaces it
+  const nl = (Array.isArray(d.lines) ? d.lines : []).filter((x) => x && typeof x.by === "string" && Number.isFinite(x.at));
+  if (nl.length) {
+    let have = S.lines.get(fid) || [];
+    for (const x of nl) have = have.filter((y) => !(y.by === x.by && (y.at === x.at || (y.at < x.at && x.at - y.at < 600e3))));
+    S.lines.set(fid, [...have, ...nl].sort((a, b) => a.at - b.at));
+  }
+  if (d.turn) S.turns.set(fid, { ...d.turn, at: d.now || 0 });
+  if (d.way === "instant" || d.way === "pigeon") f.way = d.way;
+  if (d.theirWay === "instant" || d.theirWay === "pigeon") f.theirWay = d.theirWay;
+  S.chatChanged = true;
+  // read, as a whole chat is: only one on screen
+  const msgs = S.msgs.get(fid), unread = (m) => m.from === fid && !m.stopover && !m.flying && !m.lost && !m.readAt;
+  if (!S.locked && S.view === "chat" && S.chat === fid && document.visibilityState === "visible" && msgs.some(unread)) {
+    api("read", { method: "POST", body: { with: fid } }).catch(() => {});
+    for (const m of msgs) if (m.from === fid && !m.flying && !m.lost) m.readAt = m.readAt || now();
+    f.unread = 0;
+  }
+  fetchMedia(fid);
 }
 
 /* ---------- the last-known state, kept on this phone so Chat opens at once ----------
@@ -3980,6 +4235,7 @@ function mount() {
       <div class="crow">
         <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
         <div class="field-wrap">
+          <button type="button" class="mode" data-act="nextmode" data-next="now" hidden></button>
           <button type="button" class="kind" data-act="flysheet" aria-haspopup="dialog" hidden></button>
           <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="enter"></textarea>
           <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
@@ -4016,7 +4272,7 @@ function mount() {
   root().addEventListener("change", onChange);
   root().addEventListener("submit", onSubmit);
   root().addEventListener("input", onInput);
-  $ta.addEventListener("input", () => { fitTa(); renderCompose(); draftsSoon(); });
+  $ta.addEventListener("input", () => { fitTa(); renderCompose(); draftsSoon(); typingKey(); });
   // With the keyboard up the home bar is hidden, so drop its spacing and sit the
   // message box right on the keyboard. Touch screens only: there's no keyboard to clear otherwise.
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
@@ -4104,7 +4360,12 @@ function composeGlide() {
   kPlay($compose, f, o);
   const m = !inRender && S.view === "chat" && S.stick && $(".msgs", $view); if (m) kPlay(m, f, o);
 }
-function renderOffline() { const o = $(".offline"); if (o) { o.classList.toggle("on", !!S.offline); o.setAttribute("aria-hidden", String(!S.offline)); } }
+function renderOffline() {
+  const o = $(".offline"); if (!o) return;
+  o.classList.toggle("on", !!S.offline); o.setAttribute("aria-hidden", String(!S.offline));
+  const w = !S.me || pigeonsOn() ? "You’re offline. Pigeons will wait." : "You’re offline. Messages will wait.";
+  if (o.textContent !== w) o.textContent = w;
+}
 
 function go(view, chat) {
   const same = view === S.view && chat === S.chat, kind = !same && $view ? navKind(S.view, view) : null;
@@ -4120,6 +4381,7 @@ function go(view, chat) {
   // what you'd typed stays with its chat, for when you come back (not words going up with a photo or a voice pigeon)
   if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); draftsSoon(); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
+  if (!same && S.chat) S.next.delete(S.chat);      // (Now, or by pigeon, chosen for the next message: for this visit only)
   if (!same) newPill(false);
   S.chatWas = S.chat;
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
@@ -4135,6 +4397,7 @@ function go(view, chat) {
   if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
   backStep();
   if (!same && !S.sheet && !AUTH_VIEWS.has(view)) focusTitle();
+  if (!same && (view === "chat" || S.chatWas)) { S.live.force = true; pulseNow(); }    // (the chat on screen, or none: told at once, with typing stopped)
   if (backTop != null) { $view.scrollTop = backTop; S.under = null; }   // back where you were
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
   const shown = view === "chat" && chat && (S.msgs.get(chat) || []).length > 0;
@@ -4402,14 +4665,14 @@ function render() {
 function newPigeons() {
   const list = S.msgs.get(S.chat) || [], last = list.at(-1), was = S.lastSeen;
   S.lastSeen = { chat: S.chat, id: last?.id || "" };
-  if (was?.chat === S.chat && last && was.id !== last.id && !S.stick && last.from !== S.me.id) newPill(true);
+  if (was?.chat === S.chat && last && was.id !== last.id && !S.stick && last.from !== S.me.id) newPill(true, !!last.instant);
 }
-function newPill(on) {
+function newPill(on, msg) {
   let p = $compose && $(".newpill", $compose);
   if (!on) { if (p && !p.classList.contains("out")) { p.classList.add("out"); setTimeout(() => p.remove(), 220); } return; }
   if (p && !p.classList.contains("out")) return;
   p?.remove();
-  p = document.createElement("button"); p.type = "button"; p.className = "newpill"; p.dataset.act = "tonew"; p.textContent = "New pigeon ↓";
+  p = document.createElement("button"); p.type = "button"; p.className = "newpill"; p.dataset.act = "tonew"; p.textContent = msg ? "New message ↓" : "New pigeon ↓";
   $compose.append(p);
 }
 // In a chat, stay at the newest message while anything below grows (a photo
@@ -4430,7 +4693,7 @@ function pinChat() {
 // line under it, its buttons in one capsule; compact as it's scrolled: IFL.watch($view))
 const navbar = (title, { left = "", right = "", solid = false, root = false, titleHtml = null } = {}) => {
   if (root && S.me && !left) return IFL.headerHtml({ title, meAttrs: 'data-act="youmenu"', me: avatar(S.me, "s"), line: rootLine(title), cls: "chead" })
-    .replace('<div class="ifh-acts"></div>', `<div class="ifh-acts">${right.replaceAll('class="nbtn"', 'class="ifh-act"')}</div>`);
+    .replace('<div class="ifh-acts"></div>', `<div class="ifh-acts">${right.replace(/class="nbtn( [^"]*)?"/g, (_, x) => `class="ifh-act${x || ""}"`)}</div>`);
   const me = root && S.me && !left;
   return `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}${me ? " me" : ""}"><div class="nb-left">${me ? meBtn() : left}</div><div class="nb-title one">${titleHtml ?? esc(title)}</div><div class="nb-right">${right}</div></div>`;
 };
@@ -4438,7 +4701,7 @@ const navbar = (title, { left = "", right = "", solid = false, root = false, tit
 function rootLine(title) {
   if (title === "Messages") {
     const unread = [...S.friends, ...S.groups].reduce((n, f) => n + (f.unread || 0), 0), going = S.outbox.length;
-    return unread ? `<i>${unread} unread</i>` : going ? `<i>${going} on the way</i>` : "All read";
+    return unread ? `<i>${unread} unread</i>` : going && pigeonsOn() ? `<i>${going} on the way</i>` : "All read";
   }
   if (title === "Friends") return `${S.friends.length} ${S.friends.length === 1 ? "friend" : "friends"}${S.incoming.length ? ` · <i>${S.incoming.length} asking</i>` : ""}`;
   return `@${esc(S.me.handle)}`;
@@ -4512,7 +4775,7 @@ const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-h
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
 const onceP = (p) => !!p?.p && p.p.m !== "image/gif";
-const picWord = (p) => (p.v ? "Voice pigeon" : p.p?.m === "image/gif" ? "GIF" : "Photo");
+const picWord = (p, m) => (p.v ? (m?.instant || !pigeonsOn() ? "Voice message" : "Voice pigeon") : p.p?.m === "image/gif" ? "GIF" : "Photo");
 // A pigeon in the air, in a list: yours with its pigeon and when it lands, theirs sealed
 const riderIcon = (m) => `<span class="rider k-${kindOf(m)}">${I.bird}</span>`;
 const sealedIcon = (m) => `<span class="sealedi k-${kindOf(m)}">${I.lock}</span>`;
@@ -4521,12 +4784,15 @@ function preview(f) {
   if (out) return { html: `<span class="${out.err ? "lostp" : "fl"}">${out.err ? I.warn : I.clock} ${out.err ? "Not sent" : "Waiting for signal"}</span>`, at: out.at };
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
-  if (l.recalled) return { html: `<span class="homing">${I.homing} ${l.from === S.me.id ? "You called your pigeon back" : `${esc(first(f.name))} called their pigeon back`}</span>`, at: l.lostAt };
-  if (l.lost) return { html: `<span class="lostp">${I.skull} ${l.from === S.me.id ? "Your pigeon was lost on the way" : "A pigeon was lost on its way"}</span>`, at: l.lostAt };
-  if (l.from === S.me.id && l.flying) return { html: `<span class="upp">${riderIcon(l)}In the air · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
-  if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${sealedIcon(l)}Sealed · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
+  const on = pigeonsOn(), mine = l.from === S.me.id;
+  // (pigeons off: letters said plainly, with no birds)
+  if (l.recalled) return { html: `<span class="homing">${I.homing} ${on ? (mine ? "You called your pigeon back" : `${esc(first(f.name))} called their pigeon back`) : mine ? "You called a letter back" : `${esc(first(f.name))} called a letter back`}</span>`, at: l.lostAt };
+  if (l.lost) return { html: `<span class="lostp">${on ? I.skull : I.warn} ${on ? (mine ? "Your pigeon was lost on the way" : "A pigeon was lost on its way") : mine ? "Your letter didn’t arrive" : "A letter didn’t arrive"}</span>`, at: l.lostAt };
+  if (mine && l.instant && l.waiting) return { html: `<span class="fl">${I.clock} You: sends ${atTime(l.sentAt)}</span>`, at: l.sentAt };
+  if (mine && l.flying) return { html: on ? `<span class="upp">${riderIcon(l)}In the air · lands ${atTime(l.deliverAt)}</span>` : `<span class="upp">You: a letter, arrives ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
+  if (!mine && l.flying) return { html: on ? `<span class="upp">${sealedIcon(l)}Sealed · lands ${atTime(l.deliverAt)}</span>` : `<span class="upp">A letter, arrives ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.v ? `Voice pigeon (${fmtClip(p.v.d)})${l.photo === 2 ? " · expired" : ""}` : p.p ? (l.photo === 2 ? `${picWord(p)} (expired)` : picWord(p)) + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.v ? `${picWord(p, l)} (${fmtClip(p.v.d)})${l.photo === 2 ? " · expired" : ""}` : p.p ? (l.photo === 2 ? `${picWord(p, l)} (expired)` : picWord(p, l)) + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
 // how far a flock has got: landed for how many of how many, and how many lost
@@ -4541,6 +4807,14 @@ function gpreview(g) {
   const l = g.last;
   if (!l) return { html: `${others(g).map((p) => esc(first(p.name))).join(", ")}`, at: g.createdAt };
   const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
+  if (!pigeonsOn()) {
+    // (pigeons off: letters said plainly, with no birds)
+    if (l.from === S.me.id && l.recalled && !flockCount(l).landed) return { html: `<span class="homing">${I.homing} You called a letter back</span>`, at: l.sentAt };
+    if (l.from !== S.me.id && l.recalled) return { html: `<span class="homing">${I.homing} ${who} called a letter back</span>`, at: l.lostAt };
+    if (l.lost) return { html: `<span class="lostp">${I.warn} ${l.from === S.me.id ? "Your letter didn’t arrive" : `${who}’s letter didn’t arrive`}</span>`, at: l.from === S.me.id ? l.sentAt : l.lostAt };
+    if (l.from === S.me.id && l.flying) return { html: `<span class="upp">You: a letter, on its way</span>`, at: l.sentAt };
+    if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${who}: a letter, arrives ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
+  }
   if (l.from === S.me.id && l.recalled && !flockCount(l).landed) return { html: `<span class="homing">${I.homing} You called your pigeons back</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.recalled) return { html: `<span class="homing">${I.homing} ${who} called their pigeon back</span>`, at: l.lostAt };
   if (l.from === S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} Your pigeons were lost on the way</span>`, at: l.sentAt };
@@ -4548,14 +4822,14 @@ function gpreview(g) {
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${sealedIcon(l)}${who}: sealed · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? "Couldn’t open this message" : p.v ? `Voice pigeon (${fmtClip(p.v.d)})` : p.p ? picWord(p) + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? "Couldn’t open this message" : p.v ? `${picWord(p, l)} (${fmtClip(p.v.d)})` : p.p ? picWord(p, l) + (p.t ? ": " + p.t : "") : p.t;
   return { html: `${who}: ${esc(body)}`, at: l.from === S.me.id ? l.sentAt : l.deliverAt };
 }
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
 
 /* ---------- flight streaks: days in a row with a pigeon between you ---------- */
 const STREAK_MIN = 3;
-const streakOf = (f) => (f?.streak && f.streak.n >= STREAK_MIN ? f.streak : null);
+const streakOf = (f) => (pigeonsOn() && f?.streak && f.streak.n >= STREAK_MIN ? f.streak : null);
 // alive but nothing sent today, and under six hours to go
 const streakRisk = (s) => s && !s.today && s.endsAt - now() < 6 * HOUR;
 const streakLeft = (s) => fmtDur(Math.max(MIN, s.endsAt - now()));
@@ -4563,7 +4837,7 @@ const streakBadge = (f) => { const s = streakOf(f); return s ? `<span class="str
 
 // A new season: its look, for anyone, until it ends
 function seasonCard() {
-  const s = seasonNow(); if (!s || !S.me) return "";
+  const s = seasonNow(); if (!s || !S.me || !pigeonsOn()) return "";
   try { if (localStorage.getItem("inflight-season") === s.key) return ""; } catch (_) { return ""; }
   // one slim row: what it is, until when, Try It (the looks, with how to keep it), and an × to put it away
   return `<div class="seasoncard" data-key="season" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
@@ -4572,38 +4846,75 @@ function seasonCard() {
 }
 
 /* ---------- Messages ---------- */
+// The bird at the top of Messages and Friends: pigeons on or off, at a tap
+const birdBtn = () => `<button class="nbtn birdt" data-act="pigeons" aria-pressed="${pigeonsOn()}" aria-label="Pigeons, ${pigeonsOn() ? "on" : "off"}">${I.bird}</button>`;
+// this phone's own small memories (a tip put away): never needed, so nothing goes wrong without them
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} };
+// On Messages, where the In the air strip goes: the one-time note that messages can be instant now (pigeons on, not seen
+// yet), else a tip: pigeons are still here (off), or how to use them (just turned on, on this phone). Inline, never over anything
+function noteCard() {
+  if (!S.me) return "";
+  const tip = (key, title, text, btns) => `<div class="pgtip" data-key="${key}" role="note"><div class="tt"><i aria-hidden="true">${I.bird}</i><b>${title}</b></div><p>${text}</p><div class="tfoot">${btns}</div></div>`;
+  if (S.me.noted === false && pigeonsOn()) return `<div class="notecard" data-key="note" role="note"><div class="tt"><i aria-hidden="true">${I.bolt}</i><b>Messages can be instant now</b></div>
+    <p>Messages can arrive as soon as you send them, with typing and read ticks. Your chats go by pigeon until you change them, and you can send any one message either way.</p>
+    <div class="tfoot"><button type="button" class="btn small" data-act="noteinstant">Make Chats Instant</button><button type="button" class="btn small plain" data-act="notekeep">Keep Them by Pigeon</button></div></div>`;
+  if (!pigeonsOn()) return lsGet("inflight-pgtip") === "off" ? "" : tip("pgtip:off", "Pigeons are still here", "Turn them on to send letters that take real time to fly, and watch them on the map.",
+    `<button type="button" class="btn small" data-act="pgtipon">Turn On Pigeons</button><button type="button" class="btn small plain" data-act="pgtipoff">Not Now</button>`);
+  if (lsGet("inflight-pgtipon") === "1") return tip("pgtip:on", "Pigeons are on", "In a chat, the Now button sends the next message by pigeon. To make a whole chat go by pigeon, tap the button beside its name.",
+    `<button type="button" class="btn small" data-act="pgtipok">Got It</button>`);
+  return "";
+}
+// The ticks on your message (instant ones only): sent (the server has it), delivered (their Chat has it), read (blue).
+// A group's: delivered once everyone's has, read once everyone has read it
+function tickState(m) {
+  if (m.flock) { const fl = m.flock.filter((x) => !x.lost && !x.recalled); return fl.length && fl.every((x) => x.readAt) ? "read" : fl.length && fl.every((x) => x.delivered || x.readAt) ? "delivered" : "sent"; }
+  return m.readAt ? "read" : m.delivered ? "delivered" : "sent";
+}
+const TICK_SAY = { sent: "Sent", delivered: "Delivered", read: "Read" };
+const tickHtml = (st) => `<span class="tk${st === "read" ? " read" : ""}" data-st="${st}" role="img" aria-label="${TICK_SAY[st]}">${st === "sent" ? I.tick1 : I.ticks}</span>`;
+// who's typing in a chat (one to one: the friend; a group: its members), while it's fresh
+const typingOf = (key) => { const x = S.live.typingIn.get(key); return x && x.until > Date.now() ? x.ids.filter((id) => id !== S.me?.id) : []; };
 function vMessages() {
+  const on = pigeonsOn(), right = birdBtn() + (on ? nbtn("skies", I.globe, "The Skies: every pigeon in the air") : "") + nbtn("newmsg", I.compose, "New message");
   const fr = [
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+  const rows = fr.map(({ f, g, html, at }) => {
+    // typing (one to one only); under the time: the unread count, else the ticks on your last message, else (pigeons on) the streak
+    const ty = !g && typingOf(f.id).length > 0, l = f.last;
+    const rt = f.unread ? `<span class="badge-n" aria-hidden="true">${f.unread}</span>` : l && l.from === S.me.id && l.instant && !l.waiting && !S.outbox.some((o) => o.to === f.id) ? tickHtml(tickState(l)) : g ? "" : streakBadge(f);
+    const place = on && !g && f.place ? `<small class="mplace one">· ${esc(f.place.replace(/, (the Moon|Mars)$/, ""))}</small>` : "";
+    return `<button class="mrow${g ? " grow" : ""}" data-key="r:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" data-key="d:${esc(f.id)}" data-in="pop" aria-hidden="true"></span><span class="sr">Unread</span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
-      <span class="mtext" data-key="t:${esc(f.id)}" data-sig="${kSig(`${at}|${html}|${S.drafts.get(f.id) || ""}`)}">
-        <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span>${g ? "" : streakBadge(f)}<time>${fmtListTime(at)}</time>${chevSm}</span>
-        <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
+      <span class="mtext" data-key="t:${esc(f.id)}" data-sig="${kSig(`${at}|${html}|${S.drafts.get(f.id) || ""}|${ty}|${rt}`)}">
+        <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span>${place}<time>${fmtListTime(at)}</time>${chevSm}</span>
+        <span class="mprev"><span class="mpt">${ty ? `<span class="typingnow">typing…</span>` : S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>${rt ? `<span class="mrt">${rt}</span>` : ""}</span>
       </span>
-    </button>`).join("");
+    </button>`;
+  }).join("");
   // nothing on this phone yet and the first sync couldn't come (the server, not the network: that's the offline pill):
   // said, with Try Again, not placeholder rows for ever
   if (!rows && !S.started && !S.fromCache && S.syncFails) return `${navbar("Messages", { root: true, titleHtml: brandMark() })}
     <p class="empty"><b>Couldn’t open your messages</b>Chat’s server didn’t answer just now. <br><button class="btn small" data-act="retrysync">Try Again</button></p>`;
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
-  if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
+  if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right })}
     <div class="search skp" aria-hidden="true"></div><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
+  const what = on ? "pigeon" : "message";
   const empty = S.friends.length
-    ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
+    ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first ${what}.</p>`
     : S.outgoing.length || S.incoming.length
-    ? `<p class="empty"><b>No messages yet</b>Once a friend says yes, send them your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Friends</button></p>`
+    ? `<p class="empty"><b>No messages yet</b>Once a friend says yes, send them your first ${what}.<br><button class="btn" data-act="tab" data-id="friends">Friends</button></p>`
     // brand new: the two ways to get a friend, right here
-    : `<div class="firstrun"><div class="appicon">${I.bird}</div><h2>Your loft is ready</h2>
-        <p>Pigeons fly between friends. Send your link to someone, or add them by their handle.</p>
+    : `<div class="firstrun"><div class="appicon">${I.bird}</div><h2>${on ? "Your loft is ready" : "Your chats are ready"}</h2>
+        <p>${on ? "Pigeons fly between friends. Send your link to someone, or add them by their handle." : "Messages arrive as soon as you send them, end-to-end encrypted. Add a friend to start."}</p>
         <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
-  return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
+  return `${navbar("Messages", { root: true, titleHtml: brandMark(), right })}
     ${myKeyWarn()}${rows ? `<label class="search" data-key="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
-    ${seasonCard()}<div class="airslot"></div>
+    ${seasonCard()}${noteCard()}${on ? `<div class="airslot"></div>` : ""}
     <div class="sres" aria-live="polite"></div>
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : kTag(empty, "empty")}`;
 }
@@ -4629,7 +4940,7 @@ function newsRow(x) {
     <span class="nkind ${NEWS_TINT[x.kind] || "gray"}" aria-hidden="true">${(NEWS_ICON[x.kind] || (() => I.bird))(x)}</span></button>`;
 }
 function newsHtml() {
-  if (S.me?.shareNews === false || !S.news?.length) return "";
+  if (S.me?.shareNews === false || !S.news?.length || !pigeonsOn()) return "";
   const shown = S.news.slice(0, 3);
   return `<div class="ghead" data-key="h:news">News${S.news.length > 3 ? ` <button type="button" class="link gmore" data-act="newsall">See All</button>` : ""}</div>
     <div class="group news" data-key="g:news" data-sig="${kSig(shown.map((x) => `${x.kind}${x.at}${x.who.id}`).join())}">${shown.map(newsRow).join("")}</div>`;
@@ -4643,17 +4954,25 @@ function friendWhere(f) {
   if (!f.moon && f.tz && f.tz !== MY_TZ) try { at = `<span data-clock="${esc(f.tz)}">${esc(clockIn(now(), f.tz))}</span>${place ? " in " : " there"}`; } catch (_) {}
   return [at + place, far].filter(Boolean).join(" · ") || `@${esc(f.handle)}`;
 }
+// Under a friend's name with pigeons off: "online", "last seen 12:20", or nothing (when they hide it)
+const seenLine = (f) => (isOnline(f) ? "online" : f?.seenAt ? `last seen ${fmtSeen(f.seenAt).replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}` : "");
 function vFriends() {
-  if (S.me) loadNews();
+  const on = pigeonsOn();
+  if (S.me && on) loadNews();
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
-  const rows = fr.map((f) => `<button class="cell" data-key="f:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
-      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">${friendWhere(f)}</span></span>${chevSm}</button>`).join("");
-  return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
+  const rows = fr.map((f) => { const sub = on ? friendWhere(f) : seenLine(f); return `<button class="cell" data-key="f:${esc(f.id)}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
+      <span class="ctext"><span class="one">${esc(first(f.name))}</span>${sub ? `<span class="csub one">${sub}</span>` : ""}</span>${on && f.pigeons === false ? `<span class="uses">Messages only</span>` : ""}${chevSm}</button>`; }).join("");
+  // (pigeons on: who has them off, and what that means for a letter to them)
+  const offs = on ? fr.filter((f) => f.pigeons === false) : [], n1 = offs[0] && esc(first(offs[0].name));
+  const offNote = !offs.length ? "" : offs.length === 1 ? `${n1} has pigeons off. Letters you send ${n1} still fly and land at their time; ${n1} sees when they’ll arrive, without the birds.`
+    : "Some friends have pigeons off. Letters you send them still fly and land at their time; they see when they’ll arrive, without the birds.";
+  return `${navbar("Friends", { root: true, right: birdBtn() + nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     ${fr.length ? `<label class="search" data-key="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
     ${inc || out ? `<div class="group" data-key="g:req" data-sig="${inc}|${out}|${esc(S.incoming[0]?.id || "")}">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
     ${newsHtml()}
     ${fr.length ? `<div class="ghead" data-key="h:fr" data-sig="${fr.length}">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-key="g:fr" data-list="f">${rows}</div>
+      ${offNote ? `<div class="gfoot pgoff" data-key="ft:pg" data-sig="${kSig(offNote)}">${offNote}</div>` : ""}
       <div class="gfoot" data-key="ft:fr">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
       : `<p class="empty" data-key="empty"><b>No friends yet</b>Add someone by their handle, or share yours: @${esc(S.me.handle)}.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`}
     <div class="gap"></div>`;
@@ -4671,9 +4990,15 @@ function vAccount() {
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
   const earth = col("rocket", "Rocket", "Rocket", "9×") + col("turbo", "Turbo", "Turbo", "3×") + col("swift", "Swift", "Swift", "2×") + col("mystery", "Mystery", "Mystery");
+  const pgOn = pigeonsOn(), nc = u.newChats === "instant" ? "instant" : "pigeon";
+  const seg = (v, label) => `<button type="button" data-act="newchats" data-id="${v}" aria-pressed="${nc === v}">${label}</button>`;
+  const pigeonsGroup = `<div class="group pgset mt" data-key="g:pg" data-sig="${pgOn}|${nc}">
+      <button type="button" class="cell has-icon" id="pg-switch" role="switch" aria-checked="${pgOn}" data-act="pigeons"><span class="tile orange">${I.bird}</span><span class="ctext"><span>Pigeons</span><span class="csub">Letters that take real time to fly, with the map, birds and streaks</span></span><span class="switch${pgOn ? " on" : ""}" aria-hidden="true"></span></button>
+      ${pgOn ? `<div class="cell wayrow"><span class="ctext"><span>New Chats Start As</span></span><span class="wayseg" role="group" aria-label="New chats start as">${seg("instant", "Instant")}${seg("pigeon", "By Pigeon")}</span></div>` : ""}</div>`;
   return `${navbar("Account", { root: true })}
     ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "Chat Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
-    <div class="ghead">Today’s Pigeons</div>
+    ${pigeonsGroup}
+    ${pgOn ? `<div class="ghead">Today’s Pigeons</div>
     ${((space) => `<div class="group loft">${space.length > 1 ? `<div class="lrow">${earth}</div><div class="lrow space"><span class="lcap">Space</span>${space.join("")}</div>` : `<div class="lrow five">${earth}${space[0]}</div>`}</div>`)(
       [col("orbital", "Orbital", "Orbital"), ...(on("moon") ? [col("lunar", "Lunar", "Lunar"), col("lunarx", "Lunar Express", "Express")] : []), ...(on("mars") ? [col("laser", "Laser", "Laser")] : [])])}
     <div class="gfoot">New ones hatch through the day: 1 rocket, 3 turbo, 9 swift, a mystery and 2 orbital, which go round the Earth.${on("moon") ? " Only lunar pigeons reach the Moon." : ""}${on("mars") ? " Only laser pigeons reach Mars." : ""} Standard pigeons are free and fly on your turn.</div>
@@ -4683,7 +5008,7 @@ function vAccount() {
       ${cell({ act: "feathers", icon: I.coin, tile: "yellow", label: "Coots", sub: "Your Coots Coins, for the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
     <div class="ghead">Flying</div>
     <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", on: u.risky })}</div>
-    <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
+    <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>` : ""}
     ${accountPage() ? `<div class="group mt">` : `<div class="ghead">Settings</div>
     <div class="group">${notifyCell(u)}${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}`}
       ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
@@ -4718,7 +5043,7 @@ function vNotifySheet() {
   }[ps] || "Push notifications are set for each phone. The settings below apply to all of them.";
   const t = (key, icon, tile, label, sub) => toggleCell({ act: "npref", id: key, icon, tile, label, sub, on: !!n[key] });
   const hours = (key) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${n[key] === h ? " selected" : ""}>${hourLabel(h)}</option>`).join("");
-  const anyOn = ps === "on" || u.notifyEmail;
+  const anyOn = ps === "on" || u.notifyEmail, on = pigeonsOn();
   return `
     <div class="ghead">This Phone</div>
     <div class="group">
@@ -4733,21 +5058,22 @@ function vNotifySheet() {
     <div class="nwrap${anyOn ? "" : " dim"}">
     <div class="ghead">Notify Me When</div>
     <div class="group">
-      ${t("landed", I.bird, "orange", "A Pigeon Lands")}
-      ${t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one")}
-      ${t("rerouted", I.loc, "blue", "A Pigeon Changes Course", "When a friend moves while yours is flying")}
-      ${t("lost", I.skull, "red", "A Pigeon Is Lost", "When Pigeon Death takes one of yours")}
-      ${t("delays", I.storm, "indigo", "Weather Delays", "When one flies into weather that makes it late")}
+      ${toggleCell({ act: "npref", id: "messages", icon: I.bubble, tile: "blue", label: "Messages", sub: "When a friend sends you one", on: n.messages !== false })}
+      ${t("landed", I.bird, "orange", "A Pigeon Lands", on ? "" : "Letters friends send by pigeon")}
+      ${on ? t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one") : ""}
+      ${on ? t("rerouted", I.loc, "blue", "A Pigeon Changes Course", "When a friend moves while yours is flying") : ""}
+      ${on ? t("lost", I.skull, "red", "A Pigeon Is Lost", "When Pigeon Death takes one of yours") : ""}
+      ${on ? t("delays", I.storm, "indigo", "Weather Delays", "When one flies into weather that makes it late") : ""}
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
-      ${t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, ships, and friends’ pigeons flying over you")}
-      ${t("streaks", I.flame, "orange", "Flight Streaks", "A few hours before a streak with a friend runs out")}
-      ${t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned")}
+      ${on ? t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, ships, and friends’ pigeons flying over you") : ""}
+      ${on ? t("streaks", I.flame, "orange", "Flight Streaks", "A few hours before a streak with a friend runs out") : ""}
+      ${on ? t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned") : ""}
     </div>
     <div class="ghead">Lock Screen</div>
     <div class="group">${t("names", I.eye, "gray", "Show Names")}</div>
-    <div class="gfoot">${n.names ? "Notifications say who sent a pigeon." : "Notifications just say “A pigeon has landed”, without who sent it."} They never include what a message says: only your phone can read that.</div>
+    <div class="gfoot">${n.names ? "Notifications say who sent it." : "Just “Sent you a message” or “A pigeon has landed”."} They never include what a message says: only your phone can read that.</div>
     <div class="ghead">Quiet Hours</div>
     <div class="group">
       ${t("quiet", I.moon, "indigo", "Quiet Hours")}
@@ -4787,6 +5113,8 @@ const milesAway = (f) => {
 };
 // Under a friend's name: the time where they are (when it isn't yours), where, and how far
 function chatSub(f) {
+  if (typingOf(f.id).length) return `<small class="sub ty">typing…</small>`;
+  if (!pigeonsOn()) { const s = seenLine(f); return s ? `<small class="sub"><span class="one">${esc(s)}</span></small>` : ""; }
   const bits = [];
   let icon = "";
   // off the Earth: day or night where they are (a lunar day lasts a month; a Martian sol 24h 39m)
@@ -4806,7 +5134,34 @@ function chatSub(f) {
   const s = streakOf(f), st = s ? `<span class="streak${streakRisk(s) ? " risk" : ""}">${I.flame}${s.n}${streakRisk(s) ? ` · ends in ${esc(streakLeft(s))}` : ""}</span>` : "";
   return bits.length || st ? `<small class="sub">${st}${bits.length ? `${icon}<span class="one">${bits.join(" · ")}</span>` : ""}</small>` : "";
 }
-const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
+const gchatSub = (g) => { if (typingOf(g.id).length) return `<small class="sub ty">typing…</small>`; const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
+// The pill in a chat's header (pigeons on): how what you send in it goes, Instant or By Pigeon; tap to change it
+const wayPill = (c, g) => { const w = wayOf(c); return `<button type="button" class="nbtn mpill${w === "pigeon" ? " pigeon" : ""}" data-act="waysheet" data-id="${esc(c.id)}" data-way="${w}" aria-label="${g ? "How your messages to the group go" : `How messages to ${esc(first(c.name))} go`}">${w === "pigeon" ? `${I.bird}<span>By Pigeon</span>` : `${I.bolt}<span>Instant</span>`}</button>`; };
+// Typing dots at the foot of a chat (before what's still to go), and in a group who it is
+function typingHtml(key, g) {
+  const ids = typingOf(key); if (!ids.length) return "";
+  const nm = (id) => first((g ? member(g, id) : friend(id))?.name || "Someone");
+  const say = ids.length === 1 ? `${nm(ids[0])} is typing` : ids.length === 2 ? `${nm(ids[0])} and ${nm(ids[1])} are typing` : `${ids.length} people are typing`;
+  return `<div class="typing" data-key="typing" role="status" aria-label="${esc(say)}"><i></i><i></i><i></i></div>${g ? `<div class="typing-who" data-key="typingwho" aria-hidden="true">${esc(say)}</div>` : ""}`;
+}
+// The time under each run of messages from one side, with your ticks (messages only: letters keep "Landed" and "Read")
+const runMeta = (m) => { const mine = m.from === S.me.id, st = mine ? tickState(m) : ""; return `<div class="mt rm${mine ? " me" : ""}" data-key="rm:${esc(m.id)}" data-sig="${st}">${fmtTime(m.sentAt)}${mine ? tickHtml(st) : ""}</div>`; };
+// does a run end after msgs[i] (the next is someone else's, not a message, or comes after a gap with its own time)?
+const runEnds = (msgs, i) => {
+  const m = msgs[i], n = msgs[i + 1]; if (!n) return true;
+  const at = (x) => (x.from === S.me.id || x.flying || x.lost ? x.sentAt : x.deliverAt);
+  return n.from !== m.from || !n.instant || n.waiting || !sameDay(at(n), at(m)) || at(n) - at(m) > TIME_GAP;
+};
+// A friend's way changing, as a line in the chat (lines, from GET messages)
+function wayLines(f) {
+  const nm = esc(first(f.name)), on = pigeonsOn();
+  return (S.lines.get(f.id) || []).map((x) => {
+    const me = x.by === S.me.id, inst = x.way === "instant";
+    const text = me ? (inst ? `Your messages to ${nm} are instant now.` : `Your messages to ${nm} now go by pigeon, unless you choose Now.`)
+      : inst ? `${nm}’s messages to you are instant now.` : on ? `${nm}’s messages to you now go by pigeon.` : `${nm}’s messages to you now come as letters, sealed until they arrive.`;
+    return { at: x.at, html: `<div class="sysline way" data-key="wl:${esc(x.by)}:${x.at}" role="note">${inst ? I.bolt : I.bird}<span>${text}<span class="t"> · ${fmtTime(x.at)}</span></span></div>` };
+  });
+}
 /* ---------- pigeons on their way to you, kept small ---------- */
 const flyTrack = (m) => `<span class="ctrack" aria-hidden="true" data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><i></i><b class="cb"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></b></span>`;
 const inbound = (m) => m.from !== S.me.id && m.flying && !m.lost && !m.stopover;
@@ -4845,6 +5200,8 @@ function whoHasLabel(m) {
    has landed to react, reply or see the flight. */
 // (six days or more ahead, a pigeon booked for then, with its date: "Thu 5 Nov 18:00", as a weekday alone reads as this week's)
 const atTime = (ts) => { const d = new Date(ts); return sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : ts - now() < 6 * DAY ? `${DOW[d.getDay()]} ${fmtTime(ts)}` : `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} ${fmtTime(ts)}`; };
+// …said after a verb: "at 14:40" today, else "tomorrow 09:10", "Fri 09:10" (never "at tomorrow")
+const atWhen = (ts) => { const w = atTime(ts); return /^\d/.test(w) ? `at ${w}` : w; };
 // the same, where room is short (the message box, a card): "18:40", "Thu 02:20"
 const atShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : ts - now() < 6 * DAY ? `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}` : `${new Date(ts).getDate()} ${MON[new Date(ts).getMonth()]} ${fmtTime(ts)}`);
 // a duration, roughly: "45m", "2h", "1d 10h"
@@ -4858,6 +5215,8 @@ function footHtml(m, mine, g) {
 }
 // in a group, "Landed for all · read by" sits under your latest landed message only (the older ones keep it if something's still to say)
 let quietMeta = null;
+// letters say so ("Letter · flew 1h 05m") only in a chat that has messages too: set as the chat is drawn
+let ltagOn = false;
 // one to three emoji on their own: big, with no bubble
 const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*\s*){1,3}$/u;
 // a header over each stretch of the chat, as in Messages: "Today 17:24", "Yesterday 10:19", "Mon 13 Oct 09:02"
@@ -4874,7 +5233,14 @@ function bubble(f, m, gapTop, g) {
   const mine = m.from === S.me.id, k = kindOf(m);
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${esc(m.id)}` : "";
   // (its key, for a redraw: what it is now, and that it comes down to land)
-  const st = m.recalled ? "back" : m.lost ? "lost" : m.flying ? "fly" : "in", kk = (sig = st, c = "") => ` data-key="m:${esc(m.id)}${c}" data-sig="${sig}" data-in="land"`;
+  const st = m.recalled ? "back" : m.lost ? "lost" : m.flying ? "fly" : m.waiting ? "wait" : "in", kk = (sig = st, c = "") => ` data-key="m:${esc(m.id)}${c}" data-sig="${sig}" data-in="land"${m.instant ? ' data-instant="1"' : ""}`;
+  const on = pigeonsOn(), who = esc(first(f.name));
+  // pigeons off: letters shown simply, with no birds, maps or landing words: when they arrive, sealed until then
+  if (!on && !m.instant) {
+    if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}"${kk("back")}>${I.homing}<span>${mine ? "You called this letter back." : `${who} called their letter back.`}</span></div>`;
+    if (m.lost && (!g || !mine)) return `<div class="lostnote${fresh}"${kk("lost")}>${I.warn}<span>${mine ? `Your letter to ${esc(first(friend(S.chat)?.name || "them"))} didn’t arrive.` : `A letter from ${who} didn’t arrive.`}</span></div>`;
+    if (!mine && m.flying) return `<button type="button" class="sealedb${gapTop ? " gap-top" : ""}${fresh}"${kk("fly")} data-act="sealedtap" data-id="${esc(m.id)}" aria-label="A letter from ${who}, sealed until it arrives ${esc(atWhen(m.deliverAt))}">${I.lock}<span><b>A letter from ${who}</b><br>Arrives ${atWhen(m.deliverAt)}. Sealed until then.</span></button>`;
+  }
   if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}"${kk("back")}>${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}"${kk("lost")}>${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
@@ -4889,18 +5255,24 @@ function bubble(f, m, gapTop, g) {
   const cb = !p.p && !p.v && !p.bad ? cardBlock(f, m, p, g) : null;
   const jumbo = !cb && !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : linked(p.t);
-  // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
-  const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : "";
-  const up = mine && m.flying, foot = footHtml(m, mine, g);
-  // in the air (one to one): the way so far, then when it lands
-  const tail = up && !g ? `<span class="frow">${m.waiting ? "" : airTrack(m)}${foot}</span>` : foot;
+  // yours still to go (a message sent at a time, or with pigeons off, a letter yet to take off): it can be cancelled
+  const toGo = mine && m.waiting && (m.instant || !on);
+  // tap: your pigeon in the air → its flight (pigeons off, when it arrives); yours still to go → cancel it; anything that's arrived → react, reply or its flight
+  const tapAct = toGo ? ` data-act="waitmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"`
+    : mine && m.flying ? ` data-act="${on ? "flymenu" : "lettertap"}" data-id="${esc(m.id)}" role="button" tabindex="0"${on ? ' aria-haspopup="menu"' : ""}`
+    : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}" role="button" tabindex="0" aria-haspopup="menu"` : "";
+  const up = mine && m.flying && !toGo, foot = toGo ? `<span class="ft">${I.clock}sends ${atShort(m.sentAt)}</span>` : !on && up && !g ? `<span class="ft">${I.clock}arrives ${atTime(m.deliverAt)}</span>` : footHtml(m, mine, g);
+  // in the air (one to one): the way so far, then when it lands (pigeons off: when it arrives, no way drawn)
+  const tail = up && !g && on ? `<span class="frow">${m.waiting ? "" : airTrack(m)}${foot}</span>` : foot;
   const cls = `${mine ? " me" : ""}${up ? ` up k-${k}` : ""}${m.waiting ? " waiting" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}`;
+  // a letter among messages says so (pigeons on, landed: how long it flew; pigeons off: just "Letter", and always on yours still to arrive)
+  const lt = !m.instant && !m.lost && ((!on && mine && m.flying) || (ltagOn && (!on || !m.flying))) ? `<span class="ltag">${I.bird}${on ? `Letter · flew ${durPad(Math.max(MIN, m.deliverAt - m.sentAt))}` : "Letter"}</span>` : "";
   // who it's from, for VoiceOver (on screen, which side it's on, and its colour, say so): first in what it reads out
   const by = `<span class="sr">${mine ? "You" : esc(first(f.name))}: </span>`;
   let html;
   if (p.v) {
     const gone = m.photo === 2 || S.photoGone.has(m.id);
-    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${kk(gone ? st + ":gone" : st)}${tapAct}>${by}${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
+    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${kk(gone ? st + ":gone" : st)}${tapAct}>${by}${lt}${quote}${gone ? `<span class="vgone">${I.gone}${picWord(p, m)} expired</span>` : voiceHtml(m.id, p.v, mine, !!m.instant || !pigeonsOn())}${tail}</div>`;
   } else if (onceP(p)) {
     // view once: a pill to tap (theirs), what became of it (yours), the words below
     const gone = picGone(m), seen = (m.flock || []).filter((x) => x.viewedAt).length;
@@ -4910,7 +5282,7 @@ function bubble(f, m, gapTop, g) {
     const words = p.t || quote;
     html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)} data-act="viewonce" data-id="${esc(m.id)}" aria-label="${esc(first(f.name))}: View photo, once">${I.once}<b>${label}</b></button>`
       : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${kk(`${st}:${label}`)}${tapAct}>${by}${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
-    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${by}${quote}${text}${tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${by}${lt}${quote}${text}${tail}</div>`;
   } else if (p.p && picGone(m)) {
     // gone: a quiet outline of where it was, the time beside it; its words (if any) in their own bubble below
     const words = p.t || quote;
@@ -4926,14 +5298,14 @@ function bubble(f, m, gapTop, g) {
     else photo = `<div class="ph wait"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
     html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
-  } else if (cb) html = `<div class="b withcard${cls}" data-mid="${esc(m.id)}"${kk(`${st}:c${cb.sig}`)}${tapAct}>${by}${quote}${p.t ? text : ""}${cb.html}${tail}</div>`;
-  else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${by}${quote}${text}${tail}</div>`;
+  } else if (cb) html = `<div class="b withcard${cls}" data-mid="${esc(m.id)}"${kk(`${st}:c${cb.sig}`)}${tapAct}>${by}${lt}${quote}${p.t ? text : ""}${cb.html}${tail}</div>`;
+  else html = `<div class="b${jumbo && !lt ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${kk(st + (p.bad ? ":bad" : ""))}${tapAct}>${by}${lt}${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote" data-key="vn:${esc(m.id)}"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
   html += postmarkHtml(m, mine);
   const meta = [];
-  if (g && mine) {
+  if (g && mine && !m.instant) {
     // a dot for each of them, filling in as their pigeons land (and turning blue once they've read it); tap for who
     const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="whohas" data-id="${esc(m.id)}" aria-label="${esc(whoHasLabel(m))}">${whoDots(m)}${inner}</button>`;
     if (m.flying) meta.push(tap(`${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, k));
@@ -5338,7 +5710,7 @@ const pmName = (n) => n.replace(/^the /, "");
 const pmSeal = (pm) => `<span class="pmseal pm-${esc(pm.kind)}" aria-hidden="true"><svg viewBox="0 0 24 24" class="ico">${pmIco(pm)}</svg></span>`;
 // under a letter that flew past somewhere famous
 function postmarkHtml(m, mine) {
-  if (!m.postmarks?.length || m.flying || m.lost) return "";
+  if (!m.postmarks?.length || m.flying || m.lost || !pigeonsOn()) return "";
   return `<div class="pmarks${mine ? " me" : ""}" data-key="pm:${esc(m.id)}">${m.postmarks.map((pm) => `<button type="button" class="pmark pm-${esc(pm.kind)}" data-act="pmarkinfo" data-id="${esc(m.id)}:${esc(pm.id)}"
       aria-label="Postmark: flew past ${esc(pm.name)}">${pmSeal(pm)}<span class="pmt"><b>${esc(pmName(pm.name))}</b><small>${pmDay(pm.at)}</small></span></button>`).join("")}</div>`;
 }
@@ -5577,7 +5949,7 @@ function quoteHtml(q, g) {
   const o = (S.msgs.get(S.chat) || []).find((x) => x.id === q.id), op = o && S.plain.get(o.id);
   if (o && op && !op.bad) q = { id: q.id, from: o.from, t: String(op.t || "").replace(/\s+/g, " ").slice(0, 90), p: op.v ? "voice" : op.p ? (op.p.m === "image/gif" ? "gif" : "photo") : "" };
   else q = { id: String(q.id || ""), from: String(q.from || ""), t: String(q.t || "").slice(0, 90), p: ["gif", "voice", "photo"].includes(q.p) ? q.p : "" };
-  return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
+  return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? (o?.instant || !pigeonsOn() ? "Voice message" : "Voice pigeon") : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
 // A reaction's emoji, only on the message it was sealed for: its id goes inside it, so the server can't move it
 // to another (one from before that has none: shown where the server says, until it goes after 30 days)
@@ -5593,7 +5965,7 @@ function reactsHtml(m, mine) {
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
   const cur = mineNow && reactOf(mineNow), m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
-  const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
+  const flight = pigeonsOn() && m && !m.instant && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   const words = m && S.plain.get(id)?.t;
   // (each web address in it, to open: also what VoiceOver reaches them by, as a bubble's links are part of its button)
   const links = typeof words === "string" ? linksIn(words).slice(0, 3) : [];
@@ -5604,7 +5976,9 @@ function openReactMenu(anchor, id) {
   let head = `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`;
   if (m) {
     const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
-    if (!m.flying && !m.lost) bits.push(`${g && mine ? "First landed" : "Landed"} ${fmtShort(g && mine ? Math.min(...(m.flock || [{ deliverAt: m.deliverAt }]).map((x) => x.deliverAt || Infinity)) : m.deliverAt)}`);
+    // (a message: sent, delivered, read; a letter: sent, landed, read)
+    if (m.instant) { if (mine && !g && (m.delivered || m.readAt)) bits.push(m.gotAt ? `Delivered ${fmtShort(m.gotAt)}` : "Delivered"); }
+    else if (!m.flying && !m.lost) bits.push(`${g && mine ? "First landed" : "Landed"} ${fmtShort(g && mine ? Math.min(...(m.flock || [{ deliverAt: m.deliverAt }]).map((x) => x.deliverAt || Infinity)) : m.deliverAt)}`);
     if (mine && !g && m.readAt) bits.push(`Read ${fmtShort(m.readAt)}`);
     head += `<div class="mtime" role="none">${bits.join(" · ")}</div>`;
   }
@@ -5772,7 +6146,7 @@ function birdLine(m) {
   return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 // at the top of a chat whose messages disappear
-const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read (or land, if read receipts are off)${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
+const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" data-key="vl" data-sig="${v.ms}" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read ${orLand()}${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -5788,7 +6162,15 @@ function geventLines(list) {
       text = made ? `${by} made the group${whos.length ? ` with ${and(whos)}` : ""}` : `${by} added ${and(whos)}`;
     } else if (e.kind === "leave") text = `${by} left`;
     else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
-    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read (or land, if read receipts are off)` : `${by} turned off disappearing messages`;
+    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read ${orLand()}` : `${by} turned off disappearing messages`;
+    // a member's way for what they send to the group (functions/_groups.js "way")
+    else if (e.kind === "way") {
+      const me = e.by?.id === S.me.id, inst = e.name === "instant";
+      text = me ? (inst ? "Your messages to the group are instant now." : "Your messages to the group now go by pigeon.")
+        : `${first(personById(e.by?.id)?.name || e.by?.name || "Someone")}’s messages to the group ${inst ? "are instant now." : "now go by pigeon."}`;
+      out += `<div class="sysline way" data-key="ge:${e.at}:way:${esc(e.by?.id || "")}" role="note">${inst ? I.bolt : I.bird}<span>${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></span></div>`;
+      continue;
+    }
     else continue;
     out += `<div class="sysline" data-key="ge:${e.at}:${esc(e.kind)}" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
   }
@@ -5804,13 +6186,14 @@ function vGroupChat(g) {
   if (told && g.unseen?.length) { S.pins["g:" + g.id] = [...new Set([...(S.pins["g:" + g.id] || []), ...g.members.map((p) => p.id)])]; g.unseen = []; savePins(); }
   if (ghosts.length) g.ghosts = [...new Set([...(g.ghosts || []), ...ghosts])];
   let body = "", lastAt = 0, prevFrom = null, ev = 0; runN = tsN = 0;
-  const stl = stampLines(msgs).sort((a, b) => a.at - b.at); let si = 0;
+  const on = pigeonsOn(); ltagOn = (msgs || []).some((m) => m.instant);
+  const stl = on ? stampLines(msgs).sort((a, b) => a.at - b.at) : []; let si = 0;
   const stampsTo = (at) => { let h = ""; while (si < stl.length && stl[si].at <= at) h += stl[si++].html; return h; };
   // the group's changes up to a moment, as lines
   const evsTo = (at) => { const k = ev; while (ev < evs.length && evs[ev].at <= at) ev++; return ev > k ? geventLines(evs.slice(k, ev)) : ""; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && (S.outbox.some((o) => o.to === g.id) || S.pending?.to === g.id)) body = "";
-  else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
+  else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>${on && wayOf(g) === "pigeon" ? `Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.` : "Messages to the group are end-to-end encrypted."}</p>`;
   const landed = (msgs || []).filter((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled);
   quietMeta = new Set(landed.slice(0, -1).map((m) => m.id));
   if (msgs?.length) for (let i = 0; i < msgs.length; i++) {
@@ -5819,11 +6202,12 @@ function vGroupChat(g) {
     lastAt = at;
     const lines = evsTo(at) + stampsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
-    let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
+    let j = i; while (on && j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
     const who = member(g, m.from) || { id: m.from, name: "Former member" };
     if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who" data-key="wh:${esc(m.id)}">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
     body += bubble(who, m, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
+    if (m.instant && !m.waiting && runEnds(msgs, i)) { body += runMeta(m); prevFrom = null; continue; }
     prevFrom = m.from;
   }
   if (msgs?.length) body += evsTo(Infinity) + stampsTo(Infinity);
@@ -5835,9 +6219,9 @@ function vGroupChat(g) {
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
-      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
+      <div class="nb-right">${on ? wayPill(g, true) : ""}${on && flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">${esc(g.name)}</h1>${warn}${(liveSoon(g.id), "")}<div class="msgs">${vanishLine(g.vanish)}${body}${outboxBubbles(g.id)}</div>`;
+    <h1 class="sr">${esc(g.name)}</h1>${warn}${(liveSoon(g.id), "")}<div class="msgs">${vanishLine(g.vanish)}${body}${typingHtml(g.id, g)}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
@@ -5845,21 +6229,24 @@ function vChat() {
   if (!f) return `${navbar("", { left: backBtn("tab", S.backTo || "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
   let body = "", lastAt = 0, prevFrom = null; runN = tsN = 0;
+  const on = pigeonsOn(); ltagOn = (msgs || []).some((m) => m.instant);
   const lastLanded = [...(msgs || [])].reverse().find((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled)?.id;
-  const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
+  // (mid-air moments, flyovers and passport lines are the pigeons'; a change of way is anyone's)
+  const moms = [...(on ? [...chatMoments(msgs, f.id), ...flyLines(f)] : []), ...wayLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
   const momsTo = (at) => { const h = []; while (mo < moms.length && moms[mo].at <= at) h.push(moms[mo++]); return momRun(h); };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && (S.outbox.some((o) => o.to === f.id) || S.pending?.to === f.id)) body = "";
-  else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
+  else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted${on && wayOf(f) === "pigeon" ? " and fly the real distance between you" : ""}.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
     lastAt = at;
     const ml = momsTo(at); if (ml) { body += ml; prevFrom = null; }
-    let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
+    let j = i; while (on && j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
     body += bubble(f, m, prevFrom !== null && prevFrom !== m.from);
-    if (m.id === lastLanded) body += statusLine(m);
+    if (m.instant && !m.waiting && runEnds(msgs, i)) { body += runMeta(m); prevFrom = null; continue; }
+    if (m.id === lastLanded && !m.instant) body += statusLine(m);
     prevFrom = m.from;
   }
   if (msgs?.length) body += momsTo(Infinity);
@@ -5869,9 +6256,9 @@ function vChat() {
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
-      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
+      <div class="nb-right">${on ? wayPill(f) : ""}${on && flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${myKeyWarn()}${warn}${(liveSoon(f.id), "")}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${myKeyWarn()}${warn}${(liveSoon(f.id), "")}<div class="msgs">${vanishLine(f.vanish)}${body}${typingHtml(f.id)}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -5886,20 +6273,21 @@ function vAuth() {
         <div class="wtop ifl-top">
           <div class="wlogo ifl-logo"><span class="appicon" aria-hidden="true">${I.bird}</span></div>
           <h1 class="wtitle ifl-title" aria-label="Chat">${[..."Chat"].map((c) => `<span aria-hidden="true">${c}</span>`).join("")}</h1>
-          <p class="whisper ifl-tagline">Letters carried by pigeon</p>
+          <p class="whisper ifl-tagline">Messages, and letters by pigeon</p>
+          <p class="whisper wsub">Messages arrive at once. Letters by pigeon are a tap away.</p>
           ${S.ended ? `<p class="winvite">You’ve been signed out, as this sign-in was ended on another device or by a new password.${S.ended.waiting ? ` Sign in again and ${S.ended.waiting === 1 ? "the pigeon" : `the ${S.ended.waiting} pigeons`} waiting for signal will still go.` : ""}</p>` : ""}
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
         ${welcomeCta()}</div>`;
     case "locpick": return `<div class="auth">${navbar("")}
         <h1 class="large">Where are you?</h1>
-        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s rounded to about a mile, and only your friends see it.</p>
+        <p class="sub">${pigeonsOn() ? "Pigeons fly from here, so it sets how long your messages take." : "Friends see your town and local time, and letters sent to you by pigeon fly here."} It’s rounded to about a mile, and only your friends see it.</p>
         ${S.me?.place ? `<div class="group mt">${cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Your location" })}</div>` : ""}
         <div class="stack locfirst"><button class="btn wide" data-act="locate">${I.loc}${S.me?.place ? "Use my location again" : "Use my location"}</button></div>
         <div class="group">
           <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a city instead</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
-          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep it up to date", sub: "While Chat is open, so pigeons find you", on: S.onbAuto !== false })}
+          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep it up to date", sub: pigeonsOn() ? "While Chat is open, so pigeons find you" : "While Chat is open", on: S.onbAuto !== false })}
         </div>${ferr}
         ${S.me?.place ? `<div class="stack"><button class="btn wide plain" data-act="locdone">Continue</button></div>` : ""}</div>`;
     case "pkoffer": return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.face}</span>
@@ -6032,11 +6420,22 @@ function renderCompose() {
   const c = composeState(), { g, f, dumb, sched, via, kind } = c;
   const note = $(".note", $compose), btn = $(".send", $compose), pill = $(".kind", $compose);
   const cw = S.cardWait && S.cardWait.chat === S.chat ? S.cardWait.card : null;     // (a card waiting to go with it: Send to a Friend)
-  const has = (dumb ?? $ta.value).trim() || S.attach || cw;
+  // the next message goes now (a message, there at once) or by pigeon (a letter): pigeons off, always now
+  const on = pigeonsOn(), quick = nextOf(S.chat) === "now";
+  const has = (quick ? $ta.value : dumb ?? $ta.value).trim() || S.attach || cw;
   S.sendKind = kind;
+  // (the button that switches it, pigeons on: "Now" as a pill, or a round bolt beside the pigeon; drawn again only when it changes, as this runs every second)
+  const mode = $(".mode", $compose), mk = on ? (quick ? "now" : "pigeon") : "";
+  mode.hidden = !on;
+  if (mode.dataset.k !== mk) {
+    mode.dataset.k = mk; mode.dataset.next = quick ? "now" : "pigeon"; mode.classList.toggle("round", !quick);
+    mode.innerHTML = quick ? `${I.bolt}<span>Now</span>` : I.bolt;
+    mode.setAttribute("aria-label", quick ? "Next message goes now: send it by pigeon instead" : "Send this one now instead");
+  }
   const hatch = () => fmtDur(Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity)) - now());
   let stop = "", blocked = true;
   if (f.keyChanged) stop = "Check the new safety number before sending.";
+  else if (quick) blocked = false;            // (a message needs no location, turn, loft or time: only the key)
   else if (S.me.lat == null && !S.me.moon) stop = "Set your location in Account before sending.";
   else if (!kind && c.moon && !g) {
     const ks = c.kinds || [], mars = ks.includes("laser"), next = fmtDur(Math.min(...ks.map((k) => S.me[k + "NextAt"] || Infinity)) - now());
@@ -6055,12 +6454,13 @@ function renderCompose() {
   saidErr = S.err;
   // its pigeon, at the start of the message: the named one carrying it, or its kind
   // (a moment after a chat opens, the planner's times, so the hint says what How It Flies will)
-  const planKey = !g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP) ? f.id + ":" + kind : "";
+  const planKey = !quick && !g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP) ? f.id + ":" + kind : "";
   if (planKey !== planFor) { clearTimeout(planSoon); planSoon = 0; planFor = planKey; }
   if (planKey && !planSoon) planSoon = setTimeout(() => { planSoon = -1; if (S.chat === f.id && S.view === "chat") routePlanFor(f.id, kind); }, 1200);   // (-1: asked, once, until the chat or pigeon changes)
   const here = S.me.lat != null || !!S.me.moon;
-  const bd = kind && kind !== "dumb" && !SPACE_KINDS.includes(kind) ? birdFor() : null, hint = kind && !f.keyChanged && here ? landHint(c, kind) : "Message";
-  pill.hidden = !!f.keyChanged || !here;
+  const bd = kind && kind !== "dumb" && !SPACE_KINDS.includes(kind) ? birdFor() : null, hint = !quick && kind && !f.keyChanged && here ? landHint(c, kind) : "Message";
+  pill.hidden = quick || !!f.keyChanged || !here;
+  pill.classList.toggle("pigeon", !quick);
   pill.disabled = dumb != null;
   const pk = JSON.stringify([kind, bd?.id, bd?.name, bd?.wear, !!sched, !!via, S.me.skin]);
   if (pill.dataset.k !== pk) {
@@ -6070,24 +6470,30 @@ function renderCompose() {
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
   if ($ta.placeholder !== hint) { $ta.placeholder = hint; if (!$ta.value) fitTa(); }
   // the weather along the way, for a pigeon about to leave now (one to one)
-  const wp = $(".wxplan", $compose), plan = !g && !c.moon && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && kind !== "orbital" && f.lat != null && S.me.lat != null;
+  const wp = $(".wxplan", $compose), plan = !quick && !g && !c.moon && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && kind !== "orbital" && f.lat != null && S.me.lat != null;
   if (plan) planWx(f.id);
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
   btn.disabled = blocked || !has || S.busy;
   btn.classList.toggle("busy", !!S.busy);               // (a spinner in it, while what you sent goes up)
-  // nothing typed: the send button becomes a microphone (voice pigeons)
-  const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
+  // (now: an arrow, in blue; by pigeon: the bird, in the pigeons' orange)
+  const bk = quick ? "now" : "pigeon";
+  if (btn.dataset.k !== bk) { btn.dataset.k = bk; btn.classList.toggle("pigeon", !quick); btn.innerHTML = quick ? I.up : I.bird; btn.setAttribute("aria-label", quick ? "Send" : "Send by pigeon"); }
+  // nothing typed: the send button becomes a microphone (voice messages)
+  const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && (quick || dumb == null);
   mic.hidden = !showMic || !!S.busy; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
+  const ml = quick ? "Record a voice message" : "Record a voice pigeon";
+  if (mic.getAttribute("aria-label") !== ml) { mic.setAttribute("aria-label", ml); $(".recbar", $compose)?.setAttribute("aria-label", quick ? "Recording a voice message" : "Recording a voice pigeon"); $(".recsend", $compose)?.setAttribute("aria-label", quick ? "Send voice message" : "Send voice pigeon"); }
   // you can always delete a /dumb that can't fly; and the box you're typing in is never switched off under you
   // (iOS puts the keyboard away the moment a focused field is disabled; Send stays off instead)
-  const off = blocked && !S.err && dumb == null;
+  const off = blocked && !S.err && (quick || dumb == null);
   if (!off || document.activeElement !== $ta) $ta.disabled = off;
   const rb = $(".replybar", $compose), rt = S.replyTo && S.replyTo.chat === S.chat ? S.replyTo : null;
   rb.hidden = !rt;
   if (rt && rb.dataset.for !== rt.id) {
     rb.dataset.for = rt.id;
-    rb.innerHTML = `${I.reply}<span class="rtext"><b>Replying to ${esc(chatName(rt.from, g))}</b><span>${rt.p ? (rt.p === "gif" ? "GIF" : rt.p === "voice" ? "Voice pigeon" : "Photo") + (rt.t ? ": " : "") : ""}${esc(rt.t)}</span></span><button type="button" data-act="unreply" aria-label="Cancel reply">${I.x}</button>`;
+    const ro = (S.msgs.get(S.chat) || []).find((x) => x.id === rt.id);
+    rb.innerHTML = `${I.reply}<span class="rtext"><b>Replying to ${esc(chatName(rt.from, g))}</b><span>${rt.p ? (rt.p === "gif" ? "GIF" : rt.p === "voice" ? (ro?.instant || !on ? "Voice message" : "Voice pigeon") : "Photo") + (rt.t ? ": " : "") : ""}${esc(rt.t)}</span></span><button type="button" data-act="unreply" aria-label="Cancel reply">${I.x}</button>`;
   }
   if (!rt && rb.dataset.for) { rb.dataset.for = ""; rb.innerHTML = ""; }
   const a = $(".attach", $compose);
@@ -6518,6 +6924,26 @@ function renderSheet(refresh) {
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);
 }
+// How a chat sends, unless you choose otherwise: Instant, or By Pigeon (a letter each time, by the pigeon the message box
+// would pick now). The friend, or the group, sees a line when it changes
+function drawWay(s) {
+  const g = group(s.id), f = g ? null : friend(s.id), c = g || f;
+  if (!c) return "";
+  const w = wayOf(c), name = f ? esc(first(f.name)) : "";
+  let by = "Every message flies by pigeon";
+  if (S.chat === c.id) {
+    try {
+      const cs = composeState(), k = cs?.kind;
+      if (k && KIND[k] && k !== "dumb" && k !== "mystery") { const ms = cs.g || cs.moon || SPACE_KINDS.includes(k) ? etaMs(cs, k) : plannedMs(cs, k); if (Number.isFinite(ms) && ms > 0) by = `Every message flies by ${k === "standard" ? "pigeon" : KIND[k].name}, landing in about ${durPad(ms)}`; }
+    } catch (_) {}
+  }
+  const row = (v, icon, tile, label, sub) => `<button type="button" class="cell has-icon wayopt" role="radio" aria-checked="${w === v}" data-act="setway" data-id="${v}"><span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span><span class="csub">${sub}</span></span><span class="tickbox" aria-hidden="true">${I.check}</span></button>`;
+  const note = f ? `${name} sees a line in your chat when this changes. You can still send any one message the other way, from the button in the message box.${f.pigeons === false ? ` ${name} has pigeons off: letters still land at their time, shown without the birds.` : ""}`
+    : "Everyone in the group sees a line in the chat when this changes. You can still send any one message the other way, from the button in the message box.";
+  return sheetHtml(f ? `Messages to ${first(f.name)}` : "Your messages to the group", `<p class="flyto">How this chat sends, unless you choose otherwise</p>
+    <div class="group" role="radiogroup" aria-label="How this chat sends">${row("instant", I.bolt, "blue", "Instant", "Messages arrive as soon as you send them")}${row("pigeon", I.bird, "orange", "By Pigeon", esc(by))}</div>
+    <div class="gfoot">${note}</div>`);
+}
 function drawSheet(refresh) {
   const s = S.sheet;
   if (refresh && s?.type !== "profile") return;
@@ -6526,6 +6952,7 @@ function drawSheet(refresh) {
   switch (s.type) {
     case "lookup": return drawLook(s);
     case "send": $layer.innerHTML = drawSend(s); return;
+    case "way": { const h = drawWay(s); if (!h) { S.sheet = null; $layer.innerHTML = ""; return; } $layer.innerHTML = h; return; }
     case "askback": $layer.innerHTML = drawAskBack(s); return;
     case "map": {
       const mm = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
@@ -6677,13 +7104,14 @@ function drawSheet(refresh) {
         <div class="ghead">Who Sees What</div>
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
+          ${toggleCell({ act: "privacy", id: "showTyping", icon: I.compose, tile: "teal", label: "Show When I’m Typing", on: u.showTyping !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
           ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "Ranks, streaks, new countries", on: u.shareNews !== false })}
           ${toggleCell({ act: "privacy", id: "approxLocation", icon: I.loc, tile: "blue", label: "Approximate Location", sub: "About 10 km, not exact", on: !!u.approxLocation })}
           ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "On the public map, no names", on: u.shareTracker !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
-        <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
+        <div class="gfoot">Online, typing, read receipts and news work both ways: turn one off and you won’t see other people’s either. With online hidden, ticks still show, but not exactly when.</div>
         <details class="learn"><summary>How the live tracker works</summary><p>The tracker (chat.inflite.ai/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</p></details>`);
       const vb = $(".vbar b", $layer); if (vb) vb.style.width = `${vb.dataset.w}%`;     // (set here: the page allows no inline styles)
       return;
@@ -6717,7 +7145,7 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("New Message", S.friends.length
         ? `<div class="group mt-s">${cell({ act: "newgroup", icon: I.people, tile: "green", label: "New Group", cls: "action" })}</div>
           ${S.groups.length ? `<div class="ghead">Groups</div><div class="group">${S.groups.map((g) => `<button class="cell" data-act="open" data-id="${esc(g.id)}">${gavatar(g, "s")}<span class="ctext"><span class="one">${esc(g.name)}</span><span class="csub one">${g.members.length} people</span></span>${chevSm}</button>`).join("")}</div>` : ""}
-          <div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
+          <div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${pigeonsOn() && S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
         : `<p class="empty"><b>No friends yet</b>Add a friend first.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`,
         { left: { label: "Cancel", act: "close" }, right: null });
       return;
@@ -6732,7 +7160,7 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml(g ? "Add People" : "New Group", `<form id="group-form" data-form="${g ? "groupadd" : "newgroup"}" novalidate>
           ${g ? "" : `<div class="group mt-s"><label class="fcell"><input id="f-gname" name="name" placeholder="Group name" maxlength="40" autocomplete="off" aria-label="Group name"></label></div>`}
           ${pool.length ? `<div class="ghead">${g ? "Your friends" : "Who’s in it"}</div><div class="group">${rows}</div>
-            <div class="gfoot">${n > GROUP_MAX ? `Groups can have up to ${GROUP_MAX} people.` : `${n} ${n === 1 ? "person" : "people"}, including you. Everyone gets their own pigeon, flying the real distance to them. People in a group see each other’s names, but only friends see where each other are.`}</div>`
+            <div class="gfoot">${n > GROUP_MAX ? `Groups can have up to ${GROUP_MAX} people.` : `${n} ${n === 1 ? "person" : "people"}, including you. ${pigeonsOn() ? "Everyone gets their own pigeon, flying the real distance to them." : "Messages reach everyone at once."} People in a group see each other’s names, but only friends see where each other are.`}</div>`
             : `<p class="empty"><b>${g ? "Everyone’s already here" : "No friends yet"}</b>${g ? "All your friends are in this group." : "Add a friend first."}</p>`}
           ${ferr}</form>`,
         { left: g ? { label: "Back", act: "groupinfo" } : { label: "Cancel", act: "close" }, right: s.pick.size && n <= GROUP_MAX ? { label: g ? "Add" : "Create", form: "group-form" } : null });
@@ -6746,7 +7174,8 @@ function drawSheet(refresh) {
       const me = { ...S.me, id: S.me.id };
       const row = (p) => {
         const you = p.id === S.me.id, km = you ? null : memberKm(p);
-        const sub = you ? "You" : p.friend ? `${esc(p.place || "No location")}${km != null ? ` · ${fmtDur(flightMs(km))} by pigeon` : ""}` : `Friend of ${esc(first(member(g, p.addedBy)?.name || "a member"))} · ${fmtDur(flightMs(km))} by pigeon`;
+        const bp = (x) => (pigeonsOn() && x != null ? ` · ${fmtDur(flightMs(x))} by pigeon` : "");
+        const sub = you ? "You" : p.friend ? `${esc(p.place || "No location")}${bp(km)}` : `Friend of ${esc(first(member(g, p.addedBy)?.name || "a member"))}${bp(km)}`;
         // tap anyone for their safety number (friends of friends too)
         return you ? `<div class="cell">${avatar(me, "s")}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${sub}</span></span></div>`
           : `<button type="button" class="cell" data-act="safety" data-id="${esc(p.id)}" data-from="groupinfo" aria-label="${esc(first(p.name))}: safety number">${avatar(p, "s", p.friend)}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${p.keyChanged ? `<span class="keyw">${I.warn} Security key changed</span>` : sub}</span></span>${chevSm}</button>`;
@@ -6761,7 +7190,7 @@ function drawSheet(refresh) {
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
           ${cell({ act: "vanishask", id: g.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: g.vanish ? vanishSay(g.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}
         </div>
-        <div class="gfoot">${KEEP_SAY}</div>
+        <div class="gfoot">${keepSay()}</div>
         <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`, { name: `${g.name}: group info` });
       return;
     }
@@ -7019,7 +7448,7 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("Who Has It",
         `<div class="whohead">${pgm(m)}<b>${m.flying ? `${c.landed} of ${c.n} landed` : `Landed for ${c.landed} of ${c.n}`}</b><span>${read ? `Read by ${read === c.n ? "everyone" : read}` : "Not read yet"}${m.flying && c.next ? ` · next lands in <span data-eta="${esc(c.next)}">${fmtDur(c.next - now())}</span>` : ""}</span>${whoDots(m)}</div>
         <div class="group">${rows}</div>
-        ${onMap || m.flying ? `<div class="group mt">${onMap ? cell({ act: "map", id: m.id, icon: I.map, tile: "blue", label: m.flying ? "Watch on Map" : "See the Flights", chev: true }) : ""}${m.flying ? cell({ act: "recallask", id: m.id, label: "Call Them Back", cls: "center destructive" }) : ""}</div>` : ""}`);
+        ${pigeonsOn() && (onMap || m.flying) ? `<div class="group mt">${onMap ? cell({ act: "map", id: m.id, icon: I.map, tile: "blue", label: m.flying ? "Watch on Map" : "See the Flights", chev: true }) : ""}${m.flying ? cell({ act: "recallask", id: m.id, label: "Call Them Back", cls: "center destructive" }) : ""}</div>` : ""}`);
       return;
     }
     case "requests": {
@@ -7034,21 +7463,22 @@ function drawSheet(refresh) {
     }
     case "friendinfo": {
       if (!f) { S.sheet = null; return renderSheet(); }
-      const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
+      const on = pigeonsOn(), km = on && S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
       $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(first(f.name))}</span><span class="sub">@${esc(f.handle)}</span></div>
-        <div class="group mt">${cell({ act: "loft", id: f.id, icon: I.bird, tile: "indigo", label: `Visit ${esc(first(f.name))}’s Loft`, sub: "Their pigeons, badges and kit", chev: true })}</div>
+        ${on ? `<div class="group mt">${cell({ act: "loft", id: f.id, icon: I.bird, tile: "indigo", label: `Visit ${esc(first(f.name))}’s Loft`, sub: "Their pigeons, badges and kit", chev: true })}</div>` : ""}
         <div class="group mt">
+          ${on && f.pigeons === false ? cell({ icon: I.bird, tile: "orange", label: "Pigeons", val: "Off" }) : ""}
           ${cell({ icon: f.moon ? I.moon : I.pin, tile: f.moon ? (worldOf(f) === "mars" ? "red" : "indigo") : "blue", label: f.moon ? `On ${BODIES[worldOf(f)].name}` : "Location", val: esc((f.place || "Not set").replace(/, (the Moon|Mars)$/, "")), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
-          ${f.streak && (f.streak.n || f.streak.best >= 2) ? cell({ icon: I.flame, tile: "orange", label: "Flight Streak", val: f.streak.n ? `${f.streak.n} day${f.streak.n === 1 ? "" : "s"}` : "None now",
+          ${on && f.streak && (f.streak.n || f.streak.best >= 2) ? cell({ icon: I.flame, tile: "orange", label: "Flight Streak", val: f.streak.n ? `${f.streak.n} day${f.streak.n === 1 ? "" : "s"}` : "None now",
             sub: [f.streak.n && !f.streak.today ? `Send a pigeon in the next ${esc(streakLeft(f.streak))} to keep it` : "", f.streak.best >= 2 ? `Best: ${f.streak.best} days` : ""].filter(Boolean).join(" · ") }) : ""}
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
-          ${moonChat(f) ? kindsFor(f).map((k) => cell({ icon: k === "laser" ? I.up : I.moon, tile: k === "laser" ? "red" : "indigo", label: `${KIND[k].name} Pigeon`, val: fmtDur(spaceMs(k, endFor(S.me), endFor(f))) })).join("")
+          ${!on ? "" : moonChat(f) ? kindsFor(f).map((k) => cell({ icon: k === "laser" ? I.up : I.moon, tile: k === "laser" ? "red" : "indigo", label: `${KIND[k].name} Pigeon`, val: fmtDur(spaceMs(k, endFor(S.me), endFor(f))) })).join("")
             : km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", val: isVerified(f) ? "Verified" : "", chev: true })}
           ${cell({ act: "vanishask", id: f.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: f.vanish ? vanishSay(f.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}</div>
-        <div class="gfoot">${KEEP_SAY}</div>
+        <div class="gfoot">${keepSay()}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
       return;
     }
@@ -8479,7 +8909,7 @@ async function busyBtn(btn, label, fn) {
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
-const ONCE_ACTS = new Set(["acctsignin", "acctjoin", "accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh", "planans", "planlater", "asksend", "sendgo"]);
+const ONCE_ACTS = new Set(["noteinstant", "notekeep", "setway", "cancelwait", "acctsignin", "acctjoin", "accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh", "planans", "planlater", "asksend", "sendgo"]);
 const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
@@ -8702,7 +9132,7 @@ async function onClick1(e, t) {
     case "msgmenu": return openReactMenu(t, id);
     // Send to a Friend, a card's "How's yours?", and plans made together
     case "sendpick": return sendPick(id);
-    case "sendwhen": { const s = S.sheet; if (s?.type !== "send" || s.busy || s.plan || !["asap", "before", "morning"].includes(id)) return; s.when = id; return renderSheet(); }
+    case "sendwhen": { const s = S.sheet; if (s?.type !== "send" || s.busy || s.plan || !(pigeonsOn() ? ["now", "asap", "before", "morning"] : ["now", "morning"]).includes(id)) return; s.when = id; return renderSheet(); }
     case "sendask": { const s = S.sheet; if (s?.type !== "send" || s.busy || s.plan) return; s.ask = !s.ask; return renderSheet(); }
     case "sendplan": return sendPlan();
     case "planpick": { const s = S.sheet; if (s?.type !== "send" || !s.together?.windows) return; s.win = Math.max(0, Math.min(s.together.windows.length - 1, Number(id) || 0)); return renderSheet(); }
@@ -8834,15 +9264,15 @@ async function onClick1(e, t) {
     }
     case "vanishask": {
       const g = group(id), who = g ? "everyone in the group" : first(friend(id)?.name || "your friend");
-      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read (or land, if read receipts are off), for you and ${who}. The flight stays in your Flight Log.`,
+      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read ${orLand()}, for you and ${who}.${pigeonsOn() ? " The flight stays in your Flight Log." : ""}`,
         actions: [[DAY, "1 Day"], [7 * DAY, "7 Days"], [30 * DAY, "30 Days"], [0, "Off"]].map(([ms, label]) => ({ label, act: "vanishset", id: `${id}|${ms}` })) });
     }
     case "vanishset": {
       const [cid, ms] = id.split("|"), g = group(cid);
       try {
         await api(g ? "group-vanish" : "vanish", { method: "POST", body: g ? { id: cid, ms: Number(ms) } : { with: cid, ms: Number(ms) } });
-        await sync(); if (S.chat === cid) await loadChat(cid).catch(() => {});
-        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read (or land, if read receipts are off).` : "Disappearing messages are off.");
+        S.live.fullAt.delete(cid); await sync(); if (S.chat === cid) await loadChat(cid).catch(() => {});
+        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read ${orLand()}.` : "Disappearing messages are off.");
         if (S.sheet) renderSheet(); render();
       } catch (err) { toast(esc(err.message)); }
       return;
@@ -8975,6 +9405,8 @@ async function onClick1(e, t) {
     case "theme": return themeFade(() => { setTheme(id); render(); renderSheet(); });
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
+    // the message box's Now button: the next message goes now, or by pigeon (this chat, this message)
+    case "nextmode": { const k = S.chat; if (!k || !pigeonsOn()) return; S.next.set(k, nextOf(k) === "now" ? "pigeon" : "now"); haptic("tick"); renderCompose(); return pulseNow(); }
     case "routepreview": {
       // the flight it would be, drawn on the map as if it were in the air
       const p = previewFrom(routeStyle()); if (!p) return;
@@ -9024,6 +9456,51 @@ async function onClick1(e, t) {
       });
     }
     case "risky": return setRisky(!S.me.risky);
+    // a chat's way (its header's pill): the sheet, and a choice in it
+    case "waysheet": if (!pigeonsOn()) return; haptic("tick"); S.sheet = { type: "way", id: id || S.chat }; return renderSheet();
+    case "setway": {
+      const s = S.sheet; if (s?.type !== "way" || !["instant", "pigeon"].includes(id)) return;
+      const g = group(s.id), c = g || friend(s.id); if (!c) return;
+      if (wayOf(c) === id) { S.sheet = null; return renderSheet(); }
+      try {
+        const r = await api("way", { method: "POST", body: g ? { group: c.id, way: id } : { with: c.id, way: id } });
+        c.way = r.way === "instant" || r.way === "pigeon" ? r.way : id; haptic("success");
+        if (S.sheet === s) { S.sheet = null; renderSheet(); }
+        S.next.set(c.id, c.way === "pigeon" ? "pigeon" : "now");
+        S.live.fullAt.delete(c.id);
+        if (S.chat === c.id) await loadChat(c.id).catch(() => {});
+        render();
+      } catch (err) { toast(esc(err.message)); }
+      return;
+    }
+    // pigeons off: a letter in the air, either way, says when (nothing to watch)
+    case "sealedtap": case "lettertap": {
+      const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m) return;
+      haptic("tick"); return toast(t.dataset.act === "sealedtap" ? `It opens ${esc(atWhen(m.deliverAt))}.` : `It arrives ${esc(atWhen(m.deliverAt))}.`);
+    }
+    // yours still to go: a message sent at a time, or (pigeons off) a letter yet to take off, cancelled
+    case "waitmenu": {
+      const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.waiting) return;
+      return openMenu(t, [{ label: m.instant ? "Cancel Message" : "Cancel Letter", sub: `sends ${atShort(m.sentAt)}`, icon: I.x, act: "cancelwait", id, destructive: true }]);
+    }
+    case "cancelwait": {
+      const chat = S.chat, g = group(chat);
+      try {
+        const r = await api(g ? "group-recall" : "recall", { method: "POST", body: { id } });
+        const list = S.msgs.get(chat) || [], i = list.findIndex((x) => x.id === id);
+        if (r.cancelled) { if (i >= 0) list.splice(i, 1); S.plain.delete(id); S.photos.delete(id); }
+        else if (r.message && i >= 0) list[i] = r.message;
+        if (r.me) S.me = r.me;
+        S.live.fullAt.delete(chat);
+        haptic("heavy"); render(); renderCompose(); toast("Cancelled. It won’t be sent."); return sync();
+      } catch (err) { toast(esc(err.message)); }
+      return;
+    }
+    case "pigeons": case "pgtipon": return setPigeons(t.dataset.act === "pgtipon" ? true : !pigeonsOn());
+    case "pgtipoff": lsSet("inflight-pgtip", "off"); haptic("tick"); return render();
+    case "pgtipok": lsSet("inflight-pgtipon", null); haptic("tick"); return render();
+    case "newchats": return setNewChats(id);
+    case "noteinstant": case "notekeep": return noteAnswer(t.dataset.act === "noteinstant");
     case "privacy": {
       const on = S.me[id] === false;                                   // switching it back on
       S.me = { ...S.me, [id]: on }; renderSheet();
@@ -9032,7 +9509,7 @@ async function onClick1(e, t) {
       return;
     }
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
-    case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
+    case "npref": return setNotify({ [id]: !(id === "messages" ? S.me.notify?.messages !== false : !!S.me.notify?.[id]) });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
     case "pushtest":
       try { const r = await api("push-test", { method: "POST" }); toast(r.sent ? "Test sent. It should arrive in a moment." : "Couldn’t reach this phone. Turn notifications off and on again."); }
@@ -9084,6 +9561,56 @@ const agoText = (at) => {
 // says every ten minutes that you're still there (so a pigeon the server held
 // back from turning, as it turns one at most every ten minutes, still turns).
 const AUTO_EVERY = MIN, AUTO_KM = 1, AUTO_FRESH = 10 * MIN;
+// Pigeons on or off (your account's, so the same on every phone): the screen changes at once, a little flock crosses it,
+// and it's saved. Turning them off brings nothing down: letters in the air still land
+async function setPigeons(on) {
+  if (S.pgBusy || !S.me) return;
+  S.pgBusy = true;
+  const was = S.me;
+  S.me = { ...S.me, pigeons: on }; lsSet("inflight-pgtipon", on ? "1" : null);
+  render(); if (S.sheet) renderSheet();
+  flockFx(on);
+  try {
+    const r = await api("me", { method: "PATCH", body: { pigeons: on } });
+    S.me = r.me; haptic("success");
+    toast(on ? "Pigeons on. Any message can fly now." : "Pigeons off. Letters in the air still land.");
+    render(); await sync();
+  } catch (err) { S.me = was; lsSet("inflight-pgtipon", null); render(); toast(esc(err.message)); }
+  finally { S.pgBusy = false; }
+}
+// a few pigeons cross the screen as they come (or fly off up it as they go); not with reduced motion
+function flockFx(on) {
+  if (STILL.matches || !root()) return;
+  const w = root().clientWidth, f = document.createElement("div");
+  f.className = `flockfx${on ? "" : " away"}`; f.setAttribute("aria-hidden", "true");
+  f.innerHTML = Array.from({ length: 7 }, () => `<span class="fb">${I.bird}</span>`).join("");
+  // (placed from here: the page allows no inline styles in its markup)
+  [...f.children].forEach((b, i) => { const st = b.style; st.top = `${18 + ((i * 37) % 55)}%`; st.setProperty("--w", `${w}px`); st.setProperty("--d", `${(1.5 + (i % 3) * 0.35).toFixed(2)}s`); st.setProperty("--dl", `${(i * 0.09).toFixed(2)}s`); st.setProperty("--x", `${20 + ((i * 23) % 60)}%`); });
+  root().append(f);
+  setTimeout(() => f.remove(), 2800);
+}
+// how new chats start (pigeons on): instant, or by pigeon
+async function setNewChats(v) {
+  if (!["instant", "pigeon"].includes(v) || !S.me || S.me.newChats === v) return;
+  const was = S.me.newChats;
+  S.me = { ...S.me, newChats: v }; render(); haptic("tick");
+  try { const r = await api("me", { method: "PATCH", body: { newChats: v } }); S.me = r.me; render(); }
+  catch (err) { S.me = { ...S.me, newChats: was }; render(); toast(esc(err.message)); }
+}
+// The one-time note's buttons: every chat instant (and new ones), or nothing changes. Either way it's seen
+async function noteAnswer(instant) {
+  if (!S.me || S.noteBusy) return;
+  S.noteBusy = true;
+  const was = S.me;
+  S.me = { ...S.me, noted: true }; render();
+  try {
+    const r = await api("me", { method: "PATCH", body: instant ? { noted: true, allChats: "instant", newChats: "instant" } : { noted: true } });
+    S.me = r.me; haptic("success");
+    toast(instant ? "Your chats are instant now. A letter by pigeon is a tap away in the message box." : "Your chats still go by pigeon. Change any chat from its name.");
+    render(); await sync();
+  } catch (err) { S.me = was; render(); toast(esc(err.message)); }
+  finally { S.noteBusy = false; }
+}
 async function setRisky(on) {
   S.me = { ...S.me, risky: on }; render();             // the switch moves straight away
   try { const r = await api("me", { method: "PATCH", body: { risky: on } }); const same = !!r.me.risky === on; S.me = r.me; if (!same) render(); }
@@ -9499,11 +10026,12 @@ const voiceMime = (m) => (/^audio\/(mp4|webm|ogg|aac|mpeg)(;[\w=.,\s-]*)?$/.test
 const fmtClip = (ms) => { const s = Math.max(1, Math.round((ms || 0) / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 // 40 bars, each 0–15, as 40 hex digits
 const waveOf = (w) => { const s = /^[0-9a-f]{40}$/.test(String(w || "")) ? w : "4".repeat(VOICE_BARS); return [...s].map((c) => parseInt(c, 16) / 15); };
-function voiceHtml(id, v, mine) {
+// (msg: a message, not a pigeon: one sent instant, or any with pigeons off)
+function voiceHtml(id, v, mine, msg = !pigeonsOn()) {
   const bars = waveOf(v.w).map((h) => `<i data-h="${(0.18 + 0.82 * h).toFixed(2)}"></i>`).join("");   // (heights set after drawing: no inline styles here)
   const ready = !!S.photos.get(id), playing = S.player?.id === id && !S.player.paused;
   return `<span class="voice${playing ? " playing" : ""}" data-vid="${esc(id)}">
-    <button type="button" class="vplay" data-act="vplay" data-id="${esc(id)}" aria-label="${playing ? "Pause" : "Play"} voice pigeon, ${fmtClip(v.d)}"${ready ? "" : " disabled"}>${playing ? I.pause : I.play}</button>
+    <button type="button" class="vplay" data-act="vplay" data-id="${esc(id)}" aria-label="${playing ? "Pause" : "Play"} voice ${msg ? "message" : "pigeon"}, ${fmtClip(v.d)}"${ready ? "" : " disabled"}>${playing ? I.pause : I.play}</button>
     <span class="vwave" aria-hidden="true">${bars}</span><span class="vdur">${fmtClip(v.d)}</span></span>`;
 }
 // one player for every voice pigeon; the bars fill in as it plays
@@ -9513,7 +10041,7 @@ function voicePlay(id) {
   if (pl.id === id && !pl.paused) { pl.pause(); return voiceShow(); }
   if (pl.id !== id) { pl.pause(); pl.src = url; pl.id = id; }
   pl.onended = () => { pl.currentTime = 0; voiceShow(); };
-  pl.play().then(() => { haptic("tick"); voiceShow(); requestAnimationFrame(voiceFrame); }).catch(() => toast("Couldn’t play that voice pigeon on this phone."));
+  pl.play().then(() => { haptic("tick"); voiceShow(); requestAnimationFrame(voiceFrame); }).catch(() => { const vm = (S.msgs.get(S.chat) || []).find((x) => x.id === id); toast(`Couldn’t play that voice ${vm?.instant || !pigeonsOn() ? "message" : "pigeon"} on this phone.`); });
 }
 function voiceShow() {
   const pl = S.player;
@@ -9537,7 +10065,7 @@ async function recStart() {
   let stream; const chat = S.chat;
   recAsking = true;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-  catch (e) { return toast(e?.name === "NotAllowedError" ? "Chat needs the microphone for voice pigeons. You can allow it in Settings." : "Couldn’t use the microphone."); }
+  catch (e) { return toast(e?.name === "NotAllowedError" ? `Chat needs the microphone for voice ${pigeonsOn() ? "pigeons" : "messages"}. You can allow it in Settings.` : "Couldn’t use the microphone."); }
   finally { recAsking = false; }
   if (S.view !== "chat" || S.chat !== chat || S.busy || S.attach) { stream.getTracks().forEach((t) => t.stop()); return; }   // (left, or busy, while it asked)
   const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((m) => window.MediaRecorder.isTypeSupported?.(m)) || "";
@@ -9642,7 +10170,7 @@ async function outboxFlush(force) {
   if (!S.me || !S.outbox.length || flushing) return flushing;
   if (navigator.onLine === false && !force) return;
   flushing = (async () => {
-    let sent = 0;
+    let sent = 0, sentInst = 0;
     for (const o of [...S.outbox]) {
       if (o.err && !force) continue;
       if (!S.outbox.some((x) => x.id === o.id)) continue;      // (deleted while the one before it went: it doesn't go)
@@ -9656,7 +10184,7 @@ async function outboxFlush(force) {
           await api(o.path, { method: "POST", form, size: o.blob.size ?? o.blob.byteLength, onProgress: () => {} });
           outRest = { n: 0, until: 0 };
         } else await api(o.path, { method: "POST", body: o.meta });
-        sent++;
+        sent++; if (o.meta?.instant) sentInst++;
       } catch (e) {
         if (e.offline && o.blob) { outRest.n++; outRest.until = Date.now() + Math.min(10 * MIN, 15e3 * 2 ** outRest.n); }
         if (e.offline) break;                                   // still no signal: try again later
@@ -9666,7 +10194,12 @@ async function outboxFlush(force) {
       }
       S.outbox = S.outbox.filter((x) => x.id !== o.id); await outboxSave();   // (on screen, it turns from waiting to flying)
     }
-    if (sent) { haptic("success"); toast(sent === 1 ? "Your pigeon took off." : `${sent} pigeons took off.`); }
+    if (sent) {
+      haptic("success");
+      const msgs = sentInst, birds = sent - sentInst, said = (n, one, many) => (n === 1 ? one : many.replace("N", n));
+      toast(!birds ? said(msgs, "Sent.", "N messages sent.") : !msgs ? said(birds, "Your pigeon took off.", "N pigeons took off.")
+        : `${said(birds, "Your pigeon took off", "N pigeons took off")}, and ${said(msgs, "a message was sent.", "N messages were sent.")}`);
+    }
     if (sent || S.outbox.some((o) => o.err)) { for (const id of new Set([S.chat])) if (id && S.view === "chat") await loadChat(id).catch(() => {}); render(); }
   })();
   try { await flushing; } finally { flushing = null; }
@@ -9676,7 +10209,7 @@ window.addEventListener("offline", () => { S.offline = true; renderOffline(); })
 // yours on its way to the server: an outline at the foot of the chat, "Sending…", until it takes off (send)
 // (in its shape once it's in the air, to a friend: its track there from the start, "Sending…" where it'll say when it lands,
 // so the bubble doesn't change its size as it goes up)
-const pendingBubble = (p) => `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${linked(p.t)}${group(p.to) ? `<span class="ft">Sending…</span>` : `<span class="frow"><span class="trk" aria-hidden="true"><i></i><b class="cb">${I.bird}</b></span><span class="ft">Sending…</span></span>`}</div>`;
+const pendingBubble = (p) => p.instant ? `<div class="b me pending${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending" data-instant="1">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${linked(p.t)}<span class="pclock" aria-label="Sending">${I.clock}</span></div>` : `<div class="b me sending k-${esc(p.kind || "standard")}${S.fresh.has(p.id) ? ` fresh" data-fresh="${esc(p.id)}` : ""}" data-key="m:${esc(p.id)}" data-sig="pending">${p.q ? quoteHtml(p.q, group(p.to)) : ""}${linked(p.t)}${group(p.to) ? `<span class="ft">Sending…</span>` : `<span class="frow"><span class="trk" aria-hidden="true"><i></i><b class="cb">${I.bird}</b></span><span class="ft">Sending…</span></span>`}</div>`;
 // What you've sent rises out of the box into its place by itself. It's added to the chat as it is, rather than the chat
 // being drawn again (on a phone that took a frame or several, with the bubble already moving: and three times over, as
 // it went up and its answer and the sync came back); the chat is at its foot at once, and the bubble starts from the box.
@@ -9696,19 +10229,21 @@ const afterRise = () => new Promise((res) => setTimeout(res, Math.max(0, sending
 function outboxBubbles(chat) {
   return S.outbox.filter((o) => o.to === chat).map((o) => {
     const p = S.plain.get(o.id) || { t: "" }, ph = S.photos.get(o.id);
-    const pic = p.v ? voiceHtml(o.id, p.v, true) : p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
+    const pic = p.v ? voiceHtml(o.id, p.v, true, !!o.instant || !pigeonsOn()) : p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
     return `<div class="b me pending${o.err ? " failed" : ""}" data-key="m:${esc(o.id)}" data-sig="wait${o.err ? "!" : ""}" data-mid="${esc(o.id)}">${pic}${linked(p.t || "")}</div>
       <div class="meta me" data-key="mt:${esc(o.id)}" data-sig="${o.err ? "!" : ""}"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
   }).join("") + (S.pending?.to === chat ? pendingBubble(S.pending) : "");
 }
 
 async function send() {
-  const raw = $ta.value, text = (dumbText() ?? raw).trim();
+  // now (a message, there at once) or by pigeon (a letter), as the message box says (a /dumb pigeon is a letter's)
+  const instant = !!S.chat && nextOf(S.chat) === "now";
+  const raw = $ta.value, text = (instant ? raw : dumbText() ?? raw).trim();
   // a card waiting above the box (Send to a Friend) goes with it, and with no words its own line is what it says
   // (not with a photo or a voice pigeon, which draw no card: it stays waiting, to go next on its own)
   const cw = S.cardWait && S.cardWait.chat === S.chat && !S.attach ? S.cardWait : null, words = text || (cw ? String(cw.card.say || cardWords(cw.card) || "").slice(0, 500) : "");
   if ((!text && !S.attach && !cw) || S.busy || $(".send", $compose).disabled) return;
-  if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
+  if (!instant && S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
   S.busy = true; S.err = "";
   if (S.attach) renderCompose();          // (words alone: the box drawn once, cleared, as they go up: sendRise)
   // what's being sent belongs to this chat, even if you leave it before it's gone
@@ -9716,9 +10251,11 @@ async function send() {
   S.sendingTo = to; S.sending = att;
   // words alone show straight away, waiting at the foot of the chat as they go up, and the box is clear for the next
   // (a photo or a voice pigeon shows its own progress, in its card)
-  const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
+  const id = uuid(), rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null, kind = instant ? "instant" : S.sendKind;   // (taken now: a /dumb pigeon's comes from the box)
+  const chose = S.next.get(to);
+  S.next.delete(to);                              // (Now, or by pigeon, was for this one: the next goes the chat's usual way)
   if (!att) {
-    S.pending = { id, to, t: words, kind, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
+    S.pending = { id, to, t: words, kind, instant, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
     S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id); draftsSoon();
   }
   const tidy = () => {
@@ -9729,7 +10266,7 @@ async function send() {
   };
   let ref = null;
   try {
-    const mc = !group(to) && moonChat(friend(to)), sc = !mc && schedFor(to), vi = !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now)
+    const mc = !instant && !group(to) && moonChat(friend(to)), sc = !instant && !mc && schedFor(to), vi = !instant && !mc && !sc && viaFor(to);    // (a lunar pigeon goes straight there, now; a message, at once)
     const payload = { t: words };
     // (a Fitness card one to one gets its share id now, at Send; in a group it shows "When sent" only)
     if (cw) { const sr = group(to) ? { card: noRef(cw.card), id: null } : await shareRef(cw.card); ref = sr.id; payload.c = sr.card; }
@@ -9747,7 +10284,7 @@ async function send() {
       blob = sealed.data;
     }
     const once = !!blob && !att?.voice && !att?.gif;            // photos are view-once; GIFs and voice pigeons aren't
-    const g = group(to), bd = kind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
+    const g = group(to), bd = instant || kind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
     let meta;
     const route = routeStyle() === "fastest" ? {} : { route: routeStyle() };   // the way it goes
     if (g) {
@@ -9755,8 +10292,9 @@ async function send() {
       const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, padPayload({ ...payload }));      // (padded to a size bucket: cards.js)
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
-      meta = { id, group: g.id, body, keys, pigeon: kind, ...carry, ...route };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), pigeon: kind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
+      meta = instant ? { id, group: g.id, body, keys, instant: true, ...(blob ? { once } : {}) } : { id, group: g.id, body, keys, pigeon: kind, ...carry, ...route };
+    } else if (instant) meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), instant: true, ...(blob ? { once } : {}) };
+    else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), pigeon: kind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
       ...(!vi && !sc && noShipOn() && kind === "standard" ? { noShip: true } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: words, ...(blob ? { ph: 1 } : {}) }) } : {}) };
@@ -9771,7 +10309,7 @@ async function send() {
       if (rt) S.replyTo = null;
       if (sc) S.sched = null; if (vi) S.via = null; S.noShip = null;
       S.pick = null; S.stick = true; showUpload(null);
-      haptic("tick"); render(); announce("You’re offline. Your pigeon will wait for signal.");
+      haptic("tick"); render(); announce(instant ? "You’re offline. It’ll send when there’s signal." : "You’re offline. Your pigeon will wait for signal.");
     };
     if (navigator.onLine === false) { await queue(); S.busy = false; renderCompose(); return; }
     let r;
@@ -9787,9 +10325,9 @@ async function send() {
     } else r = await api(path, { method: "POST", body: meta });
     } catch (e) { if (!e.offline) throw e; upAnim?.stop(); upAnim = null; await queue(); S.busy = false; renderCompose(); return; }
     S.pick = null;                    // next time, back to the default
-    { const f = friend(to), was = f?.streak, s = r.streak;
+    if (!instant) { const f = friend(to), was = f?.streak, s = r.streak;
       if (f && s) { f.streak = s; if (s.n >= STREAK_MIN && (!was || !was.today || was.n < s.n)) afterRise().then(() => toast(`${I.flame} ${s.n}-day streak with ${esc(first(f.name))}`)); } }
-    if (r.message.mystery) {
+    if (!instant && r.message.mystery) {
       const k = kindOf(r.message), word = { rocket: "A rocket pigeon!", turbo: "A turbo pigeon!", swift: "A swift pigeon.", standard: "A standard pigeon.", dumb: "A dumb pigeon…" }[k];
       if (r.me) S.me = r.me;
       afterRise().then(() => toast(`${pg(k, S.me.skin)} ${word} ${r.message.flock ? "Off it goes." : `It lands ${esc(atTime(r.message.deliverAt))}.`}`));
@@ -9805,18 +10343,25 @@ async function send() {
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
     tidy(); S.stick = true; S.pending = null;
     if (att) announce("Sent.");
-    const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
+    // (the pulse's delta may have brought it already, while the answer was on its way: kept once, as the delta has it,
+    // which is newer: delivered, or read, since)
+    const list = S.msgs.get(to) || [];
+    if (!list.some((x) => x.id === r.message.id)) list.push(r.message);
+    S.msgs.set(to, list);
     if (att) S.fresh.set(r.message.id, Date.now());        // (words were up already: they just take off)
-    loadSkies();                      // it's in the air now: ready for the strip on Messages
+    if (!instant) loadSkies();        // it's in the air now: ready for the strip on Messages
+    if (S.live.typingOut) pulseNow();  // (and the dots go, for them)
     // shown now (on a slow connection the sync below can outlast the pop): words that went up already, once they're in place
     if (att) render(); else calmRender();
     await sync();
-    await afterRise(); offerNotify();
+    await afterRise(); offerNotify(instant);
   } catch (err) {
     // (the browser's own errors, a key it can't use, can come with no words: never a silent nothing)
     dropRef(ref);                      // (a share id made for a card that didn't go: gone again)
     const say = err.message || "Couldn’t seal this pigeon. Try again, or check their safety number.";
     if (here()) S.err = say; else toast(esc(say)); showUpload(null);
+    // (it didn't go: Now, or by pigeon, if chosen for it, is still the choice for the next try, in this visit to the chat)
+    if (chose && here() && !S.next.has(to)) S.next.set(to, chose);
     // words that were up already come back down into the box (or its draft), with what they replied to
     if (!att && S.pending?.id === id) {
       S.pending = null;
@@ -9994,16 +10539,16 @@ async function setEmailNotify(on) {
   catch (err) { toast(esc(err.message)); }
 }
 // After someone's first pigeon: offer to tell them when the reply lands. Asked once per phone.
-async function offerNotify() {
+async function offerNotify(instant) {
   if (S.pushOn || S.me?.notifyEmail || S.notifyAsked) return;
   S.notifyAsked = true;
   if (await idb.get("notify-asked")) return;
   await idb.set("notify-asked", true);
-  const ps = pushState();
-  if (ps === "off") toast("Want to hear when the reply lands?", "Notify Me", () => pushEnable());
-  else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
+  const ps = pushState(), when = instant ? "they reply" : "the reply lands";
+  if (ps === "off") toast(`Want to hear when ${when}?`, "Notify Me", () => pushEnable());
+  else if (S.emailOn) toast(`Want an email when ${when}?`, "Email Me", () => setEmailNotify(true));
   // (How: the steps, there and then; the Account tab has none to show where Chat has an account page)
-  else if (ps === "homescreen") toast("Add Chat to your Home Screen to get notified when the reply lands.", "How", () => toast("Tap Share, then Add to Home Screen, and open Chat from there."));
+  else if (ps === "homescreen") toast(`Add Chat to your Home Screen to get notified when ${when}.`, "How", () => toast("Tap Share, then Add to Home Screen, and open Chat from there."));
 }
 async function openFlightLog(at) {
   const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
@@ -10151,6 +10696,7 @@ function cardBlock(f, m, p, g) {
       html = answerHtml(pp.ans, { mine, who, id, canAnswer: !g && !mine && !done && pp.ans.a === "later" && pp.ans.plan?.start > t, tz, viewAt: t });
       sig += `a${done ? 1 : 0}`;
       if (!g && !mine && pp.ans.a === "yes" && pp.ans.plan) offerSoon(m, pp.ans, f);
+      else if (!g && mine && pp.ans.a === "yes" && pp.ans.plan) answerArrived(m, pp.ans, f);
     } else if (pp.plan) {
       const done = !mine && answered();
       if (pp.card) { const c = one(pp.card, mine, m.deliverAt); html += c.html; sig += c.sig; }
@@ -10200,6 +10746,14 @@ function offerSoon(m, ans, f) {
   setTimeout(() => fitOffer(m.id, { ...mineP, start: w.start, end: w.end, dry: w.dry === true }, f, "asked").then(() => { keepIn("inflight-offered", m.id); toast("In Fitness, to add to your plan."); }, () => {}), 0);
 }
 
+// your own Yes whose reply never came, seen in the chat after all (it reached the server, and the chat now has it): it's
+// in your Fitness as a tap again would have put it, as its buttons are gone
+function answerArrived(m, ans, f) {
+  const u = replyUnsure.get(ans.re); if (!u || u.id !== m.id || offerBusy.has(m.id)) return;
+  replyUnsure.delete(ans.re); offerBusy.add(m.id);
+  setTimeout(() => fitOffer(m.id, ans.plan, f, "answered").then(() => toast("In Fitness, to add to your plan."), () => {}), 0);
+}
+
 /* ---------- sending one letter ---------- */
 // A Fitness share id for a card about to go (made now, at Send, never before): the card with it, or without one
 async function shareRef(card) {
@@ -10218,8 +10772,10 @@ const dropRef = (id) => { if (id) api("fit-share", { method: "POST", body: { dro
 // so the server keeps only the one ("That scroll was already sent." is then the one that went).
 async function sendLetter(to, payload, { kind, landAt = null, id: again = null } = {}) {
   if (navigator.onLine === false) throw Object.assign(new Error(NO_SIGNAL), { offline: true });
-  const id = again || uuid(), route = routeStyle() === "fastest" ? {} : { route: routeStyle() };
-  const meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload })), pigeon: kind, ...route, ...(landAt ? { landAt } : {}) };
+  const id = again || uuid(), route = routeStyle() === "fastest" ? {} : { route: routeStyle() }, instant = kind === "instant";
+  const ct = await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, padPayload({ ...payload }));
+  // (a message: no pigeon, no route; landAt, it's sent at that time)
+  const meta = instant ? { id, to, ct, instant: true, ...(landAt ? { landAt } : {}) } : { id, to, ct, pigeon: kind, ...route, ...(landAt ? { landAt } : {}) };
   let r;
   try { r = await api("messages", { method: "POST", body: meta }); }
   catch (e) {
@@ -10231,7 +10787,7 @@ async function sendLetter(to, payload, { kind, landAt = null, id: again = null }
   // (the lofts as they are now, for the next one: the server says when it was told a time, else one fewer here)
   if (r.me) S.me = r.me; else if (PAID.includes(kind) && S.me[kind] > 0) S.me[kind]--;
   const list = S.msgs.get(to); if (list && r.message && !list.some((x) => x.id === r.message.id)) list.push(r.message);
-  const f = friend(to), was = f?.streak, st = r.streak;
+  const f = friend(to), was = f?.streak, st = instant ? null : r.streak;
   if (f && st) { f.streak = st; if (st.n >= STREAK_MIN && (!was || !was.today || was.n < st.n)) toast(`${I.flame} ${st.n}-day streak with ${esc(first(f.name))}`); }
   return r;
 }
@@ -10247,7 +10803,7 @@ function openSendSheet(card, { words = "", link = false } = {}) {
   if (!card || !S.me) return;
   let seen = new Map(); try { seen = seenFrom(lettersHere(), S.me.id) || new Map(); } catch (_) {}
   const s = { type: "send", card, base: String(words || card.say || cardWords(card) || "").trim().slice(0, 500), words: "", edited: false, link,
-    pick: [], when: "asap", ask: false, plan: false, together: null, win: 0, rain: null, seen, busy: false, progress: null, err: "", note: "" };
+    pick: [], when: pigeonsOn() && S.me.newChats === "pigeon" ? "asap" : "now", ask: false, plan: false, together: null, win: 0, rain: null, seen, busy: false, progress: null, err: "", note: "" };
   S.sheet = s; renderSheet();
   nowFor([card]);
   if (card.kind === "weather") rainFor(s);
@@ -10258,10 +10814,17 @@ async function rainFor(s) {
   if (!ids.length) return;
   try { const r = await api("share-rank", { method: "POST", body: { kind: "weather", ids } }); if (S.sheet === s) { s.rain = r.rain && typeof r.rain === "object" ? r.rain : {}; renderSheet(); } } catch (_) {}
 }
+// Sent as a message (at once, or with pigeons off, with their morning): pigeons off, or the chip Now
+const sendInstant = (s) => !pigeonsOn() || s.when === "now";
 // when a friend's letter lands, as chosen (null: as soon as it can). A timed one takes a swift pigeon or faster, so its
 // flight is a swift's at most; the server re-plans it and refuses one too soon to make, so there's a margin.
+// A message: null (now), or with their morning, 07:30 where they are (no flight to allow for; unknown without their zone)
 function landFor(s, f) {
-  if (s.plan || s.when === "asap") return null;
+  if (s.plan || s.when === "asap" || s.when === "now") return null;
+  if (sendInstant(s)) {
+    if (s.when !== "morning" || !f.tz) return null;
+    try { const at = nextLocal(f.tz, "07:30", now() + 60e3); return Number.isFinite(at) && at <= now() + 30 * DAY ? Math.round(at) : null; } catch (_) { return null; }
+  }
   const t = now(), fly = flightMs(chatKm(f), mySpeed("swift"));
   let at = null;
   try {
@@ -10278,10 +10841,11 @@ function sendKinds(s, order) {
 // The friends, ranked for the card, each with its reason, its pigeon, and whether it can be picked (greyed at the foot
 // if not, with why). Ranked once to know the order shown, then again with what's free for each in that order.
 function sendRows(s) {
-  const t = now(), card = s.card, pool = S.friends;
-  const why0 = (f) => (f.keyChanged ? "Check the new safety number first" : f.lat == null && !f.moon ? "No location yet" : moonChat(f) ? "Send from the chat" : null);
-  const opts = (canFly, landsIn) => ({ friends: pool, me: { lat: S.me.lat, lon: S.me.lon, tz: MY_TZ }, now: t, rain: s.rain || {}, seen: s.seen, landsIn,
-    streakRisk: (f) => { const st = streakOf(f); return st && streakRisk(st) ? { n: st.n, endsAt: st.endsAt } : null; },
+  const t = now(), card = s.card, pool = S.friends, inst = sendInstant(s);
+  // (a message goes to anyone whose key you trust: no place, turn or pigeon needed)
+  const why0 = (f) => (f.keyChanged ? "Check the new safety number first" : inst ? null : f.lat == null && !f.moon ? "No location yet" : moonChat(f) ? "Send from the chat" : null);
+  const opts = (canFly, landsIn) => ({ friends: pool, me: { lat: S.me.lat, lon: S.me.lon, tz: MY_TZ }, now: t, rain: s.rain || {}, seen: s.seen, landsIn: inst ? () => null : landsIn,
+    streakRisk: !pigeonsOn() ? undefined : (f) => { const st = streakOf(f); return st && streakRisk(st) ? { n: st.n, endsAt: st.endsAt } : null; },
     lastAt: (f) => (f.last ? (f.last.from === S.me.id ? f.last.sentAt : f.last.deliverAt) : null), canFly });
   let r0 = []; try { r0 = rankFriends(card, opts(why0, (f) => flightMs(chatKm(f), mySpeed(turnOf(f).free ? "standard" : "swift")))) || []; } catch (_) {}
   const order = r0.length ? r0.map((r) => r.id) : pool.map((f) => f.id);
@@ -10295,11 +10859,11 @@ function sendRows(s) {
     }
     return memo.get(f.id);
   };
-  const canFly = (f) => why0(f) || (kf(f) ? null : "No pigeon free just now");
+  const canFly = (f) => why0(f) || (inst || kf(f) ? null : "No pigeon free just now");
   const landsIn = (f) => flightMs(chatKm(f), mySpeed(kf(f) || "swift"));
   let rows = []; try { rows = rankFriends(card, opts(canFly, landsIn)) || []; } catch (_) {}
-  if (!rows.length) rows = pool.map((f) => ({ id: f.id, score: 0, reason: `Lands in ${durShort(landsIn(f))}`, best: false, lands: landsIn(f), can: !canFly(f), why: canFly(f) }));
-  rows = rows.filter((r) => friend(r.id)).map((r) => { const f = friend(r.id); return { ...r, can: !canFly(f), why: canFly(f), kind: kf(f), lands: Number.isFinite(r.lands) ? r.lands : landsIn(f) }; });
+  if (!rows.length) rows = pool.map((f) => ({ id: f.id, score: 0, reason: inst ? "" : `Lands in ${durShort(landsIn(f))}`, best: false, lands: inst ? null : landsIn(f), can: !canFly(f), why: canFly(f) }));
+  rows = rows.filter((r) => friend(r.id)).map((r) => { const f = friend(r.id); return { ...r, can: !canFly(f), why: canFly(f), kind: inst ? "instant" : kf(f), lands: inst ? null : Number.isFinite(r.lands) ? r.lands : landsIn(f) }; });
   return [...rows.filter((r) => r.can), ...rows.filter((r) => !r.can)];
 }
 // The plan, as it would go: the workout the server chose, the window picked, the others as chips
@@ -10343,7 +10907,7 @@ function wordsFor(s, f, landAt, ask = true) {
 // the window for two, from the server (Fitness's forecast at both places), for the one friend picked
 async function planFetch(s) {
   const f = friend(s.pick[0]); if (!f || !canPlan(s.card)) return;
-  const k = oneKind(f) || "swift", after = Math.round(now() + flightMs(chatKm(f), mySpeed(k)) + 30 * MIN);
+  const k = oneKind(f) || "swift", after = Math.round(now() + (sendInstant(s) ? 0 : flightMs(chatKm(f), mySpeed(k))) + 30 * MIN);
   const wid = s.card.kind === "fitness" && s.card.snap?.wid ? `&wid=${encodeURIComponent(s.card.snap.wid)}` : "";
   s.together = { wait: true, for: f.id }; s.note = ""; renderSheet();
   let note = "", tg = null;
@@ -10361,9 +10925,14 @@ function drawSend(s) {
   syncPlanWords(s);
   const card = s.card, t = now(), tz = MY_TZ, rows = sendRows(s), links = cardLinks();
   const picked = rows.filter((r) => s.pick.includes(r.id)), names = picked.map((r) => first(friend(r.id).name));
-  const paid = lofts(), anyPaid = paid.swift + paid.turbo + paid.rocket > 0;
-  const rainy = card.kind === "weather" && picked.some((r) => { const x = s.rain?.[r.id]; return x?.at && !x.now; });
-  if ((s.when === "before" && !rainy) || (!anyPaid && s.when !== "asap")) s.when = "asap";
+  const paid = lofts(), anyPaid = paid.swift + paid.turbo + paid.rocket > 0, on = pigeonsOn();
+  const rainy = on && card.kind === "weather" && picked.some((r) => { const x = s.rain?.[r.id]; return x?.at && !x.now; });
+  // (the timed landings need a swift pigeon, and the rain: pigeons on; pigeons off, now or with their morning)
+  if (!on && s.when !== "now" && s.when !== "morning") s.when = "now";
+  // (pigeons off: their morning needs every picked friend's time zone; one without, and it's Now, not a chip shown chosen but off)
+  if (!on && s.when === "morning" && picked.some((r) => !friend(r.id)?.tz)) s.when = "now";
+  if (on && ((s.when === "before" && !rainy) || (!anyPaid && (s.when === "before" || s.when === "morning")))) s.when = "asap";
+  const inst = sendInstant(s);
   let cardPart = "";
   try { cardPart = linkActs(sheetCardHtml(card, { now: keyOfCard(card) ? nowVal(card) : null, viewAt: t, links, tz })); } catch (_) {}
   if (!cardPart) cardPart = `<p class="sendsay">${esc(card.say || cardWords(card) || "")}</p>`;
@@ -10374,17 +10943,23 @@ function drawSend(s) {
   const row = (r) => {
     const f = friend(r.id), on = s.pick.includes(r.id);
     // (the tag says when it lands, unless that's the reason already)
-    const tag = r.can && (r.best || !/^Lands in /.test(r.reason || "")) ? `<span class="stag${r.best ? " best" : ""}">${r.best ? "Best fit" : `Lands in ${esc(durShort(r.lands))}`}</span>` : "";
+    const tag = r.can && (r.best || (!inst && !/^Lands in /.test(r.reason || ""))) ? `<span class="stag${r.best ? " best" : ""}">${r.best ? "Best fit" : `Lands in ${esc(durShort(r.lands))}`}</span>` : "";
     return `<button type="button" class="cell pickrow sendrow${r.can ? "" : " dim"}" role="checkbox" aria-checked="${on}" data-act="sendpick" data-id="${esc(r.id)}"${!r.can && !on ? " disabled" : ""}>${avatar(f, "s")}<span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub why">${esc(r.can ? r.reason || "" : r.why || "")}</span></span>${tag}<span class="tickbox" aria-hidden="true">${I.check}</span></button>`;
   };
   const chip = (k, label, off) => `<button type="button" class="schip" role="radio" aria-checked="${s.when === k}" data-act="sendwhen" data-id="${k}"${off ? " disabled" : ""}>${label}</button>`;
   const timedOff = s.plan || !anyPaid || s.busy;
-  const lines = !anyPaid ? ["Timed landings need a swift pigeon, and your lofts are empty."] : picked.slice(0, 3).map((r) => {
+  // (pigeons off: their morning needs their time zone)
+  const mornOff = on ? timedOff : s.plan || s.busy || picked.some((r) => !friend(r.id)?.tz);
+  const lines = inst ? picked.slice(0, 3).map((r) => {
+    const f = friend(r.id), la = landFor(s, f);
+    try { return la ? whenLine(first(f.name), { mode: "at", landAt: la, tz, theirTz: f.tz || tz, now: t }) : whenLine(first(f.name), { mode: "now" }); } catch (_) { return ""; }
+  }).filter(Boolean)
+    : !anyPaid ? ["Timed landings need a swift pigeon, and your lofts are empty."] : picked.slice(0, 3).map((r) => {
     const f = friend(r.id), la = landFor(s, f), rain = s.rain?.[f.id], before = !s.plan && s.when === "before" && rain?.at && !rain.now;
     const mode = s.plan ? "asap" : before ? "before" : la ? s.when : "asap";
     try { return whenLine(first(f.name), { mode, landAt: mode === "before" ? la : la ?? t + r.lands, rainAt: rain?.at ?? null, tz, theirTz: f.tz || tz, now: t }); } catch (_) { return ""; }
   }).filter(Boolean);
-  if (anyPaid && picked.length > 3) lines.push(`and ${picked.length - 3} more`);
+  if ((inst ? lines.length : anyPaid) && picked.length > 3) lines.push(`and ${picked.length - 3} more`);
   let planPart = "";
   if (s.plan && s.together?.wait) planPart = `<p class="gfoot">Looking for a time dry for you both…</p>`;
   else if (s.plan && s.together?.windows) {
@@ -10395,12 +10970,14 @@ function drawSend(s) {
       ${tg.far ? `<p class="gfoot">You’re far apart: same time, each where you are.</p>` : ""}</div>`;
   }
   const kinds = picked.map((r) => r.kind), ready = picked.length && picked.every((r) => r.kind) && (!s.plan || planOf(s));
-  let spend = ""; try { spend = picked.length && picked.every((r) => r.kind) ? spendWords(kinds, names) : ""; } catch (_) {}
-  const label = s.busy && s.progress ? `Sending ${s.progress[0]} of ${s.progress[1]}…` : !names.length ? "Choose a Friend" : names.length === 1 ? `Send a Pigeon to ${names[0]}` : `Send ${names.length} Pigeons to ${andList(names)}`;
+  let spend = ""; try { spend = !inst && picked.length && picked.every((r) => r.kind) ? spendWords(kinds, names) : ""; } catch (_) {}
+  const label = s.busy && s.progress ? `Sending ${s.progress[0]} of ${s.progress[1]}…` : !names.length ? "Choose a Friend"
+    : inst ? (names.length === 1 ? `Send to ${names[0]}` : names.length === 2 ? `Send to ${names[0]} and ${names[1]}` : `Send to ${names.length} Friends`)
+    : names.length === 1 ? `Send a Pigeon to ${names[0]}` : `Send ${names.length} Pigeons to ${andList(names)}`;
   return sheetHtml("Send to a Friend", `${top}
     <div class="ghead">Send To</div><div class="group">${rows.map(row).join("")}</div>
-    <div class="ghead">When It Lands</div>
-    <div class="schips" role="radiogroup" aria-label="When it lands">${chip("asap", "As Soon as It Can", s.busy)}${rainy ? chip("before", "Before the Rain", timedOff) : ""}${chip("morning", "With Their Morning", timedOff)}</div>
+    <div class="ghead">${on ? "When It Lands" : "When It Arrives"}</div>
+    <div class="schips" role="radiogroup" aria-label="${on ? "When it lands" : "When it arrives"}">${chip("now", "Now", s.busy)}${on ? chip("asap", "By Pigeon", s.busy) : ""}${rainy ? chip("before", "Before the Rain", timedOff) : ""}${chip("morning", "With Their Morning", mornOff)}</div>
     ${lines.length ? `<p class="whenlines">${lines.map(esc).join("<br>")}</p>` : ""}
     ${ASK_KINDS.includes(card.kind) || canPlan(card) ? `<div class="group mt-s">
       ${ASK_KINDS.includes(card.kind) ? toggleCell({ act: "sendask", icon: I.bubble, tile: "blue", label: "Ask “How’s Yours?”", on: s.ask && !s.plan, disabled: s.plan || s.busy }) : ""}
@@ -10429,7 +11006,7 @@ function sendPick(id) {
 function sendPlan() {
   const s = S.sheet; if (s?.type !== "send" || s.busy || !canPlan(s.card)) return;
   s.plan = !s.plan; s.note = ""; s.together = null;
-  if (s.plan) { s.ask = false; s.when = "asap"; if (s.pick.length > 1) s.pick = s.pick.slice(0, 1); }
+  if (s.plan) { s.ask = false; s.when = pigeonsOn() && s.when !== "now" ? "asap" : "now"; if (s.pick.length > 1) s.pick = s.pick.slice(0, 1); }
   renderSheet();
   if (s.plan && s.pick.length) planFetch(s);
 }
@@ -10439,7 +11016,10 @@ async function sendGo() {
   const s = S.sheet; if (s?.type !== "send" || s.busy || !s.pick.length) return;
   if (navigator.onLine === false) { s.err = NO_SIGNAL; return renderSheet(); }
   const plan = s.plan ? planOf(s) : null; if (s.plan && !plan) return;
+  const inst = sendInstant(s);
   const order = sendRows(s).map((r) => r.id).filter((id) => s.pick.includes(id)).map(friend).filter(Boolean);
+  // (with their morning, as a message, for someone whose morning isn't known: never sent at once instead; the sheet says Now first)
+  if (inst && s.when === "morning" && order.some((f) => !f.tz)) { s.when = "now"; return renderSheet(); }
   s.busy = true; s.err = ""; s.progress = [1, order.length]; renderSheet();
   const results = [], failed = [];
   const sr = await shareRef(s.card), card = sr.card;           // (one id for every letter of this send)
@@ -10451,7 +11031,9 @@ async function sendGo() {
     s.progress = [i + 1, order.length]; if (S.sheet === s) renderSheet();
     if (off) { failed.push(f.id); results.push({ name, ok: false, err: NO_SIGNAL }); continue; }
     const again = unsure.get(f.id), rest = order.slice(i), lands = new Map(rest.map((x) => [x.id, again ? again.landAt : landFor(s, x)]));
-    let kind = null; try { kind = pigeonsFor(rest.map((x) => pickOf(x, lands.get(x.id))), { me: lofts(), now: now() }).get(f.id) || null; } catch (_) {}
+    let kind = null;
+    if (inst) kind = "instant";
+    else try { kind = pigeonsFor(rest.map((x) => pickOf(x, lands.get(x.id))), { me: lofts(), now: now() }).get(f.id) || null; } catch (_) {}
     kind ||= again?.kind || null;             // (one that may have gone already: the server says so before it counts pigeons)
     if (!kind) { failed.push(f.id); results.push({ name, ok: false, err: "No pigeon free just now." }); continue; }
     const landAt = lands.get(f.id);
@@ -10460,7 +11042,7 @@ async function sendGo() {
       payload ||= buildPayload({ t: wordsFor(s, f, landAt), card, ...(plan ? { plan } : s.ask && ASK_KINDS.includes(card.kind) ? { ask: { kind: card.kind } } : {}) });
       const r = await sendLetter(f.id, payload, { kind, landAt, id: again?.id || null });
       unsure.delete(f.id); refOk.add(again ? again.ref : sr.id);
-      results.push({ name, ok: true, landAt, lands: r.message ? Math.max(0, (r.message.deliverAt || now()) - now()) : null });     // (one that had gone already: when, the chat says)
+      results.push({ name, ok: true, landAt, tz: f.tz, lands: r.message ? Math.max(0, (r.message.deliverAt || now()) - now()) : null });     // (one that had gone already: when, the chat says)
     } catch (e) {
       failed.push(f.id); results.push({ name, ok: false, err: e.message || "Couldn’t send it." });
       if (e.offline) off = true;
@@ -10476,7 +11058,8 @@ async function sendGo() {
   if (sent) haptic("success");
   if (!failed.length) { if (S.sheet === s) { S.sheet = null; renderSheet(); } }
   else { s.pick = failed; if (off) s.err = NO_SIGNAL; if (S.sheet === s) renderSheet(); }
-  let say = ""; try { say = sentToast(results); } catch (_) {}
+  let say = "";
+  try { const at = results.find((x) => x.ok && Number.isFinite(x.landAt)); say = inst ? sentToast(results, { instant: true, at: at?.landAt ?? null, tz: at?.tz }) : sentToast(results); } catch (_) {}
   if (say) toast(esc(say));
   if (sent) { if (S.view === "chat") render(); sync().catch(() => {}); }
 }
@@ -10544,7 +11127,7 @@ async function askSend() {
   const s = S.sheet; if (s?.type !== "askback" || !s.card || s.busy) return;
   const f = friend(s.chat), m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id); if (!f || !m) return;
   const key = `ask:${m.id}`, again = replyUnsure.get(key);
-  const kind = oneKind(f) || again?.kind; if (!kind) { s.err = "No pigeon free just now."; return renderSheet(); }
+  const kind = (defaultNext(f) === "now" ? "instant" : oneKind(f)) || again?.kind; if (!kind) { s.err = "No pigeon free just now."; return renderSheet(); }
   s.busy = true; s.err = ""; renderSheet();
   let ref = again?.ref || null, payload = again?.payload || null;
   try {
@@ -10556,7 +11139,7 @@ async function askSend() {
     replyUnsure.delete(key);
     if (S.sheet === s) { S.sheet = null; renderSheet(); }
     haptic("success");
-    let say = ""; try { say = sentToast([{ name: first(f.name), ok: true, landAt: null, lands: Math.max(0, (r.message?.deliverAt || now()) - now()) }]); } catch (_) {}
+    let say = ""; try { say = kind === "instant" ? sentToast([{ name: first(f.name), ok: true }], { instant: true }) : sentToast([{ name: first(f.name), ok: true, landAt: null, lands: Math.max(0, (r.message?.deliverAt || now()) - now()) }]); } catch (_) {}
     if (say) toast(esc(say));
     render(); sync().catch(() => {});
   } catch (e) {
@@ -10596,7 +11179,7 @@ async function planSend(x, ans) {
   const f = friend(S.chat); if (!f) return;
   // (an answer that may have gone already goes again as it was, whichever button's tapped now)
   const again = replyUnsure.get(x.m.id); if (again) ans = again.ans;
-  const kind = oneKind(f) || again?.kind; if (!kind) return toast("No pigeon free just now.");
+  const kind = (defaultNext(f) === "now" ? "instant" : oneKind(f)) || again?.kind; if (!kind) return toast("No pigeon free just now.");
   let payload = again?.payload || null;
   try {
     if (!payload) {
@@ -10708,7 +11291,7 @@ async function start() {
   // (it comes in under the account's page's last picture, which theme.js has drawn already: app.js's own copy now)
   if (signedBack) arrival = arriving(you); else document.documentElement.classList.remove("arriving");
   if (/#(open=|requests|account\b|flightlog\b|share=)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
-  navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
+  navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) { sync(); pushTag(e.data.tag); } });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { keepAdd(m[1].toLowerCase()); history.replaceState(null, "", location.pathname); }
   else S.pendingAdd = keptAdd();                 // (a friend's link from before, still to use: making the account on its page in between)
@@ -10788,7 +11371,7 @@ async function start() {
     history.replaceState(null, "", location.pathname);
     keepAdd(a[1].toLowerCase()); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); }
   });
-  setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
+  setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); pulseTick(); }, 1000);
   // every 15 s while open; after failures, less often (up to every 2 minutes) until one works
   let skipped = 0;
   setInterval(() => {
@@ -10797,9 +11380,10 @@ async function start() {
     if (++skipped < every) return;
     skipped = 0; sync();
   }, POLL_MS);
-  window.addEventListener("online", () => { S.syncFails = 0; sync(); });
+  window.addEventListener("online", () => { S.syncFails = 0; S.live.fullAt.clear(); S.live.fails = 0; sync(); pulseNow(); });
+  window.addEventListener("offline", () => S.live.fullAt.clear());
   setInterval(() => { if (document.visibilityState === "visible") autoLocate(); }, AUTO_EVERY);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); autoLocate(); } else { stopLocWatch(); if (rec) recStop(false); draftsSave(); } });     // (a recording stops when you leave the app; what's in the box is kept)
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); autoLocate(); pulseNow(); } else { stopLocWatch(); if (rec) recStop(false); draftsSave(); pulseHide(); } });     // (a recording stops when you leave the app; what's in the box is kept)
 }
 
 /* ---------------- updates ----------------
@@ -10823,7 +11407,7 @@ function flightCheck() {
   const open = S.view === "chat" && S.chat && !S.locked ? S.msgs.get(S.chat) : null;
   for (const m of open || []) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
   const due = lands.filter((x) => x <= t);
-  if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
+  if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(() => { S.live.forceChat = true; sync(); }, 1500); }
 }
 // if starting goes wrong, say so and offer a way out, rather than "Opening Chat…" for ever
 function bootFail(err) {

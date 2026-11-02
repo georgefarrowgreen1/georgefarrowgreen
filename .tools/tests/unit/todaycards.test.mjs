@@ -622,7 +622,8 @@ test("the fixtures agree with each other: the same times, zone and links through
   for (const f of [CARDS, EMPTY, ERROR]) { assert.equal(f.at, MON); assert.equal(f.tz, "Europe/London"); assert.deepEqual(Object.keys(f.cards), CARD_KEYS); }
   assert.equal(QUIET.at, SAT_EVE);
   for (const f of [CARDS, EMPTY, ERROR, QUIET]) for (const c of Object.values(f.cards)) assert.ok(Object.values(LINKS).some((l) => c.href.startsWith(`${l}/`)), c.href);
-  for (const [k, c] of Object.entries(EMPTY.cards)) sameShape(c, { state: "", href: "", said: "", action: { label: "", href: "" } }, `empty ${k}`);
+  // (Chat's says whether pigeons are on, too)
+  for (const [k, c] of Object.entries(EMPTY.cards)) sameShape(c, { state: "", ...(k === "chat" ? { pigeons: true } : {}), href: "", said: "", action: { label: "", href: "" } }, `empty ${k}`);
 });
 
 // ================================ Chat's cards (Send to a friend) ================================

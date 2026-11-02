@@ -45,6 +45,13 @@ first's rides, one opened from its file and exported; a plan and a workout from 
 renamed and one deleted on both; and signing out. It reads what's kept straight from the local D1 (`fx_state`,
 `fx_acts`). Its files' unit tests, and the server's checks and the merge, are `unit/fitness.test.mjs`.
 
+Test accounts start as accounts did before Chat's pigeons became a switch: pigeons on, new chats By Pigeon, the
+one-time note already seen (`PIGEONS=1`, the kit's default, to `server.sh`). `instant.mjs` restarts the site with the
+real default (`PIGEONS=0`: pigeons off, chats instant); a test can also set one account's switch (`joinChat(…,
+{ pigeons })`, `madeIn(…, { pigeons })`, the kit's `setPigeons(ph, on)`). Typing dots come from Chat's typing Worker
+(`workers/live`), which `server.sh` runs beside the site on :8790 (`TYPING=0`: none, so typing is off).
+`STREAK_ANYTIME=1` lets streak warnings go at any hour, and `PULSE_MS` sets the pulse's pace.
+
 `acctjoin.mjs` runs the site as the real one is, new accounts by invite only (`OPEN_SIGNUP=0` to `server.sh`; every
 other test has open sign-up), for joining with an invite, a forgotten password and its reset link, and each app's
 sign-in.

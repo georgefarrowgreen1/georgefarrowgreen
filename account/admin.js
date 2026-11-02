@@ -342,10 +342,11 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     pg_users: "People", pg_sessions: "Signed in", pg_passkeys: "Passkeys", pg_challenges: "Sign-ins under way", pg_resets: "Password resets", pg_handoff: "Into an app, signed in",
     pg_handback: "Back from an app, signed in", pg_handles_held: "Handles held", pg_invites: "Invites", pg_events: "Account emails’ links", pg_limits: "Rate limits",
     pg_errors: "Server errors", pg_admin_log: "Admin log", pg_meta: "Its own notes", pg_active: "Days active",
-    pg_msgs: "Letters", pg_gmsgs: "Group letters", pg_gdeliv: "Group deliveries", pg_flights: "Flights", pg_reacts: "Reactions", pg_near: "Near misses", pg_flyover: "Fly-overs",
+    pg_msgs: "Messages and letters", pg_gmsgs: "Group messages and letters", pg_gdeliv: "Group deliveries", pg_flights: "Flights", pg_reacts: "Reactions", pg_near: "Near misses", pg_flyover: "Fly-overs",
     pg_stamped: "Stamps", pg_passport: "Passport places", pg_postmarks: "Postmarks", pg_feathers: "Feathers", pg_birds: "Named pigeons", pg_kit: "Kit", pg_links: "Friends",
     pg_groups: "Groups", pg_group_members: "Group members", pg_gevents: "Group events", pg_push: "Phones with notifications", pg_streaks: "Streaks", pg_ids: "Message IDs",
-    pg_wxcache: "Weather on the way", pg_vanish: "Vanishing chats" };
+    pg_wxcache: "Weather on the way", pg_vanish: "Vanishing chats",
+    pg_ways: "Chat ways", pg_wayev: "Way changes", pg_pulse: "Change feed" };
   // (each app: its share of the database (an estimate: its tables' share of what's in them), its files, its tables)
   function storageApps(s) {
     const raw = {}, all = s.tables.reduce((a, t) => a + (t.bytes || 0), 0);

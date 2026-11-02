@@ -16,7 +16,7 @@
     "chat": {
       "state": "error",
       "href": "https://chat.inflite.ai/",
-      "said": "Couldn’t get your pigeons just now.",
+      "said": "Couldn’t get your chats just now.",
       "retry": true
     },
     "fitness": {

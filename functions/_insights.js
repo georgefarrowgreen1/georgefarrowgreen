@@ -23,7 +23,8 @@ export async function insights(env, D, t = Date.now()) {
   const seen = `MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(s.seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0))`;
   const kindOf = `COALESCE(pigeon, CASE WHEN swift = 1 THEN 'swift' ELSE 'standard' END)`;
   const q = (sql, ...a) => D.prepare(sql).bind(...a);
-  const [people, cohorts, sends, active, joins, kinds, solo, grp, adopt, health] = (await D.batch([
+  // (every pigeon figure is letters only: an instant message never flew, and they're counted apart, as messages)
+  const [people, cohorts, sends, active, joins, kinds, solo, grp, adopt, health, msgs] = (await D.batch([
     q(`SELECT COUNT(*) AS n, SUM(ls >= ?1 - ${DAY}) AS d1, SUM(ls >= ?1 - ${7 * DAY}) AS d7, SUM(ls >= ?1 - ${30 * DAY}) AS d30,
          SUM(created_at <= ?1 - ${8 * DAY}) AS old, SUM(created_at <= ?1 - ${8 * DAY} AND ls >= created_at + ${7 * DAY}) AS back
        FROM (SELECT u.created_at, ${seen} AS ls FROM pg_users u)`, t),
@@ -35,8 +36,8 @@ export async function insights(env, D, t = Date.now()) {
          WHERE u.created_at <= ?1 - ${7 * DAY} AND u.created_at > ?1 - ${49 * DAY}) GROUP BY wk ORDER BY wk`, t, off),
     // pigeons sent each day (a group pigeon counts once), and by how many people
     q(`SELECT ${day("sent_at")} AS d, COUNT(*) AS n, COUNT(DISTINCT sender) AS who FROM (
-         SELECT sender, sent_at FROM pg_msgs WHERE sent_at >= ?1
-         UNION ALL SELECT sender, sent_at FROM pg_gmsgs WHERE sent_at >= ?1
+         SELECT sender, sent_at FROM pg_msgs WHERE sent_at >= ?1 AND instant IS NULL
+         UNION ALL SELECT sender, sent_at FROM pg_gmsgs WHERE sent_at >= ?1 AND instant IS NULL
          UNION ALL SELECT sender, sent_at FROM pg_flights WHERE sent_at >= ?1 AND grp = 0
          UNION ALL SELECT sender, MIN(sent_at) FROM pg_flights WHERE sent_at >= ?1 AND grp = 1 GROUP BY msg_id) GROUP BY d`, from, offThen, off, hi),
     // people active each day: opened the app (pg_active, from when it began to be noted), sent a pigeon, or opened one
@@ -49,15 +50,15 @@ export async function insights(env, D, t = Date.now()) {
          UNION SELECT ${day("read_at")}, user_id FROM pg_gdeliv WHERE read_at >= ?1
          UNION SELECT ${day("sent_at")}, sender FROM pg_flights WHERE sent_at >= ?1)) GROUP BY d`, from, offThen, off, hi, first),
     q(`SELECT ${day("created_at")} AS d, COUNT(*) AS n FROM pg_users WHERE created_at >= ?1 GROUP BY d`, from, offThen, off, hi),
-    q(`SELECT k, COUNT(*) AS n FROM (SELECT ${kindOf} AS k FROM pg_msgs WHERE sent_at >= ?1
-         UNION ALL SELECT pigeon FROM pg_gmsgs WHERE sent_at >= ?1
+    q(`SELECT k, COUNT(*) AS n FROM (SELECT ${kindOf} AS k FROM pg_msgs WHERE sent_at >= ?1 AND instant IS NULL
+         UNION ALL SELECT pigeon FROM pg_gmsgs WHERE sent_at >= ?1 AND instant IS NULL
          UNION ALL SELECT COALESCE(pigeon, 'standard') FROM pg_flights WHERE sent_at >= ?1 AND grp = 0
          UNION ALL SELECT MIN(COALESCE(pigeon, 'standard')) FROM pg_flights WHERE sent_at >= ?1 AND grp = 1 GROUP BY msg_id) GROUP BY k ORDER BY n DESC`, from),
     q(`SELECT COUNT(*) AS n, SUM(photo != 0) AS photo, SUM(COALESCE(mystery, 0) != 0) AS mystery, SUM(sched IS NOT NULL) AS sched, SUM(via IS NOT NULL) AS via,
          SUM(cheer_by IS NOT NULL) AS cheered, SUM(moon IS NOT NULL) AS space, SUM(COALESCE(recalled, 0) = 1) AS recalled, SUM(lost_at IS NOT NULL AND COALESCE(recalled, 0) = 0) AS lost,
-         SUM(COALESCE(vanish, 0) > 0) AS vanish, SUM(style IS NOT NULL) AS styled, SUM(COALESCE(risky, 0) = 1) AS risky FROM pg_msgs WHERE sent_at >= ?1`, from),
+         SUM(COALESCE(vanish, 0) > 0) AS vanish, SUM(style IS NOT NULL) AS styled, SUM(COALESCE(risky, 0) = 1) AS risky FROM pg_msgs WHERE sent_at >= ?1 AND instant IS NULL`, from),
     q(`SELECT COUNT(*) AS n, SUM(photo != 0) AS photo, SUM(COALESCE(mystery, 0) != 0) AS mystery, SUM(COALESCE(vanish, 0) > 0) AS vanish,
-         SUM(style IS NOT NULL) AS styled, SUM(COALESCE(risky, 0) = 1) AS risky FROM pg_gmsgs WHERE sent_at >= ?1`, from),
+         SUM(style IS NOT NULL) AS styled, SUM(COALESCE(risky, 0) = 1) AS risky FROM pg_gmsgs WHERE sent_at >= ?1 AND instant IS NULL`, from),
     q(`SELECT (SELECT COUNT(DISTINCT user_id) FROM pg_passkeys) AS passkey, (SELECT COUNT(DISTINCT user_id) FROM pg_push) AS push,
          (SELECT COUNT(*) FROM pg_users WHERE email_ok IS NOT NULL) AS email, (SELECT COUNT(*) FROM pg_users WHERE COALESCE(risky, 0) = 1) AS risky,
          (SELECT COUNT(*) FROM pg_users WHERE COALESCE(loc_approx, 0) = 1) AS approx, (SELECT COUNT(*) FROM pg_users WHERE moon IS NOT NULL) AS space,
@@ -68,11 +69,14 @@ export async function insights(env, D, t = Date.now()) {
     // landing nobody has been told of yet (the tick should do that within a minute or two)
     q(`SELECT (SELECT COUNT(*) FROM pg_msgs WHERE deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1) AND sent_at <= ?1)
            + (SELECT COUNT(*) FROM pg_gdeliv WHERE deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)) AS flying,
-         (SELECT COUNT(*) FROM pg_msgs WHERE deliver_at BETWEEN ?1 - ${DAY} AND ?1 AND lost_at IS NULL) + (SELECT COUNT(*) FROM pg_gdeliv WHERE deliver_at BETWEEN ?1 - ${DAY} AND ?1 AND lost_at IS NULL) AS landed,
+         (SELECT COUNT(*) FROM pg_msgs WHERE deliver_at BETWEEN ?1 - ${DAY} AND ?1 AND lost_at IS NULL AND instant IS NULL)
+           + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.deliver_at BETWEEN ?1 - ${DAY} AND ?1 AND d.lost_at IS NULL AND m.instant IS NULL) AS landed,
          (SELECT COUNT(*) FROM pg_msgs WHERE lost_at BETWEEN ?1 - ${DAY} AND ?1 AND COALESCE(recalled, 0) = 0)
            + (SELECT COUNT(*) FROM pg_gdeliv WHERE lost_at BETWEEN ?1 - ${DAY} AND ?1 AND COALESCE(recalled, 0) = 0) AS lost,
-         (SELECT COUNT(*) FROM pg_msgs WHERE notified_at IS NULL AND lost_at IS NULL AND deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN})
-           + (SELECT COUNT(*) FROM pg_gdeliv WHERE notified_at IS NULL AND lost_at IS NULL AND deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN}) AS late`, t),
+         (SELECT COUNT(*) FROM pg_msgs WHERE notified_at IS NULL AND lost_at IS NULL AND deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN} AND instant IS NULL)
+           + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at BETWEEN ?1 - ${2 * DAY} AND ?1 - ${15 * MIN} AND m.instant IS NULL) AS late`, t),
+    // instant messages sent in the window, one to one and in groups
+    q(`SELECT (SELECT COUNT(*) FROM pg_msgs WHERE sent_at >= ?1 AND instant = 1) + (SELECT COUNT(*) FROM pg_gmsgs WHERE sent_at >= ?1 AND instant = 1) AS n`, from),
   ])).map((r) => r.results || []);
 
   // one entry per day, oldest first, with the days nothing happened as 0
@@ -90,5 +94,6 @@ export async function insights(env, D, t = Date.now()) {
       cheered: S.cheered || 0, space: S.space || 0, recalled: S.recalled || 0, vanish: sum(S.vanish, G.vanish), styled: sum(S.styled, G.styled), risky: sum(S.risky, G.risky), lost: S.lost || 0 },
     adoption: { passkey: A.passkey || 0, push: A.push || 0, email: A.email || 0, risky: A.risky || 0, approx: A.approx || 0, space: A.space || 0, birds: A.birds || 0, friends: A.friends || 0, groups: A.groups || 0 },
     health: { flying: H.flying || 0, landed: H.landed || 0, lost: H.lost || 0, late: H.late || 0 },
+    messages: msgs[0]?.n || 0,
   };
 }

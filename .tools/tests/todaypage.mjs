@@ -374,6 +374,41 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
   same(c5.rows, ['Leo’s pigeon landed Fri 23 Oct at 09:10 / Not read yet'], 'Chat: ten days ago, with its date');
   c5 = await parts('chat', chat([], [{ ...leo, n: 2 }]), T0);
   same([c5.title, c5.rows[0]], ['2 pigeons landed', 'Leo’s pigeons landed, the last at 07:30 / 2 not read yet'], 'Chat: two from one friend');
+  // instant messages, counted apart from letters (unread[].messages): said as messages, with pigeons on or off
+  c5 = await parts('chat', chat([], [{ ...leo, n: 1, messages: 1 }]), T0);
+  same([c5.title, c5.rows[0]], ['Leo sent you a message', 'Leo sent you a message / Sent at 07:30'], 'Chat: one message unread, said as a message');
+  c5 = await parts('chat', chat([], [{ ...leo, n: 2, messages: 2 }]), T0);
+  same([c5.title, c5.rows[0]], ['2 new messages', '2 new messages from Leo / The last sent at 07:30'], 'Chat: two messages from one friend');
+  c5 = await parts('chat', chat([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 3 * 3600e3 }], [{ ...leo, n: 1, messages: 1 }]), T0);
+  same([c5.title, c5.rows[1]], ['A pigeon on its way to you', 'Leo sent you a message / Sent at 07:30'], 'Chat: a pigeon still flying keeps the title; the message said as one');
+  c5 = await parts('chat', chat([], [{ ...leo, n: 3, messages: 1 }]), T0);
+  same([c5.title, c5.rows[0]], ['3 pigeons landed', 'Leo’s pigeons landed, the last at 07:30 / 3 not read yet'], 'Chat: letters and a message together, pigeons on: as before');
+  // pigeons off (the card's pigeons false): letters said plainly, with no bird, kind, track, streak or count in the air
+  const off = (inbound, unread, mine = []) => ({ ...CARDS.cards.chat, inbound, unread, mine, pigeons: false });
+  c5 = await parts('chat', off([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 3 * 3600e3 }], [{ ...leo }], [{ ...CARDS.cards.chat.mine[0], sentAt: T0 - 600e3, landsAt: T0 + 7 * 3600e3 }]), T0);
+  same([c5.title, c5.meta, ...c5.rows, c5.streak], ['A letter on its way to you', '', 'Sam’s letter arrives 11:10 / From Paris · 3h 0m to go', 'Leo’s letter arrived at 07:30 / Not read yet',
+    'Your letter to Leo arrives 15:10 / 7h 0m to go', null], 'Chat, pigeons off: “Sam’s letter arrives 11:10”, “Leo’s letter arrived”, “Your letter to Leo arrives 15:10”, and no streak or count in the air');
+  // (more of your own letters than the card lists: said as on their way, not in the air)
+  const moreOff = await p.evaluate(async ([card, now]) => {
+    const { cardHTML } = await import('/cards.js'), box = document.createElement('div');
+    box.innerHTML = cardHTML('chat', card, { links: { chat: 'https://chat.inflite.ai' }, tz: 'Europe/London', now });
+    return box.querySelector('.pg-more')?.textContent || '';
+  }, [{ ...off([], [], [{ ...CARDS.cards.chat.mine[0], sentAt: T0 - 600e3, landsAt: T0 + 7 * 3600e3 }]), more: 2 }, T0]);
+  same(moreOff, 'and 2 more on their way, in Chat', 'Chat, pigeons off: more letters of yours “on their way”, not “in the air”');
+  const offBox = await p.evaluate(async ([card, now]) => {
+    const { cardHTML } = await import('/cards.js'), box = document.createElement('div');
+    box.innerHTML = cardHTML('chat', card, { links: { chat: 'https://chat.inflite.ai' }, tz: 'Europe/London', now });
+    return { track: !!box.querySelector('.pg-track'), bird: !!box.querySelector('.bird-ic, .pg-bird'), pill: !!box.querySelector('a[data-send] svg'), pigeons: box.querySelector('[data-pgtitle]')?.dataset.pigeons, words: box.textContent };
+  }, [off([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 3 * 3600e3 }], [], []), T0]);
+  ok(!offBox.track && !offBox.bird && offBox.pill && offBox.pigeons === '0' && !/pigeon|Biscuit|swift|mi from/i.test(offBox.words.replace(/Send to a friend/, '')), 'Chat, pigeons off: no track, no bird (Send to a friend with a plain arrow), no kind, no pigeon words', JSON.stringify({ ...offBox, words: offBox.words.replace(/\s+/g, ' ').slice(0, 160) }));
+  c5 = await parts('chat', off([], [{ ...leo, n: 1, messages: 1 }]), T0);
+  same([c5.title, c5.rows[0]], ['Leo sent you a message', 'Leo sent you a message / Sent at 07:30'], 'Chat, pigeons off: one message unread');
+  c5 = await parts('chat', off([], [{ ...leo, n: 3, messages: 0 }]), T0);
+  same([c5.title, c5.rows[0]], ['3 new messages', 'Leo’s letters arrived, the last at 07:30 / 3 not read yet'], 'Chat, pigeons off: letters unread, as new messages');
+  c5 = await parts('chat', off([], []), T0);
+  same(c5.title, 'No new messages', 'Chat, pigeons off: nothing new');
+  c5 = await parts('chat', off([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 5 * 60e3 }], []), T0, T0 + 6 * 60e3);
+  same([c5.title, c5.meta, c5.rows[0]], ['Sam sent you a message', '', 'Sam’s letter arrived at 08:15 / From Paris · Arrived'], 'Chat, pigeons off: as a letter arrives, the minute’s tick says so by the same rules');
   // the streak, counting down as Chat does (its Flight Streak row), by the minute's tick; gone once it's ended
   const st = { ...CARDS.cards.chat, inbound: [], unread: [], mine: [] };
   c5 = await parts('chat', st, T0, T0 + 30 * 60e3);
@@ -552,6 +587,17 @@ await part('morning', async () => {
   ok(!(await p.$('#lock, .lk-note')), 'still no Lock Screen picture, with a next one to come');
   await openMorning();
   await p.screenshot({ path: `${OUT}/morning-390-dark.png` });
+  // (Chat's line, as its morning line will say it: pigeons, or letters with pigeons off)
+  const chatLine = () => p.$eval('#lines input[data-line=chat]', (i) => i.closest('label').querySelector('small').textContent);
+  same(await chatLine(), 'Pigeons on their way to you', 'morning: Chat’s line, pigeons on');
+  const offCards = (r) => r.fetch().then(async (res) => { const a = await res.json(); if (a.cards?.chat) a.cards.chat.pigeons = false; return r.fulfill({ response: res, json: a }); });
+  await p.route((u) => new URL(u).pathname.endsWith('/today/cards'), offCards);
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
+  await p.waitForTimeout(300);
+  await openMorning();
+  same(await chatLine(), 'Letters on their way to you', 'morning: Chat’s line, pigeons off: letters, as its morning line says');
+  await p.unroute((u) => new URL(u).pathname.endsWith('/today/cards'));
   await ctx.close();
 });
 

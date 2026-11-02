@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
-import { tddb, todayPrefs } from "../../../functions/_today.js";
+import { tddb, todayPrefs, morningCandidates } from "../../../functions/_today.js";
 import { wxdb, OM_KEEP } from "../../../functions/_wxpush.js";
 import { forecast } from "../mocks/wxappdata.mjs";
 import { morningLines, composeMorning, previewMorning, sendMorningNow, morningTick, nextAt, isDue, tickTest, countedDb, PER_TICK, AT_ONCE, LEASE, DB_BUDGET, DB_MOST } from "../../../functions/_todaymorning.js";
@@ -104,6 +104,21 @@ test("the Chat line, names on: who, soonest first, each first name once; landing
     const s = JSON.stringify(say(chatWith(kinds), { names }));
     assert.doesNotMatch(s, /rocket|swift|turbo|mystery|Biscuit|Navigator|Paris/i, s);
   }
+});
+
+test("morning: letter words for pigeons off", () => {
+  const chat = CARDS.cards.chat, off = (inbound, o = {}, ...counts) => say(with_("chat", { ...chatWith(inbound, ...counts).chat, pigeons: false }), o).lines[2];
+  assert.equal(off([chat.inbound[0]]), "A letter on its way", "names off, one");
+  assert.equal(off(chat.inbound), "2 letters on their way", "names off, several");
+  assert.equal(off([chat.inbound[0]], { names: true }), "A letter from Sam, arriving about 11:05", "one, named");
+  assert.equal(off([ON_WAY("Ana", AT + 9 * 60e3)], { names: true }), "A letter from Ana, arriving at 08:19", "at, within 10 minutes");
+  assert.equal(off([ON_WAY("Ana", NaN)], { names: true }), "A letter from Ana on its way", "one, no time");
+  assert.equal(off(chat.inbound, { names: true }), "Letters from Sam and Mum on their way", "several, named");
+  const from = ["Ana", "Bo", "Cy", "Di", "Ed"].map((n, i) => ON_WAY(n, AT + (i + 1) * 1e6));
+  assert.equal(off(from, { names: true }), "Letters from Ana, Bo and 3 others on their way", "and the others");
+  // (pigeons on, or the card saying nothing of them: as before)
+  assert.equal(say(with_("chat", { ...chat, pigeons: true })).lines[2], "2 pigeons on their way");
+  assert.equal(say(CARDS.cards).lines[2], "2 pigeons on their way");
 });
 
 test("the Markets line, in Markets' own words: traded, flat, shut, before the open; nothing owned, in out", () => {
@@ -544,4 +559,21 @@ test("the preview's next time is when the scheduler will send it: due now and no
       assert.equal(await at({ m_at, m_tz: tz }, t), turn, `${tz} ${m_at} from ${new Date(t).toISOString()}`);
     }
   }
+});
+
+test("morning: a pigeons-off account's morning notification uses letter words", async () => {
+  tickTest.compose = null; done();
+  // (Pat has pigeons off; Sam, a friend, has a letter on its way to Pat, landing in two hours)
+  const pat = await account({ prefs: { names: true } }), sam = "sam-" + pat.id, t = Date.now();
+  run("UPDATE pg_users SET pigeons = 0, new_way = 'instant' WHERE id = ?", pat.id);
+  run("INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?1, ?1, 'Sam Lee', ?1 || '@example.com', '{}', 's', 'p', 'v', 3, 0, 0)", sam);
+  run("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'ok', 0)", sam, pat.id);
+  run("INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, pigeon) VALUES (?, ?, ?, 'x', 300, ?, ?, 'swift')", "lt-" + pat.id, sam, pat.id, t - 3600e3, t + 2 * 3600e3);
+  const c = (await morningCandidates(env)).find((x) => x.u.id === pat.id);
+  assert.equal(c.u.pigeons, 0, "the candidate carries the switch");
+  const note = await composeMorning(env, c.u, { ...c.row, m_lines: { weather: false, fitness: false, markets: false } }, t);
+  assert.equal(note.lines.length, 1);
+  assert.match(note.lines[0], /^A letter from Sam, arriving about \d\d:\d\d$/);
+  assert.doesNotMatch(JSON.stringify(note), /pigeon|streak/i);
+  done();
 });

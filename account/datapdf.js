@@ -15,7 +15,7 @@ const dayOf = (k) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(k || ""
 // InFlite Today's cards, as it names them
 const CARDS = { weather: "Weather", chat: "Chat", fitness: "Fitness", markets: "Markets" };
 // Chat's notifications, as Chat names them
-const NOTES = [["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off"], ["rerouted", "A pigeon changes course"], ["lost", "A pigeon is lost"],
+const NOTES = [["messages", "Messages"], ["landed", "A pigeon lands"], ["takeoff", "A pigeon takes off"], ["rerouted", "A pigeon changes course"], ["lost", "A pigeon is lost"],
   ["delays", "Weather delays"], ["requests", "Friend requests"], ["accepted", "Request accepted"], ["reactions", "Reactions"], ["moments", "Mid-air moments"],
   ["streaks", "Flight streaks"], ["weekly", "Your week in flight"], ["names", "Show names"]];
 
@@ -176,7 +176,8 @@ export async function dataPdf(data, { did, units }) {
   const pg = inf.pigeons || {};
   figures([[(inf.friends || []).length, "friends"], [(inf.groups || []).length, "groups"], [pg.sent || 0, "pigeons sent"], [pg.received || 0, "pigeons received"],
     [(inf.passport || []).length, "places in your passport"], [(inf.birds || []).length, "birds"]]);
-  rows([["Where you are", inf.place ? `${inf.place}${inf.location?.approximate ? " (to about 10 km)" : ""}` : "Not set"]]);
+  rows([["Where you are", inf.place ? `${inf.place}${inf.location?.approximate ? " (to about 10 km)" : ""}` : "Not set"],
+    ...(inf.settings?.pigeons !== undefined ? [["Pigeons", onOff(inf.settings.pigeons)], ["New chats start as", inf.settings.newChatsStart === "instant" ? "Instant" : "By Pigeon"]] : [])]);
   sub("Friends");
   table([{ label: "Name", w: 3 }, { label: "Handle", w: 2.5 }, { label: "Friends since", w: 2 }],
     (inf.friends || []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name))).map((x) => [x.name, `@${x.handle}`, day(x.since)]), "No friends yet.");
@@ -193,7 +194,7 @@ export async function dataPdf(data, { did, units }) {
   sub("Notifications");
   rows([...NOTES.map(([k, label]) => [label, onOff(nt[k])]), ["Quiet hours", nt.quiet ? `${hour(nt.quietFrom)} to ${hour(nt.quietTo)}` : "Off"], ["Email me", onOff(st.emailWhenPigeonsLand)]]);
   sub("Privacy");
-  rows([["Show when I’m online", onOff(st.showWhenOnline)], ["Read receipts", onOff(st.readReceipts)], ["Share my news", onOff(st.shareNews)],
+  rows([["Show when I’m online", onOff(st.showWhenOnline)], ...(st.showWhenTyping !== undefined ? [["Show when I’m typing", onOff(st.showWhenTyping)]] : []), ["Read receipts", onOff(st.readReceipts)], ["Share my news", onOff(st.shareNews)],
     ["Live tracker", onOff(st.liveTracker)], ["Approximate location", onOff(st.approximateLocation)]]);
 
   // ---- Weather ----

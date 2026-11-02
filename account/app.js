@@ -434,8 +434,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.70";
-const NEWS = "Opened from a link in another app, such as an email in Mail, sheets fill the window so their last rows are in reach";
+const BUILD = "1.71";
+const NEWS = "Chat’s settings have a Pigeons switch, how new chats start, and Show when I’m typing";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1080,8 +1080,10 @@ function signedIn(r) {
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
     // (InFlite Today, at inflite.ai itself: every app's day on one page, and a morning notification from them all)
     app("today", "Today", "/apps/today.png", td.morning?.on ? `Morning at ${hhmm(td.morning.at ?? 420)}` : "Your day, from all your apps", "One page, every app"),
-    app("inflight", "Chat", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
-      f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
+    // (with pigeons off, just friends: the letters sent and the passport are pigeons')
+    f.pigeons === false ? app("inflight", "Chat", "/apps/inflight.png", f.friends ? plural(f.friends, "friend", "friends") : "No friends yet", "Messages, and letters by pigeon")
+      : app("inflight", "Chat", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
+        f.places ? `${plural(f.places, "place", "places")} in your passport` : "Messages, and letters by pigeon"),
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
     app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
@@ -1404,14 +1406,16 @@ function appView(id) {
   if (id === "today") return todayAboutView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
   const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
-    h("b", { text: inflight ? "Chat" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
+    h("b", { text: inflight ? "Chat" : "Weather" }), h("span", { text: inflight ? "Messages, and letters by pigeon" : "A forecast that explains itself" }));
   const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
   const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "Chat" : "Weather"}`, icon("open", 18, 2.4));
   if (inflight) {
     const f = ap.inflight || {};
+    // (with pigeons off, friends and groups only)
     return { title: "Chat", quiet: true, body: [head,
-      h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
-        stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
+      f.pigeons === false ? h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups"))
+        : h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
+          stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
       open] };
   }
   const w = ap.weather || {}, names = w.placeNames || [];
@@ -3628,7 +3632,10 @@ const ntHead = (id, name, on) => [h("div.app-head.set", {}, h("img", { src: appI
 const ntBack = (id) => (fromApp() === id && HANDOFF?.open === `notify-${id}` ? h("button.link.back.toapp", { type: "button", onclick: backToApp }, icon("back", 22, 2.4), APPS[id].name) : null);
 const and2 = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0] || "");
 const CHAT_PIGEONS = ["landed", "takeoff", "rerouted", "lost", "delays"];
-function chatSaid(c) { const on = IF_NOTIFY.filter(([k]) => c.kinds[k]).length; return on ? `${on} of ${IF_NOTIFY.length}${c.email ? ", and by email" : ""}` : "None"; }
+// (with pigeons off, the kinds that are only about flights aren't shown: letters still land, so "A pigeon lands" stays)
+const CHAT_FLIGHTS = ["takeoff", "rerouted", "lost", "delays", "moments", "streaks", "weekly"];
+const chatKinds = (pigeons) => (pigeons === false ? IF_NOTIFY.filter(([k]) => !CHAT_FLIGHTS.includes(k)) : IF_NOTIFY);
+function chatSaid(c) { const ks = chatKinds(c.pigeons), on = ks.filter(([k]) => c.kinds[k]).length; return on ? `${on} of ${ks.length}${c.email ? ", and by email" : ""}` : "None"; }
 function wxSaid(w) {
   const what = [w.places.some((p) => p.warn) && "warnings", w.places.some((p) => p.rain) && "rain", w.brief && `briefing at ${w.briefAt}`, w.solar?.alert && "your panels"].filter(Boolean);
   return what.length ? cap(and2(what)) : "None";
@@ -3653,7 +3660,8 @@ function notifyView() {
       switchRow({ icon: "moon", tint: "indigo", title: "Quiet Hours", sub: q.on ? `${hh(q.from)} to ${hh(q.to)}, every app` : "Nothing buzzes overnight, or whenever suits",
         input: ntSwitch("nt-quiet", q.on, (v) => ({ quiet: { on: v, tz: tzHere() } })) }),
       q.on && hour("from", "From"), q.on && hour("to", "To")),
-    q.on && h("p.hint", { text: "Pigeons that land meanwhile come when they end; rain alerts, your panels and new mail stay quiet. Warnings still come." }),
+    // (messages are held too, and told when they end; with pigeons off, letters rather than pigeons)
+    q.on && h("p.hint", { text: `Messages and ${NT.chat?.pigeons === false ? "letters" : "pigeons"} that come meanwhile buzz when they end; rain alerts, your panels and new mail stay quiet. Warnings still come.` }),
     h("h4.app-k", { text: "Apps" }),
     h("div.group", {},
       NT.today && appRow("today", "Today", todaySaid(NT.today), () => pushSheet(todayNotifyView)),
@@ -3681,20 +3689,27 @@ function todayNotifyView() {
     T.on && !T.devices && h("p.hint", { text: "Not on any of your devices yet: turn it on in Today, on each phone you want it on." }),
     h("p.hint", { text: "While it’s on, it comes instead of Weather’s morning briefing and Fitness’s morning reminder. It comes at its time, whatever your Quiet Hours." })] };
 }
-// Chat: which pigeons and friends' doings tell you, how they read on the lock screen, and its emails
+// Chat: which messages, pigeons and friends' doings tell you, how they read on the lock screen, and its emails (with
+// pigeons off: messages, and letters that land, then friends)
 function chatNotifyView() {
   const back = ntBack("inflight"), w = ntWait("Chat", back); if (w) return w;
-  const c = NT.chat, kind = ([k, t, sub]) => switchRow({ title: t, sub, input: ntSwitch(`nt-c-${k}`, c.kinds[k], (v) => ({ chat: { [k]: v } })) });
+  const c = NT.chat, off = c.pigeons === false, kind = ([k, t, sub]) => switchRow({ title: t, sub, input: ntSwitch(`nt-c-${k}`, c.kinds[k], (v) => ({ chat: { [k]: v } })) });
+  const only = (ks) => ks.map((k) => IF_NOTIFY.find(([x]) => x === k));
   const test = h("button.row.plain.act", { type: "button", onclick: async (e) => {
     try { const r = await busy(e.currentTarget, "Sending…", () => call("notify/test", { method: "POST", body: {} })); toast(r.sent ? `Sent to ${r.sent === 1 ? "1 device" : `${r.sent} devices`}.` : "No device took it. Turn notifications on in Chat."); }
     catch (err) { toast(err.message, true); }
   } }, h("span.tx", {}, h("b", { text: "Send a Test Notification" })));
   return { title: "Chat", quiet: true, left: back, body: [
     ...ntHead("inflight", "Chat", c.on),
-    h("h4.app-k", { text: "Pigeons" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => CHAT_PIGEONS.includes(k)).map(kind)),
-    h("h4.app-k", { text: "Friends" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => !CHAT_PIGEONS.includes(k)).map(kind)),
+    ...(off ? [
+      h("h4.app-k", { text: "Messages" }), h("div.group", {}, [...only(["messages"]), ["landed", "A pigeon lands", "Letters friends send by pigeon"]].map(kind)),
+      h("h4.app-k", { text: "Friends" }), h("div.group", {}, only(["requests", "accepted", "reactions"]).map(kind))] : [
+      h("h4.app-k", { text: "Messages" }), h("div.group", {}, only(["messages"]).map(kind)),
+      h("h4.app-k", { text: "Pigeons" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => CHAT_PIGEONS.includes(k)).map(kind)),
+      h("h4.app-k", { text: "Friends" }), h("div.group", {}, IF_NOTIFY.filter(([k]) => k !== "messages" && !CHAT_PIGEONS.includes(k)).map(kind))]),
     h("h4.app-k", { text: "How they look" }),
-    h("div.group", {}, switchRow({ title: "Names on the Lock Screen", sub: c.names ? "Who sent it, never what it says" : "Just “A pigeon has landed”", input: ntSwitch("nt-c-names", c.names, (v) => ({ chat: { names: v } })) })),
+    h("div.group", {}, switchRow({ title: "Names on the Lock Screen", sub: c.names ? "Who sent it, never what it says" : off ? "Just “Sent you a message”" : "Just “Sent you a message” or “A pigeon has landed”",
+      input: ntSwitch("nt-c-names", c.names, (v) => ({ chat: { names: v } })) })),
     h("h4.app-k", { text: "Emails" }),
     h("div.group", {}, switchRow({ title: "Email Me Too", sub: NT.emailOk ? "What’s still unread after 10 minutes" : "Confirm your email first", input: ntSwitch("nt-c-email", c.email, (v) => ({ chat: { email: v } }), !NT.emailOk) })),
     c.on > 0 && h("div.group", {}, test)] };
@@ -3800,11 +3815,11 @@ let IF = null, ifAt = 0, ifFor = null, ifSeq = 0, ifBusy = 0, ifStale = false;
 // (on any of its pages: the sheet's own, its notifications, who sees what, and who's blocked)
 const onIf = () => [inflightView, ifPrivacyView, ifBlockedView].includes(Sheet.stack.at(-1));
 const ifCaughtUp = () => { if (ifBusy || !ifStale) return; ifStale = false; if (onIf()) redraw(); };
-const IF_NOTIFY = [["landed", "A pigeon lands"], ["takeoff", "Takes off", "When a friend sends you one"], ["rerouted", "Changes course", "When a friend moves while yours is flying"],
+const IF_NOTIFY = [["messages", "Messages", "When a friend sends you one"], ["landed", "A pigeon lands"], ["takeoff", "Takes off", "When a friend sends you one"], ["rerouted", "Changes course", "When a friend moves while yours is flying"],
   ["lost", "Is lost", "When Pigeon Death takes one of yours"], ["delays", "Weather delays", "When one flies into weather that makes it late"], ["requests", "Friend requests"],
   ["accepted", "Request accepted"], ["reactions", "Reactions", "When someone reacts to your message"], ["moments", "Mid-air moments", "Near misses, cheers, ships, and friends’ pigeons flying over you"],
   ["streaks", "Flight streaks", "A few hours before a streak with a friend runs out"], ["weekly", "Your week in flight", "Sunday evening: miles flown and badges earned"]];
-const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
+const IF_PRIVACY = [["showOnline", "Show when I’m online"], ["showTyping", "Show when I’m typing", "Friends see dots while you write. Never the words, and never kept"], ["receipts", "Read receipts"], ["shareNews", "Share my news", "Ranks, streaks, new countries"],
   ["approxLocation", "Approximate location", "About 10 km, not exact"], ["shareTracker", "Live tracker", "On the public map, no names"]];
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
 // Chat's settings, fetched (what was last fetched, at once, and fetched again behind it; the sheet drawn again as it
@@ -3827,11 +3842,11 @@ function ifParts(title) {
   if (IF.error) return { wait: { title, left: back, body: [failed(IF.error, () => { IF = null; })] } };
   const said = h("p.said", { role: "alert" });
   // a change, as it's made: kept, and what's kept shown (the switch put back, or the hour drawn again as it's kept, and
-  // why, if it can't be)
+  // why, if it can't be). (input null: a choice of two, which holds nothing, drawn again if it can't be kept)
   const change = async (input, patch, after) => {
-    const letGo = hold(input); ifSeq++; ifBusy++;
+    const letGo = input ? hold(input) : () => {}; ifSeq++; ifBusy++;
     try { IF = await call("inflight", { method: "PATCH", body: patch }); after?.(); }
-    catch (e) { ifAt = 0; if (input.type === "checkbox") input.checked = !input.checked; else if (onIf()) redraw(); toast(e.message, true); }
+    catch (e) { ifAt = 0; if (input?.type === "checkbox") input.checked = !input.checked; else if (onIf()) redraw(); toast(e.message, true); }
     finally { ifBusy--; ifCaughtUp(); letGo(); }
   };
   const input = (key, on, patch, { after, disabled } = {}) => {
@@ -3846,11 +3861,17 @@ const hhRange = (n) => `${hh(n.quietFrom)}–${hh(n.quietTo)}`;
 function inflightView() {
   const P = ifParts("Chat");
   if (P.wait) return P.wait;
-  const n = IF.notify, on = IF_NOTIFY.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => k === "approxLocation" ? !IF.privacy[k] : IF.privacy[k]).length;
+  const n = IF.notify, ks = chatKinds(IF.pigeons), on = ks.filter(([k]) => n[k]).length, shared = IF_PRIVACY.filter(([k]) => k === "approxLocation" ? !IF.privacy[k] : IF.privacy[k]).length;
   return { title: "Chat", quiet: true, left: P.back, body: [
     setHead("inflight", "Chat"),
+    // Pigeons, on or off (the sheet drawn again, as how new chats start is a choice only with them on; and the
+    // notifications kept here dropped, and anything still coming for them, as Chat's folder there follows them), and how new chats start
     h("div.group", {},
-      row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${IF_NOTIFY.length}`, onclick: () => pushSheet(chatNotifyView) })),
+      P.sw("pigeons", "Pigeons", "Letters that take real time to fly, with the map, birds and streaks", IF.pigeons, (v) => ({ pigeons: v }), { after: () => { NT = null; ntAt = 0; ntSeq++; if (onIf()) redraw(); } }),
+      IF.pigeons && choiceRow({ icon: "bubble", tint: "amber", title: "New chats start as", opts: [["instant", "Instant"], ["pigeon", "By Pigeon"]], value: IF.newChats, w: 172,
+        onpick: (v) => P.change(null, { newChats: v }) })),
+    h("div.group", {},
+      row({ icon: "bell", tint: "red", title: "Notifications", sub: n.quiet ? `Quiet ${hhRange(n)}` : null, value: `${on} of ${ks.length}`, onclick: () => pushSheet(chatNotifyView) })),
     h("h4.app-k", { text: "Privacy" }),
     h("div.group", {},
       row({ icon: "eye", tint: "teal", title: "Who sees what", value: shared === IF_PRIVACY.length ? "All shared" : shared ? `${shared} of ${IF_PRIVACY.length}` : "Nothing", onclick: () => pushSheet(ifPrivacyView) }),
@@ -3864,7 +3885,7 @@ function ifPrivacyView() {
   if (P.wait) return P.wait;
   return { title: "Who sees what", body: [
     h("div.group", {}, IF_PRIVACY.map(([k, t, sub]) => P.sw(k, t, sub, IF.privacy[k], (v) => ({ privacy: { [k]: v } })))),
-    h("p.hint", { text: "Online, read receipts and news work both ways: turn one off and you won’t see other people’s either." }),
+    h("p.hint", { text: "Online, typing, read receipts and news work both ways: turn one off and you won’t see other people’s either. With online hidden, ticks still show, but not exactly when." }),
     P.said] };
 }
 // who's blocked, each to be unblocked

@@ -141,9 +141,17 @@ ok(fxState() === state0, 'and no plan changed');
   await M.p.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => /No signal/.test(t.innerText)), null, { timeout: 30000 }).catch(() => {});
   ok(sent() === s0 + 1, 'Yes, its reply lost: the letter did reach the server', `${sent() - s0}`);
   cut = false;
-  const again = await M.p.$(`.msgs [data-mid="${inv.id}"] [data-act=planans][data-a=yes]`);
-  ok(!!again, 'the buttons still there to tap again');
-  if (again) await again.click();
+  // the buttons still there to tap again; or, the chat having heard from the server since (Chat 1.67's pulse), the Yes
+  // already in it and its buttons gone, the Fitness plan made all the same
+  const YES = `.msgs [data-mid="${inv.id}"] [data-act=planans][data-a=yes]`;
+  // (seen: Mira's own answer, the letter that reached the server, in her chat; not any "Yes" on the screen)
+  const answer = newest(ms.me.id), hers = () => M.p.waitForSelector(`.msgs [data-mid="${answer}"]`, { timeout: 8000 }).then(() => true, () => false);
+  const again = await M.p.$(YES);
+  // (by its selector, and only while it's there: Chat may draw the chat again between finding the button and tapping it,
+  // and then it's her answer that must be there)
+  const tapped = !!again && await M.p.click(YES, { timeout: 5000 }).then(() => true, () => false);
+  const seen = !tapped && await hers();
+  ok(tapped || seen, 'the buttons still there to tap again, or Mira’s own Yes already in the chat', tapped ? 'tapped' : seen ? 'seen' : 'neither');
   await M.p.waitForTimeout(2500);
   ok(sent() === s0 + 1 && offers() === o0 + 1, 'tapped again: one letter and one offer in Mira’s Fitness, not two', `${sent() - s0} letters, ${offers() - o0} offers`);
   await M.ctx.unroute(isMsgs).catch(() => {}); await M.ctx.unroute(isSync).catch(() => {});

@@ -52,6 +52,10 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_handback WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_held WHERE user_id = ?1 OR about = ?1 OR by_id = ?1").bind(id),
     D.prepare("DELETE FROM pg_vanish WHERE a = ?1 OR b = ?1").bind(id),
+    // how their chats went, and their lines, both ways; and the change feed, theirs and about them (by chat: rare, so a scan)
+    D.prepare("DELETE FROM pg_ways WHERE a = ?1 OR b = ?1").bind(id),
+    D.prepare("DELETE FROM pg_wayev WHERE a = ?1 OR b = ?1").bind(id),
+    D.prepare("DELETE FROM pg_pulse WHERE user_id = ?1 OR chat = ?1").bind(id),
     // their handle is held for 30 days, for no one, so no one can pose as them to their friends (and the ones they had
     // lately stay held as long as they were going to be, for no one too)
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),

@@ -1,0 +1,20 @@
+# Chat's typing dots (workers/live/index.js): a Worker of its own holding the Typing Durable Object, which keeps who's
+# typing in memory for a few seconds and never stores it. No public address: only the site's binding reaches it
+# (the root wrangler.toml's TYPING). Deployed on each push to main that changes it, by .github/workflows/live-deploy.yml;
+# by hand:
+#   cd workers/live && npx wrangler deploy
+name = "georgefarrowgreen-live"
+main = "index.js"
+compatibility_date = "2026-09-01"
+workers_dev = false          # no public address: only the site's binding reaches it
+
+[[durable_objects.bindings]]
+name = "TYPING"
+class_name = "Typing"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Typing"]
+
+[observability]
+enabled = true

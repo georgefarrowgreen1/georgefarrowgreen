@@ -4,7 +4,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
 import http from 'http';
-import { joinChat } from './join.mjs';
+import { joinChat, pigeonsTo } from './join.mjs';
 // (TEST_BASE: another local copy of the site, on another port)
 export async function kit(S, out, BASE = process.env.TEST_BASE || 'http://localhost:8788') {
 const PORT = BASE.match(/:(\d+)\/?$/)?.[1] || '80';
@@ -68,7 +68,10 @@ async function phone(name, keys) {
 }
 const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace(/\s+/g, ' ');
 // (made on the account's own page, then Chat signed in to: join.mjs)
-const signup = (ph, name, handle, email, city) => joinChat(ph.p, URL, { name, handle, email, city });
+// (opts.pigeons: true or false sets Chat's Pigeons switch once in; left out, as test accounts start: pigeons on)
+const signup = (ph, name, handle, email, city, opts = {}) => joinChat(ph.p, URL, { name, handle, email, city, ...opts });
+// Chat's Pigeons switch, set from the phone (PATCH /api/pigeon/me), then Chat loaded again
+const setPigeons = (ph, on) => pigeonsTo(ph.p, on);
 // (retry once: the local server can drop an idle keep-alive connection while sql() runs)
 const tick = async (secret = 'tick-test-secret') => { const go = () => fetch(BASE + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer ' + secret } });
   let r; try { r = await go(); } catch (_) { r = await go(); } return { status: r.status, ...(await r.json()) }; };
@@ -76,7 +79,8 @@ const lastPush = async (keys, since) => { const ps = pushes().filter((x) => x.at
 const idOf = (ph) => ph.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result.me.id); }; }));
 const sess = (ph) => ph.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }));
 const fetchRetry = async (...a) => { for (let i = 0; ; i++) { try { return await fetch(...a); } catch (e) { if (i > 3) throw e; await new Promise((r) => setTimeout(r, 300)); } } };
-const api = (tk, path, body) => fetchRetry(BASE + '/api/pigeon/' + path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => [r.status, await r.json().catch(() => ({}))]);
+// (method: PATCH, DELETE…; else POST with a body, GET without)
+const api = (tk, path, body, method) => fetchRetry(BASE + '/api/pigeon/' + path, { method: method || (body ? 'POST' : 'GET'), headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => [r.status, await r.json().catch(() => ({}))]);
 const one = (q) => { const o = sql(q); const m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
 // The site's admin, on its account's page (functions/api/pigeon admin): this account made it (as linking it once did),
 // with a passkey on it and a sign-in just shown, for the account's address; ask(path) asks Admin's API as that would
@@ -140,5 +144,5 @@ const pick = async (ph, kind) => {
 const say = async (ph, kind, text) => { await pick(ph, kind); await ph.p.fill('#msg', text); await ph.p.click('.send'); await ph.p.waitForTimeout(1500); };
 // every push to one phone since a moment, opened
 const allPushes = async (keys, name, since = 0) => Promise.all(pushes().filter((x) => x.at > since && (x.headers['x-endpoint'] || '').includes(`/${name}-device`)).map(async (x) => ({ at: x.at, ...(await decrypt(keys, x.body).catch(() => ({}))) })));
-return { b, errs, ok, sql, one, admin, pushes, allPushes, makeKeys, decrypt, phone, signup, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE };
+return { b, errs, ok, sql, one, admin, pushes, allPushes, makeKeys, decrypt, phone, signup, setPigeons, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE };
 }

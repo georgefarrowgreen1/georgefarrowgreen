@@ -69,7 +69,7 @@ const FORBIDDEN = new Set(["ct", "via_ct", "via_note", "viaNote", "note", "body"
 const keysIn = (v, out = []) => { if (Array.isArray(v)) v.forEach((x) => keysIn(x, out)); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.push(k); keysIn(x, out); } return out; };
 
 test("CHAT_COLUMNS is exactly the allowlist", () => {
-  assert.deepEqual(CHAT_COLUMNS, ["sender", "recipient", "sent_at", "deliver_at", "km", "pigeon", "swift", "mystery", "bird_name", "bird_rank", "from_place", "to_place", "read_at"]);
+  assert.deepEqual(CHAT_COLUMNS, ["sender", "recipient", "sent_at", "deliver_at", "km", "pigeon", "swift", "mystery", "bird_name", "bird_rank", "from_place", "to_place", "read_at", "instant"]);
 });
 
 test("nothing sealed leaves: no letter, no stopover's note, nothing about a photo, nor anything that says a pigeon will be lost", async () => {
@@ -102,7 +102,7 @@ test("the pigeons Today must never show aren't there: lost already, booked and n
   assert.equal(doomed.kind, "turbo");
   assert.deepEqual(swift, { who: { id: SAM, name: 'Sam "Q" & O\'Neil', first: "Sam", photoAt: 1780000000000 }, sentAt: T - 2 * H, landsAt: T + H, km: 343, kind: "swift", mystery: false,
     bird: { name: "Biscuit", rank: "Navigator" }, from: "Paris", href: `${LINKS.chat}/#open=${SAM}` });
-  assert.deepEqual(card.unread, [{ who: { id: LEO, name: "Leo Park", first: "Leo", photoAt: null }, n: 2, last: T - H, href: `${LINKS.chat}/#open=${LEO}` }], "landed and unread, by friend: not one read, lost or blocked");
+  assert.deepEqual(card.unread, [{ who: { id: LEO, name: "Leo Park", first: "Leo", photoAt: null }, n: 2, messages: 0, last: T - H, href: `${LINKS.chat}/#open=${LEO}` }], "landed and unread, by friend: not one read, lost or blocked");
   assert.equal(card.mine.length, 1); assert.equal(card.more, 0);
 });
 
@@ -124,10 +124,10 @@ test("the streak: friends only, the one that ends today unless a pigeon flies, a
 
 test("no friends: the card says to add one; friends with nothing on: empty lists and a plain line to send", async () => {
   user(id(9), "New Person");
-  assert.deepEqual(await chatCard(env, { id: id(9) }, ctx), { state: "empty", href: `${LINKS.chat}/`, said: "Add a friend in Chat, and their pigeons show here.", action: { label: "Open Chat", href: `${LINKS.chat}/` } });
+  assert.deepEqual(await chatCard(env, { id: id(9) }, ctx), { state: "empty", pigeons: true, href: `${LINKS.chat}/`, said: "Add a friend in Chat, and their pigeons show here.", action: { label: "Open Chat", href: `${LINKS.chat}/` } });
   link(id(9), STRANGER);
   const quiet = await chatCard(env, { id: id(9) }, ctx);
-  assert.deepEqual(quiet, { state: "ok", href: `${LINKS.chat}/`, inbound: [], inboundTotal: 0, inboundFrom: 0, unread: [], mine: [], more: 0, streak: null, share: "Sending you a pigeon." });
+  assert.deepEqual(quiet, { state: "ok", pigeons: true, href: `${LINKS.chat}/`, inbound: [], inboundTotal: 0, inboundFrom: 0, unread: [], mine: [], more: 0, streak: null, share: "Sending you a pigeon." });
 });
 
 test("the source reads pigeons only through its own allowlist: no SELECT *, no m.*, never Chat's own views of a message", () => {
@@ -171,4 +171,28 @@ test("more on their way than the card lists: the soonest 6, and every one counte
   const line = (names) => morningLines({ chat: card }, { names, tz: "Europe/London", t: T, lines: { weather: false, fitness: false, markets: false } }).lines[0];
   assert.equal(line(false), "10 pigeons on their way");
   assert.equal(line(true), "Pigeons from Ana and 3 others on their way");
+});
+
+test("today: the card for pigeons off, unread messages counted apart", async () => {
+  // (Ivy and Jo are friends; Jo has sent Ivy two instant messages and a letter that's landed, all unread, and the two of
+  // them have a streak going that ends today)
+  const IVY = id(40), JO = id(41), NEWBIE = id(42);
+  user(IVY, "Ivy Hart", { pigeons: 0, new_way: "instant" }); user(JO, "Jo Lane"); user(NEWBIE, "New Person", { pigeons: 0 });
+  link(IVY, JO);
+  const plain = { from_lat: null, from_lon: null, to_lat: null, to_lon: null, from_place: null, to_place: null, legs: null, wx: null, wx_ms: null, via: null, via_ct: null, via_note: null, via_place: null, photo: 0, photo_size: null, once: null, risky: 0, km: 0 };
+  msg("im-1", { ...plain, sender: JO, recipient: IVY, instant: 1, sent_at: T - 30 * 60e3, deliver_at: T - 30 * 60e3 });
+  msg("im-2", { ...plain, sender: JO, recipient: IVY, instant: 1, sent_at: T - 20 * 60e3, deliver_at: T - 20 * 60e3 });
+  msg("lt-1", { sender: JO, recipient: IVY, sent_at: T - 5 * H, deliver_at: T - 2 * H });
+  put("pg_streaks", { a: [IVY, JO].sort()[0], b: [IVY, JO].sort()[1], start: today - 5, last: today - 1, best: 5 });
+  const card = await chatCard(env, { id: IVY, pigeons: 0 }, ctx);
+  assert.equal(card.pigeons, false);
+  assert.equal(card.streak, null, "no streak with pigeons off");
+  assert.equal(card.share, "Sending you a message.");
+  assert.equal(card.send, null, "and no streak card to send");
+  assert.deepEqual(card.unread.map((r) => [r.who.id, r.n, r.messages]), [[JO, 3, 2]], "three unread, two of them messages");
+  assert.deepEqual(card.inbound, [], "an instant message is never in the air");
+  // the same account with pigeons on (or a bare user): the streak, and pigeons' words
+  const on = await chatCard(env, { id: IVY }, ctx);
+  assert.equal(on.pigeons, true); assert.equal(on.streak?.n, 5); assert.equal(on.share, "My flight streak with Jo is 5 days.");
+  assert.deepEqual(await chatCard(env, { id: NEWBIE, pigeons: 0 }, ctx), { state: "empty", pigeons: false, href: `${LINKS.chat}/`, said: "Add a friend in Chat, and your messages show here.", action: { label: "Open Chat", href: `${LINKS.chat}/` } });
 });

@@ -1,7 +1,7 @@
 {
   "name": "Chat",
   "short_name": "Chat",
-  "description": "End-to-end encrypted letters carried by pigeon, at the real distance between you.",
+  "description": "Chat: end-to-end encrypted messages, and letters carried by pigeon at the real distance between you.",
   "start_url": "/pigeon/",
   "scope": "/pigeon/",
   "display": "standalone",

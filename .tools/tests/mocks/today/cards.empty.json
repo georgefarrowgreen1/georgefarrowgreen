@@ -13,6 +13,7 @@
     },
     "chat": {
       "state": "empty",
+      "pigeons": true,
       "href": "https://chat.inflite.ai/",
       "said": "Add a friend in Chat, and their pigeons show here.",
       "action": {

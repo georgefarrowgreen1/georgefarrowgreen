@@ -463,8 +463,15 @@ export function landWords(card, { mode, landAt, rainAt, tz } = {}) {
 }
 // one friend's line under "When It Lands": "Leo’s lands 14:20", "Mum’s lands 17:30, an hour before the rain",
 // "Leo’s lands 07:30 tomorrow, their time". tz: yours; theirTz: theirs.
+// A message (no pigeon): "now" says nothing (it's there at once); "at", sent at a time, "Arrives 07:30 tomorrow, their time".
 export function whenLine(name, { mode, landAt, rainAt, tz, theirTz, now = Date.now() } = {}) {
   const who = String(name ?? "");
+  if (mode === "now") return "";
+  if (mode === "at") {
+    if (!Number.isFinite(landAt)) return "";
+    const z = zoneOk(theirTz) ? theirTz : tz, theirs = zoneOk(theirTz) && offsetAt(landAt, theirTz) !== offsetAt(landAt, tz);
+    return `Arrives ${clockIn(landAt, z)}${dayAfter(landAt, z, now)}${theirs ? ", their time" : ""}`;
+  }
   if (mode === "before") {
     if (!Number.isFinite(landAt) || !Number.isFinite(rainAt) || landAt >= rainAt) return `Too late to beat the rain to ${who}: it goes now`;
     const gap = rainAt - landAt;
@@ -508,11 +515,17 @@ export function spendWords(kinds, names) {
 }
 // After sending: "Sent · Leo in 8m, Ade at 07:30" ("and 2 more" past three); a failure: "Couldn’t send to Ade: …".
 // list: [{ name, ok, landAt, lands (ms or words), err }]
-export function sentToast(list) {
+// Messages (instant): "Sent to Leo", "Sent to Leo and Ade"; sent at a time (at, on their clock tz): "Leo gets it at 07:30, their time".
+export function sentToast(list, { instant = false, at = null, tz } = {}) {
   const xs = list || [], bad = xs.filter((x) => !x.ok), good = xs.filter((x) => x.ok);
   if (bad.length === 1) return `Couldn’t send to ${bad[0].name}${bad[0].err ? `: ${bad[0].err}` : ". Try again."}`;
   if (bad.length > 1) return `Couldn’t send to ${andList(bad.map((x) => x.name))}. Try again.`;
   if (!good.length) return "";
+  if (instant) {
+    const names = good.map((x) => x.name);
+    if (Number.isFinite(at)) return `${andList(names)} ${names.length > 1 ? "get" : "gets"} it at ${clockIn(at, tz)}, their time`;
+    return `Sent to ${andList(names)}`;
+  }
   const one = (x) => (Number.isFinite(x.landAt) ? `${x.name} at ${clockIn(x.landAt)}` : x.lands != null ? `${x.name} in ${typeof x.lands === "number" ? durShort(x.lands) : x.lands}` : x.name);
   const shown = good.slice(0, 3).map(one), more = good.length - 3;
   return `Sent · ${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
