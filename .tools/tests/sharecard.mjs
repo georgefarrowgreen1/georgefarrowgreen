@@ -165,6 +165,19 @@ const menuOf = async (id) => { await M.p.click(`.msgs [data-mid="${id}"] .cd-hea
 ok(!/Send to a Friend/.test(await menuOf(fid)), '9. a friend’s fitness card: no “Send to a Friend”');
 const wid = card2.find((r) => r.recipient === ms.me.id).id;
 ok(/Send to a Friend/.test(await menuOf(wid)), '9. a friend’s forecast: “Send to a Friend”');
+// 9c. a tall letter (a card in it) a little above the middle of a short screen (Chat in iOS's small browser): its
+// menu is all on the screen, not run off the foot below the letter
+await M.p.setViewportSize({ width: 390, height: 720 }); await M.p.waitForTimeout(400);
+const tall = await M.p.evaluate(() => { const bs = [...document.querySelectorAll('.msgs [data-mid]')].filter((b) => b.querySelector('.cd-card')), b = bs.at(-1), v = b.closest('.view') || document.scrollingElement;
+  const pad = Object.assign(document.createElement('div'), { id: 'zzpad' }); pad.style.height = '600px'; b.parentElement.append(pad);   // (room to scroll it up, as a longer chat has)
+  v.scrollTop += b.getBoundingClientRect().top - innerHeight * 0.45; return b.dataset.mid; });
+await M.p.waitForTimeout(300);
+await M.p.click(`.msgs [data-mid="${tall}"] .cd-head`); await M.p.waitForSelector('.menu-pop'); await M.p.waitForTimeout(500);
+const mr = await M.p.evaluate((id) => { const r = document.querySelector('.menu-pop').getBoundingClientRect(), b = document.querySelector(`.msgs [data-mid="${id}"]`).getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: innerHeight, bTop: Math.round(b.top), bBottom: Math.round(b.bottom) }; }, tall);
+await M.p.screenshot({ path: `${out}/menu-tall-letter.png` });
+ok(mr.top >= 0 && mr.bottom <= mr.h, '9c. a tall letter’s menu is all on a short screen', JSON.stringify(mr));
+ok(mr.bTop > mr.h * 0.3 && mr.bTop < mr.h * 0.55 && mr.h - mr.bBottom < mr.bottom - mr.top + 18, '9c. (the letter a little above the middle, too little room for the menu under it)', JSON.stringify(mr));
+await M.p.keyboard.press('Escape'); await M.p.waitForTimeout(300); await M.p.evaluate(() => document.getElementById('zzpad')?.remove()); await M.p.setViewportSize({ width: 390, height: 844 }); await M.p.waitForTimeout(300);
 
 // ---- 9b. "Write More in the Chat" from inside that same chat: the words go in its box, not the next chat's ----
 lofts(gs.me.id, 9); await reload(G);

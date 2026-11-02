@@ -418,7 +418,7 @@ const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
 const APP_VERSION = "1.65";            // shown in InFlite's menu
-const APP_NEWS = "A card in your own letter is easy to read again while the pigeon’s on its way";       // (said once it's in)
+const APP_NEWS = "A card in your own letter is easy to read again while the pigeon’s on its way, and a long letter’s menu is all on the screen";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -5600,18 +5600,19 @@ function openReactMenu(anchor, id) {
   // a card in it, sent on to a friend: your own of any kind, a friend's only if it's public (cards.js canForward)
   const pc = m && !m.flying && !m.lost ? partsOf(S.plain.get(id))?.card : null;
   let fwd = false; try { fwd = !!pc && canForward(pc, { mine: m.from === S.me.id }); } catch (_) {}
-  openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
-    ...(fwd ? [{ label: "Send to a Friend", icon: I.share, act: "cardfwd", id }] : []),
-    ...(typeof words === "string" && words.trim() ? [{ label: "Copy", icon: I.copy, act: "copymsg", id }] : []),
-    ...links.map((u) => ({ label: "Open Link", sub: new URL(u).hostname.replace(/^www\./, ""), icon: I.globe, act: "openlink", id: u })),
-    ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])]);
+  // (its reactions and its times at its head, there as it's placed, so it's placed whole)
+  let head = `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`;
   if (m) {
     const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
     if (!m.flying && !m.lost) bits.push(`${g && mine ? "First landed" : "Landed"} ${fmtShort(g && mine ? Math.min(...(m.flock || [{ deliverAt: m.deliverAt }]).map((x) => x.deliverAt || Infinity)) : m.deliverAt)}`);
     if (mine && !g && m.readAt) bits.push(`Read ${fmtShort(m.readAt)}`);
-    $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="mtime" role="none">${bits.join(" · ")}</div>`);
+    head += `<div class="mtime" role="none">${bits.join(" · ")}</div>`;
   }
-  $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
+  openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
+    ...(fwd ? [{ label: "Send to a Friend", icon: I.share, act: "cardfwd", id }] : []),
+    ...(typeof words === "string" && words.trim() ? [{ label: "Copy", icon: I.copy, act: "copymsg", id }] : []),
+    ...links.map((u) => ({ label: "Open Link", sub: new URL(u).hostname.replace(/^www\./, ""), icon: I.globe, act: "openlink", id: u })),
+    ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])], head);
 }
 async function sendReact(id, e) {
   haptic("tick");
@@ -8368,19 +8369,26 @@ function live() {
 
 /* ---------- menus, action sheets and banners ---------- */
 // iOS-style context menu anchored to a button. items: {label, sub, icon, act, id, destructive}
-function openMenu(anchor, items) {
+function openMenu(anchor, items, head = "") {
   haptic("tick");
   clearTimeout(popTimer);
   const box = root().getBoundingClientRect(), a = anchor.getBoundingClientRect();
   const up = a.top - box.top > box.height * 0.55;
   const right = a.left + a.width / 2 > box.left + box.width / 2;
   $pop.innerHTML = `<div class="menu-scrim" data-act="closepop"></div>
-    <div class="menu-pop" role="menu">${items.map((it) =>
+    <div class="menu-pop" role="menu">${head}${items.map((it) =>
       `<button class="mi${it.destructive ? " destructive" : ""}${it.sub ? " two" : ""}" role="menuitem" data-act="${it.act}"${it.id ? ` data-id="${esc(it.id)}"` : ""}><span>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.icon || ""}</button>`).join("")}</div>`;
   const m = $(".menu-pop", $pop);
-  if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
+  // (beside the letter, on the side with room for the whole menu: a tall letter, a card in it, can leave room on
+  // neither, and then the menu sits over the letter, held inside the screen, rather than running off its foot)
+  const cs = getComputedStyle(root()), lo = box.top + (parseFloat(cs.paddingTop) || 0) + 8, hi = box.bottom - 12, h = m.offsetHeight;
+  const below = hi - a.bottom - 6 >= h, above = a.top - 6 - lo >= h;
+  const side = up ? (above ? "up" : below ? "down" : "over") : below ? "down" : above ? "up" : "over";
+  if (side === "up") m.style.bottom = `${box.bottom - a.top + 6}px`;
+  else if (side === "down") m.style.top = `${a.bottom - box.top + 6}px`;
+  else { m.style.top = `${Math.max(lo, Math.min(hi - h, a.top + (a.height - h) / 2)) - box.top}px`; if (h > hi - lo) { m.style.maxHeight = `${hi - lo}px`; m.style.overflowY = "auto"; } }
   if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
-  m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
+  m.style.setProperty("--origin", `${side === "up" ? "bottom" : side === "down" ? "top" : "center"} ${right ? "right" : "left"}`);
   popOpened($(".mi", m)); syncInert();
 }
 function openActions({ title, message, actions }) {
