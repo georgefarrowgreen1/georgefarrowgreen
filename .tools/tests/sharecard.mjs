@@ -126,6 +126,11 @@ ok(!/Norwich|"kind"|weather/i.test(rawRows.replace(/"to_place": "[^"]*"|"from_pl
 ok(card2.every((r) => !r.sched), '4. the sheet’s letters go as soon as they can (sched not set)', JSON.stringify(card2.map((r) => r.sched)));
 await openChat(G, ms.me.id);
 ok((await G.p.getAttribute('#msg', 'placeholder')) === hint0, '4. and Mira’s chat still lands tomorrow morning', await G.p.getAttribute('#msg', 'placeholder'));
+// (George's own letter, on its way, a clear bubble in light mode: the card in it dark on light, not the blue bubble's white)
+await G.p.waitForSelector('.msgs .b.me.up .cd-card', { timeout: 8000 }).catch(() => {});
+const upInk = await G.p.evaluate(() => { const c = document.querySelector('.msgs .b.me.up .cd-card'); if (!c) return null; const rgb = (x) => (getComputedStyle(x).color.match(/\d+/g) || []).slice(0, 3).map(Number); return { big: rgb(c.querySelector('.cd-big') || c), head: rgb(c.querySelector('.cd-head') || c) }; });
+await G.p.screenshot({ path: `${out}/card-on-its-way.png` });
+ok(!!upInk && [upInk.big, upInk.head].every((v) => v.length === 3 && v.reduce((a, x) => a + x, 0) < 3 * 160), '4. on its way, the card’s words are dark (light mode)', JSON.stringify(upInk));
 await G.p.click('.compose .kind'); await G.p.waitForSelector('.sheet [data-act=schednow]'); await G.p.click('.sheet [data-act=schednow]'); await G.p.waitForTimeout(300);
 await G.p.click('.sheet header [data-act=close]').catch(() => {}); await G.p.click('.chatnav .back'); await G.p.waitForTimeout(400);
 
