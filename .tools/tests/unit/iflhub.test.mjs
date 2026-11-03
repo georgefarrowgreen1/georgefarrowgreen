@@ -66,7 +66,7 @@ function page(href, { marker = null, crumb, sent, standalone = false, kept = {},
     requestAnimationFrame: (fn) => fn(), setTimeout: (fn, ms) => timers.push({ fn, ms }), clearTimeout: (i) => { if (timers[i - 1]) timers[i - 1].fn = () => {}; }, setInterval: () => 0,
     addEventListener: (t, fn) => (winL[t] ||= []).push(fn), removeEventListener: (t, fn) => { winL[t] = (winL[t] || []).filter((f) => f !== fn); },
     navigator: { standalone, serviceWorker: { addEventListener: (t, fn) => (swL[t] ||= []).push(fn), getRegistration: (scope) => Promise.resolve({ scope, active: { postMessage: (m) => badge.push([scope, JSON.parse(JSON.stringify(m))]) } }) } },
-    matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400 };
+    matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400, screen: { width: 400, height: 800 } };
   ctx.window = ctx;
   before?.(ctx);
   const IFL = vm.runInNewContext(`${jsBlock()}\n;IFL`, ctx);
@@ -488,6 +488,79 @@ test("pages that cross-fade: off the hub every transition's let go as a page is 
     p.fire("pageswap", { viewTransition: null });
     p.fire("pagereveal", {});
   }
+});
+
+test("pages that cross-fade, at the hub: one bound for a page that isn't the hub's is let go as it's left (it would be called off there, out loud); the hub's own pages keep it; the one a page opens with is caught as it starts", () => {
+  const vt = () => {
+    const t = { skipped: 0, caught: [], skipTransition() { this.skipped++; } };
+    for (const k of ["ready", "finished", "updateCallbackDone"]) t[k] = { catch: (fn) => { t.caught.push(k); return Promise.resolve(); } };
+    return t;
+  };
+  for (const [h, marker] of [["https://inflite.ai/", "/"], ["https://inflite.ai/markets/", "/markets/"]]) {
+    const p = page(h, { marker });
+    for (const [to, skips] of [
+      ["https://inflite.ai/api/hub", 1], ["https://inflite.ai/nowhere", 1], ["https://inflite.ai/chats/version", 1], ["https://inflite.ai/apps/weather.png", 1],
+      ["https://chat.inflite.ai/", 1], ["not a url", 1],
+      ["https://inflite.ai/", 0], ["https://inflite.ai/#apps", 0], ["https://inflite.ai/chats/#open=7", 0], ["https://inflite.ai/weather/?lat=51.5&lon=-0.1", 0],
+      ["https://inflite.ai/fitness/#today", 0], ["https://inflite.ai/markets/#s=TSCO.L", 0], ["https://inflite.ai/mail/", 0], ["https://inflite.ai/chats/index.html", 0],
+    ]) {
+      const t = vt();
+      p.fire("pageswap", { viewTransition: t, activation: { entry: { url: to } } });
+      assert.equal(t.skipped, skips, `${h} → ${to}: ${skips ? "let go" : "kept"}`);
+      assert.deepEqual(t.caught, ["ready", "finished", "updateCallbackDone"], `${h} → ${to}: each of its promises caught`);
+    }
+    // (where the browser doesn't say where it's going: kept, as before)
+    const t = vt();
+    p.fire("pageswap", { viewTransition: t, activation: null });
+    assert.equal(t.skipped, 0, `${h}: no word of where to: kept`);
+    // (pagereveal has no activation to go by: the page it's on is the hub's, kept)
+    const r = vt();
+    p.fire("pagereveal", { viewTransition: r, activation: { entry: { url: "https://inflite.ai/api/hub" } } });
+    assert.equal(r.skipped, 0, `${h}: pagereveal kept`);
+  }
+  // (the transition a page opens with, caught as the template runs, before pagereveal: at and off the hub; none, nothing)
+  for (const [h, marker] of [["https://inflite.ai/weather/", "/weather/"], ["https://weather.inflite.ai/", null]]) {
+    const t = vt();
+    page(h, { marker, before: (w) => { w.document.activeViewTransition = t; } });
+    assert.deepEqual(t.caught, ["ready", "finished", "updateCallbackDone"], `${h}: the opening transition's promises caught at once`);
+    assert.equal(t.skipped, 0, `${h}: and not let go there (pagereveal decides)`);
+  }
+  assert.doesNotThrow(() => page("https://inflite.ai/", { marker: "/", before: (w) => { w.document.activeViewTransition = null; } }));
+});
+
+test("moved(): only on the app's own icon, filling the screen: never in iOS's small browser (standalone too, opened from another Home Screen app's link, short of the screen and under its bars), where the card would cover the page", () => {
+  // (an iPhone, standalone: upright or on its side; the window's height against the screen's (iOS gives the screen's
+  // size upright, whichever way it's held); the top inset a probe at env(safe-area-inset-top) measures: running up
+  // behind the status bar, as a Home Screen icon's page does)
+  const phone = ({ portrait = true, inner = 844, tall = 844, wide = 390, inset = 0 } = {}) => (w) => {
+    w.matchMedia = (q) => ({ matches: /orientation:\s*portrait/.test(q) ? portrait : false });
+    w.innerHeight = inner; w.screen = { height: tall, width: wide };
+    const make = w.document.createElement;
+    w.document.createElement = (t) => { const n = make(t); Object.defineProperty(n, "offsetHeight", { get: () => (/safe-area-inset-top/.test(n.style.cssText || "") ? inset : 0) }); return n; };
+  };
+  const at = (look) => page("https://finance.inflite.ai/", { standalone: true, before: phone(look) });
+  const shown = (p) => !!p.doc.body.children.find((n) => n.className.includes("ifl-moved"));
+  for (const [look, yes, why] of [
+    [{ inner: 844, tall: 844 }, true, "filling the screen"],
+    [{ inner: 797, tall: 844, inset: 47 }, true, "short of it by iOS's slip, but behind the status bar"],
+    [{ portrait: false, inner: 390, tall: 844 }, true, "on its side, filling the screen's short side"],
+    [{ inner: 760, tall: 844, inset: 0 }, false, "iOS's small browser: short of the screen, no inset"],
+    [{ portrait: false, inner: 330, tall: 844, inset: 0 }, false, "iOS's small browser on its side: short of the screen's short side, under its bar (review-i1 I7)"],
+  ]) {
+    const p = at(look);
+    assert.equal(p.hub.moved("markets", { off() {} }), yes, why);
+    assert.equal(shown(p), yes, `${why}: the card ${yes ? "shown" : "not shown"}`);
+    assert.equal(!!p.local.get("ifl-moved:markets"), yes, `${why}: ${yes ? "remembered" : "not remembered, so the icon itself still shows it, later"}`);
+    assert.ok(!p.doc.body.children.some((n) => n.tagName === "DIV" && /safe-area/.test(n.style.cssText || "")), `${why}: the probe taken away`);
+  }
+  // (the small browser first, then the icon itself: shown then, once)
+  const kept = {};
+  const small = page("https://finance.inflite.ai/", { standalone: true, kept, before: phone({ inner: 760, tall: 844 }) });
+  assert.equal(small.hub.moved("markets"), false);
+  assert.equal(page("https://finance.inflite.ai/", { standalone: true, kept: Object.fromEntries(small.local), before: phone() }).hub.moved("markets"), true, "the icon itself, afterwards: shown");
+  // (not an iPhone or iPad: no navigator.standalone, the display mode standalone: shown, as before)
+  const desk = page("https://finance.inflite.ai/", { before: (w) => { w.matchMedia = (q) => ({ matches: /display-mode:\s*standalone/.test(q) }); w.innerHeight = 500; w.screen = { height: 1200 }; } });
+  assert.equal(desk.hub.moved("markets"), true, "an installed app elsewhere: shown");
 });
 
 test("a notification tapped while a page is open: heard, it says so on the worker's port; never for one it won't go to, nor off the hub", () => {

@@ -42,7 +42,7 @@ import { timesOf, explicitRide } from "./_fittimes.js";
 import { snapshotOf } from "./_fittoday.js";
 import { offersFor, donesIn } from "./_fitshare.js";
 import { timesFor } from "./_times.js";
-import { heldCount } from "./_busy.js";
+import { heldCount, rideHoldOn } from "./_busy.js";
 import { todayPrefs } from "./_today.js";
 import { prefsOf } from "./_notify.js";
 import { logError } from "./_pigeon.js";
@@ -90,7 +90,9 @@ async function gather(env, u, t, zone, cards) {
     soft(env, "offers", offersFor(env, u.id, { today: true, t }), []),
     soft(env, "agreed", timesFor(env, u.id, prev.start, Math.max(cal.end, t + DAY), { t }), []),
     soft(env, "dones", donesIn(env, u.id, prev.start, t + 1, { added: true }), []),
-    soft(env, "hold", ruleLevel(env, u.id, "holdRide"), "do"),
+    // (rides hold nothing anywhere while the off switch is set, RIDE_HOLD "0": as if the rule were Quiet, so no ride
+    // holds and nothing says messages are held)
+    rideHoldOn(env) ? soft(env, "hold", ruleLevel(env, u.id, "holdRide"), "do") : "quiet",
     Promise.all([0, 1, 2, 3, 4].map((n) => soft(env, "acts", actsFor(env, u.id, dayAfter(C, -n)), []))),
     soft(env, "planned", planned(env, u.id, C), true),
   ]);

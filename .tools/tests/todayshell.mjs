@@ -11,7 +11,8 @@
 // tiles and their lines, Mail's only for its account; You drawn from the stub (rules with levels and records,
 // notifications by app, this phone, other devices, quiet hours) and each of its writes sent; This Phone on, off (staying
 // off after a reload) and on again; Get Every App's Notifications Here sending fan: true only from its tap, and nothing
-// posted to /api/device on first run; Sign Out in §11.5's order, the engine's signOut included; a notification tapped
+// posted to /api/device on first run; Sign Out in §11.5's order, the engine's signOut included, and every app's copy of
+// you kept at this address let go (Chat's too where there's no engine); a notification tapped
 // while open; the ifl-sent toast; the way in (Sign in through Chats, Sign In Without Chats as Today's own trip); the hub
 // not ready (degraded: the apps' own addresses, no engine, no hub-only rows); an account side from before Today First
 // (v1: the four cards, Rules and Other Devices left out, This Phone through /api/push, on and off); nothing of Markets'
@@ -113,6 +114,41 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = fals
 }
 const text = (p, s) => p.$eval(s, (e) => e.innerText).catch(() => '');
 const has = (hay, needle, l) => ok(hay.includes(needle), l, `“${needle}” not in “${hay.slice(0, 300)}”`);
+// The apps' copies of you at this address (at the hub, Chats and every app are pages of it): each app's own, as its own
+// Sign Out lets them go (Markets' forget(), Fitness's and Weather's signOutHere, Chat's forget), and the phone's own,
+// which each app's Sign Out keeps (Weather's places and settings, each app's look). Seeded before a Sign Out with
+// Fitness's files and Chat's sign-in in their IndexedDB stores, as each app keeps them; read after it, from a page here
+const APP_KEYS = ['markets:last', 'markets:years', 'markets:recent', 'markets:newsRead', 'markets:newsHide', 'markets:newsSeen', 'markets:plan', 'wx:acct',
+  'fitness:hk', 'fitness:today-sent', 'fitness:today-swaps', 'fitness:meAt', 'fitness:files', 'fitness:morning', 'fitness:sums', 'inflight-lock', 'inflight-badges', 'inflight-pushsub', 'inflight-opened'];
+const PHONE_KEYS = ['wx:places', 'wx:settings', 'markets:appearance', 'fitness:appearance', 'inflight-theme'];
+const seedApps = (p) => p.evaluate(async ({ app, phone }) => {
+  for (const k of [...app, ...phone]) localStorage.setItem(k, JSON.stringify({ seeded: k }));
+  const put = (name, store, rows) => new Promise((ok, no) => {
+    const r = indexedDB.open(name, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(store);
+    r.onerror = () => no(r.error);
+    r.onsuccess = () => { const db = r.result, tx = db.transaction(store, 'readwrite'); for (const [k, v] of rows) tx.objectStore(store).put(v, k); tx.oncomplete = () => { db.close(); ok(); }; tx.onerror = () => no(tx.error); };
+  });
+  await put('fitness', 'files', [['me:last', '{"acts":[1,2,3]}'], ['acct1/ride-7', 'bytes']]);
+  await put('inflight', 'kv', [['session', { token: 'tok', me: { id: 'u77' } }], ['cache:u77', { chats: ['seeded'] }], ['outbox:u77', [{ sealed: true }]], ['drafts:u77', { a: 'sealed' }],
+    ['pins:u77', { c1: 1 }], ['pinsup:u77', 1793700000000]]);
+}, { app: APP_KEYS, phone: PHONE_KEYS });
+const readApps = async (ctx) => {
+  await ctx.route((u) => new URL(u).pathname === '/__kept', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>kept</title>' }));
+  const q = await ctx.newPage();
+  await q.goto(BASE + '/__kept');
+  const got = await q.evaluate(async (keys) => {
+    const keysOf = (name, store) => new Promise((ok) => {
+      const r = indexedDB.open(name);
+      r.onupgradeneeded = () => { r.transaction.abort(); };
+      r.onerror = () => ok(null);
+      r.onsuccess = () => { try { const db = r.result, q = db.transaction(store).objectStore(store).getAllKeys(); q.onsuccess = () => { db.close(); ok(q.result.map(String).sort()); }; } catch { ok(null); } };
+    });
+    return { left: keys.filter((k) => localStorage.getItem(k) !== null), fitness: await keysOf('fitness', 'files'), chat: await keysOf('inflight', 'kv') };
+  }, [...APP_KEYS, ...PHONE_KEYS]);
+  await q.close();
+  return got;
+};
 const tabs = (p) => p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), a.getAttribute('aria-current')]));
 const shown = (p) => p.evaluate(() => ['today', 'apps', 'you'].filter((k) => !document.getElementById(k).hidden));
 const ONLY = process.env.ONLY?.split(',');
@@ -403,10 +439,15 @@ await part('you: this phone', async () => {
   await reset();
   chatOut.length = 0;
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
+  await seedApps(p);
   await p.click('#youOut');
   await p.waitForURL(/auth\.inflite\.ai/);
   const h = new URLSearchParams(new URL(p.url()).hash.slice(1));
   same([h.get('signout'), h.get('back')], ['today', `${BASE}/`], 'Sign Out ends at #signout=today&back=…');
+  const kept = await readApps(ctx);
+  same(kept.left, PHONE_KEYS, 'Sign Out lets go of every app’s copy of you kept here (Markets’ holdings, Weather’s account, Fitness’s, Chat’s), and keeps the phone’s own (Weather’s places and settings, each app’s look)');
+  same(kept.fitness, [], 'and Fitness’s copies of your files and of you (IndexedDB), as its own Sign Out does');
+  same(kept.chat, ['cache:u77', 'drafts:u77', 'outbox:u77', 'pins:u77', 'pinsup:u77', 'session'], 'Chat’s own sign-in left to Chat, whose engine signed out here');
   const out = await reqs(), del = out.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), so = out.findIndex((e) => e.path.endsWith('/signout'));
   ok(del >= 0 && so > del, 'DELETE /api/device first, then signed out');
   same(JSON.parse(out[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device { endpoint }');
@@ -452,6 +493,16 @@ await part('degraded', async () => {
   ok(!(await p.$('#youDevices')), 'You: no Other Devices');
   ok(await p.$('#youNotify') && await p.$('#youRules'), 'the rest of You as ever');
   ok(await p.evaluate(() => sessionStorage.getItem('ifl-hub-ready') === '0'), 'the answer kept for the visit');
+  // (Sign Out with no engine to sign Chat out: Today lets go of Chat's sign-in and its kept chats here itself, as
+  // Chat's forget does; what was written and not sent stays, sealed)
+  await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
+  await seedApps(p);
+  await p.click('#youOut');
+  await p.waitForURL(/auth\.inflite\.ai/);
+  const kept = await readApps(ctx);
+  same(kept.left, PHONE_KEYS, 'not ready: Sign Out lets go of every app’s copy of you kept here all the same');
+  same(kept.fitness, [], 'and Fitness’s files');
+  same(kept.chat, ['drafts:u77', 'outbox:u77'], 'and, with no engine, Chat’s sign-in, its kept chats and its pins the account keeps too (pinsup); what wasn’t sent stays, sealed');
   await ctx.close();
   await mode({ mode: 'out' });
   ({ ctx, p } = await open({ hub: false, signedIn: false }));
@@ -525,22 +576,30 @@ await part('kept', async () => {
 
 // ======================================================================= pages that cross-fade: at the hub only
 // (menu.css asks every page for the cross-fade, as an at-rule can't be kept to html.ifl-hub; menu.js lets it go on each
-// page off the hub as it's left and as it opens. Two pages of an app's own, stood in for with the real menu.css and
-// menu.js, off the hub and then with the hub's marker: off it, both transitions let go, quietly; at it, kept)
+// page off the hub as it's left and as it opens. Pages of an app's own, stood in for with the real menu.css and menu.js,
+// off the hub and then with the hub's marker: off it, both transitions let go, quietly; at it, kept between the hub's
+// own pages. And at it, never one called off out loud: one bound for a page that isn't the hub's (it doesn't ask for
+// the cross-fade, and would say so as an error there) is let go as it's left; one a page opens with is caught as it
+// starts, should that page stop asking for it before it's shown)
 await part('cross-fade at the hub only', async () => {
   const SITE = 'http://app.offhub.test';
-  // (/a and /b with menu.js; /c asks for the cross-fade but has no menu.js, and goes to /d, which has)
-  const PAGE = (marker, path) => `<!doctype html><html><head><meta charset="utf-8"><title>App</title>${marker ? '<meta name="ifl-hub" content="/">' : ''}<style>${cssBlock()}</style>
+  // (/a and /b with menu.js; /c asks for the cross-fade but has no menu.js, and goes to /d, which has. At the hub's own
+  // paths, /weather/ goes to /markets/; /fitness/ to /x, which isn't the hub's and doesn't ask for it; /chats/ to
+  // /mail/, which drops its stylesheet (and the asking) as it opens)
+  const LINK = { '/a': '/b', '/c': '/d', '/weather/': '/markets/', '/fitness/': '/x', '/chats/': '/mail/' };
+  const PAGE = (marker, path) => path === '/x' ? '<!doctype html><html><head><meta charset="utf-8"><title>Not the hub’s</title></head><body><p>Not the hub’s</p></body></html>'
+    : `<!doctype html><html><head><meta charset="utf-8"><title>App</title>${marker ? '<meta name="ifl-hub" content="/">' : ''}<style id="menucss">${cssBlock()}</style>
 <script>
   // (the transition each event brings, and whether it's let go: watched before menu.js's own listeners)
   const watch = (type, key) => addEventListener(type, (e) => { const t = e.viewTransition; sessionStorage.setItem(key, t ? 'kept' : 'none'); if (t) { const skip = t.skipTransition.bind(t); t.skipTransition = () => { sessionStorage.setItem(key, 'let go'); skip(); }; } });
   watch('pageswap', 'swap'); watch('pagereveal', 'reveal');
-</script>${path === '/c' ? '' : `<script>${jsBlock()}</script>`}</head><body><p>App</p><a id="next" href="${{ '/a': '/b', '/c': '/d' }[path] || '/a'}">Next</a></body></html>`;
+</script>${path === '/c' ? '' : `<script>${jsBlock()}</script>`}${path === '/mail/' ? '<script>document.getElementById("menucss").remove()</script>' : ''}</head><body><p>App</p><a id="next" href="${LINK[path] || '/a'}">Next</a></body></html>`;
+  // (→ what each event did, and the page errors seen: any is an error no page's own script could have caught)
   const go = async (marker, from, to) => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
     await ctx.route(`${SITE}/**`, (r) => r.fulfill({ contentType: 'text/html', body: PAGE(marker, new URL(r.request().url()).pathname) }));
-    const p = await ctx.newPage();
-    p.on('pageerror', (e) => errs.push(`pageerror (${marker ? 'at' : 'off'} the hub): ${e.message}`));
+    const p = await ctx.newPage(), mine = [];
+    p.on('pageerror', (e) => { mine.push(`${new URL(p.url()).pathname}: ${e.message}`); errs.push(`pageerror (${marker ? 'at' : 'off'} the hub): ${e.message}`); });
     p.on('console', (m) => { if (m.type() === 'error') errs.push(`${marker ? 'at' : 'off'} the hub: ${m.text()}`); });
     await p.goto(SITE + from);
     await p.evaluate(() => sessionStorage.clear());
@@ -549,12 +608,33 @@ await part('cross-fade at the hub only', async () => {
     await p.waitForTimeout(800);
     const got = await p.evaluate(() => ({ swap: sessionStorage.getItem('swap'), reveal: sessionStorage.getItem('reveal') }));
     await ctx.close();
-    return got;
+    return { ...got, errors: mine };
   };
-  same(await go(true, '/a', '/b'), { swap: 'kept', reveal: 'kept' }, 'at the hub: the pages cross-fade (left and opened, kept)');
+  same(await go(true, '/weather/', '/markets/'), { swap: 'kept', reveal: 'kept', errors: [] }, 'at the hub: the pages cross-fade (left and opened, kept)');
+  const away = await go(true, '/fitness/', '/x');
+  same([away.swap, away.errors], ['let go', []], 'at the hub: bound for a page that isn’t the hub’s, it’s let go as it’s left, and nothing says it was called off');
+  same((await go(true, '/chats/', '/mail/')).errors, [], 'at the hub: a page that stops asking for it as it opens catches the one it opened with, quietly');
   const off = await go(false, '/a', '/b');
   ok(off.swap === 'let go' && off.reveal !== 'kept', 'off the hub: the page left lets the cross-fade go, so none is drawn', JSON.stringify(off));
   same((await go(false, '/c', '/d')).reveal, 'let go', 'off the hub: a page opened from one without menu.js lets it go as it opens');
+  // (Today's own page with its module slow to come, as on a slow phone: the cross-fade it opens with is called off
+  // before it's shown, and caught by fade.js as the page's head is read, before app.js (a module, run after) could.
+  // Four times: without fade.js, nearly every one says so as an error (review-i1 I9))
+  const slow = [];
+  for (let i = 0; i < 4; i++) {
+    const { ctx, p } = await open({ path: '/__fade', wait: false, setup: async (c) => {
+      await c.route((u) => new URL(u).pathname === '/__fade', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta charset="utf-8"><title>From</title><style>@view-transition { navigation: auto; }</style></head><body><a id="next" href="/">Today</a></body></html>' }));
+      await c.route((u) => new URL(u).pathname === '/app.js', async (r) => { await new Promise((go) => setTimeout(go, 1500)); await r.continue().catch(() => {}); });
+    } });
+    p.on('pageerror', (e) => slow.push(`${new URL(p.url()).pathname}: ${e.message}`));
+    await p.waitForTimeout(300);
+    await p.click('#next');
+    await p.waitForURL(BASE + '/');
+    await p.waitForSelector('#in:not([hidden]) #tabs .ifl-tab', { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1000);
+    await ctx.close();
+  }
+  same(slow, [], 'Today’s page with its app.js slow to come: the cross-fade it opened with, called off, says nothing (fade.js, read before the module)');
 });
 
 // ======================================================================= every size, light and dark: no sideways scroll, axe, no errors
