@@ -119,7 +119,7 @@ function fakeIDB() {
           transaction() {
             const tx = {};
             const os = {
-              get: (k) => ({ result: data.has(k) ? structuredClone(data.get(k)) : undefined }),
+              get: (k) => { writes.push(['get', k]); return { result: data.has(k) ? structuredClone(data.get(k)) : undefined }; },
               put: (v, k) => { writes.push(['put', k]); data.set(k, structuredClone(v)); return {}; },
               delete: (k) => { writes.push(['del', k]); data.delete(k); return {}; },
             };
@@ -157,11 +157,15 @@ async function makeWorld(o = {}) {
     msgsPat.push({ id: `m-pat-${i}`, from: ids.pat, to: ids.me, sentAt: T - (10 - i) * 60e3, deliverAt: T - (9 - i) * 60e3, instant: true,
       ct: await seal1(ids.pat, pat.priv, ids.me, me.pub, `m-pat-${i}`, { t }) });
   }
+  const photoBytes = new TextEncoder().encode('a tiny picture'), ph = await E2E.sealPhoto('m-pat-ph', photoBytes);
+  msgsPat.push({ id: 'm-pat-ph', from: ids.pat, to: ids.me, sentAt: T - 12 * 60e3, deliverAt: T - 11 * 60e3, instant: true, photo: 1,
+    ct: await seal1(ids.pat, pat.priv, ids.me, me.pub, 'm-pat-ph', { t: '', p: { k: ph.k, iv: ph.iv, w: 2, h: 1 } }) });
+  msgsPat.sort((a, b) => a.sentAt - b.sentAt);
   const gid = 'm-grp-1', g = await E2E.sealGroup({ id: gid, from: ids.pat, group: ids.group, type: 'msg' }, padPayload({ t: 'Coffee after?' }));
   const gmsg = { id: gid, from: ids.pat, sentAt: T - 30 * 60e3, deliverAt: T - 30 * 60e3, instant: true, body: g.body,
     key: await E2E.seal(await E2E.pair(pat.priv, me.pub), { id: gid, from: ids.pat, to: ids.me, type: 'wrap' }, { k: g.key, h: g.h }) };
   const meRow = { id: ids.me, name: 'Sam Taylor', handle: 'sam', pub: me.pub, pigeons: true, newChats: 'instant' };
-  const srv = { pins: null, calls: [], posted: [], offline: false, pinsDelay: 0, read: 0, ids, me, pat, ali, pat2, msgsPat, gmsg, meRow, logout: 0, signedIn: true, block: new Set() };
+  const srv = { photoData: ph.data, photoBytes, pins: null, calls: [], posted: [], offline: false, pinsDelay: 0, read: 0, ids, me, pat, ali, pat2, msgsPat, gmsg, meRow, logout: 0, signedIn: true, block: new Set() };
   if (o.pins) srv.pins = await E2E.seal(await E2E.pair(me.priv, me.pub), { type: 'pins', id: 'pins', from: ids.me, to: ids.me }, { pins: o.pins(srv), at: T });
   const json = (v, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
   srv.syncBody = () => ({ now: Date.now(), me: meRow,
@@ -189,6 +193,7 @@ async function makeWorld(o = {}) {
     if (p === 'logout') { srv.logout++; return json({ ok: true }); }
     if (p === 'pulse') return new Response('', { status: 404 });
     if (p === 'me') return json({ me: meRow });
+    if (p === 'photo/m-pat-ph') return new Response(srv.photoData, { headers: { 'Content-Type': 'application/octet-stream' } });
     if (p === 'react' && method === 'POST') { const b = JSON.parse(body); return json({ react: { id: b.id, msg: b.msg, from: ids.me, ct: b.ct } }); }
     if (p.startsWith('mutuals')) return json({ mutuals: [], token: 'never', ct: 'x' });
     if (p === 'fit-share') return json({});
@@ -508,4 +513,32 @@ test('rows: lines only for the window asked; older widens the open chat', async 
   assert.ok('line' in after[0] && after.slice(1).every((r) => !('line' in r)), 'patches keep the window');
   await k.call('open', k.srv.ids.pat);
   assert.deepEqual(await k.call('older', k.srv.ids.pat, T), { added: 0, older: false });
+});
+
+test('photo: only the open chat’s, decrypted to a Blob; another chat’s is never fetched or opened (S3-D3)', async () => {
+  const k = await boot();
+  await k.call('start', { locked: false, visible: true, screen: true });
+  await k.call('open', k.srv.ids.group);
+  assert.equal(await k.call('photo', 'm-pat-ph'), null, 'not the open chat’s: nothing');
+  assert.ok(!k.srv.calls.some((c) => /photo\//.test(c.url)), 'and not fetched');
+  const chat = await k.call('open', k.srv.ids.pat);
+  const m = chat.msgs.find((x) => x.id === 'm-pat-ph');
+  assert.deepEqual(m.media, { ref: 'm-pat-ph', kind: 'photo' }); assert.equal(m.kind, 'photo');
+  const b = await k.call('photo', m.media.ref);
+  assert.ok(b instanceof Blob); assert.equal(b.type, 'image/jpeg');
+  assert.deepEqual(new Uint8Array(await b.arrayBuffer()), k.srv.photoBytes);
+  await k.call('lock', true);
+  assert.equal(await k.call('photo', 'm-pat-ph'), null, 'locked: nothing');
+});
+
+test('a phone with no pins yet opens nothing from a kept copy before the server’s pins have answered (B3)', async () => {
+  const srv = await makeWorld(), db = fakeIDB();
+  db.data.set('session', { token: 'tok-SECRET-1234', me: { id: srv.ids.me, name: 'Sam Taylor', handle: 'sam', pub: srv.me.pub }, priv: srv.me.priv, pub: srv.me.pub });
+  db.data.set('cache:' + srv.ids.me, { v: 1, at: T, sync: srv.syncBody(), skies: null, chats: [] });
+  srv.pinsDelay = 40;
+  const k = await boot({ srv, db });
+  await k.call('start', { locked: false });
+  assert.ok(!db.writes.some(([op, key]) => op === 'get' && /^cache:/.test(key)), 'the kept copy isn’t read without pins here');
+  const iPins = srv.calls.findIndex((c) => /pins$/.test(c.url)), iSync = srv.calls.findIndex((c) => /sync/.test(c.url));
+  assert.ok(iPins >= 0 && iPins < iSync, 'the server’s pins first');
 });

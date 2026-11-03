@@ -1287,9 +1287,11 @@ async function search(q) {
 /* ---------- a photo or a voice pigeon, opened: a Blob for the page (object URLs are the page's) ---------- */
 async function photo(id) {
   if (stateNow() !== "ready") return null;
-  let chat = null, m = null;
-  for (const [c, list] of S.msgs) { const x = list.find((y) => y.id === id); if (x) { chat = c; m = x; break; } }
-  const p = readable(id), o = S.outbox.find((x) => x.id === id);
+  // (only the chat the page has open: never another chat's photo or voice, S3-D3)
+  const chat = S.view === "chat" ? S.chat : null; if (!chat) return null;
+  const m = (S.msgs.get(chat) || []).find((y) => y.id === id) || null;
+  const p = readable(id), o = S.outbox.find((x) => x.id === id && x.to === chat);
+  if (!m && !o) return null;
   if (!p || !(p.p || p.v)) return null;
   const type = p.v ? (typeof p.v.m === "string" && /^audio\/[\w.+-]+$/.test(p.v.m) ? p.v.m : "audio/mp4") : p.p.m === "image/gif" ? "image/gif" : "image/jpeg";
   try {
@@ -1297,7 +1299,7 @@ async function photo(id) {
     if (o?.blob) bytes = o.blob;
     else {
       if (!m || (m.from !== S.me.id && (m.flying || m.lost))) return null;
-      const r = await api((group(chat) ? "group-photo/" : "photo/") + m.id, { raw: true });
+      const r = await api((group(chat) ? "group-photo/" : "photo/") + encodeURIComponent(m.id), { raw: true });
       bytes = await r.arrayBuffer();
     }
     const plain = p.v ? await E2E.openPhoto(id, p.v, bytes, "voice") : await E2E.openPhoto(id, p.p, bytes);
@@ -1324,7 +1326,9 @@ const methods = {
       starting = (async () => {
         const have = await resume().catch(() => false);
         if (have && S.token) {
-          await cacheLoad();
+          // (no pins on this phone yet: nothing is opened, nor any key pinned, from a kept copy before the server's
+          // pins have answered: the first sync waits for them, B3)
+          if (!S.pinsWait) await cacheLoad();
           await outboxLoad();
           await draftsLoad();
           emitState(); emitLists();
@@ -1336,7 +1340,12 @@ const methods = {
     } else {
       await starting;
       if (typeof o.locked === "boolean") lockNow(lockPrefs());
-      if (ready() && (o.visible || o.screen)) { if (S.chat) markRead(S.chat, S.msgs.get(S.chat) || []); emitLists(); emitOpen(); if (onScreen()) sync().catch(() => {}); }
+      if (ready() && (o.visible || o.screen)) {
+        // (back after 10 minutes away: the open chat's words were let go of, so it's opened again from the server)
+        if (S.chat && S.view === "chat" && !S.msgs.has(S.chat) && !S.locked) await loadChat(S.chat).catch(() => {});
+        if (S.chat) markRead(S.chat, S.msgs.get(S.chat) || []);
+        emitLists(); emitOpen(); if (onScreen()) sync().catch(() => {});
+      }
     }
     ticking();
     return { state: emitState() };

@@ -118,7 +118,7 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
   const boot = async () => {
     const lk = lockKept();
     const v = await raw("hello", [PROTOCOL]);
-    if (v?.protocol !== PROTOCOL) { stale = true; try { onStale?.(); } catch (_) {} throw why("no"); }
+    if (v?.protocol !== PROTOCOL) { stale = true; try { w?.terminate(); } catch (_) {} w = null; try { onStale?.(); } catch (_) {} throw why("no"); }
     const o = { visible: visible(), locked: lk.on, screen: !!starts?.screen };
     if (lk.uid) o.lockUid = lk.uid;
     const r = await raw("start", [o]);
@@ -196,7 +196,14 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
     get state() { return state; },
     share(words, packed, { to } = {}) { return share(words, packed, { to }).catch(() => false); },
     sendTo(id, words, packed) { return tapped() ? sendOne(id, words, packed).catch(() => ({ ok: false, why: "failed" })) : Promise.resolve({ ok: false, why: "tap" }); },
-    waiting({ ids, stocks } = {}) { return call("waiting", { ...(ids !== undefined ? { ids } : {}), ...(stocks !== undefined ? { stocks } : {}) }).catch(() => []); },
+    // (as the engine took them: ids that can be ids, and of a stock only its symbol and name, never an amount)
+    waiting({ ids, stocks } = {}) {
+      const a = {};
+      if (Array.isArray(ids)) a.ids = [...new Set(ids.filter((x) => typeof x === "string" && /^[\w-]{1,64}$/.test(x)))].slice(0, 50);
+      if (Array.isArray(stocks)) a.stocks = stocks.filter((x) => x && typeof x === "object" && (typeof x.sym === "string" || typeof x.name === "string")).slice(0, 50)
+        .map((x) => ({ ...(typeof x.sym === "string" ? { sym: x.sym.slice(0, 12) } : {}), ...(typeof x.name === "string" ? { name: x.name.slice(0, 60) } : {}) }));
+      return call("waiting", a).catch(() => []);
+    },
     since(id, t) { return call("since", id, t).catch(() => null); },
     refresh() { return call("sync", { quiet: true }).then((r) => !!r?.ok, () => false); },
     signOut() { return call("signOut").then(() => true, () => true); },

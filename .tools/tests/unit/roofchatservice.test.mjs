@@ -154,6 +154,7 @@ test('a PROTOCOL that isn’t ours: onStale, and no other call is ever made', as
   assert.deepEqual(await svc.facade.waiting({ ids: [] }), []);
   ui.fire('push', { app: 'chats', tag: 'msg-x' }); ui.fire('visible'); await settle(50);
   assert.deepEqual(FakeWorker.made[0].got.map((d) => d.m), ['hello'], 'only hello');
+  assert.ok(FakeWorker.made[0].dead, 'and the stale core ended');
   assert.equal(FakeWorker.made.length, 1, 'and no Worker made again');
 });
 
@@ -173,6 +174,18 @@ test('inflight-lock is read before the first call, and the core is started locke
   await (await loadService()).startService({ ui: makeUI().ui });
   assert.equal(FakeWorker.made[0].got.find((d) => d.m === 'start').a[0].locked, false);
   assert.ok(!store.size, 'and the service writes nothing there');
+});
+
+test('the facade hands the core what the engine took: ids that can be ids, a stock’s symbol and name, never an amount', async () => {
+  fresh();
+  const got = [];
+  FakeWorker.impl = scripted({ answer: (d) => { got.push(d); return []; } });
+  const svc = await (await loadService()).startService({ ui: makeUI().ui });
+  await svc.facade.waiting({ ids: ['f1', 'f1', '../x', 7, 'f2'], stocks: [{ sym: 'TSCO', name: 'Tesco', pct: 1.2, value: 1234.5, qty: 10 }, { pct: 3 }] });
+  const w = got.find((d) => d.m === 'waiting');
+  assert.deepEqual(w.a, [{ ids: ['f1', 'f2'], stocks: [{ sym: 'TSCO', name: 'Tesco' }] }]);
+  await svc.facade.waiting();
+  assert.deepEqual(got.filter((d) => d.m === 'waiting').at(-1).a, [{}]);
 });
 
 test('a push is one quiet sync; visible and hidden reach the core as start({ visible })', async () => {
