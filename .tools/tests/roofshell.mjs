@@ -536,13 +536,16 @@ await part('module error state', async () => {
 // (/api/hub's apps, one on and one off: the one on opens in the page, the one off is a page load of the hub's page; the
 // map kept as ifl-roof-apps, app names and booleans only)
 const APPS_ON = { weather: true, markets: true, fitness: false, mail: false };
+// (the inflite repo beside has stage 3's REGISTRY.chats)
+const CHATS3 = /\bchats: fz\(\{/.test(readFileSync(`${IFL}today/public/roof/router.js`, 'utf8'));
 await part('apps per module', async () => {
   await mode({ phase: 'midday' });
   const HUBPAGE = '<!doctype html><title>Fitness</title><style>@view-transition { navigation: auto; }</style><p>FITNESS HUB PAGE</p>';
   const { ctx, p, loads } = await open({ hub: { ready: true, roof: true, apps: APPS_ON }, path: '/#apps', fakes: ['markets'],
     setup: (c) => c.route((u) => /^\/fitness\/(index\.html)?$/.test(new URL(u).pathname), (r) => r.fulfill({ contentType: 'text/html', body: HUBPAGE })) });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
-  same(await p.evaluate(() => JSON.parse(sessionStorage.getItem('ifl-roof-apps') || 'null')), APPS_ON, 'the apps map kept as ifl-roof-apps, as /api/hub said it');
+  // (every REGISTRY app named, each true only where /api/hub said so: Chats too from stage 3's REGISTRY, false here)
+  same(await p.evaluate(() => JSON.parse(sessionStorage.getItem('ifl-roof-apps') || 'null')), { ...APPS_ON, ...(CHATS3 ? { chats: false } : {}) }, 'the apps map kept as ifl-roof-apps, as /api/hub said it');
   await p.locator(H.appTile('markets')).locator('a[href="/markets/"]').first().click();
   await p.waitForSelector(`${H.M_MARKETS}:not([hidden]) .kit-sec`, { timeout: 15000 });
   same([new URL(p.url()).pathname, loads(), await p.evaluate(() => document.documentElement.dataset.app)], ['/markets/', 1, 'markets'], 'Markets on: its tile opens it in the page (one document)');
