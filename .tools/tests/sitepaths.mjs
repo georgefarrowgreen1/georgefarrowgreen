@@ -1,6 +1,7 @@
 // The site's addresses and its open doors: an address written oddly (/%77eather/, //account/) is sent to its plain
 // self, so each app is only ever served by its own host, under its own rules; one that can't be read as an address is
-// nothing; files that aren't the site stay hidden. The contact form holds a network to 5 messages an hour, counted in
+// nothing; files that aren't the site stay hidden. Chat's copy for InFlite's hub (/_hub/) only for the hub's key, and
+// what the hub says of a browser believed only with it. The contact form holds a network to 5 messages an hour, counted in
 // one step (so a burst can't slip through), and keeps line breaks out of the name; the owner's answers aren't cached.
 import http from 'node:http';
 const [,, S, out] = process.argv;
@@ -46,6 +47,32 @@ ok(bad.status === 200 || bad.status === 400, 'an address with a “?” in it: t
 // 3. the owner's answers: never cached
 const c = await get('/api/content');
 ok(c.status === 200 && /no-store/.test(c.headers['cache-control'] || ''), 'the site’s API answers: not kept by a cache', c.headers['cache-control']);
+
+// 4. InFlite's hub (Today First): Chat's hub copy is at Chat's own address for the hub alone (its key, server.sh's
+// HUB_KEY), never asked for straight or anywhere else; what the hub says of a browser is believed only with that key;
+// the passkeys' related origins list the hub
+const KEY = 'hub-test-key';
+for (const [host, headers, why] of [['chat.localhost:8788', {}, 'straight'], ['chat.ifl.test:8788', {}, 'straight'], ['chat.ifl.test:8788', { 'X-Hub-Ok': '1' }, 'saying it’s the hub'],
+  ['chat.ifl.test:8788', { 'X-Hub-Key': 'hub-test-kez' }, 'with a wrong key'], ['localhost:8788', { 'X-Hub-Key': KEY }, 'at localhost'], ['weather.ifl.test:8788', { 'X-Hub-Key': KEY }, 'at Weather’s'],
+  ['account.ifl.test:8788', { 'X-Hub-Key': KEY }, 'at the account’s'], ['gfg.test:8788', { 'X-Hub-Key': KEY }, 'at the home page'], ['ifl.test:8788', { 'X-Hub-Key': KEY }, 'at the hub’s own name, here']])
+  for (const path of ['/_hub/', '/_hub/version', '/_hub/sw.js']) {
+    const r = await get(path, { host, headers });
+    ok(r.status === 404, `${host}${path} ${why}: not found`, String(r.status));
+  }
+const hubCopy = await get('/_hub/', { host: 'chat.ifl.test:8788', headers: { 'X-Hub-Key': KEY } });
+ok(hubCopy.status === 200 && /"\/chats\/app\.js\?v=/.test(hubCopy.body) && !/(?<![\w.-])\/pigeon\//.test(hubCopy.body) && /frame-ancestors 'self'/.test(hubCopy.headers['content-security-policy'] || '')
+  && hubCopy.headers['x-frame-options'] === 'SAMEORIGIN', 'with the hub’s key, Chat’s hub copy: /chats/ for /pigeon/, framed by the hub alone', `${hubCopy.status} ${hubCopy.headers['x-frame-options']}`);
+const own = await get('/', { host: 'chat.ifl.test:8788' });
+ok(own.status === 200 && own.headers['x-frame-options'] === 'DENY' && /"\/app\.js\?v=/.test(own.body), 'Chat at its own address beside it, as before');
+// (the contact form counts each person: X-Hub-IP is taken only with the key, else the connection's own address is)
+const contact = (i, headers) => get('/api/contact', { method: 'POST', body: msg('Sam Reed', 100 + i), headers });
+const said = [];
+for (let i = 0; i < 6; i++) said.push((await contact(i, { 'CF-Connecting-IP': '198.51.100.7', 'X-Hub-IP': `198.51.100.${20 + i}`, 'X-Hub-Key': 'not-it' })).status);
+ok(said.slice(0, 5).every((x) => x === 200) && said[5] === 429, 'six from one connection, each saying another address without the key: counted as one, the sixth held back', said.join(','));
+const hubbed = await Promise.all([30, 31].map((n, i) => contact(10 + i, { 'CF-Connecting-IP': '198.51.100.7', 'X-Hub-IP': `198.51.100.${n}`, 'X-Hub-Key': KEY })));
+ok(hubbed.every((r) => r.status === 200), 'with the hub’s key, each by the address the hub says: their own counts', hubbed.map((r) => r.status).join(','));
+const wk = await get('/.well-known/webauthn', { host: 'gfg.test:8788' });
+ok(wk.status === 200 && JSON.parse(wk.body).origins.includes('http://ifl.test:8788') && JSON.parse(wk.body).origins.includes('http://chat.ifl.test:8788'), 'the passkeys’ related origins: the apps’ and the hub’s', wk.body.slice(0, 300));
 
 console.log(`FAILS ${fails}`);
 process.exit(0);
