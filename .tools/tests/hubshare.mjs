@@ -80,6 +80,8 @@ const reloadChat = async (ph) => { await ph.p.reload(); await ph.p.waitForSelect
 // ---- George at the hub (the one trip), Pat and Leo at Chat's own address, a group of the three ----
 const G = await K.hubPhone('george', await K.makeKeys());
 record(G.ctx, 'george');
+// (George's page errors with the page they came on: Chat's pages and its engine are this test's; the others' are noted)
+const gErrs = []; G.p.on('pageerror', (e) => gErrs.push({ at: G.p.url(), e: String(e), stack: String(e?.stack || '') }));
 await makeAccount(G.p, `${ACCT}/`, { name: 'George Farrow', handle: 'george', email: 'george@example.com' });
 await G.p.goto(`${HUB}/chats/#signin-start&then=/`);
 await onAccountPage(G.p, { email: 'george@example.com' }).catch((e) => console.log('DEBUG sign-in', e.message));
@@ -338,10 +340,13 @@ const wxl = links.filter((l) => /Weather/.test(l.text)), mkl = links.filter((l) 
 ok(wxl.length > 0 && wxl.every((l) => /^\/weather\/\?lat=-?\d+\.\d\d&lon=-?\d+\.\d\d$/.test(l.href) && !l.target), '9b. Open in Weather: /weather/?lat&lon, the square only (no place by name), in this window', js(wxl));
 ok(mkl.length > 0 && mkl.every((l) => l.href === '/markets/#s=TSCO.L' && !l.target), '9b. Open in Markets: /markets/#s=TSCO.L, in this window', js(mkl));
 const pages9 = G.pages.length;
-const toWx = G.p.waitForURL((u) => u.pathname === '/weather/', { timeout: 20000 }).then(() => true, () => false);
+// (the address Weather is asked for as it opens: Weather then takes the square out of its own address)
+const wxNav = G.p.waitForRequest((r) => r.isNavigationRequest() && r.frame() === G.p.mainFrame() && new URL(r.url()).pathname === '/weather/', { timeout: 20000 }).catch(() => null);
 await G.p.locator('.msgs .cd-card a.cd-open', { hasText: 'Weather' }).last().click().catch(() => {});
-const wxAt = await toWx ? new URL(G.p.url()) : null;
-ok(!!wxAt && G.pages.length === pages9 && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lat') || '') && !wxAt.searchParams.has('name') && !new RegExp(PLACE).test(dec(G.p.url())), '9b. tapped: Weather at the hub, in this window, at that square', G.p.url());
+const wxReq = await wxNav, wxAt = wxReq ? new URL(wxReq.url()) : null;
+await G.p.waitForURL((u) => u.pathname === '/weather/', { timeout: 20000 }).catch(() => {});
+ok(!!wxAt && G.pages.length === pages9 && new URL(G.p.url()).pathname === '/weather/' && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lat') || '') && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lon') || '') && !wxAt.searchParams.has('name') && !new RegExp(PLACE).test(dec(wxReq.url())),
+  '9b. tapped: Weather at the hub, in this window, asked for at that square (no name)', js({ asked: wxReq?.url(), now: G.p.url() }));
 
 // ---- 10. privacy: the exact strings sent, in no new or changed row outside a sealed ct, and in no request ----
 const after = snapshot();
@@ -387,8 +392,14 @@ ok(await away11, '11. and Send goes the back= way, to Chats', G.p.url());
 
 // ---- one window ----
 ok(G.pages.length === 1 && !(await G.p.evaluate(() => window.__opened?.length || 0)), 'one window throughout, nothing opened beside it', String(G.pages.length));
-const chatErrs = errs.filter((e) => /^(george|pat|leo):/.test(e) && !/Failed to load|net::|404|429|navigator\.vibrate|ERR_ABORTED/.test(e));
-ok(!chatErrs.length, 'no page errors', chatErrs.slice(0, 6).join(' | '));
+// (Chat's pages: Pat's and Leo's at its own address, George's /chats/ and the engine's frame wherever it was; the errors
+// of other apps' pages George went through are noted for their batches, not counted here)
+const noise = (e) => /Failed to load|net::|404|429|navigator\.vibrate|ERR_ABORTED/.test(e);
+const onChat = (x) => { try { return new URL(x.at).pathname.startsWith('/chats/') || /\/chats\//.test(x.stack); } catch (_) { return false; } };
+const others = gErrs.filter((x) => !onChat(x) && !noise(x.e));
+if (others.length) console.log(`notes (page errors on other apps' pages, for their batches): ${js(others.map((x) => `${x.at}: ${x.e}`), 600)}`);
+const chatErrs = [...errs.filter((e) => /^(pat|leo):/.test(e) && !noise(e)), ...gErrs.filter((x) => onChat(x) && !noise(x.e)).map((x) => `george ${x.at}: ${x.e}`)];
+ok(!chatErrs.length, 'no page errors on Chat’s pages (George’s /chats/ and its engine, Pat’s and Leo’s Chat)', chatErrs.slice(0, 6).join(' | '));
 console.log(`FAILS ${K.fails()}`);
 await (await K.hubBrowser()).close();
 await K.b.close();
