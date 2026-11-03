@@ -6,8 +6,8 @@
 // newsView :2116). Loaded through fw.lazy on News' first show or a story's first open (connector.lazy).
 // view(el, ctx) → { draw(), hide(), destroy() }; openStory(ctx, id) → the story sheet (id: core.storyId).
 import * as core from "./core.js";
-import { h, el, M, toast, render, openSheet, pushSheet, closeBtn, backBtn, readsIn, markRead, keepFocus, afterDraw } from "./mkui.js";
-import { emptyView } from "./todayview.js";
+import { h, el, M, toast, render, openSheet, pushSheet, closeBtn, backBtn, readsIn, markRead, keepFocus, afterDraw, openStock } from "./mkui.js";
+import { emptyView, notIn } from "./todayview.js";
 import { sameStory, storiesOf } from "../stories.js";
 
 const { S, A, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, fmt, money, pct, tone, plural, and2, ago, owned, valueOf, dayOf, totals, income, aroundMonth, newsKey, aboutIt, sansStop, newsSeen, newsHidden, newsRead, newsGroups, newsNew, loadNews, store, storyId, storyOf } = core;
@@ -99,12 +99,14 @@ function forYou(n) {
   return h("div.ryou", {}, h("h4.rlab", { text: "For you" }), chips.length ? h("span.nchips", {}, chips.slice(0, 5)) : null, h("p", { text: said.join(" ") }));
 }
 function newsView() {
+  const wait = notIn();
+  if (wait) return wait;
   if (!S.list.length) return emptyView();
   // (asked for when there's none, and again after a quarter of an hour; one that couldn't come, said, with Try Again)
   if (!S.newsErr && (S.news == null || Date.now() - (S.newsAt || 0) > 15 * 60e3)) loadNews();
   S.newsSince ??= newsSeen();
   const parts = [h("div.digest", {}, h("span.eyebrow", { text: "Today, in brief" }), newsBrief().map((t, i) => h("p.rise", { vars: { i: String(i) } }, t)))];
-  if (S.newsErr && S.news == null) return [...parts, h("p.foot", {}, "Couldn't get the news just now. ", h("button.inline", { type: "button", onclick: () => { S.newsErr = null; loadNews(); render(); }, text: "Try Again" }))];
+  if (S.newsErr && S.news == null) return [...parts, h("p.foot", {}, globalThis.navigator?.onLine === false ? "News needs a connection. " : "Couldn't get the news just now. ", h("button.inline", { type: "button", onclick: () => { S.newsErr = null; loadNews(); render(); }, text: "Try Again" }))];
   if (S.news == null) return [...parts, h("div.list.nlist", {}, [0, 1, 2].map(() => h("div.story.ghost", {}, h("span.m", { text: " " }), h("b", { text: " " }))))];
   const hidden = newsHidden(), read = newsRead(), groups = newsGroups(S.news.filter((n) => !hidden.has(n.src)), storiesOf);
   const kinds = ["holdings", "following", "markets"].filter((k) => groups.some((g) => g.kind === k));
@@ -113,17 +115,17 @@ function newsView() {
   if (kinds.length > 1) parts.push(h("div.nfilter", { role: "group", "aria-label": "Show" }, [["all", "All"], ["holdings", "Holdings"], ["following", "Following"], ["markets", "Markets"]].filter(([k]) => k === "all" || kinds.includes(k))
     .map(([k, label]) => h("button", { type: "button", "data-k": `nf:${k}`, "aria-pressed": String(S.nfilter === k), text: label, onclick: () => { if (S.nfilter !== k) { S.nfilter = k; render(); } } }))));
   if (fresh) parts.push(h("p.nnew", { text: `${plural(fresh, "new story", "new stories")} since you last looked` }));
-  if (!shown.length) parts.push(h("p.foot", { style: "padding-top:12px", text: "No stories about your list just now." }));
+  if (!shown.length) parts.push(h("p.foot.mk-pt12", { text: "No stories about your list just now." }));
   shown.forEach((g, gi) => {
     const q = g.x ? S.q[g.x.symbol] : null;
     const sub = g.kind === "markets" ? [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]].filter(([s]) => S.q[s]?.chgPct != null).map(([s, nm]) => `${nm} ${pct(S.q[s].chgPct, 1)}`).join(" · ")
       : g.kind === "following" ? "You follow it" : [money(valueOf(g.x), "GBP", 0), g.topic ? `Invests in ${TOPIC_SAID[g.topic]}` : null].filter(Boolean).join(" · ");
     parts.push(h("section.ngroup.rise", { vars: { i: String(Math.min(gi + 2, 8)) }, "aria-label": g.x?.name || "Markets" },
-      h(g.x ? "button.nghead" : "div.nghead", g.x ? { type: "button", onclick: () => openStock(g.x.symbol) } : {},
+      h(g.x ? "button.nghead" : "div.nghead", g.x ? { type: "button", "data-sym": g.x.symbol, onclick: () => openStock(g.x.symbol) } : {},
         h("span", {}, h("b", { text: g.x?.name || "Markets" }), h("small", { text: sub })), q?.chgPct != null ? h("span", { class: `num ${tone(q.chgPct)}`, text: pct(q.chgPct) }) : null),
       h("div.list.nlist", {}, g.items.map(({ lead: n, more }) => storyRow(n, g.x?.symbol, n.at > S.newsSince, read.has(newsKey(n)), more.length)))));
   });
-  if (hidden.size) parts.push(h("p.foot", {}, `Not showing stories from ${and2([...hidden])}. `, h("button.inline", { type: "button", onclick: () => { store.del("newsHide"); render(); newsBadge(); }, text: "Show Them" })));
+  if (hidden.size) parts.push(h("p.foot", {}, `Not showing stories from ${and2([...hidden])}. `, h("button.inline", { type: "button", onclick: () => { store.del("newsHide"); core.emit("news"); }, text: "Show Them", "data-k": "news-unhide" })));
   return parts;
 }
 // a story's own few things: sent in Chat, its link copied, or its source not shown again (a small menu over the
