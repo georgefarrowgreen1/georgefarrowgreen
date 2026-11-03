@@ -1,378 +1,378 @@
 /* Fitness's views under InFlite's roof (One roof stage 2, spec §4.3 FXB, BB7): Activities, Progress, charts, zones,
    routes, the ride's map, share and Fitness Settings, as fitness/styles.css has them (352-442, 562-613, 854-1035,
-   1040-1065, 1577-1589), re-tokenised, not restyled (S2-D1): every rule under the module's screen (.m-fitness) or its
-   sheets (.ifl-sheet[data-app=fitness]), nothing on the page's root, keyframes named fx-*. It builds on fitness.css
+   1040-1065, 1577-1589), re-tokenised, not restyled (S2-D1): every rule under [data-app=fitness], which is the module's
+   screen (main#m-fitness) and its sheets (dialog.ifl-sheet[data-app=fitness]), nothing on the page's root, keyframes named fx-*. It builds on fitness.css
    (FXA): its token block (--tint as Fitness's accent, the zones --z1…7, the lines --fit --fat --hr --pwr …, the sports
    --s-*) and its cards, rows, groups, segments, buttons, Rhythm's setup, the session and moving a day. Both load before
    the module mounts (REGISTRY css), so no view waits. */
 /* ---- charts ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart { display: block; width: 100%; height: auto; overflow: visible; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart text { fill: var(--text-3); font: 500 11px/1 var(--font); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart .grid { stroke: var(--line); stroke-width: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart .ftp { stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .z1 { fill: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z2 { fill: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z3 { fill: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z4 { fill: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z5 { fill: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z6 { fill: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z7 { fill: var(--z7); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z1 { background: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z2 { background: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z3 { background: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z4 { background: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z5 { background: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z6 { background: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z7 { background: var(--z7); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .profile svg rect, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mini svg rect, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .profile svg path.blk { shape-rendering: geometricPrecision; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fit { fill: none; stroke: var(--fit); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fat { fill: none; stroke: var(--fat); stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-up { fill: var(--form-up); opacity: 0.55; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-down { fill: var(--form-down); opacity: 0.55; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-fit { fill: color-mix(in srgb, var(--fit) 16%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .end-dot { fill: var(--fit); stroke: var(--sky-c); stroke-width: 2; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-pwr { fill: none; stroke: var(--pwr); stroke-width: 1.4; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-pwr { fill: color-mix(in srgb, var(--pwr) 14%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-hr { fill: none; stroke: var(--hr); stroke-width: 1.6; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-spd { fill: none; stroke: var(--spd); stroke-width: 1.4; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-ele { fill: var(--ele); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .cursor { stroke: var(--text); stroke-width: 1; opacity: 0.7; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-b { fill: color-mix(in srgb, var(--z2) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-u { fill: color-mix(in srgb, var(--z4) 80%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-p { fill: color-mix(in srgb, var(--z5) 80%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-t { fill: color-mix(in srgb, var(--z3) 80%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-done { fill: var(--tint); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-plan { fill: var(--glass-ctl); stroke: color-mix(in srgb, var(--text) 22%, transparent); stroke-width: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-now { fill: none; stroke: var(--text); stroke-width: 1.5; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .route { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .route-under { fill: none; stroke: color-mix(in srgb, var(--sky-c) 70%, transparent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-start { fill: var(--good); stroke: #fff; stroke-width: 2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-end { fill: var(--danger); stroke: #fff; stroke-width: 2; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-here { fill: #fff; stroke: var(--tint-deep); stroke-width: 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z1 { stroke: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z2 { stroke: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z3 { stroke: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z4 { stroke: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z5 { stroke: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z6 { stroke: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z7 { stroke: var(--z7); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve { fill: none; stroke: var(--tint); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-a { fill: color-mix(in srgb, var(--tint) 15%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-dot { fill: var(--tint); stroke: var(--sky-c); stroke-width: 1.5; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fit { background: var(--fit); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fat { background: var(--fat); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-form { background: var(--form-up); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-pwr { background: var(--pwr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-hr { background: var(--hr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-ele { background: color-mix(in srgb, var(--text) 30%, transparent); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-spd { background: var(--spd); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .readout { min-height: 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .readout b { color: var(--text); font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .scrub { touch-action: pan-y; cursor: crosshair; }
+[data-app=fitness] .chart { display: block; width: 100%; height: auto; overflow: visible; }
+[data-app=fitness] .chart text { fill: var(--text-3); font: 500 11px/1 var(--font); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .chart .grid { stroke: var(--line); stroke-width: 1; }
+[data-app=fitness] .chart .ftp { stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
+[data-app=fitness] .z1 { fill: var(--z1); } [data-app=fitness] .z2 { fill: var(--z2); } [data-app=fitness] .z3 { fill: var(--z3); } [data-app=fitness] .z4 { fill: var(--z4); } [data-app=fitness] .z5 { fill: var(--z5); } [data-app=fitness] .z6 { fill: var(--z6); } [data-app=fitness] .z7 { fill: var(--z7); }
+[data-app=fitness] .bg-z1 { background: var(--z1); } [data-app=fitness] .bg-z2 { background: var(--z2); } [data-app=fitness] .bg-z3 { background: var(--z3); } [data-app=fitness] .bg-z4 { background: var(--z4); } [data-app=fitness] .bg-z5 { background: var(--z5); } [data-app=fitness] .bg-z6 { background: var(--z6); } [data-app=fitness] .bg-z7 { background: var(--z7); }
+[data-app=fitness] .profile svg rect, [data-app=fitness] .mini svg rect, [data-app=fitness] .profile svg path.blk { shape-rendering: geometricPrecision; }
+[data-app=fitness] .l-fit { fill: none; stroke: var(--fit); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+[data-app=fitness] .l-fat { fill: none; stroke: var(--fat); stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linecap: round; }
+[data-app=fitness] .b-up { fill: var(--form-up); opacity: 0.55; } [data-app=fitness] .b-down { fill: var(--form-down); opacity: 0.55; }
+[data-app=fitness] .a-fit { fill: color-mix(in srgb, var(--fit) 16%, transparent); }
+[data-app=fitness] .end-dot { fill: var(--fit); stroke: var(--sky-c); stroke-width: 2; }
+[data-app=fitness] .s-pwr { fill: none; stroke: var(--pwr); stroke-width: 1.4; stroke-linejoin: round; }
+[data-app=fitness] .a-pwr { fill: color-mix(in srgb, var(--pwr) 14%, transparent); }
+[data-app=fitness] .s-hr { fill: none; stroke: var(--hr); stroke-width: 1.6; stroke-linejoin: round; }
+[data-app=fitness] .s-spd { fill: none; stroke: var(--spd); stroke-width: 1.4; stroke-linejoin: round; }
+[data-app=fitness] .a-ele { fill: var(--ele); }
+[data-app=fitness] .cursor { stroke: var(--text); stroke-width: 1; opacity: 0.7; }
+[data-app=fitness] .phase-b { fill: color-mix(in srgb, var(--z2) 70%, transparent); } [data-app=fitness] .phase-u { fill: color-mix(in srgb, var(--z4) 80%, transparent); }
+[data-app=fitness] .phase-p { fill: color-mix(in srgb, var(--z5) 80%, transparent); } [data-app=fitness] .phase-t { fill: color-mix(in srgb, var(--z3) 80%, transparent); }
+[data-app=fitness] .wk-done { fill: var(--tint); } [data-app=fitness] .wk-plan { fill: var(--glass-ctl); stroke: color-mix(in srgb, var(--text) 22%, transparent); stroke-width: 1; }
+[data-app=fitness] .wk-now { fill: none; stroke: var(--text); stroke-width: 1.5; }
+[data-app=fitness] .route { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+[data-app=fitness] .route-under { fill: none; stroke: color-mix(in srgb, var(--sky-c) 70%, transparent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+[data-app=fitness] .pin-start { fill: var(--good); stroke: #fff; stroke-width: 2; } [data-app=fitness] .pin-end { fill: var(--danger); stroke: #fff; stroke-width: 2; }
+[data-app=fitness] .pin-here { fill: #fff; stroke: var(--tint-deep); stroke-width: 3; }
+[data-app=fitness] .st-z1 { stroke: var(--z1); } [data-app=fitness] .st-z2 { stroke: var(--z2); } [data-app=fitness] .st-z3 { stroke: var(--z3); } [data-app=fitness] .st-z4 { stroke: var(--z4); } [data-app=fitness] .st-z5 { stroke: var(--z5); } [data-app=fitness] .st-z6 { stroke: var(--z6); } [data-app=fitness] .st-z7 { stroke: var(--z7); }
+[data-app=fitness] .curve { fill: none; stroke: var(--tint); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+[data-app=fitness] .curve-a { fill: color-mix(in srgb, var(--tint) 15%, transparent); }
+[data-app=fitness] .curve-dot { fill: var(--tint); stroke: var(--sky-c); stroke-width: 1.5; }
+[data-app=fitness] .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+[data-app=fitness] .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+[data-app=fitness] .lg-fit { background: var(--fit); } [data-app=fitness] .lg-fat { background: var(--fat); } [data-app=fitness] .lg-form { background: var(--form-up); height: 8px !important; } [data-app=fitness] .lg-pwr { background: var(--pwr); } [data-app=fitness] .lg-hr { background: var(--hr); } [data-app=fitness] .lg-ele { background: color-mix(in srgb, var(--text) 30%, transparent); height: 8px !important; } [data-app=fitness] .lg-spd { background: var(--spd); }
+[data-app=fitness] .readout { min-height: 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .readout b { color: var(--text); font-weight: 600; }
+[data-app=fitness] .scrub { touch-action: pan-y; cursor: crosshair; }
 
 /* the route, on its own pane (a map behind it is for later) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map { border-radius: 22px; overflow: hidden; max-width: 100%;
+[data-app=fitness] .map { border-radius: 22px; overflow: hidden; max-width: 100%;
   background: radial-gradient(120% 100% at 30% 0%, color-mix(in srgb, var(--z2) 12%, transparent), transparent 70%), var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map svg { display: block; width: 100%; height: auto; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map .gridline { stroke: var(--line); stroke-width: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map .scale-t { fill: var(--text-2); font: 600 11px/1 var(--font); }
+[data-app=fitness] .map svg { display: block; width: 100%; height: auto; }
+[data-app=fitness] .map .gridline { stroke: var(--line); stroke-width: 1; }
+[data-app=fitness] .map .scale-t { fill: var(--text-2); font: 600 11px/1 var(--font); }
 
 /* figures in a grid (an activity's, a workout's) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat small { display: block; font-size: 12.5px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat b u { text-decoration: none; font: 500 13px/1 var(--font); color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
-@media (max-width: 360px) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+[data-app=fitness] .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
+[data-app=fitness] .stat small { display: block; font-size: 12.5px; color: var(--text-3); }
+[data-app=fitness] .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-app=fitness] .stat b u { text-decoration: none; font: 500 13px/1 var(--font); color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
+@media (max-width: 360px) { [data-app=fitness] .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* time in zones */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zones { display: grid; gap: 7px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) 66px; align-items: center; gap: 8px; font-size: 13px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zrow > span:first-child { font-weight: 700; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zrow .zbar { height: 18px; border-radius: 6px; background: var(--glass-ctl); overflow: hidden; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zrow .zbar i { display: block; height: 100%; border-radius: 6px; width: 0; transition: width 0.7s var(--ease-out); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zrow .zv { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zone-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 22px; padding: 0 7px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #10131f; }
+[data-app=fitness] .zones { display: grid; gap: 7px; }
+[data-app=fitness] .zrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) 66px; align-items: center; gap: 8px; font-size: 13px; }
+[data-app=fitness] .zrow > span:first-child { font-weight: 700; color: var(--text-2); }
+[data-app=fitness] .zrow .zbar { height: 18px; border-radius: 6px; background: var(--glass-ctl); overflow: hidden; }
+[data-app=fitness] .zrow .zbar i { display: block; height: 100%; border-radius: 6px; width: 0; transition: width 0.7s var(--ease-out); }
+[data-app=fitness] .zrow .zv { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .zone-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 22px; padding: 0 7px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #10131f; }
 
 /* a workout's steps */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .steps { display: grid; gap: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step + .step { border-top: 0.5px solid var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step > i { align-self: stretch; border-radius: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step b { display: block; font-size: 15px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step small { display: block; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step .v { max-width: 12em; text-align: right; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step .v b { color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat { margin: 6px 0; padding: 4px 12px; border-radius: 16px; background: var(--glass-ctl); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--tint-text); letter-spacing: 0.3px; }
+[data-app=fitness] .steps { display: grid; gap: 0; }
+[data-app=fitness] .step { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 0; }
+[data-app=fitness] .step + .step { border-top: 0.5px solid var(--line); }
+[data-app=fitness] .step > i { align-self: stretch; border-radius: 3px; }
+[data-app=fitness] .step b { display: block; font-size: 15px; font-weight: 600; }
+[data-app=fitness] .step small { display: block; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .step .v { max-width: 12em; text-align: right; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .step .v b { color: var(--text); }
+[data-app=fitness] .repeat { margin: 6px 0; padding: 4px 12px; border-radius: 16px; background: var(--glass-ctl); }
+[data-app=fitness] .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--tint-text); letter-spacing: 0.3px; }
 
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper button:active { background: var(--press); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper output { min-width: 88px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper label { display: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .field:focus { outline: 2px solid var(--tint); outline-offset: 0; }
+[data-app=fitness] .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
+[data-app=fitness] .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
+[data-app=fitness] .stepper button:active { background: var(--press); }
+[data-app=fitness] .stepper output { min-width: 88px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-app=fitness] .stepper label { display: none; }
+[data-app=fitness] .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
+[data-app=fitness] .field:focus { outline: 2px solid var(--tint); outline-offset: 0; }
 
 /* the plan */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phases { display: flex; gap: 3px; height: 10px; margin: 14px 0 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phases i { border-radius: 4px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-names { display: flex; gap: 3px; font-size: 12px; font-weight: 600; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-names span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-names span.now { color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown b { font: 700 40px/1 var(--font-r); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown span { color: var(--text-2); font-size: 15px; }
+[data-app=fitness] .phases { display: flex; gap: 3px; height: 10px; margin: 14px 0 8px; }
+[data-app=fitness] .phases i { border-radius: 4px; }
+[data-app=fitness] .phase-names { display: flex; gap: 3px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+[data-app=fitness] .phase-names span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-app=fitness] .phase-names span.now { color: var(--text); }
+[data-app=fitness] .countdown { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+[data-app=fitness] .countdown b { font: 700 40px/1 var(--font-r); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+[data-app=fitness] .countdown span { color: var(--text-2); font-size: 15px; }
 
 /* ---- Activities, before the first: one button, and where the files are ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .card.first { display: grid; gap: 12px; padding: 22px 16px 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .first-top { display: grid; gap: 6px; padding: 0 4px 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .first h2 { margin: 0; font: 700 24px/1.15 var(--font-d); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .first p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+[data-app=fitness] .card.first { display: grid; gap: 12px; padding: 22px 16px 16px; }
+[data-app=fitness] .first-top { display: grid; gap: 6px; padding: 0 4px 2px; }
+[data-app=fitness] .first h2 { margin: 0; font: 700 24px/1.15 var(--font-d); }
+[data-app=fitness] .first p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
 /* the two ways in: Garmin, ringed as the one to pick, and files */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px; border: 0; border-radius: 20px; text-align: left; color: inherit; background: var(--glass-strong); box-shadow: var(--edge); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice.best { box-shadow: 0 0 0 2px var(--tint), 0 12px 26px -18px var(--tint-deep); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice:active { transform: scale(0.985); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx { flex: 1; min-width: 0; display: grid; gap: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx > b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx > small { color: var(--text-2); font-size: 14px; line-height: 1.35; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .chev { color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .big { flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .badge { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--tint-text); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .ic.soft { box-shadow: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.red { background: rgba(238, 75, 47, 0.14); color: #d6402a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.blue { background: rgba(47, 122, 240, 0.14); color: var(--tint-text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.green { background: rgba(31, 167, 90, 0.14); color: var(--good-text); }
+[data-app=fitness] .choice { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px; border: 0; border-radius: 20px; text-align: left; color: inherit; background: var(--glass-strong); box-shadow: var(--edge); }
+[data-app=fitness] .choice.best { box-shadow: 0 0 0 2px var(--tint), 0 12px 26px -18px var(--tint-deep); }
+[data-app=fitness] .choice:active { transform: scale(0.985); }
+[data-app=fitness] .choice .tx { flex: 1; min-width: 0; display: grid; gap: 3px; }
+[data-app=fitness] .choice .tx > b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+[data-app=fitness] .choice .tx > small { color: var(--text-2); font-size: 14px; line-height: 1.35; }
+[data-app=fitness] .choice .chev { color: var(--text-3); }
+[data-app=fitness] .choice .big { flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
+[data-app=fitness] .badge { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--tint-text); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
+[data-app=fitness] .row .ic.soft { box-shadow: none; }
+[data-app=fitness] .ic.soft.red { background: rgba(238, 75, 47, 0.14); color: #d6402a; } [data-app=fitness] .ic.soft.blue { background: rgba(47, 122, 240, 0.14); color: var(--tint-text); }
+[data-app=fitness] .ic.soft.green { background: rgba(31, 167, 90, 0.14); color: var(--good-text); }
 /* Garmin's six months, coming in */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .card.bringing { display: grid; gap: 12px; padding: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top { display: flex; align-items: center; gap: 12px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top .tx { display: grid; gap: 2px; min-width: 0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top b { font-size: 16px; font-weight: 600; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top small { color: var(--text-3); font-size: 13px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--tint), var(--tint-deep)); animation: fx-bring 1.6s var(--ease-spring, ease-in-out) infinite; }
+[data-app=fitness] .card.bringing { display: grid; gap: 12px; padding: 16px; }
+[data-app=fitness] .bringing-top { display: flex; align-items: center; gap: 12px; }
+[data-app=fitness] .bringing-top .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
+[data-app=fitness] .bringing-top .tx { display: grid; gap: 2px; min-width: 0; } [data-app=fitness] .bringing-top b { font-size: 16px; font-weight: 600; } [data-app=fitness] .bringing-top small { color: var(--text-3); font-size: 13px; }
+[data-app=fitness] .bringing .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+[data-app=fitness] .bringing .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--tint), var(--tint-deep)); animation: fx-bring 1.6s var(--ease-spring, ease-in-out) infinite; }
 @keyframes fx-bring { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-@media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar i { animation: none; width: 100%; opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { [data-app=fitness] .bringing .bar i { animation: none; width: 100%; opacity: 0.5; } }
 /* Upload files: the files chosen, and where each app keeps them */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone { display: grid; justify-items: center; gap: 12px; margin-top: 8px; padding: 22px 16px; border-radius: 22px; border: 1.5px dashed color-mix(in srgb, var(--tint) 50%, transparent); background: color-mix(in srgb, var(--tint) 6%, transparent); text-align: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone .big { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; text-wrap: pretty; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin .link { font: inherit; font-weight: 600; padding: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .foot.none { text-align: center; padding: 28px 0; }
+[data-app=fitness] .drop-zone { display: grid; justify-items: center; gap: 12px; margin-top: 8px; padding: 22px 16px; border-radius: 22px; border: 1.5px dashed color-mix(in srgb, var(--tint) 50%, transparent); background: color-mix(in srgb, var(--tint) 6%, transparent); text-align: center; }
+[data-app=fitness] .drop-zone .big { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: #fff; }
+[data-app=fitness] .drop-zone p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; text-wrap: pretty; }
+[data-app=fitness] .note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
+[data-app=fitness] .note-garmin .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+[data-app=fitness] .note-garmin .link { font: inherit; font-weight: 600; padding: 0; }
+[data-app=fitness] .foot.none { text-align: center; padding: 28px 0; }
 
 /* ---- uploading: each activity, with what it was, a tap to change ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up { align-items: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up .tx small.said { color: var(--text-3); font-size: 12.5px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .tx small.said { color: #ffc65a; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pick { position: relative; flex: none; display: inline-flex; align-items: center; height: 34px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pick select { appearance: none; -webkit-appearance: none; border: 0; background: none; height: 100%; padding: 0 28px 0 13px; font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pick svg { position: absolute; right: 10px; pointer-events: none; transform: rotate(90deg); color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .pick { box-shadow: inset 0 0 0 1.5px #f2a100; }
+[data-app=fitness] .row.up { align-items: center; }
+[data-app=fitness] .row.up .tx small.said { color: var(--text-3); font-size: 12.5px; }
+[data-app=fitness] .row.up.guess .tx small.said { color: #ffc65a; }
+[data-app=fitness] .pick { position: relative; flex: none; display: inline-flex; align-items: center; height: 34px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+[data-app=fitness] .pick select { appearance: none; -webkit-appearance: none; border: 0; background: none; height: 100%; padding: 0 28px 0 13px; font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; }
+[data-app=fitness] .pick svg { position: absolute; right: 10px; pointer-events: none; transform: rotate(90deg); color: var(--text-3); }
+[data-app=fitness] .row.up.guess .pick { box-shadow: inset 0 0 0 1.5px #f2a100; }
 /* Garmin Connect: the key, pasted in */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .garmin-key { display: grid; gap: 10px; margin-top: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .section > .garmin-key { margin-top: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .ic > b { font-size: 15px; font-weight: 700; }
-@media (prefers-color-scheme: light) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .tx small.said:not([data-theme="dark"] *) { color: #a85f00; } }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .tx small.said { color: #a85f00; }
+[data-app=fitness] .garmin-key { display: grid; gap: 10px; margin-top: 16px; }
+[data-app=fitness] .section > .garmin-key { margin-top: 0; }
+[data-app=fitness] .row .ic > b { font-size: 15px; font-weight: 700; }
+@media (prefers-color-scheme: light) { [data-app=fitness] .row.up.guess .tx small.said:not([data-theme="dark"] *) { color: #a85f00; } }
+[data-app=fitness] .row.up.guess .tx small.said:is([data-theme="light"] *) { color: #a85f00; }
 
 /* ---- Progress ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-range { display: grid; width: 100%; margin: 0 0 16px; box-sizing: border-box; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 22px 22px; text-align: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-empty .big { width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-empty h2 { margin: 0; font: 700 22px/1.2 var(--font-d); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-empty p { margin: 0 0 6px; color: var(--text-2); font-size: 15px; line-height: 1.45; }
+[data-app=fitness] .p-range { display: grid; width: 100%; margin: 0 0 16px; box-sizing: border-box; }
+[data-app=fitness] .p-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 22px 22px; text-align: center; }
+[data-app=fitness] .p-empty .big { width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; color: #fff; }
+[data-app=fitness] .p-empty h2 { margin: 0; font: 700 22px/1.2 var(--font-d); } [data-app=fitness] .p-empty p { margin: 0 0 6px; color: var(--text-2); font-size: 15px; line-height: 1.45; }
 /* the story: a deep card, its line glowing */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero { display: grid; gap: 6px; padding: 20px 20px 12px; margin-bottom: 12px; border-radius: 30px; color: #fff; overflow: hidden;
+[data-app=fitness] .p-hero { display: grid; gap: 6px; padding: 20px 20px 12px; margin-bottom: 12px; border-radius: 30px; color: #fff; overflow: hidden;
   background: linear-gradient(165deg, #2a4fd8 0%, #3c6af0 45%, #6a5cf0 100%); box-shadow: 0 24px 44px -26px rgba(42, 79, 216, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
-@media (prefers-color-scheme: dark) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero:not([data-theme="light"] *) { background: linear-gradient(165deg, #1c2f8a 0%, #2a3fb8 45%, #4a37b8 100%); } }
-[data-theme="dark"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero { background: linear-gradient(165deg, #1c2f8a 0%, #2a3fb8 45%, #4a37b8 100%); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-badge { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); font-size: 12px; font-weight: 700; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-big { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-big b { font: 700 56px/1 var(--font-d); letter-spacing: -2px; font-variant-numeric: tabular-nums; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-big span { font-size: 17px; font-weight: 600; opacity: 0.85; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-big .p-gain { margin-left: auto; padding: 4px 10px; border-radius: 10px; background: rgba(120, 255, 190, 0.2); color: #b8ffd9; font-size: 15px; font-weight: 700; opacity: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero > p { margin: 0; font-size: 15px; line-height: 1.4; opacity: 0.9; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart { display: block; margin: 6px 0 0; overflow: visible; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .axis { stroke: rgba(255, 255, 255, 0.2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .ln { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .proj { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; opacity: 0.8; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .glow { fill: #fff; opacity: 0.5; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .dot { fill: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart text { font-size: 10px; fill: rgba(255, 255, 255, 0.75); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .lab { fill: rgba(255, 255, 255, 0.6); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .m-off { fill: #ffd36b; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-hero-chart .m-best { fill: #b8ffd9; }
+@media (prefers-color-scheme: dark) { [data-app=fitness] .p-hero:not([data-theme="light"] *) { background: linear-gradient(165deg, #1c2f8a 0%, #2a3fb8 45%, #4a37b8 100%); } }
+[data-app=fitness] .p-hero:is([data-theme="dark"] *) { background: linear-gradient(165deg, #1c2f8a 0%, #2a3fb8 45%, #4a37b8 100%); }
+[data-app=fitness] .p-badge { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); font-size: 12px; font-weight: 700; }
+[data-app=fitness] .p-big { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+[data-app=fitness] .p-big b { font: 700 56px/1 var(--font-d); letter-spacing: -2px; font-variant-numeric: tabular-nums; } [data-app=fitness] .p-big span { font-size: 17px; font-weight: 600; opacity: 0.85; }
+[data-app=fitness] .p-big .p-gain { margin-left: auto; padding: 4px 10px; border-radius: 10px; background: rgba(120, 255, 190, 0.2); color: #b8ffd9; font-size: 15px; font-weight: 700; opacity: 1; }
+[data-app=fitness] .p-hero > p { margin: 0; font-size: 15px; line-height: 1.4; opacity: 0.9; }
+[data-app=fitness] .p-hero-chart { display: block; margin: 6px 0 0; overflow: visible; }
+[data-app=fitness] .p-hero-chart .axis { stroke: rgba(255, 255, 255, 0.2); } [data-app=fitness] .p-hero-chart .ln { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+[data-app=fitness] .p-hero-chart .proj { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; opacity: 0.8; }
+[data-app=fitness] .p-hero-chart .glow { fill: #fff; opacity: 0.5; } [data-app=fitness] .p-hero-chart .dot { fill: #fff; }
+[data-app=fitness] .p-hero-chart text { font-size: 10px; fill: rgba(255, 255, 255, 0.75); } [data-app=fitness] .p-hero-chart .lab { fill: rgba(255, 255, 255, 0.6); }
+[data-app=fitness] .p-hero-chart .m-off { fill: #ffd36b; } [data-app=fitness] .p-hero-chart .m-best { fill: #b8ffd9; }
 /* the tiles, each with its own small chart */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile { display: grid; gap: 2px; padding: 14px 14px 10px; border: 0; border-radius: 22px; text-align: left; color: var(--text); font: inherit; background: var(--sheen), var(--glass); box-shadow: var(--edge), var(--lift); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > small { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > small i { width: 8px; height: 8px; border-radius: 50%; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > b { font: 700 26px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-spark { display: block; height: 30px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-spark svg { width: 100%; height: 30px; display: block; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-ftp { color: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-ftp { background: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wkg { color: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wkg { background: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wk { color: var(--tint); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wk { background: var(--tint); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars { display: flex; align-items: flex-end; gap: 3px; height: 30px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars i { flex: 1; height: var(--h); border-radius: 2px; background: currentColor; opacity: 0.5; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars i.now { opacity: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta { font-size: 12px; font-weight: 700; color: var(--text-3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta.up { color: var(--good-text); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta.down { color: var(--warn); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-form { display: flex; align-items: center; gap: 12px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-form .tx { display: grid; gap: 1px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-form .tx small { font-size: 12px; color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-form .tx small:first-child { font-weight: 600; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-form .tx b { font-size: 17px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ring .bg { fill: none; stroke: var(--glass-ctl); stroke-width: 7; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ring .fg { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ring text { font-size: 14px; font-weight: 800; fill: var(--text); }
+[data-app=fitness] .p-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
+[data-app=fitness] .p-tile { display: grid; gap: 2px; padding: 14px 14px 10px; border: 0; border-radius: 22px; text-align: left; color: var(--text); font: inherit; background: var(--sheen), var(--glass); box-shadow: var(--edge), var(--lift); }
+[data-app=fitness] .p-tile > small { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+[data-app=fitness] .p-tile > small i { width: 8px; height: 8px; border-radius: 50%; }
+[data-app=fitness] .p-tile > b { font: 700 26px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; } [data-app=fitness] .p-tile > b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); }
+[data-app=fitness] .p-spark { display: block; height: 30px; } [data-app=fitness] .p-spark svg { width: 100%; height: 30px; display: block; }
+[data-app=fitness] .c-ftp { color: #e3a20f; } [data-app=fitness] i.c-ftp { background: #e3a20f; } [data-app=fitness] .c-wkg { color: #7c5cf0; } [data-app=fitness] i.c-wkg { background: #7c5cf0; } [data-app=fitness] .c-wk { color: var(--tint); } [data-app=fitness] i.c-wk { background: var(--tint); }
+[data-app=fitness] .p-bars { display: flex; align-items: flex-end; gap: 3px; height: 30px; }
+[data-app=fitness] .p-bars i { flex: 1; height: var(--h); border-radius: 2px; background: currentColor; opacity: 0.5; } [data-app=fitness] .p-bars i.now { opacity: 1; }
+[data-app=fitness] .p-delta { font-size: 12px; font-weight: 700; color: var(--text-3); } [data-app=fitness] .p-delta.up { color: var(--good-text); } [data-app=fitness] .p-delta.down { color: var(--warn); }
+[data-app=fitness] .p-form { display: flex; align-items: center; gap: 12px; }
+[data-app=fitness] .p-form .tx { display: grid; gap: 1px; } [data-app=fitness] .p-form .tx small { font-size: 12px; color: var(--text-2); } [data-app=fitness] .p-form .tx small:first-child { font-weight: 600; } [data-app=fitness] .p-form .tx b { font-size: 17px; }
+[data-app=fitness] .p-ring .bg { fill: none; stroke: var(--glass-ctl); stroke-width: 7; } [data-app=fitness] .p-ring .fg { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
+[data-app=fitness] .p-ring text { font-size: 14px; font-weight: 800; fill: var(--text); }
 /* what stands out: cards to swipe through */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cards::-webkit-scrollbar { display: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card { flex: none; width: min(290px, 80vw); scroll-snap-align: start; display: grid; gap: 8px; align-content: start; padding: 16px; border: 0; border-radius: 24px; text-align: left; font: inherit; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card-top { display: flex; align-items: center; gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card-top .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card-top small { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card > b { font: 700 21px/1.18 var(--font-d); letter-spacing: -0.3px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card > span { font-size: 14px; line-height: 1.4; }
+[data-app=fitness] .p-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
+[data-app=fitness] .p-cards::-webkit-scrollbar { display: none; }
+[data-app=fitness] .p-card { flex: none; width: min(290px, 80vw); scroll-snap-align: start; display: grid; gap: 8px; align-content: start; padding: 16px; border: 0; border-radius: 24px; text-align: left; font: inherit; }
+[data-app=fitness] .p-card-top { display: flex; align-items: center; gap: 10px; }
+[data-app=fitness] .p-card-top .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
+[data-app=fitness] .p-card-top small { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+[data-app=fitness] .p-card > b { font: 700 21px/1.18 var(--font-d); letter-spacing: -0.3px; } [data-app=fitness] .p-card > span { font-size: 14px; line-height: 1.4; }
 /* (each in its colour: by night, tinted glass with light words; by day, as before, a pale wash with dark ones) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green { color: var(--text); background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 34%, transparent), color-mix(in srgb, var(--pc) 14%, transparent)), var(--glass);
+[data-app=fitness] .p-card, [data-app=fitness] .p-mini.green { color: var(--text); background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 34%, transparent), color-mix(in srgb, var(--pc) 14%, transparent)), var(--glass);
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--pc) 40%, transparent), var(--edge); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card small { color: color-mix(in srgb, var(--pc) 55%, #fff); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card > span, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green small { color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold { --pc: #f2a516; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red { --pc: #f0483d; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue { --pc: #3a86f5; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green { --pc: #26b866; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
+[data-app=fitness] .p-card small { color: color-mix(in srgb, var(--pc) 55%, #fff); } [data-app=fitness] .p-card > span, [data-app=fitness] .p-mini.green small { color: var(--text-2); }
+[data-app=fitness] .p-card.gold { --pc: #f2a516; } [data-app=fitness] .p-card.red { --pc: #f0483d; } [data-app=fitness] .p-card.blue { --pc: #3a86f5; } [data-app=fitness] .p-card.green, [data-app=fitness] .p-mini.green { --pc: #26b866; }
+[data-app=fitness] .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } [data-app=fitness] .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); }
+[data-app=fitness] .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } [data-app=fitness] .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold:not([data-theme="dark"] *) { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ffc65a, #f29a12); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold small:not([data-theme="dark"] *) { color: #8a5a00; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold > span:not([data-theme="dark"] *) { color: rgba(60, 40, 0, 0.75); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ff7b70, #e5372c); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red small:not([data-theme="dark"] *) { color: #a3241a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red > span:not([data-theme="dark"] *) { color: rgba(80, 10, 0, 0.72); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue small:not([data-theme="dark"] *) { color: #1f4fa8; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue > span:not([data-theme="dark"] *) { color: rgba(10, 30, 80, 0.72); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green small:not([data-theme="dark"] *) { color: #127a40; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green > span:not([data-theme="dark"] *) { color: rgba(10, 60, 30, 0.72); }
+  [data-app=fitness] .p-card.gold:not([data-theme="dark"] *) { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } [data-app=fitness] .p-card.gold .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ffc65a, #f29a12); } [data-app=fitness] .p-card.gold small:not([data-theme="dark"] *) { color: #8a5a00; } [data-app=fitness] .p-card.gold > span:not([data-theme="dark"] *) { color: rgba(60, 40, 0, 0.75); }
+  [data-app=fitness] .p-card.red:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } [data-app=fitness] .p-card.red .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ff7b70, #e5372c); } [data-app=fitness] .p-card.red small:not([data-theme="dark"] *) { color: #a3241a; } [data-app=fitness] .p-card.red > span:not([data-theme="dark"] *) { color: rgba(80, 10, 0, 0.72); }
+  [data-app=fitness] .p-card.blue:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } [data-app=fitness] .p-card.blue .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } [data-app=fitness] .p-card.blue small:not([data-theme="dark"] *) { color: #1f4fa8; } [data-app=fitness] .p-card.blue > span:not([data-theme="dark"] *) { color: rgba(10, 30, 80, 0.72); }
+  [data-app=fitness] .p-card.green:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } [data-app=fitness] .p-card.green .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } [data-app=fitness] .p-card.green small:not([data-theme="dark"] *) { color: #127a40; } [data-app=fitness] .p-card.green > span:not([data-theme="dark"] *) { color: rgba(10, 60, 30, 0.72); }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold small { color: #8a5a00; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.gold > span { color: rgba(60, 40, 0, 0.75); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red small { color: #a3241a; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.red > span { color: rgba(80, 10, 0, 0.72); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue small { color: #1f4fa8; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.blue > span { color: rgba(10, 30, 80, 0.72); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green small { color: #127a40; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-card.green > span { color: rgba(10, 60, 30, 0.72); }
+[data-app=fitness] .p-card.gold:is([data-theme="light"] *) { background: linear-gradient(160deg, #fff7e2, #ffe3a3); } [data-app=fitness] .p-card.gold .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #ffc65a, #f29a12); } [data-app=fitness] .p-card.gold small:is([data-theme="light"] *) { color: #8a5a00; } [data-app=fitness] .p-card.gold > span:is([data-theme="light"] *) { color: rgba(60, 40, 0, 0.75); }
+[data-app=fitness] .p-card.red:is([data-theme="light"] *) { background: linear-gradient(160deg, #ffeceb, #ffd0cc); } [data-app=fitness] .p-card.red .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #ff7b70, #e5372c); } [data-app=fitness] .p-card.red small:is([data-theme="light"] *) { color: #a3241a; } [data-app=fitness] .p-card.red > span:is([data-theme="light"] *) { color: rgba(80, 10, 0, 0.72); }
+[data-app=fitness] .p-card.blue:is([data-theme="light"] *) { background: linear-gradient(160deg, #e8f1ff, #cfe0ff); } [data-app=fitness] .p-card.blue .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } [data-app=fitness] .p-card.blue small:is([data-theme="light"] *) { color: #1f4fa8; } [data-app=fitness] .p-card.blue > span:is([data-theme="light"] *) { color: rgba(10, 30, 80, 0.72); }
+[data-app=fitness] .p-card.green:is([data-theme="light"] *) { background: linear-gradient(160deg, #e9fbf0, #c6f0d7); } [data-app=fitness] .p-card.green .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #4fdc8e, #1fa75a); } [data-app=fitness] .p-card.green small:is([data-theme="light"] *) { color: #127a40; } [data-app=fitness] .p-card.green > span:is([data-theme="light"] *) { color: rgba(10, 60, 30, 0.72); }
 /* every day: a square each */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal { padding: 14px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid { display: grid; grid-template-columns: repeat(var(--n, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid i, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key i { display: block; aspect-ratio: 1; border-radius: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key i { width: 9px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l0 { background: color-mix(in srgb, var(--tint) 9%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l1 { background: color-mix(in srgb, var(--tint) 25%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l2 { background: color-mix(in srgb, var(--tint) 45%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l3 { background: color-mix(in srgb, var(--tint) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l4 { background: var(--tint-deep); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid i.future { background: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 11px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-months { position: relative; flex: 1; height: 14px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-months span { position: absolute; left: calc(var(--c) / var(--n, 26) * 100%); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key { display: inline-flex; align-items: center; gap: 3px; }
+[data-app=fitness] .p-cal { padding: 14px; }
+[data-app=fitness] .p-cal-grid { display: grid; grid-template-columns: repeat(var(--n, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: 3px; }
+[data-app=fitness] .p-cal-grid i, [data-app=fitness] .p-cal-key i { display: block; aspect-ratio: 1; border-radius: 2px; }
+[data-app=fitness] .p-cal-key i { width: 9px; }
+[data-app=fitness] .l0 { background: color-mix(in srgb, var(--tint) 9%, transparent); } [data-app=fitness] .l1 { background: color-mix(in srgb, var(--tint) 25%, transparent); } [data-app=fitness] .l2 { background: color-mix(in srgb, var(--tint) 45%, transparent); }
+[data-app=fitness] .l3 { background: color-mix(in srgb, var(--tint) 70%, transparent); } [data-app=fitness] .l4 { background: var(--tint-deep); } [data-app=fitness] .p-cal-grid i.future { background: none; }
+[data-app=fitness] .p-cal-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 11px; color: var(--text-3); }
+[data-app=fitness] .p-cal-months { position: relative; flex: 1; height: 14px; } [data-app=fitness] .p-cal-months span { position: absolute; left: calc(var(--c) / var(--n, 26) * 100%); }
+[data-app=fitness] .p-cal-key { display: inline-flex; align-items: center; gap: 3px; }
 /* the sheets: Power, Training, Engine */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-kick { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 2px; flex-wrap: wrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-head b { font: 700 44px/1 var(--font-d); letter-spacing: -1.5px; font-variant-numeric: tabular-nums; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-head b u { text-decoration: none; font-size: 18px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-head > span { font-size: 16px; font-weight: 600; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gain { padding: 3px 9px; border-radius: 9px; background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good-text); font-size: 13px; font-weight: 700; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-head .p-gain { margin-left: auto; font-size: 14px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gain.down { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-when { display: block; font-size: 13px; line-height: 1.45; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff { display: block; margin: 8px 0 4px; overflow: visible; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .ftp { stroke: #e3a20f; stroke-dasharray: 4 4; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .ftpl { font-size: 10px; fill: #b07a00; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .was { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 3 4; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .now { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .cross { stroke: var(--text); stroke-opacity: 0.25; stroke-dasharray: 2 3; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .halo { fill: var(--tint); opacity: 0.2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .pt { fill: #fff; stroke: var(--tint); stroke-width: 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .lab, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .lab, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .lab { font-size: 10px; fill: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens button { min-height: 36px; border: 0; border-radius: 12px; background: var(--glass-ctl); color: var(--text-2); font: 600 13px/1 var(--font); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens button.on { background: var(--tint); color: #fff; box-shadow: 0 6px 14px -8px var(--tint); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend span { display: inline-flex; align-items: center; gap: 6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i { width: 12px; height: 10px; border-radius: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.now { height: 3px; width: 16px; background: linear-gradient(90deg, #7c5cf0, #1fa7c8); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.was { height: 0; width: 16px; border-top: 2px dashed var(--text-3); border-radius: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.easy, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar i.easy { background: linear-gradient(180deg, #6aa6ff, #2f7af0); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.mid, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar i.mid { background: #e9b52a; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.hard, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar i.hard { background: linear-gradient(180deg, #ff7b70, #e5372c); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.unknown, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar i.unknown { background: color-mix(in srgb, var(--text) 18%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record { position: relative; display: grid; gap: 3px; justify-items: start; padding: 14px; border: 0; border-radius: 22px; text-align: left; font: inherit; color: var(--text); background: var(--sheen), var(--glass); box-shadow: var(--edge); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record > svg { color: var(--text-3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record small { font-size: 12px; font-weight: 700; color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record small.d { font-weight: 500; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record b { font: 700 24px/1.1 var(--font-d); letter-spacing: -0.4px; }
+[data-app=fitness] .p-kick { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); }
+[data-app=fitness] .p-head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 2px; flex-wrap: wrap; }
+[data-app=fitness] .p-head b { font: 700 44px/1 var(--font-d); letter-spacing: -1.5px; font-variant-numeric: tabular-nums; } [data-app=fitness] .p-head b u { text-decoration: none; font-size: 18px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
+[data-app=fitness] .p-head > span { font-size: 16px; font-weight: 600; color: var(--text-2); }
+[data-app=fitness] .p-gain { padding: 3px 9px; border-radius: 9px; background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good-text); font-size: 13px; font-weight: 700; }
+[data-app=fitness] .p-head .p-gain { margin-left: auto; font-size: 14px; } [data-app=fitness] .p-gain.down { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+[data-app=fitness] .p-when { display: block; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+[data-app=fitness] .p-curve, [data-app=fitness] .p-ftp, [data-app=fitness] .p-eff { display: block; margin: 8px 0 4px; overflow: visible; }
+[data-app=fitness] .p-curve .ftp { stroke: #e3a20f; stroke-dasharray: 4 4; } [data-app=fitness] .p-curve .ftpl { font-size: 10px; fill: #b07a00; }
+[data-app=fitness] .p-curve .was { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 3 4; } [data-app=fitness] .p-curve .now { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+[data-app=fitness] .p-curve .cross { stroke: var(--text); stroke-opacity: 0.25; stroke-dasharray: 2 3; } [data-app=fitness] .p-curve .halo { fill: var(--tint); opacity: 0.2; } [data-app=fitness] .p-curve .pt { fill: #fff; stroke: var(--tint); stroke-width: 3; }
+[data-app=fitness] .p-curve .lab, [data-app=fitness] .p-ftp .lab, [data-app=fitness] .p-eff .lab { font-size: 10px; fill: var(--text-3); }
+[data-app=fitness] .p-lens { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+[data-app=fitness] .p-lens button { min-height: 36px; border: 0; border-radius: 12px; background: var(--glass-ctl); color: var(--text-2); font: 600 13px/1 var(--font); }
+[data-app=fitness] .p-lens button.on { background: var(--tint); color: #fff; box-shadow: 0 6px 14px -8px var(--tint); }
+[data-app=fitness] .p-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+[data-app=fitness] .p-legend span { display: inline-flex; align-items: center; gap: 6px; } [data-app=fitness] .p-legend i { width: 12px; height: 10px; border-radius: 3px; }
+[data-app=fitness] .p-legend i.now { height: 3px; width: 16px; background: linear-gradient(90deg, #7c5cf0, #1fa7c8); } [data-app=fitness] .p-legend i.was { height: 0; width: 16px; border-top: 2px dashed var(--text-3); border-radius: 0; }
+[data-app=fitness] .p-legend i.easy, [data-app=fitness] .p-wbar i.easy { background: linear-gradient(180deg, #6aa6ff, #2f7af0); } [data-app=fitness] .p-legend i.mid, [data-app=fitness] .p-wbar i.mid { background: #e9b52a; }
+[data-app=fitness] .p-legend i.hard, [data-app=fitness] .p-wbar i.hard { background: linear-gradient(180deg, #ff7b70, #e5372c); } [data-app=fitness] .p-legend i.unknown, [data-app=fitness] .p-wbar i.unknown { background: color-mix(in srgb, var(--text) 18%, transparent); }
+[data-app=fitness] .p-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+[data-app=fitness] .p-record { position: relative; display: grid; gap: 3px; justify-items: start; padding: 14px; border: 0; border-radius: 22px; text-align: left; font: inherit; color: var(--text); background: var(--sheen), var(--glass); box-shadow: var(--edge); }
+[data-app=fitness] .p-record > svg { color: var(--text-3); } [data-app=fitness] .p-record small { font-size: 12px; font-weight: 700; color: var(--text-2); } [data-app=fitness] .p-record small.d { font-weight: 500; }
+[data-app=fitness] .p-record b { font: 700 24px/1.1 var(--font-d); letter-spacing: -0.4px; }
 /* (a new record: in the indigo of Progress's own card, by night and by day) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new > svg { color: #a9a4ff; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small { color: #bdb8ff; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small.d { color: var(--text-2); }
+[data-app=fitness] .p-record.new { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
+[data-app=fitness] .p-record.new > svg { color: #a9a4ff; } [data-app=fitness] .p-record.new small { color: #bdb8ff; } [data-app=fitness] .p-record.new small.d { color: var(--text-2); }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new:not([data-theme="dark"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new > svg:not([data-theme="dark"] *) { color: #5856d6; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small:not([data-theme="dark"] *) { color: #4a46b8; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small.d:not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.65); }
+  [data-app=fitness] .p-record.new:not([data-theme="dark"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+  [data-app=fitness] .p-record.new > svg:not([data-theme="dark"] *) { color: #5856d6; } [data-app=fitness] .p-record.new small:not([data-theme="dark"] *) { color: #4a46b8; } [data-app=fitness] .p-record.new small.d:not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.65); }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new > svg { color: #5856d6; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small { color: #4a46b8; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-record.new small.d { color: rgba(30, 28, 80, 0.65); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-new { position: absolute; top: 12px; right: 12px; padding: 2px 8px; border-radius: 999px; background: #1fa75a; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider { display: flex; align-items: center; gap: 14px; padding: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider .tx { display: grid; gap: 6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider b { font: 700 20px/1.2 var(--font-d); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider span { font-size: 14px; line-height: 1.45; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar { flex: none; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .grid { fill: none; stroke: var(--line); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .shape { stroke: var(--tint); stroke-width: 2.5; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar text { font-size: 10px; font-weight: 700; fill: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head b { display: block; font: 700 28px/1.1 var(--font-d); letter-spacing: -0.6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
+[data-app=fitness] .p-record.new:is([data-theme="light"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+[data-app=fitness] .p-record.new > svg:is([data-theme="light"] *) { color: #5856d6; } [data-app=fitness] .p-record.new small:is([data-theme="light"] *) { color: #4a46b8; } [data-app=fitness] .p-record.new small.d:is([data-theme="light"] *) { color: rgba(30, 28, 80, 0.65); }
+[data-app=fitness] .p-new { position: absolute; top: 12px; right: 12px; padding: 2px 8px; border-radius: 999px; background: #1fa75a; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; }
+[data-app=fitness] .p-rider { display: flex; align-items: center; gap: 14px; padding: 16px; }
+[data-app=fitness] .p-rider .tx { display: grid; gap: 6px; } [data-app=fitness] .p-rider b { font: 700 20px/1.2 var(--font-d); } [data-app=fitness] .p-rider span { font-size: 14px; line-height: 1.45; color: var(--text-2); }
+[data-app=fitness] .p-radar { flex: none; } [data-app=fitness] .p-radar .grid { fill: none; stroke: var(--line); } [data-app=fitness] .p-radar .shape { stroke: var(--tint); stroke-width: 2.5; stroke-linejoin: round; }
+[data-app=fitness] .p-radar text { font-size: 10px; font-weight: 700; fill: var(--text-2); }
+[data-app=fitness] .p-train-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+[data-app=fitness] .p-train-head b { display: block; font: 700 28px/1.1 var(--font-d); letter-spacing: -0.6px; } [data-app=fitness] .p-train-head b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
 /* (the weeks' chart: hour lines with their hours on the right, the average dashed across, each week one rounded column
    split by zone, a dot for a week off, this week softer while it's still going, and the months under) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wchart { margin-top: 18px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbars { position: relative; display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; align-items: end; height: 150px; padding-right: 30px; border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wgrid, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wavg { position: absolute; left: 0; right: 30px; bottom: var(--y); height: 0; border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent); pointer-events: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wgrid u, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wavg u { position: absolute; right: -30px; width: 26px; text-align: right; top: -6px; font-size: 10px; line-height: 1; text-decoration: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wavg { z-index: 2; border-top: 1.5px dashed color-mix(in srgb, var(--text) 55%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wavg u { top: -7px; width: auto; padding: 1px 4px; border-radius: 5px; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--text) 14%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wcol { display: flex; flex-direction: column; width: 100%; max-width: 12px; height: var(--h); min-height: 4px; border-radius: 4px; overflow: hidden; gap: 1.5px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wcol i { display: block; flex: var(--f) 1 0; min-height: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar.off::after { content: ""; width: 4px; height: 4px; margin-bottom: 3px; border-radius: 50%; background: color-mix(in srgb, var(--text) 18%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wbar.now .p-wcol { opacity: 0.5; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wmonths { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; padding: 6px 30px 0 0; font-size: 10px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-wmonths span { white-space: nowrap; overflow: visible; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini { display: grid; gap: 6px; align-content: start; padding: 16px; border-radius: 24px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini b { font-size: 16px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini small { font-size: 13px; line-height: 1.35; }
+[data-app=fitness] .p-wchart { margin-top: 18px; }
+[data-app=fitness] .p-wbars { position: relative; display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; align-items: end; height: 150px; padding-right: 30px; border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, transparent); }
+[data-app=fitness] .p-wgrid, [data-app=fitness] .p-wavg { position: absolute; left: 0; right: 30px; bottom: var(--y); height: 0; border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent); pointer-events: none; }
+[data-app=fitness] .p-wgrid u, [data-app=fitness] .p-wavg u { position: absolute; right: -30px; width: 26px; text-align: right; top: -6px; font-size: 10px; line-height: 1; text-decoration: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
+[data-app=fitness] .p-wavg { z-index: 2; border-top: 1.5px dashed color-mix(in srgb, var(--text) 55%, transparent); }
+[data-app=fitness] .p-wavg u { top: -7px; width: auto; padding: 1px 4px; border-radius: 5px; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--text) 14%, transparent); }
+[data-app=fitness] .p-wbar { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+[data-app=fitness] .p-wcol { display: flex; flex-direction: column; width: 100%; max-width: 12px; height: var(--h); min-height: 4px; border-radius: 4px; overflow: hidden; gap: 1.5px; }
+[data-app=fitness] .p-wcol i { display: block; flex: var(--f) 1 0; min-height: 2px; }
+[data-app=fitness] .p-wbar.off::after { content: ""; width: 4px; height: 4px; margin-bottom: 3px; border-radius: 50%; background: color-mix(in srgb, var(--text) 18%, transparent); }
+[data-app=fitness] .p-wbar.now .p-wcol { opacity: 0.5; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent); }
+[data-app=fitness] .p-wmonths { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px; padding: 6px 30px 0 0; font-size: 10px; color: var(--text-3); }
+[data-app=fitness] .p-wmonths span { white-space: nowrap; overflow: visible; }
+[data-app=fitness] .p-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0 0; }
+[data-app=fitness] .p-mini { display: grid; gap: 6px; align-content: start; padding: 16px; border-radius: 24px; }
+[data-app=fitness] .p-mini b { font-size: 16px; } [data-app=fitness] .p-mini small { font-size: 13px; line-height: 1.35; }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green small:not([data-theme="dark"] *) { color: rgba(10, 60, 30, 0.72); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green .p-ring .bg:not([data-theme="dark"] *) { stroke: rgba(20, 120, 60, 0.15); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green .p-ring text:not([data-theme="dark"] *) { fill: #0f5a31; }
+  [data-app=fitness] .p-mini.green:not([data-theme="dark"] *) { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } [data-app=fitness] .p-mini.green small:not([data-theme="dark"] *) { color: rgba(10, 60, 30, 0.72); }
+  [data-app=fitness] .p-mini.green .p-ring .bg:not([data-theme="dark"] *) { stroke: rgba(20, 120, 60, 0.15); } [data-app=fitness] .p-mini.green .p-ring text:not([data-theme="dark"] *) { fill: #0f5a31; }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green small { color: rgba(10, 60, 30, 0.72); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green .p-ring .bg { stroke: rgba(20, 120, 60, 0.15); } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.green .p-ring text { fill: #0f5a31; }
+[data-app=fitness] .p-mini.green:is([data-theme="light"] *) { background: linear-gradient(160deg, #e9fbf0, #c9f2da); color: #0d1020; box-shadow: none; } [data-app=fitness] .p-mini.green small:is([data-theme="light"] *) { color: rgba(10, 60, 30, 0.72); }
+[data-app=fitness] .p-mini.green .p-ring .bg:is([data-theme="light"] *) { stroke: rgba(20, 120, 60, 0.15); } [data-app=fitness] .p-mini.green .p-ring text:is([data-theme="light"] *) { fill: #0f5a31; }
 /* (the run of weeks: in Progress's indigo, as new records are, by night and by day) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange small { color: var(--text-2); }
+[data-app=fitness] .p-mini.orange { background: linear-gradient(160deg, rgba(94, 92, 230, 0.34), rgba(120, 86, 220, 0.2)), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35); color: var(--text); }
+[data-app=fitness] .p-mini.orange small { color: var(--text-2); }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange:not([data-theme="dark"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange small:not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.65); }
+  [data-app=fitness] .p-mini.orange:not([data-theme="dark"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+  [data-app=fitness] .p-mini.orange small:not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.65); }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mini.orange small { color: rgba(30, 28, 80, 0.65); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-steps { display: flex; gap: 4px; align-items: flex-end; height: 56px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-steps i { width: 12px; height: var(--h); border-radius: 4px; background: linear-gradient(180deg, #a9a4ff, #5e5ce6); opacity: var(--o); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mix { display: flex; align-items: center; gap: 16px; padding: 18px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mix .tx { flex: 1; display: grid; gap: 8px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-mix .tx small { font-size: 12px; line-height: 1.4; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key { display: flex; align-items: center; gap: 8px; font-size: 14px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key span { flex: 1; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key i { width: 10px; height: 10px; border-radius: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key i.easy { background: #2f7af0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key i.mid { background: #e9b52a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-key i.hard { background: #e5372c; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut circle { fill: none; stroke-width: 18; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut .easy { stroke: #2f7af0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut .mid { stroke: #e9b52a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut .hard { stroke: #e5372c; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut .big { font-size: 22px; font-weight: 800; fill: var(--text); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-donut .sm { font-size: 11px; font-weight: 600; fill: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month { display: grid; gap: 2px; padding: 14px; border-radius: 20px; background: var(--sheen), var(--glass); box-shadow: var(--edge); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month small { font-size: 12px; color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month small:first-child { font-weight: 700; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month b { font-size: 20px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--tint) 0 var(--w), var(--glass-ctl) var(--w)); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now { box-shadow: var(--edge), 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now small:first-child { color: var(--tint-text); }
+[data-app=fitness] .p-mini.orange:is([data-theme="light"] *) { background: linear-gradient(160deg, #eef0ff, #dcd8ff); box-shadow: inset 0 0 0 0.5px rgba(88, 86, 214, 0.18); color: #0d1020; }
+[data-app=fitness] .p-mini.orange small:is([data-theme="light"] *) { color: rgba(30, 28, 80, 0.65); }
+[data-app=fitness] .p-steps { display: flex; gap: 4px; align-items: flex-end; height: 56px; }
+[data-app=fitness] .p-steps i { width: 12px; height: var(--h); border-radius: 4px; background: linear-gradient(180deg, #a9a4ff, #5e5ce6); opacity: var(--o); }
+[data-app=fitness] .p-mix { display: flex; align-items: center; gap: 16px; padding: 18px; }
+[data-app=fitness] .p-mix .tx { flex: 1; display: grid; gap: 8px; } [data-app=fitness] .p-mix .tx small { font-size: 12px; line-height: 1.4; color: var(--text-2); }
+[data-app=fitness] .p-key { display: flex; align-items: center; gap: 8px; font-size: 14px; } [data-app=fitness] .p-key span { flex: 1; } [data-app=fitness] .p-key i { width: 10px; height: 10px; border-radius: 3px; }
+[data-app=fitness] .p-key i.easy { background: #2f7af0; } [data-app=fitness] .p-key i.mid { background: #e9b52a; } [data-app=fitness] .p-key i.hard { background: #e5372c; }
+[data-app=fitness] .p-donut circle { fill: none; stroke-width: 18; } [data-app=fitness] .p-donut .easy { stroke: #2f7af0; } [data-app=fitness] .p-donut .mid { stroke: #e9b52a; } [data-app=fitness] .p-donut .hard { stroke: #e5372c; }
+[data-app=fitness] .p-donut .big { font-size: 22px; font-weight: 800; fill: var(--text); } [data-app=fitness] .p-donut .sm { font-size: 11px; font-weight: 600; fill: var(--text-3); }
+[data-app=fitness] .p-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+[data-app=fitness] .p-month { display: grid; gap: 2px; padding: 14px; border-radius: 20px; background: var(--sheen), var(--glass); box-shadow: var(--edge); }
+[data-app=fitness] .p-month small { font-size: 12px; color: var(--text-2); } [data-app=fitness] .p-month small:first-child { font-weight: 700; } [data-app=fitness] .p-month b { font-size: 20px; }
+[data-app=fitness] .p-month i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--tint) 0 var(--w), var(--glass-ctl) var(--w)); }
+[data-app=fitness] .p-month.now { box-shadow: var(--edge), 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); } [data-app=fitness] .p-month.now small:first-child { color: var(--tint-text); }
 /* (FTP's card: in Progress's indigo, as new records are, by night and by day) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard { display: grid; gap: 4px; padding: 20px; border-radius: 28px; color: var(--text);
+[data-app=fitness] .p-ftpcard { display: grid; gap: 4px; padding: 20px; border-radius: 28px; color: var(--text);
   background: linear-gradient(165deg, rgba(94, 92, 230, 0.34) 0%, rgba(120, 86, 220, 0.16) 100%), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35), 0 18px 36px -28px rgba(94, 92, 230, 0.6); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-kick { color: #bdb8ff; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-head > span, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-head b u { color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-when { color: var(--text-2); line-height: 1.4; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .ln { fill: none; stroke: #a9a4ff; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .est { fill: #a9a4ff; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .set { fill: var(--bg, #1a1c28); stroke: #a9a4ff; stroke-width: 2.5; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .lab { fill: var(--text-3); }
+[data-app=fitness] .p-ftpcard .p-kick { color: #bdb8ff; } [data-app=fitness] .p-ftpcard .p-head > span, [data-app=fitness] .p-ftpcard .p-head b u { color: var(--text-2); } [data-app=fitness] .p-ftpcard .p-when { color: var(--text-2); line-height: 1.4; }
+[data-app=fitness] .p-ftp .ln { fill: none; stroke: #a9a4ff; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; } [data-app=fitness] .p-ftp .est { fill: #a9a4ff; } [data-app=fitness] .p-ftp .set { fill: var(--bg, #1a1c28); stroke: #a9a4ff; stroke-width: 2.5; } [data-app=fitness] .p-ftp .lab { fill: var(--text-3); }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard:not([data-theme="dark"] *) { background: linear-gradient(165deg, #eef0ff 0%, #dcd8ff 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(80, 70, 200, 0.6); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-kick:not([data-theme="dark"] *) { color: #4a46b8; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when):not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.66); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp :is(.ln, .set):not([data-theme="dark"] *) { stroke: #5856d6; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .est:not([data-theme="dark"] *) { fill: #5856d6; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .set:not([data-theme="dark"] *) { fill: #fff; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .lab:not([data-theme="dark"] *) { fill: rgba(30, 28, 80, 0.55); }
+  [data-app=fitness] .p-ftpcard:not([data-theme="dark"] *) { background: linear-gradient(165deg, #eef0ff 0%, #dcd8ff 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(80, 70, 200, 0.6); }
+  [data-app=fitness] .p-ftpcard .p-kick:not([data-theme="dark"] *) { color: #4a46b8; } [data-app=fitness] :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when):not([data-theme="dark"] *) { color: rgba(30, 28, 80, 0.66); }
+  [data-app=fitness] .p-ftp :is(.ln, .set):not([data-theme="dark"] *) { stroke: #5856d6; } [data-app=fitness] .p-ftp .est:not([data-theme="dark"] *) { fill: #5856d6; } [data-app=fitness] .p-ftp .set:not([data-theme="dark"] *) { fill: #fff; } [data-app=fitness] .p-ftp .lab:not([data-theme="dark"] *) { fill: rgba(30, 28, 80, 0.55); }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard { background: linear-gradient(165deg, #eef0ff 0%, #dcd8ff 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(80, 70, 200, 0.6); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard .p-kick { color: #4a46b8; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when) { color: rgba(30, 28, 80, 0.66); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp :is(.ln, .set) { stroke: #5856d6; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .est { fill: #5856d6; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .set { fill: #fff; } [data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .lab { fill: rgba(30, 28, 80, 0.55); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-effcard, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-stay { display: grid; gap: 6px; padding: 20px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-row { display: flex; justify-content: space-between; align-items: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-title { font: 700 21px/1.2 var(--font-d); letter-spacing: -0.3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .band { fill: color-mix(in srgb, #e5372c 14%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .trend { stroke: #e5372c; stroke-width: 3; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .pt { fill: #e5372c; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .last { fill: var(--glass-strong); stroke: #d22a20; stroke-width: 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials:has(> div:only-child) { grid-template-columns: minmax(0, 1fr); }   /* (one dial alone: in the middle, not off to one side) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials > div { display: grid; justify-items: center; gap: 2px; text-align: center; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials b { font-size: 22px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials small { font-size: 12px; line-height: 1.35; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gauge .needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gauge .hub { fill: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg { stroke: var(--glass-ctl); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { stroke: var(--tint); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc text { font-size: 20px; font-weight: 800; fill: var(--text); }
+[data-app=fitness] .p-ftpcard:is([data-theme="light"] *) { background: linear-gradient(165deg, #eef0ff 0%, #dcd8ff 100%); color: #0d1020; box-shadow: 0 18px 36px -28px rgba(80, 70, 200, 0.6); }
+[data-app=fitness] .p-ftpcard .p-kick:is([data-theme="light"] *) { color: #4a46b8; } [data-app=fitness] :is(.p-ftpcard .p-head > span, .p-ftpcard .p-head b u, .p-ftpcard .p-when):is([data-theme="light"] *) { color: rgba(30, 28, 80, 0.66); }
+[data-app=fitness] .p-ftp :is(.ln, .set):is([data-theme="light"] *) { stroke: #5856d6; } [data-app=fitness] .p-ftp .est:is([data-theme="light"] *) { fill: #5856d6; } [data-app=fitness] .p-ftp .set:is([data-theme="light"] *) { fill: #fff; } [data-app=fitness] .p-ftp .lab:is([data-theme="light"] *) { fill: rgba(30, 28, 80, 0.55); }
+[data-app=fitness] .p-effcard, [data-app=fitness] .p-stay { display: grid; gap: 6px; padding: 20px; }
+[data-app=fitness] .p-row { display: flex; justify-content: space-between; align-items: center; }
+[data-app=fitness] .p-title { font: 700 21px/1.2 var(--font-d); letter-spacing: -0.3px; }
+[data-app=fitness] .p-eff .band { fill: color-mix(in srgb, #e5372c 14%, transparent); } [data-app=fitness] .p-eff .trend { stroke: #e5372c; stroke-width: 3; stroke-linecap: round; }
+[data-app=fitness] .p-eff .pt { fill: #e5372c; } [data-app=fitness] .p-eff .last { fill: var(--glass-strong); stroke: #d22a20; stroke-width: 3; }
+[data-app=fitness] .p-dials { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0; }
+[data-app=fitness] .p-dials:has(> div:only-child) { grid-template-columns: minmax(0, 1fr); }   /* (one dial alone: in the middle, not off to one side) */
+[data-app=fitness] .p-dials > div { display: grid; justify-items: center; gap: 2px; text-align: center; } [data-app=fitness] .p-dials b { font-size: 22px; } [data-app=fitness] .p-dials small { font-size: 12px; line-height: 1.35; color: var(--text-2); }
+[data-app=fitness] .p-gauge .needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; } [data-app=fitness] .p-gauge .hub { fill: var(--text); }
+[data-app=fitness] .p-arc .bg, [data-app=fitness] .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } [data-app=fitness] .p-arc .bg { stroke: var(--glass-ctl); } [data-app=fitness] .p-arc .fg { stroke: var(--tint); }
+[data-app=fitness] .p-arc text { font-size: 20px; font-weight: 800; fill: var(--text); }
 /* a route on a real map (map.js): rounded like a card, its credit in a corner; the whole sheet, to explore */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-gl { position: relative; width: 100%; aspect-ratio: 1 / 0.66; border-radius: 22px; overflow: hidden; cursor: pointer; background: color-mix(in srgb, var(--text) 6%, transparent);
+[data-app=fitness] .map-gl { position: relative; width: 100%; aspect-ratio: 1 / 0.66; border-radius: 22px; overflow: hidden; cursor: pointer; background: color-mix(in srgb, var(--text) 6%, transparent);
   box-shadow: inset 0 0 0 0.5px var(--line); -webkit-tap-highlight-color: transparent; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-gl .maplibregl-canvas { outline: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-gl.big { aspect-ratio: auto; height: calc(100svh - 200px - env(safe-area-inset-bottom)); min-height: 360px; cursor: grab; }
+[data-app=fitness] .map-gl .maplibregl-canvas { outline: none; }
+[data-app=fitness] .map-gl.big { aspect-ratio: auto; height: calc(100svh - 200px - env(safe-area-inset-bottom)); min-height: 360px; cursor: grab; }
 /* (the map's credits: a ©, opening out to the left into the names when tapped, as on Weather's map) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; cursor: pointer;
+[data-app=fitness] .map-credit { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; cursor: pointer;
   color: #fff; font: inherit; font-size: 11px; line-height: 1; background: rgba(28, 30, 36, 0.72); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.18); -webkit-tap-highlight-color: transparent; transition: transform 0.42s var(--spring, ease); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit::after { content: ""; position: absolute; inset: -9px; border-radius: inherit; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit > .mc-c { position: relative; z-index: 2; font-size: 13px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit .mc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; height: 26px; padding: 0 28px 0 10px; display: flex; align-items: center; border-radius: 13px; white-space: pre;
+[data-app=fitness] .map-credit::after { content: ""; position: absolute; inset: -9px; border-radius: inherit; }
+[data-app=fitness] .map-credit > .mc-c { position: relative; z-index: 2; font-size: 13px; font-weight: 600; }
+[data-app=fitness] .map-credit .mc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; height: 26px; padding: 0 28px 0 10px; display: flex; align-items: center; border-radius: 13px; white-space: pre;
   color: inherit; background: rgba(28, 30, 36, 0.86); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.18);
   clip-path: inset(0 round 13px); transition: clip-path 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s; pointer-events: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit.folded .mc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit:active { transform: scale(0.88); transition-duration: 0.1s; }
+[data-app=fitness] .map-credit.folded .mc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
+[data-app=fitness] .map-credit:active { transform: scale(0.88); transition-duration: 0.1s; }
 @media (prefers-color-scheme: light) {
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit:not([data-theme="dark"] *) { color: #1c1c1e; background: rgba(255, 255, 255, 0.78); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
-  :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit .mc-t:not([data-theme="dark"] *) { background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+  [data-app=fitness] .map-credit:not([data-theme="dark"] *) { color: #1c1c1e; background: rgba(255, 255, 255, 0.78); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+  [data-app=fitness] .map-credit .mc-t:not([data-theme="dark"] *) { background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
 }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit { color: #1c1c1e; background: rgba(255, 255, 255, 0.78); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
-[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit .mc-t { background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
-@media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-credit .mc-t { transition: none; } }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-open { position: absolute; z-index: 2; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--text);
+[data-app=fitness] .map-credit:is([data-theme="light"] *) { color: #1c1c1e; background: rgba(255, 255, 255, 0.78); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+[data-app=fitness] .map-credit .mc-t:is([data-theme="light"] *) { background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+@media (prefers-reduced-motion: reduce) { [data-app=fitness] .map-credit, [data-app=fitness] .map-credit .mc-t { transition: none; } }
+[data-app=fitness] .map-open { position: absolute; z-index: 2; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--text);
   background: color-mix(in srgb, var(--glass-strong) 80%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: var(--edge); pointer-events: none; }
 
 /* ---- a picture to share: drawn, then shown, then shared ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame { display: grid; place-items: center; aspect-ratio: 4 / 5; margin-bottom: 16px; border-radius: 26px; overflow: hidden; background: linear-gradient(160deg, #1b1840, #0b0d20); box-shadow: var(--edge), 0 18px 50px rgba(0, 0, 0, 0.25); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(0.97); transition: opacity 0.5s var(--ease-out), transform 0.6s var(--ease-spring, var(--ease-out)); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-img.in { opacity: 1; transform: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame:has(.share-img:not(.in))::after { content: ""; width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: fx-spin 0.8s linear infinite; grid-area: 1 / 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame .share-img { grid-area: 1 / 1; }
+[data-app=fitness] .share-frame { display: grid; place-items: center; aspect-ratio: 4 / 5; margin-bottom: 16px; border-radius: 26px; overflow: hidden; background: linear-gradient(160deg, #1b1840, #0b0d20); box-shadow: var(--edge), 0 18px 50px rgba(0, 0, 0, 0.25); }
+[data-app=fitness] .share-img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(0.97); transition: opacity 0.5s var(--ease-out), transform 0.6s var(--ease-spring, var(--ease-out)); }
+[data-app=fitness] .share-img.in { opacity: 1; transform: none; }
+[data-app=fitness] .share-frame:has(.share-img:not(.in))::after { content: ""; width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: fx-spin 0.8s linear infinite; grid-area: 1 / 1; }
+[data-app=fitness] .share-frame .share-img { grid-area: 1 / 1; }
 @keyframes fx-spin { to { transform: rotate(360deg); } }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-said { text-align: center; margin-top: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .btn svg { vertical-align: -3px; margin-right: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .act-links { display: flex; gap: 18px; align-items: center; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .act-links .link svg { vertical-align: -2px; margin-right: 4px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-year { margin-top: 18px; }
-@media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-img { transition: none; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame::after { animation: none; } }
+[data-app=fitness] .share-said { text-align: center; margin-top: 10px; }
+[data-app=fitness] .btn svg { vertical-align: -3px; margin-right: 8px; }
+[data-app=fitness] .act-links { display: flex; gap: 18px; align-items: center; } [data-app=fitness] .act-links .link svg { vertical-align: -2px; margin-right: 4px; }
+[data-app=fitness] .share-year { margin-top: 18px; }
+@media (prefers-reduced-motion: reduce) { [data-app=fitness] .share-img { transition: none; } [data-app=fitness] .share-frame::after { animation: none; } }
 
 
 /* ---- under the roof: what the port adds ---- */
 /* (Progress's line under the framework's header: the range and how many activities) */
-.m-fitness .p-since { margin: 0 4px 12px; color: var(--text-2); font-size: 14px; }
-.m-fitness .more-up { text-align: center; }
+[data-app=fitness] .p-since { margin: 0 4px 12px; color: var(--text-2); font-size: 14px; }
+[data-app=fitness] .more-up { text-align: center; }
 /* (a move kept by its own button, at the foot of its sheet) */
 .ifl-sheet[data-app=fitness] .mv-go { margin-top: 16px; }
 
@@ -395,7 +395,7 @@
 .ifl-sheet[data-app=fitness] .fxs-stepper .ifl-icon-btn { min-width: 44px; min-height: 44px; }
 .ifl-sheet[data-app=fitness] .fxs-n { min-width: 84px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ifl-sheet[data-app=fitness] .fxs-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--on-acc); background: var(--acc-fill); font-size: 14px; }
-.ifl-sheet[data-app=fitness] :is(.fxs-key, .fxs-connect, .fxs-leave, .fxs-sure) { display: grid; gap: 10px; }
+.ifl-sheet[data-app=fitness] .fxs-key, .ifl-sheet[data-app=fitness] .fxs-connect, .ifl-sheet[data-app=fitness] .fxs-leave, .ifl-sheet[data-app=fitness] .fxs-sure { display: grid; gap: 10px; }
 .ifl-sheet[data-app=fitness] .fxs-sure[hidden] { display: none; }
 .ifl-sheet[data-app=fitness] .fxs-strava { justify-content: center; text-decoration: none; }
 .ifl-sheet[data-app=fitness] .fxs-strava[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
