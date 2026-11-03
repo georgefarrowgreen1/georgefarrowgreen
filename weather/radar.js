@@ -1590,6 +1590,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       }
     },
     note(text) { line(q(".radar-note"), text || ""); },
+    // where the map is: its zoom (as Leaflet counts), range and metres a pixel, and its centre; null before it's made
+    state() {
+      if (!map) return null;
+      const s = map.state(), b = map.bounds?.();
+      return { ...s, centre: b ? { lat: (b[0][0] + b[1][0]) / 2, lon: (b[0][1] + b[1][1]) / 2 } : null };
+    },
     // a picture of the map as it is (a data URL), where its map can give one; else null. had: there's one already, so
     // not while it's moving by itself, playing or the wind flowing (it's drawn afresh every frame, so it'd be taken
     // again each time asked, for a picture that's only a moment of it anyway)
