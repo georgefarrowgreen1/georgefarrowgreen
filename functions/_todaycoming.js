@@ -1,7 +1,8 @@
 // Today's Coming Up (Today First, spec §7.6): the dated things of the next day, merged from what the answer has already
 // worked out (the rain and its heaviest hour, the market's close, the ride, an agreed call, rides offered within three
 // days, pigeons landing), asking nothing new of the weather, the markets or Chat. Pure: t is passed in.
-//   upcomingFor(cards, extra, t) → [{ at, app, title, sub, href, id, share?, sendCard? }], soonest first, none passed
+//   upcomingFor(cards, extra, t) → [{ at, app, title, sub, href, id, share?, sendCard?, late? }], soonest first, none
+//     passed but a ride not in yet (late: true, at its start), which the page keeps until the next answer
 // cards: the answer's four cards (functions/_todaycards.js cardsFor; the Markets card's hours, held apart on it as
 // forDay, where there); extra (functions/_todayday.js dayFor):
 //   tz       the account's zone, for the times in the words
@@ -13,8 +14,9 @@
 //   tomorrow the weather at 07:00 tomorrow ({ at, day, said, good }; the evening's), or null
 // Every row is what it says and when, never a word of a message and never a Chat place (a pigeon's row says when it
 // left, not where from). Rows with a card worth sending (the rain, the ride) carry share and sendCard. Nothing more than
-// 24 hours ahead, but rides offered for the next three days (to the end of Thursday, on a Monday); nothing past, but a ride with nothing in by its cap ("Not in
-// yet"), which stays until it's in or the day's done.
+// 24 hours ahead, but rides offered for the next three days (to the end of Thursday, on a Monday); nothing past, but a
+// ride with nothing in by its cap ("Not in yet", late: true, its at the ride's start, which has passed: the page's tick
+// keeps a late row, as it drops every other row whose time has come), which stays until it's in or the day's done.
 import { dayAfter } from "./_todaycards.js";
 
 const HOUR = 3600e3, DAY = 24 * HOUR, AHEAD = DAY, OFFERS_DAYS = 3;
@@ -30,7 +32,7 @@ const ORDER = { weather: 0, markets: 1, fitness: 2, chat: 3 };
 export function upcomingFor(cards, extra, t) {
   const x = extra || {}, tz = zone(x.tz || "Europe/London"), hm = (ms) => clock(tz).format(new Date(ms)), day = (ms) => dayKey(tz).format(new Date(ms));
   const lastDay = dayAfter(day(t), OFFERS_DAYS), rows = [], soon = (at, ahead = AHEAD) => Number.isFinite(at) && at > t && at <= t + ahead;
-  const keep = (o) => { const r = { at: o.at, app: o.app, title: o.title, sub: o.sub || "", href: o.href, id: o.id }; if (o.share) r.share = o.share; if (o.sendCard) r.sendCard = o.sendCard; rows.push(r); };
+  const keep = (o) => { const r = { at: o.at, app: o.app, title: o.title, sub: o.sub || "", href: o.href, id: o.id }; if (o.share) r.share = o.share; if (o.sendCard) r.sendCard = o.sendCard; if (o.late) r.late = true; rows.push(r); };
 
   // the rain reaching the place, and its heaviest hour
   const w = cards?.weather;
@@ -61,7 +63,7 @@ export function upcomingFor(cards, extra, t) {
     // (a ride with no name of its own is just a ride)
     const title = r.who ? `Ride with ${r.who}` : r.name && r.name !== "Ride" ? `Ride: ${r.name}` : "Ride", id = i ? `ride:${r.start}` : "ride";
     if (soon(r.start)) keep({ at: r.start, app: "fitness", title, sub: cap1(r.sub), href: "/fitness/#today", id, share: r.share, sendCard: r.sendCard });
-    else if (r.arrival == null && Number.isFinite(r.cap) && r.cap <= t) keep({ at: r.start, app: "fitness", title, sub: "Not in yet", href: "/fitness/#activities", id });
+    else if (r.arrival == null && Number.isFinite(r.cap) && r.cap <= t) keep({ at: r.start, app: "fitness", title, sub: "Not in yet", href: "/fitness/#activities", id, late: true });
   });
   // calls and meetings agreed in Chat
   for (const tm of Array.isArray(x.times) ? x.times : []) {

@@ -82,12 +82,15 @@ test("rides: explicit today; offered within three days, each said for what it is
 test("passed rows go; nothing more than a day ahead (but the offers); a ride not in by its cap says so and stays", () => {
   const ex = extra({ times: [CALL, { ...CALL, id: "tomorrow-call", start: at(8, 0, 3), stop: at(8, 30, 3) }, { ...CALL, id: "later", start: at(18, 0, 3), stop: at(18, 30, 3) }] });
   let rows = upcomingFor(cards(), ex, at(17, 30));
-  assert.ok(!rows.some((r) => r.at <= at(17, 30) && r.sub !== "Not in yet"), "nothing passed");
+  assert.ok(!rows.some((r) => r.at <= at(17, 30) && !r.late), "nothing passed");
+  assert.ok(rows.every((r) => !("late" in r)), "late only on a ride not in yet");
   assert.deepEqual(rows.filter((r) => r.app === "chat").map((r) => r.id), [`time:${CALL.id}`, "time:tomorrow-call"], "08:00 tomorrow within the day; 18:00 tomorrow isn't, at 17:30");
   assert.ok(!rows.some((r) => r.id === "ride"), "the ride, under way, isn't coming up");
   rows = upcomingFor(cards(), ex, at(18, 50));
   const notIn = rows.find((r) => r.id === "ride");
-  assert.deepEqual([notIn?.sub, notIn?.at, notIn?.href, "sendCard" in (notIn || {})], ["Not in yet", RIDE.start, "/fitness/#activities", false], "past its cap, nothing in");
+  assert.deepEqual([notIn?.sub, notIn?.at, notIn?.href, "sendCard" in (notIn || {}), notIn?.late], ["Not in yet", RIDE.start, "/fitness/#activities", false, true], "past its cap, nothing in");
+  // (the one row whose time has passed, said so by its flag, not its words: the page keeps a late row until the next answer)
+  assert.deepEqual(rows.filter((r) => r.at <= at(18, 50)).map((r) => [r.id, r.late]), [["ride", true]]);
   rows = upcomingFor(cards(), extra({ rides: [{ ...RIDE, arrival: at(18, 1) }] }), at(18, 50));
   assert.ok(!rows.some((r) => r.id === "ride"), "in: no row");
   // (sorted throughout)
