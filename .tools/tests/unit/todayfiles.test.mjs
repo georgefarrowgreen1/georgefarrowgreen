@@ -99,7 +99,11 @@ test('One roof: the CSP is the Worker’s PAGE_HEADERS’ and names exactly Weat
   assert.deepEqual(dir('img-src'), ["'self'", 'data:', 'blob:', ...list('IMAGES')]);
   assert.deepEqual(dir('frame-src'), ["'self'", ...mail], 'frame-src: this site and Mail’s Worker alone');
   assert.equal((csp.match(/https:/g) || []).length, list('CONNECT').length - 1 + list('IMAGES').length + (mail.length ? 2 : 0), 'no other site');
-  assert.match(h, /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(self\)\n/);
+  // (stage 3, where the inflite repo beside has it: Chats' camera (a friend's code), microphone (voice) and blob: media,
+  // this site alone; else none, as before)
+  const { MODS } = await import(ROOFJS), chats = !!MODS?.includes('chats');
+  assert.deepEqual(csp.includes('media-src') ? dir('media-src') : [], chats ? ["'self'", 'blob:'] : []);
+  assert.match(h, chats ? /Permissions-Policy: camera=\(self\), microphone=\(self\), geolocation=\(self\)\n/ : /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(self\)\n/);
   assert.match(h, /^\/roof\/\*\n  Cache-Control: no-cache$/m, 'the framework’s files never kept stale');
   const sw = String(pub('sw.js'));
   assert.ok(['today-app-3', 'today-app-4'].includes(/\nconst SHELL = "([^"]+)";/.exec(sw)?.[1]), 'today-app-3 (4 from stages 2–4)');
