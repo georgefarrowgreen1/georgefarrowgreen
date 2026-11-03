@@ -80,7 +80,7 @@ export async function serveKit(context, { main = new URL('../../../', import.met
     }
     if (chat && chat[1] === 'roof/core.js' && /(?:^|;\s*)kit-service=stub(?:;|$)/.test(cookie)) {
       const st = /(?:^|;\s*)kit-chat-state=(\w+)/.exec(cookie)?.[1] || 'ready';
-      return send(route, readFileSync(`${HERE}chatcore-stub.js`, 'utf8').replace('__KIT_STATE__', st), 'text/javascript');
+      return send(route, readFileSync(`${HERE}chatcore-stub.js`, 'utf8').replace('"__KIT_STATE__"', JSON.stringify(st)), 'text/javascript');
     }
     if (chat && !chat[1].startsWith('in/')) { const f = `${main}pigeon/${chat[1]}`; return fileOk(f) && !p.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
     const hub = /^\/(chats|fitness|markets|mail)\//.exec(p);
