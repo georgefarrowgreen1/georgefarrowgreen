@@ -2,13 +2,14 @@
 // inflite repo's email/public/roof/ exports CONTRACT 1, BUILD and NEWS equal to email/public/app.js's, SECTIONS equal to
 // the connector's and the router's; each file its frozen names, openers and view signatures; store's keys, api's methods
 // and the body frame's message constants as the spec fixes them; the connector says exactly the agreed words and lists
-// exactly the static import graph from mail.js (12 files) and the 3 stylesheets, with compose.js and signin.js as lazy;
-// every dynamic import sits in fw.lazy(; §5.1's rules hold over the module, which never writes HTML, never names the body
-// shell or posts a message but in bodyframe.js, makes blob: URLs only behind the pictures list, and never asks for a
-// message's body; the body shell's files, Mail's Worker's /body route and hub gate, wrangler.jsonc and _headers have
-// their stage-4 lines; Today's page has the Mail Notifications sheet; the kit's stand-in for Mail keeps the hub gate's
-// refusals. The byte budgets (§4.5) run once no file of the module is a stub. Skips with mailSkip's reason where the
-// inflite repo beside has no Mail module (email/public/roof/mail.js).
+// exactly the static import graph from mail.js (12 files) and the 3 stylesheets, with the four lazy files as lazy (Mail's
+// NET is none, s24-contracts §8); every dynamic import sits in fw.lazy(; §5.1's rules hold over the module (document and
+// window reached through ownerDocument, defaultView or a name for them count as themselves), which never writes HTML,
+// never names the body shell or posts a message but in bodyframe.js, makes blob: URLs only behind the pictures list,
+// and never asks for a message's body; the body shell's files, Mail's Worker's /body route and hub gate, wrangler.jsonc
+// and _headers have their stage-4 lines; Today's page has the Mail Notifications sheet; the kit's stand-in for Mail
+// keeps the hub gate's refusals and answers the page's exact origin only. The byte budgets (§4.5) run always, stubs and
+// all. Skips with mailSkip's reason where the inflite repo beside has no Mail module (email/public/roof/mail.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -62,7 +63,8 @@ const gz = (files) => gzipSync(files.map((f) => strip(read(f))).join('\n'), { le
 const SECTIONS = [['people', 'People'], ['updates', 'Updates'], ['later', 'Later'], ['done', 'Done']];
 const FILES = ['mail.js', 'store.js', 'api.js', 'logic.js', 'actions.js', 'list.js', 'rows.js', 'menus.js', 'icons.js', 'reader.js', 'bodyframe.js', 'outbox.js'].map((f) => `/mail/roof/${f}`);
 const CSS = ['mail.css', 'reader.css', 'mailsheets.css'].map((f) => `/mail/roof/${f}`);
-const LAZY = ['/mail/roof/compose.js', '/mail/roof/signin.js'];
+// (s24-contracts §8: Mail's NET is none, so lazy is every fw.lazy target less files; it overrides s4/spec §4.4's two)
+const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js'].map((f) => `/mail/roof/${f}`);
 const R = skip || fx.roofSkip ? null : await import(new URL('router.js', fx.ROOF));
 const { connector, CONNECTOR } = skip ? {} : await import(new URL('connector.js', MOD));
 const stubs = () => jsFiles().filter((f) => exportsOf(src(f)).has('STUB'));
@@ -129,10 +131,11 @@ test('each file exports its frozen names: openers, views, the store’s keys, th
   assert.match(store, /export const SESSION = \{ verifier: "mail:signin-verifier" \};/);
   // (the API: §4.7's methods, each in createApi's answer; MAIL by modules.js's rule)
   const api = src('api.js');
-  const METHODS = ['session', 'me', 'version', 'counts', 'settings', 'handback', 'threads', 'search', 'thread', 'meta', 'draft', 'batch', 'emptyTrash', 'unsubInfo', 'unsubscribe', 'remove', 'saveSettings', 'checkAddress', 'updateAddress', 'findContacts', 'saveDraft', 'sendDraft', 'sent', 'picture', 'fileUrl', 'rawUrl'];
+  const METHODS = ['session', 'me', 'version', 'counts', 'settings', 'handback', 'threads', 'search', 'thread', 'meta', 'draft', 'batch', 'emptyTrash', 'unsubInfo', 'unsubscribe', 'remove', 'saveSettings', 'updateAddress', 'findContacts', 'saveDraft', 'sendDraft', 'sent', 'picture', 'fileUrl', 'rawUrl'];
   assert.deepEqual(literalOf(api, 'METHODS'), METHODS);
   for (const k of METHODS) assert.match(uncomment(api), new RegExp(String.raw`\b${k}\s*(?::|\()`), `api has ${k}`);
-  for (const k of ['logout', 'pushKey', 'pushSubscribe', 'pushUnsubscribe', 'message', 'send', 'createAddress', 'deleteAddress', 'contacts', 'count', 'threadAction']) assert.ok(!new RegExp(String.raw`(?<![\w.])${k}\s*:\s*(?:async\s*)?(?:\(|[\w$]+\s*=>|function\b)`).test(uncomment(api)), `api has no ${k} (§4.7)`);
+  for (const k of ['checkAddress', 'logout', 'pushKey', 'pushSubscribe', 'pushUnsubscribe', 'message', 'send', 'createAddress', 'deleteAddress', 'contacts', 'count', 'threadAction']) assert.ok(!new RegExp(String.raw`(?<![\w.])${k}\s*:\s*(?:async\s*)?(?:\(|[\w$]+\s*=>|function\b)`).test(uncomment(api)), `api has no ${k} (§4.7)`);
+  assert.ok(!/addresses\/check/.test(uncomment(api)), 'no address check: it would put what was typed into a URL, and the module makes no addresses (B0-b review I6)');
   assert.match(api, /export const MAIL = `\$\{location\.protocol\}\/\/email\.\$\{location\.host\.replace\(\/\^next\\\.\/, ""\)\}`;/);
   // (the body frame's message and its limits, §3.2)
   const bf = src('bodyframe.js');
@@ -184,7 +187,7 @@ test('the connector: no imports, ≤ 4 KB, the agreed words, Mail’s sections a
   assert.deepEqual(connector.mini({ cards: { mail: { people: 3, updates: 5, later: { n: 1, next: null } } } }), { kind: 'num', num: '3', label: 'From people' });
 });
 
-test('connector.files is exactly the static import graph from mail.js and the three stylesheets; lazy is compose.js and signin.js, reached only through fw.lazy', { skip }, () => {
+test('connector.files is exactly the static import graph from mail.js and the three stylesheets; lazy is the four lazy files, reached only through fw.lazy', { skip }, () => {
   const files = connector.files;
   assert.equal(new Set(files).size, files.length, 'no repeats');
   assert.deepEqual([...files].sort(), [...FILES, ...CSS].sort(), 'the 15 files (§4.4)');
@@ -192,8 +195,9 @@ test('connector.files is exactly the static import graph from mail.js and the th
   const graph = graphFrom(new URL('mail.js', MOD));
   assert.deepEqual(graph.sort(), [...FILES].sort(), 'the static graph from mail.js is the 12');
   assert.ok(!graph.includes('/mail/roof/connector.js'), 'mail.js never imports the connector');
-  for (const f of [...LAZY, '/mail/roof/mailsettings.js', '/mail/roof/viewer.js']) assert.ok(!graph.includes(f), `${f}: lazy, never static`);
-  assert.deepEqual(lazyTargets(src('mail.js')).sort(), ['compose.js', 'mailsettings.js', 'signin.js', 'viewer.js'], 'mail.js reaches the four lazy files through fw.lazy');
+  for (const f of LAZY) assert.ok(!graph.includes(f), `${f}: lazy, never static`);
+  assert.deepEqual(lazyTargets(src('mail.js')).map((f) => `/mail/roof/${f}`).sort(), [...LAZY].sort(), 'mail.js reaches the four lazy files through fw.lazy, and lazy is exactly them (s24-contracts §8)');
+  assert.deepEqual(files.filter((f) => LAZY.includes(f)), [], 'files ∩ lazy = ∅');
   assert.deepEqual([...files, ...LAZY].filter((f) => f.endsWith('.css')).sort(), [...CSS].sort());
   assert.deepEqual(cssFiles(), ['mail.css', 'mailsheets.css', 'reader.css'], 'no other stylesheet');
   assert.ok(files.length + LAZY.length <= 60, 'files ∪ lazy ≤ 60 (C11)');
@@ -207,6 +211,21 @@ test('every dynamic import in the module sits inside fw.lazy( (D21)', { skip }, 
   for (const f of jsFiles()) assert.deepEqual(lazyOutside(src(f)), [], `email/public/roof/${f}`);
 });
 
+// (document and window reached another way count as themselves: x.ownerDocument → document, x.ownerDocument.defaultView
+// and x.defaultView → window, and a name given one of them (mail.js's `const doc = root.ownerDocument`) → that one)
+function globals(s) {
+  for (let i = 0; i < 4; i++) {
+    const before = s;
+    s = s.replace(/(?:[\w$]+\s*\??\.\s*)*ownerDocument\s*\??\.\s*defaultView\b/g, 'window')
+      .replace(/(?:[\w$]+\s*\??\.\s*)*ownerDocument\b/g, 'document')
+      .replace(/(?:[\w$]+\s*\??\.\s*)+defaultView\b/g, 'window');
+    for (const [, name, who] of [...s.matchAll(/(?<![.\w$])([\w$]+)\s*=\s*(document|window|globalThis|self)\s*(?=[;,)\n]|$)/gm)]) {
+      if (name !== who) s = s.replace(new RegExp(String.raw`(?<![.\w$])${name.replace(/\$/g, '\\$')}(?![\w$])`, 'g'), who === 'document' ? 'document' : 'window');
+    }
+    if (s === before) break;
+  }
+  return s;
+}
 const GLOBAL_EV = (verb) => new RegExp(String.raw`(?:\b(window|document|globalThis|self)\s*\.\s*|(?<![.\w$]))${verb}EventListener\s*\(\s*(?:(["'\`])([\w:-]+)\2)?`, 'g');
 const pairs = (s, verb) => [...s.matchAll(GLOBAL_EV(verb))].map((m) => [m[1] || 'window', m[3] ?? '(not a literal)']);
 const sameGlobal = (a, b) => (a === 'document') === (b === 'document');
@@ -218,23 +237,36 @@ test('the module keeps §5.1’s rules and §4.3’s: no service worker, history
     [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes (reading only)'],
     [/(?<![.\w$])(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert()'],
     [/\bIFL\b/, 'no IFL'],
-    [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document.getElementById/querySelector (only root, fw.screenEl and what it made)'],
+    [/\b(?:document|window)\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+|elementsFromPoint|elementFromPoint)\s*\(/, 'no document.getElementById/querySelector (only root, fw.screenEl and what it made)'],
     [/["'`]today:/, 'no today:* key'],
     [/\bindexedDB\b/, 'no indexedDB (S4-D16)'],
     [/(?<![.\w$])parent\s*\./, 'no parent.'],
-    [/["'`]#(?:hd|tabs)\b|ifl-tabs|\.ifh-/, 'never the header’s or the tab bar’s DOM'],
+    [/["'`]#(?:hd|tabs)\b|\bifl-tab|\.ifh-/, 'never the header’s or the tab bar’s DOM'],
     [/\b(?:innerHTML|outerHTML|insertAdjacentHTML)\b|\bdocument\s*\.\s*write/, 'no HTML written (§4.3)'],
     [/\bdocument\s*\.\s*title\b/, 'never document.title (§2.1)'],
   ];
   // (a function named confirm, as menus.js's, is a declaration, not a call to the page's confirm())
   const calls = (s) => s.replace(/\bfunction\s+confirm\s*\(/g, 'function _confirm(');
   for (const f of jsFiles()) {
-    const s = calls(uncomment(src(f)));
+    const s = globals(calls(uncomment(src(f))));
     for (const [re, why] of RULES) assert.ok(!re.test(s), `email/public/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
     for (const [who, type] of pairs(s, 'add')) assert.ok(pairs(s, 'remove').some(([w, t]) => t === type && sameGlobal(w, who)), `email/public/roof/${f}: ${who}'s "${type}" listener removed (in unmount)`);
   }
   assert.ok(RULES[10][0].test('el.innerHTML = x') && RULES[10][0].test('a.insertAdjacentHTML("x", y)') && !RULES[10][0].test('el.textContent = x'));
   assert.ok(RULES[3][0].test('confirm("x")') && !RULES[3][0].test(calls('export function confirm(ctx, spec) {}; ctx.open.confirm(s)')));
+  // (the aliases: each of these is caught; the review's mutations of B0-b, I3)
+  const unremoved = (s) => { const g = globals(s); return pairs(g, 'add').filter(([w, t]) => !pairs(g, 'remove').some(([w2, t2]) => t2 === t && sameGlobal(w2, w))); };
+  assert.deepEqual(unremoved('root.ownerDocument.defaultView.addEventListener("message", f)'), [['window', 'message']]);
+  assert.deepEqual(unremoved('root.ownerDocument.addEventListener("keydown", f)'), [['document', 'keydown']]);
+  assert.deepEqual(unremoved('const doc = root.ownerDocument;\ndoc.addEventListener("keydown", f);'), [['document', 'keydown']]);
+  assert.deepEqual(unremoved('const doc = root.ownerDocument, win = doc.defaultView;\nwin.addEventListener("resize", f);'), [['window', 'resize']]);
+  assert.deepEqual(unremoved('const doc = root.ownerDocument;\ndoc.addEventListener("keydown", f);\ndoc.removeEventListener("keydown", f);'), []);
+  assert.deepEqual(unremoved('const w = el.ownerDocument.defaultView;\nw.addEventListener("message", f);\nwindow.removeEventListener("message", f);'), []);
+  assert.ok(RULES[5][0].test(globals('const doc = root.ownerDocument;\ndoc.querySelector(".x")')), 'doc.querySelector');
+  assert.ok(RULES[5][0].test(globals('el.ownerDocument.getElementById("x")')), 'ownerDocument.getElementById');
+  assert.ok(RULES[9][0].test('doc.querySelector(".ifl-tab")') && RULES[9][0].test('q(".ifl-tabs")'), 'the tab bar’s classes');
+  assert.ok(RULES[10][0].test(globals('const d = root.ownerDocument;\nd.write("x")')), 'd.write');
+  assert.ok(!RULES[5][0].test(globals('const doc = root.ownerDocument;\nroot.querySelector(".x"); doc.createElement("p")')), 'root’s own selectors and createElement are fine');
 });
 
 test('only bodyframe.js names the body shell or posts a message; blob: URLs only in reader.js and viewer.js, behind the pictures list; never a message’s body', { skip }, () => {
@@ -341,6 +373,7 @@ test('the kit’s stand-in for Mail answers §4.7 and keeps the hub gate’s ref
   assert.equal((await call('POST', '/api/logout', {}, W)).status, 403);
   assert.equal((await call('POST', '/api/addresses', { local: 'x' }, W)).status, 403);
   assert.equal((await call('PATCH', '/api/addresses/hello%40inflite.ai', { isDefault: true }, W)).status, 403);
+  assert.equal((await call('GET', '/api/addresses/check?local=x')).status, 403, 'no address check (a typed word in a URL)');
   const meta = await call('GET', '/api/messages/demo-1/meta');
   assert.equal(meta.status, 200);
   assert.ok(!('html' in meta.data) && !('text' in meta.data), '/meta has no body');
@@ -366,9 +399,41 @@ test('the kit’s stand-in for Mail answers §4.7 and keeps the hub gate’s ref
   assert.equal(lost.data.access, 'reauth');
 });
 
+test('the kit’s stand-in for Mail answers the page’s exact origin only (§3.5): any other Origin gets 403 and no CORS headers', { skip }, async () => {
+  const { mailMock, MAIL_KIT } = await import('../mocks/mailmock.mjs');
+  const m = mailMock({ origin: 'http://kit.test' });
+  const ask = async (method, path, origin, nav = false) => {
+    let got;
+    await m.handle({ request: () => ({ url: () => MAIL_KIT + path, method: () => method, headers: () => (origin ? { origin } : {}), postData: () => null, isNavigationRequest: () => nav }), fulfill: (r) => { got = r; }, abort: () => { got = { status: 0, headers: {} }; } });
+    return got;
+  };
+  for (const o of ['http://evil.test', 'http://kit.test.evil.test', 'https://kit.test', 'http://next.kit.test', 'null']) {
+    for (const [method, path] of [['GET', '/api/counts'], ['OPTIONS', '/api/drafts'], ['GET', '/api/attachments/a1']]) {
+      const r = await ask(method, path, o);
+      assert.equal(r.status, 403, `${method} ${path} from ${o}: 403`);
+      assert.equal(r.headers['access-control-allow-origin'], undefined, `${method} ${path} from ${o}: no Allow-Origin`);
+      assert.equal(r.headers['access-control-allow-credentials'], undefined, `${method} ${path} from ${o}: no Allow-Credentials`);
+    }
+  }
+  const ok = await ask('GET', '/api/counts', 'http://kit.test');
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers['access-control-allow-origin'], 'http://kit.test');
+  assert.equal(ok.headers['access-control-allow-credentials'], 'true');
+  assert.equal((await ask('OPTIONS', '/api/drafts', 'http://kit.test')).status, 204);
+  const nav = await ask('GET', '/api/attachments/a6', null, true);
+  assert.equal(nav.status, 200, 'a navigation (no Origin) at Mail’s address');
+  assert.equal(nav.headers['access-control-allow-origin'], undefined);
+  // (the stand-in's own origin option is the one it answers)
+  const other = mailMock({ origin: 'http://other.test' });
+  let got; await other.handle({ request: () => ({ url: () => MAIL_KIT + '/api/counts', method: () => 'GET', headers: () => ({ origin: 'http://kit.test' }), postData: () => null, isNavigationRequest: () => false }), fulfill: (r) => { got = r; }, abort: () => {} });
+  assert.equal(got.status, 403, 'mailMock({ origin }) gates on that origin');
+});
+
+// (every budget runs always, stubs and all: a stub is far under any of them, so a STUB = true left behind in one file can
+// never turn the budgets off; that none is left is the integrator's check, B0-b review I5)
 test('the transfer budgets (§4.5): static JS ≤ 55 KB, CSS ≤ 12 KB, compose ≤ 12, mailsettings ≤ 10, viewer ≤ 8, signin ≤ 2, bodyframe ≤ 3, icons ≤ 2, the body shell ≤ 8 (gzip -9, comments stripped)', { skip }, (t) => {
   const left = stubs();
-  if (left.length) return t.skip(`still stubs: ${left.join(', ')}`);
+  if (left.length) t.diagnostic(`still stubs (budgeted as they are): ${left.join(', ')}`);
   const one = (f) => gz([new URL(f, MOD)]);
   const budget = [['static JS', gz(FILES.map(pub)), 55], ['CSS', gz(CSS.map(pub)), 12], ['compose.js', one('compose.js'), 12], ['mailsettings.js', one('mailsettings.js'), 10],
     ['viewer.js', one('viewer.js'), 8], ['signin.js', one('signin.js'), 2], ['bodyframe.js', one('bodyframe.js'), 3], ['icons.js', one('icons.js'), 2],
