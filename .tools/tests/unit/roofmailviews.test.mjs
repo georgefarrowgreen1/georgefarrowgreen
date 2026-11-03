@@ -5,7 +5,13 @@
 //   mail:unsent (outbox.keepUnsent) synchronously in onClose, never a file, then a server draft and "Draft saved"; an
 //   unchanged one writes nothing; Send hands the words and files to the outbox and keeps nothing; Delete Draft removes
 //   the server draft; offline with files the sheet stays ("Files need a connection. Try Again");
-//   a quoteOld draft (api.draft): the note, Open Mail, and Send asks "Send Without the Quoted Text?" first;
+//   a quoteOld draft (api.draft): the note, Open Mail, and Send asks "Send Without the Quoted Text?" first; its saves
+//   leave the quote key out (Mail keeps its quote), Send sends quote: null; quoteOld kept in mail:unsent;
+//   a draft's own files ({ i }) go with Send and every save (and through MM's outbox: a todo until it passes { i } on);
+//   words kept on this phone stay until Mail has them (an untouched open and close never drops them; reopened in a blank
+//   compose offline; never written over by another; saved first online); closed while Send uploads: no second draft;
+//   tracked by the outbox, flush's id handed back, nothing saved again unchanged since; the close save is keepalive;
+//   a refused quick reply puts its words back (field and mail:replies), says why, and a double tap sends once;
 //   Mail Settings: only its keys are saved (signature, catchall; an address's name, signature, category, color), never
 //   isDefault, no New Address, Delete Address or Send From (a link to Mail's own address instead), Remote Images on this
 //   phone is mail:remote-images and nothing else;
@@ -72,8 +78,11 @@ function rig({ me = { displayName: 'George', defaultFrom: 'hello@inflite.ai', id
     },
   };
   const store = M.store.createStore({ me });
-  const outbox = { keeps: [], sends: [], drops: 0,
-    keepUnsent(f) { this.keeps.push(JSON.parse(JSON.stringify(f))); return true; }, dropUnsent() { this.drops++; }, unsent: () => null,
+  // (mail:unsent as the outbox keeps it: one copy, stamped with its time; track() as MM's, flush driven by the test)
+  const outbox = { keeps: [], sends: [], drops: 0, slot: null, tracks: [],
+    keepUnsent(f) { const v = JSON.parse(JSON.stringify(f)); this.keeps.push(v); this.slot = { ...v, at: ++stamps }; return true; },
+    dropUnsent() { this.drops++; this.slot = null; }, unsent() { return this.slot; },
+    track(fn, onSaved) { const t = { fn, onSaved, off: false }; this.tracks.push(t); return () => { t.off = true; }; },
     send(d, files) { this.sends.push({ d, files }); return Promise.resolve({ ok: true }); } };
   const fake = {
     saveDraft: rec('saveDraft', { ok: true, id: 'd-saved' }), remove: rec('remove', { ok: true }), findContacts: rec('findContacts', { contacts: [] }),
@@ -89,6 +98,7 @@ function rig({ me = { displayName: 'George', defaultFrom: 'hello@inflite.ai', id
     layout: () => store.get().layout };
   return { ctx, calls, toasts, sheets, navs, confirms, outbox, store };
 }
+let stamps = 0;
 const type = (input, v) => { input.value = v; input.dispatch('input'); };
 const act = (root, a) => root.querySelector(`[data-act=${a}]`);
 
@@ -112,7 +122,9 @@ test('compose: a changed compose closed any way but Send or Delete Draft is kept
   const save = r.calls.find((c) => c[0] === 'saveDraft');
   assert.ok(save, 'then a server draft');
   assert.equal(save[1].subject, 'Lunch');
-  assert.deepEqual(save[1].quote, null);
+  assert.ok(!('quote' in save[1]), 'no quote: the key left out (Mail keeps what a draft has)');
+  assert.deepEqual(save[2], null, 'no progress for a close save');
+  assert.deepEqual(save[3], { keepalive: true }, 'keepalive: no file’s bytes in it (S4-D18)');
   assert.ok(r.toasts.includes('Draft saved'), r.toasts.join(' | '));
   assert.ok(r.outbox.drops >= 1, 'the phone’s copy let go once Mail has it');
   void file;
@@ -178,6 +190,203 @@ test('compose: a quoteOld draft says so, offers Mail, and Send asks “Send With
   await tick();
   assert.equal(r.outbox.sends.length, 1, 'Send: sent');
   assert.equal(r.outbox.sends[0].d.draftId, 'd-old', 'from the draft it was');
+});
+
+const offlineErr = () => Promise.reject(Object.assign(new Error('You’re offline'), { status: 0 }));
+const DRAFT1 = { compose: { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: [], bcc: [], subject: 'Plans', text: 'See attached', inReplyTo: null, references: null, quote: null,
+  files: [{ i: 0, filename: 'plan.pdf', type: 'application/pdf', size: 1200 }, { i: 1, filename: 'map.png', type: 'image/png', size: 900, ref: 'att-9' }] }, quoteOld: false };
+
+test('compose: a draft’s own files ({ i }, from api.draft) go with Send and with every save, so it keeps them (B1)', { skip }, async (t) => {
+  const r = rig({ api: { draft: async (id) => (r.calls.push(['draft', id]), JSON.parse(JSON.stringify(DRAFT1))) } });
+  let h = M.compose.openCompose(r.ctx, { draftId: 'd-files' });
+  await tick();
+  assert.equal(h.el.querySelectorAll('.mc-file').length, 2, 'its two files shown');
+  act(h.el, 'send').click();
+  await tick();
+  assert.equal(r.outbox.sends.length, 1);
+  assert.deepEqual(r.outbox.sends[0].files.map((f) => f.i), [0, 1], 'both handed to the outbox as Mail gave them');
+  assert.equal(r.outbox.sends[0].d.draftId, 'd-files');
+  // closed with a change: its own save lists them ({ i } for one Mail keeps, { ref } for a forwarded one)
+  h = M.compose.openCompose(r.ctx, { draftId: 'd-files' });
+  await tick();
+  type(h.el.querySelector('textarea[data-key=text]'), 'See attached, both');
+  h.close();
+  await tick();
+  const save = r.calls.filter((c) => c[0] === 'saveDraft').at(-1);
+  assert.deepEqual(save[1].attachments, [{ i: 0 }, { ref: 'att-9' }], JSON.stringify(save[1].attachments));
+  assert.equal(save[1].id, 'd-files');
+  // the outbox (MM's) passes { i } on to Mail's /api/drafts: a draft with one stored file, sent, carries { i: 0 }
+  const O = await import(new URL('outbox.js', MR).href);
+  const posted = [];
+  const ctx = { store: M.store.createStore({}), fw: { toast: () => ({ close() {} }), on: () => () => {} }, open: {},
+    api: { saveDraft: async (d) => { posted.push(d); return { id: 'd-files' }; }, sendDraft: async () => ({ id: 'x' }), sent: async () => ({ sent: [] }) } };
+  const ob = O.createOutbox(ctx);
+  try {
+    const res = await ob.send({ to: [{ name: '', email: 'pat@example.com' }], subject: 'Plans', text: 'x', draftId: 'd-files' }, [{ i: 0, filename: 'plan.pdf', type: 'application/pdf', size: 1200 }]);
+    assert.equal(res.ok, true);
+    const carried = JSON.stringify(posted[0]?.attachments) === JSON.stringify([{ i: 0 }]);
+    if (!carried) t.todo(`MM’s outbox.payload drops a draft’s own file: attachments ${JSON.stringify(posted[0]?.attachments)} (needs { i } passed on)`);
+    else assert.ok(carried);
+  } finally { ob.destroy(); }
+});
+
+test('compose: words kept on this phone stay until Mail has them: an untouched open and close never drops them; reopened offline, saved online (B2)', { skip }, async () => {
+  const r = rig({ api: { saveDraft: () => offlineErr() } });
+  navigator.onLine = false;
+  try {
+    let h = M.compose.openCompose(r.ctx, {});
+    h.el.querySelector('input[data-key=to]').value = 'pat@example.com';
+    type(h.el.querySelector('input[data-key=subject]'), 'Offline note');
+    type(h.el.querySelector('textarea[data-key=text]'), 'Written on the train');
+    h.close();
+    await tick();
+    assert.equal(r.outbox.slot?.subject, 'Offline note', 'kept on the phone');
+    assert.ok(r.toasts.some((x) => /^Kept on this phone/.test(x)), r.toasts.join(' | '));
+    // a new compose opened offline and blank: the words reopened in it, not overwritten or dropped
+    h = M.compose.openCompose(r.ctx, {});
+    await tick();
+    assert.equal(h.el.querySelector('input[data-key=subject]').value, 'Offline note', 'reopened in the blank compose');
+    assert.equal(h.el.querySelector('textarea[data-key=text]').value, 'Written on the train');
+    assert.ok(r.toasts.includes('Here’s what you were writing. It’s kept on this phone.'), r.toasts.join(' | '));
+    h.close();
+    await tick();
+    assert.equal(r.outbox.slot?.subject, 'Offline note', 'closed again: still kept');
+    // a reply opened offline meanwhile never writes over them
+    h = M.compose.openCompose(r.ctx, { to: [{ name: 'Sam', email: 'sam@example.com' }], subject: 'Re: Hi', quote: { of: 'm-1', mode: 'reply' } });
+    await tick();
+    type(h.el.querySelector('textarea[data-key=text]'), 'Quick answer');
+    await new Promise((ok) => setTimeout(ok, 900));
+    assert.equal(r.outbox.slot?.subject, 'Offline note', 'the earlier words not written over while typing');
+    h.close();
+    await tick();
+    assert.equal(r.outbox.slot?.subject, 'Offline note', 'nor on closing');
+    // an untouched Write opened and closed (unchanged): nothing dropped
+    const drops = r.outbox.drops;
+    h = M.compose.openCompose(r.ctx, { to: [{ name: 'Sam', email: 'sam@example.com' }] });
+    h.close();
+    await tick();
+    assert.equal(r.outbox.drops, drops, 'never dropped by an unchanged close');
+    assert.equal(r.outbox.slot?.subject, 'Offline note');
+  } finally { navigator.onLine = true; }
+  // back online: the next compose saves them to Mail first, and only then lets the phone's copy go
+  const saves = [];
+  r.ctx.api.saveDraft = async (d, p, o) => { saves.push([d, p, o]); return { id: 'd-left' }; };
+  const h = M.compose.openCompose(r.ctx, {});
+  await tick();
+  assert.equal(saves.length, 1, 'saved to Mail');
+  assert.equal(saves[0][0].subject, 'Offline note');
+  assert.equal(r.outbox.slot, null, 'then dropped');
+  assert.ok(r.toasts.includes('Your unsent message is in Drafts'), r.toasts.join(' | '));
+  assert.equal(h.el.querySelector('input[data-key=subject]').value, '', 'the new compose left blank');
+  h.close();
+});
+
+test('compose: closed while Send is saving, it is left to the outbox: no second draft (I1); a failed save keeps the words', { skip }, async () => {
+  let answer;
+  const r = rig();
+  r.outbox.send = function (d, files) { this.sends.push({ d, files }); return new Promise((ok) => { answer = ok; }); };
+  let h = M.compose.openCompose(r.ctx, { to: [{ name: '', email: 'a@b.co' }], subject: 'Big one' });
+  type(h.el.querySelector('textarea[data-key=text]'), 'with a file');
+  act(h.el, 'send').click();
+  await tick();
+  assert.equal(r.outbox.sends.length, 1, 'the outbox is saving it');
+  h.close();   // ✕, Escape or a drag while it uploads
+  await tick();
+  assert.ok(!r.calls.some((c) => c[0] === 'saveDraft'), 'no close-time draft beside the outbox’s');
+  assert.equal(r.outbox.keeps.length, 0, 'nothing written to mail:unsent');
+  answer({ ok: true, key: 'k1', draftId: 'd-1' });
+  await tick();
+  assert.ok(!r.toasts.includes('Draft saved'));
+  // refused while closed: the words kept here and said so
+  h = M.compose.openCompose(r.ctx, { to: [{ name: '', email: 'a@b.co' }], subject: 'Second' });
+  type(h.el.querySelector('textarea[data-key=text]'), 'again');
+  act(h.el, 'send').click();
+  await tick();
+  h.close();
+  answer({ ok: false, error: 'Couldn’t send' });
+  await tick();
+  assert.equal(r.outbox.slot?.subject, 'Second', 'kept on this phone');
+  assert.ok(r.toasts.includes('Couldn’t send. It’s kept on this phone'), r.toasts.join(' | '));
+  r.outbox.dropUnsent();
+});
+
+test('compose: a quoteOld draft keeps Mail’s quote on every save (no quote key) and says so again when reopened; Send sends quote: null (I2)', { skip }, async () => {
+  const OLD = { compose: { ...DRAFT1.compose, subject: 'Re: Plans', files: [] }, quoteOld: true };
+  const r = rig({ api: { draft: async () => JSON.parse(JSON.stringify(OLD)) } });
+  let h = M.compose.openCompose(r.ctx, { draftId: 'd-old' });
+  await tick();
+  type(h.el.querySelector('textarea[data-key=text]'), 'Sounds good, Thursday');
+  h.close();
+  assert.equal(r.outbox.keeps.at(-1).quoteOld, true, 'quoteOld in what’s kept');
+  await tick();
+  const save = r.calls.filter((c) => c[0] === 'saveDraft').at(-1);
+  assert.equal(save[1].id, 'd-old');
+  assert.ok(!('quote' in save[1]), 'no quote key: Mail keeps the quote it has');
+  assert.equal(M.compose.fieldsOf({ quoteOld: true }).quoteOld, true);
+  // Send (after its question): quote null, quoteOld false, so the outbox takes the quote off as was asked
+  h = M.compose.openCompose(r.ctx, { draftId: 'd-old' });
+  await tick();
+  act(h.el, 'send').click();
+  await tick();
+  assert.equal(r.confirms.at(-1)?.title, 'Send Without the Quoted Text?');
+  assert.equal(r.outbox.sends.at(-1).d.quote, null);
+  assert.equal(r.outbox.sends.at(-1).d.quoteOld, false);
+  // a quote { of, mode } is always sent as it is
+  assert.deepEqual(M.compose.draftOf({ quote: { of: 'm-1', mode: 'reply' } }, []).quote, { of: 'm-1', mode: 'reply' });
+  assert.ok(!('quote' in M.compose.draftOf({ quote: null, quoteOld: true }, [])));
+});
+
+test('compose: tracked by the outbox; flush’s save hands its id back, and closing unchanged since saves nothing again (I3)', { skip }, async () => {
+  const r = rig();
+  const h = M.compose.openCompose(r.ctx, {});
+  assert.equal(r.outbox.tracks.length, 1, 'outbox.track while it’s open');
+  const tr = r.outbox.tracks[0];
+  assert.equal(tr.fn(), null, 'unchanged: nothing for flush');
+  h.el.querySelector('input[data-key=to]').value = 'pat@example.com';
+  h.el.querySelector('input[data-key=to]').dispatch('keydown', { key: 'Enter' });
+  type(h.el.querySelector('textarea[data-key=text]'), 'Before I go');
+  const f = tr.fn();
+  assert.equal(f.text, 'Before I go');
+  assert.ok(Array.isArray(f.files), 'with its files listed');
+  tr.onSaved('d-flushed');   // (flush saved it: sign-out, or the module put away)
+  assert.equal(tr.fn(), null, 'unchanged since: not saved again');
+  h.close();
+  await tick();
+  assert.ok(tr.off, 'untracked once closed');
+  assert.ok(!r.calls.some((c) => c[0] === 'saveDraft'), 'no second draft');
+  assert.equal(r.outbox.keeps.length, 0, 'nothing written after flush saved it (sign-out: Mail’s keys stay cleared)');
+});
+
+test('reader: a quick reply the outbox refuses puts the words back and says why; Send is off until it answers (I4)', { skip }, async () => {
+  const T = { id: 't-q', subject: 'Lunch', people: [{ name: 'Pat Smith', email: 'pat@example.com' }], count: 1, unread: 0,
+    messages: [{ id: 'q-1', folder: 'inbox', threadId: 't-q', mailbox: 'hello@inflite.ai', from: { name: 'Pat Smith', email: 'pat@example.com' }, to: [{ name: '', email: 'hello@inflite.ai' }], subject: 'Lunch', snippet: 'Thursday?', date: Date.now() - 6e4, unread: false }] };
+  const r = rig({ api: { thread: async () => T, meta: async (id) => ({ ...T.messages[0], id, replyTo: null, messageId: '<q1@x>', inReplyTo: null, references: null, attachments: [] }) } });
+  let answer;
+  r.outbox.send = function (d, files) { this.sends.push({ d, files }); return new Promise((ok) => { answer = ok; }); };
+  r.store.set({ threadId: 't-q', list: { rows: [{ id: 't-q', latestId: 'q-1', from: T.people[0], date: T.messages[0].date }], more: false, loading: false, err: null } });
+  const el = ui.el('section', { class: 'ml-reader' });
+  document.body.append(el);
+  const v = M.reader.view(el, r.ctx);
+  v.draw();
+  await tick(10);
+  v.draw();
+  await tick(4);
+  const f = el.querySelector('textarea.mr-qr-text'), send = el.querySelector('.mr-qr [data-act=send]');
+  assert.ok(f && send, 'the quick reply');
+  type(f, 'Yes, 1pm');
+  send.click(); send.click();
+  await tick();
+  assert.equal(r.outbox.sends.length, 1, 'a double tap sends once');
+  assert.ok(send.disabled, 'Send off until the outbox answers');
+  answer({ ok: false, error: 'Couldn’t send' });
+  await tick();
+  assert.equal(f.value, 'Yes, 1pm', 'the words back in the field');
+  assert.equal(JSON.parse(localStorage.getItem('mail:replies') || '{}')['t-q']?.text, 'Yes, 1pm', 'and in mail:replies');
+  assert.ok(r.toasts.includes('Couldn’t send'), r.toasts.join(' | '));
+  assert.ok(!send.disabled, 'Send on again');
+  v.destroy();
+  el.remove();
+  localStorage.removeItem('mail:replies');
 });
 
 test('Mail Settings: only its own keys saved, never isDefault; no New Address, Delete Address or Send From inside InFlite', { skip }, async () => {

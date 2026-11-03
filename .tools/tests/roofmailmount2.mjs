@@ -12,11 +12,12 @@
 //   3 compose: Reply with "Quoted below" and the snippet; Send with Undo (the draft kept, compose back), then Send again
 //     and after the undo window Mail's /api/send has { draftId, key } and the draft's quote is { of, mode } (no html);
 //     a changed compose closed with Escape: mail:unsent written, then POST /api/drafts and "Draft saved"; a quoteOld
-//     draft says so and Send asks "Send Without the Quoted Text?";
+//     draft says so and Send asks "Send Without the Quoted Text?"; changed and closed, it's saved with no quote key;
 //   4 Mail Settings: every page (addresses, an address, Unknown Addresses, Signature), a save with only its key, the row to
 //     Mail's own address in a new tab, no New Address or Delete Address inside;
 //   5 sign-in: signIn() goes to auth.kit.test with signin=mail, ask and back=…/mail/ and keeps the verifier in this tab;
-//     finishSignIn swaps the code at Mail's /api/auth/handback and lets the verifier go.
+//     finishSignIn swaps the code at Mail's /api/auth/handback and lets the verifier go;
+//   6 the gate (access passkey): its words, no list asked for, and its Confirm It's You goes to signIn's trip.
 // Needs MM's module core (mail.js, list.js, api.js, store.js, outbox.js) to be real: until then it prints "SKIPPED: …".
 //   node .tools/tests/roofmailmount2.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
@@ -227,6 +228,15 @@ const sheetsCtx = (p) => p.evaluate(async () => {
   await p.locator(`${C}[open] [data-act=send]`).click();
   ok(await until(async () => /Send Without the Quoted Text\?/.test(await text(p, `${sheet('mail-confirm')}[open]`))), 'Send asks “Send Without the Quoted Text?”');
   await shot(p, '5-quoteold');
+  // Cancel, then the quoteOld draft changed and closed: saved without a quote key, so Mail keeps its quote (S4-D18)
+  await p.locator(`${sheet('mail-confirm')}[open] [data-act=no], ${sheet('mail-confirm')}[open] [data-act=cancel]`).first().click().catch(() => p.keyboard.press('Escape'));
+  await until(async () => !(await visible(p, `${sheet('mail-confirm')}[open]`)));
+  await p.locator(`${C}[open] textarea[data-key=text]`).fill('Sounds good, and see you there');
+  const nOld = mail.log.filter((r) => r.path === '/api/drafts' && r.method === 'POST').length;
+  await p.keyboard.press('Escape');
+  ok(await until(() => mail.log.filter((r) => r.path === '/api/drafts' && r.method === 'POST').length === nOld + 1), 'a changed quoteOld draft closed: saved');
+  const qb = mail.log.filter((r) => r.path === '/api/drafts' && r.method === 'POST').at(-1)?.body || {};
+  ok(qb.id === oldId && !('quote' in qb), 'over the same draft, without a quote key (Mail keeps the quote it has)', JSON.stringify(qb).slice(0, 200));
   ok(bodies(mail).length === 0 && refused(mail).length === 0, 'no body asked for, nothing the gate refuses', JSON.stringify([...bodies(mail), ...refused(mail)]));
   ok(errors.length === 0, 'no page errors', errors.join(' | '));
   await ctx.close();
@@ -277,6 +287,26 @@ const sheetsCtx = (p) => p.evaluate(async () => {
   await p.goBack().catch(() => {});
   const kept = await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier')).catch(() => null);
   ok(/^[\w-]{43}$/.test(kept || ''), 'the verifier kept in this tab', String(kept));
+  ok(errors.length === 0, 'no page errors', errors.join(' | '));
+  await ctx.close();
+}
+
+// ===================== 6. the gate's sign-in state: a passkey asked for, Confirm It's You → signIn =====================
+{
+  const { ctx, p, mail, errors } = await phone({ access: 'passkey' });
+  const STATE = '.m-mail .ml-state';
+  ok(await until(() => visible(p, STATE), 12000), 'Mail behind its gate (access passkey): the state shown');
+  const said = await text(p, STATE);
+  ok(/Mail needs a passkey/.test(said) && /Add a passkey to your account/.test(said), 'its words: Mail needs a passkey', said);
+  ok(!(await visible(p, ROW)), 'no rows behind the gate');
+  ok(!mail.log.some((r) => r.method === 'GET' && /^\/api\/threads/.test(r.path)), 'no list asked for behind the gate');
+  const btn = p.locator(`${STATE} [data-act=signin]`).first();
+  ok((await btn.textContent({ timeout: 3000 }).catch(() => '')).trim() === 'Confirm It’s You', 'its one act: Confirm It’s You');
+  await shot(p, '7-gate-passkey');
+  await btn.click();
+  ok(await until(() => p.url().startsWith('http://auth.kit.test/')), 'Confirm It’s You goes to InFlite’s sign-in page (signIn)', p.url());
+  const h = new URLSearchParams(new URL(p.url()).hash.slice(1));
+  ok(h.get('signin') === 'mail' && /^[\w-]{43}$/.test(h.get('ask') || '') && h.get('back') === `${KIT}/mail/`, 'with signin=mail, the ask and back=…/mail/', p.url());
   ok(errors.length === 0, 'no page errors', errors.join(' | '));
   await ctx.close();
 }
