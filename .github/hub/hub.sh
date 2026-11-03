@@ -21,7 +21,8 @@
 #   stage_clone REF     → the inflite repo at REF, fetched into the runner's temporary folder; its [env.next] checked
 #                         (the staging Worker, at next.inflite.ai alone) and its Today's build read
 #   stage_deploy        → that build deployed to the staging Worker (inflite-next), from its folder; never inflite
-#   stage_check         → next.inflite.ai/version says that build, and its /api/hub answers as the hub
+#   stage_check         → next.inflite.ai/version says that build, and its /api/hub answers as the hub; and, for the
+#                         record only, what inflite.ai says (its Today, its hub on or off: live_said)
 #   stage_verdict       → hub-stage.yml's last step
 # Cloudflare's API is asked with CLOUDFLARE_API_TOKEN, which never goes on a command line (curl reads its header from a
 # pipe) nor into the log; a key made here is masked before anything else and only ever piped to wrangler. What's
@@ -571,6 +572,23 @@ stage_check() {
   if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_STAGE_READY=$HUB_READY" >> "$GITHUB_ENV"; fi
   if [ "$HUB_READY" = false ]; then say "$STAGING_SITE/api/hub says ready: false, as it should until the staging hub has its key."
   else say "$STAGING_SITE/api/hub says ready: true: the staging Worker already has a key the Pages project takes (from an earlier \"Give InFlite's hub its key\")."; fi
+  live_said
+}
+
+# (what the live site says, for the record only: never fails a step. Under addendum A3 the inflite repo's Today First
+# build is live at inflite.ai before its hub has a key, so Today there links to each app's own address)
+live_said() {
+  local body build
+  body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" "$SITE/version" 2>/dev/null) || body=""
+  build=$(jq -r 'if type == "object" then (.build // "" | tostring) else "" end' <<<"$body" 2>/dev/null) || build=""
+  hub_ask "$SITE"
+  case "$HUB_READY" in
+    false) say "For the record, $SITE (not changed here): Today ${build:-?}, its hub off (ready: false), so Today there links to each app's own address." ;;
+    true) say "For the record, $SITE (not changed here): Today ${build:-?}, its hub on (ready: true)." ;;
+    *) if [ "$HUB_CODE" = 404 ]; then say "For the record, $SITE (not changed here): Today ${build:-?}, with no hub (/api/hub 404): the inflite repo's Today First build isn't live there yet."
+       else say "For the record, $SITE (not changed here): Today ${build:-?}; /api/hub answered HTTP $HUB_CODE."; fi ;;
+  esac
+  return 0
 }
 
 # hub-stage.yml's last step: what's live now. Reads each step's outcome (OUT_*) and what the steps left (HUB_ORIGINS_DID,
