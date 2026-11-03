@@ -17,10 +17,13 @@
 //       those already past left out), never read by Today, kept until the last time it offered ends; 20 at most;
 //     - role "answered": the friend's Yes, their own 'yes' row, and in the same batch the inviter's pending row made
 //       'yes' at the time chosen (promoteTime; promoted says whether it was);
-//     - role "asked" without state: the inviter's phone drawing the Yes later (an invite sent from an older Chat): the
-//       row made 'yes', changing nothing where it's 'yes' already.
-//     The same id again changes nothing more. Each time starts on a quarter hour, lasts 15 minutes to 4 hours, and a
-//     'yes' one starts after t (a pending one: its last offered end after t). { t } is needed
+//     - role "asked" without state: the inviter's phone drawing the Yes later (an invite sent from an older Chat, or
+//       one whose pending row came after the Yes): the row made 'yes', or its own pending row for that friend made
+//       'yes' where the time is one it offered, of the same kind; changing nothing where it's 'yes' already.
+//     A pending row that comes after the friend's Yes (the inviter's phone offline as the invite went) is made 'yes' at
+//     once, at the time they chose, where it's one it offered (promoted then says so). The same id again changes
+//     nothing more. Each time starts on a quarter hour, lasts 15 minutes to 4 hours, and a 'yes' one starts after t (a
+//     pending one: its last offered end after t). { t } is needed
 //   promoteTime(env, inviterId, id, answererId, start, stop, { t, kind }) → whether the inviter's pending row (id) for
 //     that friend alone (with_id the answerer), at its own time or one of its opts (and of that kind, where given),
 //     became 'yes' at the time chosen, kept 12 hours past it; never once that time's begun. { t } is needed
@@ -120,6 +123,9 @@ function optsOf(opts, t) {
   }
   return out;
 }
+// (the time given, s to e (SQL), as td_times' row offered it: its own time or one of its other times, opts)
+const offered = (s, e) => `((td_times.start = ${s} AND td_times.stop = ${e}) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(td_times.opts) THEN td_times.opts ELSE '[]' END) j
+        WHERE json_extract(j.value, '$[0]') = ${s} AND json_extract(j.value, '$[1]') = ${e}))`;
 const text = (v, n) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, n);
 
 export async function addTime(env, u, row, { t } = {}) {
@@ -138,14 +144,24 @@ export async function addTime(env, u, row, { t } = {}) {
   const D = await timesDb(env), state = pending ? "pending" : "yes";
   const room = `(SELECT COUNT(*) FROM td_times WHERE user_id = ?1 AND until > ?12) < ${TIMES_MAX}`
     + (pending ? ` AND (SELECT COUNT(*) FROM td_times WHERE user_id = ?1 AND state = 'pending' AND until > ?12) < ${TIMES_PENDING_MAX}` : "");
-  // (asked without state, the inviter's backstop: its own pending row for that friend made 'yes', one 'yes' already left)
+  // (asked without state, the inviter's backstop: its own pending row for that friend made 'yes', but only at a time it
+  // offered and of the same kind (as the friend's Yes is held to), one 'yes' already left)
   const backstop = role === "asked" && !pending;
   const write = D.prepare(`INSERT INTO td_times (user_id, id, kind, start, stop, tz, with_id, who, role, state, opts, made, until)
       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13 WHERE ${room}
       ON CONFLICT (user_id, id) DO ${backstop ? `UPDATE SET state = 'yes', start = excluded.start, stop = excluded.stop, tz = excluded.tz, opts = NULL, until = excluded.until
-        WHERE td_times.state = 'pending' AND td_times.with_id = excluded.with_id` : "NOTHING"}`)
+        WHERE td_times.state = 'pending' AND td_times.with_id = excluded.with_id AND td_times.kind = excluded.kind AND ${offered("excluded.start", "excluded.stop")}` : "NOTHING"}`)
     .bind(userId, id, kind, start, stop, r.tz, withId, who, role, state, pending && opts.length ? JSON.stringify(opts) : null, t, until);
-  const promote = role === "answered" ? await promoteTimeQ(env, withId, id, userId, start, stop, { t, kind }) : null;
+  // (the friend's Yes, then: in the same batch, the inviter's pending row made 'yes'. And a pending row coming after the
+  // friend's Yes did (the inviter's phone offline as the invite went): made 'yes' at once from their answered row for this
+  // invite, at the time they chose, where it's one this offered and of the same kind; never once that time's begun)
+  const promote = role === "answered" ? await promoteTimeQ(env, withId, id, userId, start, stop, { t, kind })
+    : pending ? D.prepare(`WITH a AS (SELECT x.start, x.stop FROM td_times x WHERE x.user_id = ?2 AND x.id = ?3 AND x.with_id = ?1 AND x.kind = ?4
+          AND x.role = 'answered' AND x.state = 'yes' AND x.start > ?5)
+        UPDATE td_times SET state = 'yes', start = (SELECT start FROM a), stop = (SELECT stop FROM a), until = (SELECT stop FROM a) + ${TIME_KEEP}, opts = NULL
+        WHERE user_id = ?1 AND id = ?3 AND state = 'pending' AND with_id = ?2 AND kind = ?4 AND until > ?5
+          AND EXISTS (SELECT 1 FROM a WHERE ${offered("a.start", "a.stop")})`).bind(userId, withId, id, kind, t)
+    : null;
   const [, w, p] = await D.batch([D.prepare("DELETE FROM td_times WHERE until < ?").bind(t), write, ...(promote ? [promote] : [])]);
   const promoted = !!p?.meta?.changes;
   if (w?.meta?.changes) return { promoted };
@@ -166,7 +182,6 @@ export async function promoteTimeQ(env, inviterId, id, answererId, start, stop, 
   const D = await timesDb(env);
   return D.prepare(`UPDATE td_times SET state = 'yes', start = ?4, stop = ?5, until = ?6, opts = NULL
     WHERE user_id = ?1 AND id = ?2 AND state = 'pending' AND with_id = ?3 AND until > ?7 AND ?4 > ?7${kind != null ? " AND kind = ?8" : ""}
-      AND ((start = ?4 AND stop = ?5) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(td_times.opts) THEN td_times.opts ELSE '[]' END) j
-        WHERE json_extract(j.value, '$[0]') = ?4 AND json_extract(j.value, '$[1]') = ?5))`)
+      AND ${offered("?4", "?5")}`)
     .bind(inviterId, key, answererId, start, stop, stop + TIME_KEEP, t, ...(kind != null ? [kind] : []));
 }
