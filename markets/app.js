@@ -1124,7 +1124,9 @@ function head(title) {
 // Chats' sheet over this page (IFL.hub.send); your account, notifications and signing out in You (/#you); and the
 // notifications' subscription InFlite's own, which Markets never asks for, keeps with the account or lets go, and the
 // icon's badge InFlite's too (Chat's count among it), which Markets never clears. Off the hub, all as it ever was.
-const hubBack = () => h("button.ifl-back.press", { type: "button", onclick: () => IFL.hub.back() }, icon("back", 20, 2.4), h("span", { text: "Back" }));
+// (on a narrow phone, under 360 points, the chevron alone, so the header's title keeps its room: styles.css; its name
+// Back all the same)
+const hubBack = () => h("button.ifl-back.press", { type: "button", "aria-label": "Back", onclick: () => IFL.hub.back() }, icon("back", 20, 2.4), h("span", { text: "Back", "aria-hidden": "true" }));
 const toYou = () => { const to = IFL.hub.href("today", "you"); if (to) location.assign(to); };
 
 // ---- sections, by the address: #today, #holdings, #news (the tabs) and #s=TSCO.L (a stock's page) ----
@@ -1141,15 +1143,21 @@ function sectionOf(hash) {
   return SECTIONS.includes(s) ? { tab: s } : null;
 }
 // (the address, as it should be now: at the hub, the tab; off it, the page alone)
+// At the hub, a stock asked for stays in the address until it's opened, once it's known who's signed in: so Sign in
+// (the hub's, which comes back to this address), Try Again (a reload) and a notification tapped after the sign-in
+// lapsed still come to it. Off the hub, taken out at once, as ever.
 function addressSays() {
   try { history.replaceState(history.state, "", location.pathname + location.search + (IFL.hub.on ? `#${S.tab}` : "")); } catch (_) {}
 }
 function openTo(hash) {
   const at = sectionOf(hash);
   if (!at) return false;
-  if (at.tab && !S.me) S.tab = at.tab;
+  if (!S.me) {
+    if (at.tab) S.tab = at.tab;
+    if (at.tab || !IFL.hub.on) addressSays();
+    return true;
+  }
   addressSays();
-  if (!S.me) return true;
   if (at.tab) { if (Sheet.stack.length) closeSheet(); if (S.tab !== at.tab) go(at.tab); }
   else openStock(at.sym);
   return true;
@@ -2224,6 +2232,9 @@ function yoursPart(sym, held, q) {
         : stat("Since bought", h("button.inline", { type: "button", onclick: () => pushSheet(editView, sym), text: "Add cost" }), h("span", { text: "to see it" }))),
     h("p.ynote", { text: [held.account ? `In your ${ACCOUNT_NAME[held.account]}` : null, held.cost != null ? `${held.buys > 1 ? "average" : "paid"} ${priceSaid(q, held.cost)} a share` : null, dv >= 0.5 ? `${money(dv, "GBP", 0)} of dividends counted` : null].filter(Boolean).join(" · ") }));
 }
+// (at InFlite's hub, whether Markets' notifications come to this phone isn't Markets' to know: they're turned on for
+// every app at once in You (Get Every App's Notifications Here), so where is said with what's been set)
+const HUB_NOTIFY = " (notifications for every app are in You)";
 // An alert set (p: how much a move in a day, 0 for none), and said: this phone asked to allow notifications first,
 // where it hasn't, and where they can't be turned on here, why said with it (not lost under "You'll hear…")
 async function alertSet(sym, p) {
@@ -2235,7 +2246,7 @@ async function alertSet(sym, p) {
   if (!p) return toast("Alert off");
   if (S.alertsOff) return toast(`You'll hear when ${name} moves ${p}% in a day (alerts are off in your account)`);
   if (why) return toast(`Alert set. ${why}`, true);
-  toast(`You'll hear when ${name} moves ${p}% in a day${!S.pushOn && !IFL.hub.on ? " (notifications are off on this phone)" : ""}`);
+  toast(`You'll hear when ${name} moves ${p}% in a day${IFL.hub.on ? HUB_NOTIFY : !S.pushOn ? " (notifications are off on this phone)" : ""}`);
 }
 // Alert Me: how much a move in a day is worth hearing about (or off)
 function alertView(sym) {
@@ -2733,7 +2744,7 @@ function wrapSwitch() {
       let why = null;
       if (on && !S.pushOn && !IFL.hub.on) await turnOnHere((m) => { why = m; });
       S.wrap = (await A.setWrap(on)).wrap;
-      toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : S.pushOn || IFL.hub.on ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
+      toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : IFL.hub.on ? `You'll get the evening wrap once your markets close${HUB_NOTIFY}` : S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
     } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
   };
   return sw;
@@ -2924,6 +2935,14 @@ function toast(msg, bad = false) {
 
 // ---- starting ----
 let pointed = 0;
+// At InFlite's hub: whether InFlite's own sign-in, as Today keeps it in this browser (today:session, { id }: kept as
+// Today finds you signed in, gone as you sign out in You or Today finds you signed out), is the account given. Read
+// only, never written (rule 6: nothing of Markets' under today:*); where it's missing or unreadable, no
+// (Markets then waits for the account's answer before drawing anything)
+const HUB_KEPT = "today:session";
+function hubKeptIs(id) {
+  try { const k = JSON.parse(localStorage.getItem(HUB_KEPT) || "null"); return id != null && k?.id === id; } catch (_) { return false; }
+}
 async function start() {
   A.atHub(IFL.hub);
   drawTabs();
@@ -2955,16 +2974,20 @@ async function start() {
   const was = IFL.here("markets");
   if (was?.tab && SECTIONS.includes(was.tab)) S.tab = was.tab;
   if (asked?.tab) S.tab = asked.tab;
-  if (asked) addressSays();
+  if (asked?.tab || (asked && !IFL.hub.on)) addressSays();
   deskWas = was?.desk || null;
+  // (whose this phone's copy is: where the account that answers is someone else's, all of it let go, drawn or not)
+  const keptId = store.get("last")?.me?.id ?? null;
   let m = null, why = null;
   if (code) { ({ m = null, why = null } = await signedBack(code)); document.documentElement.classList.remove("arriving"); }
   // (and where a sign-in couldn't be handed back, who's signed in asked all the same: the browser may well be, its
   // sign-in being the site's own)
   if (!m) {
-    // (drawn at once from this phone's copy, while the account's is asked for: its prices said as from when it was kept)
+    // (drawn at once from this phone's copy, while the account's is asked for: its prices said as from when it was kept.
+    // At InFlite's hub, only while InFlite's own sign-in kept here is the same account's: signing out in You lets that
+    // go, never Markets' copy, which would otherwise be drawn for whoever opens Markets next)
     const last = code ? null : store.get("last");
-    if (last?.me) {
+    if (last?.me && (!IFL.hub.on || hubKeptIs(last.me.id))) {
       take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
       // (said as old only if the account's slow to answer: oldSaid)
       S.opening = Date.now() + 4000; setTimeout(() => { if (S.opening) { S.opening = 0; sayLine(); } }, 4100);
@@ -2983,7 +3006,7 @@ async function start() {
   // (signed out since, wherever it was: what this phone kept of you goes with it)
   if (!m?.signedIn) return m ? signedOut() : welcome();
   const same = S.me?.id === m.id;
-  if (S.me && !same) forget();
+  if ((S.me && !same) || (keptId != null && keptId !== m.id)) forget();
   take(m);
   S.pricesAt = Date.now(); S.opening = 0;
   render(!same);
@@ -2992,7 +3015,10 @@ async function start() {
   checkPush();
   loadYears();
   loadPaid();
-  if (asked?.sym) openStock(asked.sym);
+  // (a stock asked for: at the hub, as the address says it now, which a notification tapped while Markets was opening
+  // may have changed; the address back to the tab under it as it opens)
+  const stock = IFL.hub.on ? sectionOf(location.hash)?.sym : asked?.sym;
+  if (stock) { if (IFL.hub.on) addressSays(); openStock(stock); }
   // (off the hub, opened from an old Home Screen icon: once, that InFlite is one app now, with a way to turn
   // Markets' notifications off here)
   else if (!IFL.hub.on && !askNotify && !code && ownIcon()) IFL.hub.moved("markets", { off: turnOffHere });

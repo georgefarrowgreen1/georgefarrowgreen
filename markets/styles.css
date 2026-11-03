@@ -118,6 +118,9 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .mhead > .ifl-back svg, .welcome > .ifl-back svg { flex: none; width: 20px; height: 20px; stroke-width: 2.4; }
 .mhead > .ifl-back:active, .welcome > .ifl-back:active { transform: scale(0.94); }
 .welcome > .ifl-back { position: fixed; z-index: 3; top: calc(var(--top) + 14px); left: max(16px, env(safe-area-inset-left, 0px)); }
+/* (on a narrow phone the header's Back is its chevron alone, a round button the size of the menu button it stands in
+   for, so the title keeps its room beside Find and Settings; still named Back: app.js) */
+@media (max-width: 359px) { .mhead > .ifl-back { width: 44px; padding: 0; } .mhead > .ifl-back span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .mhead > .ifl-back, .welcome > .ifl-back { transition: none; } }
 
 .view { animation: view-in 0.55s var(--ease-out); }
