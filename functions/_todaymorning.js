@@ -5,7 +5,12 @@
 // preference is on, and never a word of any letter). It comes whatever the Quiet Hours. Sent by the site's scheduler
 // (workers/ticker, every 5 minutes: functions/api/today), with the site's Web Push (functions/_notify.js), to the
 // devices Today's page turned it on on (functions/_today.js td_push). Each day's is claimed only once it's composed,
-// so a tick cut off part way leaves it for the next.
+// so a tick cut off part way leaves it for the next. Since Today First (spec §7.5), each account's day is planned just
+// before its morning's composed (functions/_todayacts.js planDay: a clash moved, a ride from habit added, each with
+// Undo), so the notification can say what Today did, in the Fitness line, naming a friend only where Chat's own "Names
+// on the Lock Screen" is on. Only for an account whose Today has planned a day itself before (Today 1.09's read of the
+// day: functions/_todayacts.js hasPlanned), so nothing's done for anyone whose Today can't undo it (spec §15.4: MAIN goes
+// live before Today 1.09); and not at all while the Pages var TODAY_ACTS is "0" (the off switch: an IFL rollback).
 
 import { HttpError } from "./_pigeon.js";
 import { prefsOf, pushToSub } from "./_notify.js";
@@ -13,21 +18,25 @@ import { todayLinks } from "./_sites.js";
 import { CARDS, tddb, todayPrefs, morningTz, todayDevices, deviceOk, deviceGone, deviceFailed, tidyDevices, morningCandidates, claimMorning, releaseMorning, keepLast } from "./_today.js";
 import { cardsFor, cardsMemo, Quiet } from "./_todaycards.js";
 import { moneySaid, andSaid } from "./_markets.js";
+import { planDay, actsFor, pushLine, hasPlanned, tidyOffers } from "./_todayacts.js";
 
-// how long a tick goes on beginning things (an account composed, claimed and sent), from its start: the scheduler gives
-// it 55 seconds, and a compose (9) and a push (8) begun just before this still finish inside them. The due accounts a
-// tick takes at most (the 3 hours a morning's let run late hold 36 ticks: 540 accounts a morning), and how many at once.
-// Its lease lapses by itself if a tick dies part way: longer than any tick runs, shorter than the 5 minutes between them
-export const TICK_MS = 25e3, PER_TICK = 15, AT_ONCE = 4, LEASE = 3 * 60e3;
+// how long a tick goes on beginning things (an account planned, composed, claimed and sent), from its start: the
+// scheduler gives it 55 seconds, and a plan (PLAN_MS at most: its waits on the weather, hoursAt's and pastWet's, cut
+// short there, and the habit, which waits twice, left for a later run when it's short), a compose (9) and a push (8)
+// begun just before this still finish inside them: 25 + 10 + 9 + 8 = 52. The due accounts a tick takes at most (the 3
+// hours a morning's let run late hold 36 ticks: 540 accounts a morning), and how many at once. Its lease lapses by itself
+// if a tick dies part way: longer than any tick runs, shorter than the 5 minutes between them
+export const TICK_MS = 25e3, PLAN_MS = 10e3, PER_TICK = 15, AT_ONCE = 4, LEASE = 3 * 60e3;
 // The database's part, counted as the tick goes rather than guessed: D1 takes at most 1,000 queries a request (the paid
 // plan), and an account's compose costs from about 20 statements to a couple of hundred (Markets' prices, two or three
-// for each thing held). Every statement the tick sends is counted (each of a batch's). Once it's sent DB_BUDGET, it
-// begins no more accounts: the rest are left for the next tick, as those past PER_TICK are. The composes already begun
-// go on, to DB_MOST; one that would take the tick past it stops those still composing (their statements refused, so
-// each is left for the next tick, nothing claimed), all but the one begun first, which finishes, so every tick sends
-// something. What follows a compose (the claim, each push's health, the day given back, what was sent) is never
-// refused, as an account claimed must be sent or given back. So a tick sends DB_MOST at most, plus one compose, plus
-// what follows the composes in flight (a few each, and one or two for each device)
+// for each thing held), its plan from about 15 to 30 more (a clash moved and a ride from habit added), counted with it.
+// Every statement the tick sends is counted (each of a batch's). Once it's sent DB_BUDGET, it begins no more accounts:
+// the rest are left for the next tick, as those past PER_TICK are. The composes already begun go on, to DB_MOST; one
+// that would take the tick past it stops those still composing (their statements refused, so each is left for the next
+// tick, nothing claimed), all but the one begun first, which finishes, so every tick sends something. What follows a
+// compose (the claim, each push's health, the day given back, what was sent) is never refused, as an account claimed
+// must be sent or given back. So a tick sends DB_MOST at most, plus one compose, plus what follows the composes in
+// flight (a few each, and one or two for each device)
 export const DB_BUDGET = 650, DB_MOST = 700;
 // (a morning missed by more than three hours goes unsaid, as Fitness's does: not sent at lunchtime)
 const LATE = 3 * 60;
@@ -157,12 +166,16 @@ function marketsLine(c) {
 
 // The notification's words, from the cards ({ weather, chat, fitness, markets }, each as functions/_todaycards.js gives
 // it): { title, lines, out (apps whose line is on with nothing to say) }. names: Chat's names preference; tz: the
-// account's zone; lines: { weather: false, … }, false turning one off
-export function morningLines(cards, { names, tz, t, lines }) {
+// account's zone; lines: { weather: false, … }, false turning one off; acts: what Today did or offers this morning, a
+// sentence each (functions/_todayacts.js pushLine), said in the Fitness line, after the session (and said even where
+// that line's off: it's Today's own doing, with an Undo that doesn't wait)
+export function morningLines(cards, { names, tz, t, lines, acts = [] }) {
   const on = (k) => (lines || {})[k] !== false, c = cards && typeof cards === "object" ? cards : {};
   const said = { weather: weatherLine(c.weather), fitness: fitnessLine(c.fitness), chat: chatLine(c.chat, !!names, tz, t), markets: marketsLine(c.markets) };
+  const doing = (Array.isArray(acts) ? acts : []).filter((x) => typeof x === "string" && x).join(" ");
+  if (doing) said.fitness = [on("fitness") ? said.fitness : null, doing].filter(Boolean).join(". ");
   const out = [], got = [];
-  for (const k of LINES) if (on(k)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
+  for (const k of LINES) if (on(k) || (k === "fitness" && doing)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
   const brief = on("weather") && ok(c.weather) ? text(c.weather.brief?.title) : "";
   return { title: brief || `Your ${localNow(tz, t).weekday}`, lines: got, out };
 }
@@ -177,10 +190,23 @@ export async function composeMorning(env, u, row, t, { memo, cards, purpose = "m
   // (the page's own answer, or its cards alone)
   const have = cards && typeof cards === "object" ? (cards.cards && typeof cards.cards === "object" ? cards.cards : cards) : null;
   const got = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: purpose === "page" ? "page" : "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
-  const m = morningLines(got, { names: !!prefsOf(u).names, tz, t, lines });
-  // (cut at a character, never through one)
-  const body = [...m.lines.join("\n")].slice(0, BODY_MAX).join("");
-  return { title: m.title, body, lines: m.lines, out: m.out, tag: "today-morning", url: "/", ttl: TTL };
+  const names = !!prefsOf(u).names, today = localNow(tz, t).day;
+  // (what Today did or offers this morning: the day's acts, as planned just before; none to be had, none said; nor any
+  // while TODAY_ACTS is "0")
+  const acts = env?.TODAY_ACTS === "0" ? [] : (await actsFor(env, u.id, today).catch(() => [])).filter((a) => a.day === today).map((a) => pushLine(a, { names, tz, today })).filter(Boolean);
+  const m = morningLines(got, { names, tz, t, lines, acts });
+  return { title: m.title, body: bodyOf(m.lines, acts.join(" ")), lines: m.lines, out: m.out, tag: "today-morning", url: "/", ttl: TTL, app: "today" };
+}
+// The body: the lines, cut at BODY_MAX (at a character, never through one), but never through what Today did: where
+// that would be cut, the lines before it are cut shorter instead (to an ellipsis), so its Undo is always said
+function bodyOf(lines, doing) {
+  const cut = (s, n) => [...s].slice(0, Math.max(0, n)).join("");
+  const body = cut(lines.join("\n"), BODY_MAX);
+  if (!doing || body.includes(doing)) return body;
+  const i = lines.findIndex((l) => l.includes(doing));
+  if (i < 0) return body;
+  const rest = lines.slice(i).join("\n"), room = BODY_MAX - [...rest].length - 1, head = lines.slice(0, i).join("\n");
+  return cut(room > 1 ? `${cut(head, room - 1)}…\n${rest}` : rest, BODY_MAX);
 }
 // whether a notification has anything to say: some line, or Weather's title (with none, and Weather's line off or not
 // to be had, there's nothing to send)
@@ -223,8 +249,9 @@ export async function sendMorningNow(env, u, { endpoint }) {
   return { sent: r === "sent" ? 1 : 0 };
 }
 
-// Tests only: what a tick composes each account's with, in place of composeMorning (one that fails, or runs late)
-export const tickTest = { compose: null };
+// Tests only: what a tick composes each account's with, in place of composeMorning (one that fails, or runs late); what
+// it plans each account's day with, in place of planDay; and the stand-ins (the weather) planDay is given
+export const tickTest = { compose: null, plan: null, deps: null };
 // The database, each statement counted as it's sent (a batch, each of those in it): on(n) is told of each n before it's
 // sent, and where it says no, that's refused (a Quiet error, so a card that meets it isn't logged as failing) and not sent
 export function countedDb(D, on) {
@@ -281,7 +308,23 @@ async function tick(env, t, used) {
       box.n += n;
     }) };
     flying.push(box);
-    const note = await (tickTest.compose || composeMorning)(use, u, row, t, { memo })
+    const note = await (async () => {
+      // the day's plan first (Today's acts: functions/_todayacts.js), so the notification can say what Today did; its
+      // statements the compose's, counted with them; PLAN_MS its deadline. Only where Today has planned a day itself
+      // before, and TODAY_ACTS isn't "0". One that fails gives its day back (a later turn, or Today's page, plans it),
+      // and the morning's composed all the same
+      const by = Date.now() + PLAN_MS;
+      if (env.TODAY_ACTS === "0" || !(await hasPlanned(use, u.id))) return (tickTest.compose || composeMorning)(use, u, row, t, { memo });
+      await (tickTest.plan || planDay)(use, u, t, { ...(tickTest.deps || {}), left: () => by - Date.now() }).catch(async (e) => {
+        if (!box.refused) console.error("today tick: plan", e && e.message);
+        // (stopped part way: here, where nothing's refused (stopped by the tick's share, its own giving back was refused
+        // too), the day's given back for the next turn to plan, and any ride it added with no act to undo it by is
+        // answered no, so Fitness never adds a ride Today can't undo)
+        await env.DB.prepare("DELETE FROM td_plans WHERE user_id = ? AND day = ? AND at = ?").bind(u.id, day, t).run().catch(() => {});
+        await tidyOffers(env, u.id, t, { made: t }).catch((e2) => console.error("today tick: offers", e2 && e2.message));
+      });
+      return (tickTest.compose || composeMorning)(use, u, row, t, { memo });
+    })()
       .catch((e) => { if (!box.refused) console.error("today tick: compose", e && e.message); return null; })
       .finally(() => flying.splice(flying.indexOf(box), 1));
     if (out.composes) out.composes.push(box.n);

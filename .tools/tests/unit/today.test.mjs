@@ -374,10 +374,117 @@ test("the account's data has Today's, and the account going takes it", async () 
   await T.claimMorning(env, "fay", "2026-11-02", null);
   const x = await T.todayExport(env, "fay");
   assert.deepEqual(x, { cards: { order: ["chat", "weather", "fitness", "markets"], hidden: ["markets"] },
-    morning: { on: true, at: "06:45", timeZone: "America/New_York", lines: { weather: true, chat: true, fitness: true, markets: false }, lastSent: "2026-11-02" }, devices: 0 });
+    morning: { on: true, at: "06:45", timeZone: "America/New_York", lines: { weather: true, chat: true, fitness: true, markets: false }, lastSent: "2026-11-02" }, devices: 0,
+    acts: [], rules: [], planned: [], times: [] }, "Today First's too (what Today did, its rules, the days it planned, times agreed in Chat): none yet");
   await T.addDevice(env, { id: "fay", sessionHash: "sFay" }, await device("fay"));
   await T.dropToday(env, "fay");
   assert.equal(one("SELECT COUNT(*) AS n FROM td_prefs WHERE user_id = 'fay'").n, 0);
   assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE user_id = 'fay'").n, 0);
   await T.dropToday({}, "fay");
+});
+
+// ---- Today First's routes (spec §6.1): each refused from anywhere but Today's own page, a change never straight from a
+// browser, signed out 401, and their answers; the session view's quiet hours, Mail and the hub's push; and the moment
+// set by X-Today-At only where the server's TODAY_TEST_AT is "1" ----
+const W = { site: "same-origin" };
+const UUID0 = "00000000-0000-4000-8000-000000000000";
+
+test("Today First's ten routes: another Origin 403, straight from a browser 403, signed out 401, a handed-over sign-in 401", async () => {
+  await account("tfgus");
+  const gus = await signIn("tfgus", "sTfGus");
+  const writes = [["POST", "act", { id: UUID0 }], ["POST", "act/undo", { id: UUID0 }], ["PUT", "rules", { rule: "moveRide", level: "do" }], ["PATCH", "notify", { quiet: { on: false } }],
+    ["POST", "device", { sub: await device("tfgus") }], ["DELETE", "device", { endpoint: "x" }], ["DELETE", "devices", { id: "x" }]];
+  const reads = [["GET", "rules"], ["GET", "notify"], ["GET", "devices?device=AbCdEfGhIjKlMnOp"]];
+  for (const [m, p, body] of [...writes, ...reads]) {
+    let r = await call(m, p, { cookie: gus, body, origin: "https://evil.example", ...W });
+    assert.equal(r.s, 403, `${m} ${p}: another Origin`); assert.equal(r.j.error, "That request didn’t come from Today.");
+    r = await call(m, p, { cookie: gus, body, origin: "http://account.ifl.test:8788", ...W });
+    assert.equal(r.s, 403, `${m} ${p}: the account's page isn't Today`);
+    r = await call(m, p, { cookie: gus, body, origin: null, ...W });
+    assert.equal(r.s, 403, `${m} ${p}: no Origin`);
+    r = await call(m, p, { body, ...W });
+    assert.equal(r.s, 401, `${m} ${p}: signed out`);
+    r = await call(m, p, { cookie: handedC, body, ...W });
+    assert.equal(r.s, 401, `${m} ${p}: a sign-in handed over for the account's page alone`);
+  }
+  for (const [m, p, body] of writes) for (const site of ["cross-site", "same-site", "none"]) {
+    const r = await call(m, p, { cookie: gus, body, site });
+    assert.equal(r.s, 403, `${m} ${p}: straight from a browser (${site})`);
+  }
+});
+
+test("Today First's routes signed in: acts by their id (a bad one 400, none 404), the rules, notifications; devices reach their module", async () => {
+  await account("tfhal");
+  const hal = await signIn("tfhal", "sTfHal");
+  for (const p of ["act", "act/undo"]) {
+    let r = await call("POST", p, { cookie: hal, body: { id: "x" }, ...W });
+    assert.equal(r.s, 400, p); assert.equal(r.j.error, "Bad request.");
+    r = await call("POST", p, { cookie: hal, body: { id: UUID0 }, ...W });
+    assert.equal(r.s, 404, p); assert.equal(r.j.error, "Not found.");
+  }
+  let r = await call("GET", "rules", { cookie: hal });
+  assert.equal(r.s, 200);
+  assert.deepEqual(r.j.rules.map((x) => [x.rule, x.level, x.setBy, !!x.soon]), [["moveRide", "do", "auto", false], ["addRide", "do", "auto", false], ["holdRide", "do", "auto", false], ["later", "do", "auto", true], ["arrange", "do", "auto", true]]);
+  r = await call("PUT", "rules", { cookie: hal, body: { rule: "holdRide", level: "suggest" }, ...W });
+  assert.deepEqual(r.j, { rule: "holdRide", level: "suggest", setBy: "you", line: "Held 0" });
+  r = await call("PUT", "rules", { cookie: hal, body: { rule: "holdRide", level: "loud" }, ...W });
+  assert.equal(r.s, 400); assert.equal(r.j.error, "Choose Do, Suggest or Quiet.");
+  r = await call("GET", "notify", { cookie: hal });
+  assert.equal(r.s, 200); assert.deepEqual(r.j.quiet, { on: false, from: 22, to: 7, tz: "UTC" });
+  r = await call("PATCH", "notify", { cookie: hal, body: { quiet: { on: true, from: 21, to: 6 } }, ...W });
+  assert.equal(r.s, 200); assert.deepEqual([r.j.quiet.on, r.j.quiet.from, r.j.quiet.to], [true, 21, 6]);
+  r = await call("GET", "me", { cookie: hal });
+  assert.deepEqual(r.j.quiet, { on: true, from: 21, to: 6 }, "the session view says the same");
+  // (the devices' answers are their own module's, functions/_devices.js, which devices.test.mjs checks; here, only that
+  // each gets past every guard to it: B0's stub's 501 "Not built yet.", or the module's own answer, never a guard's 401
+  // or 403, and a 404 only as the module's "Not found.")
+  for (const [m, p, body] of [["POST", "device", { sub: await device("tfhal") }], ["DELETE", "device", { endpoint: "x" }], ["DELETE", "devices", { id: "x" }], ["GET", "devices?device=AbCdEfGhIjKlMnOp"]]) {
+    r = await call(m, p, { cookie: hal, body, ...W });
+    const reached = r.s === 501 ? r.j?.error === "Not built yet." : ![401, 403].includes(r.s) && (r.s !== 404 || r.j?.error === "Not found.");
+    assert.ok(reached, `${m} ${p}: ${r.s} ${JSON.stringify(r.j)}`);
+  }
+});
+
+test("the session view: quiet hours as the account has them, Mail for the site's admin alone (and not when that can't be told), the hub's push", async () => {
+  await account("tfivy", { notify_prefs: JSON.stringify({ quiet: true, quietFrom: 21, quietTo: 6, tz: "Europe/London" }) });
+  await account("tfjo");
+  const ivy = await signIn("tfivy", "sTfIvy"), jo = await signIn("tfjo", "sTfJo");
+  let r = await call("GET", "me", { cookie: jo });
+  assert.deepEqual({ quiet: r.j.quiet, apps: r.j.apps, hubPush: r.j.hubPush }, { quiet: { on: false, from: 22, to: 7 }, apps: { mail: false }, hubPush: false });
+  r = await call("GET", "me", { cookie: ivy });
+  assert.deepEqual(r.j.quiet, { on: true, from: 21, to: 6 });
+  env.HUB_PUSH = "1";
+  try { assert.equal((await call("GET", "me", { cookie: jo })).j.hubPush, true); env.HUB_PUSH = "true"; assert.equal((await call("GET", "me", { cookie: jo })).j.hubPush, false, "only \"1\""); }
+  finally { delete env.HUB_PUSH; }
+  await D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', 'tfivy')").run();
+  try {
+    assert.deepEqual((await call("GET", "me", { cookie: ivy })).j.apps, { mail: true }, "the admin");
+    assert.deepEqual((await call("GET", "me", { cookie: jo })).j.apps, { mail: false }, "anyone else");
+    // (who the admin is can't be told just now: no Mail, and the view all the same)
+    env.DB.sql.exec("ALTER TABLE pg_passkeys RENAME TO pg_passkeys_away");
+    try { r = await call("GET", "me", { cookie: ivy }); assert.equal(r.s, 200); assert.deepEqual(r.j.apps, { mail: false }); }
+    finally { env.DB.sql.exec("ALTER TABLE pg_passkeys_away RENAME TO pg_passkeys"); }
+  } finally { await D.prepare("DELETE FROM pg_meta WHERE k = 'admin_user'").run(); }
+});
+
+test("X-Today-At sets the moment only where TODAY_TEST_AT is \"1\" and it's 13 digits, for the whole day and for only=", async () => {
+  await account("tfkit");
+  const kit = await signIn("tfkit", "sTfKit"), AT = 1793602800000;
+  const at = async (path, header, on) => {
+    if (on === undefined) delete env.TODAY_TEST_AT; else env.TODAY_TEST_AT = on;
+    try {
+      const request = new Request(`http://account.ifl.test:8788/api/account/today/${path}`, { headers: { Origin: ORIGIN, Cookie: kit, "X-Today-At": header } });
+      const res = await onRequest({ request, env, params: { path: ["today", ...path.split("?")[0].split("/")] }, waitUntil: () => {} });
+      return (await res.json()).at;
+    } finally { delete env.TODAY_TEST_AT; }
+  };
+  const near = (x) => Number.isFinite(x) && Math.abs(x - Date.now()) < 60e3;
+  assert.ok(near(await at("cards?v=2", String(AT))), "ignored without TODAY_TEST_AT");
+  assert.ok(near(await at("cards?v=2", String(AT), "true")), "ignored unless it's \"1\"");
+  assert.ok(near(await at("cards?v=2", "1793602800", "1")), "ignored unless it's 13 digits");
+  assert.ok(near(await at("cards?v=2", `${AT}x`, "1")));
+  assert.equal(await at("cards?v=2", String(AT), "1"), AT);
+  assert.equal(await at("cards", String(AT), "1"), AT, "without v=2 too");
+  assert.equal(await at("cards?only=weather", String(AT), "1"), AT, "and for only=");
+  assert.ok(near(await at("cards?only=weather", String(AT))), "only= ignores it without TODAY_TEST_AT");
 });
