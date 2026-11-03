@@ -69,6 +69,9 @@ test('Weather: Now, its sections, a day, Settings at a page, a place, and a plac
     ['/weather/#nope', app('now'), '/weather/'], ['/weather/#nope=1', app('now'), '/weather/'], ['/weather/#=x', app('now'), '/weather/'],
     ['/weather/#day=2026-11-03%3Cb%3E', app('days', 'day'), '/weather/#day'], ['/weather/#day=' + '1'.repeat(41), app('days', 'day'), '/weather/#day'],
     ['/weather/#day', app('days', 'day'), '/weather/#day'],
+    // (Weather's arg as stage 1 had it: [\w-] as written, never decoded; the wider rule is the new modules')
+    ['/weather/#day=2026%2D11%2D03', app('days', 'day'), '/weather/#day'], ['/weather/#settings=a.b', app('now', 'settings'), '/weather/#settings'],
+    ['/weather/#settings=a=b', app('now', 'settings'), '/weather/#settings'], ['/weather/#day=%5EX', app('days', 'day'), '/weather/#day'],
   ];
   for (const [href, route, back] of cases) {
     assert.deepEqual(R.parse(href, on), route, href);
@@ -104,6 +107,7 @@ test('format: kind may be left out, and a key only counts when it belongs to the
   assert.equal(R.format({ app: 'weather', section: 'days', arg: '2026-11-03' }), '/weather/#days=2026-11-03');
   assert.equal(R.format({ app: 'weather', key: 'day', arg: '2026-11-03' }), '/weather/#day=2026-11-03');
   assert.equal(R.format({ app: 'weather', key: 'settings', arg: 'units' }), '/weather/#settings=units');
+  assert.equal(R.format({ app: 'weather', key: 'settings', arg: 'a.b' }), '/weather/#settings', 'Weather’s arg: stage 1’s [\\w-] only');
   assert.equal(R.format({ app: 'weather', key: 'radar' }), '/weather/#radar');
   assert.equal(R.format({ app: 'weather', key: 'nope', arg: 'x' }), '/weather/', 'a key that’s no section nor alias: Now, its arg dropped');
   assert.equal(R.format({ app: 'weather', section: 'nope', key: 'warnings' }), '/weather/#warnings', 'a section that isn’t one: the key’s');

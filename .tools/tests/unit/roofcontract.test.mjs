@@ -402,9 +402,12 @@ for (const app of APPS2) {
     assert.ok(Buffer.byteLength(src) <= 4096, `${Buffer.byteLength(src)} bytes`);
     const { connector: c } = await import(new URL('connector.js', homeOf(app)));
     if (SHARES[app]) assert.deepEqual(c.shares, SHARES[app]);
-    assert.equal(typeof c.search, 'function');
-    assert.ok(Array.isArray(await c.search('', { userId: 'someone' })), 'search gives a list');
-    if (app !== 'mail') assert.equal(typeof c.mini, 'function');
+    // (Markets' and Fitness's connectors search on the phone (s2 §2.5); Mail's has none: its provider is the mounted
+    // module's, S4-D9)
+    // (Mail's connector has a mini but no search: s4 S4-D9, s24 §5)
+    assert.equal(typeof c.mini, 'function');
+    if (app !== 'mail') assert.equal(typeof c.search, 'function');
+    if (typeof c.search === 'function') assert.ok(Array.isArray(await c.search('', { userId: 'someone' })), 'search gives a list');
   });
 
   test(`${app}: connector.files = the static graph from the entry + REGISTRY’s CSS, exactly; lazy = the closure of the literal fw.lazy imports less files less NET; none in both; ≤ 60`, { skip }, async () => {
@@ -436,7 +439,7 @@ for (const app of APPS2) {
         [/serviceWorker/, 'registers no service worker'],
         [/(?:\b(?:window|globalThis)\s*\.\s*|(?<![.\w$]))history\s*\./, 'no history.*'],
         [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes'],
-        [/(?<![.\w$])(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert()'],
+        [/(?<![.\w$]|function\s+)(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert() (a module’s own opener of that name may be declared)'],
         [/\bIFL\b/, 'no IFL'],
         [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document-wide lookups'],
         [/["'`]today:/, 'no today:* key'],
