@@ -124,8 +124,10 @@ await part(7, 'Mail Settings: a change saved at Mail; New Address at Mail’s ow
   await p.locator(`${SH('mail-settings')}[open]`).getByRole('link', { name: /Open Mail Settings at Mail.s own address/ }).first().click().catch(() =>
     p.locator(`${SH('mail-settings')}[open]`).getByRole('button', { name: /Open Mail Settings at Mail.s own address/ }).first().click().catch(() => {}));
   const own = await popped;
-  await own?.waitForLoadState('domcontentloaded').catch(() => {});
-  ok(!!own && own.url() === `${MAIL}/#settings` && new URL(p.url()).origin === HUB, '7. New Address, Delete or Send From: Mail Settings at Mail’s own address (MAIL/#settings) in a new tab, the hub’s page where it was (S4-D11)', own?.url());
+  // (the address the tab opened at, as it's reached: a new tab is blank till then, and Mail on its own takes #settings
+  // out of its address once its list is in)
+  const ownAt = own ? await own.waitForURL(`${MAIL}/#settings`, { waitUntil: 'commit', timeout: 10000 }).then(() => `${MAIL}/#settings`, () => own.url()) : null;
+  ok(!!own && ownAt === `${MAIL}/#settings` && new URL(p.url()).origin === HUB, '7. New Address, Delete or Send From: Mail Settings at Mail’s own address (MAIL/#settings) in a new tab, the hub’s page where it was (S4-D11)', ownAt);
   await own?.close().catch(() => {});
   // Notifications → You's Mail Notifications (/#you=notify-mail)
   await p.locator(`${SH('mail-settings')}[open]`).getByRole('link', { name: /Notifications/ }).first().click().catch(() => {});
@@ -287,8 +289,9 @@ await part(11, 'the gate: Confirm It’s You round trip over CORS; Pat’s admin
   console.log(`note: the hub's page left for the sign-in page with its verifier kept: ${verifierKept}`);
   const back = navs.find((u) => u.startsWith(`${HUB}/mail/#signin=`)) || '';
   ok(/^http:\/\/ifl\.test:8788\/mail\/#signin=[A-Za-z0-9_-]{16,128}(&|$)/.test(back), '11. the code back at the hub’s /mail/#signin=<code> (S4-D12, §2.3)', back.slice(0, 80));
-  const hb = asked.filter((r) => r.who === 'george' && r.url === `${MAIL}/api/auth/handback` && r.method === 'POST').at(-1);
+  // (the swap is the module's, so it's made once the module's in: looked for once Mail's list is, and a while after)
   const inAgain = await mailUp(p);
+  const hb = await until(() => asked.filter((r) => r.who === 'george' && r.url === `${MAIL}/api/auth/handback` && r.method === 'POST').at(-1), 10000);
   ok(!!hb && hb.main && inAgain, '11. the module swapped it at Mail’s /api/auth/handback over CORS, and Mail’s list is in (S4-D12)', js({ hb: !!hb, inAgain }));
   ok((await at(p, '/mail/', 10000)) && !(await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier'))), '11. the address tidied to /mail/, the verifier used up (§2.3, S4-D16)', js({ url: here(p), verifierKeptWhenLeaving: verifierKept }));
   const fresh = Number(sql(`SELECT MAX(auth_at) AS t FROM pg_sessions WHERE user_id = '${GID}'`)[0]?.t || 0);

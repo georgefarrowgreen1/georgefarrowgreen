@@ -1810,7 +1810,7 @@ function marketsView() {
 // opens (GET apps/today-build), once for the page; "–" till it says, or if it doesn't. A read always has every card
 // in its order, so none means the settings couldn't be read: then neither the cards nor the morning is said)
 let todayAsked = null, todayBuild = null;
-const CARD_NAMES = { weather: "Weather", chat: "Chat", fitness: "Fitness", markets: "Markets" };
+const CARD_NAMES = { weather: "Weather", chat: "Chat", fitness: "Fitness", markets: "Markets", mail: "Mail" };
 function todayAboutView() {
   const x = S.me.apps?.today || {}, known = !!x.order?.length, hidden = x.hidden || [], shown = (x.order || []).filter((k) => !hidden.includes(k)), mo = x.morning || {};
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
@@ -1820,7 +1820,7 @@ function todayAboutView() {
   return { title: "Today", quiet: true, body: [
     h("div.app-head", {}, h("img", { src: "/apps/today.png", alt: "", width: 64, height: 64 }), h("b", { text: "Today" }), h("span", { text: "One page, every app" })),
     h("div.group", {},
-      known && row("Cards", shown.length ? `${shown.length} of 4 shown` : "All hidden"),
+      known && row("Cards", shown.length ? `${shown.length} of ${x.order.length} shown` : "All hidden"),
       known && h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: [shown.map((k) => CARD_NAMES[k]).join(" · "), hidden.length && `Hidden: ${hidden.map((k) => CARD_NAMES[k]).join(", ")}`].filter(Boolean).join(" · ") }))),
       known && row("Morning notification", mo.on ? hhmm(mo.at ?? 420) : "Off"),
       ver),
