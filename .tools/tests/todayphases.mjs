@@ -73,7 +73,7 @@ function standInHub(o) {
   } : null;
   const SUBS = { chat: '/chats/', weather: '/weather/', fitness: '/fitness/', finance: '/markets/' };
   const IFL = { hub: {
-    on: true, base: '/',
+    on: true, base: '/', degraded: false,
     go(url) {
       log.push(['go', String(url)]);
       try {
@@ -372,14 +372,15 @@ await part('at the hub, under the roof: Radar in the page', async () => {
     await p.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
   };
   const { ctx, p } = await open('midday', { hub: {}, setup });
+  // (documents loaded in the tab: a pushState is never one)
   let loads = 0;
-  p.on('framenavigated', (f) => { if (f === p.mainFrame()) loads++; });
+  p.on('load', () => { loads++; });
   await p.evaluate(() => { window.__same = 1; });
   await p.click(`${DAY} #top a[data-do="open"]`);
   await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
   await p.waitForSelector('main#m-weather:not([hidden]) .ifl-error [data-act=retry]', { timeout: 20000 });
   ok(await p.evaluate(() => window.__same === 1), 'Radar: /weather/#radar in the same document (pushState), never a page load');
-  same(loads, 0, 'no main-frame navigation');
+  same(loads, 0, 'no page loaded');
   same(await p.evaluate(() => [document.documentElement.dataset.app, document.getElementById('today').hidden]), ['weather', true], 'Weather’s screen shown, Today’s hidden');
   ok(await p.$('main#m-weather .ifl-error [data-act=own]'), 'the error state offers Open Weather on Its Own beside Try Again');
   await p.screenshot({ path: `${OUT}/hub-radar-error.png` });
