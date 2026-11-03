@@ -368,6 +368,24 @@ test('stages 2–4: each module’s document (/markets/, /fitness/, /mail/) as /
   for (const p of ['/markets', '/fitness/x.html', '/chats/']) assert.equal(await w.get(p, 'navigate'), null, p);
 });
 
+test('stages 2–4: a keep naming a NET file (network only, s24 §8: Weather’s radar and rain files, Fitness’s maps, share card, formats and reader) is ignored whole; the files beside them still kept on their own', { skip: s24Case }, async () => {
+  const { isNet } = await import('./fixtures/budget.mjs');
+  const w = worker((path) => okFile(path));
+  const fx = ['/fitness/roof/fitness.js', '/fitness/roof/core.js', '/fitness/workouts.js', '/fitness/roof/fitness.css'];
+  const net = { weather: ['radar', 'radarmix', 'mapstyle', 'mapgl', 'mapleaf', 'rainmap', 'radarrain'].map((f) => `/weather/${f}.js`), fitness: ['map', 'mapstyle', 'share', 'formats', 'fit', 'reader'].map((f) => `/fitness/${f}.js`) };
+  for (const [app, files] of Object.entries(net)) for (const f of files) {
+    assert.ok(isNet(app, f), `${f}: in roofcontract’s NET table`);
+    await w.send('message', { data: { ifl: 'keep', app, build: '1.68', files: [...(app === 'fitness' ? fx : FILES12), f] }, source: { url: `${ORIGIN}/${app}/` }, ports: [] });
+  }
+  assert.deepEqual([...w.stores.keys()], [], 'a NET file among them: nothing kept');
+  assert.deepEqual(w.asked, [], 'nothing fetched');
+  // (a name that only looks like one: kept; and the lists without the NET file: kept)
+  await w.send('message', { data: { ifl: 'keep', app: 'fitness', build: '1.68', files: [...fx, '/fitness/roof/map.js', '/fitness/mapsx.js'] }, source: { url: `${ORIGIN}/fitness/` }, ports: [] });
+  assert.equal(w.stores.get('roof-fitness-1.68')?.size, fx.length + 2, 'fitness/roof/map.js and mapsx.js are not NET files');
+  await w.send('message', { data: { ifl: 'keep', app: 'weather', build: '1.66', files: FILES12 }, source: { url: `${ORIGIN}/weather/` }, ports: [] });
+  assert.equal(w.stores.get('roof-weather-1.66')?.size, FILES12.length);
+});
+
 test('stages 2–4: Markets’ and Fitness’s files kept in roof-<app>-<build> (files ∪ lazy, ≤ 60, under the app’s path, never vendor/, its worker or version); each app’s kept copy only its own', { skip: s24Case }, async () => {
   const w = worker((path) => okFile(path));
   const mk = ['/markets/roof/markets.js', '/markets/roof/core.js', '/markets/charts.js', '/markets/roof/news.js', '/markets/roof/markets.css'];
