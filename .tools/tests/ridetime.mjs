@@ -137,6 +137,21 @@ one(`UPDATE fx_offers SET state = 'no' WHERE id = '${C}'`);
 await fresh(HUB + '/fitness/');
 ok(await swapOf(4) === null && await waitFor(() => state()?.swaps?.[dayAt(4)] === undefined), 'undone on Today: its swap comes out as Fitness next opens');
 ok(await swapOf(2) === 'free-ride', 'the kept one stays');
+// (one past its time on its own day stays in it: a ride Today added for this morning, then the evening's open, 12 hours
+// after it ended, when it's no longer in GET me's list: forgotten here, never taken out)
+await p.evaluate(async (d) => { const m = await window.__fx(); delete m.S.swaps[d]; m.keep('swaps'); m.redraw(); }, dayAt(0));
+await waitFor(() => state()?.swaps?.[dayAt(0)] === undefined);
+const T0 = offer(0, 'yes');
+await fresh(HUB + '/fitness/');
+ok(await swapOf(0) === 'free-ride' && await waitFor(() => state()?.swaps?.[dayAt(0)] === 'free-ride'), 'one Today added for this morning, applied to today');
+one(`UPDATE fx_offers SET until = ${Date.now() - 1000} WHERE id = '${T0}'`);
+await fresh(HUB + '/fitness/');
+const appliedNow = await p.evaluate(() => { try { return Object.keys(JSON.parse(localStorage.getItem('fitness:today-swaps')).applied); } catch (_) { return null; } });
+ok(await swapOf(0) === 'free-ride' && state()?.swaps?.[dayAt(0)] === 'free-ride' && Array.isArray(appliedNow) && !appliedNow.includes(T0) && appliedNow.includes(A),
+  'past its time on its own day: its swap stays (here and in the record), forgotten from what Fitness put in', JSON.stringify(appliedNow));
+// (today back to Endurance 90 for what follows)
+await p.evaluate(async (d) => { const m = await window.__fx(); m.S.swaps[d] = 'endurance-90'; m.keep('swaps'); m.redraw(); }, dayAt(0));
+await waitFor(() => state()?.swaps?.[dayAt(0)] === 'endurance-90');
 // (a day changed by hand isn't taken back: one added again, its day then changed, then undone on Today)
 const E = offer(6, 'yes');
 await fresh(HUB + '/fitness/');
@@ -166,6 +181,19 @@ ok(await p.evaluate(() => location.hash) === '#today', 'the address left saying 
 await p.screenshot({ path: `${out}/4-day.png` });
 await p.evaluate(() => { location.hash = '#progress'; }); await settle(p, 600);
 ok((await tabNow())[0] === 'progress', '#progress while open: Progress');
+// #offer=: a suggestion of Today's, as it opens: its Add to Your Plan sheet; one of Today's added, while open: its card, in
+// sight, no sheet
+const G = offer(1, 'yes'), Hn = offer(7, 'new');
+await fresh(HUB + `/fitness/#offer=${Hn}`);
+await p.waitForSelector('#sheet .offer-acts .btn:text-is("Add to My Plan")', { timeout: 10000 }).catch(() => {});
+ok(await p.locator('#sheet .offer-acts .btn:text-is("Add to My Plan")').count() === 1 && (await tabNow())[0] === 'today', `#offer=<a suggestion> as it opens: Add to Your Plan`);
+await p.evaluate(async () => (await window.__fx()).closeSheet()); await settle(p, 500);
+await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await settle(p, 400);
+const cardG = p.locator(`.offer.from-today[data-offer="${G}"]`), inView = async () => { const b = await cardG.boundingBox(); return !!b && b.y >= 0 && b.y + b.height <= 844; };
+const wasInView = await inView();
+await p.evaluate((id) => { location.hash = `#offer=${id}`; }, G); await settle(p, 1200);
+ok(!wasInView && await inView() && !(await p.evaluate(async () => (await window.__fx()).sheetEl.open)), '#offer=<one Today added> while open: its card brought into sight from the foot of the page, no sheet', `in view before: ${wasInView}`);
+ok(await p.evaluate(() => location.hash) === '#today', 'and the address left saying the tab');
 
 // ---- 4. Send: through the hub's send (spied), never an address; unspied, Chats' own sheet, with the way back ----
 await fresh(HUB + '/fitness/#today');
@@ -191,7 +219,35 @@ ok(/Strava opens on its own; come back here when it says you’re connected/.tes
 await p.evaluate(async () => (await window.__fx()).closeSheet()); await settle(p, 500);
 await p.locator('.fhead .hub-more').click(); await p.waitForSelector('.ifm-pop [data-k=notify]', { timeout: 10000 });
 ok((await p.locator('.ifm-pop [data-k=notify] .ifm-val').innerText().catch(() => '')) === 'In You', 'Fitness Settings: Notifications are You’s at the hub');
+ok(await p.locator('.ifm-pop .ifm-out').count() === 0, 'Fitness Settings at the hub: no Sign Out of its own (signing out is You’s)');
 await p.keyboard.press('Escape'); await settle(p, 400);
+await p.evaluate(async () => { const m = await window.__fx(); m.openSheet(m.settingsView); }); await settle(p, 600);
+ok(await p.locator('#sheet button:text-is("Sign Out")').count() === 0, 'nor in its Settings');
+await p.evaluate(async () => (await window.__fx()).closeSheet()); await settle(p, 400);
+// (an old morning reminder of Fitness's own kept at the hub's address, InFlite's own subscription there, and #notify
+// asked: nothing asked of Fitness's push routes, nothing subscribed, nothing let go; every subscribe and unsubscribe here
+// noted with the page it came from)
+await ctx.addInitScript(() => {
+  const note = (k) => { try { const l = JSON.parse(localStorage.getItem('__push') || '[]'); l.push(`${k} ${location.pathname}`); localStorage.setItem('__push', JSON.stringify(l)); } catch (_) {} };
+  const P = PushManager.prototype, sub = P.subscribe, get = P.getSubscription;
+  const wrap = (x) => (x && typeof x.unsubscribe === 'function' ? Object.assign(x, { unsubscribe: ((u) => function (...a) { note('unsubscribe'); return u.apply(this, a); })(x.unsubscribe) }) : x);
+  P.subscribe = async function (...a) { note('subscribe'); return wrap(await sub.apply(this, a)); };
+  P.getSubscription = async function (...a) { return wrap(await get.apply(this, a)); };
+});
+await p.evaluate(() => { localStorage.setItem('fitness:morning', JSON.stringify({ at: 420, endpoint: 'https://fcm.googleapis.com/fcm/send/rhea-old-fitness' })); localStorage.setItem('fakesub', btoa('inflite-root')); localStorage.removeItem('__push'); });
+await fresh(HUB + '/fitness/#notify'); await settle(p, 3800);
+const pushNoted = () => p.evaluate(() => JSON.parse(localStorage.getItem('__push') || '[]'));
+ok(pushAsks.length === 0 && (await pushNoted()).length === 0 && await p.evaluate(() => localStorage.getItem('fakesub')) === btoa('inflite-root'),
+  'at the hub, with Fitness’s old reminder kept there and #notify: no push route asked, nothing subscribed or let go, InFlite’s subscription still there', `${pushAsks.join(', ')} ${JSON.stringify(await pushNoted())}`);
+// (Sign Out, asked of Fitness at the hub: to You, where InFlite's is; Fitness signs nothing out and lets nothing go)
+const outAsks = []; const onOut = (r) => { if (/\/api\/fitness\/(signout|push)/.test(r.url())) outAsks.push(`${r.method()} ${r.url()}`); }; p.on('request', onOut);
+await Promise.all([p.waitForURL((u) => u.pathname === '/' && u.hash === '#you', { timeout: 20000 }).catch(() => {}), p.evaluate(async () => { (await window.__fx()).signOutHere(); }).catch(() => {})]);
+p.off('request', onOut);
+ok(pathOf(p.url()) === '/#you' && outAsks.length === 0 && !(await pushNoted()).some((x) => / \/fitness\//.test(x)),
+  'signOutHere at the hub: on to You (/#you), no /api/fitness/signout or push, nothing let go by Fitness', `${p.url()} ${outAsks.join(', ')} ${JSON.stringify(await pushNoted())}`);
+const still = await p.evaluate(async () => (await fetch('/api/fitness/me')).json());
+ok(still.signedIn === true, 'and still signed in');
+await p.evaluate(() => { localStorage.removeItem('fitness:morning'); });
 ok(pushAsks.length === 0, 'at the hub, Fitness never asked its push routes for anything', pushAsks.join(', '));
 
 // ---- 6. Back: opened from Apps' tile, back to Apps ----
@@ -210,6 +266,69 @@ ok(await out2.p.locator('.w-back .ifl-back').count() === 1, 'signed out: Back ov
 await Promise.all([out2.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 20000 }), out2.p.click('#sign-in')]);
 ok(pathOf(out2.p.url()) === '/chats/#signin-start&then=%2Ffitness%2F', 'Sign In: the hub’s, through Chats, and back to /fitness/', out2.p.url());
 await out2.ctx.close();
+
+// ---- 8. #act= on a phone new to the account, the ride beyond the first page of activities: opened once the older ones
+// are in, never said not to be there; one on the first page at once; one that isn't anywhere, said so once they're in ----
+// (one statement, no double quotes: the tests' SQL goes to wrangler inside them)
+one(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 405) INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) SELECT '${uid}', 'old' || i, ${dayAt(-30)} - i * 86400000, 'ride', 0, 'Old ride ' || i, 'fit', 1, json_object('secs', 3600, 'dist', 30000, 'tss', 50), ${Date.now()} FROM n`);
+ok(one(`SELECT COUNT(*) AS n FROM fx_acts WHERE user_id = '${uid}'`)[0]?.n >= 405, 'Rhea’s account: 405 older rides, more than the first page (400)');
+const nu = await hubPhone('rhea-new', null, { cookies: { [cname]: cvalue }, path: '/api/hub', zone: ZONE });
+const nuErrs = []; nu.p.on('pageerror', (e) => { if (/\/fitness\//.test(nu.p.url())) nuErrs.push(e.message); });
+await nu.ctx.addInitScript(() => {
+  try { const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true'); } catch (_) {}
+  window.__fx = () => import(document.querySelector('script[type="module"][src*="app.js"]').src);
+  // (every sheet title and toast this page shows, in order)
+  window.__seen = [];
+  addEventListener('DOMContentLoaded', () => new MutationObserver(() => {
+    for (const x of [document.querySelector('#sheet h1')?.textContent, document.querySelector('#toast span')?.textContent].map((v, i) => v && `${i ? 'toast' : 'sheet'}: ${v}`))
+      if (x && window.__seen.at(-1) !== x) window.__seen.push(x);
+  }).observe(document.documentElement, { subtree: true, childList: true, characterData: true }));
+});
+await nu.p.goto(HUB + '/fitness/#act=old405');
+await nu.p.waitForSelector('.fhead .ifl-back', { timeout: 30000 });
+const seenNu = () => nu.p.evaluate(() => window.__seen);
+// (its file isn't kept by these tests, so the sheet then says so, “That activity isn’t here any more.”: the account's own
+// answer for the file, after the sheet's opened, not Fitness's “That activity isn’t here.” for one it couldn't find)
+ok(await waitFor(async () => (await seenNu()).includes('sheet: Old ride 405'), 20000) && !(await seenNu()).includes('toast: That activity isn’t here.'),
+  '#act=<a ride beyond the first page>, on a phone new to the account: its sheet, once the older ones are in; never “isn’t here”', JSON.stringify(await seenNu()));
+await nu.p.evaluate(async () => { const m = await window.__fx(); if (m.sheetEl.open) await m.closeSheet(); }); await settle(nu.p, 500);
+await nu.p.evaluate(() => { location.hash = '#act=old1'; });
+ok(await waitFor(async () => (await seenNu()).includes('sheet: Old ride 1'), 8000), '#act=<one on the first page> while open: its sheet at once');
+await nu.p.evaluate(async () => { const m = await window.__fx(); if (m.sheetEl.open) await m.closeSheet(); }); await settle(nu.p, 500);
+await nu.p.evaluate(() => { location.hash = '#act=nowhere1'; });
+ok(await waitFor(async () => (await seenNu()).includes('toast: That activity isn’t here.'), 8000), '#act=<one that isn’t anywhere>: “That activity isn’t here.”');
+ok(nuErrs.length === 0, 'no page errors there', nuErrs.slice(0, 3).join(' | '));
+await nu.ctx.close();
+
+// ---- 9. off the hub, from an old Home Screen icon of Fitness's own (fitness.<site>, standalone): the card saying InFlite
+// is one app now, once; its Turn Off Notifications Here takes this phone's morning reminder off (DELETE /api/fitness/push)
+// and lets its subscription go ----
+const OWN = 'http://fitness.ifl.test:8788';
+const own = await hubPhone('rhea-own', await K.makeKeys(), { cookies: { [cname]: cvalue }, path: '/api/hub', zone: ZONE });
+await own.ctx.grantPermissions(['notifications'], { origin: OWN });
+await own.ctx.addInitScript(() => {
+  if (!location.host.startsWith('fitness.')) return;
+  try {
+    const d = new Date(); d.setHours(0, 0, 0, 0); localStorage.setItem('fitness:asked', String(d.getTime())); localStorage.setItem('fitness:welcomed', 'true');
+    if (!localStorage.getItem('__seeded')) { localStorage.setItem('__seeded', '1'); localStorage.setItem('fitness:morning', JSON.stringify({ at: 420, endpoint: 'https://fcm.googleapis.com/fcm/send/rhea-own-device' })); localStorage.setItem('fakesub', btoa('fitness-own')); }
+  } catch (_) {}
+});
+const ownErrs = []; own.p.on('pageerror', (e) => ownErrs.push(e.message));
+const ownPush = []; own.p.on('request', (r) => { if (/\/api\/fitness\/push$/.test(new URL(r.url()).pathname)) ownPush.push(`${r.method()} ${r.postData() || ''}`); });
+await own.p.goto(OWN + '/');
+await own.p.waitForSelector('.ifl-moved', { timeout: 30000 }).catch(() => {});
+ok(new URL(own.p.url()).host === 'fitness.ifl.test:8788' && await own.p.locator('.ifl-moved').count() === 1 && await own.p.locator('.fhead .ifl-back').count() === 0,
+  'off the hub, standalone at fitness.<site>: “InFlite is one app now”, and no Back (not the hub)', own.p.url());
+await own.p.screenshot({ path: `${out}/9-moved.png` });
+await own.p.locator('.ifl-moved .ifa-off').click();
+ok(await waitFor(() => ownPush.some((x) => /^DELETE .*rhea-own-device/.test(x)), 10000), 'Turn Off Notifications Here: DELETE /api/fitness/push, for this phone’s reminder', ownPush.join(' | '));
+ok(await waitFor(async () => await own.p.evaluate(() => localStorage.getItem('fitness:morning')) === 'null' && await own.p.evaluate(() => localStorage.getItem('fakesub')) === null, 8000),
+  'its reminder forgotten here, and its subscription let go');
+await own.p.waitForSelector('.ifl-moved', { state: 'detached', timeout: 5000 }).catch(() => {});
+await own.p.reload(); await own.p.waitForSelector('.fhead', { timeout: 30000 }); await settle(own.p, 2500);
+ok(await own.p.locator('.ifl-moved').count() === 0, 'the card once: not again on the next open');
+ok(ownErrs.length === 0, 'no page errors there', ownErrs.slice(0, 3).join(' | '));
+await own.ctx.close();
 
 // ---- one window, no page errors ----
 ok(pages.length === 1 && JSON.stringify(await p.evaluate(() => window.__opened || [])) === '[]', 'one window throughout', `${pages.length} ${JSON.stringify(await p.evaluate(() => window.__opened || []))}`);
