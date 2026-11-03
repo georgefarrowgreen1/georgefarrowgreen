@@ -131,6 +131,8 @@ export function view(el, ctx) {
   function sendButton() {
     const wx = S.wx;
     if (!sendSlot) return;
+    // (no Send on the radar inside InFlite: the slot stays empty, and the legend takes the width)
+    if (sendSlot) { sendSlot.replaceChildren(); sentFor = ""; return; }
     if (!wx || typeof fw.sendButton !== "function") { sendSlot.replaceChildren(); sentFor = ""; return; }
     const key = `${wx.fetchedAt}|${S.now}|${core.place()?.name}|${S.settings.temp}`;
     if (key === sentFor && sendSlot.firstChild) return;
