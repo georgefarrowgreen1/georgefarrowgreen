@@ -124,6 +124,8 @@ export async function mount(root, fw) {
           { label: "Open Chats on Its Own", act: "own", href: `${fw.session?.links?.chat || "https://chat.inflite.ai"}/` }] }));
       return;
     }
+    // (before the core's first answer: placeholder rows, not an empty screen)
+    if (stateNow == null) { panel.append(ui.skeleton("rows", 4)); return; }
     const w = STATE_WORDS[stateNow];
     if (!w) return;
     if (stateNow === "offline") { panel.append(ui.empty({ title: "No signal", body: "Your chats will show when you’re back online." })); return; }
@@ -144,7 +146,7 @@ export async function mount(root, fw) {
   // (what shows: the panel, the lock, a section, or the chat)
   function paint() {
     const ready = stateNow === "ready" && !failed, locked = stateNow === "locked" && !failed;
-    panel.hidden = ready || locked || stateNow == null;
+    panel.hidden = ready || locked;
     if (!panel.hidden) drawPanel();
     if (locked) lock.show(); else lock.hide();
     const want = ready && route ? (route.key === "open" && route.arg ? "chat" : sectionOf(route)) : null;

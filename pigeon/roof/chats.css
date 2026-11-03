@@ -14,6 +14,7 @@
 .m-chats .ch-st, .m-chats .ch-lock { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 420px; margin: 0 auto; }
 .m-chats .ch-st h2, .m-chats .ch-lock h2 { margin: 0; font: 700 22px/1.25 var(--font-d); }
 .m-chats .ch-st p, .m-chats .ch-lock p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; }
+.m-chats .ch-state > .ifl-skeleton { width: 100%; align-self: start; }
 .m-chats .ch-qr { width: 184px; padding: 12px; border-radius: var(--r-well, 16px); background: var(--solid); box-shadow: var(--lift); }
 .m-chats .ch-qr svg { display: block; width: 100%; height: auto; }
 
