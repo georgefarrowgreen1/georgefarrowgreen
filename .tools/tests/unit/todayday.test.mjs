@@ -293,7 +293,9 @@ test("planning: the first read of the day after its start hands planDay to waitU
   assert.equal(d.planning, true); assert.equal(waited.length, 1, "handed to waitUntil");
   assert.equal(typeof waited[0]?.then, "function");
   await Promise.all(waited);
-  // (no waitUntil, as in a test with none: still planning, nothing run)
+  // (no waitUntil, as in a test with none: still planning, nothing run; the plan handed over just now, Today's acts
+  // module's, may have claimed the day already, so it's unclaimed again first)
+  sql.prepare("DELETE FROM td_plans WHERE user_id = ?").run(ME);
   const bare = await dayFor({ ...env, waitUntil: undefined }, U, at(7), cardsAt("morning"), { tz: LON });
   assert.equal(bare.planning, true);
   put("td_plans", { user_id: ME, day: "2026-11-02", at: at(6) });
