@@ -27,7 +27,7 @@ import { gpxFromActivity } from '../../fitness/formats.js';
 import { demo, samples } from '../../fitness/sample.js';
 import {
   HUB, ROOT, EXCEPT, checker, phone, account, wxServer, weatherAccount, pageCall, alive, loads, history, said, here, shown, textOf, attrOf, count,
-  storage, changed, axe, meter, connectorFiles, connectorLazy, hide, show, route, hostCall, PLACES, wait, until, js, closeAll,
+  storage, changed, axe, meter, visible, connectorFiles, connectorLazy, hide, show, route, hostCall, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -309,7 +309,9 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
   await hide(q); await E.ctx.clock.fastForward('01:30'); await show(q);
   await wait(4000);
   ok(sessAsks.length > s0, '8. back after a minute and a half, Fitness asks again (pull) and is refused 401: the framework asks /api/session (D3)', js({ before: s0, after: sessAsks.length }));
-  ok((await shown(q, H.M_FITNESS, 3000)) && !(await count(q, EXCEPT.SIGNIN)), '8. …still signed in: Fitness shown, no way in offered (D3)');
+  // (the way in is in the page's markup at all times, in index.html's hidden #signin: counted only when on screen)
+  const still = { shown: await shown(q, H.M_FITNESS, 3000), wayIn: await visible(q, EXCEPT.SIGNIN) };
+  ok(still.shown && !still.wayIn, '8. …still signed in: Fitness shown, no way in offered on screen (D3)', js(still));
   await E.ctx.clearCookies();
   await hide(q); await E.ctx.clock.fastForward('01:30'); await show(q);
   const gone = await until(async () => { const l = (await storage(q)).local; return !Object.keys(l).some((k) => /^fitness:|^me:last$/.test(k)) ? 'gone' : null; }, 20000);

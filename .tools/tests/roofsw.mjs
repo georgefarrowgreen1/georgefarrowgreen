@@ -253,10 +253,14 @@ await part('e', 'offline from the Home Screen: Markets and Fitness from their ke
   await route(ctx, /.*/, (r) => (/^(data|blob):/.test(r.request().url()) ? r.continue() : r.abort('internetdisconnected')));
   await ctx.setOffline(true);
   p = ctx.pages()[0] || (await ctx.newPage());
+  // (opened offline ten minutes later, as on a train that evening: Markets says how old its kept prices are once they're
+  // over a few minutes old (core.js oldSaid: 150 s), in the header's line (S2-D18))
+  await p.clock.install({ time: Date.now() + 10 * 60e3 }).catch((e) => console.log('note: clock:', e.message.split('\n')[0]));
   await p.goto(`${HUB}/markets/`).catch((e) => console.log('note: goto offline:', e.message.split('\n')[0]));
   const mk = (await shown(p, H.M_MARKETS, 30000)) && (await shown(p, `${H.M_MARKETS} ${H.MK_HERO}`, 20000));
   ok(mk, 'e. offline, a fresh window, /markets/: the framework from the kept session, Markets from roof-markets-*, Today from markets:last (§6)', here(p));
-  ok(/Prices from \d{1,2}:\d{2}/.test((await textOf(p, H.M_MARKETS)) || ''), 'e. …saying “Prices from HH:MM” (§2.1, §6)', (await textOf(p, H.M_MARKETS))?.slice(0, 160));
+  const oldLine = await until(async () => { const t = `${(await textOf(p, H.HD_LINE)) || ''} ${(await textOf(p, H.M_MARKETS)) || ''}`; return /Prices from \d{1,2}:\d{2}/.test(t) ? t : null; }, 10000);
+  ok(!!oldLine, 'e. …saying “Prices from HH:MM” (the header’s line, §2.1, §6, S2-D18)', js({ line: await textOf(p, H.HD_LINE), screen: (await textOf(p, H.M_MARKETS))?.slice(0, 120) }));
   await shot(p, 'e-offline-markets');
   await p.goto(`${HUB}/fitness/`).catch(() => {});
   const fx = (await shown(p, H.M_FITNESS, 30000)) && (await shown(p, `${H.M_FITNESS} ${H.FX_DAYCARD}`, 20000));

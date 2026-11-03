@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
 import {
   HUB, ROOT, EXCEPT, checker, phone, account, wxServer, engine, weatherAccount, pageCall, alive, loads, history, said, here, shown, textOf, attrOf, count,
-  storage, changed, axe, meter, connectorFiles, connectorLazy, hide, show, route, hostCall, tapNotification, rootWorker, PLACES, wait, until, js, closeAll,
+  storage, changed, axe, meter, visible, connectorFiles, connectorLazy, hide, show, route, hostCall, tapNotification, rootWorker, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -380,7 +380,9 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
   await E.ctx.clock.fastForward('00:40');
   await until(() => sessAsks.length > s0, 8000);
   ok(sessAsks.length > s0, '8. the half-minute prices refused 401: the framework asks /api/session (fw.session.lost, D3)', js({ before: s0, after: sessAsks.length, refusedLeft: refuse }));
-  ok((await shown(q, H.M_MARKETS, 3000)) && !(await count(q, EXCEPT.SIGNIN)), '8. …still signed in: Markets shown, no way in offered (D3)');
+  // (the way in is in the page's markup at all times, in index.html's hidden #signin: counted only when on screen)
+  const still = { shown: await shown(q, H.M_MARKETS, 3000), wayIn: await visible(q, EXCEPT.SIGNIN) };
+  ok(still.shown && !still.wayIn, '8. …still signed in: Markets shown, no way in offered on screen (D3)', js(still));
   ok(Object.keys((await storage(q)).local).some((k) => k.startsWith('markets:')), '8. …Markets’ kept copy left alone');
   // signed out for real: the cookie gone from this phone, then Markets' next refresh refused by the server itself
   // (in the page, no reload: a sign-out the page finds out about, signedOutNow, not a signed-out boot; past lost()'s
@@ -505,7 +507,8 @@ await part(12, 'a holding changed in Markets: Today’s cards asked for again on
   await p.click(H.HD_BACK); await todayUp(p);
   const asked = await until(() => cards.length > c0, 10000);
   ok(asked, '12. …and after a holding removed in Markets: asked for again', js({ before: c0, now: cards.length }));
-  const meta1 = await p.waitForFunction((s) => /1 holding\b/.test(document.querySelector(s)?.textContent || ''), H.TODAY_MK_CARD, { timeout: 15000 }).then(() => true, () => false);
+  // (the card's words run together in textContent, "Markets1 holdingOpen": no \b around them)
+  const meta1 = await p.waitForFunction((s) => /(^|\D)1 holding(?!s)/.test(document.querySelector(s)?.textContent || ''), H.TODAY_MK_CARD, { timeout: 15000 }).then(() => true, () => false);
   ok(/2 holdings/.test(meta0) && meta1, '12. …its Markets card says 1 holding now (was 2)', (await textOf(p, H.TODAY_MK_CARD))?.slice(0, 120));
   puts.stop();
   p.off('request', onC);
@@ -524,9 +527,12 @@ await part(13, 'Search from Markets: a Weather place still found; Markets’ ent
   const place = await p.waitForFunction((s) => [...document.querySelectorAll(s)].some((e) => /London/.test(e.textContent)), H.SEARCH_RESULT, { timeout: 10000 }).then(() => true, () => false);
   ok(place, '13. Markets open, Search “Lond”: Weather’s London still found (one connector provider per module, RI1, C6)', js(await p.$$eval(H.SEARCH_RESULT, (es) => es.map((e) => e.textContent.trim().slice(0, 60))).catch(() => [])));
   await p.fill(H.SEARCH_INPUT, 'Tes');
-  const got = await p.waitForFunction((s) => [...document.querySelectorAll(s)].some((e) => /Tesco/.test(e.textContent)), H.SEARCH_RESULT, { timeout: 10000 }).then(() => true, () => false);
+  // (the results drawn for "Tes", not still "Lond"'s: Today's own entries can name Tesco too ("London closes · Tesco
+  // +0.3%"), so the list is read once Markets' Find row says "Tes")
+  await p.waitForFunction((s) => [...document.querySelectorAll(s)].some((e) => /Find [“"]Tes[”"]/.test(e.textContent)), H.SEARCH_RESULT, { timeout: 10000 }).catch(() => {});
+  const got = await p.waitForFunction((s) => [...document.querySelectorAll(s)].some((e) => /TSCO/.test(e.textContent)), H.SEARCH_RESULT, { timeout: 10000 }).then(() => true, () => false);
   const rows = await p.$$eval(H.SEARCH_RESULT, (es) => es.map((e) => e.textContent.replace(/\s+/g, ' ').trim())).catch(() => []);
-  const tesco = rows.find((t) => /Tesco/.test(t)) || '';
+  const tesco = rows.find((t) => /Tesco/.test(t) && /TSCO/.test(t)) || rows.find((t) => /Tesco/.test(t)) || '';
   ok(got && /TSCO · Shares/.test(tesco), '13. “Tes”: Tesco from your holdings, “TSCO · Shares” (plain symbol and kind, §2.5)', js(rows));
   ok(!rows.some((t) => AMOUNTS.test(t) || /\d+\.\d{2}/.test(t.replace(/\d+(\.\d+)?%/g, ''))), '13. …no entry carries a value or a price (S2-D6)', js(rows));
   const find = rows.findIndex((t) => /Find “Tes” in Markets|Find "Tes" in Markets/.test(t));
