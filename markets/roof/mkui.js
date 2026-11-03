@@ -186,7 +186,7 @@ export const range52 = (q, lo, hi, at) => [h("div.range52", { vars: { c: at > 0.
 export const MIXC = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)", "var(--m6)"];
 export const mixBar = (o) => h("div.mix", {}, [...o].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 6).map((x, i) => h("i", { style: `flex:${valueOf(x)};background:${MIXC[i]};animation-delay:${0.2 + i * 0.06}s` })));
 export function sparkCard(sym) {
-  const q = S.q[sym], s = C.el("svg", { viewBox: "0 0 300 44", preserveAspectRatio: "none", class: "mk-spark", "aria-hidden": "true" });
+  const q = S.q[sym], s = C.el("svg", { viewBox: "0 0 300 44", preserveAspectRatio: "none", class: "mk-sparkline", "aria-hidden": "true" });
   const p = C.el("path", { d: C.spark(q.spark, 300, 44, q.prev), fill: "none", stroke: q.chgPct >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 2, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" });
   s.append(p); requestAnimationFrame(() => C.drawIn(p, 0.3)); return s;
 }

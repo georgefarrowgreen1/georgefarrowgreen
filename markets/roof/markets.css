@@ -38,7 +38,7 @@
 .m-markets .mk-ic svg, .ifl-sheet[data-app=markets] .mk-ic svg { width: var(--ic, 18px); height: var(--ic, 18px); }
 .m-markets :focus-visible, .ifl-sheet[data-app=markets] :focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; border-radius: 10px; }
 .ifl-sheet[data-app=markets] .mk-sheet > * { animation: mk-rise 0.6s var(--ease-out) backwards; }
-.ifl-sheet[data-app=markets] .mk-sheet .mk-spark, .m-markets .mk-spark { width: 100%; height: 44px; margin-top: 6px; overflow: visible; }
+.ifl-sheet[data-app=markets] .mk-sparkline, .m-markets .mk-sparkline { width: 100%; height: 44px; margin-top: 6px; overflow: visible; }
 .m-markets .mk-herohead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .m-markets .big.small { font-size: 40px; }
 .m-markets .mk-edit { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 4px; }
@@ -56,6 +56,14 @@
   .m-markets .mk-view > .mk-desk { display: block; column-span: all; }
   .m-markets .cards { --bleed: 0px; }
 }
+
+/* ---- the page's own classes of the same names (app.css .seg, .glass, .foot, .slabel), undone here ---- */
+.m-markets .glass, .ifl-sheet[data-app=markets] .glass { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.m-markets .seg, .ifl-sheet[data-app=markets] .seg { flex: initial; padding: 0; gap: 0; border-radius: 0; background: none; box-shadow: none; }
+.m-markets .seg button, .ifl-sheet[data-app=markets] .seg button { min-width: 0; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.m-markets .seg button[aria-pressed="true"], .ifl-sheet[data-app=markets] .seg button[aria-pressed="true"] { background: none; box-shadow: none; }
+.ifl-sheet[data-app=markets] .foot { margin: 0; }
+.ifl-sheet[data-app=markets] .slabel { margin-inline: 0; }
 
 /* ---- Markets' own, re-tokenised (markets/styles.css) ---- */
 .m-markets .hero, .ifl-sheet[data-app=markets] .hero { padding: 26px 24px 0; display: grid; gap: 6px; }

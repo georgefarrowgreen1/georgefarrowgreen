@@ -81,16 +81,16 @@ function facts(sym, held, q) {
 }
 // Your buys and sales of one: each, newest first, and what sales have made; one more, or one taken off
 async function drawBuys(sym) {
-  const el = el("buys");
-  if (!el) return;
+  const box = el("buys");
+  if (!box) return;
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
   let b = null, failed = false;
   if (held?.buys) { try { b = await A.buys(sym); } catch (_) { failed = true; } }
-  if (!el.isConnected) return;
+  if (!box.isConnected) return;
   const add = h("button", { type: "button", onclick: () => pushSheet(buyView, sym), text: held?.buys ? "Add a Buy or Sale" : held?.qty > 0 ? "Record Your Buys" : "Record a Buy" });
   // (ones that couldn't come: said, with Try Again, and one more can still be added)
-  if (failed) { el.replaceChildren(h("h3.slabel", {}, "Buys and sales"), h("p.hint", {}, "Couldn't get your buys and sales just now. ", h("button.inline", { type: "button", onclick: () => drawBuys(sym), text: "Try Again" })), h("div.links", { style: "margin-top:14px" }, add)); return; }
-  if (!b?.buys?.length) { el.replaceChildren(h("div.links", { style: "margin-top:20px" }, add)); return; }
+  if (failed) { box.replaceChildren(h("h3.slabel", {}, "Buys and sales"), h("p.hint", {}, "Couldn't get your buys and sales just now. ", h("button.inline", { type: "button", onclick: () => drawBuys(sym), text: "Try Again" })), h("div.links", { style: "margin-top:14px" }, add)); return; }
+  if (!b?.buys?.length) { box.replaceChildren(h("div.links", { style: "margin-top:20px" }, add)); return; }
   const when = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const row = (x, i) => {
     const del = h("button.del.press", { type: "button", "aria-label": "Delete" }, icon("x", 14, 2.6));
@@ -106,7 +106,7 @@ async function drawBuys(sym) {
       h("span.r", {}, h("b.num", { text: x.price != null ? priceSaid(q, x.price) : "–" }), h("small", { text: x.price != null ? (rate(q.cur) != null ? money(Math.abs(x.qty) * x.price * rate(q.cur)) : money(Math.abs(x.qty) * x.price, q.cur)) : "price not said" })), del);
   };
   // (what's made on sales only once there's been one: replaceChildren writes a null out as the word, as h() doesn't)
-  el.replaceChildren(...[h("h3.slabel", {}, "Buys and sales"),
+  box.replaceChildren(...[h("h3.slabel", {}, "Buys and sales"),
     h("div.list.flush", {}, [...b.buys].reverse().map(row)),
     b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: rate(q.cur) != null ? signed(b.made * rate(q.cur)) : signed(b.made, q.cur) }), h("i", { text: "over what it cost you on average" }))) : null,
     h("div.links", { style: "margin-top:14px" }, add)].filter(Boolean));

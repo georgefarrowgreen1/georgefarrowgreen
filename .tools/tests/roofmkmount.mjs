@@ -35,11 +35,12 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (exist
 async function phone({ width = 390, height = 844, colorScheme = 'dark' } = {}) {
   const ctx = await b.newContext({ viewport: { width, height }, deviceScaleFactor: 2, hasTouch: width < 900, isMobile: width < 900, colorScheme, locale: 'en-GB', timezoneId: 'Europe/London' });
   await ctx.addInitScript(() => {
-    // every document-wide lookup, with where it came from: a /markets/ file in its stack is the module's (S2-D3)
+    // every document-wide lookup the module makes itself: its caller a /markets/ file (S2-D3; the framework's own, which
+    // the module's calls reach, as fw.toast's, are the framework's)
     const seen = (window.__mkLookups = []);
     for (const k of ['querySelector', 'querySelectorAll', 'getElementById', 'getElementsByClassName', 'getElementsByTagName']) {
       const f = Document.prototype[k];
-      Document.prototype[k] = function (...a) { const s = new Error().stack || ''; if (/\/markets\/(roof\/)?[\w-]+\.js/.test(s)) seen.push(`${k}(${a[0]}) ${(/(\/markets\/[\w/.-]+\.js:\d+)/.exec(s) || [])[1]}`); return f.apply(this, a); };
+      Document.prototype[k] = function (...a) { const by = (new Error().stack || '').split('\n')[2] || ''; if (/\/markets\/(roof\/)?[\w-]+\.js/.test(by)) seen.push(`${k}(${a[0]}) ${(/(\/markets\/[\w/.-]+\.js:\d+)/.exec(by) || [])[1]}`); return f.apply(this, a); };
     }
   });
   await serveKit(ctx, { main: MAIN, ifl: IFL });
@@ -50,7 +51,7 @@ async function phone({ width = 390, height = 844, colorScheme = 'dark' } = {}) {
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|WebGL|GPU stall|swiftshader/i.test(m.text())) st.errors.push(m.text()); });
   return { ctx, p, st };
 }
-const shot = (p, name) => p.screenshot({ path: `${OUT}/${name}.png` }).catch(() => {});
+const shot = async (p, name) => { await p.waitForTimeout(700); return p.screenshot({ path: `${OUT}/${name}.png` }).catch(() => {}); };
 const visible = (p, sel) => p.locator(sel).first().isVisible().catch(() => false);
 const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { let v; try { v = await fn(); } catch (_) { v = false; } if (v) return v; if (Date.now() - t0 > ms) return v; await new Promise((ok) => setTimeout(ok, 100)); } };
 const text = (p, sel) => p.locator(sel).first().textContent({ timeout: 3000 }).catch(() => '');
@@ -72,7 +73,7 @@ ok(await p.locator(`${H.M_MARKETS} ${H.MK_SEC}`).count() === 3, 'three sections:
 ok(await until(async () => (await text(p, H.HD_TITLE)).trim() === 'Today'), 'the header’s title: the section’s name', await text(p, H.HD_TITLE));
 ok(await until(() => visible(p, H.MK_HERO), 10000), 'Today: the portfolio hero (MK_HERO)');
 ok(await visible(p, H.MK_PORTFOLIO_SEND), 'its Send (MK_PORTFOLIO_SEND)');
-ok(await visible(p, H.mkRow('TSCO.L')), 'a holding’s row (mkRow)');
+ok(await visible(p, `${H.mkRow('TSCO.L')}:visible`), 'a holding’s row (mkRow)');
 ok(await visible(p, H.HD_PLUS), 'Add a Stock in the header (plus)');
 for (const id of ['holdings', 'news', 'today']) {
   await p.locator(H.hdSec(id)).click();
@@ -90,7 +91,7 @@ ok(await until(async () => (await p.locator(`${H.MK_ADD_RESULT}[data-sym="BARC.L
 await shot(p, '2-add-stock');
 await closeSheet(p);
 // a stock's sheet: Send, Remove, Alert Me's own percent, the holding sheet
-await p.locator(H.mkRow('TSCO.L')).first().click();
+await p.locator(`${H.mkRow('TSCO.L')}:visible`).first().click();
 ok(await until(() => visible(p, openSheet('stock'))), 'a row opens the stock sheet');
 ok(await until(() => visible(p, H.MK_STOCK_SEND)), 'its Send (MK_STOCK_SEND)');
 ok(await visible(p, H.MK_STOCK_REMOVE), 'its Remove (MK_STOCK_REMOVE)');
@@ -115,7 +116,7 @@ ok(await until(() => st.log.some((c) => c.path === 'order')), 'kept: PUT /api/ma
 ok(await until(async () => /Tesco: 2 of \d/.test(await p.locator(`${H.M_MARKETS} [data-el="order-say"]`).textContent())), 'said in the live line');
 ok(await p.evaluate((sel) => document.activeElement?.matches(sel), H.mkMove('TSCO.L', 'down')), 'the keyboard stays on the one moved');
 await p.locator(H.MK_EDIT).click();
-await p.locator(H.MK_ACCOUNT_ROW).first().click();
+await p.locator(`${H.MK_ACCOUNT_ROW}:visible`).first().click();
 ok(await until(() => visible(p, openSheet('mk-account'))), 'an account’s row opens mk-account');
 await closeSheet(p);
 await p.locator(H.MK_ABOUT).click();
@@ -156,7 +157,7 @@ for (const [width, height] of [[320, 640], [390, 844], [1280, 860]]) for (const 
   ok(wide, `${width} ${colorScheme}: no sideways scroll`);
   await p.locator(H.hdSec('holdings')).click(); await until(() => visible(p, H.MK_EDIT), 8000); await p.waitForTimeout(600);
   await shot(p, `w${width}-${colorScheme}-holdings`);
-  await p.locator(H.mkRow('TSCO.L')).first().click(); await until(() => visible(p, openSheet('stock'))); await p.waitForTimeout(900);
+  await p.locator(`${H.mkRow('TSCO.L')}:visible`).first().click(); await until(() => visible(p, openSheet('stock'))); await p.waitForTimeout(900);
   await shot(p, `w${width}-${colorScheme}-stock`);
   ok(st.errors.length === 0, `${width} ${colorScheme}: no page errors`, st.errors.slice(0, 3).join(' | '));
   await ctx.close();

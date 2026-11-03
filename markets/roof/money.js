@@ -9,7 +9,7 @@ import { project, csv } from "../income.js";
 import { h, C, el, M, ring, toast, render, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, incomeBars, allowBar, topView, Sheet } from "./mkui.js";
 
 const { S, A, ACCOUNT_NAME, BENCHES, DIVIDEND_ALLOWANCE, fmt, money, pct, tone, plural, and2, rate, owned, valueOf, paidFor, totals, income, received, taxMonths, growthOf, gotAll, divHistory,
-  monthSaid, aroundDay, isaYear, store, loadYears, loadIncome, markDivs, health, taxYearOf, yearDivs, yearOn } = core;
+  monthSaid, aroundDay, isaYear, store, dayKey, loadYears, loadIncome, markDivs, health, taxYearOf, yearDivs, yearOn } = core;
 
 // Your income: what's coming, month by month; what's paid you; the tax year, with its allowance; what it pays on what
 // you paid; where it could go; who pays, and how dependably; and each tax year's payments, to keep
