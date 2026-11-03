@@ -26,10 +26,16 @@ const { ok, one, sql, api, HUB, errs } = K;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 const MIN = 60e3;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const until = async (f, ms = 15000, step = 400) => { const end = Date.now() + ms; for (;;) { const v = await f().catch(() => null); if (v || Date.now() > end) return v; await wait(step); } };
+const until = async (f, ms = 15000, step = 400) => { const end = Date.now() + ms; for (;;) { const v = await Promise.resolve().then(f).catch(() => null); if (v || Date.now() > end) return v; await wait(step); } };
 const esc = (s) => String(s).replace(/'/g, "''");
-const rows = (q) => { try { return one(q); } catch (e) { console.log('SQL', String(e.stderr || e.message).slice(0, 300)); return []; } };
-const run = (q) => { try { sql(q); return true; } catch (e) { console.log('SQL', String(e.stderr || e.message).slice(0, 300)); return false; } };
+// (anything, said in a line for a check's note, cut short: undefined too)
+const js = (x, n = 200) => String(JSON.stringify(x) ?? x).slice(0, n);
+// (an SQL error said in a line: wrangler's own words after ERROR, without its colours or its warnings)
+const sqlErr = (e) => (String(e.stderr || e.message).replace(/\x1b\[[0-9;]*m/g, '').match(/ERROR\]?\s*(.+)/)?.[1] || String(e.message)).slice(0, 200);
+// (lib.mjs hands the statement to wrangler inside the shell's double quotes: those, $, ` and \ in it kept as they are)
+const shell = (q) => q.replace(/(["$`\\])/g, '\\$1');
+const rows = (q) => { try { return one(shell(q)); } catch (e) { console.log('SQL', sqlErr(e)); return []; } };
+const run = (q, quiet = false) => { try { sql(shell(q)); return true; } catch (e) { if (!quiet) console.log('SQL', sqlErr(e)); return false; } };
 const step = (n, title, secs) => console.log(`\n---- ${n}. ${title}  [spec ${secs}] ----`);
 const shot = (ph, name) => ph.p.screenshot({ path: `${out}/${name}.png` }).catch(() => {});
 const b64u = (u) => Buffer.from(u).toString('base64url');
@@ -96,7 +102,10 @@ async function chatsSignIn() {
   if (first === 'welcome') await G.p.click('.welcome [data-act=acctsignin]');
   await onAccountPage(G.p, { email: 'george@example.com' }).catch((e) => console.log('DEBUG sign-in', e.message));
   await G.p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 60000 }).catch(() => {});
-  if (await G.p.waitForSelector('[data-act=onbdone]', { timeout: 6000 }).catch(() => null)) await G.p.click('[data-act=onbdone]').catch(() => {});
+  if (await G.p.waitForSelector('#city, [data-act=onbdone]', { state: 'attached', timeout: 6000 }).catch(() => null)) {
+    if (await G.p.$('#city')) await G.p.selectOption('#city', 'London').catch(() => {});
+    await G.p.click('[data-act=onbdone]', { timeout: 10000 }).catch(() => {});
+  }
   return until(() => sessAt(G.p), 30000);
 }
 // (the tables the old installs' rows go in, as their modules make them; each module's own setup is IF NOT EXISTS too)
@@ -105,9 +114,9 @@ function tables() {
   run(`CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)`);
   run(`CREATE TABLE IF NOT EXISTS wx_subs (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, name TEXT, rain INTEGER NOT NULL DEFAULT 0, brief INTEGER NOT NULL DEFAULT 0, brief_at TEXT,
     units TEXT, tz_off INTEGER, last_rain INTEGER, last_brief TEXT, created INTEGER, updated INTEGER, fails INTEGER NOT NULL DEFAULT 0, last_ok INTEGER)`);
-  for (const c of ['warn INTEGER NOT NULL DEFAULT 0', 'told TEXT', 'dev TEXT']) run(`ALTER TABLE wx_subs ADD COLUMN ${c}`);
+  for (const c of ['warn INTEGER NOT NULL DEFAULT 0', 'told TEXT', 'dev TEXT']) run(`ALTER TABLE wx_subs ADD COLUMN ${c}`, true);
   run(`CREATE TABLE IF NOT EXISTS wx_devs (dev TEXT PRIMARY KEY, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, user_id TEXT, label TEXT, units TEXT, brief_at TEXT, created INTEGER, updated INTEGER)`);
-  for (const c of ['net TEXT', 'sess TEXT']) run(`ALTER TABLE wx_devs ADD COLUMN ${c}`);
+  for (const c of ['net TEXT', 'sess TEXT']) run(`ALTER TABLE wx_devs ADD COLUMN ${c}`, true);
 }
 // (a Weather device and its place, as Weather keeps a signed-in phone's)
 function weatherDevice(dev, sub, userId, sess, label) {
@@ -128,7 +137,7 @@ ok(!!GID && !!S1, 'George’s account, made on the account’s page; this browse
 // same sign-in (wx_devs.sess)
 await G.p.goto(`${HUB}/`);
 const r0 = await hubCall('GET', '/api/session');
-ok(r0.s === 200 && r0.j?.signedIn === true, 'Today at the hub: signed in by the cookie', `${r0.s} ${JSON.stringify(r0.j).slice(0, 120)}`);
+ok(r0.s === 200 && r0.j?.signedIn === true, 'Today at the hub: signed in by the cookie', `${r0.s} ${js(r0.j, 120)}`);
 tables();
 const oldToday = await oldSub('oldtoday'), oldWeather = await oldSub('oldweather');
 run(`INSERT OR REPLACE INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUES ('${oldToday.endpoint}', '${GID}', '${oldToday.p256dh}', '${oldToday.auth}', '${S1}', ${Date.now()})`);
@@ -146,11 +155,12 @@ const wx1 = rows(`SELECT user_id FROM wx_devs WHERE dev = 'oldwx-1'`)[0];
 ok(wx1?.user_id === GID, 'and after Weather’s turn (ended sign-ins let go), still linked', JSON.stringify(wx1));
 
 // ---- Mira, a friend, on Chat's own address; George's apps ----
-const mKeys = KEYS.mira = await K.makeKeys();
-const mctx = await (await K.hubBrowser()).newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-GB', timezoneId: 'Europe/London' });
+// (a phone, as Chat wants one: it doesn't open on a computer)
+const mctx = await (await K.hubBrowser()).newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-GB', timezoneId: 'Europe/London',
+  userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
 const M = { ctx: mctx, p: await mctx.newPage(), name: 'mira' };
 M.p.on('pageerror', (e) => errs.push(`mira: ${e}`));
-await joinChat(M.p, CHAT + '/', { name: 'Mira Okafor', handle: 'mira', email: 'mira@example.com' });
+await joinChat(M.p, CHAT + '/', { name: 'Mira Okafor', handle: 'mira', email: 'mira@example.com', city: 'Norwich' });
 Object.assign(M, await sessAt(M.p));
 await api(gs.token, 'friends', { handle: 'mira' });
 await api(M.token, 'friends-respond', { id: GID, accept: true });
@@ -187,7 +197,7 @@ await shot(G, '2-every');
 await G.p.click('#sh-every #evGo').catch(() => {});
 await until(() => rows(`SELECT endpoint FROM pg_push WHERE endpoint = '${endpointOf('george')}'`)[0], 15000);
 const fan = deviceCalls().at(-1);
-ok(deviceCalls().length === 2 && fan?.fan === true, 'sent from that tap: { sub, fan: true }', JSON.stringify(fan).slice(0, 160));
+ok(deviceCalls().length === 2 && fan?.fan === true, 'sent from that tap: { sub, fan: true }', js(fan, 160));
 const ep = endpointOf('george');
 const pg = rows(`SELECT user_id, session, via FROM pg_push WHERE endpoint = '${ep}'`), mk = rows(`SELECT user_id, via FROM mk_push WHERE endpoint = '${ep}'`);
 const wd = rows(`SELECT dev, user_id, sess, via FROM wx_devs WHERE endpoint = '${ep}'`), ws = wd[0] ? rows(`SELECT name, warn FROM wx_subs WHERE dev = '${wd[0].dev}'`) : [];
@@ -205,18 +215,18 @@ let since = Date.now();
 await K.openChat(M, GID);
 await M.p.fill('#msg', 'Are you about later?'); await M.p.click('.send');
 const chat = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'chat'), 15000);
-ok(!!chat && /Mira|message/i.test(`${chat.title} ${chat.body}`) && !/Are you about later/.test(JSON.stringify(chat)), 'Mira’s message: a push to this phone, app chat, no words', JSON.stringify(chat).slice(0, 200));
+ok(!!chat && /Mira|message/i.test(`${chat.title} ${chat.body}`) && !/Are you about later/.test(JSON.stringify(chat)), 'Mira’s message: a push to this phone, app chat, no words', js(chat, 200));
 since = Date.now();
 await fetch('http://127.0.0.1:8801/mode', { method: 'POST', body: JSON.stringify({ bump: { 'TSCO.L': 3.4 } }) }).catch(() => {});
 const mt = await tickAt('/api/markets/tick', 'finance.ifl.test:8788');
 const mkt = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'markets'), 15000);
-ok(!!mkt && /Tesco/.test(`${mkt.title} ${mkt.body}`), 'Tesco past its alert: a push, app markets', `${JSON.stringify(mt.j)} ${JSON.stringify(mkt).slice(0, 200)}`);
+ok(!!mkt && /Tesco/.test(`${mkt.title} ${mkt.body}`), 'Tesco past its alert: a push, app markets', `${JSON.stringify(mt.j)} ${js(mkt, 200)}`);
 since = Date.now();
 const lon = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':').map(Number);
 const m = await hubCall('PUT', '/api/morning', { on: true, at: Math.floor((lon[0] * 60 + lon[1]) / 5) * 5, tz: 'Europe/London', lines: { weather: true, fitness: true, chat: true, markets: true } });
 const tt = await tickAt('/api/today/tick');
 const morning = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'today'), 15000);
-ok(m.s === 200 && !!morning, 'the morning: a push, app today', `${m.s} ${JSON.stringify(tt.j)} ${JSON.stringify(morning).slice(0, 200)}`);
+ok(m.s === 200 && !!morning, 'the morning: a push, app today', `${m.s} ${JSON.stringify(tt.j)} ${js(morning, 200)}`);
 const mine = (await opened()).filter((x) => x.name === 'george');
 ok(mine.length >= 3 && !mine.some((x) => x.undecrypted) && mine.every((x) => ['chat', 'markets', 'today', 'weather', 'fitness'].includes(x.app)), 'every push to this phone opened with its keys, each naming its app', JSON.stringify(mine.map((x) => x.app)));
 
@@ -297,7 +307,8 @@ ok(gone, 'the iPad’s rows gone from every app’s table: Chat’s, Markets’,
 ok(left('pg_push', 'session', hex(MAC)) === 1 && left('pg_push', 'endpoint', ep) === 1 && left('mk_push', 'endpoint', ep) === 1 && left('wx_devs', 'endpoint', ep) === 1 && left('td_push', 'endpoint', ep) === 1,
   'the Mac’s, and this phone’s in every table, untouched');
 ok(left('pg_sessions', 'hash', hex(IPAD)) === 1, 'and the iPad still signed in: Stop There signs nothing out');
-ok(!/iPad/.test(await textOf('#youDevices')), 'the iPad gone from the list', await textOf('#youDevices'));
+const after = await until(async () => { const t = await textOf('#youDevices'); return /iPad/.test(t) ? null : t || '(none)'; }, 8000);
+ok(/iPad/.test(list) && !!after, 'the iPad gone from the list', after || await textOf('#youDevices'));
 
 console.log('notes (page errors, for the batches):', JSON.stringify(errs.slice(0, 8)));
 await G.ctx.close().catch(() => {}); await M.ctx.close().catch(() => {});

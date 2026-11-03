@@ -19,14 +19,17 @@
 // keys the test holds: none of the words typed (Pat's two messages, Mira's, Pat's at night) is in any of them, nor in
 // Today's storage at the hub.
 // The time of day (§14.4, layer 3): real time, the data placed relative to now, and the account's zone chosen with zoneAt
-// so now is the moment's hour there (Today's morning, PUT /api/morning {tz}, and the account's notifications, PATCH
-// /api/notify {quiet: {tz}}). The browser keeps one zone throughout (a context's zone can't change once made, and Chat's
-// key lives in this one's IndexedDB): Today draws every time in the account's zone (the answer's tz), so moving the
-// account's zone is what moves the day. Each moment puts its own rows in for its own hour; the after moment follows the
-// preride's ride in the same zone (an activity's phase outranks the clock's). Weather's cell moves a little each moment
-// (still London, inside the warning's area), so the server's day-long copy of a cell's forecast is never last moment's.
+// so now is the moment's hour there: on the account (Today's morning, PUT /api/morning {tz}, and the account's
+// notifications, PATCH /api/notify {quiet: {tz}}) and on the phone. George's phone is one browser profile, opened again in
+// each moment's zone (a context's zone is fixed once it's made, and Chat, as it opens, sets the account's notifications
+// to the phone's own zone, which Today goes by: so the phone's zone and the account's must agree), keeping everything it
+// had (Chat's key in IndexedDB, the cookie, the root worker and its subscription). Each moment puts its own rows in for
+// its own hour; the after moment follows the preride's ride in the same zone (an activity's phase outranks the clock's).
+// Weather's cell moves a little each moment (still London, inside the warning's area), so the server's copy of a cell's
+// forecast is never last moment's.
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import { chromium } from 'playwright';
 import { kit } from './lib.mjs';
 import { execSync } from 'node:child_process';
 import { makeAccount, joinChat, onAccountPage } from './join.mjs';
@@ -41,10 +44,16 @@ const { ok, one, sql, api, HUB, errs } = K;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788';
 const MIN = 60e3, H = 3600e3, DAY = 864e5;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const until = async (f, ms = 15000, step = 400) => { const end = Date.now() + ms; for (;;) { const v = await f().catch(() => null); if (v || Date.now() > end) return v; await wait(step); } };
+const until = async (f, ms = 15000, step = 400) => { const end = Date.now() + ms; for (;;) { const v = await Promise.resolve().then(f).catch(() => null); if (v || Date.now() > end) return v; await wait(step); } };
 const esc = (s) => String(s).replace(/'/g, "''");
-const rows = (q) => { try { return one(q); } catch (e) { console.log('SQL', String(e.stderr || e.message).slice(0, 300)); return []; } };
-const run = (q) => { try { sql(q); return true; } catch (e) { console.log('SQL', String(e.stderr || e.message).slice(0, 300)); return false; } };
+// (anything, said in a line for a check's note, cut short: undefined too)
+const js = (x, n = 200) => String(JSON.stringify(x) ?? x).slice(0, n);
+// (an SQL error said in a line: wrangler's own words after ERROR, without its colours or its warnings)
+const sqlErr = (e) => (String(e.stderr || e.message).replace(/\x1b\[[0-9;]*m/g, '').match(/ERROR\]?\s*(.+)/)?.[1] || String(e.message)).slice(0, 200);
+// (lib.mjs hands the statement to wrangler inside the shell's double quotes: those, $, ` and \ in it kept as they are)
+const shell = (q) => q.replace(/(["$`\\])/g, '\\$1');
+const rows = (q) => { try { return one(shell(q)); } catch (e) { console.log('SQL', sqlErr(e)); return []; } };
+const run = (q, quiet = false) => { try { sql(shell(q)); return true; } catch (e) { if (!quiet) console.log('SQL', sqlErr(e)); return false; } };
 const step = (n, title, secs) => console.log(`\n---- (${n}) ${title}  [spec ${secs}] ----`);
 const shot = (ph, name) => ph.p.screenshot({ path: `${out}/${name}.png` }).catch(() => {});
 
@@ -54,7 +63,12 @@ const SAID = { pat1: 'Did you see Tesco this week?', pat2: 'Dinner Friday?', mir
 // ---- time and zones (spec §14.4) ----
 const zoneAt = (hh, t = Date.now()) => { const off = ((hh - new Date(t).getUTCHours() + 36) % 24) - 12;
   return off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`; };   // Etc/GMT-5 is UTC+5
-const offOf = (tz) => (tz === 'Etc/GMT' ? 0 : -Number(tz.slice(7)));
+// (a zone's offset from UTC in hours, now: Etc/GMT-5 is +5; any other zone as Intl has it)
+const offOf = (tz, t = Date.now()) => {
+  if (/^Etc\/GMT([+-]\d+)?$/.test(tz)) return tz === 'Etc/GMT' ? 0 : -Number(tz.slice(7));
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return Math.round((Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(t / MIN) * MIN) / 3600e3);
+};
 const local = (tz, t) => new Date(t + offOf(tz) * H);
 const dayIn = (tz, t) => local(tz, t).toISOString().slice(0, 10);
 const hm = (tz, t) => local(tz, t).toISOString().slice(11, 16);
@@ -103,12 +117,14 @@ function hoursForecast(u) {
     hourly: { time: time.map((t) => (unix ? t / 1000 : new Date(t + offOf(WX.tz) * H).toISOString().slice(0, 16))), ...Object.fromEntries(want.map((k) => [k, time.map((t) => RIDE_COLS[k](at(t)))])) } };
 }
 const asked = [];
-http.createServer((req, res) => {
+http.createServer((req, res) => { try { answer(req, res); } catch (e) { console.log('weather stand-in:', e.message); res.writeHead(500); res.end(); } }).listen(8794, '127.0.0.1');
+function answer(req, res) {
   const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
-  asked.push(u.pathname + (u.searchParams.get('past_days') ? '?past' : u.searchParams.get('timeformat') ? '?unix' : ''));
+  asked.push(u.pathname + (u.searchParams.get('daily') ? '?daily' : u.searchParams.get('past_days') > 1 ? '?past' : u.searchParams.get('timeformat') ? '?unix' : ''));
   if (u.pathname === '/v1/forecast') {
-    // (a ride's hours, Fitness's hoursAt, and the past weeks, pastWet: unix times or past days; else Weather's whole forecast)
-    if (u.searchParams.get('timeformat') === 'unixtime' || u.searchParams.get('past_days')) return send(hoursForecast(u));
+    // (Weather's whole forecast asks for days as well as hours; a ride's hours, Fitness's hoursAt, and the past weeks,
+    // pastWet, ask for hours alone)
+    if (!u.searchParams.get('daily')) return send(hoursForecast(u));
     const n = (u.searchParams.get('latitude') || '').split(',').length, f = weatherForecast(Date.now());
     return send(n > 1 ? Array(n).fill(f) : f);
   }
@@ -117,7 +133,7 @@ http.createServer((req, res) => {
   if (u.pathname === '/flood-monitoring/id/floods') return send({ items: [] });
   if (u.pathname === '/api/data/stationinfo') return send([]);
   res.writeHead(404); res.end();
-}).listen(8794, '127.0.0.1');
+}
 // (the site's schedulers, as workers/ticker calls them)
 const tickAt = (path, host = 'localhost') => new Promise((done) => {
   const q = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', agent: false, headers: { Host: host, Authorization: 'Bearer tick-test-secret' } }, (res) => {
@@ -191,11 +207,50 @@ async function write(ph, to, text) {
   return rows(`SELECT id, deliver_at FROM pg_msgs WHERE sender = '${ph.id}' AND recipient = '${to}' ORDER BY sent_at DESC LIMIT 1`)[0] || {};
 }
 
-// George at the hub: an iPhone with InFlite on its Home Screen (lib.mjs hubPhone), one window
+// George at the hub: an iPhone with InFlite on its Home Screen, as lib.mjs hubPhone makes one (standalone, its window.open
+// noted, push with keys this test holds, the hub's address mapped to its Worker), but kept as one browser profile on disk
+// and opened again in each moment's zone (georgeIn): the same phone, its clock moved. One window throughout: any page
+// opened beside the first in any of them is counted (G.extra)
 const gKeys = KEYS.george = await K.makeKeys();
-const G = await K.hubPhone('george', gKeys, { zone: 'Europe/London' });
-await record(G.ctx, 'george');
-const navs = []; G.p.on('framenavigated', (f) => { if (f === G.p.mainFrame()) navs.push(f.url()); });
+const PROFILE = `${S}/george-profile`;
+const SECURE = ['', 'auth.', 'account.', 'chat.', 'email.', 'weather.', 'fitness.', 'finance.'].map((h) => `http://${h}ifl.test:8788`).join(',');
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+const G = { name: 'george', p: null, ctx: null, pages: [], tz: null, extra: 0, id: null };
+const navs = [];
+async function georgeIn(tz) {
+  if (G.tz === tz && G.ctx) return;
+  if (G.ctx) await G.ctx.close().catch(() => {});
+  const ctx = await chromium.launchPersistentContext(PROFILE, { executablePath: process.env.CHROMIUM || undefined,
+    args: ['--host-resolver-rules=MAP ifl.test:8788 127.0.0.1:8787, MAP email.ifl.test:8788 127.0.0.1:8806, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1, MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1',
+      `--unsafely-treat-insecure-origin-as-secure=${SECURE}`],
+    viewport: { width: 390, height: 844 }, screen: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: tz, locale: 'en-GB', serviceWorkers: 'allow', userAgent: IPHONE });
+  await ctx.grantPermissions(['notifications'], { origin: HUB });
+  await ctx.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });
+    const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q) ? { matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false } : mm(q));
+    window.__opened = []; const open = window.open;
+    window.open = function (...a) { window.__opened.push(String(a[0] ?? '')); return open.apply(window, a); };
+    // (as mapopen.mjs does for every other context: no passkey offered in the keyboard)
+    const P = window.PublicKeyCredential, can = P?.isConditionalMediationAvailable?.bind(P);
+    if (can) P.isConditionalMediationAvailable = async () => !!window.__autofill && can();
+  });
+  await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
+    const make = (key) => ({ endpoint, options: { applicationServerKey: key }, toJSON: () => ({ endpoint, keys: { p256dh, auth } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
+    const toB = (u8) => btoa(String.fromCharCode(...u8)), fromB = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
+    PushManager.prototype.getSubscription = async function () { const k = localStorage.getItem('fakesub'); return k ? make(fromB(k)) : null; };
+    PushManager.prototype.subscribe = async function (o) { const k = new Uint8Array(o.applicationServerKey.buffer || o.applicationServerKey); localStorage.setItem('fakesub', toB(k)); return make(k.buffer); };
+  }, { endpoint: 'https://fcm.googleapis.com/fcm/send/george-device', p256dh: b64u(gKeys.pub), auth: b64u(gKeys.auth) });
+  await record(ctx, 'george');
+  const p = ctx.pages()[0] || await ctx.newPage(), pages = [p];
+  ctx.on('page', (pg) => { if (!pages.includes(pg)) { pages.push(pg); G.extra++; } });
+  p.on('pageerror', (e) => errs.push(`george: ${e}`));
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(`george: ${m.text()}`); });
+  p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
+  Object.assign(G, { ctx, p, pages, tz });
+  await p.goto(HUB + '/');
+}
+await georgeIn(zoneAt(7));
 // (a request from George's page as the page itself makes it: same origin, the cookie, X-Inflite on Today's writes)
 const hubCall = (method, path, body) => G.p.evaluate(async ({ method, path, body }) => {
   const h = { Accept: 'application/json' };
@@ -238,7 +293,10 @@ async function chatsSignIn() {
   await onAccountPage(G.p, { email: 'george@example.com' }).catch((e) => console.log('DEBUG sign-in', e.message));
   await G.p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 60000 }).catch(() => {});
   // (Chat's first sign-in here may ask where you are and offer a passkey: answered as joinChat does)
-  if (await G.p.waitForSelector('[data-act=onbdone]', { timeout: 6000 }).catch(() => null)) await G.p.click('[data-act=onbdone]').catch(() => {});
+  if (await G.p.waitForSelector('#city, [data-act=onbdone]', { state: 'attached', timeout: 6000 }).catch(() => null)) {
+    if (await G.p.$('#city')) await G.p.selectOption('#city', 'London').catch(() => {});
+    await G.p.click('[data-act=onbdone]', { timeout: 10000 }).catch(() => {});
+  }
   return until(() => sessAt(G.p), 30000);
 }
 const gs = await chatsSignIn();
@@ -246,7 +304,7 @@ ok(!!gs?.token && new URL(G.p.url()).host === 'ifl.test:8788', 'George: Chats si
 const GID = gs?.id || rows("SELECT id FROM pg_users WHERE handle = 'george'")[0]?.id;
 G.id = GID;
 const [P, M, L] = await Promise.all(['pat', 'mira', 'leo'].map((n) => chatPhone(n)));
-await Promise.all([[P, 'Pat Reed', 'pat'], [M, 'Mira Okafor', 'mira'], [L, 'Leo Marsh', 'leo']].map(([ph, name, handle]) => joinChat(ph.p, CHAT + '/', { name, handle, email: `${handle}@example.com` })));
+await Promise.all([[P, 'Pat Reed', 'pat', 'London'], [M, 'Mira Okafor', 'mira', 'Norwich'], [L, 'Leo Marsh', 'leo', 'London']].map(([ph, name, handle, city]) => joinChat(ph.p, CHAT + '/', { name, handle, email: `${handle}@example.com`, city })));
 for (const ph of [P, M, L]) { const s = await sessAt(ph.p); ph.token = s?.token; ph.id = s?.id; }
 ok(!!(P.id && M.id && L.id), 'Pat, Mira and Leo: Chat on its own address, as they always had it', JSON.stringify([P.id, M.id, L.id]));
 for (const ph of [P, M, L]) {
@@ -261,10 +319,10 @@ const CELLS = [[51.45, -0.15], [51.5, -0.15], [51.55, -0.15], [51.6, -0.15], [51
 const HOME = { name: 'London', lat: CELLS[0][0], lon: CELLS[0][1] };
 let r = await hubCall('GET', '/api/weather/me');
 r = await hubCall('PUT', '/api/weather/me', { base: r.j?.ver || 0, data: { places: [HOME], settings: {}, notify: { places: [{ ...HOME, rain: true, warn: true }], brief: null, briefAt: '07:00' } } });
-ok(r.s === 200, 'George’s Weather: London, its rain and warnings wanted (Weather’s own route, at /api/weather/)', `${r.s} ${JSON.stringify(r.j).slice(0, 120)}`);
+ok(r.s === 200, 'George’s Weather: London, its rain and warnings wanted (Weather’s own route, at /api/weather/)', `${r.s} ${js(r.j, 120)}`);
 for (const h of [{ symbol: 'TSCO.L', qty: 120 }, { symbol: 'RR.L', qty: 80 }]) {
   r = await hubCall('PUT', '/api/markets/holding', h);
-  if (r.s !== 200) ok(false, `Markets: ${h.symbol} held`, `${r.s} ${JSON.stringify(r.j).slice(0, 120)}`);
+  if (r.s !== 200) ok(false, `Markets: ${h.symbol} held`, `${r.s} ${js(r.j, 120)}`);
 }
 r = await hubCall('PUT', '/api/markets/alert', { symbol: 'TSCO.L', on: true, pct: 3 });
 ok(r.s === 200 && rows(`SELECT pct FROM mk_alerts WHERE user_id = '${GID}' AND symbol = 'TSCO.L'`)[0]?.pct === 3, 'Markets: Tesco held, with an alert at 3% (Markets’ own routes)', `${r.s}`);
@@ -286,9 +344,11 @@ await G.p.waitForSelector('#you #youEvery', { timeout: 15000 }).catch(() => {});
 await G.p.click('#you #youEvery').catch(() => {});
 await G.p.waitForSelector('#sh-every #evGo', { state: 'visible', timeout: 10000 }).catch(() => {});
 await G.p.click('#sh-every #evGo').catch(() => {});
-const fanned = await until(() => rows(`SELECT endpoint FROM pg_push WHERE user_id = '${GID}' AND endpoint LIKE '%/george-device'`)[0], 15000);
-const wxDev = rows(`SELECT d.dev FROM wx_devs d JOIN wx_subs s ON s.dev = d.dev WHERE d.endpoint LIKE '%/george-device' AND s.warn = 1`)[0];
-ok(!!fanned && !!wxDev && !!rows(`SELECT endpoint FROM mk_push WHERE endpoint LIKE '%/george-device'`)[0], 'Get Every App’s Notifications Here: Chats, Markets and Weather (its warnings) to this phone too', JSON.stringify({ fanned, wxDev }));
+// (each row the device route made, via the hub: never one an app made of its own accord)
+const fanned = await until(() => rows(`SELECT endpoint FROM pg_push WHERE user_id = '${GID}' AND endpoint LIKE '%/george-device' AND via = 'hub'`)[0], 15000);
+const wxDev = rows(`SELECT d.dev FROM wx_devs d JOIN wx_subs s ON s.dev = d.dev WHERE d.endpoint LIKE '%/george-device' AND d.via = 'hub' AND s.warn = 1`)[0];
+const mkDev = rows(`SELECT endpoint FROM mk_push WHERE endpoint LIKE '%/george-device' AND via = 'hub'`)[0];
+ok(!!fanned && !!wxDev && !!mkDev, 'Get Every App’s Notifications Here: Chats, Markets and Weather (its warnings) to this phone too, via the hub', js({ fanned, wxDev, mkDev }));
 await shot(G, '0-you');
 
 // Pick a moment's hour: the account's zone (Today's morning and its notifications), Weather's cell, Fitness's days, the
@@ -297,21 +357,23 @@ const SESSION = { state: 'session', id: 'rh:endurance:75', sport: 'ride', name: 
 let Z = null;
 // (morningAt: minutes after midnight there, or 'now': the morning due at this minute, to the five)
 async function moment(hh, cell, { morningAt = 420, planned = true, quiet = false, rest = null } = {}) {
-  const tz = zoneAt(hh), t = Date.now(), D = dayIn(tz, t);
+  const tz = zoneAt(hh);
+  await georgeIn(tz);
+  const t = Date.now(), D = dayIn(tz, t);
   WX.tz = tz;
   Z = { tz, D, t, hh };
   console.log(`zone ${tz}: ${D} ${hm(tz, t)} there`);
   const mAt = morningAt === 'now' ? Math.floor(minsIn(tz, t) / 5) * 5 : morningAt;
   const m = await hubCall('PUT', '/api/morning', { on: true, at: mAt, tz, lines: { weather: true, fitness: true, chat: true, markets: true } });
   const q = await hubCall('PATCH', '/api/notify', { quiet: { on: quiet, from: 21, to: 6, tz } });
-  if (m.s !== 200 || q.s !== 200) ok(false, `the account’s zone set to ${tz}`, `${m.s} ${q.s} ${JSON.stringify(q.j).slice(0, 160)}`);
+  if (m.s !== 200 || q.s !== 200) ok(false, `the account’s zone set to ${tz}`, `${m.s} ${q.s} ${js(q.j, 160)}`);
   const kept = rows(`SELECT data FROM wx_accts WHERE user_id = '${GID}'`)[0];
   const data = kept ? JSON.parse(kept.data) : { settings: {}, notify: { places: [], brief: null, briefAt: '07:00' } };
   data.places = [{ name: 'London', lat: CELLS[cell][0], lon: CELLS[cell][1] }];
   run(`UPDATE wx_accts SET data = '${esc(JSON.stringify(data))}', ver = ver + 1 WHERE user_id = '${GID}'`);
   const days = { [D]: SESSION, [dayAfter(D, 1)]: { state: 'none' }, [dayAfter(D, 2)]: { state: rest === 2 ? 'rest' : 'none', why: '' }, [dayAfter(D, 3)]: { state: 'none' } };
   const f = await hubCall('POST', '/api/fitness/today', { tz, units: 'metric', days });
-  if (f.s !== 200) ok(false, 'Fitness’s days sent, as Fitness sends them', `${f.s} ${JSON.stringify(f.j).slice(0, 120)}`);
+  if (f.s !== 200) ok(false, 'Fitness’s days sent, as Fitness sends them', `${f.s} ${js(f.j, 120)}`);
   if (planned) run(`INSERT OR IGNORE INTO td_plans (user_id, day, at) VALUES ('${GID}', '${D}', ${t})`);
   return Z;
 }
@@ -320,7 +382,7 @@ async function moment(hh, cell, { morningAt = 420, planned = true, quiet = false
 async function rideAt(start, stop, why) {
   const body = { day: dayIn(Z.tz, start), start, stop, tz: Z.tz };
   const a = await hubCall('PUT', '/api/fitness/time', body);
-  ok(a.s === 200 && a.j?.time?.start === start && a.j.time.source === 'set', `Ride At ${hm(Z.tz, start)}–${hm(Z.tz, stop)}: ${why} (fx_times, source set)`, `${a.s} ${JSON.stringify(a.j).slice(0, 160)}`);
+  ok(a.s === 200 && a.j?.time?.start === start && a.j.time.source === 'set', `Ride At ${hm(Z.tz, start)}–${hm(Z.tz, stop)}: ${why} (fx_times, source set)`, `${a.s} ${js(a.j, 160)}`);
   if (a.s !== 200) run(`INSERT OR REPLACE INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('${GID}', '${body.day}', ${start}, ${stop}, '${Z.tz}', 'ride', 'set', ${Date.now()})`);
 }
 // A call with Mira agreed in Chat (§8.4): George's Chat sends the invite with his own pending row, Mira's Yes turns it
@@ -371,7 +433,7 @@ step(1, 'morning: the plan joined up, the clash moved and the habit ride added, 
   ok(new RegExp(`^Added: a ride on ${WD} at 10:00 · Six of the last eight dry ${WD}s\\. ${WD}[’']s dry`).test(add?.said || ''), `“Added: a ride on ${WD} at 10:00 · Six of the last eight dry ${WD}s. ${WD}’s dry”`, add?.said);
   // the morning push: the act in its Fitness line, no name (Chat's Names on the Lock Screen is off)
   const morning = (await pushesSince('george', since)).find((x) => x.app === 'today');
-  ok(!!morning && morning.body?.includes(`Moved your ride to ${NEW} to clear your 18:30 call. Undo on Today.`), 'the morning push says the act in its Fitness line', JSON.stringify(morning).slice(0, 300));
+  ok(!!morning && morning.body?.includes(`Moved your ride to ${NEW} to clear your 18:30 call. Undo on Today.`), 'the morning push says the act in its Fitness line', js(morning, 300));
   ok(!!morning && !/Mira/.test(JSON.stringify(morning)), 'and names no one: Names on the Lock Screen is off');
 
   // Today, at the morning: the plan joined up
@@ -398,7 +460,7 @@ step(1, 'morning: the plan joined up, the clash moved and the habit ride added, 
   ok(/Undone\. Rides are suggested now, not added/.test(said2 || ''), '“Undone. Rides are suggested now, not added”', said2);
   ok(await until(() => rows(`SELECT state FROM fx_offers WHERE id = '${esc(offer?.id || '')}'`)[0]?.state === 'no', 8000), 'the habit ride’s offer set to no');
   const hidden = await until(async () => { const c = await textOf('#coming'), tp = await topText(); return !/habit/i.test(c) && !/Added: a ride/.test(tp) ? c : null; }, 10000);
-  ok(!!hidden, 'and Today hides it at once (Coming Up, the top card)', await textOf('#coming'));
+  ok(!!add && !!hidden, 'and Today hides it at once (Coming Up, the top card)', await textOf('#coming'));
   await shot(G, '1-morning-undone');
   // the rule at suggest, in You (and as You's own route says it)
   const rules = await hubCall('GET', '/api/rules');
@@ -447,7 +509,7 @@ let PAT_AT = 0;
   await shot(G, '2-midday');
   // neither message's words in any request yet, nor in Today's storage (§7.4)
   const leak = REC.filter((x) => [SAID.pat1, SAID.pat2].some((s) => (x.url + (x.body || '')).includes(s) || (x.url + (x.body || '')).includes(encodeURIComponent(s))));
-  ok(!leak.length, 'neither of Pat’s messages in any request URL or body from any phone', JSON.stringify(leak.slice(0, 2)).slice(0, 300));
+  ok(!leak.length, 'neither of Pat’s messages in any request URL or body from any phone', js(leak.slice(0, 2), 300));
   const stored = await G.p.evaluate(() => JSON.stringify([localStorage, sessionStorage].flatMap((s) => Object.keys(s).filter((k) => /^today/i.test(k)).map((k) => s.getItem(k)))));
   ok(![SAID.pat1, SAID.pat2, 'Tesco this week'].some((s) => stored.includes(s)), 'nor in Today’s storage at the hub (today:*)');
 }
@@ -458,10 +520,10 @@ let PAT_AT = 0;
 step(3, 'send: the weather to Pat from Today; you stay on Today', '§4.1, §8.2, §8.3, §14.3');
 {
   const pages0 = G.pages.length, url0 = G.p.url(), n0 = sentBy(GID);
-  await G.p.click('#top .day-top [data-send]').catch((e) => console.log('DEBUG send', e.message));
+  await G.p.click('#top .day-top [data-send]', { timeout: 10000 }).catch((e) => console.log('DEBUG send', e.message));
   const sheet = G.p.frameLocator('iframe[name="ifl-chat"]');
   const pick = sheet.locator(`.sheet [data-act=sendpick][data-id="${P.id}"]`);
-  ok(await pick.waitFor({ timeout: 15000 }).then(() => true, () => false), 'Send opens Chat’s own sheet, in the engine over Today', G.p.url());
+  ok(await pick.waitFor({ timeout: 10000 }).then(() => true, () => false), 'Send opens Chat’s own sheet, in the engine over Today', G.p.url());
   await pick.click().catch(() => {});
   await sheet.locator('.sheet [data-act=sendgo]').click().catch(() => {});
   const said = await toastSaid(/Sent to Pat/, 20000);
@@ -499,9 +561,12 @@ let RIDE4 = null, MIRA_AT = 0;
   await shot(G, '4-preride');
   await G.p.click('#top a[data-do=open]:has-text("Radar")').catch(() => {});
   ok(await G.p.waitForURL(`${HUB}/weather/#radar`, { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Radar opens in the window: /weather/#radar', G.p.url());
+  await G.p.goto(HUB + '/');
 
   // riding: the ride began a quarter of an hour ago (Ride At moved), so the hold is on (start − 10 min, §8.7)
-  RIDE4 = { start: Math.floor((Date.now() - 15 * MIN) / (5 * MIN)) * 5 * MIN };
+  // (begun after Pat's messages at midday where it can be, so who wrote while he rode is Mira, as the story has it)
+  const s0 = Math.floor((Date.now() - 15 * MIN) / (5 * MIN)) * 5 * MIN, s1 = Math.ceil((PAT_AT + MIN) / (5 * MIN)) * 5 * MIN;
+  RIDE4 = { start: s1 <= Date.now() - 2 * MIN ? Math.max(s0, s1) : s0 };
   RIDE4.stop = RIDE4.start + 75 * MIN;
   await rideAt(RIDE4.start, RIDE4.stop, 'the ride under way');
   await callWithMira(q15(RIDE4.stop + 15 * MIN));
@@ -510,13 +575,13 @@ let RIDE4 = null, MIRA_AT = 0;
   MIRA_AT = mm.deliver_at;
   await chatTick(); await wait(1500);
   const chat = (await pushesSince('george', since)).filter((x) => x.app === 'chat');
-  ok(!!mm.id && !chat.length, 'Mira writes while George rides: no push (held at do)', JSON.stringify(chat).slice(0, 200));
+  ok(!!mm.id && !chat.length, 'Mira writes while George rides: no push (held at do)', js(chat, 200));
   // a MeteoAlarm warning passes the hold
   WX.warn = true; since = Date.now();
   run(`UPDATE wx_subs SET told = '{}', last_rain = ${Date.now()} WHERE dev IN (SELECT dev FROM wx_devs WHERE user_id = '${GID}')`);
   const wt = await weatherTick();
   const warned = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'weather' && /warning/i.test(`${x.title} ${x.body}`)), 10000);
-  ok(!!warned, 'a MeteoAlarm warning still gets through, as Weather’s (app: weather)', `${JSON.stringify(wt.j).slice(0, 160)} ${JSON.stringify(warned).slice(0, 200)}`);
+  ok(!!warned, 'a MeteoAlarm warning still gets through, as Weather’s (app: weather)', `${js(wt.j, 160)} ${js(warned, 200)}`);
   WX.warn = false;
   // Chats' held row
   await G.p.goto(`${HUB}/chats/`);
@@ -536,24 +601,24 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   if (end > Date.now() - 5e3) await wait(end - Date.now() + 5e3);
   const secs = Math.round((end - RIDE4.start) / 1000), dist = 36049;
   run(`CREATE TABLE IF NOT EXISTS fx_garmin_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, added INTEGER NOT NULL, PRIMARY KEY (user_id, id))`);
-  for (const c of ['sport TEXT', 'secs INTEGER', 'dist REAL']) run(`ALTER TABLE fx_garmin_new ADD COLUMN ${c}`);
+  for (const c of ['sport TEXT', 'secs INTEGER', 'dist REAL']) run(`ALTER TABLE fx_garmin_new ADD COLUMN ${c}`, true);
   run(`INSERT OR REPLACE INTO fx_garmin_new (user_id, id, start, name, added, sport, secs, dist) VALUES ('${GID}', 'g-ride-1', ${RIDE4.start}, 'Endurance 75', ${end}, 'ride', ${secs}, ${dist})`);
   ok(!rows(`SELECT id FROM fx_acts WHERE user_id = '${GID}' AND start = ${RIDE4.start}`).length, 'the ride waiting from the watch, not in Fitness yet (fx_garmin_new, not fx_acts)');
   // the held message released, once, "while you rode"
   const since = Date.now();
   await chatTick();
   const freed = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'chat'), 10000);
-  ok(!!freed && /while you rode/.test(freed.body || '') && !(JSON.stringify(freed).includes(SAID.mira)), 'the held message released: “… while you rode”, no words', JSON.stringify(freed).slice(0, 200));
+  ok(!!freed && /while you rode/.test(freed.body || '') && !(JSON.stringify(freed).includes(SAID.mira)), 'the held message released: “… while you rode”, no words', js(freed, 200));
 
   ok(await today('after'), 'Today after the ride (phaseOf: after, on arrival)');
   let top = await topText();
   ok(/From your watch/.test(top) && /Stress and fitness once Fitness has it/.test(top) && !/Stress\s*\d/.test(top), 'the honest card: “From your watch”, “Stress and fitness once Fitness has it”, no Stress', top);
   ok(/Time\s*\d+:\d\d/.test(top) && /Distance\s*36\.0 km|Distance\s*22\.4 mi/.test(top), 'Time and Distance, as the watch gave them', top);
-  ok(/Mira wrote while you rode/.test(top), '“Mira wrote while you rode” (the server: who)', top);
+  ok(/Mira(?:, \w+)*(?: and \w+)? wrote while you rode/.test(top), '“Mira wrote while you rode” (the server: who)', top);
   const words = await until(async () => { const w = await textOf(`#top .dt-said[data-wid="${M.id}"]`); return w.includes(SAID.mira) ? w : null; }, 20000);
   ok(!!words, 'and her words, from the engine on this phone', words);
   const to = await textOf('#top .dt-to');
-  ok(/Leo · Riding with you \w+/.test(to) && !!(await G.p.$(`#top [data-do=sendto][data-to="${L.id}"]`)), '“Leo · Riding with you Thursday”, and Send to Leo', to);
+  ok(/^Leo · Riding with you (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)$/i.test(to) && !!(await G.p.$(`#top [data-do=sendto][data-to="${L.id}"]`)), '“Leo · Riding with you <the day you agreed>”, and Send to Leo', to);
   const fit = await G.p.$('#top a[data-do=open]:has-text("Open Fitness")');
   ok(!!fit && (await fit.getAttribute('href')) === '/fitness/#activities', 'Open Fitness, at /fitness/#activities');
   await shot(G, '5-after-honest');
@@ -562,7 +627,7 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   ok(await G.p.waitForURL(`${HUB}/fitness/#activities`, { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Open Fitness: in the window', G.p.url());
   run(`INSERT OR REPLACE INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) VALUES ('${GID}', 'garmin-g-ride-1', ${RIDE4.start}, 'ride', 0, 'Endurance 75', 'fit', 1, '${esc(JSON.stringify({ secs, dist, tss: 68 }))}', ${Date.now()})`);
   await G.p.goBack({ waitUntil: 'load' }).catch(() => {});
-  if (new URL(G.p.url()).pathname !== '/') await G.p.goto(HUB + '/');
+  if (new URL(G.p.url()).origin !== HUB || new URL(G.p.url()).pathname !== '/') await G.p.goto(HUB + '/');
   const figures = await until(async () => { const t = await topText(); return /Stress\s*68/.test(t) && /Fitness\s*\d+ ↑/.test(t) ? t : null; }, 20000);
   ok(!!figures, 'back on Today, fetched again: “Stress 68 · Fitness … ↑”', await topText());
   await shot(G, '5-after-figures');
@@ -598,7 +663,7 @@ step(6, 'evening: the day closed, Tesco past its alert, tomorrow first; quiet ho
   await write(P, GID, SAID.night);
   await chatTick(); await wait(1500);
   const chat = (await pushesSince('george', since)).filter((x) => x.app === 'chat');
-  ok(!chat.length, 'Pat writes at 21:00: no push (quiet hours)', JSON.stringify(chat).slice(0, 200));
+  ok(!chat.length, 'Pat writes at 21:00: no push (quiet hours)', js(chat, 200));
   await G.p.goto(`${HUB}/chats/`);
   const held = await until(async () => { const t = (await G.p.evaluate(() => document.body.innerText).catch(() => '')).replace(/\s+/g, ' '); return /Quiet hours until 06:00 · Warnings still get through/.test(t) ? t : null; }, 20000);
   ok(!!held, 'Chats: “Quiet hours until 06:00 · Warnings still get through”');
@@ -612,23 +677,25 @@ step(7, 'the words typed, nowhere but sealed', '§3.7, §7.4, §14.3');
 {
   const all = Object.values(SAID), enc = (s) => [s, encodeURIComponent(s), JSON.stringify(s).slice(1, -1)];
   const inRec = REC.filter((x) => all.some((s) => enc(s).some((e) => x.url.includes(e) || (x.body || '').includes(e))));
-  ok(REC.length > 50 && !inRec.length, `none of the words typed in any of the ${REC.length} requests recorded from every frame of every phone (URLs and bodies)`, JSON.stringify(inRec.slice(0, 2)).slice(0, 300));
+  ok(REC.length > 50 && !inRec.length, `none of the words typed in any of the ${REC.length} requests recorded from every frame of every phone (URLs and bodies)`, js(inRec.slice(0, 2), 300));
   const pushes = await opened();
   const inPush = pushes.filter((x) => all.some((s) => JSON.stringify(x).includes(s)));
-  ok(pushes.length > 0 && !pushes.some((x) => x.undecrypted) && !inPush.length, `none in any of the ${pushes.length} pushes, each opened with its phone’s keys`, JSON.stringify(inPush.slice(0, 2)).slice(0, 300));
+  ok(pushes.length > 0 && !pushes.some((x) => x.undecrypted) && !inPush.length, `none in any of the ${pushes.length} pushes, each opened with its phone’s keys`, js(inPush.slice(0, 2), 300));
   await G.p.goto(HUB + '/');
   const stored = await G.p.evaluate(() => JSON.stringify([localStorage, sessionStorage].flatMap((s) => Object.keys(s).filter((k) => /^today/i.test(k)).map((k) => [k, s.getItem(k)]))));
   ok(!all.some((s) => stored.includes(s)), 'none in Today’s storage at the hub (today:*)');
   const dbRows = rows(`SELECT ct FROM pg_msgs WHERE sender IN ('${P.id}', '${M.id}') LIMIT 20`);
   ok(dbRows.length >= 4 && !dbRows.some((x) => all.some((s) => String(x.ct).includes(s))), 'and in the database only sealed (pg_msgs.ct)');
   // one window throughout
-  ok(G.pages.length === 1 && !(await G.p.evaluate(() => window.__opened?.length || 0)), 'one window throughout: nothing opened beside it', `${G.pages.length}`);
+  ok(!G.extra && G.pages.length === 1 && !(await G.p.evaluate(() => window.__opened?.length || 0)), 'one window throughout: nothing opened beside it, in any moment', `${G.extra} extra`);
   const away = navs.filter((u) => /^https?:/.test(u)).filter((u) => { const h = new URL(u).host; return h !== 'ifl.test:8788' && !/^(auth|account)\.ifl\.test:8788$/.test(h); });
   ok(!away.length, 'every page George saw was the hub’s (or the account’s, signing in)', JSON.stringify(away.slice(0, 3)));
   console.log('weather stand-in asked:', JSON.stringify([...new Set(asked)]));
 }
 
 console.log('notes (page errors, for the batches):', JSON.stringify(errs.slice(0, 8)));
+// (George's requests, for whoever reads a failure: method, address and the start of each body)
+try { writeFileSync(`${out}/requests.jsonl`, REC.filter((x) => x.who === 'george').map((x) => JSON.stringify({ m: x.method, u: x.url, b: (x.body || '').slice(0, 300) })).join('\n') + '\n'); } catch (_) {}
 for (const ph of [G, P, M, L]) await ph.ctx.close().catch(() => {});
 await (await K.hubBrowser()).close().catch(() => {});
 await K.b.close();
