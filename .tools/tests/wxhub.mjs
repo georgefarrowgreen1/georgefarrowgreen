@@ -475,7 +475,8 @@ const inLeeds = async (p, ctx) => {
   const units = await here(p);
   ok(put === 200 && units.temp === 'f' && !units.sub && units.off === true && !asked.includes('/api/weather/subscribe'), 'signed in, the account’s units changed (°F) and taken up here: still off', JSON.stringify({ put, temp: units.temp, off: units.off, asked }));
   // (turned on here again by the person: the account's Notifications page's Turn On, which opens Weather with #notify,
-  // and Allow Notifications tapped there. Theirs to say, so they're on here again)
+  // and Allow Notifications tapped there. Theirs to say, so they're on here again. A fresh load, as from that page)
+  await p.goto(`${OWN}/version`);
   await p.goto(`${OWN}/#notify`);
   const allow = await p.waitForSelector('.ifa-layer .ifa-go', { timeout: 15000 }).then(() => true, () => false);
   if (allow) await p.click('.ifa-layer .ifa-go');
