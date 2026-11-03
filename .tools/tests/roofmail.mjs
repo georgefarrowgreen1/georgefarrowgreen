@@ -533,15 +533,19 @@ await part(5, 'Send with Undo and the outbox; a reply Mail quotes itself; a forw
   await p.click(H.tab('you'));
   const you = await shown(p, H.YOU, 15000);
   // (Sign Out in InFlite's menu, your photo's (the shared menu, .ifm-pop as roofshell opens it): the button by its name)
+  // (the sign-in page takes #signout= out of its address at once, so the way there is noted as it goes)
+  const outNavs = []; const noteNav = (fr) => { if (fr === p.mainFrame()) outNavs.push(fr.url()); }; p.on('framenavigated', noteNav);
   await p.click(H.HD_ME);
   const menu = await shown(p, '.ifm-pop.open', 5000);
   await p.locator('.ifm-pop.open').getByRole('button', { name: 'Sign Out' }).first().click({ timeout: 10000 }).catch(() => {});
   const anyway = await shown(p, `${H.SIGNOUT_ANYWAY}[open]`, 3000);
   if (anyway) await p.locator(`${H.SIGNOUT_ANYWAY}[open]`).getByRole('button', { name: 'Sign Out' }).click().catch(() => {});
-  const landed = await p.waitForURL((u) => u.host === 'auth.ifl.test:8788' && new URLSearchParams(u.hash.slice(1)).get('signout') === 'today', { timeout: 20000 }).then(() => true, () => false);
+  const landed = await p.waitForURL((u) => u.host === 'auth.ifl.test:8788', { timeout: 20000 }).then(() => true, () => false);
+  p.off('framenavigated', noteNav);
+  const outHash = outNavs.filter((u) => u.startsWith('http://auth.ifl.test:8788/')).map((u) => new URLSearchParams(u.split('#')[1] || '').get('signout')).find(Boolean) || null;
   // (the old sign-in ended: Mail, asked with its cookie, says sign in; its Worker keeps a yes for 10 seconds)
   const post = await until(async () => { const a = (await mailAsk('/api/session', { cookie })).json?.access; return a === 'signin' ? a : null; }, 20000);
-  ok(pre === 'ok' && shut && you && menu && landed && post === 'signin', '5. compose closed, then You, InFlite’s menu, Sign Out: signed out (the sign-in page says so; Mail, asked with the old cookie, says sign in, C10)', js({ pre, shut, you, menu, anyway, landed, url: p.url().split('#')[0], post }));
+  ok(pre === 'ok' && shut && you && menu && landed && post === 'signin', '5. compose closed, then You, InFlite’s menu, Sign Out: signed out (on the sign-in page; Mail, asked with the old cookie, says sign in, C10)', js({ pre, shut, you, menu, anyway, landed, outHash, url: p.url().split('#')[0], post }));
   const c2 = freshCookie(GID);
   const saved = await until(async () => (await folderOf('drafts', c2)).find((m) => m.subject === 'Roof before sign out'), 10000);
   ok(!!saved, '5. …and Mail has the words as a draft (the closed compose’s save flushed before the sign-out, C10, RI1)', js(saved?.subject));

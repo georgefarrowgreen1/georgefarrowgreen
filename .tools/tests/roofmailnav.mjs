@@ -276,7 +276,8 @@ await part('B', 'every address of §2.3 with the switch on', '§2.3, S4-D5, S4-D
   // (and its own addresses opened there, as its notifications and the account page open them: the conversation, Settings)
   const M = await G.ctx.newPage();
   await M.goto(`${MAIL}/#thread=${T1}`).catch(() => {});
-  const ownThread = await M.waitForFunction((w) => [...document.querySelectorAll('.conv-head')].some((e) => e.textContent.includes(w)), 'Harbour lantern plan', { timeout: 30000 }).then(() => true, () => false);
+  // (Mail takes #thread= out of its address at once and opens it: the conversation's head, its subject in the bar)
+  const ownThread = await M.waitForFunction((w) => !!document.querySelector('.conv-head') && [...document.querySelectorAll('.bar-title')].some((e) => e.getAttribute('title') === w), 'Harbour lantern plan', { timeout: 30000 }).then(() => true, () => false);
   ok(ownThread && new URL(M.url()).origin === MAIL, 'B. email.inflite.ai/#thread=<id>: Mail on its own opens that conversation, as it did (§2.3)', M.url());
   await M.goto(`${MAIL}/robots.txt`).catch(() => {});
   await M.goto(`${MAIL}/#settings`).catch(() => {});
