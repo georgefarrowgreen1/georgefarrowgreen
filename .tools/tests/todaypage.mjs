@@ -9,6 +9,8 @@
 // hand-back; no one's day drawn once signed out, at any moment; the hostile names as text; each card in each state (The
 // Rest of Today, #rest), its links, Try Again; the requests the page makes; Edit; the morning with a stand-in push
 // service (through the device route); the menu and Sign Out; and no CSP violation, console error or sideways scroll.
+// Under One roof (the framework beside: roof/router.js) the header is the framework's (the date above the title, the
+// place as its line, Edit an act: #hd [data-act=edit]) and the page's sheets are InFlite's sheet (dialog[open]).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
@@ -27,6 +29,8 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c
 const same = (a, b, l) => ok(JSON.stringify(a) === JSON.stringify(b), l, `got ${JSON.stringify(a)?.slice(0, 400)}, wanted ${JSON.stringify(b)?.slice(0, 400)}`);
 if (!existsSync(`${IFL}today/public/index.html`)) { console.log('SKIP  the inflite repo isn’t beside this one'); console.log('FAILS 0'); process.exit(0); }
 
+const ROOF = existsSync(`${IFL}today/public/roof/router.js`);
+const EDIT = ROOF ? '#hd [data-act=edit]' : '#edit', OPEN = (id) => (ROOF ? `#${id}[open]` : `#${id}.on`);
 const FIX = (f) => JSON.parse(readFileSync(new URL(`./mocks/today/${f}`, import.meta.url), 'utf8'));
 const CARDS = FIX('cards.json'), EMPTY = FIX('cards.empty.json'), QUIET = FIX('cards.quiet.json'), SESSION = FIX('session.json');
 const T0 = CARDS.at, TQ = QUIET.at, ME = SESSION.user.id, KEYS = ['weather', 'chat', 'fitness', 'markets'];
@@ -282,7 +286,8 @@ await part('cards: ok', async () => {
   const mk = await p.$$eval('.tcard[data-app=markets] a', (as) => as.map((a) => a.getAttribute('href')));
   const m = CARDS.cards.markets;
   ok([m.top.href, m.low.href, m.dividend.href, m.href].every((x) => mk.includes(x)), 'Markets: top, low and the dividend link to #s=, the value to Markets');
-  ok(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')) === CARDS.cards.weather.href, 'Weather: the warning links to Weather');
+  // (One roof §4.4: the warning chip opens that place's Warnings, #warnings after its address)
+  same(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')), CARDS.cards.weather.href + (ROOF ? '#warnings' : ''), 'Weather: the warning links to Weather (its Warnings)');
   // (a name in Markets' sentence: tapped on its words, or a finger's width beyond them, and never taken by the other name)
   const reach = await p.$$eval('.tcard[data-app=markets] a.mk-name', (as) => as.map((a, i) => {
     a.scrollIntoView({ block: 'center' });
@@ -296,7 +301,10 @@ await part('cards: ok', async () => {
     'Tempo 2 × 15', 'Why today:', 'Best 10:00 to 11:00', '11°, dry, a light westerly · London',
     'London open · closes in 8h 20m', '+£61.20', '+0.29%', 'Rolls-Royce did most of the work, adding £48.10.', 'Tesco gave back £12.40.', 'Dividend, around 6 Nov', 'Tesco: about £43.20', '£12,000 of your ISA allowance left', '£8,000 of £20,000 used · till 5 April'])
     has(words, w, `ok: “${w}”`);
-  has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
+  if (ROOF) {
+    has(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', 'the header’s crumb: the day');
+    has(await text(p, '#hd .ifh-line'), 'London', 'the header’s line: the Weather place');
+  } else has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
   const av = (await reqs()).find((e) => e.path.endsWith('/avatar'));
   ok(av && av.query.id, 'the header’s photo is today/avatar');
   await ctx.close();
@@ -510,23 +518,28 @@ await part('edit', async () => {
   await mode('ok'); await reset();
   const { ctx, p } = await open();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
-  await p.click('#edit');
-  await p.waitForSelector('#sh-edit.on');
-  await p.click('#edList [data-k=chat] [data-mv="-1"]');
-  await p.click('#edList [data-k=markets] [data-show]');
+  await p.click(EDIT);
+  await p.waitForSelector(OPEN('sh-edit'));
+  // (the two changes made within the 400 ms the page waits for more, as a quick hand makes them: the sheet's own motion
+  // never lets a click wait past it)
+  await p.evaluate(() => { document.querySelector('#edList [data-k=chat] [data-mv="-1"]').click(); document.querySelector('#edList [data-k=markets] [data-show]').click(); });
   await p.waitForTimeout(900);
   same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'weather', 'fitness'], 'Edit: moved and hidden on the page at once');
   let puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
   same(puts.length, 1, 'Edit: the changes sent once, after the last');
   same(JSON.parse(puts.at(-1)?.body || '{}'), { order: ['chat', 'weather', 'fitness', 'markets'], hidden: ['markets'] }, 'Edit: the PUT body');
   await p.screenshot({ path: `${OUT}/edit-390-dark.png` });
+  // (and a real tap, the sheet settled: its controls can be tapped as they are, not only clicked by script)
+  await p.click('#edList [data-k=weather] [data-mv="1"]');
+  await p.waitForTimeout(200);
+  same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'fitness', 'weather'], 'Edit: a real tap on Move Down moves Weather');
   await p.click('#edReset');
   await p.waitForTimeout(900);
   puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
   same(JSON.parse(puts.at(-1)?.body || '{}'), { order: KEYS, hidden: [] }, 'Back to the day’s order sends the default');
   await p.keyboard.press('Escape');
   await p.waitForTimeout(400);
-  ok(!(await p.$('#sh-edit.on')), 'Escape closes Edit');
+  ok(!(await p.$(OPEN('sh-edit'))), 'Escape closes Edit');
   await ctx.close();
 });
 await part('edit: a change made while the last is on its way', async () => {
@@ -539,8 +552,8 @@ await part('edit: a change made while the last is on its way', async () => {
     await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
     await p.route('**/api/prefs', async (r) => { await new Promise((y) => setTimeout(y, 700)); await r.continue(); });
     await reset();
-    await p.click('#edit');
-    await p.waitForSelector('#sh-edit.on');
+    await p.click(EDIT);
+    await p.waitForSelector(OPEN('sh-edit'));
     await p.click('#edList [data-k=markets] [data-mv="-1"]');
     await p.waitForTimeout(gap);
     await p.click('#edList [data-k=markets] [data-mv="-1"]');
@@ -562,7 +575,7 @@ await part('morning', async () => {
   // (its settings: in a sheet from the menu, under your photo, not on the page)
   const openMorning = async () => {
     await p.click('#hd .ifh-me'); await p.waitForSelector('.ifm-pop.open');
-    await p.click('.ifm-pop [data-k=morning]'); await p.waitForSelector('#morning.on'); await p.waitForTimeout(700);
+    await p.click('.ifm-pop [data-k=morning]'); await p.waitForSelector(OPEN('morning')); await p.waitForTimeout(700);
   };
   ok(!(await p.isVisible('#mOn')) && !(await p.$('#day #morning')), 'morning: not on the page, only in the menu');
   await openMorning();
@@ -625,7 +638,7 @@ await part('menu and sign out', async () => {
   await p.click('#hd .ifh-me');
   await p.waitForSelector('.ifm-pop.open');
   const rows = await p.$$eval('.ifm-rows .ifm-row', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
-  same(rows, ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows');
+  same(rows, ROOF ? ['Notifications', 'Morning Notification 07:00', 'Connected Apps', 'Edit Today'] : ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows (Connected Apps under the roof, D24)');
   has(await text(p, '.ifm-pop .ifm-who'), 'Alex Morgan', 'the menu: you');
   has(await text(p, '.ifm-foot'), `Today ${BUILD}`, 'the menu’s foot: Today and its version');
   ok(await p.$eval('.ifm-foot-ic', (i) => i.complete && i.naturalWidth > 0), 'and Today’s icon beside it');

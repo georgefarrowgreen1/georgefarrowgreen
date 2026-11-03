@@ -19,6 +19,10 @@
 // money or a Chat place kept in localStorage; pages off the hub never cross-fade (menu.css asks it of every page; menu.js
 // lets it go), at the hub they do; and at 390, 320 and on its side, light and dark: no sideways scroll, every view's foot
 // clear of the tab bar, axe clean, no CSP violation or console error.
+// Under One roof (the framework beside: roof/router.js): /api/hub answers roof beside ready; Apps' tiles are the
+// framework's (.ifl-tile[data-app], hrefs as before); You's Weather row opens its Weather Notifications sheet (roofshell.mjs
+// checks that sheet); the page's sheets are InFlite's sheet (dialog[open]); Sign in comes back to the screen it was asked
+// from (then=%2F at /).
 //   node .tools/tests/todayshell.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -29,6 +33,7 @@ import { jsBlock, cssBlock } from '../iflmenu.mjs';
 // (requests a service worker makes are routed too: Today's root worker fetches its own files)
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 const HERE = new URL('./', import.meta.url).pathname;
+const MAIN = new URL('../../', import.meta.url).pathname;
 const IFL = process.env.IFL_ROOT || new URL('../../../inflite/', import.meta.url).pathname;
 const OUT = process.argv[3] || `${tmpdir()}/todayshell`;
 mkdirSync(OUT, { recursive: true });
@@ -47,6 +52,16 @@ const FAKE_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/inflite-phone';
 const NO_DAY_CSS = !existsSync(`${IFL}today/public/day.css`);
 const TP_DAY = /export function stopDay/.test(readFileSync(`${IFL}today/public/day.js`, 'utf8'));
 const TP_CARDS = /export const hubOf/.test(readFileSync(`${IFL}today/public/cards.js`, 'utf8'));
+const ROOF = existsSync(`${IFL}today/public/roof/router.js`);
+// (Apps' tiles: the framework's under the roof, Today's own before it; each tile's name, line, href and its chips' hrefs)
+const TILE = ROOF ? '.ifl-tile[data-app]' : '.atile';
+const tilesOf = (p) => p.$$eval(TILE, (ts) => ts.map((t) => {
+  const main = t.matches('a') ? t : t.querySelector('.ifl-tile-main, .atile-go');
+  const chips = [...t.querySelectorAll('a[href]')].filter((a) => a !== main);
+  return { app: t.dataset.app, name: (main.querySelector('b')?.textContent || '').trim(), line: (main.querySelector('small')?.textContent || '').trim(), href: main.getAttribute('href'),
+    chips: chips.map((a) => [a.textContent.trim(), a.getAttribute('href')]) };
+}));
+const sheetOpen = (id) => (ROOF ? `#${id}[open]` : `#${id}.on`);
 
 // ---- the stand-in account and the site's Worker ----
 const stub = spawn(process.execPath, [`${HERE}mocks/todaystub.mjs`, '8789'], { stdio: ['ignore', 'ignore', 'inherit'] });
@@ -88,11 +103,18 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = fals
   if (standalone) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
   if (sentSay) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('done-sent')) { sessionStorage.setItem('ifl-sent', s); sessionStorage.setItem('done-sent', '1'); } }, sentSay);
   // (the hub's Worker ready, or not yet; Chats' pages, the engine among them)
-  await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: hub }, headers: { 'Cache-Control': 'no-store' } }));
+  await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: hub, roof: hub }, headers: { 'Cache-Control': 'no-store' } }));
   await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => {
     const u = new URL(r.request().url());
     if (u.pathname === '/chats/__signed-out') { chatOut.push(Date.now()); return r.fulfill({ status: 204, body: '' }); }
     return r.fulfill({ contentType: 'text/html', body: u.searchParams.has('engine') ? ENGINE : '<!doctype html><title>Chats</title><style>@view-transition { navigation: auto; }</style><p>Chats</p>' });
+  });
+  // (Weather's files, as the hub would forward them: from this repo, the module's own (weather/roof/) among them, so the
+  // framework's idle work for Weather (its connector, for search and the minis) finds them; anything else of Weather's, 404)
+  await ctx.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => {
+    const f = new URL(r.request().url()).pathname.slice('/weather/'.length);
+    if (!/^[\w-]+(\/[\w-]+)?\.(js|css)$/.test(f) || !existsSync(`${MAIN}weather/${f}`)) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    return r.fulfill({ contentType: f.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}weather/${f}`, 'utf8') });
   });
   await setup?.(ctx);
   if (NO_DAY_CSS) await ctx.route((u) => new URL(u).pathname === '/day.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
@@ -169,7 +191,7 @@ await part('tabs and views', async () => {
   await p.screenshot({ path: `${OUT}/today-390-dark.png` });
   await p.evaluate(() => { window.__same = 1; });
   await p.click('#tabs [data-tab="apps"]');
-  await p.waitForSelector('#apps:not([hidden]) .atile');
+  await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
   same(await shown(p), ['apps'], 'Apps: its view alone');
   same(new URL(p.url()).hash, '#apps', 'at /#apps');
   same((await tabs(p)).map((t) => t[2]), [null, null, 'page', null], 'the same bar, Apps chosen');
@@ -252,7 +274,7 @@ await part('the engine’s sheet', async () => {
   await p.frame({ name: 'ifl-chat' }).evaluate(() => window.finish());
   same(await engineState(p), AWAY, 'parent.IFL.hub.closed(): put away');
   await p.click('#tabs [data-tab="apps"]');
-  await p.waitForSelector('#apps:not([hidden]) .atile');
+  await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
   ok(true, 'and the page takes taps again');
   await ctx.close();
 });
@@ -316,20 +338,21 @@ await part('the day gets the page’s own hub', async () => {
 await part('apps', async () => {
   await mode({ phase: 'midday' });
   let { ctx, p } = await open({ path: '/#apps' });
-  await p.waitForSelector('#apps:not([hidden]) .atile');
-  const tiles = await p.$$eval('.atile', (ts) => ts.map((t) => [t.dataset.app, t.querySelector('.atile-tx b').textContent, t.querySelector('.atile-tx small').textContent, t.querySelector('.atile-go').getAttribute('href')]));
-  same(tiles, [['weather', 'Weather', MIDDAY.apps.weather, '/weather/'], ['fitness', 'Fitness', MIDDAY.apps.fitness, '/fitness/'], ['markets', 'Markets', MIDDAY.apps.markets, '/markets/']], 'a tile for each app, its line from the day, opening it here; no Mail');
-  same(await p.$$eval('.atile[data-app=weather] .achip', (as) => as.map((a) => [a.textContent, a.getAttribute('href')])), [['Radar', '/weather/#radar'], ['Warnings', '/weather/#warnings']], 'Weather’s sections');
-  same(await p.$$eval('.atile[data-app=markets] .achip', (as) => as.map((a) => a.getAttribute('href'))), ['/markets/#today', '/markets/#holdings', '/markets/#news'], 'Markets’ sections');
+  await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
+  const tiles = await tilesOf(p);
+  same(tiles.map((t) => [t.app, t.name, t.line, t.href]), [['weather', 'Weather', MIDDAY.apps.weather, '/weather/'], ['fitness', 'Fitness', MIDDAY.apps.fitness, '/fitness/'], ['markets', 'Markets', MIDDAY.apps.markets, '/markets/']], 'a tile for each app, its line from the day, opening it here; no Mail');
+  same(tiles[0].chips, [['Radar', '/weather/#radar'], ['Warnings', '/weather/#warnings']], 'Weather’s sections');
+  same(tiles[2].chips.map((c) => c[1]), ['/markets/#today', '/markets/#holdings', '/markets/#news'], 'Markets’ sections');
   has(await text(p, '.apps-note'), 'Their news reaches you on Today. Any card can be sent to a friend.', 'the word under the tiles');
-  ok(await p.$eval('.atile[data-app=weather] .atile-ic', (i) => i.complete && i.naturalWidth > 0), 'each tile’s icon');
+  ok(await p.$eval(`${TILE.replace('[data-app]', '[data-app=weather]')} img`, (i) => i.complete && i.naturalWidth > 0).catch(() => false), 'each tile’s icon');
   await p.screenshot({ path: `${OUT}/apps-390-dark.png` });
   await ctx.close();
   await mode({ phase: 'midday', admin: true });
   ({ ctx, p } = await open({ path: '/#apps', scheme: 'light' }));
-  await p.waitForSelector('#apps:not([hidden]) .atile');
-  same(await p.$$eval('.atile', (ts) => ts.map((t) => t.dataset.app)), ['weather', 'fitness', 'markets', 'mail'], 'Mail’s tile for its account (apps.mail)');
-  same(await p.$eval('.atile[data-app=mail]', (t) => [t.querySelector('small').textContent, t.querySelector('.atile-go').getAttribute('href')]), ['For you only', '/mail/'], 'Mail: For you only, at /mail/');
+  await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
+  const all = await tilesOf(p);
+  same(all.map((t) => t.app), ['weather', 'fitness', 'markets', 'mail'], 'Mail’s tile for its account (apps.mail)');
+  same([all[3].line, all[3].href], ['For you only', '/mail/'], 'Mail: For you only, at /mail/');
   await ctx.close();
 });
 
@@ -342,9 +365,10 @@ await part('you: drawn from the account', async () => {
   same(rules, RULES.rules.map((r) => [r.name, r.line, r.soon ? 'Coming' : 'Do']), 'Rules: each at its level, with its record; later and arrange as coming');
   has(await text(p, '#youRules'), 'A rule drops a level when you undo it, and climbs after ten kept actions.', 'Rules: the note');
   const notify = await text(p, '#youNotify');
-  for (const w of ['Friends and Groups', 'Never the words', 'Weather', 'Warnings always', 'Markets', 'Fitness', 'In Today’s morning', 'Today’s Morning', '07:00']) has(notify, w, `Notifications, by App: “${w}”`);
+  for (const w of ['Friends and Groups', 'Never the words', 'Weather', ROOF ? 'Rain and warnings for the places you choose' : 'Warnings always', 'Markets', 'Fitness', 'In Today’s morning', 'Today’s Morning', '07:00']) has(notify, w, `Notifications, by App: “${w}”`);
   ok(!notify.includes('Mail'), 'no Mail row but for Mail’s account');
-  same(await p.$$eval('#youNotify [aria-pressed="true"]', (bs) => bs.map((x) => x.textContent)), ['All', 'All', 'Alerts'], 'Friends and Groups All, Weather’s rain All, Markets’ Alerts');
+  if (ROOF) same(await p.$$eval('#youNotify [aria-pressed="true"]', (bs) => bs.map((x) => x.textContent)), ['All', 'Alerts'], 'Friends and Groups All, Markets’ Alerts (Weather’s in its own sheet)');
+  else same(await p.$$eval('#youNotify [aria-pressed="true"]', (bs) => bs.map((x) => x.textContent)), ['All', 'All', 'Alerts'], 'Friends and Groups All, Weather’s rain All, Markets’ Alerts');
   has(await text(p, '#youPhone'), 'Get Every App’s Notifications Here', 'This Phone: Get Every App’s Notifications Here (the fan-out’s on)');
   same(await p.$$eval('#youDevices .dev', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('[data-stop]').textContent])), DEVICES.devices.map((d) => [d.label, 'Stop There']), 'Other Devices Getting Notifications, each with Stop There');
   ok(await p.isChecked('#youQuiet'), 'Quiet Hours: on');
@@ -373,9 +397,11 @@ await part('you: its writes', async () => {
   await p.click('#youNotify [data-alerts="off"]');
   await p.waitForTimeout(500);
   same((await sent('PATCH', 'notify')).at(-1), { markets: { alerts: false } }, 'Markets Off: PATCH { markets: { alerts: false } }');
-  await p.click('#youNotify [data-rain="off"]');
-  await p.waitForTimeout(500);
-  same((await sent('PATCH', 'notify')).at(-1), { weather: { place: { lat: 51.5072, lon: -0.1276, name: 'London', rain: false } } }, 'Weather’s rain Off: PATCH { weather: { place } }');
+  if (!ROOF) {
+    await p.click('#youNotify [data-rain="off"]');
+    await p.waitForTimeout(500);
+    same((await sent('PATCH', 'notify')).at(-1), { weather: { place: { lat: 51.5072, lon: -0.1276, name: 'London', rain: false } } }, 'Weather’s rain Off: PATCH { weather: { place } }');
+  }
   await p.selectOption('#youQfrom', '22');
   await p.waitForTimeout(500);
   same((await sent('PATCH', 'notify')).at(-1), { quiet: { on: true, from: 22, to: 6, tz: 'Europe/London' } }, 'Quiet Hours: PATCH { quiet: { on, from, to, tz } }');
@@ -385,7 +411,7 @@ await part('you: its writes', async () => {
   // Get Every App's Notifications Here: nothing until its own tap
   same(await sent('POST', 'device'), [], 'nothing fanned out yet');
   await p.click('#youEvery');
-  await p.waitForSelector('#sh-every.on');
+  await p.waitForSelector(sheetOpen('sh-every'));
   await p.waitForTimeout(500);
   const sheet = await text(p, '#sh-every');
   has(sheet, 'Chats, Weather and Markets will notify you here as well.', 'the sheet says what changes');
@@ -394,7 +420,7 @@ await part('you: its writes', async () => {
   same(await sent('POST', 'device'), [], 'opening the sheet sends nothing');
   await p.screenshot({ path: `${OUT}/every-390-dark.png` });
   await p.click('#evGo');
-  await p.waitForFunction(() => !document.querySelector('#sh-every.on'));
+  await p.waitForFunction((s) => !document.querySelector(s), sheetOpen('sh-every'));
   const dev = await sent('POST', 'device');
   same(dev.map((x) => [x.fan, x.sub?.endpoint]), [[true, FAKE_ENDPOINT]], 'its tap: POST /api/device { sub, fan: true }');
   has(await text(p, '#youPhone'), 'Every App’s Notifications', 'and This Phone says every app’s come here');
@@ -460,10 +486,11 @@ await part('the way in', async () => {
   await mode({ mode: 'out' });
   let { ctx, p } = await open({ signedIn: false });
   ok(await p.isVisible('#signinToday'), 'Sign In Without Chats, quietly, beside Sign in');
-  same(await p.$eval('#signin', (a) => a.getAttribute('href')), '/chats/#signin-start&then=/', 'Sign in: Chats’ trip, which signs in everything');
+  const THEN = ROOF ? '/chats/#signin-start&then=%2F' : '/chats/#signin-start&then=/';
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), THEN, 'Sign in: Chats’ trip, which signs in everything, back to here');
   await p.click('#signin');
   await p.waitForURL(/\/chats\//);
-  same(new URL(p.url()).pathname + new URL(p.url()).hash, '/chats/#signin-start&then=/', 'Sign in goes to /chats/#signin-start&then=/');
+  same(new URL(p.url()).pathname + new URL(p.url()).hash, THEN, `Sign in goes to ${THEN}`);
   await ctx.close();
   ({ ctx, p } = await open({ signedIn: false }));
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
@@ -484,9 +511,10 @@ await part('degraded', async () => {
   await p.waitForTimeout(3500);
   same(await p.$$eval('iframe[name="ifl-chat"]', (fs) => fs.length), 0, 'no engine');
   await p.click('#tabs [data-tab="apps"]');
-  await p.waitForSelector('#apps:not([hidden]) .atile');
-  same(await p.$$eval('.atile .atile-go', (as) => as.map((a) => a.getAttribute('href'))), ['https://weather.inflite.ai/', 'https://fitness.inflite.ai/', 'https://finance.inflite.ai/'], 'the tiles: the apps’ own addresses');
-  same(await p.$eval('.atile[data-app=weather] .achip', (a) => a.getAttribute('href')), 'https://weather.inflite.ai/#radar', 'and their sections');
+  await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
+  const own = await tilesOf(p);
+  same(own.map((t) => t.href), ['https://weather.inflite.ai/', 'https://fitness.inflite.ai/', 'https://finance.inflite.ai/'], 'the tiles: the apps’ own addresses');
+  same(own[0].chips[0]?.[1], 'https://weather.inflite.ai/#radar', 'and their sections');
   await p.click('#tabs [data-tab="you"]');
   await p.waitForSelector('#youRules .rule');
   ok(!(await p.$('#youEvery')) && !(await text(p, '#you')).includes('Every App'), 'You: no Get Every App’s Notifications Here');
@@ -642,7 +670,7 @@ await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[390, 844], [320, 568], [844, 390]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app], .atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(300);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);
