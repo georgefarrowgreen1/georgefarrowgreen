@@ -618,8 +618,13 @@ export function appKey(request) {
 }
 // The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null; and InFlite, one
 // app, for any of the apps used in InFlite's window (the hub asked, with its key: X-Hub-Ok, functions/_middleware.js),
-// so the sign-in is named by that, not by whichever app's API it used last
-export const homeOf = (request) => (request?.headers.get("X-Hub-Ok") === "1" ? "inflite" : request?.headers.get("X-Home-Screen") === "1" ? appKey(request) : null);
+// so the sign-in is named by that, not by whichever app's API it used last. Today's own Home Screen app is InFlite too
+// (from Today 1.09 its install is InFlite's, spec §3.2), so a sign-in used by Today and the apps beside it in that one
+// window keeps the one name, and its row isn't written again at each move between them
+export const homeOf = (request) => {
+  const hs = request?.headers.get("X-Home-Screen") === "1", app = hs ? appKey(request) : null;
+  return request?.headers.get("X-Hub-Ok") === "1" || app === "today" ? "inflite" : app;
+};
 // The sign-ins other than this one's own, in SQL (with othersOf's four): not itself, nor the app's sign-in it was
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";

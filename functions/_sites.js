@@ -61,19 +61,24 @@ export function hubOrigins(env, request) {
 // (X-Hub-Ok, set by functions/_middleware.js and by nothing a browser sends): those six, in place of this request's own.
 const GEO = ["country", "region", "city", "latitude", "longitude", "timezone"];
 export function cfOf(request) {
-  const cf = request?.cf || {};
-  const headers = request?.headers, raw = headers?.get?.("X-Hub-Ok") === "1" && headers.get("X-Hub-Geo");
-  if (!raw || raw.length > 2048) return cf;
-  let geo;
-  try {
-    const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
-    geo = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
-  } catch (_) { return cf; }
-  if (!geo || typeof geo !== "object" || Array.isArray(geo)) return cf;
+  const cf = request?.cf || {}, headers = request?.headers;
+  if (headers?.get?.("X-Hub-Ok") !== "1") return cf;
+  // (behind the hub, none of this request's own six: they'd be the hub Worker's place. Only what the hub said, and
+  // where it said nothing usable (no X-Hub-Geo, too long, not JSON of an object), nothing)
   const out = { ...cf };
+  for (const k of GEO) delete out[k];
+  const raw = headers.get("X-Hub-Geo");
+  let geo = null;
+  if (raw && raw.length <= 2048) {
+    try {
+      const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+      geo = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    } catch (_) { geo = null; }
+  }
+  if (!geo || typeof geo !== "object" || Array.isArray(geo)) return out;
   for (const k of GEO) {
     const v = geo[k];
-    if ((typeof v === "string" && v.length <= 100) || (typeof v === "number" && Number.isFinite(v))) out[k] = v; else delete out[k];
+    if ((typeof v === "string" && v.length <= 100) || (typeof v === "number" && Number.isFinite(v))) out[k] = v;
   }
   return out;
 }

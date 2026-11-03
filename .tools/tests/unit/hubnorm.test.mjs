@@ -4,8 +4,8 @@
 // clientIp() and every limit() key are the person's, not the hub's; with any other key, every X-Hub-* is dropped and
 // nothing is believed; the key itself never goes further; Cloudflare's cf goes on with it; next() with nothing passes on
 // the request as made plain. And what the rest of the site does with it: cfOf takes the browser's place only from the
-// hub, originOk takes the hub's origins exactly, /.well-known/webauthn lists them, and a sign-in used from the hub is
-// named InFlite's.
+// hub (and from the hub, never the hub Worker's own), originOk takes the hub's origins exactly, /.well-known/webauthn
+// lists them, and a sign-in used from the hub, or by Today's Home Screen app, is named InFlite's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -113,14 +113,19 @@ test('cfOf: the hub’s word on the browser’s place, those six alone, and only
   assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf({ ...LONDON, colo: 'XXX', evil: '<x>' }) })), { ...LONDON, colo: 'IAD', asn: 13335 });
   assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf({ country: 'GB' }) })), { country: 'GB', colo: 'IAD', asn: 13335 }, 'what the hub didn’t know isn’t the hub’s own place either');
   assert.deepEqual(cfOf(at({ 'X-Hub-Geo': geoOf(LONDON) })), HUB_CF, 'without X-Hub-Ok');
-  assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1' })), HUB_CF, 'with nothing said');
-  for (const bad of ['%%%', geoOf([1, 2]), geoOf('London'), Buffer.from('{not json').toString('base64url'), 'x'.repeat(3000)]) assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': bad })), HUB_CF, bad.slice(0, 20));
+  // (from the hub, with nothing usable said: none of the six, never the hub Worker's own place)
+  const NOWHERE = { colo: 'IAD', asn: 13335 };
+  assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1' })), NOWHERE, 'with nothing said');
+  for (const bad of ['', '%%%', geoOf([1, 2]), geoOf('London'), geoOf(null), Buffer.from('{not json').toString('base64url'), 'x'.repeat(3000), geoOf({ ...LONDON, pad: 'x'.repeat(2000) })])
+    assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': bad })), NOWHERE, bad.slice(0, 20));
+  assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf({}) })), NOWHERE, 'as with nothing known');
   assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf({ city: { x: 1 }, latitude: NaN, country: 'GB' }) })), { country: 'GB', colo: 'IAD', asn: 13335 });
   assert.deepEqual(cfOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf({ city: 'Zürich', country: 'CH' }) }, null)), { city: 'Zürich', country: 'CH' }, 'with no cf of its own');
   assert.deepEqual(cfOf(null), {}); assert.deepEqual(cfOf(new Request('https://x/')), {});
   // (a sign-in's place, as it's kept with it)
   assert.equal(placeOf(at({ 'X-Hub-Ok': '1', 'X-Hub-Geo': geoOf(LONDON) })), 'London, United Kingdom');
   assert.equal(placeOf(at({})), 'Ashburn, United States');
+  assert.equal(placeOf(at({ 'X-Hub-Ok': '1' })), null, 'from the hub, saying nothing: nowhere, never the hub’s place');
 });
 
 test('originOk takes InFlite’s hub origins exactly, beside its own address; /.well-known/webauthn lists them', async () => {
@@ -154,4 +159,9 @@ test('a sign-in used from the hub is named InFlite’s (and only from the hub)',
   assert.equal(homeOf(r('/api/weather/me', { 'X-Home-Screen': '1' })), 'weather', 'its own Home Screen app, as before');
   assert.equal(homeOf(r('/api/weather/me', {})), null);
   assert.equal(homeOf(r('/api/weather/me', { 'X-Hub-Ok': 'yes' })), null);
+  // (Today's own Home Screen app is InFlite's from 1.09: a sign-in used by Today and by the apps in its window keeps one name)
+  const today = (headers) => new Request('https://account.inflite.ai/api/account/today/cards', { headers });
+  assert.equal(homeOf(today({ 'X-Home-Screen': '1' })), 'inflite');
+  assert.equal(homeOf(today({})), null, 'Today in a browser tab: no Home Screen app');
+  assert.equal(homeOf(new Request('https://account.inflite.ai/api/account/me', { headers: { 'X-Home-Screen': '1' } })), 'account', 'the account’s page, as before');
 });
