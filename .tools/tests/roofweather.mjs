@@ -19,8 +19,8 @@
 //   8 the budget (§7.3) for a first open and a cold deep link
 //   9 storage: only Weather's own keys added, no today:* change; search typing leaves nothing anywhere
 //   10 a 401 at /api/weather/me with the session alive: no sign-out; signed out: the way in, back to the route
-//   11 a new Weather build mid-session (D21): no reload in use (a lazy section while stale imports as normal, stage 2's
-//     C7), the reload at a boundary (a route into Weather; back after a minute) with URL and scroll kept, "Weather updated" once
+//   11 a new Weather build mid-session (D21): no reload in use, no lazy file joins the old module (an idle page reloads
+//     first, C7), the reload at a boundary with URL and scroll kept, "Weather updated" once
 //   12 warnings on Now (banner, single card), the empty states ([] and null), the credits sheet
 //   13 CSP clean, axe, 390 light and dark, the 1280 layout
 //   14 loading on open (stage 2 §4.5): a first open fetches none of 16 Days, Warnings, Places, Weather Settings and the
@@ -518,7 +518,7 @@ await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; si
 });
 
 // ======================================================================================================================
-await part(11, 'a new Weather build mid-session: no reload in use, a lazy file imported while stale, reload at a boundary', 'D21, stage 2 C7, RB2, UI13, D15', async () => {
+await part(11, 'a new Weather build mid-session: no reload in use, no lazy file joins the old module, reload at a boundary', 'D21, stage 2 C7, RB2, UI13, D15', async () => {
 // ======================================================================================================================
   // (no service worker here, so the page's own fetches are all there is to stand in for: with the root worker, its kept
   // copy of the module and its own version checks would be a second source of the old build)
@@ -540,6 +540,9 @@ await part(11, 'a new Weather build mid-session: no reload in use, a lazy file i
   await todayUp(q);
   await q.click(H.tab('apps')); await shown(q, H.appTile('weather'), 20000);
   await tapTile(q); await weatherUp(q);
+  // (16 Days once before the release: its file, lazy since stage 2, is in the page, so switching to it later loads nothing)
+  await q.click(H.hdSec('days')); await shown(q, H.wxSec('days')); await until(async () => (await count(q, H.DAY_ROW)) >= 10, 20000);
+  await q.click(H.hdSec('now')); await shown(q, H.wxSec('now'));
   const life = await alive(q);
   docs.reset();
   // a release: learnt as the page comes back (a short while away, more than 10 minutes since it last asked)
@@ -553,22 +556,17 @@ await part(11, 'a new Weather build mid-session: no reload in use, a lazy file i
   await q.click(H.hdSec('days')); await shown(q, H.wxSec('days'));
   await q.click(H.hdSec('now')); await shown(q, H.wxSec('now'));
   ok((await life.same()) && docs.n() === 0, '11. sections switched meanwhile: still the same page');
-  // Radar's first tap while stale: under stage 2's C7 (s24-contracts §7) fw.lazy imports as normal, the file used, and
-  // the reload waits for the next safe point (stage 1 reloaded here at once)
-  const radarAsk = [];
-  const onR = (r) => { if (/\/weather\/roof\/radarview\.js|\/weather\/radar\.js/.test(r.url())) radarAsk.push(r.url()); };
+  // Radar's first tap while stale and nothing unsaved: its lazy file would join the old module, so the page reloads at
+  // /weather/#radar instead (stage 2 C7 keeps this for an idle page: frame.js fw.lazy; while busy it imports as normal)
+  const order = [];
+  const onR = (r) => { if (r.isNavigationRequest() && r.frame() === q.mainFrame()) order.push('document'); else if (/\/weather\/radar\.js/.test(r.url())) order.push('radar.js'); };
   q.on('request', onR);
   await q.click(H.hdSec('radar'));
-  const radarUp = await shown(q, H.wxSec('radar'), 30000);
-  await wait(2500);
-  ok(radarUp && (await life.same()) && docs.n() === 0, '11. Radar tapped while stale: shown in the same page, its code imported as normal, no reload in the middle of use (stage 2 C7)', js({ radarAsk, docs: docs.list }));
-  q.off('request', onR);
-  // the next route into Weather: the reload there (D21's route boundary), the new build mounted
-  await q.click(H.HD_BACK); await shown(q, H.APPS);
-  await tapTile(q);
   const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(reloaded && (await weatherUp(q)), '11. …Back to Apps, then Weather’s tile: the reload at that route (stale, nothing unsaved, D21), Weather in the new page', js({ docs: docs.list, at: here(q) }));
-  await wait(2000);
+  ok(reloaded && order[0] === 'document', '11. Radar tapped (its code not loaded yet, nothing unsaved): the page reloads first, no lazy file fetched into the old module (fw.lazy, D21, C7)', js(order));
+  ok((await at(q, '/weather/#radar', 15000)) && (await shown(q, H.wxSec('radar'), 30000)), '11. …at /weather/#radar, Radar shown in the new page', here(q));
+  q.off('request', onR);
+  await screenUp(q, 'radar').catch(() => {}); await wait(2000);
   ok((await said(q)).filter((t) => /Weather updated/.test(t)).length === 1, '11. the new build mounted: “Weather updated” once (IFL.built, D15)', js(await said(q)));
 
   // another release, learnt; then away a minute or more: the reload at that boundary, the address and scroll kept

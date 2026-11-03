@@ -13,8 +13,8 @@
 //   6 the budget: first open of Today (§4.6: JS ≤ 85, CSS ≤ 22 KB gzip, requests ≤ files + 2)
 //   7 storage: no new key, no today:* change (S2-D10)
 //   8 a 401 with the session alive: no sign-out; 8b a confirmed sign-out leaves no fitness:* and no fitness store (RB1)
-//   9 a new Fitness build mid-session: no reload in use; a lazy section while stale imports as normal, the reload at
-//     the next route into Fitness (D21, C7 as s24-contracts §7 has it)
+//   9 a new Fitness build mid-session: no reload in use; a lazy section while stale and idle
+//     reloads first, at its address (D21, C7)
 //   10 files: through Add Files (a picker in the tap) and dropped onto the screen (S2-D12)
 //   11 Fitness Settings: a save keeps the other prefs (S2-D7, saveSettings)
 //   12 Weather's 16 Days within 700 ms of a Fitness edit: the edit saved, no reload (RB2, S2-D21)
@@ -304,7 +304,7 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
 });
 
 // ======================================================================================================================
-await part(9, 'a new Fitness build mid-session: no reload in use; a lazy section while stale imports, the reload at the next route', 'D21, C7, s24 §7, RB2', async () => {
+await part(9, 'a new Fitness build mid-session: no reload in use; a lazy section while stale reloads first', 'D21, C7, RB2, RB3', async () => {
 // ======================================================================================================================
   const R = await open('tamsin-release', { sw: 'block', clock: true });
   let release = null;
@@ -328,19 +328,16 @@ await part(9, 'a new Fitness build mid-session: no reload in use; a lazy section
   const asked = await until(() => versions.length > v0, 8000);
   await wait(2500);
   ok(asked && (await life.same()) && docs.n() === 0, '9. a new build at /fitness/version, learnt on coming back: no reload while Fitness is in use (D21)', js({ asked, docs: docs.list }));
-  // (C7 as the joint contracts have it, s24 §7: fw.lazy imports as normal while stale, the file used; the reload comes at
-  // the next safe point: a route into the app, or coming back after a minute away, once nothing is unsaved)
-  const lazyAsk = [];
-  q.on('request', (r) => { if (/\/fitness\/roof\/actsview\.js/.test(r.url())) lazyAsk.push(r.url()); });
+  // (a lazy section while stale and nothing unsaved: the page reloads first, at its address, so no file of the new build
+  // joins the old module: frame.js fw.lazy, s2 C7/RB2; while busy it would import as normal)
+  const order = [];
+  const onR = (r) => { if (r.isNavigationRequest() && r.frame() === q.mainFrame()) order.push('document'); else if (/\/fitness\/roof\/actsview\.js/.test(r.url())) order.push('actsview.js'); };
+  q.on('request', onR);
   await q.click(H.hdSec('activities'));
-  const drawn = await fitnessUp(q, 'activities');
-  await wait(2000);
-  ok(drawn && lazyAsk.length >= 1 && (await life.same()) && docs.n() === 0, '9. Activities tapped while stale: its file imported and used, no reload in the middle of use (C7, s24 §7)', js({ lazyAsk, docs: docs.list }));
-  // the next route into Fitness: the reload, at its address
-  await q.click(H.HD_BACK); await shown(q, H.APPS);
-  await tapTile(q);
   const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(reloaded && (await shown(q, H.M_FITNESS, 30000)), '9. …then Fitness opened again from Apps: the reload at that route (stale, nothing unsaved, D21), Fitness shown in the new page', js({ docs: docs.list, at: here(q) }));
+  ok(reloaded && order[0] === 'document', '9. Activities tapped (its file not loaded yet, nothing unsaved): the page reloads first, no lazy file joins the old module (C7)', js(order));
+  ok((await at(q, '/fitness/#activities', 15000)) && (await fitnessUp(q, 'activities')), '9. …at /fitness/#activities, Activities shown in the new page', here(q));
+  q.off('request', onR);
   await wait(2000);
   ok((await said(q)).filter((t) => /Fitness updated/.test(t)).length === 1, '9. the new build mounted: “Fitness updated” once (IFL.built, S2-D16)', js(await said(q)));
   await R.ctx.close();

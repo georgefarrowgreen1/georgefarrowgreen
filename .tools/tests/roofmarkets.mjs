@@ -13,8 +13,8 @@
 //   6 the budget: first open of Today (§4.6: JS ≤ 40, CSS ≤ 12 KB gzip, requests ≤ files + 2)
 //   7 storage and privacy: no new key, no today:* change, no amount in URLs, history.state, sessionStorage, console
 //   8 a 401 with the session alive: no sign-out; 8b a confirmed sign-out leaves no markets:* (RB1)
-//   9 a new Markets build mid-session: no reload in use; a lazy section while stale imports as normal, the reload at
-//     the next route into Markets (D21, C7 as s24-contracts §7 has it)
+//   9 a new Markets build mid-session: no reload in use; a lazy section while stale and idle
+//     reloads first, at its address (D21, C7)
 //   10 a price alert's tap: the stock sheet, in the page (§2.7)
 //   11 You's Evening Wrap → PATCH /api/notify { markets: { wrap } } (S2-D7)
 //   12 a holding changed in Markets → Today's cards asked for again on return (RI3, C8)
@@ -361,7 +361,7 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
 });
 
 // ======================================================================================================================
-await part(9, 'a new Markets build mid-session: no reload in use; a lazy section while stale imports, the reload at the next route', 'D21, C7, s24 §7, RB2', async () => {
+await part(9, 'a new Markets build mid-session: no reload in use; a lazy section while stale reloads first', 'D21, C7, RB2, RB3', async () => {
 // ======================================================================================================================
   const R = await open('imogen-release', { sw: 'block', clock: true });
   let release = null;
@@ -385,19 +385,16 @@ await part(9, 'a new Markets build mid-session: no reload in use; a lazy section
   const asked = await until(() => versions.length > v0, 8000);
   await wait(2500);
   ok(asked && (await life.same()) && docs.n() === 0, '9. a new build at /markets/version, learnt on coming back: no reload while Markets is in use (D21)', js({ asked, docs: docs.list }));
-  // (C7 as the joint contracts have it, s24 §7: fw.lazy imports as normal while stale, the file used; the reload comes at
-  // the next safe point: a route into the app, or coming back after a minute away, once nothing is unsaved)
-  const lazyAsk = [];
-  q.on('request', (r) => { if (/\/markets\/roof\/holdings\.js/.test(r.url())) lazyAsk.push(r.url()); });
+  // (a lazy section while stale and nothing unsaved: the page reloads first, at its address, so no file of the new build
+  // joins the old module: frame.js fw.lazy, s2 C7/RB2; while busy it would import as normal)
+  const order = [];
+  const onR = (r) => { if (r.isNavigationRequest() && r.frame() === q.mainFrame()) order.push('document'); else if (/\/markets\/roof\/holdings\.js/.test(r.url())) order.push('holdings.js'); };
+  q.on('request', onR);
   await q.click(H.hdSec('holdings'));
-  const drawn = await marketsUp(q, 'holdings');
-  await wait(2000);
-  ok(drawn && lazyAsk.length >= 1 && (await life.same()) && docs.n() === 0, '9. Holdings tapped while stale: its file imported and used, no reload in the middle of use (C7, s24 §7)', js({ lazyAsk, docs: docs.list }));
-  // the next route into Markets: the reload, at its address
-  await q.click(H.HD_BACK); await shown(q, H.APPS);
-  await tapTile(q);
   const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(reloaded && (await shown(q, H.M_MARKETS, 30000)), '9. …then Markets opened again from Apps: the reload at that route (stale, nothing unsaved, D21), Markets shown in the new page', js({ docs: docs.list, at: here(q) }));
+  ok(reloaded && order[0] === 'document', '9. Holdings tapped (its file not loaded yet, nothing unsaved): the page reloads first, no lazy file joins the old module (C7)', js(order));
+  ok((await at(q, '/markets/#holdings', 15000)) && (await marketsUp(q, 'holdings')), '9. …at /markets/#holdings, Holdings shown in the new page', here(q));
+  q.off('request', onR);
   await wait(2000);
   ok((await said(q)).filter((t) => /Markets updated/.test(t)).length === 1, '9. the new build mounted: “Markets updated” once (IFL.built, S2-D16)', js(await said(q)));
   await R.ctx.close();
