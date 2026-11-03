@@ -24,6 +24,9 @@
 // hero line per switch; Back or Forward to a module switched off since (Today; offline or something unsaved: no reload;
 // else a real load once saved); a Markets card's zoom with no hint; a module switched off while busy and then left: no
 // bounce, no reload.
+// Stage 3's B0 (roof/s3/spec.md §2.2, §5.2, §5.4): Chats' stub module and the kit's stub core (?apps=weather,chats&service=
+// stub): the module mounts, F.service's frozen facade and fw.service's full service over one Worker, opts.serviceState,
+// one stub sheet per opener file opening and closing, a locked start, and with Chats off nothing of it at all.
 //   node .tools/tests/roofkit.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
@@ -497,7 +500,7 @@ try {
     // (flushed, no reload while busy), the bounce once it isn't
     const k = await kit({ path: '/?apps=weather,markets' }), p = k.p;
     await fake(p, 'markets');
-    same(await p.evaluate(() => kit.F.session.apps), { weather: true, markets: true, fitness: false, mail: false }, 'the session’s apps: each REGISTRY app’s flag, from ?apps=');
+    same(await p.evaluate(() => kit.F.session.apps), { weather: true, markets: true, fitness: false, mail: false, chats: false }, 'the session’s apps: each REGISTRY app’s flag, from ?apps=');
     await p.evaluate(() => kit.F.nav.go('/weather/')); await mounted(p, 'weather');
     await p.evaluate(() => kit.F.nav.go('/markets/')); await mounted(p, 'markets'); await settle(p);
     same(await p.evaluate(() => [document.documentElement.dataset.app, location.pathname, !!document.querySelector('main#m-markets .kit-sec[data-sec=today]:not([hidden])')]), ['markets', '/markets/', true], 'a second app in the page: Markets’ stand-in at /markets/, its own sections');
@@ -599,7 +602,7 @@ try {
       await new Promise((ok) => setTimeout(ok, 400));
       return out;
     }, [app, apps]);
-    const ON = { weather: true, markets: true, fitness: true, mail: false }, OFF = { weather: true, markets: false, fitness: false, mail: false };
+    const ON = { weather: true, markets: true, fitness: true, mail: false, chats: false }, OFF = { weather: true, markets: false, fitness: false, mail: false, chats: false };
     same(await conn('markets', ON), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'Its own module, under one roof' }, 'Markets on: Open Markets, Markets Notifications (/#you=notify); its own module');
     same(await conn('markets', OFF), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'An app beside InFlite' }, 'Markets off: Markets Notifications still (You’s, which works with it off); an app beside InFlite');
     same(await conn('fitness', ON), { acts: [['open', 'Open Fitness', '/fitness/'], ['settings', 'Fitness Settings', '/fitness/#settings']], line: 'Its own module, under one roof' }, 'Fitness on: Fitness Settings (/fitness/#settings); its own module');
@@ -653,6 +656,76 @@ try {
     same([loads7, await p7.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay7 ?? null, sessionStorage.getItem('ifl-roof-bounce'), !!document.querySelector('main#m-markets'), kitMods.markets.unmounts])], [0, ['/', true, 1, null, false, 1]], 'Back to Today while it waited: Markets flushed and let go of there; no reload, no bounce marker');
     await clean(k7, 'a module switched off while busy, then left');
     await k7.ctx.close();
+  }
+
+  // ---------------------------------------------------------------- 12. stage 3's B0: Chats' stub module and stub core on the kit
+  // (roof/s3/spec.md §2.2, §5.2 S3-C3, §5.4; ?apps=weather,chats puts MAIN's pigeon/roof/ at /chats/, ?service=stub the
+  // stub core): the module mounts, F.service gives the frozen seven-key facade and fw.service the full service over one
+  // Worker, opts.serviceState hears the state, one stub sheet opens and closes per opener file; ?state=locked starts
+  // locked; with Chats off, /chats/ is still a page of its own (nothing changed for anyone)
+  {
+    const k = await kit({ path: '/?apps=weather,chats&service=stub&state=ready' }), p = k.p;
+    await p.goto(KIT + '/chats/');
+    await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('main#m-chats section.ch-sec'), null, { timeout: 15000 });
+    await settle(p, 600);
+    same(await p.evaluate(() => [document.documentElement.dataset.app, document.documentElement.dataset.route, kit.F.session.apps.chats]), ['chats', '/chats/', true], 'Chats on: /chats/ is the framework’s, html[data-app=chats]');
+    same(await p.evaluate((s) => [...document.querySelectorAll(s)].map((e) => [e.dataset.sec, e.hidden]), H.CH_SEC), [['chats', false], ['friends', true]], 'the stub module: its two sections, Chats shown');
+    ok(await p.isVisible(H.M_CHATS), 'main#m-chats shown');
+    const svc = await p.evaluate(async () => {
+      const f = await kit.F.service('chats'), s = await kit.F.forModule('chats').service(), again = await kit.F.service('chats');
+      return { keys: Object.keys(f), frozen: Object.isFrozen(f), call: 'call' in f, state: f.state, same: f === again && s.facade === f, full: ['protocol', 'state', 'call', 'on', 'facade', 'release'].every((x) => x in s),
+        rows: (await s.call('rows', 0, 40)).length, waiting: (await f.waiting({ ids: [] })).length, states: kit.state.serviceStates };
+    });
+    same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, states: ['chats:ready'] },
+      'F.service: the frozen seven-key facade, no call; fw.service: the full service, the same one; the stub core answers; opts.serviceState heard ready');
+    // (a tap (evaluate runs with one): sendTo gives the Send sheet; closed, it says so. No tap: roofcontract's unit case)
+    const tapped = await p.evaluate(async () => {
+      const f = await kit.F.service('chats'), r = f.sendTo('6c0f6f1e-0000-4000-8000-0000000000a1', 'A stand-in', null);
+      await new Promise((ok) => setTimeout(ok, 400));
+      const open = !!document.querySelector('dialog.ifl-sheet[data-sheet=send][open]');
+      kit.F.sheet.closeAll();
+      return [open, await Promise.race([r, new Promise((ok) => setTimeout(() => ok('waiting'), 3000))])];
+    });
+    same(tapped, [true, { ok: false, why: 'no' }], 'facade.sendTo on a tap: the Send sheet (the stub’s); closed, { ok: false, why: "no" }');
+    same(k.log.filter((x) => x.startsWith('/chats/roof/core.js')).length, 1, 'one Worker for the page (its script asked for once)');
+    // (one stub sheet per opener file: each opens its data-sheet and closes)
+    const OPENERS = [['list.js', 'openNewChat', 'newmsg'], ['friends.js', 'openRequests', 'requests'], ['sheets.js', 'openFriendInfo', 'friendinfo'], ['flight.js', 'openFlightLog', 'flightlog'],
+      ['media.js', 'openGifs', 'gifs'], ['scan.js', 'openScan', 'scan'], ['settings.js', 'openChatSettings', 'chatsettings']];
+    for (const [file, fn, name] of OPENERS) {
+      const r = await p.evaluate(async ([file, fn]) => {
+        const fw = kit.F.forModule('chats'), svc = await fw.service(), m = await import(`/chats/roof/${file}`);
+        const h = m[fn]({ fw, svc, store: null, open: {} }, '6c0f6f1e-0000-4000-8000-0000000000a1');
+        await new Promise((ok) => setTimeout(ok, 350));
+        window.kitSheet = h;
+        return !!h?.close;
+      }, [file, fn]);
+      ok(r && await p.isVisible(`${H.chSheet(name)}[open]`), `${file} ${fn}: its sheet (${name}) opens`);
+      await p.evaluate(() => window.kitSheet.close()); await settle(p, 500);
+      ok(!(await p.isVisible(`${H.chSheet(name)}[open]`)), `${file} ${fn}: and closes`);
+    }
+    const sent = await p.evaluate(async () => {
+      const fw = kit.F.forModule('chats'), svc = await fw.service(), m = await import('/chats/roof/send.js');
+      const r = m.openSend(fw, svc, { card: null, words: 'A stand-in', to: null });
+      await new Promise((ok) => setTimeout(ok, 350));
+      const open = !!document.querySelector('dialog.ifl-sheet[data-sheet=send][open]');
+      kit.F.sheet.closeAll();
+      return [open, await r];
+    });
+    same(sent, [true, { ok: false, why: 'no' }], 'send.js openSend: its sheet (send) opens; closed, it resolves { ok: false, why: "no" }');
+    await clean(k, 'Chats’ stub module and stub core');
+    await k.ctx.close();
+    // (the stub core started locked: the facade says so and Waiting for You gets nothing)
+    const k2 = await kit({ path: '/?apps=weather,chats&service=stub&state=locked' }), p2 = k2.p;
+    same(await p2.evaluate(async () => { const f = await kit.F.service('chats'); return [f.state, (await f.waiting({ ids: [] })).length, await f.since('x', 0)]; }), ['locked', 0, null], '?state=locked: the facade locked, nothing waiting, nothing since');
+    await clean(k2, 'the stub core, locked');
+    await k2.ctx.close();
+    // (Chats off, as for everyone today: /chats/ is a page of its own; F.service refused; no Worker)
+    const k3 = await kit({ path: '/' }), p3 = k3.p;
+    same(await p3.evaluate(async () => [kit.F.session.apps.chats, await kit.F.service('chats').then(() => 'made', (e) => 'refused')]), [false, 'refused'], 'Chats off: F.service refused');
+    ok(!k3.log.some((x) => x.startsWith('/chats/roof/')), 'Chats off: none of its files asked for');
+    await p3.goto(KIT + '/chats/');
+    ok(/CHATS STAND-IN/.test(await p3.textContent('body')), 'Chats off: /chats/ is its own page (a normal navigation)');
+    await k3.ctx.close();
   }
 
   // ---------------------------------------------------------------- 10. widths and themes; long titles

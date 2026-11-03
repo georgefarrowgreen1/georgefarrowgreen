@@ -8,6 +8,10 @@
 // gives the session those apps on (stages 2–4; default: Weather alone, as a stage-1 host: no apps at all), and keeps
 // them for the page's life in this browser (the cookie kit-apps, which roofkit/serve.mjs reads to serve the kit page at
 // those apps' addresses). ?module=/<app>/roof/<app>.js mounts that app's real module from disk.
+// Stage 3 (Chats): ?apps=weather,chats puts Chats' real module (MAIN's pigeon/roof/) at /chats/; its service (F.service,
+// fw.service) runs MAIN's core.js, or with ?service=stub the stub core (roofkit/chatcore-stub.js) in the state ?state=…
+// (ready, signin, key, locked, device, offline, ended); both kept in cookies for the page's life (kit-service,
+// kit-chat-state). kit.state.serviceStates: each "app:state" the frame's opts.serviceState heard.
 import { createFrame } from "/roof/frame.js";
 import * as ui from "/roof/ui.js";
 
@@ -15,15 +19,18 @@ import * as ui from "/roof/ui.js";
 // (kept for the page's life in this browser, so a reload at a tidied address keeps the same Weather)
 // (the module asked for: Weather's real one is "real" as stage 1 had it; another app's names it, and Weather stays fake)
 const wanted = new URLSearchParams(location.search).get("module");
-if (wanted != null) document.cookie = `kit-module=${/^\/(markets|fitness|mail)\/roof\//.exec(wanted)?.[1] || "real"}; path=/; SameSite=Strict`;
+if (wanted != null) document.cookie = `kit-module=${/^\/(markets|fitness|mail|chats)\/roof\//.exec(wanted)?.[1] || "real"}; path=/; SameSite=Strict`;
 else if (!/kit-module=/.test(document.cookie)) document.cookie = "kit-module=fake; path=/; SameSite=Strict";
 
 // (the session's apps: ?apps=… (kept in the cookie), else none said, which the frame reads as Weather's roof alone)
+const svcAsked = new URLSearchParams(location.search).get("service"), stAsked = new URLSearchParams(location.search).get("state");
+if (svcAsked != null && /^(stub|real)$/.test(svcAsked)) document.cookie = `kit-service=${svcAsked}; path=/; SameSite=Strict`;
+if (stAsked != null && /^\w+$/.test(stAsked)) document.cookie = `kit-chat-state=${stAsked}; path=/; SameSite=Strict`;
 const asked = new URLSearchParams(location.search).get("apps");
 if (asked != null && /^[\w,]*$/.test(asked)) document.cookie = `kit-apps=${asked}; path=/; SameSite=Strict`;
 const kept = asked ?? /(?:^|;\s*)kit-apps=([\w,]*)/.exec(document.cookie)?.[1] ?? null;
 const apps = kept == null ? undefined : Object.fromEntries(kept.split(",").filter(Boolean).map((a) => [a, true]));
-const state = { signedIn: true, hub: true, roof: true, apps, lost: 0, checks: 0, hubAgain: 0, shows: [], hides: [], me: 0, edit: 0, csp: [], changed: 0 };
+const state = { signedIn: true, hub: true, roof: true, apps, lost: 0, checks: 0, hubAgain: 0, shows: [], hides: [], me: 0, edit: 0, csp: [], changed: 0, serviceStates: [] };
 document.addEventListener("securitypolicyviolation", (e) => state.csp.push(`${e.violatedDirective} ${e.blockedURI}`));
 const user = { id: "u-kit-0001", name: "Sam Taylor", handle: "sam" };
 
@@ -55,6 +62,8 @@ const F = createFrame({
   root: $("in"), header: $("hd"), views: $("views"), tabs: $("tabs"),
   session: () => ({ view: { user }, hub: state.hub, roof: state.roof, apps: state.apps, links: { weather: "https://weather.kit.test", chat: "https://chat.kit.test", finance: "https://finance.kit.test", fitness: "https://fitness.kit.test", email: "https://email.kit.test" } }),
   changed: () => { state.changed++; },
+  retired: Promise.resolve(),
+  serviceState: (app, s) => { state.serviceStates.push(`${app}:${s}`); },
   lost: () => { state.lost++; },
   checkSession: async () => { state.checks++; return state.signedIn; },
   hubAgain: async () => { state.hubAgain++; },
