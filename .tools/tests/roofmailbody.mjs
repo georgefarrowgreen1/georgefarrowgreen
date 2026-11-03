@@ -170,10 +170,13 @@ ok(loaded.length > 0 && loaded.every((u) => ['/pic.png', '/cssurl.png'].includes
 ok(!loaded.includes('/other.png'), 'and only that message’s: the other message’s picture stays hidden', JSON.stringify(loaded));
 // (a link in the mail with no target of its own: a window of its own (the shell's <base target="_blank">), with no way
 // back to this page, and the frame itself stays on the message)
+const evilPop = evil.hits.length;
 const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), innerOf('Hostile')?.click('#web').catch(() => {})]);
+// (the new window opens blank, then goes: its address, or the link's host hearing from it, says it went)
+await pop?.waitForURL(`${EVIL}/link`, { timeout: 8000 }).catch(() => {});
 await pop?.waitForLoadState('domcontentloaded').catch(() => {});
-const popSeen = pop ? { url: pop.url(), opener: await pop.evaluate(() => window.opener === null).catch((e) => String(e)) } : null;
-ok(popSeen?.url === `${EVIL}/link` && popSeen.opener === true && innerOf('Hostile')?.url() === 'about:srcdoc', 'a link in the mail opens in a window of its own, with no opener, and the frame stays on the message', JSON.stringify({ popSeen, inner: innerOf('Hostile')?.url() }));
+const popSeen = pop ? { url: pop.url(), went: evilSince(evilPop).includes('/link'), opener: await pop.evaluate(() => window.opener === null).catch((e) => String(e)) } : null;
+ok((popSeen?.url === `${EVIL}/link` || popSeen?.went) && popSeen.opener === true && innerOf('Hostile')?.url() === 'about:srcdoc', 'a link in the mail opens in a window of its own, with no opener, and the frame stays on the message', JSON.stringify({ popSeen, inner: innerOf('Hostile')?.url() }));
 await pop?.close().catch(() => {});
 const src2 = await p.evaluate(() => frames_.Hostile.el.src);
 ok(src2.includes('&img=1&') && (await p.evaluate(() => frames_.Other.el.src)).includes('&img=0&'), 'Load: img=1 on that frame’s address alone', src2);
