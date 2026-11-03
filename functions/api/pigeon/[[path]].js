@@ -9,7 +9,7 @@ import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromG
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, reactView, dropReacts } from "../../_reacts.js";
-import { SHARE_ROUTES } from "../../_share.js";
+import { SHARE_ROUTES, TIME_ROUTES } from "../../_share.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
 import { WINDMAP_ROUTES } from "../../_windmap.js";
@@ -43,9 +43,13 @@ import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet } from "../../_notify.js";
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";
+import { repointSession } from "../../_sessions.js";
+import { busyNow } from "../../_busy.js";
+import { timesForQ, timeView } from "../../_times.js";
+import { offersReady } from "../../_fitshare.js";
 
 // All of Chat's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -125,9 +129,11 @@ async function handback({ request, env }) {
   const res = json({ token, me: await meOf(D, u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
   const c = await cookieUser(request, env, true).catch(() => null);
   if (c && c.sessionHash === row.session) {
-    // (the page's codes and links still to be used, the sign-ins opened from it and its notifications going with it)
+    // (the page's codes and links still to be used, the sign-ins opened from it and every row tied to it going with it:
+    // its notifications in each app, Today's morning, Weather's device, its hops and QR sign-ins (functions/_sessions.js
+    // SESSION_COLUMNS), in the one batch that deletes it)
     await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(siteHash, hash),
-      ...["pg_handback", "pg_handoff", "pg_push"].map((t) => D.prepare(`UPDATE ${t} SET session = ? WHERE session = ?`).bind(hash, row.session)),
+      ...(await repointSession(D, row.session, hash)),
       D.prepare("UPDATE pg_sessions SET parent = ? WHERE parent = ?").bind(hash, row.session),
       D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(row.session)]);
     return res;
@@ -739,16 +745,55 @@ const receipts = (me, other, v) => {
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
+// Today First (spec §6.3): your own times agreed with friends (td_times, agreed only) and rides planned with one
+// (fx_offers with the friend's id, waiting or agreed), still to come, as two statements for sync's own batch (their
+// tables made first, once per copy of the server). → [times, rides], or [] where they can't be had (sync goes on)
+async function plansQs(env, D, uid, t) {
+  try {
+    await offersReady(env);
+    return [await timesForQ(env, uid, t, null, { t }),
+      D.prepare(`SELECT id, with_id, start, stop, sport, state FROM fx_offers WHERE user_id = ?1 AND with_id IS NOT NULL AND state IN ('new', 'yes')
+        AND until > ?2 AND stop > ?2 ORDER BY start, id LIMIT 50`).bind(uid, t)];
+  } catch (e) { await logError(env, "sync plans", e); return []; }
+}
+const timeOut = (r) => { const x = timeView(r); return { id: x.id, with: x.withId, kind: x.kind, start: x.start, stop: x.stop }; };
+const rideOut = (r) => ({ id: r.id, with: r.with_id, start: r.start, stop: r.stop, sport: r.sport, state: r.state });
+// What's holding your notifications now, for Chat's held row: a planned ride that holds friends' messages (busy:
+// functions/_busy.js busyNow's { until, level }), else your quiet hours (p: prefsOf), each with when it ends
+// → { why: "ride" | "quiet", until }, or null
+export function holdOf(busy, p, t) {
+  if (friendsHeld(busy) && Number.isFinite(busy.until) && busy.until > t) return { why: "ride", until: busy.until };
+  try { if (isQuiet(p, t)) return { why: "quiet", until: quietEnd(p, t) }; } catch (_) { /* a zone this server can't read: no hold said */ }
+  return null;
+}
+// (a ride holds friends' messages at its do level alone (at suggest, apps' only; at quiet, nothing): functions/_busy.js
+// holdsFor(busy, "friends"), batch N's. B0's _busy.js doesn't have it yet, so the same rule is said here until N's is
+// merged, and holdsFor is then imported in its place)
+const friendsHeld = (b) => !!b && b.level === "do";
+// (the first quarter hour, from t, that isn't in quiet hours (every zone's offset is whole quarter hours): by the clock
+// read now, quietTo o'clock; checked, and on the day the clocks change, found a quarter hour at a time)
+export function quietEnd(p, t) {
+  const Q = 15 * MIN, parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: p.tz, hour: "numeric", minute: "numeric", hourCycle: "h23" })
+    .formatToParts(t).filter((x) => x.type === "hour" || x.type === "minute").map((x) => [x.type, Number(x.value)]));
+  const guess = Math.floor(t / MIN) * MIN - parts.minute * MIN + ((p.quietTo - parts.hour + 24) % 24 || 24) * HOUR;
+  if (guess > t && !isQuiet(p, guess) && isQuiet(p, guess - Q)) return guess;
+  for (let x = Math.ceil((t + 1) / Q) * Q; x <= t + 26 * HOUR; x += Q) if (!isQuiet(p, x)) return x;
+  return null;
+}
 async function sync({ request, env }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
+  // (?quiet=1: Today's copy of Chat, its engine, asking: what's delivered is still marked so, but you aren't shown to your
+  // friends as just seen, as Today being open isn't you using Chat)
+  const quiet = new URL(request.url).searchParams.get("quiet") === "1";
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
+  const plans = await plansQs(env, D, u.id, t), busyP = busyNow(env, u.id, t).catch((e) => { logError(env, "sync hold", e); return null; });
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their
   // number: an IN list would overflow D1's 100 parameters), the last pigeon each way with each of them
   // (two index look-ups each, not a read of your whole history), whose turn it is, what's unread,
   // passkeys, streaks, feathers, named pigeons, and your groups (a fixed set of questions however many)
-  const res = await D.batch([
+  const qs = [
     D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
     D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.no_receipts_at, p.notify_prefs, p.pigeons, p.new_way
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id),
@@ -775,9 +820,21 @@ async function sync({ request, env }) {
     // how each chat goes, both ways (mine to them, theirs to me), and what's reached this phone now marked delivered
     D.prepare("SELECT a, b, way FROM pg_ways WHERE a = ?1 OR b = ?1").bind(u.id),
     ...deliveredQs(D, u, t),
-    // an open app syncs every 15 s; note it at most once a minute for Last Online
-    ...(t - (u.seen_at || 0) < SEEN_EVERY ? [] : [D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id)]),
-  ]);
+    // an open app syncs every 15 s; note it at most once a minute for Last Online (never for Today's engine: quiet)
+    ...(quiet || t - (u.seen_at || 0) < SEEN_EVERY ? [] : [D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id)]),
+  ];
+  // Your agreed times and planned rides (Today First's) last, in the same trip, so every other answer keeps its place. A
+  // batch is one transaction, so were either of their tables ever not as they should be (another module's), the whole
+  // of it would fail: then it's asked again without them (times and rides said as none, the error noted), and Chat's
+  // sync never rests on them. (No more trips while they're fine.)
+  let res, got = plans;
+  try { res = await D.batch([...qs, ...plans]); }
+  catch (e) {
+    if (!plans.length) throw e;
+    await logError(env, "sync plans", e);
+    got = []; res = await D.batch(qs);
+  }
+  const [timeRows, rideRows] = got.length ? res.slice(-2).map((r) => r?.results || []) : [[], []];
   const [{ results: links }, { results: peopleRows }, { results: lasts }, { results: turnRows }, { results: unread }, { results: vanishRows }, { results: pks }, { results: streakRows }, { results: [bal] }, { results: birdRows }, { results: flightRows }] = res;
   const other = (l) => (l.a === u.id ? l.b : l.a);
   const people = new Map(peopleRows.map((p) => [p.id, p]));
@@ -817,7 +874,10 @@ async function sync({ request, env }) {
   const groups = groupsFrom(res.slice(11, 11 + GROUP_QS), u, t);
   return json({ now: t, me: await meOf(D, u, t), feathers: bal.n, friends, groups, incoming, outgoing, blocked,
     birds: await birdsFrom(D, u.id, t, [birdRows, flightRows]), emailOn: emailReady(env), gifsOn: gifsReady(env),
-    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) },
+    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })),
+    // Today First: what's holding your notifications, your times agreed with friends and your rides planned with one (ids
+    // and times only)
+    hold: holdOf(await busyP, prefsOf(u), t), times: timeRows.map(timeOut), rides: rideRows.map(rideOut) },
   );
 }
 
@@ -1692,7 +1752,7 @@ const ROUTES = {
   "POST password-upgrade": elsewhere("Sign in"),   // (an older password moved on: on the account's page, as you sign in there)
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES, ...SHARE_ROUTES, ...PULSE_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES, ...SHARE_ROUTES, ...TIME_ROUTES, ...PULSE_ROUTES,
 };
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
