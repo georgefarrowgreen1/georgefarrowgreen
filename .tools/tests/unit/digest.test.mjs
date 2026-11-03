@@ -55,6 +55,7 @@ test("kinds: an invite, an ask, a question, a message", () => {
   assert.equal(k([m({ text: "Call at 18:30?", when: { kind: "call" } })]), "invite");
   assert.equal(k([m({ text: "Later suits me better: 13:00?", ans: { re: UUID, a: "later", plan: { sport: "ride" } } })]), "invite", "a later with its own time");
   assert.equal(k([m({ text: "Can’t make it this time.", ans: { re: UUID, a: "no" } })]), "message", "a no isn't one");
+  assert.equal(k([m({ text: "Can we find another time?", ans: { id: UUID, a: "later" } })]), "question", "nor another time asked for a call: a question");
   assert.equal(k([m({ text: "Rain later. How’s yours?", card: { kind: "weather" }, ask: { kind: "weather" } })]), "ask");
   assert.equal(k([m({ text: "Rain later. How's yours?", card: { kind: "weather" } })]), "ask", "the words of one, with its card");
   assert.equal(k([m({ text: "Are you about?" })]), "question");

@@ -4,13 +4,13 @@
 //   waitingDigest(items: [{ id, first, at?, msgs: [{ text, card?, plan?, when?, ask?, ans?, at }] }], { stocks, now })
 //   → [{ id, first, at, said, kind: "invite" | "ask" | "question" | "message", topics }], newest first
 // - items: one per friend (or group) the server named, with that friend's messages since your last one in the chat
-//   (the engine takes at most 5; so does this), each as Chat's payloadParts read it (text: its words). at: the
-//   server's time of their newest message, where it's known.
+//   (the engine takes at most 5; so does this), each as Chat's payloadParts read it (text: its words; at: when it
+//   landed). The item's at: the server's time of their newest message, where it's known.
 // - Only messages that have landed by now and are under a day old count (none: the friend is left out).
 // - said: the newest messages joined (oldest first), as many as fit in 90 characters; the newest alone cut to fit.
 //   The stale rule: where the newest message here is older than the server's at (the engine couldn't read the newer
 //   one yet), said is "", so old words never sit beside a new message. (Today's merge holds to the same rule.)
-// - kind: "invite" for a ride or a time offered (a plan, a when, or a "later" answer with its own time), "ask" for an
+// - kind: "invite" for a ride or a time offered (a plan, a when, or a ride's "later" answer with its time), "ask" for an
 //   open "How's yours?", "question" for words that ask, else "message".
 // - topics (newest first, at most 6): from cards ({ kind: "weather" | "fitness" } or { kind: "markets", sym, name }),
 //   and your holdings (stocks: [{ sym, name }]) named by name or by symbol in any of the messages ({ kind: "markets",
@@ -64,7 +64,7 @@ function msgOf(m, now) {
   if (fin(now) && (m.at > now || m.at <= now - DAY)) return null;
   return { at: m.at, text: clean(m.text), card: isObj(m.card) ? m.card : null, plan: isObj(m.plan), when: isObj(m.when), ask: isObj(m.ask), ans: isObj(m.ans) ? m.ans : null };
 }
-const invites = (m) => m.plan || m.when || (m.ans?.a === "later" && (isObj(m.ans.plan) || fin(m.ans.start)));
+const invites = (m) => m.plan || m.when || (m.ans?.a === "later" && isObj(m.ans.plan));     // (a ride's "later" is a time to say yes to)
 const asksBack = (m) => m.ask || (!!m.card && askBack(m.text));
 
 function topicsOf(msgs, pats) {
