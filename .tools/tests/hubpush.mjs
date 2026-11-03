@@ -107,7 +107,10 @@ async function chatsSignIn() {
     if (await G.p.$('#city')) await G.p.selectOption('#city', 'London').catch(() => {});
     await G.p.click('[data-act=onbdone]', { timeout: 10000 }).catch(() => {});
   }
-  return until(() => sessAt(G.p), 30000);
+  const got = await until(() => sessAt(G.p), 30000);
+  // (wherever a sign-in that couldn't finish left the window, back at the hub for what follows)
+  if (!got && new URL(G.p.url()).host !== 'ifl.test:8788') await G.p.goto(`${HUB}/`).catch(() => {});
+  return got;
 }
 // (where Chats couldn't be signed in at the hub, and that's failed already: Chat's own sign-in for its API, handed back by
 // the account from this phone's cookie as hubserve.mjs does, so the steps after it still run and say what they find)
