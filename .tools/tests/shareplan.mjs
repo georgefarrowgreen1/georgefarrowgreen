@@ -187,10 +187,11 @@ ok(/This time has passed\./.test(pastCard) && !(await M.p.$(`.msgs [data-mid="${
   const [a2] = await api(gs.token, 'time-offer', { id: call, kind: 'call', start: c1, stop: c1 + 30 * 60e3, tz: 'Europe/London', opts: [[c2, c2 + 30 * 60e3]], with: ms.me.id, role: 'asked', state: 'pending' });
   ok(a1 === 200 && a2 === 200, 'George’s invites: his own pending rows as they go', `${a1} ${a2}`);
   ok(one(`SELECT state FROM fx_offers WHERE user_id = '${gs.me.id}' AND id = '${inv}'`)[0]?.state === 'pending', 'a pending ride, not yet in his Fitness');
-  // George's Chat shut from here on: nothing more from his page
+  // George's Chat shut from here on: nothing more from his page (counted once it's gone, so a sync or pulse his page
+  // began just before can't count)
+  await G.p.goto('about:blank');
   let fromG = 0;
   G.p.on('request', (r) => { if (r.url().includes('/api/')) fromG++; });
-  await G.p.goto('about:blank');
   // Mira's Yes, from her phone alone, at the other times George offered
   const answer = crypto.randomUUID();
   const [y1] = await api(ms.token, 'fit-offer', { ...plan, id: answer, start: s2, stop: s2 + 2 * H, who: 'George', role: 'answered', with: gs.me.id, re: inv });
