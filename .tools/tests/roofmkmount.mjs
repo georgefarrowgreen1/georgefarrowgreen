@@ -9,7 +9,10 @@
 //   sheet; cold links #income #isa #vs #about #s=%5EGSPC open their sheets over their section; no document-wide lookup by
 //   the module at any point (document.querySelector/getElementById instrumented); no amount in any request's address;
 //   screenshots at 320, 390 and 1280 px, light and dark; after Markets is left for five minutes (the page's clock stood
-//   in) the section's DOM is let go, and drawn afresh on the next show.
+//   in) the section's DOM is let go, and drawn afresh on the next show. Review fixes (s24 review mk): the holding sheet
+//   saved (PUT /api/markets/holding, fw.changed); a News group head opens its stock (no page error); Find from InFlite's
+//   search before Markets has ever been opened in the page (the connector's path, the module not mounted) lands on Add a
+//   Stock with what was typed, and what was typed is never in the address.
 //   node .tools/tests/roofmkmount.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -104,6 +107,14 @@ ok(await until(() => st.log.some((c) => c.path === 'alert' && JSON.parse(c.body 
 ok(await until(async () => !(await visible(p, H.MK_ALERT))), 'and back to the stock');
 await p.locator(`${H.sheet('stock')} button:has-text("Edit Holding")`).first().click();
 ok(await until(() => visible(p, openSheet('holding'))), 'Edit Holding: the holding sheet');
+{
+  const changed0 = await p.evaluate(() => window.kit.state.changed), puts0 = st.log.filter((c) => c.path === 'holding' && c.method === 'PUT').length;
+  await p.locator(`${H.sheet('holding')} #mk-save`).click();
+  ok(await until(() => st.log.filter((c) => c.path === 'holding' && c.method === 'PUT').length > puts0), 'the holding sheet saved: PUT /api/markets/holding');
+  ok(JSON.parse(st.log.filter((c) => c.path === 'holding' && c.method === 'PUT').at(-1).body || '{}').symbol === 'TSCO.L', 'for its own stock');
+  ok(await until(async () => (await p.evaluate(() => window.kit.state.changed)) > changed0), 'and Today told (fw.changed)');
+  ok(await until(async () => !(await visible(p, `${H.sheet('holding')} #mk-save`))), 'and back to the stock');
+}
 await closeSheet(p);
 
 // ===================== 2. Holdings, News, the cold links' sheets =====================
@@ -130,6 +141,13 @@ ok(await until(() => visible(p, H.mkStory('s1')), 10000), 'News: a story (mkStor
 await p.locator(`${H.mkStory('s1')} a.story`).click();
 ok(await until(() => visible(p, openSheet('story'))), 'opened in Markets: the story sheet');
 await closeSheet(p);
+{
+  const e0 = st.errors.length;
+  await p.locator(`${H.M_MARKETS} button.nghead[data-sym="TSCO.L"]`).click();
+  ok(await until(() => visible(p, openSheet('stock'))), 'News: a holding’s group head opens its stock');
+  ok(st.errors.length === e0, 'with no page error', st.errors.slice(e0).join(' | '));
+  await closeSheet(p);
+}
 await shot(p, '5-news');
 for (const [hash, name] of [['income', 'income'], ['isa', 'isa'], ['vs', 'vs'], ['about', 'mk-about'], ['s=%5EGSPC', 'stock']]) {
   await go(p, `/markets/#${hash}`);
@@ -146,6 +164,30 @@ ok(!(await p.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('
 ok((await p.evaluate(() => JSON.parse(localStorage.getItem('markets:last') || 'null')?.id)) === st.acc.id, 'markets:last carries its account’s id (S2-D9)');
 ok(st.errors.length === 0, 'no page errors', st.errors.slice(0, 3).join(' | '));
 await ctx.close();
+
+// ===================== 2b. Find from InFlite's search, Markets never opened in the page =====================
+{
+  const { p, st, ctx } = await phone();
+  // (this phone's copy is the session user's: Markets opened once, in an earlier page)
+  st.acc.id = 'u-kit-0001';
+  await openMarkets(p);
+  await until(() => visible(p, H.MK_HERO), 10000);
+  ok(await until(() => p.evaluate(() => JSON.parse(localStorage.getItem('markets:last') || 'null')?.id === 'u-kit-0001')), 'markets:last kept for the session’s user');
+  await p.goto(`${KIT}/?module=${MODULE}&apps=weather,markets`);
+  await until(() => p.evaluate(() => !!window.kit?.ready), 10000);
+  ok(!(await p.evaluate((sel) => !!document.querySelector(sel), `${H.M_MARKETS} ${H.MK_SEC}`)), 'a fresh page: Markets not mounted');
+  await p.locator(H.HD_SEARCH).click();
+  await p.locator(H.SEARCH_INPUT).fill('tesc');
+  const find = p.locator(H.SEARCH_RESULT).filter({ hasText: 'Find “tesc” in Markets' }).first();
+  ok(await until(() => find.isVisible()), 'the connector’s Find, from this phone’s copy');
+  ok(await until(async () => (await p.locator(H.SEARCH_RESULT).filter({ hasText: 'Tesco' }).count()) > 0), 'and the holding by its name');
+  await find.click();
+  ok(await until(() => visible(p, H.MK_ADD_INPUT), 15000), 'Find: Markets opens on Add a Stock');
+  ok(await until(async () => (await p.locator(H.MK_ADD_INPUT).inputValue()) === 'tesc'), 'with what was typed', await p.locator(H.MK_ADD_INPUT).inputValue().catch(() => ''));
+  { const at = await p.evaluate(() => location.pathname + location.search + location.hash); ok(!/tesc/i.test(at), 'what was typed never in the address', at); }
+  ok(st.errors.length === 0, 'no page errors (Find)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
 
 // ===================== 3. 320, 390 and 1280, light and dark =====================
 for (const [width, height] of [[320, 640], [390, 844], [1280, 860]]) for (const colorScheme of ['light', 'dark']) {

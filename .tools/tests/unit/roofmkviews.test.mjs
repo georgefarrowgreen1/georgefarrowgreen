@@ -291,3 +291,107 @@ test("the module mounts: three sections, the header (percent, never pounds), the
   // nothing the module wrote under today:*, and markets:last carries its account's id
   assert.ok(!localStorage.keys().some((k) => k.startsWith("today:")));
 });
+
+// ---- review fixes (s24 review mk: B1, B2, I3, I5) ----
+async function mounted(t) {
+  const { mount } = await import(new URL("roof/markets.js", MK));
+  const fw = frameFw(), main = fw.screenEl, root = doc.createElement("div");
+  root.className = "m-markets"; main.append(root); doc.body.append(main);
+  const m = await mount(root, fw);
+  let gone = false;
+  const done = () => { if (gone) return; gone = true; try { m.hide(); m.unmount(); } catch {} main.remove(); };
+  t.after(done);
+  return { fw, root, m, done, sec: (id) => root.querySelector(`section.mk-sec[data-sec="${id}"]`) };
+}
+const route = (section) => ({ kind: "app", app: "markets", section, key: section, arg: null, query: "" });
+
+test("before your list is in: a skeleton, never “Start with what you own”; one that can't come says why, with Try Again; offline, that it needs a connection (B2)", { skip: roofSkip }, async (t) => {
+  localStorage.clear();
+  NET.acc = account(); NET.status = 0; NET.fail = null; NET.down = false;
+  let go;
+  NET.wait = { me: new Promise((ok) => { go = ok; }) };
+  const { fw, m, sec, done } = await mounted(t);
+  for (const id of ["today", "holdings", "news"]) {
+    await m.show(route(id)); await settle();
+    assert.ok(sec(id).querySelector("[data-k=loading] .ifl-skeleton"), `${id}: a skeleton while the list is on its way`);
+    assert.equal(sec(id).querySelector(".empty"), null, `${id}: never the empty state`);
+  }
+  assert.equal(Object.assign({}, ...fw.headers).line, "Getting your list…");
+  // the list can't come (a 503): said in place, with Try Again; still never the empty state
+  NET.fail = { me: 503 };
+  go(); NET.wait = null; await settle();
+  for (const id of ["news", "holdings", "today"]) {
+    await m.show(route(id)); await settle();
+    const err = sec(id).querySelector(".ifl-error");
+    assert.ok(err, `${id}: why it couldn't come`);
+    assert.match(err.textContent, /Markets didn’t open/);
+    assert.equal(sec(id).querySelector(".empty"), null, `${id}: never the empty state`);
+  }
+  // Try Again: the list, drawn
+  NET.fail = null;
+  sec("today").querySelector(".ifl-error [data-act=retry]").click();
+  await settle(12);
+  assert.ok(sec("today").querySelector("[data-k=portfolio]"), "Try Again: the portfolio");
+  done();
+  // offline, with no kept copy: needs a connection
+  localStorage.clear();
+  NET.down = true;
+  const b = await mounted(t);
+  await b.m.show(route("today")); await settle();
+  assert.match(b.sec("today").querySelector(".ifl-error")?.textContent || "", /Markets needs a connection/);
+  assert.equal(b.sec("today").querySelector(".empty"), null);
+  NET.down = false;
+  b.done();
+  // and an account that's in, with nothing in it: only then the empty state
+  localStorage.clear();
+  NET.acc = { ...account(), holdings: [] };
+  const c = await mounted(t);
+  await c.m.show(route("today")); await settle(12);
+  assert.ok(c.sec("today").querySelector(".empty"), "in and empty: Start with what you own");
+  c.done();
+  NET.acc = account();
+});
+
+test("News: a holding's group head opens its stock, Show Them brings a hidden source back; a reorder that couldn't be kept is lost to flush(), and Change Order is off when Holdings comes back (B1, I3, I5)", { skip: roofSkip }, async (t) => {
+  localStorage.clear();
+  NET.acc = account(); NET.status = 0; NET.fail = null; NET.down = false; NET.wait = null;
+  const { fw, m, sec, done } = await mounted(t);
+  const errors = [];
+  const was = console.error;
+  console.error = (...a) => { errors.push(a.map(String).join(" ")); };
+  t.after(() => { console.error = was; });
+  await m.show(route("news")); await settle(12);
+  const head = sec("news").querySelector('button.nghead[data-sym="TSCO.L"]');
+  assert.ok(head, "a holding's group head");
+  head.click();
+  await settle(6);
+  assert.equal(fw.sheets.at(-1)?.el.dataset.sheet, "stock", "its stock's sheet");
+  assert.match(fw.sheets.at(-1).el.querySelector(".ifs-head h2").textContent, /^TSCO/);
+  fw.sheets.at(-1).close();
+  // a source hidden, then Show Them
+  localStorage.setItem("markets:newsHide", JSON.stringify(["Reuters"]));
+  core.emit("news"); await settle();
+  const unhide = sec("news").querySelector("[data-k=news-unhide]");
+  assert.ok(unhide, "Show Them");
+  unhide.click(); await settle();
+  assert.equal(localStorage.getItem("markets:newsHide"), null);
+  assert.equal(sec("news").querySelector("[data-k=news-unhide]"), null, "drawn again without it");
+  // a reorder the account wouldn't keep: flush() says lost, until one's kept
+  await m.show(route("holdings")); await settle(12);
+  sec("holdings").querySelector("[data-k=edit]").click();
+  NET.fail = { order: 500 };
+  sec("holdings").querySelector('[data-k="move-down"][data-sym="TSCO.L"]').click();
+  await settle();
+  assert.deepEqual(await m.flush(), { lost: 1 }, "not kept: lost");
+  NET.fail = null;
+  sec("holdings").querySelector('[data-k="move-up"][data-sym="TSCO.L"]').click();
+  await settle();
+  assert.deepEqual(await m.flush(), { lost: 0 }, "a later one kept, with the whole order");
+  // away and back: Change Order off, though moves were made earlier in the page's life
+  await m.show(route("today")); await settle();
+  await m.show(route("holdings")); await settle();
+  assert.equal(sec("holdings").querySelector("[data-k=edit]").textContent, "Change Order");
+  assert.equal(sec("holdings").querySelector('[data-k="move-down"]'), null);
+  assert.deepEqual(errors, [], "no errors");
+  done();
+});

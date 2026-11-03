@@ -76,14 +76,18 @@ export function memStorage() {
   };
 }
 
-// a network that answers as Markets' API does (/api/markets/*), for whichever account is signed in; calls kept in `log`
+// a network that answers as Markets' API does (/api/markets/*), for whichever account is signed in; calls kept in `log`.
+// state: { acc, status (every call but me's), down (offline), wait: { path: a promise each call to it waits on first },
+// fail: { path: a status that call answers with } }
 export function marketsApi(state) {
   const log = [];
   const j = (o, status = 200) => ({ ok: status < 400, status, json: async () => o });
   const fetch = async (url, init = {}) => {
     const u = new URL(String(url), "https://inflite.test"), p = u.pathname.replace(/^\/api\/markets\//, "");
     log.push({ path: p, method: init.method || "GET", url: u.pathname + u.search, body: init.body || null });
+    if (state.wait?.[p]) await state.wait[p];
     if (state.down) throw new TypeError("offline");
+    if (state.fail?.[p]) return j({ error: `Something went wrong (${state.fail[p]}).` }, state.fail[p]);
     const acc = state.acc;
     if (state.status && p !== "me") return j({ error: "Sign in first." }, state.status);
     if (p === "me") return state.status === 401 ? j({ error: "Sign in first." }, 401) : j(acc ? { ...acc } : { signedIn: false });

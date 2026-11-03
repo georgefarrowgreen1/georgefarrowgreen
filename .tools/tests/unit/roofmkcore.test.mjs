@@ -236,3 +236,96 @@ test("busy while a Markets sheet is up or a reorder is waiting to be kept (S2-D2
   assert.deepEqual(await core.flush(), { lost: 0 });
   core.stop();
 });
+
+// ---- review fixes (s24 review mk: B2, I1–I4) ----
+test("the portfolio's Send: none on a day nothing you own has traded (a weekend, before London opens), as Today's own card (I1)", async () => {
+  localStorage.clear();
+  NET.acc = account(); NET.status = 0;
+  core.start(fakeFw()); await settle();
+  const today = core.portfolioSend();
+  assert.ok(today, "traded today: sent");
+  assert.match(today.words, /^My portfolio is (up|down) \d+\.\d% today\.$/);
+  // three days on, with the same quotes: the last session's move isn't that day's
+  assert.equal(core.portfolioSend(Date.now() + 3 * 864e5), null, "nothing traded that day: nothing sent");
+  assert.equal(core.tradedToday(core.S.q["TSCO.L"], Date.now() + 3 * 864e5), false);
+  // (crypto trades every day)
+  assert.equal(core.tradedToday({ kind: "crypto", time: 1 }, Date.now()), true);
+  core.stop();
+});
+
+test("charts: each one kept ten minutes at most, and an open stock's let go when its sheet closes, but those your ranges use (I2, S2-D22)", async () => {
+  localStorage.clear();
+  NET.acc = account(); NET.status = 0;
+  core.start(fakeFw()); await settle();
+  const c = { t: [1, 2], c: [1, 2] };
+  core.chartSet("AAPL:1d", c);
+  core.S.charts.get("AAPL:1d").at = Date.now() - 11 * 60e3;
+  core.chartSet("AAPL:5d", c);
+  assert.deepEqual([...core.S.charts.keys()], ["AAPL:5d"], "one older than ten minutes dropped on the next set");
+  // NVDA (followed, none owned): all its charts go once another stock opens
+  core.stockOpen("NVDA"); core.chartSet("NVDA:1d", c); core.chartSet("NVDA:1y", c);
+  core.stockOpen("TSCO.L");
+  assert.ok(![...core.S.charts.keys()].some((k) => k.startsWith("NVDA:")), "the last stock's charts let go");
+  // TSCO.L (owned): its own day goes with its sheet; its year stays for the portfolio's ranges (rangeSeries, vs)
+  core.chartSet("TSCO.L:1d", c); core.chartSet("TSCO.L:1y", c);
+  core.stockOpen(null);
+  assert.equal(core.S.charts.has("TSCO.L:1d"), false);
+  assert.equal(core.S.charts.has("TSCO.L:1y"), true);
+  core.stop();
+});
+
+test("flush() says a reorder that couldn't be kept is lost, until a later one is kept (I3, j0 §10)", async () => {
+  NET.acc = account(); NET.status = 0;
+  core.start(fakeFw()); await settle();
+  assert.deepEqual(await core.flush(), { lost: 0 });
+  core.orderLost(true);
+  assert.deepEqual(await core.flush(), { lost: 1 });
+  core.orderLost(false);
+  assert.deepEqual(await core.flush(), { lost: 0 });
+  core.orderLost(true); core.stop();
+  assert.deepEqual(await core.flush(), { lost: 0 }, "a stop forgets it with the account");
+});
+
+test("a write's answer that comes after stop() → start(B) is dropped: A's list never reaches B's (I4)", async () => {
+  localStorage.clear();
+  NET.acc = account(Date.now(), "a"); NET.status = 0;
+  core.start(fakeFw({ userId: "u-a-0001" })); await settle();
+  let go;
+  NET.wait = { holding: new Promise((ok) => { go = ok; }) };
+  const g = core.genNow();
+  const following = core.follow("BP.L", "BP");
+  core.stop();
+  assert.equal(core.mine(g), false);
+  NET.acc = account(Date.now(), "b");
+  core.start(fakeFw({ userId: "u-b-0002" })); await settle();
+  const before = NET.acc;
+  NET.acc = account(Date.now(), "a"); // (the late answer carries A's holdings)
+  go(); NET.wait = null;
+  assert.equal(await following, false, "the late answer isn't taken");
+  NET.acc = before;
+  assert.deepEqual(core.S.list.map((x) => x.symbol), ["AAPL"], "B's list as it was");
+  await core.refresh(true);
+  const last = JSON.parse(localStorage.getItem("markets:last"));
+  assert.equal(last.id, "u-b-0002");
+  assert.deepEqual(last.holdings.map((x) => x.symbol), ["AAPL"], "nor written into B's kept copy");
+  core.stop();
+});
+
+test("your list couldn't come: S.err (offline said so), no list, and Try Again (retry) brings it (B2)", async () => {
+  localStorage.clear();
+  NET.acc = account(); NET.status = 0;
+  NET.fail = { me: 503 };
+  core.start(fakeFw()); await settle();
+  assert.equal(core.S.me, null);
+  assert.equal(core.S.loading, false);
+  assert.match(core.S.err.words, /Something went wrong \(503\)/);
+  assert.equal(core.S.err.offline, false);
+  NET.fail = null; NET.down = true;
+  await core.retry(); await settle();
+  assert.equal(core.S.err.offline, true, "offline: said as offline");
+  NET.down = false;
+  await core.retry(); await settle();
+  assert.ok(core.S.me, "Try Again: the list is in");
+  assert.equal(core.S.err, null);
+  core.stop();
+});
