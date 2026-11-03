@@ -497,6 +497,27 @@ test("dayLine: the header's line for each phase", { skip }, () => {
   assert.equal(day.dayLine(m, m.until).text, "16:05 · your ride", "the next phase's at its minute, from the midday answer");
 });
 
+// (One roof §4.4: the Weather card's warning chip opens that place's Warnings, the combined query and hash the framework's
+// router reads; its head and its hours open Now. Where the inflite repo beside has no roof yet, the chip is Weather's
+// page for that place, as milestone 1 had it)
+const roofThere = existsSync(new URL("roof/router.js", PUB));
+test("cards.js: the Weather card's warning chip opens that place's Warnings (?lat…&name=…#warnings), its head that place's Now", { skip }, () => {
+  const m = FIX("midday"), w = { ...m.cards.weather, warning: { colour: "amber", chip: "Amber wind", issuer: "Met Office" } };
+  const at = (html, cls) => new RegExp(`<a class="${cls}[^"]*" href="([^"]+)"`).exec(html)?.[1];
+  const off = cards.cardHTML("weather", w, { links: LINKS, tz: m.tz, now: m.at });
+  const on = cards.cardHTML("weather", w, { links: LINKS, tz: m.tz, now: m.at, hub: hubAt() });
+  const own = "https://weather.inflite.ai/?lat=51.5072&amp;lon=-0.1276&amp;name=London", hub = "/weather/?lat=51.5072&amp;lon=-0.1276&amp;name=London";
+  assert.equal(at(on, "tc-head"), hub, "the head at the hub: that place's Now");
+  assert.equal(at(off, "tc-head"), own, "off the hub: Weather's own address");
+  if (roofThere) {
+    assert.equal(at(on, "wx-warn"), `${hub}#warnings`, "the chip at the hub: that place, its Warnings");
+    assert.equal(at(off, "wx-warn"), `${own}#warnings`, "off the hub: the same at Weather's own address");
+  } else {
+    assert.equal(at(on, "wx-warn"), hub, "milestone 1: the chip opens Weather's page for that place");
+  }
+  assert.ok(!cards.cardHTML("weather", { ...m.cards.weather, warning: null }, { links: LINKS, tz: m.tz, now: m.at }).includes("wx-warn"), "no warning, no chip");
+});
+
 test("cards.js safe(): https addresses, http only where Today itself is, and a path of this site's only by its rule", { skip }, () => {
   const ok = ["https://chat.inflite.ai/#open=x", "/weather/#radar", "/fitness/#day=2026-11-05", "/", "/#apps", "/chats/#open=b1c2d3e4-0000-4000-8000-000000000012", "/a:b"];
   for (const h of ok) assert.equal(cards.safe(h), h, h);

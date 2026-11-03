@@ -17,7 +17,8 @@
 //     starts You's state afresh.
 //   POST today/act, today/act/undo {id}: the acts of that moment's answer, taken, kept or undone (and the same answer's
 //     acts then say so); GET/PUT today/rules (rules.json); GET/PATCH today/notify (notify.json, merged a part at a
-//     time); POST/DELETE today/device; GET/DELETE today/devices (devices.json)
+//     time; Weather's as the account takes it: { place }, { brief, briefAt }, { email }); POST/DELETE today/device;
+//     GET/DELETE today/devices (devices.json)
 //   POST /__log/reset: the log emptied (as /__reset)
 //   with a phase, GET today/me also says what Today First's account side does (quiet, apps.mail, hubPush): { admin: true }
 //     in the same /mode call makes the account Mail's (apps.mail), { hubPush: false } says the fan-out isn't on
@@ -192,7 +193,19 @@ createServer(async (req, res) => {
   if (key === 'GET notify') return json(res, you.notify);
   if (key === 'PATCH notify') {
     if (!b || typeof b !== 'object') return json(res, { error: 'Bad request.' }, 400);
-    for (const [k, v] of Object.entries(b)) if (v && typeof v === 'object' && you.notify[k] && typeof you.notify[k] === 'object') you.notify[k] = { ...you.notify[k], ...v };
+    // (Weather's, as the account's setNotify takes it: a place's rain and warnings, the briefing and its time, email)
+    if (b.weather && typeof b.weather === 'object') {
+      const w = b.weather, n = you.notify.weather, near = (a, c) => Math.abs(a.lat - c.lat) < 0.01 && Math.abs(a.lon - c.lon) < 0.01;
+      if (w.place) {
+        const was = n.places.find((q) => near(q, w.place)) || { name: w.place.name, lat: w.place.lat, lon: w.place.lon, rain: false, warn: false };
+        const now = { ...was, rain: w.place.rain !== undefined ? !!w.place.rain : was.rain, warn: w.place.warn !== undefined ? !!w.place.warn : was.warn };
+        n.places = [...n.places.filter((q) => !near(q, w.place)), now];
+      }
+      if (w.brief !== undefined) n.brief = w.brief ? { name: w.brief.name, lat: w.brief.lat, lon: w.brief.lon } : null;
+      if (w.briefAt !== undefined) n.briefAt = w.briefAt;
+      if (w.email && typeof w.email === 'object') n.email = { ...n.email, ...w.email };
+    }
+    for (const [k, v] of Object.entries(b)) if (k !== 'weather' && v && typeof v === 'object' && you.notify[k] && typeof you.notify[k] === 'object') you.notify[k] = { ...you.notify[k], ...v };
     return json(res, you.notify);
   }
   if (key === 'POST device') {
