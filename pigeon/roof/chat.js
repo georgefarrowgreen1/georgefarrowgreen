@@ -261,6 +261,8 @@ function build(host, ctx) {
     }
   };
   const onHidden = () => flushDraft();
+  // (the chat on screen and the page in sight: marked read, as Chat's loadChat does)
+  const markRead = () => { if (id && fw.visible()) svc.call("read", id).catch(() => {}); };
   box.addEventListener("click", onClick);
   composer.addEventListener("submit", onSubmit);
   input.addEventListener("input", onInput);
@@ -306,6 +308,8 @@ function build(host, ctx) {
       vv?.addEventListener("resize", fit);
       vv?.addEventListener("scroll", fit);
       hiddenOff = fw.on("hidden", onHidden);
+      const visOff = fw.on("visible", markRead);
+      offs.push(visOff);
       fit();
       header();
       t.start();
@@ -321,6 +325,7 @@ function build(host, ctx) {
       const a = anchors.get(cid);
       draw.now();
       if (a && restore(a)) stick = atBottom(); else { stick = true; toBottom(); }
+      markRead();
       return true;
     },
     hide() {
@@ -330,6 +335,7 @@ function build(host, ctx) {
       fw.fill(false);
     },
     busy: () => !!(id && (words().trim() || sending)),
+    flush() { flushDraft(); return { lost: 0 }; },
     back: () => false,
     get id() { return id; },
     unmount() {

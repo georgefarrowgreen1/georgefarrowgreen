@@ -256,7 +256,7 @@ export async function mount(root, fw) {
     back: () => false,
     busy: () => chat.busy(),
     sendable: () => null,
-    async flush() { return { lost: 0 }; },
+    async flush() { return chat.flush(); },
     unmount() {
       this.hide();
       for (const f of offs) { try { f?.(); } catch (_) {} }
