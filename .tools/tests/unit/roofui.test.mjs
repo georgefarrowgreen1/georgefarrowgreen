@@ -205,7 +205,7 @@ test('stages 2–4: toast() gives { close() }; connectors.js has a provider per 
   assert.equal(await connectorOf('mail', F({})), STATIC.mail);
   assert.equal(await connectorOf('chats', F({})), STATIC.chats);
   const m = strip(read('modules.js'));
-  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error/);
+  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error\(`the hub or the roof is off/, 'stage 1’s words (roofshell allows exactly that error)');
   assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
   assert.match(m, /keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\]\)\), 10e3\)/, 'lazy kept only on the Home Screen, 10 s on');
 });
