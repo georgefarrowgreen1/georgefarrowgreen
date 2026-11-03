@@ -62,6 +62,8 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
     wait.delete(d.id);
     if (d.ok) p.ok(d.v); else p.no(Object.assign(new Error(`chats: ${d.why}`), { why: d.why }));
   });
+  // (a Worker that fails to load or throws: every call waiting refused, offline, rather than waiting for ever)
+  w.addEventListener("error", () => { for (const p of wait.values()) p.no(Object.assign(new Error("chats: the core failed"), { why: "offline" })); wait.clear(); });
   const on = (topic, fn) => {
     const l = subs.get(topic) || new Set();
     l.add(fn); subs.set(topic, l);
