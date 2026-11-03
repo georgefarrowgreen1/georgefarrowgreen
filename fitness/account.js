@@ -32,12 +32,16 @@ async function answer(r, raw = false) {
 // who's signed in, your record and your activities: { signedIn, name, handle, photoAt, ver, data, acts }
 // (since: only the activities changed since then, and every one's id, for a phone that has the rest: { ..., ids, at })
 // (the one theme.js asked for as the page was read, where it's the same ask: taken up once)
+// (and, from this build on, InFlite Today's own rides among the plans (today=1), and the rides' times of day by this
+// phone's days (tz): meQuery, as theme.js asks it too)
+export const meQuery = (s) => { let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {} return `me?${s ? `since=${s}&` : ""}today=1${tz ? `&tz=${encodeURIComponent(tz)}` : ""}`; };
 export function me(since = null) {
   const s = since ? Math.round(since) : null, early = globalThis.fxEarly;
   globalThis.fxEarly = null;
-  // (asked again where that had no answer, or one cut off: not where the account answered with an error)
-  if (early && early.since === s) return early.got.then((r) => answer(r)).catch((e) => (e?.status ? Promise.reject(e) : call(s ? `me?since=${s}` : "me")));
-  return call(s ? `me?since=${s}` : "me");
+  // (asked again where that had no answer, or one cut off: not where the account answered with an error; and only the
+  // same ask: one from an older theme.js, without Today's rides, isn't)
+  if (early && early.since === s && early.today) return early.got.then((r) => answer(r)).catch((e) => (e?.status ? Promise.reject(e) : call(meQuery(s))));
+  return call(meQuery(s));
 }
 // the activities older than one you have (its start and id), a page at a time → { acts, more }
 export const older = (start, id) => call(`me/older?start=${Math.round(start)}&id=${encodeURIComponent(id)}`);
@@ -71,8 +75,18 @@ export const addFigures = (id, figs) => call(`acts/${encodeURIComponent(id)}`, {
 export const remove = (id) => call(`acts/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 // ---- the account's own page ----
-// (beside this app's own address: fitness.<site> → account.<site>; nowhere else is there one to sign in on)
-export const accountPage = () => (location.hostname.startsWith("fitness.") ? `${location.origin.replace("//fitness.", "//account.")}/` : null);
+// At InFlite's hub (inflite.ai/fitness/: IFL.hub.on, the marker the hub's server puts on the page, never the address),
+// the site's own account.<site> (staging's next. taken off); and a signed-out Fitness signs in through Chats there,
+// coming back to this page (IFL.hub.signIn: /chats/#signin-start&then=/fitness/…). The hub is handed over once, as the
+// app starts (app.js)
+let hub = null;
+export const atHub = (h) => { hub = h?.on ? h : null; };
+// signed out at the hub: on to the hub's sign-in → true; anywhere else nothing done → false (the account's page, below)
+export const hubSignIn = () => (hub ? hub.signIn() === true : false);
+// (beside this app's own address: fitness.<site> → account.<site>; at the hub, the site's; nowhere else is there one to
+// sign in on)
+export const accountPage = () => (hub ? `${location.protocol}//account.${location.host.replace(/^next\./, "")}/`
+  : location.hostname.startsWith("fitness.") ? `${location.origin.replace("//fitness.", "//account.")}/` : null);
 // (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
 export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
 // signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)
@@ -142,5 +156,10 @@ export const morning = (b) => call("push", { method: "POST", body: b });
 export const morningOff = (endpoint) => call("push", { method: "DELETE", body: { endpoint } });
 // The coming days, as this phone has them planned, for InFlite Today (functions/_fittoday.js): { tz, units, days }
 export const today = (b) => call("today", { method: "POST", body: b });
-// A plan made in Chat (GET me's offers: functions/_fitshare.js) answered here: "yes", added to your plan, or "no"
+// A plan made in Chat (GET me's offers: functions/_fitshare.js) answered here: "yes", added to your plan, or "no"; and one
+// of InFlite Today's own rides: "yes" as it's added or kept, "no" as it's undone
 export const offer = (id, answer) => call(`offers/${encodeURIComponent(id)}`, { method: "POST", body: { answer } });
+// A ride's time of day, set here (Ride At: functions/_fittimes.js): { day: "YYYY-MM-DD", start, stop, tz } → { time:
+// { day, start, stop, source } }; and cleared, for a day
+export const setTime = (b) => call("time", { method: "PUT", body: b });
+export const dropTime = (day) => call("time", { method: "DELETE", body: { day } });

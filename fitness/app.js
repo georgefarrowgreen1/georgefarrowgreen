@@ -28,10 +28,13 @@ import * as G from "./progress.js";
 import * as M from "./map.js";
 import * as BT from "./besttime.js";
 import * as E from "./efforts.js";
-import { askToday, stepDay, todayView } from "./today.js";
-import { dayStamp, download, planView, rhythmSetup } from "./plan.js";
+import { askToday, lookAt, stepDay, todayView } from "./today.js";
+import { dayStamp, download, openDay, planView, rhythmSetup } from "./plan.js";
 import { progressView } from "./progressview.js";
 import { activitiesView, figuresOf, openAct, routes, stepAct, uploadFilesView, withFigures } from "./activities.js";
+import { todaySwaps, openOffer } from "./invites.js";
+// (this module's own exports, as the screens' modules are handed them: invites.js openOffer)
+import * as X from "./app.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
@@ -761,8 +764,15 @@ const IFL = (() => {
   return api;
 })();
 // ==== end of InFlite's menu ====
-// (opened from the account's Notifications page to turn them on here: #notify, asked once you're in)
-let ASK_NOTIFY = IFL.wantsAllow();
+// At InFlite's hub (inflite.ai/fitness/, one window with Today, Chats and every app: IFL.hub.on, known by the marker the
+// hub's server puts on the page, never the address): Back where your photo goes (back where you came from in the window,
+// else Apps: IFL.hub.back), Fitness's own few under its settings button; signing in through Chats (account.js);
+// a session sent through Chats' sheet over this page (IFL.hub.send); and notifications InFlite's own, set in You: Fitness
+// never asks for them there, nor lets a subscription go. Off the hub, all as it ever was.
+const HUB = IFL.hub;
+A.atHub(HUB);
+// (opened from the account's Notifications page to turn them on here: #notify, asked once you're in; never at the hub)
+let ASK_NOTIFY = !HUB.on && IFL.wantsAllow();
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast"), tabsEl = $("#tabs"), dropEl = $("#drop"), filesEl = $("#files");
@@ -839,6 +849,8 @@ const S = {
   sums: new Watched(), summed: false,
   // (plans made in Chat, as the account has them: waiting to be added here, or added: invites.js)
   offers: [],
+  // (the rides' times of day, today's and the next 7 days': Ride At, and Today's: GET me's times, { day, start, stop, source })
+  times: [],
 };
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
@@ -1200,9 +1212,15 @@ function head(title, sub, ...right) {
   const hd = IFL.header({ title, me: meFace(), onMe: youMenu, cls: "fhead" });
   hd.querySelector(".ifh-line").textContent = sub || "";
   const acts = hd.querySelector(".ifh-acts");
+  // (at the hub: Back in your photo's place, and Fitness's own few, its menu, from a button of their own)
+  if (HUB.on) {
+    hd.querySelector(".ifh-me")?.replaceWith(hubBack());
+    right.push(h("button.hub-more", { type: "button", "aria-label": "Fitness Settings", title: "Fitness Settings", onclick: (e) => youMenu(e.currentTarget) }, icon("sliders", 20, 2)));
+  }
   for (const b of right.filter(Boolean)) { b.classList.add("ifh-act"); acts.append(b); }
   return hd;
 }
+const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.back() }, icon("back", 20, 2.4), h("span", { text: "Back" }));
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
@@ -1214,7 +1232,8 @@ function youMenu(at) {
     me: { name: S.me?.name || "You", line: S.me?.handle ? `@${S.me.handle}` : "", photo: h("span.round.me", {}, face()) },
     rows: [
       // (what Fitness tells you is set in your account, its Notifications page, every app's: here, whether this phone's on)
-      { key: "notify", icon: "bell", color: "red", label: "Notifications", value: morningOf() ? "On" : "Off here", warn: !morningOf(), open: () => openAccount("notify-fitness") },
+      HUB.on ? { key: "notify", icon: "bell", color: "red", label: "Notifications", value: "In You", open: toYou }
+        : { key: "notify", icon: "bell", color: "red", label: "Notifications", value: morningOf() ? "On" : "Off here", warn: !morningOf(), open: () => openAccount("notify-fitness") },
       { icon: "ruler", color: "blue", label: "Distances", value: U.metric ? "km" : "miles", open: () => openAccount("fitness") },
       // (where your rides come from: the first that's on, and how many more; set up on the account's page)
       { icon: "watch", color: "teal", label: "Devices", value: devicesSaid(), warn: !!stopped(), open: () => openAccount("fitness") },
@@ -1225,6 +1244,8 @@ function youMenu(at) {
     account: openAccount, signOut: () => signOutHere(),
   });
 }
+// (at the hub: You, InFlite's own, where its notifications are set)
+const toYou = () => { const to = HUB.href("today", "you"); if (to) location.assign(to); };
 const devicesSaid = () => { if (stopped()) return `${stopped()}: reconnect`; const on = [S.garmin?.on && "Garmin", S.strava?.on && "Strava", S.health?.on && "Apple Health"].filter(Boolean); return on.length ? on[0] + (on.length > 1 ? ` +${on.length - 1}` : "") : "None"; };
 // (one that's stopped bringing your rides in: Garmin's key expired or deleted, or Strava's let Fitness go)
 const stopped = () => (S.garmin?.on && !S.garmin.ok ? "Garmin" : S.strava?.on && !S.strava.ok ? "Strava" : null);
@@ -1308,6 +1329,7 @@ function settingsView() {
 // Your account's page, opened signed in as you (a code good once, for a minute), with the way back here (asks=1: its
 // Notifications folder, with them off here, whose Turn On comes back to #notify, which asks)
 async function openAccount(open) {
+  if (HUB.on && open === "notify-fitness") return toYou();
   const page = A.accountPage();
   if (!page) return toast("Your account is at account.inflite.ai");
   const asks = open === "notify-fitness" && !morningOf() ? { asks: "1" } : {};
@@ -1729,7 +1751,7 @@ function onboarding(at = null) {
   const rides = () => ({ title: "", right: skipTo(V.days, "days"), body: [V.dots("rides"),
     h("div.sheet-top", {}, h("h1", { text: "Bring your rides in" }), h("div.sub", { text: "Six months of them tell Fitness how fit you are, so your plan starts in the right place." })),
     h("div.onb-choices", {},
-      S.strava?.ready !== false && choice(".best", h("span.ic.brand.strava", {}, icon("wave", 16, 2.2)), "Strava", "Say yes on Strava’s page, and they come in", (e) => { mark("days"); stravaGo(e.currentTarget); }, "Quickest"),
+      S.strava?.ready !== false && choice(".best", h("span.ic.brand.strava", {}, icon("wave", 16, 2.2)), "Strava", HUB.on ? "Strava opens on its own; come back here when it says you’re connected" : "Say yes on Strava’s page, and they come in", (e) => { mark("days"); stravaGo(e.currentTarget); }, "Quickest"),
       choice("", h("span.ic.brand.garmin", {}, icon("device", 16, 2)), "Garmin Connect", "Paste a key from Garmin, and your nights come too", () => pushSheet(garminStep)),
       choice("", h("span.ic.coral", {}, icon("upload", 16, 2.2)), "Upload files", "FIT, GPX or TCX, from Wahoo, Zwift or anything: right after this", () => { onboarding.upload = true; mark("days"); pushSheet(V.days); }),
       choice("", h("span.ic.grey", {}, icon("plus", 16, 2.4)), "I’m just starting out", "No rides yet: a question about your riding instead", () => { mark("days"); pushSheet(V.days); })),
@@ -1898,6 +1920,8 @@ function stravaView() {
       h("div.row.plain", {}, h("span.ic.strava", {}, h("b", { text: "1" })), h("span.tx", {}, h("b", { text: "Say yes on Strava’s page" }), h("small", { text: "Fitness asks to read your activities, the private ones too" }))),
       h("div.row.plain", {}, h("span.ic.strava", {}, h("b", { text: "2" })), h("span.tx", {}, h("b", { text: "Back here, they come in" }), h("small", { text: "The last six months, then each new one" }))))),
     connectBtn,
+    // (at InFlite's hub, Strava's page is a window of its own, which ends on Fitness's own address: spec §3.2)
+    HUB.on && h("p.foot.hub-strava", { text: "Strava opens on its own; come back here when it says you’re connected." }),
     section(null, h("p.foot", { text: "Fitness only reads: it never posts to Strava or changes anything there. Strava has no files to hand over, so each activity’s written for Fitness from its figures, second by second. Disconnect here or on Strava at any time; what’s already in Fitness stays." })),
     leaving("strava", false),
   ] };
@@ -1923,6 +1947,7 @@ function stravaView() {
       row({ icon: "today", tint: "blue", title: "Last checked", value: g.last ? ago(g.last) : "Not yet", chev: false }),
       row({ icon: "calendar", tint: "green", title: "Connected", value: dayShort(g.since), chev: false })),
     g.ok ? checkBtn : connectBtn,
+    !g.ok && HUB.on && h("p.foot.hub-strava", { text: "Strava opens on its own; come back here when it says you’re connected." }),
     section(null, h("p.foot", { text: "Strava tells Fitness as each new activity’s saved, so it shows up a minute or two after it’s on Strava." })),
     g.ok && section("All your rides", bringIn.busy ? h("p.foot", { text: "Coming in now: Activities shows how far back it’s got." }) : allBtn,
       h("p.foot", { text: g.back ? `Part way${backTo ? `: back to ${backTo}` : ""}. It carries on by itself; this brings the rest in now.` : "Everything on Strava, not just the last six months, skipping what’s here already (from Garmin, or uploaded). Carries on by itself if you close Fitness." })),
@@ -2014,6 +2039,7 @@ function healthView() {
 // sends the day's when your time comes ----
 const canPush = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function pushWhy() {
+  if (HUB.on) return "Notifications at InFlite are set in You: Fitness’s come in Today’s morning.";
   if (canPush()) return Notification.permission === "denied" ? "Notifications are blocked for Fitness in this browser’s settings." : null;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
@@ -2037,6 +2063,8 @@ function morningDays() {
 }
 const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 async function morningSub(make) {
+  // (never at the hub: the one subscription there is InFlite's own, the root worker's)
+  if (HUB.on) return null;
   const reg = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
   await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
@@ -2055,6 +2083,7 @@ function askNotify() {
   });
 }
 async function morningOn(at) {
+  if (HUB.on) throw new Error(pushWhy());
   if (Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") throw new Error("Notifications weren’t allowed. Turn them on for Fitness in this browser’s settings.");
   const sub = await morningSub(true);
   await A.morning({ sub: sub.toJSON(), at, tz: tz(), days: morningDays() });
@@ -2063,14 +2092,15 @@ async function morningOn(at) {
 async function morningOffHere() {
   const m = morningOf();
   store.set("morning", null);
-  try { await A.morningOff(m?.endpoint); (await morningSub(false))?.unsubscribe(); } catch (_) {}
+  // (at the hub, never a subscription let go: InFlite's, which the account's settings decide)
+  try { await A.morningOff(m?.endpoint); if (!HUB.on) (await morningSub(false))?.unsubscribe(); } catch (_) {}
 }
 // (the week's words sent again, a moment after anything that changes them: another plan chosen too, so the last one's
 // words don't go on being sent)
 function morningRefresh() {
   if (!background.done) return;   // (as inStep: not for a copy that may be another's)
   const m = morningOf();
-  if (!m || !S.me || !canPush()) return;
+  if (!m || !S.me || !canPush() || HUB.on) return;
   clearTimeout(morningRefresh.t);
   morningRefresh.t = setTimeout(async () => {
     try { const sub = await morningSub(false); if (!sub) return store.set("morning", null); await A.morning({ sub: sub.toJSON(), at: m.at, tz: tz(), days: morningDays() }); } catch (_) {}
@@ -2258,6 +2288,8 @@ function welcome(note = null, { again = !!welcome.shown } = {}) {
   const page = A.accountPage();
   main.replaceChildren(h("div.welcome.dawn.ifl-in" + (again ? ".again" : ""), {},
     courseScene(),
+    // (at the hub, Back to where you came from, over the morning)
+    HUB.on && h("div.w-back", {}, hubBack()),
     // (where each part sits is InFlite's way in, shared by every app: .tools/inflite/signin.css)
     h("div.w-top.ifl-top", {}, h("div.wlogo.ifl-logo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
       h("h1.wtitle.ifl-title", { "aria-label": "Fitness" }, [..."Fitness"].map((c) => h("span", { "aria-hidden": "true", text: c }))),
@@ -2305,6 +2337,8 @@ function courseScene() {
 // (a sign-in started here and never finished: its word not kept past a couple of hours)
 try { const k = JSON.parse(localStorage.getItem("fitness:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("fitness:signin"); } catch (_) {}
 async function toAccountSignIn(e, mode = "signin") {
+  // (at the hub, through Chats, and back here: InFlite's one sign-in)
+  if (A.hubSignIn()) return;
   const page = A.authPage() || A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
   if (b) { b.disabled = true; b.textContent = "Signing in…"; }
@@ -2459,6 +2493,7 @@ function arrive(m, kept = false) {
   // (plans from Chat only from the account's own answer, never the copy kept here: one said no to on another device
   // mustn't show, ready to tap, till then)
   S.offers = !kept && Array.isArray(m.offers) ? m.offers : [];
+  S.times = Array.isArray(m.times) ? m.times : [];
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
   adopt(m.data);
@@ -2487,6 +2522,24 @@ function background(m) {
   setTimeout(tidyFiles, 8000);
   morningRefresh();
   todayRefresh();
+  todayRides();
+  // (an old Home Screen icon of Fitness's own, off the hub: once, the card saying InFlite is one app now, its Turn Off
+  // Notifications Here this phone's morning reminder off: InFlite's menu, IFL.hub.moved)
+  HUB.moved("fitness", { off: () => morningOffHere() });
+}
+// InFlite Today's own rides (invites.js todaySwaps): each agreed one put in its day as a swap, once, as Fitness opens; one
+// undone (on Today, or here) taken out again while its day still holds its workout. Only from the account's own answer
+// (S.offers), never the copy kept here; what's been put in remembered on this device, for this account
+function todayRides() {
+  if (!S.me || S.examples) return;
+  const k = store.get("today-swaps", null), was = k?.id === S.me.id && k.applied && typeof k.applied === "object" ? k.applied : {};
+  const r = todaySwaps(S.offers, S.swaps, was, TODAY);
+  store.set("today-swaps", { id: S.me.id, applied: r.applied });
+  if (!r.set.length && !r.drop.length) return;
+  for (const [day, wid] of r.set) S.swaps[day] = wid;
+  for (const day of r.drop) delete S.swaps[day];
+  keep("swaps");
+  redraw();
 }
 // What another device changed meanwhile, taken up as you come back to the app (this device's changes not yet kept
 // winning, as when they're sent)
@@ -2500,7 +2553,9 @@ function takeUp(m) {
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   S.health = m.health || { on: false };
   S.offers = Array.isArray(m.offers) ? m.offers : [];
+  S.times = Array.isArray(m.times) ? m.times : [];
   S.me.more = m.more;
+  todayRides();
   setActs(); redraw(); estimate();
   if (!background.done) background(m); else { garminNow(m.garmin); stravaNow(m.strava); older(); }
 }
@@ -2561,8 +2616,8 @@ async function signOutHere(already = false) {
   // (this phone's morning reminder goes with the sign-in: found signed out, here only, the account's server forgetting it
   // with the sign-in, functions/_fitpush.js)
   if (already !== true && morningOf()) await morningOffHere();
-  else if (morningOf()) { store.set("morning", null); morningSub(false).then((s) => s?.unsubscribe()).catch(() => {}); }
-  store.set("hk", null); store.set("today-sent", null);
+  else if (morningOf()) { store.set("morning", null); if (!HUB.on) morningSub(false).then((s) => s?.unsubscribe()).catch(() => {}); }
+  store.set("hk", null); store.set("today-sent", null); store.set("today-swaps", null);
   if (already !== true) { try { await A.signOut(); } catch (e) { if (e.status !== 401) return toast(e.message, true); } }
   if (sheetEl.open) await closeSheet();
   // (signing out yourself: the page goes and the morning comes back; found out, it's just the welcome)
@@ -2579,6 +2634,38 @@ async function signOutHere(already = false) {
 // (the sign-in gone, found out mid-way: signed out here too, and said so)
 const signedOutHere = () => signOutHere(true);
 
+// ---- sections, by the address: #today, #activities, #progress (the tabs), #act=<id> (one ride), #day=YYYY-MM-DD (a day)
+// and #offer=<id> (a plan waiting, or one of Today's rides). Read as Fitness opens and whenever the hash changes (an open
+// page told again: InFlite's links, or a notification tapped while it's open at the hub), then the address left saying
+// the tab you're on, so the way back to this page (Back, Chats' back=) comes back to it, and the same link again is told
+// again ----
+const SECTION = /^#(today|activities|progress|plan|act=([A-Za-z0-9_-]{1,40})|day=(\d{4}-\d\d-\d\d)|offer=([0-9a-fA-F-]{36}))$/;
+// (the tab a section's on: before anything's drawn, as Fitness opens)
+function tabOf(hash) {
+  const m = SECTION.exec(hash || "");
+  return !m ? null : m[2] ? "activities" : m[3] || m[4] || m[1] === "plan" ? "today" : m[1];
+}
+// (a day's key as a day here: its start on this phone's calendar)
+const dayOfKey = (k) => { const [y, mo, d] = k.split("-").map(Number), t = new Date(y, mo - 1, d).getTime(); return Number.isFinite(t) && dayStamp(t) === k ? startOfDay(t) : null; };
+// → whether it was a section Fitness knows
+function openTo(hash) {
+  const m = SECTION.exec(hash || "");
+  if (!m || !S.me) return false;
+  const tab = tabOf(hash), shut = () => { if (sheetEl.open) closeSheet(); };
+  if (tab !== S.tab) go(tab); else try { history.replaceState(null, "", location.pathname + location.search + "#" + tab); } catch (_) {}
+  // (one ride, or a plan waiting: its sheet, in place of any that's up; a day Today shows, looked at there, and one
+  // further off, its own sheet; a tab, just that)
+  if (m[2]) { const a = S.acts.find((x) => x.id === m[2]); if (a) openAct(a); else toast("That activity isn’t here.", true); }
+  else if (m[3]) {
+    const d = dayOfKey(m[3]), lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13);
+    if (d == null) return true;
+    if (d >= lo && d <= hi) { shut(); lookAt(d); } else openDay(d);
+  } else if (m[4]) { if (!openOffer(X, m[4])) toast("That plan isn’t there any more.", true); }
+  else shut();
+  return true;
+}
+addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
+
 // ---- starting ----
 (async () => {
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
@@ -2591,9 +2678,8 @@ const signedOutHere = () => signOutHere(true);
   if (fromStrava) history.replaceState(null, "", location.pathname + location.search);
   // (back from it part way through the welcome, not connected: back to choosing how your rides come in)
   if (fromStrava && fromStrava !== "on" && store.get(ONB, null) === "days") store.set(ONB, "rides");
-  const want = location.hash.slice(1), was = IFL.here("fitness");
-  if (TABS.some(([id]) => id === want)) S.tab = want;
-  else if (want === "plan") S.tab = "today";
+  const want = location.hash, wantTab = tabOf(want), was = IFL.here("fitness");
+  if (wantTab) S.tab = wantTab;
   // (just updated: the tab you were on, and how far down)
   else if (was && TABS.some(([id]) => id === was.tab)) { S.tab = was.tab; if (was.y) setTimeout(() => scrollTo(0, was.y), 700); }
   let m = null, early = null;
@@ -2629,6 +2715,8 @@ const signedOutHere = () => signOutHere(true);
   if (early && m.id !== early.id) return location.reload();
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
   arv?.in();
+  // (the section the address asked for: one ride, a day, a plan; the tab's already drawn)
+  if (wantTab && !fromStrava) openTo(want);
   if (fromStrava === "on") { if (!store.get(ONB, null)) go("activities"); bringIn({ src: "strava" }); }
   else if (fromStrava === "taken") toast("That Strava account is connected to another Fitness account. On Strava’s page, sign in as yourself, or disconnect it from the other account first.", true, 9000);
   else if (fromStrava) toast(fromStrava === "no" ? "Strava wasn’t connected: Fitness needs to see your activities. Try again, and leave the activities box ticked on Strava’s page." : "Strava didn’t connect. Try again in a moment.", true, 7000);
@@ -2639,4 +2727,5 @@ export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView, stopped };
+export { IFL, HUB, todayRides };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dropFile, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
