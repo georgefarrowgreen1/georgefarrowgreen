@@ -252,6 +252,16 @@ test("loading on open: wxwarn.js has the warnings' helpers and warnings.js re-ex
   assert.ok(imports("now.js").includes("./wxwarn.js"), "Now's warnings slot from wxwarn.js");
 });
 
+test("connector.lazy: exactly the closure of weather.js's fw.lazy imports, less connector.files and the network-only files; files ∩ lazy = ∅ (C4: each kept offline on the Home Screen)", { skip: (await import("./fixtures/roof.mjs")).roofSkip }, async () => {
+  const { staticGraph, lazyClosure } = await import("./fixtures/budget.mjs");
+  const { connector: c } = await import(new URL("connector.js", MOD));
+  const lazy = c.lazy || [], graph = await staticGraph("weather");
+  assert.ok(Array.isArray(lazy) && new Set(lazy).size === lazy.length, "lazy: a list, no repeats");
+  assert.deepEqual([...lazy].sort(), (await lazyClosure("weather", graph)).sort(), "lazy: the closure of fw.lazy's literals, less files and NET");
+  assert.ok(!c.files.some((f) => lazy.includes(f)), "files ∩ lazy = ∅");
+  for (const f of ["days", "warnings", "places", "wxsettings", "wxdetail"]) assert.ok(lazy.includes(`/weather/roof/${f}.js`), `${f}.js is lazy`);
+});
+
 test("Warnings' empty states: none in force ([]) or no official feed for the place (null), in the spec's words", () => {
   assert.equal(WARN.emptyOf({ official: [] }), "none");
   assert.equal(WARN.emptyOf({ official: null }), "unavailable");
