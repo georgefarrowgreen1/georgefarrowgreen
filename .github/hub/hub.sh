@@ -1,5 +1,5 @@
-# InFlite's hub, from GitHub Actions: what .github/workflows/hub-key.yml and hub-off.yml do, one step at a time
-# (Today First, spec §15.4). Each step is a shell of its own (bash -eo pipefail) that sources this file and calls one
+# InFlite's hub, from GitHub Actions: what .github/workflows/hub-key.yml, hub-off.yml and hub-stage.yml do, one step at a
+# time (Today First, spec §15.4). Each step is a shell of its own (bash -eo pipefail) that sources this file and calls one
 # of these:
 #   cf_account          → the Cloudflare account: CLOUDFLARE_ACCOUNT_ID, or else the one account the token can see;
 #                         left for the steps after it as HUB_ACCOUNT (GITHUB_ENV), which this file reads when sourced
@@ -16,6 +16,13 @@
 #   wait_hub true|false [seconds] [site] → a hub's /api/hub asked until it says so
 #   take_back_pushes    → the push rows the hub fanned out, deleted from D1 (via = 'hub'; spec §15.4's four statements)
 #   off_verdict         → hub-off.yml's last step
+#   stage_origins       → the Pages project's HUB_ORIGINS lists both hubs (inflite.ai and next.inflite.ai): set as a
+#                         production secret only where it isn't set or lacks one of them
+#   stage_clone REF     → the inflite repo at REF, fetched into the runner's temporary folder; its [env.next] checked
+#                         (the staging Worker, at next.inflite.ai alone) and its Today's build read
+#   stage_deploy        → that build deployed to the staging Worker (inflite-next), from its folder; never inflite
+#   stage_check         → next.inflite.ai/version says that build, and its /api/hub answers as the hub
+#   stage_verdict       → hub-stage.yml's last step
 # Cloudflare's API is asked with CLOUDFLARE_API_TOKEN, which never goes on a command line (curl reads its header from a
 # pipe) nor into the log; a key made here is masked before anything else and only ever piped to wrangler. What's
 # printed of an answer from Cloudflare is its error codes and messages, never the request.
@@ -26,7 +33,10 @@ STAGING=inflite-next           # the staging hub at next.inflite.ai (the inflite
 DATABASE=bio-db                # the D1 database (this repo's wrangler.toml, binding DB)
 SITE=https://inflite.ai
 STAGING_SITE=https://next.inflite.ai
+STAGING_HOST=next.inflite.ai   # the staging Worker's one custom domain (the inflite repo's [env.next] routes)
 CHAT=https://chat.inflite.ai
+HOME_SITE=https://georgefarrowgreen.com   # where the passkeys' list of origins is (/.well-known/webauthn): the hubs' too
+IFL_GIT=https://github.com/georgefarrowgreen1/inflite.git   # the inflite repo (public)
 CF_API=https://api.cloudflare.com/client/v4
 WRANGLER="npx --yes wrangler@4.149.0"
 EVERY=${EVERY:-15}             # seconds between one check and the next
@@ -34,6 +44,9 @@ PAGES_WAIT=${PAGES_WAIT:-600}  # seconds to wait for a production deployment (on
 PAGES_PERM="Account › Cloudflare Pages › Edit"
 WORKER_PERM="Account › Workers Scripts › Edit"
 D1_PERM="Account › D1 › Edit"
+# (a Worker's custom domain is its zone's: Cloudflare makes the hostname's DNS record and certificate for the Worker, and
+# wrangler finds the zone by the hostname; the "Edit Cloudflare Workers" token template has both)
+DOMAIN_PERM="Zone › Workers Routes › Edit on inflite.ai (with Zone › Zone › Read)"
 
 # The account, as the account step found it: HUB_ACCOUNT (a name no env: block in the workflows sets, so nothing there
 # can stand in its way), else the CLOUDFLARE_ACCOUNT_ID secret. wrangler takes it as CLOUDFLARE_ACCOUNT_ID.
@@ -387,5 +400,209 @@ off_verdict() {
     else bad=1; say "The push rows the hub fanned out weren't taken back (the step says why): run this again with the same inputs once that's fixed."; fi
   fi
   if [ "$bad" = 0 ]; then say "To turn the hub on again: \"Give InFlite's hub its key\" (a new key)."; fi
+  return $bad
+}
+
+# ---- The staging hub (hub-stage.yml): next.inflite.ai, the Worker inflite-next (spec §15.2; addendum A3) ----
+# None of these touch the Worker inflite or the Pages project's HUB_KEY: the staging hub's key is hub-key.yml's.
+
+# The Pages project's HUB_ORIGINS (functions/_sites.js hubOrigins: the origins whose pages are this site's apps too,
+# which Chat and WebAuthn take as their own) must list both hubs, or Chat at next.inflite.ai is refused. Set as a
+# production secret (this repo's wrangler.toml is the project's configuration: the dashboard's plain variables can't be
+# edited) only when it isn't set or lacks one of them. A secret can't be read back: then the live site's passkey list
+# (/.well-known/webauthn, which carries the hubs' origins) says whether next.inflite.ai is in it already. Either way it
+# reaches the site only with the next deployment of Pages, which hub-key.yml's retry builds.
+stage_origins() {
+  local need=("$SITE" "$STAGING_SITE") vars type list="" o missing=() value body live
+  if in_toml HUB_ORIGINS; then fail "HUB_ORIGINS is set in wrangler.toml, which the Pages project reads at each deployment and no secret overrides: make it \"$SITE,$STAGING_SITE\" there and push to main. Nothing was changed here."; return 1; fi
+  need_account || return 1
+  cf GET "/accounts/$ACCOUNT/pages/projects/$PROJECT" || { fail "Couldn't read the Pages project ($PROJECT: $CF_ERR). $(lacks "$PAGES_PERM") Nothing was changed."; return 1; }
+  vars=$(jq -c '.deployment_configs.production.env_vars // {}' <<<"$CF_OUT")
+  type=$(jq -r '.HUB_ORIGINS.type // (if .HUB_ORIGINS == null then "" else "plain_text" end)' <<<"$vars")
+  case "$type" in
+    "") say "The Pages project has no production HUB_ORIGINS yet." ;;
+    secret_text)
+      # (unreadable: what the live deployment lists, its passkeys' origins with the hubs' among them)
+      body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" "$HOME_SITE/.well-known/webauthn?hub=$(date +%s)" 2>/dev/null) || body=""
+      live=$(jq -r 'if type == "object" and (.origins | type) == "array" then .origins[] else empty end' <<<"$body" 2>/dev/null) || live=""
+      if grep -qxF "$STAGING_SITE" <<<"$live" && grep -qxF "$SITE" <<<"$live"; then
+        say "The Pages project's production HUB_ORIGINS is a secret (it can't be read back), and the live site already lists $SITE and $STAGING_SITE among its origins: left as it is."
+        if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=kept" >> "$GITHUB_ENV"; fi
+        return 0
+      fi
+      # (the live list's hub origins: what it lists beyond the apps' own addresses, kept)
+      list=$(grep -E '^https://' <<<"$live" | grep -vE '^https://(chat|account|auth|weather|fitness|finance)\.inflite\.ai$' | paste -sd, -) || list=""
+      say "The Pages project's production HUB_ORIGINS is a secret (it can't be read back), and the live site doesn't list $STAGING_SITE among its origins: it's set again below, keeping the hub origins the live site lists." ;;
+    *) list=$(jq -r '.HUB_ORIGINS.value // ""' <<<"$vars") ;;
+  esac
+  for o in "${need[@]}"; do
+    if ! tr ',' '\n' <<<"$list" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qxF "$o"; then missing+=("$o"); fi
+  done
+  if [ "${#missing[@]}" = 0 ]; then
+    say "The Pages project's production HUB_ORIGINS already lists $SITE and $STAGING_SITE: left as it is."
+    if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=kept" >> "$GITHUB_ENV"; fi
+    return 0
+  fi
+  value=$( { tr ',' '\n' <<<"$list"; printf '%s\n' "${missing[@]}"; } | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -E '^https://' | awk '!seen[$0]++' | paste -sd, -)
+  if ! printf '%s' "$value" | $WRANGLER pages secret put HUB_ORIGINS --project-name "$PROJECT"; then
+    fail "Couldn't set the Pages project's HUB_ORIGINS ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM. Nothing was changed."
+    return 1
+  fi
+  if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=set" >> "$GITHUB_ENV"; fi
+  say "The Pages project's production secret HUB_ORIGINS is now $value. It counts only once Pages is deployed again: \"Give InFlite's hub its key\" (hub-key.yml) builds the live deployment again, as does any push to main."
+}
+
+# [env.next] in the inflite repo's wrangler.toml (FILE), read and checked before anything is deployed from it: the
+# staging Worker by name, at next.inflite.ai alone (a custom domain: in a run with no terminal, wrangler moves a hostname
+# that's another Worker's to this one without asking, so inflite.ai there would take the live site), and its vars said.
+# wrangler deploys the top-level Worker (inflite) where --env names no environment and none is configured, so a
+# wrangler.toml without [env.next] is refused here too.
+stage_config() {
+  python3 - "$1" "$STAGING" "$STAGING_HOST" <<'PY'
+import sys, tomllib
+path, want, host = sys.argv[1:4]
+def no(why):
+    print(why); sys.exit(1)
+try:
+    conf = tomllib.load(open(path, "rb"))
+except FileNotFoundError:
+    no("it has no wrangler.toml")
+except tomllib.TOMLDecodeError as e:
+    no(f"its wrangler.toml isn't TOML ({e})")
+env = (conf.get("env") or {}).get("next")
+if not isinstance(env, dict): no("its wrangler.toml has no [env.next] (wrangler would deploy the live Worker instead)")
+name = env.get("name")
+if name != want: no(f"its [env.next] names the Worker {name!r}, not {want!r}")
+routes = env.get("routes") or ([env["route"]] if env.get("route") else [])
+if not routes: no(f"its [env.next] has no route: {host} wouldn't reach the Worker")
+for r in routes:
+    pattern = r if isinstance(r, str) else (r or {}).get("pattern", "")
+    if pattern.split("/")[0] != host or (isinstance(r, dict) and r.get("custom_domain") is not True):
+        no(f"its [env.next] has the route {r!r}: only the custom domain {host} is staged")
+v = env.get("vars") or {}
+print(f"the Worker {name} at {host} (a custom domain); vars: " + (", ".join(f"{k}={v[k]}" for k in sorted(v)) or "none"))
+if v.get("TODAY_AS") != "https://inflite.ai":
+    print("WARN: TODAY_AS isn't https://inflite.ai, so Today at the staging hub won't speak to the account as inflite.ai")
+PY
+}
+
+# The inflite repo at REF (a branch, tag or commit; by default claude/inflite, the live branch: under addendum A3 the
+# inflite repo is live before its staging hub), fetched into the runner's temporary folder. Only a build with the hub
+# (today/src/hub.js) and a wrangler.toml whose [env.next] stage_config passes; Today's build (today/public/app.js
+# BUILD) and the commit are left for the later steps (GITHUB_ENV).
+stage_clone() {
+  local ref=${1:-claude/inflite} dir="${RUNNER_TEMP:?}/inflite" sha build conf
+  if ! [[ $ref =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] || [[ $ref == *..* ]] || [[ $ref == *.lock ]] || [[ $ref == */ ]]; then
+    fail "\"$ref\" isn't a branch, tag or commit id of the inflite repo. Nothing was changed."; return 1
+  fi
+  rm -rf "$dir"
+  git -c init.defaultBranch=stage init -q "$dir"
+  if ! git -C "$dir" fetch -q --depth 1 "$IFL_GIT" "$ref"; then
+    fail "Couldn't fetch \"$ref\" from the inflite repo (a branch, a tag, or a whole commit id there?). Nothing was changed."; return 1
+  fi
+  git -C "$dir" checkout -q --detach FETCH_HEAD
+  sha=$(git -C "$dir" rev-parse HEAD)
+  if [ ! -f "$dir/today/src/hub.js" ]; then fail "The inflite repo at $ref (${sha:0:7}) is from before Today First (no today/src/hub.js): it has no hub to stage. Nothing was changed."; return 1; fi
+  build=$(sed -n 's/^const BUILD = "\([0-9][0-9.]*\)".*/\1/p' "$dir/today/public/app.js" 2>/dev/null | head -1)
+  if [ -z "$build" ]; then fail "The inflite repo at $ref (${sha:0:7}) has no Today build (const BUILD in today/public/app.js). Nothing was changed."; return 1; fi
+  if ! conf=$(stage_config "$dir/wrangler.toml"); then fail "The inflite repo at $ref (${sha:0:7}) can't be staged: $conf. Nothing was changed."; return 1; fi
+  if [ -n "${GITHUB_ENV:-}" ]; then printf 'HUB_STAGE_REF=%s\nHUB_STAGE_SHA=%s\nHUB_STAGE_BUILD=%s\n' "$ref" "$sha" "$build" >> "$GITHUB_ENV"; fi
+  say "The inflite repo at $ref: commit ${sha:0:7}, Today $build; its [env.next] is ${conf%%$'\n'*}."
+  if [[ $conf == *$'\n'WARN:* ]]; then echo "::warning::${conf#*$'\n'WARN: }"; say "Note: ${conf#*$'\n'WARN: }."; fi
+}
+
+# That build deployed to the staging Worker, from its folder (the working directory): wrangler deploy --env next, which
+# [env.next] (checked again here) makes the Worker inflite-next at next.inflite.ai, its custom domain. A dry run first,
+# so a build that doesn't bundle changes nothing. The Worker's secrets (its HUB_KEY, once hub-key.yml has given it one)
+# stay as they are across a deploy.
+stage_deploy() {
+  local conf log
+  need_account || return 1
+  if ! conf=$(stage_config wrangler.toml); then fail "This folder's wrangler.toml can't be staged: $conf. Nothing was changed."; return 1; fi
+  log=$(mktemp)
+  if ! $WRANGLER deploy --env next --dry-run --outdir "$(mktemp -d)" > "$log" 2>&1; then
+    cat "$log"; rm -f "$log"
+    fail "The inflite repo's Worker doesn't build (wrangler deploy --env next --dry-run): wrangler's words above say why. Nothing was changed."
+    return 1
+  fi
+  if ! $WRANGLER deploy --env next 2>&1 | tee "$log"; then
+    if grep -q "Custom domains:" "$log"; then
+      fail "The Worker $STAGING is uploaded, but its custom domain $STAGING_HOST wasn't attached (wrangler's words above), so nothing answers there yet. A custom domain is its zone's: the token likely lacks $DOMAIN_PERM, beside $WORKER_PERM. Add them (My Profile → API Tokens → the token → Edit) and run this again."
+    elif grep -qiE "Authentication error|code: 10000|code: 9109" "$log"; then
+      fail "Couldn't deploy the Worker $STAGING: Cloudflare refused the token (wrangler's words above). It likely lacks $WORKER_PERM (and, for the custom domain $STAGING_HOST, $DOMAIN_PERM)."
+    else
+      fail "Couldn't deploy the Worker $STAGING: wrangler's words above say why. If they don't, check the token has $WORKER_PERM and $DOMAIN_PERM."
+    fi
+    rm -f "$log"; return 1
+  fi
+  rm -f "$log"
+  say "Deployed to the staging Worker $STAGING at $STAGING_SITE: the inflite repo at ${HUB_STAGE_REF:-?} (commit ${HUB_STAGE_SHA:0:7}, Today ${HUB_STAGE_BUILD:-?}). The Worker $WORKER isn't touched."
+}
+
+# next.inflite.ai/version asked until it says the build just deployed (a new custom domain's certificate can take some
+# minutes, and each answer before it may be an error page or nothing), then its /api/hub: {"ready": false} until
+# hub-key.yml gives the staging hub its key; an answer that isn't the hub's is asked again, a while.
+stage_check() {
+  local want=${HUB_STAGE_BUILD:-} limit=${1:-600} start=$SECONDS waited=0 el body code build=""
+  if [ -z "$want" ]; then fail "No Today build to look for (the fetch step leaves it): nothing to check."; return 1; fi
+  while :; do
+    body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" -w '\n%{http_code}' "$STAGING_SITE/version" 2>/dev/null) || body=$'\n000'
+    code=${body##*$'\n'}; body=${body%$'\n'*}
+    build=$(jq -r 'if type == "object" then (.build // "" | tostring) else "" end' <<<"$body" 2>/dev/null) || build=""
+    el=$((SECONDS - start)); if (( waited > el )); then el=$waited; fi
+    if [ "$code" = 200 ] && [ "$build" = "$want" ]; then say "$STAGING_SITE/version says build $build (after $el s): Today $want is live at the staging hub."; break; fi
+    if (( el >= limit )); then
+      fail "$STAGING_SITE/version didn't say build $want in $limit s (last answer: HTTP $code, build ${build:-none}). A new custom domain can take a while for its certificate: check Workers & Pages → $STAGING → Settings → Domains & Routes, then curl -s $STAGING_SITE/version."
+      return 1
+    fi
+    echo "  $el s: HTTP $code, build ${build:-none}; asking again in $EVERY s"
+    sleep "$EVERY"; waited=$((waited + EVERY))
+  done
+  start=$SECONDS; waited=0
+  while :; do
+    hub_ask "$STAGING_SITE"
+    el=$((SECONDS - start)); if (( waited > el )); then el=$waited; fi
+    case "$HUB_READY" in
+      false|true) break ;;
+    esac
+    if (( el >= 120 )); then fail "$STAGING_SITE/api/hub didn't answer as the hub (last answer: HTTP $HUB_CODE, $(printf '%.160s' "$HUB_BODY" | tr -d '\r\n'))."; return 1; fi
+    sleep "$EVERY"; waited=$((waited + EVERY))
+  done
+  if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_STAGE_READY=$HUB_READY" >> "$GITHUB_ENV"; fi
+  if [ "$HUB_READY" = false ]; then say "$STAGING_SITE/api/hub says ready: false, as it should until the staging hub has its key."
+  else say "$STAGING_SITE/api/hub says ready: true: the staging Worker already has a key the Pages project takes (from an earlier \"Give InFlite's hub its key\")."; fi
+}
+
+# hub-stage.yml's last step: what's live now. Reads each step's outcome (OUT_*) and what the steps left (HUB_ORIGINS_DID,
+# HUB_STAGE_*); fails the run if anything did.
+stage_verdict() {
+  local bad=0
+  heading "What's live now"
+  if [ "${OUT_ACCOUNT:-}" != success ]; then
+    say "Nothing was changed (the step that failed says why). The Worker $WORKER and the Pages project's HUB_KEY are never touched by this workflow."
+    return 1
+  fi
+  case "${OUT_ORIGINS:-}" in
+    success)
+      if [ "${HUB_ORIGINS_DID:-}" = set ]; then say "The Pages project's HUB_ORIGINS lists $SITE and $STAGING_SITE now; it counts once Pages is deployed again, which \"Give InFlite's hub its key\" does."
+      else say "The Pages project's HUB_ORIGINS already listed $SITE and $STAGING_SITE: unchanged."; fi ;;
+    *) bad=1; say "The Pages project's HUB_ORIGINS wasn't checked or set (the step says why). Until it lists $STAGING_SITE, Chat at the staging hub is refused. By hand: printf '%s' '$SITE,$STAGING_SITE' | npx wrangler pages secret put HUB_ORIGINS --project-name $PROJECT" ;;
+  esac
+  case "${OUT_CLONE:-}" in
+    success) ;;
+    *) bad=1; say "Nothing was deployed: the inflite repo at ${HUB_STAGE_REF:-${IFL_REF:-?}} couldn't be fetched, or can't be staged (the fetch step says why). $STAGING_SITE is as it was." ;;
+  esac
+  case "${OUT_DEPLOY:-}" in
+    success) say "The staging Worker $STAGING runs the inflite repo at ${HUB_STAGE_REF:-?} (commit ${HUB_STAGE_SHA:0:7}, Today ${HUB_STAGE_BUILD:-?}) at $STAGING_SITE." ;;
+    failure) bad=1; say "The staging Worker $STAGING wasn't deployed, or its custom domain $STAGING_HOST wasn't attached (the deploy step says which, and what the token lacks)." ;;
+  esac
+  case "${OUT_CHECK:-}" in
+    success)
+      if [ "${HUB_STAGE_READY:-}" = true ]; then say "$STAGING_SITE answers with Today ${HUB_STAGE_BUILD:-?}, and its hub is ready already: the staging hub had its key from before."
+      else say "$STAGING_SITE answers with Today ${HUB_STAGE_BUILD:-?}; its hub isn't ready (no key yet), so Today there links to each app's own address."; fi ;;
+    failure) bad=1; say "$STAGING_SITE didn't answer as it should (the check step says what came back)." ;;
+  esac
+  say "The Worker $WORKER (inflite.ai) and the Pages project's HUB_KEY weren't touched: this workflow never changes them."
+  if [ "$bad" = 0 ] && [ "${HUB_STAGE_READY:-}" != true ]; then say "Next: \"Give InFlite's hub its key\" (hub-key.yml) with hub next.inflite.ai, which gives the staging hub its key and deploys Pages again."; fi
   return $bad
 }
