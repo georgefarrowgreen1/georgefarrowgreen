@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.69";
-export const NEWS = "Progress inside InFlite: Your history, All-time bests and Fitness at its peak look as they do in Fitness";
+export const BUILD = "1.70";
+export const NEWS = "Activities inside InFlite opens calmly: no more redrawing over and over when you come back to it";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -173,8 +173,12 @@ export async function mount(root, fw) {
       acts: [{ icon: "upload", label: "Add Files", run: choose }, { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
     });
   };
-  const all = () => { header(); draw(); };
-  const offs = core.EVENTS.map((e) => core.on(e, all));
+  // (one redraw a frame however many events come; and Activities drawn again only for what it shows, never for the plan,
+  // offers, times or how you feel)
+  let queued = 0;
+  const all = () => { if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
+  const ACTS_EVENTS = new Set(["me", "acts", "settings", "loading", "error"]);
+  const offs = core.EVENTS.map((e) => core.on(e, () => { if (shown === "activities" && !ACTS_EVENTS.has(e)) header(); else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
   const unprovide = fw.search?.provide?.({

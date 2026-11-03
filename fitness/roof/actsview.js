@@ -157,6 +157,7 @@ async function routes() {
   if (routes.busy || !S.me || !X) return;
   routes.busy = true;
   const none = new Set(store.get("noroute", [])), me = S.me.id;
+  let got = 0;
   try {
     await needF();
     for (const a of S.own.filter((x) => (!sumOf(x)?.route && !none.has(x.id)) || !(sumOf(x)?.xv >= XV)).slice(0, 40)) {
@@ -166,9 +167,12 @@ async function routes() {
         if (!r && !sumOf(a)?.route) none.add(a.id);
         await A.addFigures(a.id, figs);
         a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
-        if (working()) redraw("acts");
+        got++;
+        // (the list drawn again every 10 filled in, and once at the end: never once per activity)
+        if (got % 10 === 0 && working()) redraw("acts");
       } catch (e) { if (e.status === 401) { lost(); break; } if (e.offline) break; none.add(a.id); }
     }
+    if (got % 10 && working()) redraw("acts");
   } catch (_) {
   } finally {
     routes.busy = false;
@@ -476,9 +480,10 @@ export function view(el, ctx) {
       el.replaceChildren(...activitiesView().filter(Boolean));
       el.scrollTop = y;
       // (the figures of the ones kept before rows had them: a few at a time, a little after Activities first shows)
-      if (first) { first = false; setTimeout(() => { if (working()) routes(); }, 1500); } else if (working()) routes();
+      // (always a moment after it shows, and once per show: coming back to Activities never sets it filling straight away)
+      if (first) { first = false; clearTimeout(view.later); view.later = setTimeout(() => { if (working()) routes(); }, 1500); }
     },
-    hide() { shownHere = false; moreSeen?.disconnect(); moreSeen = null; },
+    hide() { shownHere = false; first = true; clearTimeout(view.later); moreSeen?.disconnect(); moreSeen = null; },
     destroy() { shownHere = false; moreSeen?.disconnect(); moreSeen = null; dropMaps(); el.replaceChildren(); },
   };
 }
