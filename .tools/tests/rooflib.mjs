@@ -416,16 +416,23 @@ export const dayKey = (n, now = Date.now()) => new Date(now + n * 864e5).toISOSt
 export async function rootWorker(ctx, ms = 20000) {
   return until(() => ctx.serviceWorkers().find((w) => w.url() === `${HUB}/sw.js`) || null, ms);
 }
-export async function tapNotification(ctx, data) {
+// o.window: "record" — where no window is open, the worker's clients.openWindow(url) is noted and not called: a tap
+// dispatched by a test carries no permission to open a window (Chromium refuses it), so the test opens that url itself
+// → 'done', 'open <url>' (recorded), or what went wrong
+export async function tapNotification(ctx, data, o = {}) {
   const sw = await rootWorker(ctx);
   if (!sw) return 'no worker';
-  return sw.evaluate(async (data) => {
+  return sw.evaluate(async ([data, record]) => {
+    const real = self.clients.openWindow;
+    let asked = null;
+    if (record) self.clients.openWindow = async (u) => { asked = String(u); return null; };
     const ev = new Event('notificationclick');
     Object.defineProperty(ev, 'notification', { value: { data, close() {} } });
     let job = null; ev.waitUntil = (p) => { job = p; };
-    self.dispatchEvent(ev);
-    try { await job; return 'done'; } catch (e) { return `refused: ${e?.message || e}`; }
-  }, data).catch((e) => `error ${e.message}`);
+    try { self.dispatchEvent(ev); await job; return asked ? `open ${asked}` : 'done'; }
+    catch (e) { return `refused: ${e?.message || e}`; }
+    finally { if (record) self.clients.openWindow = real; }
+  }, [data, o.window === 'record']).catch((e) => `error ${e.message}`);
 }
 
 // ---- PNG pixels (8-bit RGBA or RGB, non-interlaced: what Chromium's screenshots are), for comparing two renderings ----
