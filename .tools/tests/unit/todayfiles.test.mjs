@@ -1,7 +1,8 @@
 // Today's files (the inflite repo's today/public, where it's checked out beside this one): its copies of this
 // repository's are the same, byte for byte (Weather's icons, the apps' icons, InFlite's mark); its icons are the sizes
-// its manifest says; its page is a public one (title, description, og tags, robots, sitemap); its headers never
-// preload HSTS and allow nothing inline; and nothing it draws has an inline style, which those headers would refuse.
+// its manifest says; its page is a public one (title, description, og tags, robots, sitemap); and its headers never
+// preload HSTS and allow nothing inline. (What its page is made of, and that nothing it draws has an inline style:
+// roofpage.test.mjs.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -66,40 +67,4 @@ test('its headers: HSTS without preload, a CSP with nothing inline and no other 
   // (frame-src 'self': Chat's engine, its own page in a frame over Today's)
   for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-src 'self'", "frame-ancestors 'none'", "object-src 'none'"]) assert.ok(csp.includes(d), d);
   for (const f of ['/sw.js', '/', '/app.js', '/cards.js', '/day.js', '/day.css', '/apps.js', '/you.js', '/wxicons.js', '/app.css', '/theme.js']) assert.match(h, new RegExp(`^${f.replace(/[.*/]/g, '\\$&')}\\n  Cache-Control: no-cache$`, 'm'), f);
-});
-
-test('nothing Today draws has an inline style or an inline script, which its CSP refuses', { skip: tfSkip }, () => {
-  for (const f of ['index.html', '404.html']) {
-    const html = String(pub(f));
-    assert.ok(!/\sstyle\s*=/.test(html), `${f} has a style attribute`);
-    assert.ok(!/<style\b/.test(html), `${f} has a <style>`);
-    for (const [tag] of html.matchAll(/<script\b[^>]*>/g)) assert.match(tag, /\ssrc=/, `${f}: an inline script`);
-    assert.ok(!/\son[a-z]+\s*=/.test(html), `${f} has an inline handler`);
-  }
-  for (const f of ['app.js', 'cards.js', 'day.js', 'apps.js', 'you.js']) {
-    // (InFlite's shared menu sets its place with the CSSOM, which the CSP allows: only style="" in markup is refused)
-    const js = String(pub(f));
-    assert.ok(!/style=\\?["']/.test(js), `${f} writes a style attribute into markup`);
-    assert.ok(!/setAttribute\(\s*["']style["']/.test(js), `${f} sets a style attribute`);
-    assert.ok(!/\son[a-z]+=\\?["']/.test(js), `${f} writes an inline handler into markup`);
-  }
-});
-
-test('its page is InFlite’s one page: the hub’s marker, the views and the tab bar, the day’s stylesheet, and the way in', { skip: tfSkip }, () => {
-  const html = String(pub('index.html'));
-  assert.match(html, /<head>\s*<meta charset="utf-8">\s*<meta name="ifl-hub" content="\/">/, 'the marker that says it’s the hub, first after its charset');
-  assert.match(html, /<link rel="stylesheet" href="\/day\.css">/);
-  assert.match(html, /<meta name="apple-mobile-web-app-title" content="InFlite">/);
-  // (#in: the header, #views (#today, #apps, #you) and the tab bar; #today: its top card, Waiting, Coming Up, the rest)
-  const inner = html.slice(html.indexOf('<div class="today-in"'), html.indexOf('<!-- Morning'));
-  const ids = [...inner.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(ids, ['in', 'hd', 'views', 'today', 'kept', 'top', 'waiting', 'coming', 'rest', 'apps', 'you', 'tabs']);
-  assert.match(inner, /<nav class="ifl-tabs" id="tabs" aria-label="InFlite"><\/nav>/);
-  assert.match(inner, /<main id="apps" class="view" aria-label="Apps" hidden>/);
-  assert.match(inner, /<main id="you" class="view" aria-label="You" hidden>/);
-  // (Today never has a box to type in)
-  const today = inner.slice(inner.indexOf('id="today"'), inner.indexOf('id="apps"'));
-  assert.ok(!/<(input|textarea|select)\b/.test(today), 'nothing to type in on Today');
-  // (the way in: Sign in, Chats' trip where the hub serves it, and quietly, Today's own)
-  assert.match(html, /id="signinToday"[^>]*>Sign In Without Chats</);
 });
