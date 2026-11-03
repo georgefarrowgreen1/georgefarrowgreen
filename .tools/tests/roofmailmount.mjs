@@ -33,9 +33,8 @@ process.on('unhandledRejection', (e) => { console.log(`FAIL  ${String(e?.stack |
 if (!existsSync(`${IFL}email/public/roof/mail.js`)) { ok(false, 'the inflite repo, with Mail’s module (email/public/roof/), is beside this one'); console.log(`FAILS ${fails}`); process.exit(0); }
 const { serveKit, KIT } = await import('./roofkit/serve.mjs');
 const { routeMail, MAIL_KIT } = await import('./mocks/mailmock.mjs');
-// (spec §10.2's Mail hooks, from roofhooks.mjs once the joint contracts have them)
-const M_MAIL = H.M_MAIL || 'main#m-mail';
-const ROW = `${M_MAIL} .ml-row[data-thread]`;
+const M_MAIL = H.M_MAIL;
+const ROW = H.MAIL_THREAD;
 const MODULE = '/mail/roof/mail.js';
 const qs = (x) => new URLSearchParams(x.query || '');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -112,12 +111,12 @@ async function swipe(page, sel, x0, dx) {
 
   // the Views sheet: Unread
   await page.click(H.HD_PICK);
-  await page.waitForSelector(H.sheet('mail-views') + '[open]', { timeout: 5000 }).catch(() => {});
-  const viewRows = await page.$$eval(`${H.sheet('mail-views')} .ifl-row`, (rs) => rs.map((r) => r.querySelector('b')?.textContent));
+  await page.waitForSelector(H.mailSheet('views') + '[open]', { timeout: 5000 }).catch(() => {});
+  const viewRows = await page.$$eval(`${H.mailSheet('views')} .ifl-row`, (rs) => rs.map((r) => r.querySelector('b')?.textContent));
   ok(viewRows.includes('Unread') && viewRows.includes('Drafts') && viewRows.includes('Trash'), 'Views: the filters, Drafts, Trash', viewRows.join(', '));
   ok(viewRows.at(-1) === 'Mail Settings', 'Mail Settings is the last row', viewRows.at(-1));
   ok(viewRows.some((r) => /^Only Mail to /.test(r || '')), 'an address lens per address');
-  await page.click(`${H.sheet('mail-views')} [data-act="filter-unread"]`);
+  await page.click(`${H.mailSheet('views')} [data-act="filter-unread"]`);
   await page.waitForFunction((T) => document.querySelector(T)?.getAttribute('aria-label') === 'Unread', H.HD_TITLE, { timeout: 5000 }).catch(() => {});
   ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'Unread', 'title: Unread');
   ok((await rowsText(page)).every((r) => /^Unread/.test(r)), 'only unread rows');
@@ -125,11 +124,11 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'a filter is never an address');
   // Trash, then back
   await page.click(H.HD_PICK);
-  await page.click(`${H.sheet('mail-views')} [data-act="trash"]`);
+  await page.click(`${H.mailSheet('views')} [data-act="trash"]`);
   await page.waitForFunction((T) => document.querySelector(T)?.getAttribute('aria-label') === 'Trash', H.HD_TITLE, { timeout: 5000 }).catch(() => {});
   ok(mail.log.some((x) => x.path === '/api/threads' && qs(x).get('view') === 'trash'), 'Trash: view=trash');
   await page.click(H.HD_PICK);
-  await page.click(`${H.sheet('mail-views')} [data-act="back"]`);
+  await page.click(`${H.mailSheet('views')} [data-act="back"]`);
   await page.waitForFunction((T) => document.querySelector(T)?.getAttribute('aria-label') === 'All Mail', H.HD_TITLE, { timeout: 5000 }).catch(() => {});
   await page.waitForSelector(ROW, { timeout: 5000 }).catch(() => {});
   ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'back to People’s All Mail');
@@ -157,11 +156,11 @@ async function swipe(page, sel, x0, dx) {
 
   // swipe left: the Later sheet; a choice snoozes it
   await swipe(page, `${ROW}[data-thread="${first}"]`, 300, -260);
-  await page.waitForSelector(H.sheet('mail-later') + '[open]', { timeout: 5000 }).catch(() => {});
-  ok(await page.$(H.sheet('mail-later') + '[open]'), 'a swipe left opens Later');
-  const choices = await page.$$eval(`${H.sheet('mail-later')} .ifl-row b`, (bs) => bs.map((x) => x.textContent));
+  await page.waitForSelector(H.mailSheet('later') + '[open]', { timeout: 5000 }).catch(() => {});
+  ok(await page.$(H.mailSheet('later') + '[open]'), 'a swipe left opens Later');
+  const choices = await page.$$eval(`${H.mailSheet('later')} .ifl-row b`, (bs) => bs.map((x) => x.textContent));
   ok(choices.includes('Tomorrow Morning') && choices.includes('Pick a Time'), 'Later’s choices', choices.join(', '));
-  await page.click(`${H.sheet('mail-later')} .ifl-row:has-text("Tomorrow Morning")`);
+  await page.click(`${H.mailSheet('later')} .ifl-row:has-text("Tomorrow Morning")`);
   await wait(400);
   const snooze = batches(mail).find((x) => x.action === 'snooze');
   ok(snooze && snooze.ids[0] === first && snooze.until > Date.now(), 'snoozed until tomorrow morning', JSON.stringify(snooze));
@@ -170,12 +169,12 @@ async function swipe(page, sel, x0, dx) {
   // the row menu (press and hold / the context menu)
   const second = await page.$eval(ROW, (r) => r.dataset.thread);
   await page.dispatchEvent(`${ROW}[data-thread="${second}"]`, 'contextmenu');
-  await page.waitForSelector(H.sheet('mail-rowmenu') + '[open]', { timeout: 5000 }).catch(() => {});
-  const menu = await page.$$eval(`${H.sheet('mail-rowmenu')} .ifl-row b`, (bs) => bs.map((x) => x.textContent));
+  await page.waitForSelector(H.mailSheet('rowmenu') + '[open]', { timeout: 5000 }).catch(() => {});
+  const menu = await page.$$eval(`${H.mailSheet('rowmenu')} .ifl-row b`, (bs) => bs.map((x) => x.textContent));
   ok(['Reply', 'Forward', 'Done', 'Later…', 'Move to Trash'].every((w) => menu.includes(w)), 'the row menu', menu.join(', '));
   // (a failed action: the row put back where it was)
   mail.set({ fail: { 'POST /api/threads/batch': 500 } });
-  await page.click(`${H.sheet('mail-rowmenu')} [data-act="trash"]`);
+  await page.click(`${H.mailSheet('rowmenu')} [data-act="trash"]`);
   await page.waitForFunction((s) => !!document.querySelector(s), `${ROW}[data-thread="${second}"]`, { timeout: 5000 }).catch(() => {});
   await wait(300);
   ok(await page.$(`${ROW}[data-thread="${second}"]`), 'Mail refusing it: the row is put back');
