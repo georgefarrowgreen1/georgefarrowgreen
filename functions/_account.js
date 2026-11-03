@@ -23,7 +23,7 @@ import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, waitTex
 import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
-import { siteName } from "./_sites.js";
+import { siteName, cfOf } from "./_sites.js";
 import { logEvent } from "./_activity.js";
 
 // The cookie: for the whole of the site the address is on (inflite.ai, for every app; georgefarrowgreen.com, for the
@@ -200,7 +200,8 @@ export async function accountMail(env, u, { icon = "shield", title, line, after,
 export async function tellSignIn(env, u, request, how, origin, inflight = true, forApp = null) {
   await logEvent(env, u.id, "signin", request, how);
   const device = deviceOf(request) || "a new phone";
-  let where = regionOf(request.cf?.country);
+  // (where: the country the sign-in came from, as Cloudflare has it, or as InFlite's hub passed it on: functions/_sites.js cfOf)
+  let where = regionOf(cfOf(request).country);
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
   const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your Chat account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
