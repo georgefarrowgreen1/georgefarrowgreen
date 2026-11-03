@@ -68,6 +68,20 @@ test('every builder puts data in as text: nothing it is given becomes markup', {
   assert.match(made.avatar.className, /^ifl-avatar av-c[1-8]$/, 'an avatar’s colour is a class (.av-c1…8), hashed');
   assert.equal(ui.avatar('Pat').className, ui.avatar('Pat').className, 'the same name, the same colour');
   assert.equal(made.mini.querySelector('b').textContent, '+1.2%', 'a Markets mini is a percentage, never an amount');
+  // the Markets day's shape (spec §6.1): drawn from 0…1 values as an aria-hidden area, its points a custom property, no figure
+  const sp = ui.mini({ kind: 'pct-spark', pct: -0.4, spark: [0, 1, 0.5, 'x'] });
+  const area = sp.querySelector('.spark');
+  assert.ok(area && area.getAttribute('aria-hidden') === 'true', 'the spark is drawn, hidden from assistive tech');
+  assert.equal(area.style.getPropertyValue('--pts'), '0 100%,0% 100%,33.333333333333336% 0%,66.66666666666667% 50%,100% 100%,100% 100%', 'its shape through --pts (an odd value drawn at the bottom)');
+  assert.equal(sp.textContent, '-0.4%', 'no figure but the percentage');
+  assert.ok(!sp.outerHTML.includes('style='), 'no style attribute');
+  assert.equal(ui.mini({ kind: 'pct-spark', pct: 1, spark: [0.5] }).querySelector('.spark'), null, 'one point is no shape');
+  const { STATIC } = await import(new URL('connectors.js', ROOF));
+  const mk = STATIC.markets.mini({ cards: { markets: { traded: true, pct: 1.25, spark: { vals: [1520.4, 1530.4, 1525.4, 'x'], base: 1500 } } } });
+  assert.deepEqual(mk, { kind: 'pct-spark', pct: 1.25, spark: [0, 1, 0.5] }, 'the Markets mini: the percentage, and the card’s intraday values made 0…1 (only the shape leaves the connector)');
+  assert.ok(!/1520|1530|1525|1500/.test(JSON.stringify(mk)), 'no amount in the mini');
+  assert.equal(STATIC.markets.mini({ cards: { markets: { traded: true, pct: 0.2 } } }).spark, null, 'no intraday values, no spark');
+  assert.equal(STATIC.markets.mini({ cards: { markets: { traded: false, pct: 0.2 } } }), null, 'not traded today: no mini');
   assert.equal(ui.mini(null), null);
 });
 
@@ -103,7 +117,7 @@ test('the framework’s ARIA, as written: switcher, sheets, Back, tab bar, toast
   assert.ok(sh.includes('showModal()'), 'sheets are modal dialogs (focus trap, Escape, inert page)');
   assert.ok(sh.includes('"aria-label": "Close"') && sh.includes('"aria-label": "Back"'), 'close and back are named');
   assert.ok(t.includes('"aria-current", c === "apps" && inApp() ? "true" : "page"') && t.includes('"aria-hidden", "true"'), 'tabs: aria-current page / true, the pill aria-hidden');
-  assert.ok(to.includes('.ifm-say') && to.includes('"aria-live", "polite"'), 'the toast speaks through the shared block’s one live region');
+  assert.ok(to.includes('d.querySelector(".ifm-say")') && !/createElement\("p"\)|"aria-live"/.test(strip(to)), 'the toast speaks through the shared block’s one live region, and never makes a second');
   assert.ok(se.includes('role: "combobox"') && se.includes('"aria-controls"') && se.includes('"listbox"') && se.includes('"option"'), 'search: a combobox over a listbox of options');
   assert.ok(fr.includes('"#hd h1.ifh-name"') && fr.includes('backTo'), 'focus: the h1 on a new screen, the opener on a pop (§3.15)');
 });

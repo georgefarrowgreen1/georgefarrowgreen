@@ -10,8 +10,11 @@
 // zoom with the card's clone; fw.fill; sheets (focus kept in, Escape, a drag, push and pop, the accent kept to the
 // sheet, browser back with one open); the address tidied after show; a toast with an action (held while focused);
 // search (focused in the tap, providers, a slow and a throwing one, Enter, no request, nothing kept); a module that
-// fails (Try Again, Open on Its Own, then Reload), a contract mismatch; fw.lazy while stale; lost() with a session still
-// signed in; the connector sheet; axe; 320, 390, 768 and 1280 wide, light and dark; no CSP violation, no page error.
+// fails (Try Again, Open on Its Own, then Reload), a contract mismatch, a mount that throws (IFL.built only once mounted);
+// fw.lazy while stale; lost() with a session still signed in; F.nav.go refusing javascript: and data:; the connector
+// sheet; every member of F (§3.2) and fw (§5.2) with its type; "route" fired after F.route changes; a wiped state healed
+// by going on; one live region; a section tapped while the module loads; sign-out from Radar; CSS already in;
+// F.setRoof(false) inside the app; axe; 320, 390, 768 and 1280 wide, light and dark; no CSP violation, no page error.
 //   node .tools/tests/roofkit.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
@@ -71,6 +74,7 @@ try {
     same(await text(p, H.HD_CRUMB), 'Tuesday 3 November', 'the crumb is the date over the title');
     same(await text(p, H.HD_LINE), 'London · Rain from 15:00', 'the line under the title');
     ok(await p.isVisible(H.HD_ME) && !(await p.isVisible(H.HD_BACK)), 'your photo leads on a tab screen, no Back');
+    same(await p.$eval(H.HD_ME, (b) => [b.getAttribute('aria-label'), b.getAttribute('aria-haspopup'), b.classList.contains('out')]), ['You and your apps', 'dialog', false], 'your photo’s button: “You and your apps”, opening a dialog (InFlite’s menu), not the signed-out button');
     same(await p.$$eval('#hd .ifh-acts [data-act]', (bs) => bs.map((x) => `${x.dataset.act}:${x.getAttribute('aria-label')}`)), ['search:Search', 'edit:Edit Today: hide and reorder cards'], 'the capsule: Search first, then the screen’s act');
     same(await text(p, H.HD_EDIT), 'Edit', 'an act with no glyph is its word');
     await p.click(H.HD_EDIT); await p.click(H.HD_ME);
@@ -88,8 +92,10 @@ try {
     await p.evaluate(() => scrollTo(0, 500)); await settle(p, 150);
     await p.click(H.tab('apps')); await settle(p, 900);
     ok((await at(p)).y < 5 && (await at(p)).d === 1, 'Apps tapped again on Apps: to the top, no new entry');
+    await p.evaluate(() => { window.vts = []; window.seen = []; kit.F.on('route', (r) => window.seen.push([r.tab, kit.F.route.tab, document.documentElement.dataset.route, !!document.documentElement.dataset.vt])); });
     await p.click(H.tab('you')); await settle(p);
     same((await at(p)).route, '/#you', 'You: a push');
+    same(await p.evaluate(() => window.seen), [['you', 'you', '/#you', true]], 'during its View Transition, “route” fires with F.route and html[data-route] already the new screen’s');
     await p.evaluate(() => kit.F.nav.go('/#you=apps')); await settle(p);
     same(await p.evaluate(() => kit.state.shows.at(-1)), 'you=apps', 'a tab route with a target (/#you=apps) reaches the screen’s onShow');
     // the photo's place: the shared skeleton
@@ -118,6 +124,34 @@ try {
     same(await p.$$eval(H.HD_SEC, (t) => t.map((x) => `${x.dataset.sec}:${x.getAttribute('aria-selected')}`)), ['now:true', 'days:false', 'radar:false', 'warnings:false'], 'the switcher: the registry’s sections, Now chosen');
     same(await p.$eval(H.hdSec('warnings'), (t, b) => [t.querySelector(b)?.textContent, t.getAttribute('aria-label')], H.SEC_BADGE), ['2', 'Warnings, 2 in force'], 'a count on Warnings, said as “Warnings, 2 in force”');
     same(await p.$eval(H.tab('apps'), (a) => a.getAttribute('aria-current')), 'true', 'in an app, Apps is current with aria-current="true"');
+    // every member of §3.2’s F and §5.2’s fw, with its type, and the ones no other check here uses, exercised
+    same(await p.evaluate(async () => {
+      const F = kit.F, fw = kitMod.fw, ty = (o, ks) => ks.map((k) => `${k}:${typeof o[k]}`).join(' ');
+      const got = [], offF = F.on('theme', (t) => got.push(`F:${t}`)), offW = fw.on('theme', (t) => got.push(`fw:${t}`)), th0 = document.documentElement.dataset.theme;
+      document.documentElement.dataset.theme = 'dark';
+      await new Promise((r) => setTimeout(r, 50));
+      const theme = fw.theme();
+      offF(); offW();
+      if (th0) document.documentElement.dataset.theme = th0; else delete document.documentElement.dataset.theme;
+      const fill = [(F.fill(true), document.documentElement.classList.contains('ifl-fill')), (F.fill(false), document.documentElement.classList.contains('ifl-fill'))];
+      const busy = [F.busy(), (kitMod.busy = true, F.busy()), (kitMod.busy = false, F.busy())];
+      const sb = fw.sendButton({ words: 'London: light rain', what: 'the forecast' });
+      return [
+        ty(F, ['screen', 'nav', 'route', 'header', 'tabs', 'sheet', 'toast', 'search', 'send', 'ui', 'session', 'setRoof', 'restamp', 'stale', 'fill', 'on', 'busy', 'forModule', 'destroy', 'refresh', 'hubAgain']),
+        ty(F.nav, ['go', 'back', 'section', 'prev']), ty(F.session, ['view', 'hub', 'roof', 'links', 'lost']),
+        ty(fw, ['contract', 'app', 'screenEl', 'ui', 'header', 'nav', 'sheet', 'toast', 'send', 'sendButton', 'search', 'session', 'visible', 'on', 'theme', 'motion', 'zoomTarget', 'fill', 'lazy', 'stale']),
+        ty(fw.nav, ['go', 'back', 'section', 'href']), [typeof fw.header.set, typeof fw.sheet.open, typeof fw.search.provide, typeof fw.session.lost].join(' '),
+        fw.contract, fw.app, fw.screenEl.id, fw.session.user, fw.nav.href('radar'), fw.nav.href('day', '2026-11-03'),
+        fw.visible(), fw.motion(), fw.stale(), F.stale, got, theme, fill, busy, [sb.dataset.act, sb.getAttribute('aria-label')], F.forModule('weather') === fw,
+      ];
+    }), [
+      'screen:function nav:object route:object header:object tabs:object sheet:object toast:function search:object send:object ui:object session:object setRoof:function restamp:function stale:boolean fill:function on:function busy:function forModule:function destroy:function refresh:function hubAgain:function',
+      'go:function back:function section:function prev:function', 'view:object hub:boolean roof:boolean links:object lost:function',
+      'contract:number app:string screenEl:object ui:object header:object nav:object sheet:object toast:function send:function sendButton:function search:object session:object visible:function on:function theme:function motion:function zoomTarget:function fill:function lazy:function stale:function',
+      'go:function back:function section:function href:function', 'function function function function',
+      1, 'weather', 'm-weather', { id: 'u-kit-0001', name: 'Sam Taylor' }, '/weather/#radar', '/weather/#day=2026-11-03',
+      true, 'full', false, false, ['F:dark', 'fw:dark'], 'dark', [true, false], [false, true, false], ['send', 'Send the forecast to a friend'], true,
+    ], 'F has every member of §3.2 and fw every member of §5.2, each of its type; F.on/fw.on("theme"), fw.theme, F.fill, F.busy and fw.sendButton work');
     const lens = () => p.evaluate(() => { const l = document.querySelector('.ifl-lens'), s = document.querySelector('#hd [role=tab][aria-selected=true]'); return [l.style.getPropertyValue('--lx'), `${s.offsetLeft}px`]; });
     const [lx, ox] = await lens(); same(lx, ox, 'the lens sits under the chosen section');
     // compaction
@@ -219,6 +253,14 @@ try {
     same((await at(p)).route, '/#apps', 'Back again: Apps (the depth kept right through the wiped state)');
     await p.goBack(); await settle(p, 700);
     same([(await at(p)).route, (await at(p)).y], ['/', 650], 'browser back to the first Today: its scroll restored');
+    // a state wiped and never re-stamped: going on from it heals it, so Back onto it is a step back, not forward
+    await p.click(H.tab('apps')); await settle(p);
+    await p.evaluate(() => { try { history.replaceState(null, '', location.href); } catch (_) {} });
+    await p.evaluate(() => kit.F.nav.go('/#you')); await settle(p);
+    await p.evaluate(() => kit.F.nav.back()); await settle(p, 600);
+    same([(await at(p)).route, (await at(p)).d, await p.evaluate(() => kit.F.nav.prev()?.tab ?? null)], ['/#apps', 1, 'today'], 'Back onto the entry whose state was wiped: Apps at d:1 (stamped again as the page went on from it)');
+    await p.evaluate(() => kit.F.nav.back()); await settle(p, 600);
+    same([(await at(p)).route, (await at(p)).d, await p.evaluate(() => location.pathname)], ['/', 0, '/'], 'and Back again: Today, still in the page');
     // browser back with a sheet open
     await p.click(H.tab('you')); await settle(p);
     await p.click('[data-act=connector-weather]'); await settle(p, 600);
@@ -267,6 +309,8 @@ try {
     same([await p.evaluate(() => window.undone), await p.$$eval(`${H.TOAST}.on`, (t) => t.length)], [1, 0], 'its action ran and it went');
     await p.evaluate(() => { kit.F.toast('One'); kit.F.toast('Two'); }); await settle(p, 300);
     same(await p.$$eval(H.TOAST, (t) => t.map((x) => x.textContent)), ['Two'], 'one toast at a time');
+    await p.evaluate(() => IFL.note('weather', 'Notifications on', 'On this device')); await settle(p, 300);
+    same(await p.$$eval('.ifm-say', (n) => n.length), 1, 'one live region (.ifm-say), after the framework’s toasts and the shared block’s own note');
     await clean(k, 'sheets and toast');
   }
 
@@ -313,7 +357,7 @@ try {
     same(await p.evaluate(() => window.focusedInTap), true, 'Search: the sheet and its input made and focused inside the tap');
     same(await p.$eval(H.SEARCH_INPUT, (i) => [i.getAttribute('role'), !!document.getElementById(i.getAttribute('aria-controls'))?.matches('[role=listbox]')]), ['combobox', true], 'a combobox over a listbox');
     await settle(p, 500);
-    same(await p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.querySelector('b').textContent)), ['Weather', 'Chats', 'Fitness', 'Markets', 'Mail'], 'an empty field: every app (the Apps provider)');
+    same(await p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.querySelector('b').textContent)), ['Weather', 'Weather · 16 Days', 'Weather · Radar', 'Weather · Warnings', 'Chats', 'Fitness', 'Fitness · Today', 'Fitness · Activities', 'Fitness · Progress', 'Markets', 'Markets · Today', 'Markets · Holdings', 'Markets · News', 'Mail'], 'an empty field: every app and its sections (the Apps provider)');
     await p.fill(H.SEARCH_INPUT, 'lon'); await settle(p, 500);
     same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Places'], 'typed: your places (Places from Weather’s connector); the throwing and refusing providers left out, the slow one not yet');
     await settle(p, 700);
@@ -357,12 +401,20 @@ try {
     same(p.url(), 'https://weather.kit.test/', 'Open Weather on Its Own: Weather’s own address, same path, query and hash');
     // a contract mismatch, then a recovery
     const k2 = await kit(), p2 = k2.p;
+    await p2.evaluate(() => { window.builtFor = []; const b = IFL.built; IFL.built = (...a) => { window.builtFor.push(a[0]); return b?.(...a); }; });
     await p2.route(`${KIT}/weather/roof/weather.js`, (r) => r.fulfill({ status: 200, body: 'export const CONTRACT = 2; export async function mount() { return {}; }', headers: { 'content-type': 'text/javascript' } }));
     await p2.evaluate(() => kit.F.nav.go('/weather/#days')); await p2.waitForSelector(H.ERROR, { timeout: 15000 }).catch(() => {});
     ok(!!(await p2.$(H.ERROR_RETRY)), 'a module of another contract: the error state');
     await p2.unroute(`${KIT}/weather/roof/weather.js`);
     await p2.click(H.ERROR_RETRY); await p2.waitForFunction(() => window.kitMod?.shows?.length > 0, null, { timeout: 15000 }).catch(() => {});
     same(await p2.evaluate(() => [window.kitMod?.shows.at(-1)?.section, !!document.querySelector('.ifl-error')]), ['days', false], 'Try Again with the file there: it mounts at the route');
+    same(await p2.evaluate(() => window.builtFor), ['weather'], 'IFL.built once, for the module that mounted (not for the one that failed)');
+    // a mount that throws: the error state, and no “Weather updated”
+    const k5 = await kit(), p5 = k5.p;
+    await p5.evaluate(() => { window.builtFor = []; const b = IFL.built; IFL.built = (...a) => { window.builtFor.push(a[0]); return b?.(...a); }; });
+    await p5.route(new RegExp(`${KIT}/weather/roof/weather\\.js`), (r) => r.fulfill({ status: 200, body: 'export const CONTRACT = 1; export const BUILD = "9.98"; export async function mount() { throw new Error("no"); }', headers: { 'content-type': 'text/javascript' } }));
+    await p5.evaluate(() => kit.F.nav.go('/weather/')); await p5.waitForSelector(H.ERROR, { timeout: 15000 }).catch(() => {});
+    same([!!(await p5.$(H.ERROR_RETRY)), await p5.evaluate(() => window.builtFor)], [true, []], 'a mount that throws: the error state, and IFL.built never called');
     // fw.lazy while stale: reload at the route, the import never run
     await p2.click(H.hdSec('radar')); await settle(p2);
     await p2.evaluate(() => { kit.F.stale = true; scrollTo(0, 0); });
@@ -380,12 +432,44 @@ try {
     // lost()
     const k3 = await kit(), p3 = k3.p;
     same(await p3.evaluate(async () => [await kit.F.session.lost(), await kit.F.session.lost(), kit.state.checks, kit.state.lost]), [false, false, 1, 0], 'lost() with the session still signed in: false, asked once for both, nobody signed out');
+    await p3.evaluate(() => { kit.F.nav.go('javascript:document.title="gone"'); kit.F.nav.go('data:text/html,gone'); }); await settle(p3, 300);
+    same([p3.url(), await p3.title()], [`${KIT}/`, 'One roof: the framework\'s kit'], 'F.nav.go refuses javascript: and data: (only http and https leave the page)');
     const k4 = await kit(), p4 = k4.p;
     same(await p4.evaluate(async () => { kit.set({ signedIn: false }); return [await kit.F.session.lost(), kit.state.lost]; }), [true, 1], 'lost() with the session signed out: true, and signed out');
     await clean(k3, 'lost');
   }
 
-  // ---------------------------------------------------------------- 9. widths and themes; long titles
+  // ---------------------------------------------------------------- 9. a section chosen while the module loads; sign-out from Radar; CSS already in; the roof going off
+  {
+    const k = await kit(), p = k.p;
+    await p.route(`${KIT}/weather/roof/weather.js`, async (r) => { await sleep(1500); r.fallback(); });
+    await p.evaluate(() => kit.F.nav.go('/weather/'));
+    await p.waitForSelector('main#m-weather .ifl-skeleton', { state: 'attached', timeout: 3000 }).catch(() => {});
+    ok(await p.evaluate(() => !window.kitMod && !!document.querySelector('main#m-weather .ifl-skeleton')), 'Weather still loading: its skeleton, no module yet');
+    await p.click(H.hdSec('radar'));
+    await p.waitForFunction(() => window.kitMod?.shows?.length > 0, null, { timeout: 15000 }).catch(() => {}); await settle(p, 400);
+    same(await p.evaluate(() => [window.kitMod?.shows.map((s) => s.section), location.pathname + location.hash, document.querySelector('main#m-weather section[data-sec=radar]')?.hidden, document.querySelector('#hd [aria-selected=true]')?.dataset.sec]), [['radar'], '/weather/#radar', false, 'radar'], 'Radar tapped during the skeleton: once the module is in, it shows Radar (never a blank screen)');
+    ok(await p.evaluate(() => document.documentElement.classList.contains('ifl-fill')), 'and Radar fills the window');
+    await p.evaluate(() => kit.F.destroy()); await settle(p, 100);
+    same(await p.evaluate(() => { const h = document.documentElement; return [h.classList.contains('ifl-fill'), h.dataset.app, h.dataset.route ?? null, h.dataset.vt ?? null, [h, document.body].some((x) => getComputedStyle(x).overflowY === 'hidden'), kitMod.unmounts, document.getElementById('in').hidden]; }), [false, 'inflite', null, null, false, 1, true], 'signed out from Radar: no ifl-fill, the page InFlite’s again (no data-route or data-vt), it scrolls; the module unmounted, the frame hidden');
+    await clean(k, 'a section during the load; sign-out from Radar');
+    // the module's stylesheets already in the page and loaded: no 5 s wait for a load event that has been
+    const k2 = await kit(), p2 = k2.p;
+    await p2.evaluate(async () => { const { REGISTRY } = await import('/roof/router.js'); await Promise.all(REGISTRY.weather.css.map((h) => new Promise((ok) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; l.onload = l.onerror = ok; document.head.append(l); }))); });
+    const t0 = Date.now();
+    await p2.evaluate(() => kit.F.nav.go('/weather/#days'));
+    await p2.waitForFunction(() => window.kitMod?.shows?.length > 0, null, { timeout: 15000 }).catch(() => {});
+    const took = Date.now() - t0;
+    ok(took < 3000, 'its stylesheets already in: the module opens at once, not after the 5 s wait', `${took} ms`);
+    // the roof going off inside Weather (D14): unmounted, the page loaded again at the section, the one bounce noted
+    const nav = p2.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
+    const un = await p2.evaluate(() => { window.beforeBounce = 1; kit.F.setRoof(false); return kitMod.unmounts; });
+    await nav; await settle(p2, 300); await p2.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
+    same([un, new URL(p2.url()).pathname + new URL(p2.url()).hash, await p2.evaluate(() => [window.beforeBounce ?? null, sessionStorage.getItem('ifl-roof-bounce')])], [1, '/weather/#days', [null, '1']], 'F.setRoof(false) in Weather: the module unmounted, the page really loaded again (a hash alone would only scroll) at /weather/#days, ifl-roof-bounce kept');
+    await clean(k2, 'CSS already in; the roof going off');
+  }
+
+  // ---------------------------------------------------------------- 10. widths and themes; long titles
   for (const [w, h] of [[320, 640], [390, 844], [768, 1024], [1280, 860]]) {
     for (const scheme of ['light', 'dark']) {
       const k = await kit({ w, h, scheme }), p = k.p;
@@ -401,7 +485,7 @@ try {
         const r = await p.evaluate(() => { const q = (s) => document.querySelector(s).getBoundingClientRect(); const b = q('#hd .ifl-back'), t = q('#hd h1.ifh-name'), a = q('#hd .ifh-acts'); return { b: b.right, tl: t.left, tr: t.right, a: a.left, ar: a.right, label: document.querySelector('#hd h1').getAttribute('aria-label'), w: innerWidth, tw: t.width }; });
         ok(r.b <= r.tl + 0.5 && r.tr <= r.a + 0.5 && r.ar <= r.w, `${w} ${scheme} “${t}”: Back, title and capsule side by side, none over another`, JSON.stringify(r));
         same(r.label, t, `${w} ${scheme} “${t}”: the full title in aria-label`);
-        ok(r.tw >= 100, `${w} ${scheme} “${t}”: the title keeps its room`, `${r.tw}`);
+        ok(r.tw >= 112, `${w} ${scheme} “${t}”: the title keeps its 112 px`, `${r.tw}`);
       }
       await p.click(H.HD_PICK); await settle(p, 600);
       await p.screenshot({ path: `${OUT}/sheet-${w}-${scheme}.png` });

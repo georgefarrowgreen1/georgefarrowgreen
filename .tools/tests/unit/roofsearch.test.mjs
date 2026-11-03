@@ -97,7 +97,7 @@ test('the sheet: Apps on an empty field, options as you type, Enter opens the fi
   assert.ok(listbox, 'aria-controls names the results');
   await sleep(450);
   const titles = () => doc.querySelectorAll('[role=option]').map((o) => o.querySelector('b').textContent);
-  assert.deepEqual(titles(), ['Weather', 'Chats', 'Fitness', 'Markets', 'Mail'], 'an empty field: every app (the Apps provider), no other provider asked');
+  assert.deepEqual(titles(), ['Weather', 'Weather · 16 Days', 'Weather · Radar', 'Weather · Warnings', 'Chats', 'Fitness', 'Fitness · Today', 'Fitness · Activities', 'Fitness · Progress', 'Markets', 'Markets · Today', 'Markets · Holdings', 'Markets · News', 'Mail'], 'an empty field: every app and its sections (the Apps provider, all of them, past the 8 a group a query gets), no other provider asked');
   assert.equal(listbox.getAttribute('role'), 'listbox');
   const type = async (v) => { input.value = v; input.dispatch('input'); await sleep(450); };
   await type('lon');
