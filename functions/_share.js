@@ -6,22 +6,29 @@
 //   GET  my-card     your own card of a kind, for "How's yours?": read from your own apps, nothing written
 //   POST fit-share   a share id for your session as it's sent (or { drop } to take one back when nothing went)
 //   GET  together    the best times for a ride or run with a friend, dry for you both (Fitness's own forecast for each)
-//   POST fit-offer   a plan agreed in Chat put in your own Fitness, for you to add there
+//   POST fit-offer   a plan agreed in Chat put in your own Fitness, for you to add there; since Today First, with the
+//                    friend (with, only once pg_links says so), the inviter's own row as the invite goes (state
+//                    "pending", with its other times, opts), and the friend's Yes (re) making that row a plan to add
+//   POST time-offer  a call or a meeting offered or agreed in Chat (Today First), each person's own row (functions/_times.js),
+//                    the friend's Yes making the inviter's pending one agreed, with the inviter's phone shut (TIME_ROUTES)
 // Every route: signed in to Chat, limited for each account, friends only (pg_links 'ok'), and each answer built from a
-// list of what it may say (a unit test holds each to its list). Only fit-share and fit-offer keep anything, and only in
-// the asker's own rows (functions/_fitshare.js).
+// list of what it may say (a unit test holds each to its list). Only fit-share, fit-offer and time-offer keep anything,
+// and only times and ids (never a word of a letter): in the asker's own rows, and, for a Yes, the inviter's pending row
+// for that friend alone (functions/_fitshare.js, functions/_times.js).
 
-import { HttpError, json, body, db, limit, requireUser, haversineKm, logError } from "./_pigeon.js";
+import { HttpError, json, body, db, limit, requireUser, haversineKm, logError, UUID_RE } from "./_pigeon.js";
 import { cellNow, weatherSend } from "./_todaywx.js";
 import { cardsFor, Quiet } from "./_todaycards.js";
-import { quotes, cleanSymbol, dayIn } from "./_markets.js";
+import { quotes, cleanSymbol, dayIn, holdings } from "./_markets.js";
 import { kept } from "./_wxacct.js";
 import { hoursAt } from "./_fitwx.js";
 import { todayLinks } from "./_sites.js";
-import { shareFor, dropShare, fitNowMany, addOffer, SHARE_ID } from "./_fitshare.js";
+import { shareFor, dropShare, fitNowMany, addOffer, promoteOffer, SHARE_ID } from "./_fitshare.js";
+import { addTime } from "./_times.js";
 import { normCard, zoneOk, ASK_KINDS } from "../pigeon/cards.js";
 import { bestTogether } from "../fitness/besttime.js";
 import { workoutById, measure } from "../fitness/workouts.js";
+import { stockSendCard } from "../markets/send.js";
 
 const MIN = 60e3, HOUR = 60 * MIN;
 const QUIET = Object.freeze({ quiet: true });
@@ -47,6 +54,14 @@ async function friendsOf(D, me, ids) {
   const { results } = await D.prepare(`SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b IN (${q})) OR (b = ?1 AND a IN (${q})))`)
     .bind(me, ...ids, ...ids).all();
   return new Set((results || []).map((r) => r.id));
+}
+// A friend's first name, as their Chat name has it (their handle where it has none), only while they're the account's
+// friend (pg_links 'ok') → the name, or null (not a friend, or not an id)
+async function friendName(D, me, id) {
+  if (typeof id !== "string" || !id || id.length > 64 || id === me) return null;
+  const p = await D.prepare(`SELECT p.name, p.handle FROM pg_users p WHERE p.id = ?2
+    AND EXISTS (SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)))`).bind(me, id).first();
+  return p ? (String(p.name || "").trim().split(/\s+/)[0] || String(p.handle || "")).slice(0, 40) || null : null;
 }
 // (a live weather answer, as it may be said: °C, real ms)
 const wxNow = (n) => ({ temp: n.temp, feels: n.feels, code: n.code, isDay: !!n.isDay, hi: n.hi, lo: n.lo, rain: rainOut(n.rain), at: n.at });
@@ -157,6 +172,12 @@ async function myCard({ request, env }) {
     if (c && c.kind === kind) { if (c.ref?.share) delete c.ref; return json({ card: c }); }
     return null;
   };
+  // (Today First: one stock of yours by its symbol, for the + sheet in a chat that's spoken of it)
+  if (q.has("sym")) {
+    if (kind !== "markets") throw new HttpError(400, "Bad request.");
+    let sym; try { sym = cleanSymbol(q.get("sym")); } catch (_) { throw new HttpError(400, "Bad request."); }
+    return stockCard(env, u, sym, t, href, answer);
+  }
   let got = null;
   try { got = (await cardsFor(env, u, { only: [kind], t, request, purpose: "page", tz, links, keepSend: true, live: true })).cards[kind]; }
   catch (e) { if (!(e instanceof Quiet)) await logError(env, "my-card", e); }
@@ -167,6 +188,18 @@ async function myCard({ request, env }) {
     return answer(card) || json({ card: null, said: COULDNT, href });
   }
   return json({ card: null, said: got?.state === "empty" ? EMPTY[kind] : COULDNT, href });
+}
+
+// A stock you hold (in Markets, with some owned: one you only follow isn't yours to send from here) as Markets sends it
+// (markets/send.js stockSendCard): its day's move in percent, and nothing more: never a price, a value, what you hold or
+// any amount. A symbol you don't hold is said so, with nothing looked up
+const NOT_HELD = "That isn’t one of your holdings in Markets.";
+async function stockCard(env, u, sym, t, href, answer) {
+  const mine = (await holdings(env, u.id).catch(() => [])).find((h) => h.symbol === sym && h.qty > 0);
+  if (!mine) return json({ card: null, said: NOT_HELD, href });
+  const x = (await quotes(env, [sym], Date.now() + 3000).catch(quietly(env, "my-card stock")))?.[sym];
+  if (!x || !Number.isFinite(x.chgPct)) return json({ card: null, said: COULDNT, href });
+  return answer(stockSendCard(sym, mine.name, { chgPct: x.chgPct, tz: x.tz, time: x.time }, t)) || json({ card: null, said: COULDNT, href });
 }
 
 async function fitShare({ request, env }) {
@@ -233,13 +266,51 @@ async function together({ request, env, waitUntil }) {
   return json(out);
 }
 
+// A plan put in your own Fitness (functions/_fitshare.js addOffer), built only from fields checked here or there, never
+// the request passed on whole. with: the friend's id, stored only once pg_links says they're your friend (otherwise as
+// an older Chat's offer is, with no friend's id: and an invite's pending row, which is only for a friend's answer, not at
+// all). The inviter as the invite goes: state "pending" with its other times (opts), keyed by the invite letter's id.
+// The friend's Yes (role "answered", with, re: the invite's id): their own plan as before, and the inviter's pending row
+// for them alone, at its own time or one of its opts, becomes a plan to add in the inviter's Fitness (promoteOffer),
+// with the inviter's phone shut; that's made even where the answerer's own Fitness has no room for one more.
 async function fitOffer({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, `fitoffer:${u.id}`, 30, HOUR);
-  await addOffer(env, u.id, await body(request, 4 * 1024));
+  const b = await body(request, 4 * 1024), t = Date.now(), x = b && typeof b === "object" && !Array.isArray(b) ? b : {};
+  if (x.with != null && (typeof x.with !== "string" || !x.with || x.with.length > 64)) throw new HttpError(400, "Bad request.");
+  if (x.re != null && (typeof x.re !== "string" || !UUID_RE.test(x.re.toLowerCase()))) throw new HttpError(400, "Bad request.");
+  const name = x.with != null ? await friendName(await db(env), u.id, x.with) : null, withId = name ? x.with : null, pending = x.state === "pending";
+  if (pending && !withId) throw new HttpError(403, FLOCK);
+  const o = { id: x.id, start: x.start, stop: x.stop, tz: x.tz, sport: x.sport, wid: x.wid, name: x.name, secs: x.secs, who: x.who ?? name ?? undefined,
+    role: x.role, far: x.far, dry: x.dry, ...(withId ? { withId } : {}), ...(pending ? { state: "pending", opts: x.opts } : {}) };
+  const promote = x.role === "answered" && withId && x.re != null;
+  let held = null;
+  try { await addOffer(env, u.id, o, { t, checked: true }); }
+  catch (e) { if (!promote || !(e instanceof HttpError) || e.status !== 409) throw e; held = e; }
+  if (promote) await promoteOffer(env, withId, x.re.toLowerCase(), u.id, Number(x.start), Number(x.stop), { t });
+  if (held) throw held;
+  return json({ ok: true });
+}
+
+// ---- a time to talk (Today First, spec §6.3, §8.4) ----
+// A call or a meeting with a friend, offered or agreed in Chat: { id (the invite letter's), kind ("call" | "meet"),
+// start, stop, tz, with (the friend's id), role ("asked" | "answered"), state? ("pending": the inviter, as the invite
+// goes), opts? (its other times, [[start, stop]], at most 3) }. Your own row only, with your friend's first name looked up
+// here; the friend's Yes also makes the inviter's pending row agreed at the time chosen, in the same batch, with the
+// inviter's phone shut. Says only { ok: true }: never whether the other side had a row. (functions/_times.js addTime)
+async function timeOffer({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, `timeoffer:${u.id}`, 30, HOUR);
+  const b = await body(request, 4 * 1024), t = Date.now(), x = b && typeof b === "object" && !Array.isArray(b) ? b : {};
+  if (typeof x.with !== "string" || !x.with || x.with.length > 64 || x.with === u.id) throw new HttpError(400, "Bad request.");
+  const who = await friendName(await db(env), u.id, x.with);
+  if (!who) throw new HttpError(403, FLOCK);
+  await addTime(env, u, { id: x.id, kind: x.kind, start: x.start, stop: x.stop, tz: x.tz, withId: x.with, who, role: x.role, state: x.state, opts: x.opts }, { t });
   return json({ ok: true });
 }
 
 export const SHARE_ROUTES = {
   "POST card-now": cardNow, "POST share-rank": shareRank, "GET my-card": myCard, "POST fit-share": fitShare, "GET together": together, "POST fit-offer": fitOffer,
 };
+// (Today First's, beside them in Chat's API: functions/api/pigeon. Its own list, as SHARE_ROUTES' keys are pinned)
+export const TIME_ROUTES = { "POST time-offer": timeOffer };
