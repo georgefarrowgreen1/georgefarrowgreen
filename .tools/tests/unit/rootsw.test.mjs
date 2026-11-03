@@ -299,8 +299,22 @@ test('One roof: a window of the framework (/ or /weather/) is told to route in t
   assert.deepEqual(w.wins[0].went, [`${ORIGIN}/weather/#warnings`], 'then sent there');
   w = worker(undefined, { windows: [{ url: `${ORIGIN}/weather/`, focused: true, hears: false, controlled: false }] });
   await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
-  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }]);
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }, { ifl: 'open', url: '/chats/#open=abc' }]);
   assert.deepEqual(w.opened, [`${ORIGIN}/chats/#open=abc`]);
+  // (Weather's milestone-1 page at /weather/ (the roof off, or its old worker not yet retired), which hears only an open
+  // and is its own worker's: told to open it, as milestone 1 did, neither sent elsewhere nor a second window)
+  for (const at of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2', '/weather/#radar']) {
+    w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open', controlled: false }] });
+    await w.tap({ app: 'weather', url: './?lat=51.5&lon=-0.12&name=London' });
+    const to = '/weather/?lat=51.5&lon=-0.12&name=London';
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }, { ifl: 'open', url: to }], at);
+    assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}: opened in that window, as milestone 1`);
+  }
+  // (Today's page at / from before the roof, which only opens, is this worker's: sent there as before, never told twice)
+  w = worker(undefined, { windows: [{ url: `${ORIGIN}/`, focused: true, hears: 'open', controlled: false }] });
+  await w.tap({ app: 'weather', url: './#warnings' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }]);
+  assert.deepEqual(w.opened, [`${ORIGIN}/weather/#warnings`]);
   // (no window: the framework opened at the place, the page at /weather/ being the framework's)
   w = worker();
   await w.tap({ app: 'weather', url: './?lat=1&lon=2&name=Here' });

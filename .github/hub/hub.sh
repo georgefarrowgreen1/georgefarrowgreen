@@ -33,7 +33,7 @@
 #                         refused, saying what to do, nothing changed)
 #   roof_set W off|on   → after worker_settled: ROOF_OFF "1" put (off), or deleted (on; none there is on already)
 #   wait_roof SITE true|false [seconds] → a hub's /api/hub asked until its roof says so
-#   roof_verdict        → roof.yml's last step
+#   roof_verdict        → roof.yml's last step (ROOF_UNSETTLED: the Workers the settled check refused)
 # Cloudflare's API is asked with CLOUDFLARE_API_TOKEN, which never goes on a command line (curl reads its header from a
 # pipe) nor into the log; a key made here is masked before anything else and only ever piped to wrangler. What's
 # printed of an answer from Cloudflare is its error codes and messages, never the request.
@@ -812,7 +812,11 @@ roof_verdict() {
   fi
   case "${OUT_SETTLED:-}" in
     success) ;;
-    *) say "Refused, nothing changed: not every Worker ($workers) is settled (its newest version isn't the one deployed, or it couldn't be read; the step says which). Deploy its production branch again and run this again, or use $ROOF_LEVEL2."
+    *) if [ "$where" = both ] && [ "${ROOF_UNSETTLED:-}" = "$STAGING" ]; then
+         say "Refused, nothing changed: the live Worker $WORKER is settled, only the staging Worker $STAGING isn't (the step says why). To switch the live hub now, run this again with where: inflite.ai (seconds); next.inflite.ai can follow once $STAGING's production branch is deployed again."
+       else
+         say "Refused, nothing changed: not every Worker (${ROOF_UNSETTLED:-$workers}) is settled (its newest version isn't the one deployed, or it couldn't be read; the step says which). Deploy its production branch again and run this again, or use $ROOF_LEVEL2."
+       fi
        return 1 ;;
   esac
   case "${OUT_SET:-}" in

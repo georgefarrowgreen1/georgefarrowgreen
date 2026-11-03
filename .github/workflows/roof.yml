@@ -73,13 +73,16 @@ jobs:
         run: |
           . .github/hub/hub.sh
           cf_account
-      # (every Worker named, before anything is changed anywhere: one that isn't settled stops the run here)
+      # (every Worker named, before anything is changed anywhere: one that isn't settled stops the run here. Those that
+      # weren't are left for the summary as ROOF_UNSETTLED: with both chosen and only the staging Worker unsettled, it
+      # says to run this again for inflite.ai alone)
       - name: Check each Worker is settled (its newest version is the one deployed)
         id: settled
         run: |
           . .github/hub/hub.sh
-          rc=0
-          for w in $(hub_workers "$ROOF_WHERE"); do worker_settled "$w" || rc=1; done
+          rc=0 unsettled=""
+          for w in $(hub_workers "$ROOF_WHERE"); do worker_settled "$w" || { rc=1; unsettled="$unsettled $w"; }; done
+          echo "ROOF_UNSETTLED=${unsettled# }" >> "$GITHUB_ENV"
           exit $rc
       # (in the runner's temporary folder: no wrangler config there, so wrangler takes each Worker by the name given;
       # the staging Worker first, so the live one is untouched should it fail)

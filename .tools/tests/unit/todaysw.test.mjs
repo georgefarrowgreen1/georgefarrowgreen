@@ -223,6 +223,67 @@ test('One roof: the module’s files kept when the page asks, in roof-weather-<b
   for (const k of ['today-app-3', 'wx-1.64', 'roof-other-1.00']) assert.ok(w.stores.has(k), k);
 });
 
+test('One roof: a build kept whole stays whole: asked again with no network, a 404 or a 5xx, nothing fetched and nothing let go; one kept in part is filled', { skip: roofCase }, async () => {
+  let mode = 'up';
+  const w = worker((path) => {
+    if (mode === 'down') throw new TypeError('Load failed');
+    if (mode === '404' && path === '/weather/roof/core.js') return new Response('gone', { status: 404 });
+    if (mode === '503') return new Response('hub not ready', { status: 503 });
+    return okFile(path);
+  });
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+  assert.equal(w.stores.get('roof-weather-1.64').size, FILES12.length);
+  // (every open of the page asks again, offline too, as it mounts from the kept copy: the copy stays, nothing asked)
+  for (const m of ['down', '404', '503']) {
+    mode = m;
+    const n = w.asked.length;
+    await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+    assert.equal(w.stores.get('roof-weather-1.64')?.size, FILES12.length, `${m}: kept whole`);
+    assert.equal(w.asked.length, n, `${m}: nothing fetched, the build being kept whole already`);
+  }
+  // (kept in part (a worker stopped part way): filled when it can be, left as it was when it can't)
+  w.stores.get('roof-weather-1.64').delete('/weather/data.js');
+  mode = 'down';
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+  assert.equal(w.stores.get('roof-weather-1.64')?.size, FILES12.length - 1, 'no network: what was kept, kept');
+  mode = '404';
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+  assert.equal(w.stores.get('roof-weather-1.64')?.size, FILES12.length - 1, 'one not there: what was kept, kept');
+  mode = 'up';
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+  assert.equal(w.stores.get('roof-weather-1.64').size, FILES12.length, 'filled');
+  // (a new build that fails, with no network: the build before kept whole, no cache of the new one left)
+  mode = 'down';
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.65', files: FILES12 });
+  assert.deepEqual([...w.stores.keys()], ['roof-weather-1.64']);
+});
+
+test('One roof: keeps for two builds never race: an older build’s ask, finishing last or coming after, never lets the newer one go', { skip: roofCase }, async () => {
+  // (an old tab's 1.64 and a fresh one's 1.65, asked together: 1.64's files, asked first, answered slowly, so were the
+  // two kept side by side 1.64 would finish last)
+  let n = 0;
+  const slow = worker(async (path) => { if (n++ < FILES12.length) await new Promise((ok) => setTimeout(ok, 60)); return okFile(path); });
+  await Promise.all([
+    keepFrom(slow, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 }, { url: `${ORIGIN}/weather/` }),
+    keepFrom(slow, { ifl: 'keep', app: 'weather', build: '1.65', files: FILES12 }),
+  ]);
+  assert.deepEqual([...slow.stores.keys()], ['roof-weather-1.65'], 'the newer build kept, the older let go');
+  assert.equal(slow.stores.get('roof-weather-1.65').size, FILES12.length);
+  const w = worker((path) => okFile(path));
+  // (an old tab's ask for an older build, after the newer one's kept: ignored, nothing fetched)
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.65', files: FILES12 });
+  const asked = w.asked.length;
+  await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: FILES12 });
+  assert.deepEqual([...w.stores.keys()], ['roof-weather-1.65']);
+  assert.equal(w.asked.length, asked, 'nothing fetched for the older build');
+  // (builds compared as numbers: 10.00 is after 9.99)
+  const v = worker((path) => okFile(path));
+  await keepFrom(v, { ifl: 'keep', app: 'weather', build: '9.99', files: FILES12 });
+  await keepFrom(v, { ifl: 'keep', app: 'weather', build: '10.00', files: FILES12 });
+  await keepFrom(v, { ifl: 'keep', app: 'weather', build: '9.99', files: FILES12 });
+  assert.deepEqual([...v.stores.keys()], ['roof-weather-10.00']);
+});
+
 test('One roof: a keep that isn’t right is ignored whole: another app, a build not as the apps number them, a file not Weather’s own, a query, vendor/, too many, another site’s page', { skip: roofCase }, async () => {
   const w = worker((path) => okFile(path));
   const bad = [
